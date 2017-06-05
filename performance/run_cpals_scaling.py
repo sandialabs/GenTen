@@ -1,0 +1,253 @@
+#!/usr/bin/env python
+
+import re
+import os
+from optparse import OptionParser
+
+try:
+    from matplotlib.pyplot import *
+    has_mpl = True
+except ImportError:
+    has_mpl = False
+
+def get_stats(file_name):
+    f = open(file_name, 'r')
+    its = 0
+    cpals = 0
+    mttkrp = 0
+    fillComplete = 0
+    for line in f:
+        m = re.search('CpAls completed (\d+) iterations in (.*) seconds', line)
+        if m != None:
+            its = int(m.group(1))
+            cpals = float(m.group(2))
+
+        m = re.search('MTTKRP total time = (.*) seconds, average time = (.*) seconds', line)
+        if m != None:
+            mttkrp = float(m.group(2))
+
+        m = re.search('\s+\(fillComplete\(\) took \s*(.*) seconds', line)
+        if m != None:
+            fillComplete = float(m.group(1))
+
+    return its,cpals,mttkrp,fillComplete,cpals+fillComplete
+
+def run_cpals(options):
+    output_filename = options.output + '_' + str(options.threads)
+    path = os.path.join(os.curdir, output_filename)
+    if not os.path.exists(path) or options.force:
+        cmd = options.launch + ' ' + options.exe
+        cmd = cmd + ' --kokkos-threads=' + str(options.threads)
+        cmd = cmd + ' ' + options.args + ' >> ' + output_filename + ' 2>&1'
+        out_file = open(output_filename, 'w')
+        out_file.write(cmd + '\n')
+        out_file.close()
+        os.environ["OMP_NUM_THREADS"] = str(options.threads)
+        os.environ["KMP_AFFINITY"] = options.affinity
+        os.system(cmd)
+    return get_stats(output_filename)
+
+def run_cpals_scaling(options, thread_range, affinity_range):
+    its = []
+    cpals = []
+    mttkrp = []
+    fillComplete = []
+    total = []
+
+    p = 2
+    w = p + 6
+    s = ''
+    sep = '  '
+    s = s + '{0:^{width}}'.format('n', width=3) + sep
+    s = s + '{0:^{width}}'.format('its', width=3) + sep
+    s = s + '{0:^{width}}'.format('cpals', width=w) + sep
+    s = s + '{0:^{width}}'.format('mttkrp', width=w) + sep
+    s = s + '{0:^{width}}'.format('fillCom', width=w) + sep
+    print s
+    s = '-'*3 + sep + '-'*3 + sep + '-'*w + sep + '-'*w + sep + '-'*w +sep
+    print s
+
+    n = len(thread_range)
+    for i in range(n):
+        threads = thread_range[i]
+        affinity = affinity_range[i]
+        options.threads = threads
+        options.affinity = affinity
+        i,c,m,f,t = run_cpals(options)
+        its.append(i)
+        cpals.append(c)
+        mttkrp.append(m)
+        fillComplete.append(f)
+        total.append(t)
+        s = ''
+        s = s + '{0:>{width}d}'.format(threads, width=3) + sep
+        s = s + '{0:>{width}d}'.format(i, width=3) + sep
+        s = s + '{0:>{width}.{precision}e}'.format(c, width=w, precision=p) + sep
+        s = s + '{0:>{width}.{precision}e}'.format(m, width=w, precision=p) + sep
+        s = s + '{0:>{width}.{precision}e}'.format(f, width=w, precision=p) + sep
+        print s
+    return its,cpals,mttkrp,fillComplete,total
+
+def parse_args(parser = OptionParser()):
+    parser.add_option('--exe', default='./bin/perf_CpAlsRandomKtensor',
+                      help='CpALS executable')
+    parser.add_option('--launch', default='',
+                      help='Command needed to launch executable')
+    parser.add_option('-f', '--force', action="store_true",
+                      dest="force", default=False,
+                      help='Force run even if output file exists')
+    parser.add_option('--threads', default=1,
+                      help='Number of threads')
+    parser.add_option('--numa', default=1,
+                      help='Number of numa domains')
+    parser.add_option('--affinity', default='compact',
+                      help='Thread affinity')
+    parser.add_option('--output', default='cpals.out',
+                      help='Output filename')
+    parser.add_option('--args', default='',
+                      help='Command arguments')
+    (options, args) = parser.parse_args()
+    return options
+
+#
+# Script starts here
+#
+
+parser = OptionParser()
+parser.add_option('--arch', default='',
+                  help='Architecture to run on')
+parser.add_option('--title', default='3K x 4K x 5K, 1M NNZ, R=32',
+                  help='Plot title')
+parser.add_option("-s", "--save", dest="save", default=None,
+                  help="save figure to FILE", metavar="FILE")
+options = parse_args(parser)
+
+# Create thread ranges based on architcture
+n = [ 1 ]
+if options.arch == 'snb':
+    n = [ 2**i for i in range(0,6) ]
+if options.arch == 'hsw':
+    n = [ 2**i for i in range(0,7) ]
+elif options.arch == 'knl':
+    n = [ 2**i for i in range(0,9) ]
+elif options.arch == 'gpu' or options.arch == 'p100' or options.arch == 'k80':
+    n = [ 1 ]
+
+# Use compact affinity
+a = [ 'compact' ]*len(n)
+
+args = options.args
+output = options.output
+
+print '\nKokkos:'
+options.args = args + ' --tensor kokkos'
+options.output = output + '_kokkos'
+its_k,cpals_k,mttkrp_k,fillComplete_k,tot_k = run_cpals_scaling(options, n, a)
+
+print '\nPerm:'
+options.args = args + ' --tensor perm'
+options.output = output + '_perm'
+its_p,cpals_p,mttkrp_p,fillComplete_p,tot_p = run_cpals_scaling(options, n, a)
+
+print '\nRow:'
+options.args = args + ' --tensor row'
+options.output = output + '_row'
+its_r,cpals_r,mttkrp_r,fillComplete_r,tot_r = run_cpals_scaling(options, n, a)
+
+if not has_mpl:
+    quit()
+
+params = { 'font.size': 12,
+           'font.weight': 'bold',
+           'lines.linewidth': 2,
+           'axes.linewidth': 2,
+           'axes.fontweight': 'bold',
+           'axes.labelweight': 'bold',
+           'xtick.major.size': 8,
+           'xtick.major.width': 2,
+           'ytick.major.size': 8,
+           'ytick.minor.size': 4
+}
+rcParams.update(params)
+
+def ticksx(y, pos):
+    return r'{0:.0f}'.format(y)
+def ticksy(y, pos):
+    return r'{0:.3f}'.format(y)
+
+# Use bar chart if there is only one data point
+if len(n) == 1:
+    figure(1)
+    clf()
+    gca().set_yscale('log', basey=2)
+    bar_width = 0.25
+    ind_k = range(3)
+    ind_p = [ i+bar_width for i in ind_k ]
+    ind_r = [ i+bar_width for i in ind_p ]
+    ind_t = [ i+bar_width/2 for i in ind_p ]
+    kokkos = [ cpals_k[0], mttkrp_k[0], fillComplete_k[0] ]
+    perm   = [ cpals_p[0], mttkrp_p[0], fillComplete_p[0] ]
+    row    = [ cpals_r[0], mttkrp_r[0], fillComplete_r[0] ]
+    bar(ind_k,kokkos,bar_width,color='b',label='Kokkos')
+    bar(ind_p,perm,bar_width,color='r',label='Perm')
+    bar(ind_r,row,bar_width,color='k',label='Row')
+    legend()
+    ylabel('Time (s)')
+    xticks(ind_t, ('CP-ALS (total)', 'MTTKRP (avg)', 'fillComplete'))
+    title(options.arch.upper() + ', ' + options.title, fontsize=16)
+
+    add_text = False
+    if add_text:
+        for i in range(len(kokkos)-1):
+            text(ind_k[i]+bar_width/2, kokkos[i], str(kokkos[i]), horizontalalignment='center', verticalalignment='bottom', rotation=0)
+        for i in range(len(perm)):
+            text(ind_p[i]+bar_width/2, perm[i], str(perm[i]), horizontalalignment='center', verticalalignment='bottom', rotation=0)
+        for i in range(len(row)):
+            text(ind_r[i]+bar_width/2, row[i], str(row[i]), horizontalalignment='center', verticalalignment='bottom', rotation=0)
+
+else:
+    figure(1, figsize=(8.5,11))
+    clf()
+    subplot(3,1,1)
+    loglog(n,tot_k,'b-*',
+           n,tot_p,'r-s',
+           n,tot_r,'k-d',
+           basex=2, basey=2)
+    legend(('Kokkos','Perm','Row'))
+    xlabel('Threads')
+    ylabel('Time (s)')
+    title('CP-ALS (total)')
+    gca().xaxis.set_major_formatter(FuncFormatter(ticksx))
+    #gca().yaxis.set_major_formatter(FuncFormatter(ticksy))
+
+    subplot(3,1,2)
+    loglog(n,mttkrp_k,'b-*',
+           n,mttkrp_p,'r-s',
+           n,mttkrp_r,'k-d',
+           basex=2, basey=2)
+    xlabel('Threads')
+    ylabel('Time (s)')
+    title('MTTKRP (average)')
+    gca().xaxis.set_major_formatter(FuncFormatter(ticksx))
+    #gca().yaxis.set_major_formatter(FuncFormatter(ticksy))
+
+    subplot(3,1,3)
+    loglog(n,fillComplete_k,'b-*',
+           n,fillComplete_p,'r-s',
+           n,fillComplete_r,'k-d',
+           basex=2, basey=2)
+    xlabel('Threads')
+    ylabel('Time (s)')
+    title('fillComplete()')
+    gca().xaxis.set_major_formatter(FuncFormatter(ticksx))
+    #gca().yaxis.set_major_formatter(FuncFormatter(ticksy))
+
+    subplots_adjust(hspace=0.5)
+    suptitle(options.arch.upper() + ', ' + options.title, fontsize=16)
+
+draw()
+if options.save == None:
+    show()
+
+if options.save != None:
+    savefig(options.save)

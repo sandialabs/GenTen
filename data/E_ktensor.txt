@@ -1,0 +1,23 @@
+// Example Ktensor for unit testing.
+ktensor
+3
+2 3 3
+2
+1.0 2.0
+facmatrix
+2
+2 2
+0.5 0.1
+0.5 0.9
+facmatrix
+2
+3 2
+1.0 2.0
+3.0 4.0
+5.0 6.0
+facmatrix
+2
+3 2
+1.0e-2 4.0e-2
+2.0e-2 5.0e-2
+3.0e-2 6.0e-2

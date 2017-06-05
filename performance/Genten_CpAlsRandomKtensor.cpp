@@ -1,0 +1,255 @@
+//@HEADER
+// ************************************************************************
+//     Genten Tensor Toolbox
+//     Software package for tensor math by Sandia National Laboratories
+//
+// Sandia National Laboratories is a multimission laboratory managed
+// and operated by National Technology and Engineering Solutions of Sandia,
+// LLC, a wholly owned subsidiary of Honeywell International, Inc., for the
+// U.S. Department of Energy’s National Nuclear Security Administration under
+// contract DE-NA0003525.
+//
+// Copyright 20XX, Sandia Corporation.
+// ************************************************************************
+//@HEADER
+
+
+/*!
+  @file Genten_CpAlsRandomKtensor.cpp
+  @brief Main program that factorizes synthetic data using the CP-ALS algorithm.
+*/
+
+#include <iostream>
+#include <stdio.h>
+
+#include "Genten_CpAls.h"
+#include "Genten_FacTestSetGenerator.h"
+#include "Genten_IndxArray.h"
+#include "Genten_IOtext.h"
+#include "Genten_Ktensor.h"
+#include "Genten_Sptensor.h"
+#include "Genten_SystemTimer.h"
+#include "Genten_Driver_Utils.h"
+
+#include "Genten_MixedFormatOps.h"
+
+using namespace std;
+
+enum SPTENSOR_TYPE {
+  SPTENSOR,
+  SPTENSOR_PERM,
+  SPTENSOR_ROW
+};
+const unsigned num_sptensor_types = 3;
+SPTENSOR_TYPE sptensor_types[] =
+{ SPTENSOR, SPTENSOR_PERM, SPTENSOR_ROW };
+std::string sptensor_names[] =
+{ "kokkos", "perm", "row" };
+
+template <typename Sptensor_type>
+int run_cpals(const Genten::IndxArray& cFacDims,
+              ttb_indx  nNumComponents,
+              ttb_indx  nMaxNonzeroes,
+              unsigned long  nRNGseed,
+              ttb_indx  nMaxIters,
+              ttb_real  dStopTol,
+              SPTENSOR_TYPE tensor_type)
+{
+  cout << "Will construct a random Ktensor/Sptensor_";
+  cout << sptensor_names[tensor_type] << " pair:\n";
+  cout << "  Ndims = " << cFacDims.size() << ",  Size = [ ";
+  for (ttb_indx  n = 0; n < cFacDims.size(); n++)
+    cout << cFacDims[n] << ' ';
+  cout << "]\n";
+  cout << "  Ncomps = " << nNumComponents << "\n";
+  cout << "  Maximum nnz = " << nMaxNonzeroes << "\n";
+
+  // Construct a random number generator that matches Matlab.
+  Genten::RandomMT  cRNG (nRNGseed);
+
+  // Generate a random Ktensor, and from it a representative sparse
+  // data tensor.
+  Sptensor_type  cData;
+  Genten::Ktensor   cSol;
+  Genten::FacTestSetGenerator  cTestGen;
+
+  Genten::SystemTimer  timer(2);
+  timer.start(0);
+  if (cTestGen.genSpFromRndKtensor (cFacDims, nNumComponents, nMaxNonzeroes,
+                                    cRNG, cData, cSol) == false)
+  {
+    cout << "*** Call to genSpFromRndKtensor failed.\n";
+    return( -1 );
+  }
+  timer.stop(0);
+  printf ("  (data generation took %6.3f seconds)\n", timer.getTotalTime(0));
+  cout << "  Actual nnz  = " << cData.nnz() << "\n";
+
+  // Set a random initial guess, matching the Matlab code.
+  Genten::Ktensor  cInitialGuess (nNumComponents, cFacDims.size(), cFacDims);
+  cInitialGuess.setWeights (1.0);
+  cInitialGuess.setMatrices (0.0);
+  for (ttb_indx  n = 0; n < cFacDims.size(); n++)
+  {
+    for (ttb_indx  c = 0; c < nNumComponents; c++)
+    {
+      for (ttb_indx  i = 0; i < cFacDims[n]; i++)
+      {
+        cInitialGuess[n].entry(i,c) = cRNG.genMatlabMT();
+      }
+    }
+  }
+
+  // Do a pass through the mttkrp to warm up and make sure the tensor
+  // is copied to the device before generating any timings.  Use
+  // Sptensor mttkrp and do this before fillComplete() so that
+  // fillComplete() timings are not polluted by UVM transfers
+  Genten::Ktensor  tmp (nNumComponents, cFacDims.size(), cFacDims);
+  Genten::Sptensor& cData_tmp = cData;
+  for (ttb_indx  n = 0; n < cFacDims.size(); n++)
+    Genten::mttkrp(cData_tmp, cInitialGuess, n, tmp[n]);
+
+  // Perform any post-processing (e.g., permutation and row ptr generation)
+  timer.start(1);
+  cData.fillComplete();
+  timer.stop(1);
+  printf ("  (fillComplete() took %6.3f seconds)\n", timer.getTotalTime(1));
+
+  // Call CpAls to factorize, timing the performance.
+  Genten::Ktensor  cResult;
+  ttb_indx  nItersCompleted;
+  ttb_real  dResNorm;
+
+  cout << "Calling CpAls with random initial guess and parameters:\n";
+  cout << "  Max iters = " << nMaxIters << "\n";
+  cout << "  Stop tol  = " << dStopTol << "\n";
+
+  // Request performance information on every iteration.
+  // Allocation adds two more for start and stop states of the algorithm.
+  ttb_indx  nMaxPerfSize = 2 + nMaxIters;
+  Genten::CpAlsPerfInfo *  perfInfo = new Genten::CpAlsPerfInfo[nMaxPerfSize];
+  cResult = cInitialGuess;
+  Genten::cpals_core (cData, cResult,
+                   dStopTol, nMaxIters, -1.0, 1,
+                   nItersCompleted, dResNorm,
+                   1, perfInfo);
+  printf ("Performance information per iteration:\n");
+  for (ttb_indx  i = 0; i <= nItersCompleted; i++)
+  {
+    printf (" %2d: fit = %.6e, resnorm = %.2e, time = %.3f secs\n",
+            perfInfo[i].nIter, perfInfo[i].dFit,
+            perfInfo[i].dResNorm, perfInfo[i].dCumTime);
+  }
+  delete[] perfInfo;
+
+  printf ("  Final residual norm = %10.3e\n", dResNorm);
+  printf ("  Weights (lambda):\n");
+  for (ttb_indx  c = 0; c < nNumComponents; c++)
+    printf("    [%d] = %f\n", (int)c, cResult.weights(c));
+
+  //    print_ktensor(cResult, std::cout, "TBD computed solution");
+
+  // There is no attempt to verify the answer.
+
+  return 0;
+}
+
+void usage(char **argv)
+{
+  std::cout << "Usage: "<< argv[0]<<" [options]" << std::endl;
+  std::cout << "options: " << std::endl;
+  std::cout << "  --dims <[n1,n2,...]> tensor dimensions" << std::endl;
+  std::cout << "  --nc <int>           number of factor components" << std::endl;
+  std::cout << "  --nnz <int>          maximum number of tensor nonzeros" << std::endl;
+  std::cout << "  --maxiters <int>     maximum iterations to perform" << std::endl;
+  std::cout << "  --tol <float>        stopping tolerance" << std::endl;
+  std::cout << "  --seed <int>         seed for random number generator used in initial guess" << std::endl;
+  std::cout << "  --tensor <type>      Sptensor format: ";
+  for (unsigned i=0; i<num_sptensor_types; ++i) {
+    std::cout << sptensor_names[i];
+    if (i != num_sptensor_types-1)
+      std::cout << ", ";
+  }
+  std::cout << std::endl;
+  std::cout << "  --vtune              connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
+}
+
+//! Main routine for the executable.
+/*!
+ *  The test constructs a random Ktensor, derives a sparse data tensor,
+ *  and calls CP-ALS to compute a factorization.  Parameters allow different
+ *  data sizes with the intent of understanding CP-ALS performance issues.
+ *  The same problem can be solved in Matlab for comparison.
+ *
+ *  On matador (2013 quad core workstation) C++ code is 2-3 times faster than
+ *  Matlab on problems that take 15-30secs (in C++):
+ *    3000 x 4000 x 5000, R=2, 1M nnz, tol 1.0e-9
+ *    300 x 400 x 500, R=50, 1M nnz, maxit 15
+ *    500 x 25000 x 500 x 10, R=10, 5M nnz, tol 1.0e-7
+ *  Experiments on matador with very large problems:
+ *    1k x  10k x 1k x 1k, R=1000, 10M nnz:  C++ 15m for iter #1, Matlab 60m
+ *   10k x 100k x 1k x 1k, R=1000, 10M nnz:  C++ killed after 60m on iter #1
+ *   10k x 1M x 10k, R=1000, 10M nnz:  both killed, swapping badly on iter #1
+ */
+int main(int argc, char* argv[])
+{
+  Kokkos::initialize(argc, argv);
+  int ret = 0;
+
+  try {
+
+    ttb_bool help = parse_ttb_bool(argc, argv, "--help", false);
+    if (help) {
+      usage(argv);
+      Kokkos::finalize();
+      return 0;
+    }
+
+    ttb_bool vtune = parse_ttb_bool(argc, argv, "--vtune", false);
+    if (vtune)
+      Genten::connect_vtune();
+
+    // Choose parameters: ndims, dim sizes, ncomps.
+    // Values below match those in matlab_CpAlsRandomKTensor.m,
+    // solves in just a few seconds.
+    Genten::IndxArray  cFacDims = { 3000, 4000, 5000 };
+    cFacDims =
+      parse_ttb_indx_array(argc, argv, "--dims", cFacDims, 1, INT_MAX);
+    ttb_indx  nNumComponents =
+      parse_ttb_indx(argc, argv, "--nc", 32, 1, INT_MAX);
+    ttb_indx  nMaxNonzeroes =
+      parse_ttb_indx(argc, argv, "--nnz", 1 * 1000 * 1000, 1, INT_MAX);
+    unsigned long  nRNGseed =
+      parse_ttb_indx(argc, argv, "--seed", 1, 0, INT_MAX);
+    ttb_indx  nMaxIters =
+      parse_ttb_indx(argc, argv, "--maxiters", 100, 1, INT_MAX);
+    ttb_real  dStopTol =
+      parse_ttb_real(argc, argv, "--tol", 1.0e-7, 0.0, 1.0);
+    SPTENSOR_TYPE tensor_type =
+      parse_ttb_enum(argc, argv, "--tensor", SPTENSOR,
+                     num_sptensor_types, sptensor_types, sptensor_names);
+
+    if (tensor_type == SPTENSOR)
+      ret = run_cpals<Genten::Sptensor>(
+        cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nMaxIters, dStopTol,
+        tensor_type);
+    else if (tensor_type == SPTENSOR_PERM)
+      ret = run_cpals<Genten::Sptensor_perm>(
+        cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nMaxIters, dStopTol,
+        tensor_type);
+    else if (tensor_type == SPTENSOR_ROW)
+      ret = run_cpals<Genten::Sptensor_row>(
+        cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nMaxIters, dStopTol,
+        tensor_type);
+
+  }
+  catch(std::string sExc)
+  {
+    cout << "*** Call to cpals_core threw an exception:\n";
+    cout << "  " << sExc << "\n";
+    ret = 0;
+  }
+
+  Kokkos::finalize();
+  return ret;
+}
