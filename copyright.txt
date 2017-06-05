@@ -14,19 +14,3 @@
 // Government retains certain rights in this software.
 // ************************************************************************
 //@HEADER
-
-
-#include "Genten_FacMatArray.h"
-
-ttb_indx Genten::FacMatArray::
-reals() const
-{
-  ttb_indx s =0;
-  ttb_indx sz = this->size();
-  for(ttb_indx i = 0; i < sz; i ++)
-  {
-    s += (*this)[i].reals();
-  }
-
-  return(s);
-}

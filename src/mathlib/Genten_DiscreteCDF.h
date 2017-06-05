@@ -1,14 +1,17 @@
-//@Header
+//@HEADER
 // ************************************************************************
-//     C++ Tensor Toolbox
+//     Genten Tensor Toolbox
 //     Software package for tensor math by Sandia National Laboratories
 //
-// Sandia National Laboratories is a multiprogram laboratory operated by
-// Sandia Corporation, a wholly owned subsidiary of Lockheed Martin Corporation,
-// for the United States Department of Energy's National Nuclear Security
-// Administration under contract DE-AC04-94AL85000.
+// Sandia National Laboratories is a multimission laboratory managed
+// and operated by National Technology and Engineering Solutions of Sandia,
+// LLC, a wholly owned subsidiary of Honeywell International, Inc., for the
+// U.S. Department of Energy's National Nuclear Security Administration under
+// contract DE-NA0003525.
 //
-// Copyright 2013, Sandia Corporation.
+// Copyright 2017 National Technology & Engineering Solutions of Sandia, LLC
+// (NTESS). Under the terms of Contract DE-NA0003525 with NTESS, the U.S.
+// Government retains certain rights in this software.
 // ************************************************************************
 //@HEADER
 
