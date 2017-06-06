@@ -26,9 +26,10 @@ top-level
           | -- opt_gnu_openmp
      | -- install
           | -- opt_gnu_openmp
-| -- genten-kokkos-sandia
-| -- build
-     | -- opt_gnu_openmp
+| -- genten
+     | -- genten-kokkos-sandia
+     | -- build
+          | -- opt_gnu_openmp
 ```
 
 Of course that structure isn't required, but modifying it will require
@@ -71,7 +72,7 @@ that supports multiple operating systems. You must download and install
 CMake to build Genten.
 
 Using our example above, the genten source goes in
-top-level/genten-kokkos-sandia.  To build the code with CMake,
+top-level/genten/genten-kokkos-sandia.  To build the code with CMake,
 we create a simple bash script such as the following:
 
 ```
@@ -81,7 +82,7 @@ rm -f CMakeCache.txt;
 rm -rf CMakeFiles
 
 EXTRA_ARGS=$@
-KOKKOS=`pwd`/../../kokkos/install/opt_gnu_openmp
+KOKKOS=`pwd`/../../../kokkos/install/opt_gnu_openmp
 
 cmake \
  -D CMAKE_CXX_COMPILER=g++ \
@@ -167,7 +168,7 @@ rm -f CMakeCache.txt;
 rm -rf CMakeFiles
 
 EXTRA_ARGS=$@
-KOKKOS=`pwd`/../../kokkos/install/opt_intel_openmp
+KOKKOS=`pwd`/../../../kokkos/install/opt_intel_openmp
 
 cmake \
  -D CMAKE_CXX_COMPILER=icpc \
@@ -248,7 +249,7 @@ rm -f CMakeCache.txt;
 rm -rf CMakeFiles
 
 EXTRA_ARGS=$@
-KOKKOS=`pwd`/../../kokkos/install/opt_gnu_cuda
+KOKKOS=`pwd`/../../../kokkos/install/opt_gnu_cuda
 
 cmake \
  -D CMAKE_CXX_COMPILER=${KOKKOS}/bin/nvcc_wrapper \
