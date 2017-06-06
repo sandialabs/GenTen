@@ -88,7 +88,7 @@ cmake \
  -D CMAKE_C_COMPILER=gcc \
  -D KOKKOS_PATH=${KOKKOS} \
  -D debug=OFF \
- ${EXTRA_ARGS}
+ ${EXTRA_ARGS} \
  ../../genten-kokkos-sandia
 ```
 
@@ -180,7 +180,7 @@ cmake \
  -D ENABLE_BOOST=ON \
  -D BOOST_PATH=${BOOST_ROOT} \
  -D debug=OFF \
- ${EXTRA_ARGS}
+ ${EXTRA_ARGS} \
  ../../genten-kokkos-sandia
 ```
 
@@ -261,7 +261,7 @@ cmake \
  -D ENABLE_BOOST=ON \
  -D BOOST_PATH=${BOOST_ROOT} \
  -D debug=OFF \
- ${EXTRA_ARGS}
+ ${EXTRA_ARGS} \
  ../../genten-kokkos-sandia
 ```
 
