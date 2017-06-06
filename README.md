@@ -219,6 +219,7 @@ A Kokkos configure script suitable for Nvida K80 GPUs is then
 #!/bin/bash
 
 KOKKOS=../../kokkos
+KOKKOS=$(cd $KOKKOS; pwd) # for relative path bug in specifying compiler
 INSTALL=`pwd`/../../install/opt_gnu_cuda
 ${KOKKOS}/generate_makefile.bash \
   --kokkos-path=${KOKKOS} \
