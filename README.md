@@ -1,6 +1,4 @@
-# Genten Tensor Toolbox
-
-Software package for tensor math by Sandia National Laboratories
+# Genten: Software for Generalized Tensor Decompositions by Sandia National Laboratories
 
 Sandia National Laboratories is a multimission laboratory managed and operated
 by National Technology and Engineering Solutions of Sandia, LLC, a wholly owned
