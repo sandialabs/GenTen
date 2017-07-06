@@ -95,6 +95,7 @@ IF (ENABLE_CUSOLVER)
   SET(KOKKOS_LIBS "${KOKKOS_LIBS} -lcusolver")
   SET(HAVE_CUSOLVER ${ENABLE_CUSOLVER})
 ENDIF()
+
 MESSAGE("-- Genten:  Using Kokkos:  ${KOKKOS_PATH}")
 MESSAGE("--   KOKKOS_CXXFLAGS = ${KOKKOS_CXXFLAGS}")
 MESSAGE("--   KOKKOS_CPPFLAGS = ${KOKKOS_CPPFLAGS}")
@@ -311,6 +312,25 @@ TARGET_LINK_LIBRARIES (
   )
 INSTALL (
   TARGETS perf_CpAlsRandomKtensor
+  DESTINATION test
+  )
+
+ADD_EXECUTABLE (
+  perf_CpAlsRandomKtensor_Sweep
+  ${Genten_SOURCE_DIR}/performance/Genten_CpAlsRandomKtensor_Sweep.cpp
+  ${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
+  ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
+  )
+TARGET_LINK_LIBRARIES (
+  perf_CpAlsRandomKtensor_Sweep
+  genten
+  genten_mathlibs
+  ${OPSYS_LIBRARIES}
+  ${BOOST_LIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
+  ${KOKKOS_LDFLAGS} ${KOKKOS_LIBS}
+  )
+INSTALL (
+  TARGETS perf_CpAlsRandomKtensor_Sweep
   DESTINATION test
   )
 

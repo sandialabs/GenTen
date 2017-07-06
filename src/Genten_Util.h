@@ -49,6 +49,9 @@
 #include <cstdlib>
 #include <cstddef>
 
+// Force Kokkos to always pad views when padding is enabled for that view,
+// regardless of view dimensions
+#define KOKKOS_MEMORY_ALIGNMENT_THRESHOLD 0
 
 /* ----- Typedefs ----- */
 /* We use typedefs to make the code portable, especially for
@@ -58,6 +61,7 @@
 typedef double ttb_real;
 //typedef float ttb_real;
 typedef size_t ttb_indx;
+//typedef unsigned ttb_indx;
 typedef bool ttb_bool;
 
 

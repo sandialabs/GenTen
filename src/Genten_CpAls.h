@@ -75,6 +75,7 @@ namespace Genten {
     ttb_real  dResNorm;
     ttb_real  dFit;
     ttb_real  dCumTime;
+    ttb_real  dmttkrp_gflops;
   } CpAlsPerfInfo;
 
 

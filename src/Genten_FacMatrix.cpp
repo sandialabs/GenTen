@@ -61,7 +61,8 @@ using namespace std;
 
 Genten::FacMatrix::
 FacMatrix(ttb_indx m, ttb_indx n, const ttb_real * cvec):
-  data("Genten::FacMatrix::data",m,n)
+  //data("Genten::FacMatrix::data",m,n)
+  data(Kokkos::view_alloc("Genten::FacMatrix::data", Kokkos::AllowPadding),m,n)
 {
   this->convertFromCol(m,n,cvec);
 }
@@ -796,6 +797,7 @@ sum() const
 {
   const ttb_indx nrows = data.dimension_0();
   const ttb_indx ncols = data.dimension_1();
+  /*
   auto data_1d = make_data_1d();
   ttb_indx n = nrows * ncols;
   ttb_real sum = 0;
@@ -803,6 +805,12 @@ sum() const
   {
     sum += data_1d[i];
   }
+  */
+  ttb_real sum = 0;
+  for (ttb_indx i=0; i<nrows; ++i)
+    for (ttb_indx j=0; j<ncols; ++j)
+      sum += data(i,j);
+
   return(sum);
 }
 
@@ -899,7 +907,7 @@ multByVector(bool bTranspose,
     assert(y.size() == nrows);
     // Data for the matrix is stored in row-major order but gemv expects
     // column-major, so tell it transpose dimensions.
-    Genten::gemv('T', ncols, nrows, 1.0, ptr(), ncols,
+    Genten::gemv('T', ncols, nrows, 1.0, ptr(), data.stride_0(),
               x.ptr(), 1, 0.0, y.ptr(), 1);
   }
   else
@@ -908,7 +916,7 @@ multByVector(bool bTranspose,
     assert(y.size() == ncols);
     // Data for the matrix is stored in row-major order but gemv expects
     // column-major, so tell it transpose dimensions.
-    Genten::gemv('N', ncols, nrows, 1.0, ptr(), ncols,
+    Genten::gemv('N', ncols, nrows, 1.0, ptr(), data.stride_0(),
               x.ptr(), 1, 0.0, y.ptr(), 1);
   }
   return;
@@ -924,7 +932,7 @@ namespace Genten {
 
       // Throws an exception if Atmp is (exactly?) singular.
       //TBD...consider LAPACK sysv instead of gesv since A is sym indef
-      Genten::gesv (ncols, nrows, A.data(), ncols, B.data(), ncols);
+      Genten::gesv (ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0());
     }
 
 #if defined(KOKKOS_HAVE_CUDA) && defined(HAVE_CUSOLVER)

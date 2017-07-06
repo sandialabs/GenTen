@@ -380,6 +380,211 @@ void Genten::mttkrp(const Genten::Sptensor_perm  & X,
     mttkrp_general(X,u,n,v);
 }
 
+#define USE_NEW_MTTKRP_INTEL 1
+#if USE_NEW_MTTKRP_INTEL
+
+namespace {
+
+template <ttb_indx RowBlockSize, ttb_indx FacBlockSize>
+struct MTTKRP_KernelBlock {
+
+  const Genten::Sptensor_perm& X;
+  const Genten::Ktensor& u;
+  const ttb_indx n;
+  const ttb_indx nd;
+  const ttb_indx nnz;
+  const Genten::FacMatrix& v;
+
+  // ttb_real val[FacBlockSize]  __attribute__((aligned(64)));
+  // ttb_real tmp[FacBlockSize]  __attribute__((aligned(64)));
+
+  // Align arrays to 64 byte boundary, using new C++11 syntax
+  alignas(64) ttb_real val[FacBlockSize];
+  alignas(64) ttb_real tmp[FacBlockSize];
+
+  KOKKOS_INLINE_FUNCTION
+  MTTKRP_KernelBlock(const Genten::Sptensor_perm& X_,
+                     const Genten::Ktensor& u_,
+                     const ttb_indx n_,
+                     const ttb_indx nd_,
+                     const ttb_indx nnz_,
+                     const Genten::FacMatrix& v_) :
+    X(X_), u(u_), n(n_), nd(nd_), nnz(nnz_), v(v_) {}
+
+  template <ttb_indx Nj_>
+  KOKKOS_INLINE_FUNCTION
+  void run(const ttb_indx i_block, const ttb_indx j_block, const ttb_indx nj_) {
+    const ttb_indx invalid_row = ttb_indx(-1);
+
+    ttb_indx row_prev = invalid_row;
+    ttb_indx row = invalid_row;
+    ttb_indx p = invalid_row;
+    ttb_real x_val = 0.0;
+
+    // nj.value == Nj_ if Nj_ > 0 and nj_ otherwise
+    Kokkos::Impl::integral_nonzero_constant<ttb_indx, Nj_> nj(nj_);
+
+#pragma ivdep
+    for (ttb_indx jj=0; jj<nj.value; ++jj) {
+      val[jj] = 0.0;
+      tmp[jj] = 0.0;
+    }
+
+    for (ttb_indx ii=0; ii<RowBlockSize; ++ii) {
+      const ttb_indx i = i_block+ii;
+
+      if (i >= nnz)
+        row = invalid_row;
+      else {
+        p = X.getPerm(i,n);
+        x_val = X.value(p);
+        row = X.subscript(p,n);
+      }
+
+      // If we got a different row index, add in result
+      if (row != row_prev) {
+        if (row_prev != invalid_row) {
+#pragma ivdep
+          for (ttb_indx jj=0; jj<nj.value; ++jj)
+          {
+            const ttb_indx j = j_block+jj;
+            Kokkos::atomic_add(&v.entry(row_prev,j), val[jj]);
+            val[jj] = 0.0;
+          }
+        }
+        row_prev = row;
+      }
+
+      if (row != invalid_row) {
+        // Start tmp equal to the weights.
+#pragma ivdep
+        for (ttb_indx jj=0; jj<nj.value; ++jj)
+        {
+          const ttb_indx j = j_block+jj;
+          tmp[jj] = x_val * u.weights(j);
+        }
+
+        for (ttb_indx m=0; m<nd; ++m) {
+          if (m != n) {
+            // Update tmp array with elementwise product of row i
+            // from the m-th factor matrix.
+            const ttb_real *rowptr = u[m].rowptr(X.subscript(p,m));
+#pragma ivdep
+            for (ttb_indx jj=0; jj<nj.value; ++jj)
+            {
+              const ttb_indx j = j_block+jj;
+              tmp[jj] *= rowptr[j];
+            }
+          }
+        }
+
+#pragma ivdep
+        for (ttb_indx jj=0; jj<nj.value; ++jj)
+        {
+          val[jj] += tmp[jj];
+        }
+      }
+    }
+
+    // Sum in last row
+    if (row != invalid_row) {
+#pragma ivdep
+      for (ttb_indx jj=0; jj<nj.value; ++jj)
+      {
+        const ttb_indx j = j_block+jj;
+        Kokkos::atomic_add(&v.entry(row,j), val[jj]);
+      }
+    }
+  }
+};
+
+template <ttb_indx FacBlockSize>
+void mttkrp_general_kernel(const Genten::Sptensor_perm& X,
+                           const Genten::Ktensor& u,
+                           const ttb_indx n,
+                           Genten::FacMatrix& v)
+{
+  typedef Kokkos::DefaultExecutionSpace ExecSpace;
+
+  const ttb_indx nc = u.ncomponents();
+  const ttb_indx nd = u.ndims();
+  const ttb_indx nnz = X.nnz();
+  const ttb_indx RowBlockSize = 128;
+  const ttb_indx N = (nnz+RowBlockSize-1)/RowBlockSize;
+
+  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N),
+                       KOKKOS_LAMBDA(const ttb_indx ii)
+  {
+    MTTKRP_KernelBlock<RowBlockSize, FacBlockSize> kernel(
+      X, u, n, nd, nnz, v);
+
+    const ttb_indx i_block = ii*RowBlockSize;
+
+    for (ttb_indx j_block=0; j_block<nc; j_block+=FacBlockSize) {
+      if (j_block+FacBlockSize <= nc)
+        kernel.template run<FacBlockSize>(i_block, j_block, FacBlockSize);
+      else
+        kernel.template run<0>(i_block, j_block, nc-j_block);
+    }
+
+  });
+
+  return;
+}
+
+}
+
+void Genten::mttkrp_general(const Genten::Sptensor_perm  & X,
+                            const Genten::Ktensor & u,
+                            ttb_indx                    n,
+                            Genten::FacMatrix     & v)
+{
+  const ttb_indx nc = u.ncomponents();     // Number of components
+  const ttb_indx nd = u.ndims();           // Number of dimensions
+
+  assert(X.ndims() == nd);
+  assert(u.isConsistent());
+  for (ttb_indx i = 0; i < nd; i++)
+  {
+    if (i != n)
+      assert(u[i].nRows() == X.size(i));
+  }
+
+  // Resize and initialize the output factor matrix to zero.
+  v = FacMatrix(X.size(n), nc);
+
+
+  if (sizeof(ttb_real) == 4) {
+    // For float
+    if (nc <= 4)
+      mttkrp_general_kernel<4>(X,u,n,v);
+    else if (nc <= 8)
+      mttkrp_general_kernel<8>(X,u,n,v);
+    else if (nc <= 16)
+      mttkrp_general_kernel<16>(X,u,n,v);
+    else
+      mttkrp_general_kernel<32>(X,u,n,v);
+  }
+  else {
+    // For double or anything else, using 16 for 16 <= nc <= 64 seems to be
+    // signficantly faster than 32
+    if (nc <= 4)
+      mttkrp_general_kernel<4>(X,u,n,v);
+    else if (nc <= 8)
+      mttkrp_general_kernel<8>(X,u,n,v);
+    else if (nc <= 64)
+      mttkrp_general_kernel<16>(X,u,n,v);
+    else
+      mttkrp_general_kernel<32>(X,u,n,v);
+  }
+
+  // mttkrp_general_kernel<16>(X,u,n,v);
+
+  return;
+}
+
+#else
+
 void Genten::mttkrp_general(const Genten::Sptensor_perm  & X,
                             const Genten::Ktensor & u,
                             ttb_indx                    n,
@@ -433,7 +638,8 @@ void Genten::mttkrp_general(const Genten::Sptensor_perm  & X,
   // needs 8*16*16 = 2K shared memory per CUDA block.  Most modern GPUs have
   // between 48K and 64K shared memory per SM, allowing between 24 and 32
   // blocks per SM, which is typically enough for 100% occupancy.
-  const size_type FacBlockSize = std::min(size_type(16),size_type(nc));
+  const size_type FacBlockSize =
+    std::min(is_cuda ? size_type(16) : size_type(32),size_type(nc));
   const size_type RowBlockSize =
     std::max(is_cuda ? size_type(16) : size_type(128),TeamSize);
 
@@ -548,6 +754,8 @@ void Genten::mttkrp_general(const Genten::Sptensor_perm  & X,
 
   return;
 }
+
+#endif
 
 #if defined(KOKKOS_HAVE_CUDA)
 // Version of mttkrp using a permutation array to improve locality of writes,

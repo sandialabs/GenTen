@@ -149,6 +149,7 @@ namespace Genten {
         perfInfo[i].dResNorm = -1.0;
         perfInfo[i].dFit = -1.0;
         perfInfo[i].dCumTime = -1.0;
+        perfInfo[i].dmttkrp_gflops = -1.0;
       }
     }
 
@@ -327,6 +328,20 @@ namespace Genten {
 
     timer.stop(0);
 
+    // Compute MTTKRP floating-point throughput
+    const ttb_real mttkrp_total_time = timer.getTotalTime(1);
+    const ttb_real mttkrp_avg_time = timer.getAvgTime(1);
+
+    // Use double for these to ensure sufficient precision
+    const double atomic = 1.0; // cost of atomic measured in flops
+    const double mttkrp_flops =
+      x.nnz()*nc*(nd+atomic);
+    const double mttkrp_reads =
+      x.nnz()*((nd*nc+3)*sizeof(ttb_real)+nd*sizeof(ttb_indx));
+    const double mttkrp_tput =
+      ( mttkrp_flops / mttkrp_avg_time ) / (1024.0 * 1024.0 * 1024.0);
+    const double mttkrp_factor = mttkrp_flops / mttkrp_reads;
+
     // Fill in performance information if requested.
     if (perfIter > 0)
     {
@@ -334,29 +349,17 @@ namespace Genten {
       perfInfo[nNextPerf].dResNorm = resNorm;
       perfInfo[nNextPerf].dFit = fit;
       perfInfo[nNextPerf].dCumTime = timer.getTotalTime(0);
+      perfInfo[nNextPerf].dmttkrp_gflops = mttkrp_tput;
     }
 
     if (printIter > 0)
     {
       printf ("CpAls completed %d iterations in %.3f seconds\n",
               (int) numIters, timer.getTotalTime(0));
-
-      const ttb_real mttkrp_total_time = timer.getTotalTime(1);
-      const ttb_real mttkrp_avg_time = timer.getAvgTime(1);
-
-      // Use double for these to ensure sufficient precision
-      const double atomic = 1.0; // cost of atomic measured in flops
-      const double mttkrp_flops =
-        x.nnz()*nc*(nd+atomic);
-      const double mttkrp_reads =
-        x.nnz()*((nd*nc+3)*sizeof(ttb_real)+nd*sizeof(ttb_indx));
-      const double mttkrp_tput = mttkrp_flops / mttkrp_avg_time;
-      const double mttkrp_factor = mttkrp_flops / mttkrp_reads;
-
       printf ("MTTKRP total time = %.3f seconds, average time = %.3f seconds\n",
               mttkrp_total_time, mttkrp_avg_time);
       printf ("MTTKRP throughput = %.3f GFLOP/s, bandwidth factor = %.3f\n",
-              mttkrp_tput / (1024.0 * 1024.0 * 1024.0), mttkrp_factor);
+              mttkrp_tput, mttkrp_factor);
     }
 
     return;

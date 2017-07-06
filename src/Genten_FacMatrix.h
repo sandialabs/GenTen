@@ -94,7 +94,9 @@ public:
      *                in the Ktensor.
      */
     FacMatrix(ttb_indx m, ttb_indx n) :
-      data("Genten::FacMatrix::data",m,n) {}
+      //data("Genten::FacMatrix::data",m,n)
+      data(Kokkos::view_alloc("Genten::FacMatrix::data", Kokkos::AllowPadding),m,n)
+ {}
 
     //! Constructor to create a Factor Matrix of Size M x N using the
     // given view
@@ -196,7 +198,7 @@ public:
     KOKKOS_INLINE_FUNCTION
     ttb_indx reals() const
     {
-      return data.dimension_0()*data.dimension_1();
+      return data.size();
     }
 
     /** @} */
@@ -370,7 +372,7 @@ public:
     // These are private to hide implementation details of the factor matrix.
 
     Array make_data_1d() const {
-      return Array(data.dimension_0()*data.dimension_1(),data.data(),true);
+      return Array(data.span(),data.data(),true);
     }
 
     // Return pointer to data
@@ -388,12 +390,12 @@ public:
     // Return pointer to the ith row
     KOKKOS_INLINE_FUNCTION
     const ttb_real * rowptr(ttb_indx i) const
-    { return(data.data() + i*data.dimension_1()); }
+    { return(data.data() + i*data.stride_0()); }
 
     // Return pointer to the ith row
     KOKKOS_INLINE_FUNCTION
     ttb_real * rowptr(ttb_indx i)
-    { return(data.data() + i*data.dimension_1()); }
+    { return(data.data() + i*data.stride_0()); }
 
     KOKKOS_INLINE_FUNCTION
     view_type view() const { return data; }
