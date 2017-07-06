@@ -49,9 +49,7 @@
 #include <cstdlib>
 #include <cstddef>
 
-// Force Kokkos to always pad views when padding is enabled for that view,
-// regardless of view dimensions
-#define KOKKOS_MEMORY_ALIGNMENT_THRESHOLD 0
+#include "Genten_Kokkos.h"
 
 /* ----- Typedefs ----- */
 /* We use typedefs to make the code portable, especially for

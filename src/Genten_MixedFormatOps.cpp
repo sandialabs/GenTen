@@ -48,13 +48,11 @@
 
 #include <assert.h>
 
+#include "Genten_Util.h"
 #include "Genten_FacMatrix.h"
 #include "Genten_Ktensor.h"
 #include "Genten_MixedFormatOps.h"
 #include "Genten_Sptensor.h"
-#include "Genten_Util.h"
-
-#include "Kokkos_Core.hpp"
 
 ttb_real Genten::innerprod(const Genten::Sptensor & s,
                            const Genten::Ktensor  & u)

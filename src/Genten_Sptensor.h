@@ -46,8 +46,6 @@
 #include "Genten_IndxArray.h"
 #include "Genten_Ktensor.h"
 
-#include "Kokkos_Core.hpp"
-
 namespace Genten
 {
 

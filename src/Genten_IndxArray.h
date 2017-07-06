@@ -46,8 +46,6 @@
 #include "Genten_Util.h"
 #include "Genten_IndxArray.h"
 
-#include "Kokkos_Core.hpp"
-
 namespace Genten {
 
   /* The Genten::IndxArray class is used to store size information for tensors.

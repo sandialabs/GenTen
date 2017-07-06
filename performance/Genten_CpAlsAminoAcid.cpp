@@ -52,8 +52,6 @@
 #include "Genten_Ktensor.h"
 #include "Genten_Sptensor.h"
 
-#include "Kokkos_Core.hpp"
-
 using namespace std;
 
 static void  makeInitialGuess (const ttb_indx  nNumComponents,

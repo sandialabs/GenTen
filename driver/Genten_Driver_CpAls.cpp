@@ -44,8 +44,6 @@
 #include "Genten_SystemTimer.h"
 #include "Genten_MixedFormatOps.h"
 
-#include "Kokkos_Core.hpp"
-
 enum SPTENSOR_TYPE {
   SPTENSOR,
   SPTENSOR_PERM,

@@ -47,10 +47,8 @@
 #include <vector>
 #include <assert.h>
 
-#include "Genten_RandomMT.h"
 #include "Genten_Util.h"
-
-#include "Kokkos_Core.hpp"
+#include "Genten_RandomMT.h"
 
 namespace Genten {
 
