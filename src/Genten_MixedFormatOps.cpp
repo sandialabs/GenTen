@@ -442,12 +442,23 @@ struct MTTKRP_KernelBlock {
       // If we got a different row index, add in result
       if (row != row_prev) {
         if (row_prev != invalid_row) {
+          if (ii == 0) { // Only need atomics for first and last row in block
 #pragma ivdep
-          for (ttb_indx jj=0; jj<nj.value; ++jj)
-          {
-            const ttb_indx j = j_block+jj;
-            Kokkos::atomic_add(&v.entry(row_prev,j), val[jj]);
-            val[jj] = 0.0;
+            for (ttb_indx jj=0; jj<nj.value; ++jj)
+            {
+              const ttb_indx j = j_block+jj;
+              Kokkos::atomic_add(&v.entry(row_prev,j), val[jj]);
+              val[jj] = 0.0;
+            }
+          }
+          else {
+#pragma ivdep
+            for (ttb_indx jj=0; jj<nj.value; ++jj)
+            {
+              const ttb_indx j = j_block+jj;
+              v.entry(row_prev,j) += val[jj];
+              val[jj] = 0.0;
+            }
           }
         }
         row_prev = row;
@@ -761,6 +772,113 @@ void Genten::mttkrp_general(const Genten::Sptensor_perm  & X,
 // and performs a team-size segmented reduction while processing a large block
 // of nonzeros.  This is a pure-Cuda implementation of the same kernel above,
 // and it appears to therefore be somewhat faster.
+
+#define USE_NEW_MTTKRP_CUDA 1
+#if USE_NEW_MTTKRP_CUDA
+
+void Genten::mttkrp_cuda(const Genten::Sptensor_perm& X,
+                         const Genten::Ktensor& u,
+                         const ttb_indx n,
+                         Genten::FacMatrix& v)
+{
+  typedef Kokkos::DefaultExecutionSpace ExecSpace;
+
+  const ttb_indx nc = u.ncomponents();     // Number of components
+  const ttb_indx nd = u.ndims();           // Number of dimensions
+
+  assert(X.ndims() == nd);
+  assert(u.isConsistent());
+  for (ttb_indx i = 0; i < nd; i++)
+  {
+    if (i != n)
+      assert(u[i].nRows() == X.size(i));
+  }
+
+  // Resize and initialize the output factor matrix to zero.
+  v = FacMatrix(X.size(n), nc);
+
+  const ttb_indx nnz = X.nnz();
+  const ttb_indx RowBlockSize = 128;
+  const int FacBlockSize = std::min(128, 2 << int(std::log2(nc)));
+  const ttb_indx TeamSize = 128 / FacBlockSize;
+  const ttb_indx RowsPerTeam = TeamSize * RowBlockSize;
+  const ttb_indx N = (nnz+RowsPerTeam-1)/RowsPerTeam;
+
+  typedef Kokkos::TeamPolicy <ExecSpace> Policy;
+  Policy policy(N,TeamSize,FacBlockSize);
+
+  Kokkos::parallel_for(policy,
+                       [=]__device__(Policy::member_type team)
+  {
+    const ttb_indx i_block = blockIdx.x*RowsPerTeam + RowBlockSize*threadIdx.y;
+    const ttb_indx invalid_row = ttb_indx(-1);
+
+    for (ttb_indx j=threadIdx.x; j<nc; j+=FacBlockSize) {
+      ttb_indx row_prev = invalid_row;
+      ttb_indx row = invalid_row;
+      ttb_indx p = invalid_row;
+      ttb_real x_val = 0.0;
+
+      ttb_real val = 0.0;
+      ttb_real tmp = 0.0;
+
+      for (int ii=0; ii<RowBlockSize; ++ii) {
+        const ttb_indx i = i_block+ii;
+
+        if (i >= nnz)
+          row = invalid_row;
+        else {
+          p = X.getPerm(i,n);
+          x_val = X.value(p);
+          row = X.subscript(p,n);
+        }
+
+        // If we got a different row index, add in result
+        if (row != row_prev) {
+          if (row_prev != invalid_row) {
+            if (ii == 0) { // Only need atomics for first and last row in block
+              Kokkos::atomic_add(&v.entry(row_prev,j), val);
+              val = 0.0;
+            }
+            else {
+              v.entry(row_prev,j) += val;
+              val = 0.0;
+            }
+          }
+          row_prev = row;
+        }
+
+        if (row != invalid_row) {
+          // Start tmp equal to the weights.
+          tmp = x_val * u.weights(j);
+
+          for (int m=0; m<nd; ++m) {
+            if (m != n) {
+              // Update tmp array with elementwise product of row i
+              // from the m-th factor matrix.
+              const ttb_real *rowptr = u[m].rowptr(X.subscript(p,m));
+              tmp *= rowptr[j];
+            }
+          }
+
+          val += tmp;
+        }
+      }
+
+      // Sum in last row
+      if (row != invalid_row) {
+        Kokkos::atomic_add(&v.entry(row,j), val);
+      }
+
+    }
+
+  });
+
+  return;
+}
+
+#else
+
 void Genten::mttkrp_cuda(const Genten::Sptensor_perm  & X,
                       const Genten::Ktensor & u,
                       ttb_indx                    n,
@@ -908,6 +1026,8 @@ void Genten::mttkrp_cuda(const Genten::Sptensor_perm  & X,
 
   return;
 }
+#endif
+
 #endif
 
 // Version of mttkrp using a permutation array to improve locality of writes,

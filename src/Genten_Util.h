@@ -51,6 +51,9 @@
 
 #include "Genten_Kokkos.h"
 
+// What we align memory to (in bytes)
+#define GENTEN_MEMORY_ALIGNMENT 64
+
 /* ----- Typedefs ----- */
 /* We use typedefs to make the code portable, especially for
    varying sizes of integers, etc.
