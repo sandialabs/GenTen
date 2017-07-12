@@ -381,7 +381,7 @@ void Genten::mttkrp(const Genten::Sptensor_perm  & X,
 #define USE_NEW_MTTKRP_INTEL 1
 #if USE_NEW_MTTKRP_INTEL
 
-namespace {
+namespace Genten {
 
 template <ttb_indx RowBlockSize, ttb_indx FacBlockSize>
 struct MTTKRP_KernelBlock {
