@@ -416,6 +416,7 @@ struct MTTKRP_KernelBlock {
 
     ttb_indx row_prev = invalid_row;
     ttb_indx row = invalid_row;
+    ttb_indx first_row = invalid_row;
     ttb_indx p = invalid_row;
     ttb_real x_val = 0.0;
 
@@ -439,10 +440,13 @@ struct MTTKRP_KernelBlock {
         row = X.subscript(p,n);
       }
 
+      if (ii == 0)
+        first_row = row;
+
       // If we got a different row index, add in result
       if (row != row_prev) {
         if (row_prev != invalid_row) {
-          if (ii == 0) { // Only need atomics for first and last row in block
+          if (row_prev == first_row) { // Only need atomics for first and last row in block
 #pragma ivdep
             for (ttb_indx jj=0; jj<nj.value; ++jj)
             {
@@ -816,6 +820,7 @@ void Genten::mttkrp_cuda(const Genten::Sptensor_perm& X,
     for (ttb_indx j=threadIdx.x; j<nc; j+=FacBlockSize) {
       ttb_indx row_prev = invalid_row;
       ttb_indx row = invalid_row;
+      ttb_indx first_row = invalid_row;
       ttb_indx p = invalid_row;
       ttb_real x_val = 0.0;
 
@@ -833,10 +838,13 @@ void Genten::mttkrp_cuda(const Genten::Sptensor_perm& X,
           row = X.subscript(p,n);
         }
 
+        if (ii == 0)
+          first_row = row;
+
         // If we got a different row index, add in result
         if (row != row_prev) {
           if (row_prev != invalid_row) {
-            if (ii == 0) { // Only need atomics for first and last row in block
+            if (row_prev == first_row) { // Only need atomics for first and last row in block
               Kokkos::atomic_add(&v.entry(row_prev,j), val);
               val = 0.0;
             }
