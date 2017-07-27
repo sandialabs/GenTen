@@ -39,8 +39,8 @@
 #@HEADER
 
 
-#---- Specify the CMake version required.
-CMAKE_MINIMUM_REQUIRED (VERSION 2.6)
+#---- Specify the CMake version required.  Kokkos requires 3.1
+CMAKE_MINIMUM_REQUIRED (VERSION 3.1)
 
 #---- Declaring the project name will define ${Genten_SOURCE_DIR} to be
 #---- the path to this source file, and ${Genten_BINARY_DIR} to be the path
@@ -54,57 +54,81 @@ SET(CMAKE_BUILD_TYPE "DEBUG")
 #---- Package OPTIONS
 #------------------------------------------------------------
 OPTION(BUILD_SHARED_LIBS "Build shared libraries." OFF)
-OPTION(KOKKOS_PATH "Path to Kokkos installation")
+OPTION(KOKKOS_PATH "Path to Kokkos installation.  Do not set this for an inline build of Kokkos.")
 OPTION(ENABLE_CUBLAS "Flag to enable cuBLAS for Kokkos with Cuda" OFF)
 OPTION(ENABLE_CUSOLVER "Flag to enable cuSolver for Kokkos with Cuda" OFF)
 OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files" OFF)
 
-SET(BOOST_LIBS "")
+# Determine whether we are doing an inline build of Kokkos based on KOKKOS_PATH
+IF(NOT KOKKOS_PATH)
+  # Kokkos requires C++11
+  SET(CMAKE_CXX_STANDARD 11)
+  SET(CMAKE_CXX_EXTENSIONS OFF)
+
+  # We must use UVM and enable Lambda support in Kokkos
+  IF(KOKKOS_ENABLE_CUDA)
+    SET(KOKKOS_ENABLE_CUDA_UVM ON CACHE BOOL "Enable CUDA unified virtual memory.")
+    SET(KOKKOS_ENABLE_CUDA_LAMBDA ON CACHE BOOL "Enable lambdas for CUDA.")
+  ENDIF()
+
+  # Configure kokkos
+  ADD_SUBDIRECTORY(kokkos)
+ENDIF()
+
+SET(GENTEN_LIBS "")
+
 IF (ENABLE_BOOST)
   OPTION(BOOST_PATH "Path to BOOST installation")
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -isystem ${BOOST_PATH}/include")
-  SET(BOOST_LIBS "-L${BOOST_PATH}/lib -lboost_iostreams -lz")
+  SET(GENTEN_LIBS "${GENTEN_LIBS} -L${BOOST_PATH}/lib -lboost_iostreams -lz")
   SET(HAVE_BOOST ${ENABLE_BOOST})
 ENDIF()
 
-SET(KOKKOS_LIBS "")
-SET(KOKKOS_LDFLAGS "")
-SET(KOKKOS_MAKEFILE "${KOKKOS_PATH}/Makefile.kokkos")
-IF (NOT EXISTS ${KOKKOS_MAKEFILE})
-  MESSAGE(FATAL_ERROR "Cannot find Makefile.kokkos in ${KOKKOS_PATH}.  Please make KOKKOS_PATH is set correctly.")
+# For non-inline build of Kokkos, grep Makefile.kokkos for settings
+IF(KOKKOS_PATH)
+  SET(KOKKOS_LIBS "")
+  SET(KOKKOS_LDFLAGS "")
+  SET(KOKKOS_MAKEFILE "${KOKKOS_PATH}/Makefile.kokkos")
+  IF (NOT EXISTS ${KOKKOS_MAKEFILE})
+    MESSAGE(FATAL_ERROR "Cannot find Makefile.kokkos in ${KOKKOS_PATH}.  Please make KOKKOS_PATH is set correctly.")
+  ENDIF()
+
+  FILE(STRINGS ${KOKKOS_MAKEFILE} tmp REGEX KOKKOS_CXXFLAGS)
+  STRING(REGEX REPLACE " *KOKKOS_CXXFLAGS *= *(.*)" "\\1" KOKKOS_CXXFLAGS ${tmp})
+  FILE(STRINGS ${KOKKOS_MAKEFILE} tmp REGEX KOKKOS_CPPFLAGS)
+  STRING(REGEX REPLACE " *KOKKOS_CPPFLAGS *= *(.*)" "\\1" KOKKOS_CPPFLAGS ${tmp})
+  FILE(STRINGS ${KOKKOS_MAKEFILE} tmp REGEX KOKKOS_LDFLAGS)
+  STRING(REGEX REPLACE " *KOKKOS_LDFLAGS *= *(.*)" "\\1" KOKKOS_LDFLAGS ${tmp})
+  FILE(STRINGS ${KOKKOS_MAKEFILE} tmp REGEX KOKKOS_LIBS)
+  STRING(REGEX REPLACE " *KOKKOS_LIBS *= *(.*)" "\\1" KOKKOS_LIBS ${tmp})
+
+  # strip -arch=xxx from KOKKOS_LDFLAGS due to Kokkos bug
+  # (see https://github.com/kokkos/kokkos/issues/872)
+  STRING(REGEX REPLACE "-arch=[a-zA-Z0-9_]+" "" KOKKOS_LDFLAGS ${KOKKOS_LDFLAGS})
+
+  MESSAGE("-- Genten:  Using Kokkos:  ${KOKKOS_PATH}")
+  MESSAGE("--   KOKKOS_CXXFLAGS = ${KOKKOS_CXXFLAGS}")
+  MESSAGE("--   KOKKOS_CPPFLAGS = ${KOKKOS_CPPFLAGS}")
+  MESSAGE("--   KOKKOS_LDFLAGS  = ${KOKKOS_LDFLAGS}")
+  MESSAGE("--   KOKKOS_LIBS     = ${KOKKOS_LIBS}")
+
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${KOKKOS_CXXFLAGS} ${KOKKOS_CPPFLAGS}")
+  SET(GENTEN_LIBS "${GENTEN_LIBS} ${KOKKOS_LDFLAGS} ${KOKKOS_LIBS}")
 ENDIF()
-
-FILE(STRINGS ${KOKKOS_MAKEFILE} tmp REGEX KOKKOS_CXXFLAGS)
-STRING(REGEX REPLACE " *KOKKOS_CXXFLAGS *= *(.*)" "\\1" KOKKOS_CXXFLAGS ${tmp})
-FILE(STRINGS ${KOKKOS_MAKEFILE} tmp REGEX KOKKOS_CPPFLAGS)
-STRING(REGEX REPLACE " *KOKKOS_CPPFLAGS *= *(.*)" "\\1" KOKKOS_CPPFLAGS ${tmp})
-FILE(STRINGS ${KOKKOS_MAKEFILE} tmp REGEX KOKKOS_LDFLAGS)
-STRING(REGEX REPLACE " *KOKKOS_LDFLAGS *= *(.*)" "\\1" KOKKOS_LDFLAGS ${tmp})
-FILE(STRINGS ${KOKKOS_MAKEFILE} tmp REGEX KOKKOS_LIBS)
-STRING(REGEX REPLACE " *KOKKOS_LIBS *= *(.*)" "\\1" KOKKOS_LIBS ${tmp})
-
-# strip -arch=xxx from KOKKOS_LDFLAGS due to Kokkos bug
-# (see https://github.com/kokkos/kokkos/issues/872)
-STRING(REGEX REPLACE "-arch=[a-zA-Z0-9_]+" "" KOKKOS_LDFLAGS ${KOKKOS_LDFLAGS})
+SET(HAVE_KOKKOS ON)
+MESSAGE("--   CMAKE_CXXFLAGS  = ${CMAKE_CXX_FLAGS}")
 
 IF (ENABLE_CUBLAS)
-  SET(KOKKOS_LIBS "${KOKKOS_LIBS} -lcublas")
+  SET(GENTEN_LIBS "${GENTEN_LIBS} -lcublas")
   SET(HAVE_CUBLAS ${ENABLE_CUBLAS})
 ENDIF()
 IF (ENABLE_CUSOLVER)
-  SET(KOKKOS_LIBS "${KOKKOS_LIBS} -lcusolver")
+  SET(GENTEN_LIBS "${GENTEN_LIBS} -lcusolver")
   SET(HAVE_CUSOLVER ${ENABLE_CUSOLVER})
 ENDIF()
 
-MESSAGE("-- Genten:  Using Kokkos:  ${KOKKOS_PATH}")
-MESSAGE("--   KOKKOS_CXXFLAGS = ${KOKKOS_CXXFLAGS}")
-MESSAGE("--   KOKKOS_CPPFLAGS = ${KOKKOS_CPPFLAGS}")
-MESSAGE("--   KOKKOS_LDFLAGS  = ${KOKKOS_LDFLAGS}")
-MESSAGE("--   KOKKOS_LIBS     = ${KOKKOS_LIBS}")
-
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${KOKKOS_CXXFLAGS} ${KOKKOS_CPPFLAGS}")
-SET(HAVE_KOKKOS ON)
-MESSAGE("--   CMAKE_CXXFLAGS  = ${CMAKE_CXX_FLAGS}")
+# Strip leading/trailing whitespace from GENTEN_LIBS
+STRING(STRIP "${GENTEN_LIBS}" GENTEN_LIBS)
 
 #------------------------------------------------------------
 #---- Output Directories
@@ -140,6 +164,7 @@ CONFIGURE_FILE (
 #---- INCLUDE Directories
 #------------------------------------------------------------
 INCLUDE_DIRECTORIES (
+  ${Kokkos_INCLUDE_DIRS_RET}
   ${Genten_SOURCE_DIR}/src/
   ${Genten_SOURCE_DIR}/src/mathlib/
   ${Genten_BINARY_DIR}/CMakeInclude/
@@ -184,29 +209,57 @@ INSTALL (
 
 #------------------------------------------------------------
 #---- LAPACK Math Library
+# Separate pure c code from c++ code so CMake doesn't add Kokkos CXX flags
+# to compile of c code (since the c code can't depend on kokkos)
 #------------------------------------------------------------
 INCLUDE (cmake/ConfigureLapack.cmake)
-
 IF (LAPACK_FOUND)
   ADD_DEFINITIONS (-DLAPACK_FOUND)
-  ADD_LIBRARY (genten_mathlibs
+  ADD_LIBRARY (genten_mathlibs_c
     ${Genten_SOURCE_DIR}/src/mathlib/Genten_Default_VML.c
-    ${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
-    ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
-    ${Genten_SOURCE_DIR}/src/mathlib/Genten_RandomMT.cpp
-    ${Genten_SOURCE_DIR}/src/mathlib/Genten_SystemTimer.cpp
     )
 ELSE (LAPACK_FOUND)
   #---- Tell CMake to build with default BLAS implementation.
   ADD_LIBRARY (genten_mathlibs
     ${Genten_SOURCE_DIR}/src/mathlib/Genten_Default_Blas.c
     ${Genten_SOURCE_DIR}/src/mathlib/Genten_Default_VML.c
-    ${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
-    ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
-    ${Genten_SOURCE_DIR}/src/mathlib/Genten_RandomMT.cpp
-    ${Genten_SOURCE_DIR}/src/mathlib/Genten_SystemTimer.cpp
     )
 ENDIF (LAPACK_FOUND)
+TARGET_LINK_LIBRARIES(
+  genten_mathlibs_c
+  ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
+  )
+INSTALL (
+  TARGETS genten_mathlibs_c
+  DESTINATION lib
+  )
+
+# Mathlibs
+ADD_LIBRARY (genten_mathlibs
+  ${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
+  ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
+  ${Genten_SOURCE_DIR}/src/mathlib/Genten_RandomMT.cpp
+  ${Genten_SOURCE_DIR}/src/mathlib/Genten_SystemTimer.cpp
+  )
+IF(KOKKOS_PATH)
+  SET(GENTEN_MATHLIBS
+    genten_mathlibs
+    genten_mathlibs_c
+    )
+ELSE()
+  SET(GENTEN_MATHLIBS
+    genten_mathlibs
+    genten_mathlibs_c
+    kokkos
+    )
+ENDIF()
+TARGET_LINK_LIBRARIES(
+  ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
+  )
+INSTALL (
+  TARGETS genten_mathlibs
+  DESTINATION lib
+  )
 
 
 #------------------------------------------------------------
@@ -233,9 +286,10 @@ SET (Genten_SOURCE_LIST
 
 #---- Tell CMake to build the library.
 ADD_LIBRARY (genten ${Genten_SOURCE_LIST})
-TARGET_LINK_LIBRARIES(genten genten_mathlibs ${LAPACK_LIBS} ${BOOST_LIBS} ${KOKKOS_LDFLAGS} ${KOKKOS_LIBS})
+SET(GENTEN_LINK_LIBS genten ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
+TARGET_LINK_LIBRARIES(${GENTEN_LINK_LIBS})
 INSTALL (
-  TARGETS genten genten_mathlibs
+  TARGETS genten
   DESTINATION lib
   )
 
@@ -258,14 +312,7 @@ ADD_EXECUTABLE (
   ${Genten_SOURCE_DIR}/test/Genten_Test_UnitTests.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_Utils.cpp
   )
-TARGET_LINK_LIBRARIES (
-  unit_tests
-  genten
-  genten_mathlibs
-  ${OPSYS_LIBRARIES}
-  ${BOOST_LIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
-  ${KOKKOS_LDFLAGS} ${KOKKOS_LIBS}
-  )
+TARGET_LINK_LIBRARIES (unit_tests ${GENTEN_LINK_LIBS})
 INSTALL (
   TARGETS unit_tests
   DESTINATION test
@@ -283,14 +330,7 @@ ADD_EXECUTABLE (
   perf_CpAlsAminoAcid
   ${Genten_SOURCE_DIR}/performance/Genten_CpAlsAminoAcid.cpp
   )
-TARGET_LINK_LIBRARIES (
-  perf_CpAlsAminoAcid
-  genten
-  genten_mathlibs
-  ${OPSYS_LIBRARIES}
-  ${BOOST_LIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
-  ${KOKKOS_LDFLAGS} ${KOKKOS_LIBS}
-  )
+TARGET_LINK_LIBRARIES (perf_CpAlsAminoAcid ${GENTEN_LINK_LIBS})
 INSTALL (
   TARGETS perf_CpAlsAminoAcid
   DESTINATION test
@@ -302,14 +342,7 @@ ADD_EXECUTABLE (
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   )
-TARGET_LINK_LIBRARIES (
-  perf_CpAlsRandomKtensor
-  genten
-  genten_mathlibs
-  ${OPSYS_LIBRARIES}
-  ${BOOST_LIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
-  ${KOKKOS_LDFLAGS} ${KOKKOS_LIBS}
-  )
+TARGET_LINK_LIBRARIES (perf_CpAlsRandomKtensor ${GENTEN_LINK_LIBS})
 INSTALL (
   TARGETS perf_CpAlsRandomKtensor
   DESTINATION test
@@ -321,14 +354,7 @@ ADD_EXECUTABLE (
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   )
-TARGET_LINK_LIBRARIES (
-  perf_CpAlsRandomKtensor_Sweep
-  genten
-  genten_mathlibs
-  ${OPSYS_LIBRARIES}
-  ${BOOST_LIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
-  ${KOKKOS_LDFLAGS} ${KOKKOS_LIBS}
-  )
+TARGET_LINK_LIBRARIES (perf_CpAlsRandomKtensor_Sweep ${GENTEN_LINK_LIBS})
 INSTALL (
   TARGETS perf_CpAlsRandomKtensor_Sweep
   DESTINATION test
@@ -345,14 +371,7 @@ ADD_EXECUTABLE (
   cpals
   ${Genten_SOURCE_DIR}/driver/Genten_Driver_CpAls.cpp
   )
-TARGET_LINK_LIBRARIES (
-  cpals
-  genten
-  genten_mathlibs
-  ${OPSYS_LIBRARIES}
-  ${BOOST_LIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
-  ${KOKKOS_LDFLAGS} ${KOKKOS_LIBS}
-  )
+TARGET_LINK_LIBRARIES (cpals ${GENTEN_LINK_LIBS})
 INSTALL (
   TARGETS cpals
   DESTINATION drivers
