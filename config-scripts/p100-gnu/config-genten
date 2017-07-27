@@ -18,4 +18,4 @@ cmake \
  -D BOOST_PATH=${BOOST_ROOT} \
  -D debug=OFF \
  ${EXTRA_ARGS} \
- ../../genten-kokkos-sandia
+ ../../genten

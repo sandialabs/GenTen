@@ -25,7 +25,7 @@ top-level
      | -- install
           | -- opt_gnu_openmp
 | -- genten
-     | -- genten-kokkos-sandia
+     | -- genten
      | -- build
           | -- opt_gnu_openmp
 ```
@@ -70,7 +70,7 @@ that supports multiple operating systems. You must download and install
 CMake to build Genten.
 
 Using our example above, the genten source goes in
-top-level/genten/genten-kokkos-sandia.  To build the code with CMake,
+top-level/genten/genten.  To build the code with CMake,
 we create a simple bash script such as the following:
 
 ```
@@ -88,7 +88,7 @@ cmake \
  -D KOKKOS_PATH=${KOKKOS} \
  -D debug=OFF \
  ${EXTRA_ARGS} \
- ../../genten-kokkos-sandia
+ ../../genten
 ```
 
 Execute this script to configure genten using CMake.  This will use
@@ -135,7 +135,7 @@ many-core Intel Phi accelerators, and Nvidia GPUs.  Compiling for each
 architecutre requires specifying compilers, compiler options, and
 support libraries in the Kokkos and Genten configure scripts.
 Examples for each supported architecture can be found in
-genten-kokkos-sandia/config-scripts, however the necessary steps will
+genten/config-scripts, however the necessary steps will
 be summarized here.
 
 #### Intel CPU architectures
@@ -180,7 +180,7 @@ cmake \
  -D BOOST_PATH=${BOOST_ROOT} \
  -D debug=OFF \
  ${EXTRA_ARGS} \
- ../../genten-kokkos-sandia
+ ../../genten
 ```
 
 #### Intel KNL architecture
@@ -262,7 +262,7 @@ cmake \
  -D BOOST_PATH=${BOOST_ROOT} \
  -D debug=OFF \
  ${EXTRA_ARGS} \
- ../../genten-kokkos-sandia
+ ../../genten
 ```
 
 Note that instead of LAPACK, cuSolver and cuBLAS are used instead,
