@@ -220,7 +220,7 @@ IF (LAPACK_FOUND)
     )
 ELSE (LAPACK_FOUND)
   #---- Tell CMake to build with default BLAS implementation.
-  ADD_LIBRARY (genten_mathlibs
+  ADD_LIBRARY (genten_mathlibs_c
     ${Genten_SOURCE_DIR}/src/mathlib/Genten_Default_Blas.c
     ${Genten_SOURCE_DIR}/src/mathlib/Genten_Default_VML.c
     )
