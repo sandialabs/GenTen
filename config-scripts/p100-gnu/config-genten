@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# For building Genten with an external build of Kokkos
+
 rm -f CMakeCache.txt;
 rm -rf CMakeFiles
 
