@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# For building Genten with an external build of Kokkos
+
 KOKKOS=../../kokkos
 INSTALL=`pwd`/../../install/opt_intel_openmp
 
