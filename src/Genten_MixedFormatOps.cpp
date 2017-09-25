@@ -388,8 +388,6 @@ void Genten::mttkrp(const Genten::Sptensor  & X,
                        ttb_indx         n,
                        Genten::FacMatrix & v)
 {
-  std::cout << "calling old mttkrp..." << std::endl;
-
   typedef Kokkos::DefaultExecutionSpace ExecSpace;
   typedef typename ExecSpace::size_type size_type;
 
