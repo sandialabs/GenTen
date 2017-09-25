@@ -276,7 +276,7 @@ namespace Genten {
         //      I caused it with an unfortunate initial ktensor guess
         timer.start(timer_scale);
         u[n].colScale(lambda, true);
-        timer.start(timer_scale);
+        timer.stop(timer_scale);
 //                print_ktensor(u,cout,"TBD u after rescaling");
 
         // Update u[n]'s corresponding Gramian matrix.
