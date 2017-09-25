@@ -171,8 +171,9 @@ public:
   }
 
   // Return reference to n-th subscript of i-th nonzero
+  template <typename IType, typename NType>
   KOKKOS_INLINE_FUNCTION
-  ttb_indx & subscript(ttb_indx i, ttb_indx n) const
+  ttb_indx & subscript(IType i, NType n) const
   {
     assert((i < values.size()) && (n < nNumDims));
     return subs(i,n);

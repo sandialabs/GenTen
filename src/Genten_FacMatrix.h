@@ -187,8 +187,9 @@ public:
      *  @param[in] i  Row index.
      *  @param[in] j  Column index.
      */
+    template <typename IType, typename JType>
     KOKKOS_INLINE_FUNCTION
-    ttb_real & entry(ttb_indx i, ttb_indx j) const
+    ttb_real & entry(IType i, JType j) const
     {
       assert((i < data.dimension_0()) && (j < data.dimension_1()));
       return data(i,j);
