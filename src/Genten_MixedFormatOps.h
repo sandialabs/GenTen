@@ -59,17 +59,17 @@ namespace Genten
   // Inner product between a sparse tensor and a Ktensor.
   /* Compute the element-wise dot product of all elements.
    */
-  ttb_real innerprod(const Genten::Sptensor & s,
-                     const Genten::Ktensor  & u);
+  ttb_real innerprod(const Genten::Sptensor& s,
+                     const Genten::Ktensor& u);
 
   // Inner product between a sparse tensor and a Ktensor with weights.
   /* Compute the element-wise dot product of all elements, using an
    * alternate weight vector for the Ktensor.  Used by CpAls, which
    * separates the weights from the Ktensor while iterating.
    */
-  ttb_real innerprod(const Genten::Sptensor & s,
-                     Genten::Ktensor  & u,
-                     const Genten::Array    & lambda);
+  ttb_real innerprod(const Genten::Sptensor& s,
+                     const Genten::Ktensor& u,
+                     const Genten::Array& lambda);
 
 
   //---- Methods for mttkrp.
@@ -85,30 +85,30 @@ namespace Genten
      mode n matricization of X, and W_n is the cumulative Khatri-Rao product
      of all factor matrices in u except the nth.
   */
-  void mttkrp(const Genten::Sptensor & X,
-              Genten::Ktensor  & u,
-              ttb_indx        n);
-  void mttkrp(const Genten::Sptensor_perm  & X,
-              Genten::Ktensor & u,
-              ttb_indx              n);
-  void mttkrp(const Genten::Sptensor_row   & X,
-              Genten::Ktensor & u,
-              ttb_indx              n);
+  void mttkrp(const Genten::Sptensor& X,
+              const Genten::Ktensor& u,
+              const ttb_indx n);
+  void mttkrp(const Genten::Sptensor_perm& X,
+              const Genten::Ktensor& u,
+              const ttb_indx n);
+  void mttkrp(const Genten::Sptensor_row& X,
+              const Genten::Ktensor& u,
+              const ttb_indx n);
 
   // Matricized sparse tensor times Khatri-Rao product.
   /* Same as above except that rather than overwrite u[n],
      the answer is put into v. */
-  void mttkrp(const Genten::Sptensor  & X,
-              const Genten::Ktensor   & u,
-              ttb_indx         n,
+  void mttkrp(const Genten::Sptensor& X,
+              const Genten::Ktensor& u,
+              const ttb_indx n,
+              Genten::FacMatrix& v);
+  void mttkrp(const Genten::Sptensor_perm& X,
+              const Genten::Ktensor& u,
+              const ttb_indx n,
               Genten::FacMatrix & v);
-  void mttkrp(const Genten::Sptensor_perm    & X,
-              const Genten::Ktensor   & u,
-              ttb_indx                n,
-              Genten::FacMatrix & v);
-  void mttkrp(const Genten::Sptensor_row     & X,
-              const Genten::Ktensor   & u,
-              ttb_indx                n,
-              Genten::FacMatrix & v);
+  void mttkrp(const Genten::Sptensor_row& X,
+              const Genten::Ktensor& u,
+              const ttb_indx n,
+              Genten::FacMatrix& v);
 
 }     //-- namespace Genten

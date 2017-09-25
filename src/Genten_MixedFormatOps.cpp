@@ -61,23 +61,7 @@
 ttb_real Genten::innerprod(const Genten::Sptensor & s,
                            const Genten::Ktensor  & u)
 {
-  ttb_indx nc = u.ncomponents();              // Number of components
-  ttb_indx nd = u.ndims();                    // Number of dimensions
-
-  // Check on sizes
-  assert(nd == s.ndims());
-  assert(u.isConsistent(s.size()));
-
-  // Do the inner product
-  ttb_real dTotal = 0.0;
-  IndxArray sub(nd);
-  for (ttb_indx i = 0; i < s.nnz(); i ++)
-  {
-    s.getSubscripts (i,sub);
-    dTotal += s.value(i) * u.entry (sub);
-  }
-
-  return( dTotal );
+  return innerprod(s, u, u.weights());
 }
 
 
@@ -85,7 +69,7 @@ ttb_real Genten::innerprod(const Genten::Sptensor & s,
 //  Method:  innerprod, Sptensor and Ktensor with alternate weights
 //-----------------------------------------------------------------------------
 ttb_real Genten::innerprod(const Genten::Sptensor & s,
-                                 Genten::Ktensor  & u,
+                           const Genten::Ktensor  & u,
                            const Genten::Array    & lambda)
 {
   typedef Kokkos::DefaultExecutionSpace ExecSpace;
@@ -208,22 +192,22 @@ ttb_real Genten::innerprod(const Genten::Sptensor & s,
 //  Method:  mttkrp, Sptensor X, output to Ktensor mode n
 //-----------------------------------------------------------------------------
 void Genten::mttkrp(const Genten::Sptensor& X,
-                    Genten::Ktensor& u,
-                    ttb_indx n)
+                    const Genten::Ktensor& u,
+                    const ttb_indx n)
 {
   mttkrp (X, u, n, u[n]);
   return;
 }
 void Genten::mttkrp(const Genten::Sptensor_perm& X,
-                    Genten::Ktensor& u,
-                    ttb_indx n)
+                    const Genten::Ktensor& u,
+                    const ttb_indx n)
 {
   mttkrp (X, u, n, u[n]);
   return;
 }
 void Genten::mttkrp(const Genten::Sptensor_row& X,
-                    Genten::Ktensor& u,
-                    ttb_indx n)
+                    const Genten::Ktensor& u,
+                    const ttb_indx n)
 {
   mttkrp (X, u, n, u[n]);
   return;
@@ -347,7 +331,7 @@ void mttkrp_kernel(const Genten::Sptensor& X,
 
 void Genten::mttkrp(const Genten::Sptensor& X,
                     const Genten::Ktensor& u,
-                    ttb_indx n,
+                    const ttb_indx n,
                     Genten::FacMatrix& v)
 {
   const ttb_indx nc = u.ncomponents();     // Number of components
@@ -383,10 +367,10 @@ void Genten::mttkrp(const Genten::Sptensor& X,
 
 #else
 
-void Genten::mttkrp(const Genten::Sptensor  & X,
-                 const Genten::Ktensor   & u,
-                       ttb_indx         n,
-                       Genten::FacMatrix & v)
+void Genten::mttkrp(const Genten::Sptensor& X,
+                    const Genten::Ktensor& u,
+                    const  ttb_indx n,
+                    Genten::FacMatrix& v)
 {
   typedef Kokkos::DefaultExecutionSpace ExecSpace;
   typedef typename ExecSpace::size_type size_type;
@@ -522,7 +506,7 @@ void mttkrp_perm_general(const Genten::Sptensor_perm& X,
 // reduction across the corresponding rows.
 void Genten::mttkrp(const Genten::Sptensor_perm& X,
                     const Genten::Ktensor& u,
-                    ttb_indx n,
+                    const ttb_indx n,
                     Genten::FacMatrix& v)
 {
 #if !USE_NEW_MTTKRP_PERM && defined(KOKKOS_HAVE_CUDA)
@@ -817,7 +801,7 @@ void mttkrp_perm_general_kernel(const Genten::Sptensor_perm& X,
 
 void Genten::mttkrp_perm_general(const Genten::Sptensor_perm& X,
                                  const Genten::Ktensor& u,
-                                 ttb_indx n,
+                                 const ttb_indx n,
                                  Genten::FacMatrix& v)
 {
   const ttb_indx nc = u.ncomponents();     // Number of components
@@ -981,10 +965,10 @@ void Genten::mttkrp_perm_cuda(const Genten::Sptensor_perm& X,
 // Version of mttkrp using a permutation array to improve locality of writes,
 // and reduce atomic throughput needs.  This version is uses a rowptr array
 // and a parallel_for over rows.
-void Genten::mttkrp(const Genten::Sptensor_row   & X,
-                 const Genten::Ktensor & u,
-                 ttb_indx                    n,
-                 Genten::FacMatrix &     v)
+void Genten::mttkrp(const Genten::Sptensor_row& X,
+                    const Genten::Ktensor& u,
+                    const ttb_indx n,
+                    Genten::FacMatrix &v)
 {
   typedef Kokkos::DefaultExecutionSpace ExecSpace;
   typedef typename ExecSpace::size_type size_type;

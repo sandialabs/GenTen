@@ -130,9 +130,16 @@ namespace Genten {
     }
 
     // Start timer for total execution time of the algorithm.
-    Genten::SystemTimer  timer(2);
+    const int timer_cpals = 0;
+    const int timer_mttkrp = 1;
+    const int timer_ip = 2;
+    const int timer_gramian = 3;
+    const int timer_solve = 4;
+    const int timer_scale = 5;
+    const int timer_norm = 6;
+    Genten::SystemTimer  timer(7);
 
-    timer.start(0);
+    timer.start(timer_cpals);
 
     // Initialize CpAlsPerfInfo.
     if ((perfIter > 0) && (perfInfo == NULL))
@@ -201,7 +208,7 @@ namespace Genten {
       perfInfo[nNextPerf].dFit = fit;
 
       perfInfo[nNextPerf].nIter = 0;
-      perfInfo[nNextPerf].dCumTime = timer.getTotalTime(0);
+      perfInfo[nNextPerf].dCumTime = timer.getTotalTime(timer_cpals);
       nNextPerf++;
     }
     else
@@ -226,9 +233,9 @@ namespace Genten {
 //                cout<<"TBD   begin inner iter over mode "<<n<<"\n";
         // Update u[n] via MTTKRP with x (Khattri-Rao product).
         // The size of u[n] is dim(n) rows by R columns.
-        timer.start(1);
+        timer.start(timer_mttkrp);
         Genten::mttkrp (x, u, n);
-        timer.stop(1);
+        timer.stop(timer_mttkrp);
 
         // Compute the matrix of coefficients in the solve step.
         upsilon = 1;
@@ -244,10 +251,13 @@ namespace Genten {
         // Solve upsilon * X = u[n]' for X, and overwrite u[n]
         // with the result.  Equivalent to the Matlab operation
         //   u[n] = (upsilon \ u[n]')'.
+        timer.start(timer_solve);
         u[n].solveTransposeRHS (upsilon);
+        timer.stop(timer_solve);
 //                print_matrix(u[n],cout,"TBD after solve");
 
         // Compute lambda.
+        timer.start(timer_norm);
         if (numIters == 0)
         {
           // L2 norm on first iteration.
@@ -258,16 +268,21 @@ namespace Genten {
           // L0 norm (max) on other iterations.
           u[n].colNorms(NormInf, lambda, 1.0);
         }
+        timer.stop(timer_norm);
 
         // Scale u[n] by the inverse of lambda.
         //TBD...this can throw an exception, divide-by-zero,
         //      if a column's norm is zero
         //      I caused it with an unfortunate initial ktensor guess
+        timer.start(timer_scale);
         u[n].colScale(lambda, true);
+        timer.start(timer_scale);
 //                print_ktensor(u,cout,"TBD u after rescaling");
 
         // Update u[n]'s corresponding Gramian matrix.
+        timer.start(timer_gramian);
         gamma[n].gramian(u[n]);
+        timer.stop(timer_gramian);
       }
 
 
@@ -279,7 +294,9 @@ namespace Genten {
       ttb_real pNorm = sqrt(fabs(upsilon.sum()));
 
       // Compute inner product of input data x with "p".
+      timer.start(timer_ip);
       ttb_real xpip = innerprod (x, u, lambda);
+      timer.stop(timer_ip);
 
       // Compute the Frobenius norm of the residual using quantities
       // formed earlier.
@@ -302,13 +319,13 @@ namespace Genten {
         perfInfo[nNextPerf].nIter = (int) (numIters + 1);
         perfInfo[nNextPerf].dResNorm = resNorm;
         perfInfo[nNextPerf].dFit = fit;
-        perfInfo[nNextPerf].dCumTime = timer.getTotalTime(0);
+        perfInfo[nNextPerf].dCumTime = timer.getTotalTime(timer_cpals);
         nNextPerf++;
       }
 
       // Check for convergence.
-      if (   ((numIters > 0) && (fitchange < tol))
-             || ((maxSecs >= 0.0) && (timer.getTotalTime(0) > maxSecs)) )
+      if ( ((numIters > 0) && (fitchange < tol)) ||
+           ((maxSecs >= 0.0) && (timer.getTotalTime(timer_cpals) > maxSecs)) )
       {
         break;
       }
@@ -326,11 +343,11 @@ namespace Genten {
 
     //TBD...matlab calls "fixsigns"
 
-    timer.stop(0);
+    timer.stop(timer_cpals);
 
     // Compute MTTKRP floating-point throughput
-    const ttb_real mttkrp_total_time = timer.getTotalTime(1);
-    const ttb_real mttkrp_avg_time = timer.getAvgTime(1);
+    const ttb_real mttkrp_total_time = timer.getTotalTime(timer_mttkrp);
+    const ttb_real mttkrp_avg_time = timer.getAvgTime(timer_mttkrp);
 
     // Use double for these to ensure sufficient precision
     const double atomic = 1.0; // cost of atomic measured in flops
@@ -348,18 +365,33 @@ namespace Genten {
       perfInfo[nNextPerf].nIter = (int) numIters;
       perfInfo[nNextPerf].dResNorm = resNorm;
       perfInfo[nNextPerf].dFit = fit;
-      perfInfo[nNextPerf].dCumTime = timer.getTotalTime(0);
+      perfInfo[nNextPerf].dCumTime = timer.getTotalTime(timer_cpals);
       perfInfo[nNextPerf].dmttkrp_gflops = mttkrp_tput;
     }
 
     if (printIter > 0)
     {
       printf ("CpAls completed %d iterations in %.3f seconds\n",
-              (int) numIters, timer.getTotalTime(0));
-      printf ("MTTKRP total time = %.3f seconds, average time = %.3f seconds\n",
+              (int) numIters, timer.getTotalTime(timer_cpals));
+      printf ("\tMTTKRP total time = %.3f seconds, average time = %.3f seconds\n",
               mttkrp_total_time, mttkrp_avg_time);
-      printf ("MTTKRP throughput = %.3f GFLOP/s, bandwidth factor = %.3f\n",
+      printf ("\tMTTKRP throughput = %.3f GFLOP/s, bandwidth factor = %.3f\n",
               mttkrp_tput, mttkrp_factor);
+      printf ("\tInner product total time = %.3f seconds, average time = %.3f seconds\n",
+              timer.getTotalTime(timer_ip),
+              timer.getAvgTime(timer_ip));
+      printf ("\tGramian total time = %.3f seconds, average time = %.3f seconds\n",
+              timer.getTotalTime(timer_gramian),
+              timer.getAvgTime(timer_gramian));
+      printf ("\tSolve total time = %.3f seconds, average time = %.3f seconds\n",
+              timer.getTotalTime(timer_solve),
+              timer.getAvgTime(timer_solve));
+      printf ("\tScale total time = %.3f seconds, average time = %.3f seconds\n",
+              timer.getTotalTime(timer_scale),
+              timer.getAvgTime(timer_scale));
+      printf ("\tNorm total time = %.3f seconds, average time = %.3f seconds\n",
+              timer.getTotalTime(timer_norm),
+              timer.getAvgTime(timer_norm));
     }
 
     return;
