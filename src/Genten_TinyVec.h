@@ -42,6 +42,7 @@
 #pragma once
 
 #include "Genten_Kokkos.h"
+#include <cmath>
 
 // extern "C" {
 // #include <immintrin.h>
@@ -178,6 +179,20 @@ namespace Genten {
       for (ordinal_type i=0; i<sz; ++i)
         v[i] /= x.v[i];
       return *this;
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    Scalar sum() const {
+      Scalar s(0.0);
+      for (ordinal_type i=0; i<sz; ++i)
+        s += v[i];
+#ifdef __CUDA_ARCH__
+      for (ordinal_type i=1; i<WarpDim; i*=2) {
+        s += Kokkos::shfl_down(s, i, WarpDim);
+      }
+      s = Kokkos::shfl(s, 0, WarpDim);
+#endif
+      return s;
     }
 
   };
@@ -325,7 +340,35 @@ namespace Genten {
       return *this;
     }
 
+    KOKKOS_INLINE_FUNCTION
+    Scalar sum() const {
+      Scalar s(0.0);
+      for (ordinal_type i=0; i<sz; ++i)
+        s += v[i];
+#ifdef __CUDA_ARCH__
+      for (ordinal_type i=1; i<WarpDim; i*=2) {
+        s += Kokkos::shfl_down(s, i, WarpDim);
+      }
+      s = Kokkos::shfl(s, 0, WarpDim);
+#endif
+      return s;
+    }
+
   };
+
+  template <typename Scalar, typename Ordinal,
+            unsigned Length, unsigned Size, unsigned WarpDim,
+            typename Tag>
+  KOKKOS_INLINE_FUNCTION
+  Genten::TinyVec<Scalar,Ordinal,Length,Size,WarpDim,Tag>
+  abs(const Genten::TinyVec<Scalar,Ordinal,Length,Size,WarpDim,Tag>& x)
+  {
+    using std::abs;
+    Genten::TinyVec<Scalar,Ordinal,Length,Size,WarpDim,Tag> y(x.sz);
+    for (Ordinal i=0; i<x.sz; ++i)
+      y.v[i] = abs(x.v[i]);
+    return y;
+  }
 }
 
 namespace Kokkos {
@@ -360,7 +403,36 @@ namespace Kokkos {
 //     atomic_add(x, tv.v);
 // #endif
 //   }
-  
+
+  template <typename Scalar, typename Ordinal,
+            unsigned Length, unsigned Size, unsigned WarpDim,
+            typename Tag>
+  struct reduction_identity< Genten::TinyVec<Scalar,Ordinal,Length,Size,WarpDim,Tag> >
+  {
+    typedef Genten::TinyVec<Scalar,Ordinal,Length,Size,WarpDim,Tag> scalar;
+    typedef reduction_identity<Scalar> ris;
+    KOKKOS_FORCEINLINE_FUNCTION static scalar sum()  {
+      scalar x(Length);
+      x.broadcast(0.0);
+      return x;
+    }
+    KOKKOS_FORCEINLINE_FUNCTION static scalar prod() {
+      scalar x(Length);
+      x.broadcast(1.0);
+      return x;
+    }
+    KOKKOS_FORCEINLINE_FUNCTION static scalar max()  {
+      scalar x(Length);
+      x.broadcast(ris::max());
+      return x;
+    }
+    KOKKOS_FORCEINLINE_FUNCTION static scalar min()  {
+      scalar x(Length);
+      x.broadcast(ris::min());
+      return x;
+    }
+  };
+
 }
 
 #if 0 && defined(__AVX__)

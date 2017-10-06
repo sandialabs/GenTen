@@ -58,6 +58,7 @@ OPTION(KOKKOS_PATH "Path to Kokkos installation.  Do not set this for an inline 
 OPTION(ENABLE_CUBLAS "Flag to enable cuBLAS for Kokkos with Cuda" OFF)
 OPTION(ENABLE_CUSOLVER "Flag to enable cuSolver for Kokkos with Cuda" OFF)
 OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files" OFF)
+OPTION(ENABLE_LAPACK "Enable BLAS/LAPACK (if disabled, Genten implementations will be used" ON)
 
 # Determine whether we are doing an inline build of Kokkos based on KOKKOS_PATH
 IF(NOT KOKKOS_PATH)

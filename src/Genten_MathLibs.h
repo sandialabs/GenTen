@@ -61,6 +61,7 @@ typedef ptrdiff_t ttb_vml_int;
      #define dnrm2 f2c_dnrm2
      #define dscal f2c_dscal
      #define idamax f2c_idamax
+     #define dsyrk f2c_dsyrk
 
      #define sasum f2c_sasum
      #define saxpy f2c_saxpy
@@ -72,6 +73,7 @@ typedef ptrdiff_t ttb_vml_int;
      #define snrm2 f2c_snrm2
      #define sscal f2c_sscal
      #define isamax f2c_isamax
+     #define ssyrk f2c_ssyrk
 
      #define dgesv dgesv_
      #define dposv dposv_
@@ -89,6 +91,7 @@ typedef ptrdiff_t ttb_vml_int;
      #define dnrm2 dnrm2
      #define dscal dscal
      #define idamax idamax
+     #define dsyrk dsyrk
 
      #define sasum sasum
      #define saxpy saxpy
@@ -100,6 +103,7 @@ typedef ptrdiff_t ttb_vml_int;
      #define snrm2 snrm2
      #define sscal sscal
      #define isamax isamax
+     #define ssyrk ssyrk
 
      #define dgesv dgesv
      #define dposv dposv
@@ -117,6 +121,7 @@ typedef ptrdiff_t ttb_vml_int;
      #define dnrm2 dnrm2_
      #define dscal dscal_
      #define idamax idamax_
+     #define dsyrk dsyrk_
 
      #define sasum sasum_
      #define saxpy saxpy_
@@ -128,6 +133,7 @@ typedef ptrdiff_t ttb_vml_int;
      #define snrm2 snrm2_
      #define sscal sscal_
      #define isamax isamax_
+     #define ssyrk ssyrk_
 
      #define dgesv dgesv_
      #define dposv dposv_
@@ -236,6 +242,17 @@ extern "C"
                          double * x,
                          ttb_blas_int * incxptr);
 
+    void dsyrk (char *uplo,
+                char *trans,
+                ttb_blas_int *nptr,
+                ttb_blas_int *kptr,
+                double *alphaptr,
+                double *a,
+                ttb_blas_int *ldaptr,
+                double *betaptr,
+                double *c,
+                ttb_blas_int *ldcptr);
+
     //
     // Single precision
     //
@@ -329,6 +346,17 @@ extern "C"
     ttb_blas_int isamax (ttb_blas_int * nptr,
                          float * x,
                          ttb_blas_int * incxptr);
+
+    void ssyrk (char *uplo,
+                char *trans,
+                ttb_blas_int *nptr,
+                ttb_blas_int *kptr,
+                float *alphaptr,
+                float *a,
+                ttb_blas_int *ldaptr,
+                float *betaptr,
+                float *c,
+                ttb_blas_int *ldcptr);
 
 }
 

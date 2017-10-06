@@ -48,6 +48,7 @@
 #include "Genten_FacMatArray.h"
 #include "Genten_MathLibs_Wpr.h"
 #include "Genten_portability.h"
+#include "Genten_TinyVec.h"
 #include "CMakeInclude.h"
 #include <algorithm>     // for std::max with MSVC compiler
 #include <assert.h>
@@ -56,6 +57,13 @@
 #if defined(KOKKOS_HAVE_CUDA) && defined(HAVE_CUSOLVER)
 #include "cusolverDn.h"
 #endif
+#if defined(KOKKOS_HAVE_CUDA) && defined(HAVE_CUBLAS)
+#include "cublas_v2.h"
+#endif
+
+#define USE_NEW_GRAMIAN 1
+#define USE_NEW_COLNORMS 1
+#define USE_NEW_COLSCALE 1
 
 using namespace std;
 
@@ -178,156 +186,457 @@ times(ttb_real a)
   data_1d.times(a);
 }
 
-void Genten::FacMatrix::
-gramian(const Genten::FacMatrix & v)
+namespace Genten {
+namespace Impl {
+
+#if defined(LAPACK_FOUND)
+// Gramian implementation using gemm()
+template <typename ViewC, typename ViewA>
+void gramianImpl(const ViewC& C, const ViewA& A)
+{
+  const ttb_indx m = A.dimension_0();
+  const ttb_indx n = A.dimension_1();
+  const ttb_indx lda = A.stride_0();
+  const ttb_indx ldc = C.stride_0();
+
+  // We compute C = A'*A.  But since A is LayoutRight, and GEMM/SYRK
+  // assumes layout left we compute this as C' = A*A'.
+
+  // SYRK seems faster than GEMM on the CPU but slower on KNL using MKL.
+  Genten::gemm('N','T',n,n,m,1.0,A.data(),lda,A.data(),lda,0.0,C.data(),ldc);
+  // Genten::syrk('L','N',n,m,1.0,A.data(),lda,0.0,C.data(),ldc);
+  // for (ttb_indx i=0; i<n; ++i)
+  //   for (ttb_indx j=i+1; j<n; j++)
+  //     C(j,i) = C(i,j);
+}
+#else
+#if USE_NEW_GRAMIAN
+template <typename ExecSpace, typename ViewC, typename ViewA,
+          unsigned ColBlockSize, unsigned RowBlockSize,
+          unsigned TeamSize, unsigned VectorSize>
+struct GramianKernel {
+  typedef Kokkos::TeamPolicy <ExecSpace> Policy;
+  typedef typename Policy::member_type TeamMember;
+  typedef Kokkos::View< ttb_real**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+  const ViewC& C;
+  const ViewA& A;
+  const TeamMember& team;
+  const unsigned team_index;
+  TmpScratchSpace tmp;
+  const unsigned k_block;
+  const unsigned m;
+  const unsigned n;
+
+  static inline Policy policy(const ttb_indx m_) {
+    const unsigned M = (m_+RowBlockSize-1)/RowBlockSize;
+    Policy policy(M,TeamSize,VectorSize);
+    const size_t bytes = TmpScratchSpace::shmem_size(ColBlockSize,ColBlockSize);
+    return policy.set_scratch_size(0,Kokkos::PerTeam(bytes));
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  GramianKernel(const ViewC& C_,
+                const ViewA& A_,
+                const TeamMember& team_) :
+    C(C_),
+    A(A_),
+    team(team_),
+    team_index(team.team_rank()),
+    tmp(team.team_scratch(0), ColBlockSize, ColBlockSize),
+    k_block(team.league_rank()*RowBlockSize),
+    m(A.dimension_0()),
+    n(A.dimension_1())
+    {
+      if (tmp.data() == 0)
+        Kokkos::abort("GramianKernel:  Allocation of temp space failed.");
+    }
+
+  template <unsigned Nj>
+  KOKKOS_INLINE_FUNCTION
+  void run(const unsigned i_block, const unsigned j_block, const unsigned nj_)
+  {
+    // nj.value == Nj_ if Nj_ > 0 and nj_ otherwise
+    Kokkos::Impl::integral_nonzero_constant<unsigned, Nj> nj(nj_);
+
+    for (unsigned ii=team_index; ii<ColBlockSize; ii+=TeamSize) {
+      ttb_real *tmp_ii = &(tmp(ii,0));
+      Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,unsigned(nj.value)),
+                           [&] (const unsigned& jj)
+      {
+        tmp_ii[jj] = 0.0;
+      });
+    }
+
+    // Loop over rows in block
+    for (unsigned kk=0; kk<RowBlockSize; ++kk) {
+      const unsigned k = k_block+kk;
+      if (k >= m)
+        break;
+
+      // Compute A(k,i)*A(k,j) for (i,j) in this block
+      for (unsigned ii=team_index; ii<ColBlockSize; ii+=TeamSize) {
+        const unsigned i = i_block+ii;
+        if (i < n) {
+          const ttb_real A_ki = A(k,i);
+          ttb_real *tmp_ii = &(tmp(ii,0));
+          const ttb_real *A_kj = &(A(k,j_block));
+          Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,unsigned(nj.value)),
+                               [&] (const unsigned& jj)
+          {
+            tmp_ii[jj] += A_ki*A_kj[jj];
+          });
+        }
+      }
+    }
+
+    // Accumulate inner products into global result using atomics
+    for (unsigned ii=team_index; ii<ColBlockSize; ii+=TeamSize) {
+      const unsigned i = i_block+ii;
+      if (i < n) {
+        const ttb_real *tmp_ii = &(tmp(ii,0));
+        Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,unsigned(nj.value)),
+                             [&] (const unsigned& jj)
+        {
+          const unsigned j = j_block+jj;
+          Kokkos::atomic_add(&C(i,j), tmp_ii[jj]);
+          if (j_block != i_block)
+            Kokkos::atomic_add(&C(j,i), tmp_ii[jj]);
+        });
+      }
+    }
+  }
+};
+
+template <unsigned ColBlockSize, typename ViewC, typename ViewA>
+void gramian_kernel(const ViewC& C, const ViewA& A)
 {
   typedef Kokkos::DefaultExecutionSpace ExecSpace;
-  typedef typename ExecSpace::size_type size_type;
 
-  // Get the size of v
-  const size_type m = v.data.dimension_0();
-  const size_type n = v.data.dimension_1();
-
-  assert(data.dimension_0() == n);
-  assert(data.dimension_1() == n);
-
-  typedef Kokkos::TeamPolicy <ExecSpace> Policy;
-  typedef Kokkos::View< ttb_real**, Kokkos::LayoutRight, ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
-
-   // Compute team and vector sizes, depending on the architecture
+  // Compute team and vector sizes, depending on the architecture
 #if defined(KOKKOS_HAVE_CUDA)
   const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
 #else
   const bool is_cuda = false;
 #endif
-#if defined(KOKKOS_HAVE_OPENMP)
-  const bool is_openmp = std::is_same<ExecSpace,Kokkos::OpenMP>::value;
-  const size_type thread_pool_size =
-    is_openmp ? Kokkos::OpenMP::thread_pool_size(2) : 1;
+  const unsigned VectorSize =
+    is_cuda ? (ColBlockSize <= 16 ? ColBlockSize : 16) : 1;
+  const unsigned TeamSize = is_cuda ? 256/VectorSize : 1;
+  const unsigned RowBlockSize = 128;
+  const unsigned m = A.dimension_0();
+  const unsigned n = A.dimension_1();
+
+  typedef GramianKernel<ExecSpace,ViewC,ViewA,ColBlockSize,RowBlockSize,TeamSize,VectorSize> Kernel;
+  typedef typename Kernel::TeamMember TeamMember;
+
+  Kokkos::deep_copy( C, 0.0 );
+  Kokkos::parallel_for(Kernel::policy(m),
+                       KOKKOS_LAMBDA(TeamMember team)
+  {
+    GramianKernel<ExecSpace,ViewC,ViewA,ColBlockSize,RowBlockSize,TeamSize,VectorSize> kernel(C, A, team);
+    for (unsigned i_block=0; i_block<n; i_block+=ColBlockSize) {
+      for (unsigned j_block=i_block; j_block<n; j_block+=ColBlockSize) {
+        if (j_block+ColBlockSize <= n)
+          kernel.template run<ColBlockSize>(i_block, j_block, ColBlockSize);
+        else
+          kernel.template run<0>(i_block, j_block, n-j_block);
+      }
+    }
+  });
+}
+
+template <typename ViewC, typename ViewA>
+void gramianImpl(const ViewC& C, const ViewA& A)
+{
+  const ttb_indx n = A.dimension_1();
+  if (n < 2)
+    gramian_kernel<1>(C,A);
+  else if (n < 4)
+    gramian_kernel<2>(C,A);
+  else if (n < 8)
+    gramian_kernel<4>(C,A);
+  else if (n < 16)
+    gramian_kernel<8>(C,A);
+  else if (n < 32)
+    gramian_kernel<16>(C,A);
+  else
+    gramian_kernel<32>(C,A);
+}
 #else
-  const size_type thread_pool_size = 1;
+  // Gramian implementation using Kokkos
+  template <typename ViewC, typename ViewA>
+  void gramianImpl(const ViewC& C, const ViewA& A)
+  {
+    typedef Kokkos::DefaultExecutionSpace ExecSpace;
+    typedef typename ExecSpace::size_type size_type;
+
+    typedef Kokkos::TeamPolicy <ExecSpace> Policy;
+    typedef Kokkos::View< ttb_real**, Kokkos::LayoutRight, ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+   // Compute team and vector sizes, depending on the architecture
+#if defined(KOKKOS_HAVE_CUDA)
+    const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
+#else
+    const bool is_cuda = false;
+#endif
+#if defined(KOKKOS_HAVE_OPENMP)
+    const bool is_openmp = std::is_same<ExecSpace,Kokkos::OpenMP>::value;
+    const size_type thread_pool_size =
+      is_openmp ? Kokkos::OpenMP::thread_pool_size(2) : 1;
+#else
+    const size_type thread_pool_size = 1;
 #endif
 
-  // Use the largest power of 2 <= n, with a maximum of 16 for the vector size.
-  const size_type VectorSize =
-    n == 1 ? 1 : std::min(16,2 << int(std::log2(n))-1);
-  const size_type TeamSize = is_cuda ? 256/VectorSize : thread_pool_size;
+    // Get the size of A
+    const size_type m = A.dimension_0();
+    const size_type n = A.dimension_1();
 
-  // To do:  optimize TeamSize for small n (right now we are wasting threads
-  // if n < 16).
-  const size_type BlockSize = std::min(size_type(16), n);
+    // Use the largest power of 2 <= n, with a maximum of 16 for the
+    // vector size.
+    const size_type VectorSize =
+      n == 1 ? 1 : std::min(16,2 << int(std::log2(n))-1);
+    const size_type TeamSize = is_cuda ? 256/VectorSize : thread_pool_size;
 
-  // compute how much scratch memory (in bytes) is needed
-  const size_t bytes = TmpScratchSpace::shmem_size(BlockSize,BlockSize);
+    // To do:  optimize TeamSize for small n (right now we are wasting threads
+    // if n < 16).
+    const size_type BlockSize = std::min(size_type(16), n);
 
-  const size_type NumRow = 16;
-  size_type M = (m+NumRow-1)/NumRow;
-  Policy policy(M,TeamSize,VectorSize);
+    // compute how much scratch memory (in bytes) is needed
+    const size_t bytes = TmpScratchSpace::shmem_size(BlockSize,BlockSize);
 
-  // Can't capture "this" pointer by value
-  view_type my_data = data;
-  Kokkos::deep_copy( my_data, 0.0 );
+    const size_type NumRow = 16;
+    size_type M = (m+NumRow-1)/NumRow;
+    Policy policy(M,TeamSize,VectorSize);
 
-  Kokkos::parallel_for(policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
-                       KOKKOS_LAMBDA(Policy::member_type team)
-  {
-    const size_type team_size = team.team_size();
-    const size_type team_index = team.team_rank();
-    const size_type k0 = team.league_rank()*NumRow;
+    Kokkos::deep_copy( C, 0.0 );
+    Kokkos::parallel_for(policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+                         KOKKOS_LAMBDA(Policy::member_type team)
+    {
+      const size_type team_size = team.team_size();
+      const size_type team_index = team.team_rank();
+      const size_type k0 = team.league_rank()*NumRow;
 
-    // Allocate scratch spaces
-    TmpScratchSpace tmp(team.team_scratch(0), BlockSize, BlockSize);
-    if (tmp.data() == 0)
-      Kokkos::abort("Allocation of temp space failed.");
+      // Allocate scratch spaces
+      TmpScratchSpace tmp(team.team_scratch(0), BlockSize, BlockSize);
+      if (tmp.data() == 0)
+        Kokkos::abort("Allocation of temp space failed.");
 
-    // Compute upper-triangular blocks of v(k,i)*v(k,j)
-    // in blocks of size (NumRow,BlockSize)
-    for (size_type i_block=0; i_block<n; i_block+=BlockSize) {
-      for (size_type j_block=i_block; j_block<n; j_block+=BlockSize) {
+      // Compute upper-triangular blocks of v(k,i)*v(k,j)
+      // in blocks of size (NumRow,BlockSize)
+      for (size_type i_block=0; i_block<n; i_block+=BlockSize) {
+        for (size_type j_block=i_block; j_block<n; j_block+=BlockSize) {
 
-        // Initialize tmp scratch space
-        for (size_type ii=team_index; ii<BlockSize; ii+=team_size) {
-          Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,BlockSize),
-                               [&] (const size_type& jj)
-          {
-            tmp(ii,jj) = 0.0;
-          });
-        }
+          // Initialize tmp scratch space
+          for (size_type ii=team_index; ii<BlockSize; ii+=team_size) {
+            Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,BlockSize),
+                                 [&] (const size_type& jj)
+            {
+              tmp(ii,jj) = 0.0;
+            });
+          }
 
-        // Loop over rows in block
-        for (size_type kk=0; kk<NumRow; ++kk) {
-          const size_type k = k0+kk;
-          if (k >= m)
-            break;
+          // Loop over rows in block
+          for (size_type kk=0; kk<NumRow; ++kk) {
+            const size_type k = k0+kk;
+            if (k >= m)
+              break;
 
-          // Compute v(k,i)*v(k,j) for (i,j) in this block
+            // Compute A(k,i)*A(k,j) for (i,j) in this block
+            for (size_type ii=team_index; ii<BlockSize; ii+=team_size) {
+              size_type i = i_block+ii;
+              if (i >= n)
+                break;
+
+              const ttb_real A_ki = A(k,i);
+              Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,BlockSize),
+                                   [&] (const size_type& jj)
+              {
+                const size_type j = j_block+jj;
+                if (j<n)
+                  tmp(ii,jj) += A_ki*A(k,j);
+              });
+
+            }
+
+          }
+
+          // Accumulate inner products into global result using atomics
           for (size_type ii=team_index; ii<BlockSize; ii+=team_size) {
             size_type i = i_block+ii;
             if (i >= n)
               break;
 
-            const ttb_real v_ki = v.data(k,i);
             Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,BlockSize),
                                  [&] (const size_type& jj)
             {
               const size_type j = j_block+jj;
-              if (j<n)
-                tmp(ii,jj) += v_ki*v.data(k,j);
+              if (j<n) {
+                Kokkos::atomic_add(&C(i,j), tmp(ii,jj));
+                if (j_block != i_block)
+                  Kokkos::atomic_add(&C(j,i), tmp(ii,jj));
+              }
             });
-
           }
-
-        }
-
-        // Accumulate inner products into global result using atomics
-        for (size_type ii=team_index; ii<BlockSize; ii+=team_size) {
-          size_type i = i_block+ii;
-          if (i >= n)
-            break;
-
-          Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,BlockSize),
-                               [&] (const size_type& jj)
-          {
-            const size_type j = j_block+jj;
-            if (j<n) {
-              Kokkos::atomic_add(&my_data(i,j), tmp(ii,jj));
-              if (j_block != i_block)
-                Kokkos::atomic_add(&my_data(j,i), tmp(ii,jj));
-            }
-          });
         }
       }
+    });
+
+    // Copy upper triangle into lower triangle
+    // This seems to be the most efficient over adding the lower triangle in
+    // the above kernel or launching a new one below.  However that may change
+    // when n is large.
+    // for (ttb_indx i=0; i<n; ++i)
+    //   for (ttb_indx j=i+1; j<n; j++)
+    //     C(j,i) = C(i,j);
+
+    // const ttb_indx N = (n+TeamSize-1)/TeamSize;
+    // Policy policy2(N,TeamSize,VectorSize);
+    //  Kokkos::parallel_for(policy2, KOKKOS_LAMBDA(Policy::member_type team)
+    // {
+    //   const ttb_indx team_size = team.team_size();
+    //   const ttb_indx team_index = team.team_rank();
+    //   const ttb_indx i = team.league_rank()*team_size+team_index;
+
+    //   if (i >= n)
+    //     return;
+
+    //   Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,n-i-1),
+    //                        [&] (const ttb_indx& j)
+    //   {
+    //     C(i+j,i) = C(i,i+j);
+    //   });
+    // });
+  }
+#endif
+#endif
+
+#if defined(KOKKOS_HAVE_CUDA) && defined(HAVE_CUBLAS)
+  // Gramian implementation for CUDA and double precision using cuBLAS
+  template <typename CT, typename ... CP,
+            typename AT, typename ... AP>
+  typename std::enable_if<
+    ( std::is_same<typename Kokkos::View<CT,CP...>::execution_space,
+                   Kokkos::Cuda>::value &&
+      std::is_same<typename Kokkos::View<AT,AP...>::execution_space,
+                   Kokkos::Cuda>::value &&
+      std::is_same<typename Kokkos::View<AT,AP...>::non_const_value_type,
+                   double>::value )
+    >::type
+  gramianImpl(const Kokkos::View<CT,CP...>& C, const Kokkos::View<AT,AP...>& A)
+  {
+    const int m = A.dimension_0();
+    const int n = A.dimension_1();
+    const int lda = A.stride_0();
+    const int ldc = C.stride_0();
+    const double alpha = 1.0;
+    const double beta = 0.0;
+    cublasStatus_t status;
+
+    // We compute C = A'*A.  But since A is LayoutRight, and GEMM
+    // assumes layout left we compute this as C = A*A'
+
+    static cublasHandle_t handle = 0;
+    if (handle == 0) {
+      status = cublasCreate(&handle);
+      if (status != CUBLAS_STATUS_SUCCESS) {
+        std::stringstream ss;
+        ss << "Error!  cublasCreate() failed with status "
+           << status;
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
     }
-  });
 
-  // Copy upper triangle into lower triangle
-  // This seems to be the most efficient over adding the lower triangle in
-  // the above kernel or launching a new one below.  However that may change
-  // when n is large.
-  // for (ttb_indx i=0; i<n; ++i)
-  //   for (ttb_indx j=i+1; j<n; j++)
-  //     my_data(j,i) = my_data(i,j);
+    // GEMM appears to be quite a bit faster than SYRK on the GPU
+    status = cublasDgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, n, n, m,
+                         &alpha, A.data(), lda, A.data(), lda,
+                         &beta, C.data(), ldc);
+    // status = cublasDsyrk(handle, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_N, n, m,
+    //                      &alpha, A.data(), lda, &beta, C.data(), ldc);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+      std::stringstream ss;
+      ss << "Error!  cublasDgemm() failed with status "
+         << status;
+      std::cerr << ss.str() << std::endl;
+      throw ss.str();
+    }
 
-  // const ttb_indx N = (n+TeamSize-1)/TeamSize;
-  // Policy policy2(N,TeamSize,VectorSize);
-  //  Kokkos::parallel_for(policy2, KOKKOS_LAMBDA(Policy::member_type team)
-  // {
-  //   const ttb_indx team_size = team.team_size();
-  //   const ttb_indx team_index = team.team_rank();
-  //   const ttb_indx i = team.league_rank()*team_size+team_index;
+    // Copy upper triangle into lower triangle when using SYRK
+    // for (int i=0; i<n; ++i)
+    //   for (int j=i+1; j<n; j++)
+    //     C(j,i) = C(i,j);
+  }
 
-  //   if (i >= n)
-  //     return;
+  // Gramian implementation for CUDA and single precision using cuBLAS
+  template <typename CT, typename ... CP,
+            typename AT, typename ... AP>
+  typename std::enable_if<
+    ( std::is_same<typename Kokkos::View<CT,CP...>::execution_space,
+                   Kokkos::Cuda>::value &&
+      std::is_same<typename Kokkos::View<AT,AP...>::execution_space,
+                   Kokkos::Cuda>::value &&
+      std::is_same<typename Kokkos::View<AT,AP...>::non_const_value_type,
+                   float>::value )
+    >::type
+  gramianImpl(const Kokkos::View<CT,CP...>& C, const Kokkos::View<AT,AP...>& A)
+  {
+    const int m = A.dimension_0();
+    const int n = A.dimension_1();
+    const int lda = A.stride_0();
+    const int ldc = C.stride_0();
+    const float alpha = 1.0;
+    const float beta = 0.0;
+    cublasStatus_t status;
 
-  //   Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,n-i-1),
-  //                        [&] (const ttb_indx& j)
-  //   {
-  //     my_data(i+j,i) = my_data(i,i+j);
-  //   });
+    // We compute C = A'*A.  But since A is LayoutRight, and GEMM
+    // assumes layout left we compute this as C = A*A'
 
-  // });
+    static cublasHandle_t handle = 0;
+    if (handle == 0) {
+      status = cublasCreate(&handle);
+      if (status != CUBLAS_STATUS_SUCCESS) {
+        std::stringstream ss;
+        ss << "Error!  cublasCreate() failed with status "
+           << status;
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+    }
 
-  return;
+    // GEMM appears to be quite a bit faster than SYRK on the GPU
+    status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, n, n, m,
+                         &alpha, A.data(), lda, A.data(), lda,
+                         &beta, C.data(), ldc);
+    // status = cublasSsyrk(handle, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_N, n, m,
+    //                      &alpha, A.data(), lda, &beta, C.data(), ldc);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+      std::stringstream ss;
+      ss << "Error!  cublasDgemm() failed with status "
+         << status;
+      std::cerr << ss.str() << std::endl;
+      throw ss.str();
+    }
+
+    // Copy upper triangle into lower triangle when using SYRK
+    // for (int i=0; i<n; ++i)
+    //   for (int j=i+1; j<n; j++)
+    //     C(j,i) = C(i,j);
+  }
+#endif
+
+}
+}
+
+void Genten::FacMatrix::
+gramian(const Genten::FacMatrix & v)
+{
+  const ttb_indx m = v.data.dimension_0();
+  const ttb_indx n = v.data.dimension_1();
+
+  assert(data.dimension_0() == n);
+  assert(data.dimension_1() == n);
+
+  Genten::Impl::gramianImpl(data,v.data);
 }
 
 // return the index of the first entry, s, such that entry(s,c) > r.
@@ -381,6 +690,384 @@ oprod(const Genten::Array & v)
     }
   }
 }
+
+#if USE_NEW_COLNORMS
+
+namespace Genten {
+namespace Impl {
+
+template <typename ExecSpace, typename View, typename Norms,
+          unsigned RowBlockSize, unsigned ColBlockSize,
+          unsigned TeamSize, unsigned VectorSize>
+struct ColNormsKernel {
+  typedef Kokkos::TeamPolicy <ExecSpace> Policy;
+  typedef typename Policy::member_type TeamMember;
+  typedef Kokkos::View< ttb_real**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+  const View& data;
+  const Norms& norms;
+  const TeamMember team;
+  const unsigned team_index;
+  const unsigned team_size;
+  TmpScratchSpace tmp;
+  const unsigned i_block;
+  const unsigned m;
+
+  static inline Policy policy(const ttb_indx m) {
+    const ttb_indx M = (m+RowBlockSize-1)/RowBlockSize;
+    Policy policy(M,TeamSize,VectorSize);
+    const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,ColBlockSize);
+    return policy.set_scratch_size(0,Kokkos::PerTeam(bytes));
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  ColNormsKernel(const View& data_,
+                 const Norms& norms_,
+                 const TeamMember& team_) :
+    data(data_),
+    norms(norms_),
+    team(team_), team_index(team.team_rank()), team_size(team.team_size()),
+    tmp(team.team_scratch(0), TeamSize, ColBlockSize),
+    i_block(team.league_rank()*RowBlockSize),
+    m(data.dimension_0())
+    {
+      if (tmp.data() == 0)
+        Kokkos::abort("ColNormsKernel:  Allocation of temp space failed.");
+    }
+
+};
+
+template <typename ExecSpace, typename View, typename Norms,
+          unsigned RowBlockSize, unsigned ColBlockSize,
+          unsigned TeamSize, unsigned VectorSize>
+struct ColNormsKernel_Inf
+  : public ColNormsKernel<ExecSpace,View,Norms,RowBlockSize,ColBlockSize,
+                          TeamSize,VectorSize>
+{
+  typedef ColNormsKernel<ExecSpace,View,Norms,RowBlockSize,ColBlockSize,
+                         TeamSize,VectorSize> Base;
+
+  using Base::ColNormsKernel;
+
+  template <unsigned Nj>
+  KOKKOS_INLINE_FUNCTION
+  void run(const unsigned j_block, const unsigned nj_)
+  {
+    // nj.value == Nj_ if Nj_ > 0 and nj_ otherwise
+    Kokkos::Impl::integral_nonzero_constant<unsigned, Nj> nj(nj_);
+    ttb_real *norms_j = &(this->norms[j_block]);
+    ttb_real *tmp_i = &(this->tmp(this->team_index,0));
+
+    this->team.team_barrier();
+
+    Kokkos::parallel_for(Kokkos::ThreadVectorRange(this->team,unsigned(nj.value)),
+                         [&] (const unsigned& jj)
+    {
+      tmp_i[jj] = 0.0;
+    });
+
+    for (unsigned ii=this->team_index; ii<RowBlockSize; ii+=TeamSize) {
+      const unsigned i = this->i_block+ii;
+      const ttb_real *data_ij = &(this->data(i,j_block));
+      if (i < this->m) {
+        Kokkos::parallel_for(Kokkos::ThreadVectorRange(this->team,unsigned(nj.value)),
+                             [&] (const unsigned& jj)
+        {
+          auto d = std::fabs(data_ij[jj]);
+          if (d > tmp_i[jj]) tmp_i[jj] = d;
+        });
+      }
+    }
+
+    this->team.team_barrier();
+
+    if (this->team_index == 0) {
+      for (unsigned ii=1; ii<TeamSize; ++ii) {
+        ttb_real *tmp_ii = &(this->tmp(ii,0));
+        Kokkos::parallel_for(Kokkos::ThreadVectorRange(this->team,unsigned(nj.value)),
+                             [&] (const unsigned& jj)
+        {
+          if (tmp_ii[jj] > tmp_i[jj]) tmp_i[jj] = tmp_ii[jj];
+        });
+      }
+
+      Kokkos::parallel_for(Kokkos::ThreadVectorRange(this->team,unsigned(nj.value)),
+                           [&] (const unsigned& jj)
+      {
+        // Unfortunately there is no "atomic_max()", so we have to
+        // implement it using compare_and_exchange
+        ttb_real prev_val = norms_j[jj];
+        ttb_real val = tmp_i[jj];
+        bool keep_going = true;
+        while (prev_val < val && keep_going) {
+
+          // Replace norms[j] with val when norms[j] == prev_val
+          ttb_real next_val =
+            Kokkos::atomic_compare_exchange(&norms_j[jj], prev_val, val);
+
+          // When prev_val == next_val, the exchange happened and we
+          // can stop.  This saves an extra iteration
+          keep_going = !(prev_val == next_val);
+          prev_val = next_val;
+        }
+      });
+    }
+
+  }
+
+};
+
+template <typename ExecSpace, typename View, typename Norms,
+          unsigned RowBlockSize, unsigned ColBlockSize,
+          unsigned TeamSize, unsigned VectorSize>
+struct ColNormsKernel_1
+  : public ColNormsKernel<ExecSpace,View,Norms,RowBlockSize,ColBlockSize,
+                          TeamSize,VectorSize>
+{
+  typedef ColNormsKernel<ExecSpace,View,Norms,RowBlockSize,ColBlockSize,
+                         TeamSize,VectorSize> Base;
+
+  using Base::ColNormsKernel;
+
+  template <unsigned Nj>
+  KOKKOS_INLINE_FUNCTION
+  void run(const unsigned j_block, const unsigned nj_)
+  {
+    // nj.value == Nj_ if Nj_ > 0 and nj_ otherwise
+    Kokkos::Impl::integral_nonzero_constant<unsigned, Nj> nj(nj_);
+    ttb_real *norms_j = &(this->norms[j_block]);
+    ttb_real *tmp_i = &(this->tmp(this->team_index,0));
+
+    this->team.team_barrier();
+
+    Kokkos::parallel_for(Kokkos::ThreadVectorRange(this->team,unsigned(nj.value)),
+                         [&] (const unsigned& jj)
+    {
+      tmp_i[jj] = 0.0;
+    });
+
+    for (unsigned ii=this->team_index; ii<RowBlockSize; ii+=TeamSize) {
+      const unsigned i = this->i_block+ii;
+      const ttb_real *data_ij = &(this->data(i,j_block));
+      if (i < this->m) {
+        Kokkos::parallel_for(Kokkos::ThreadVectorRange(this->team,unsigned(nj.value)),
+                             [&] (const unsigned& jj)
+        {
+          tmp_i[jj] += std::fabs(data_ij[jj]);
+        });
+      }
+    }
+
+    this->team.team_barrier();
+
+    if (this->team_index == 0) {
+      for (unsigned ii=1; ii<TeamSize; ++ii) {
+        ttb_real *tmp_ii = &(this->tmp(ii,0));
+        Kokkos::parallel_for(Kokkos::ThreadVectorRange(this->team,unsigned(nj.value)),
+                             [&] (const unsigned& jj)
+        {
+          tmp_i[jj] += tmp_ii[jj];
+        });
+      }
+
+      Kokkos::parallel_for(Kokkos::ThreadVectorRange(this->team,unsigned(nj.value)),
+                           [&] (const unsigned& jj)
+      {
+        Kokkos::atomic_add(norms_j+jj, tmp_i[jj]);
+      });
+    }
+
+  }
+
+};
+
+template <typename ExecSpace, typename View, typename Norms,
+          unsigned RowBlockSize, unsigned ColBlockSize,
+          unsigned TeamSize, unsigned VectorSize>
+struct ColNormsKernel_2
+  : public ColNormsKernel<ExecSpace,View,Norms,RowBlockSize,ColBlockSize,
+                          TeamSize,VectorSize>
+{
+  typedef ColNormsKernel<ExecSpace,View,Norms,RowBlockSize,ColBlockSize,
+                         TeamSize,VectorSize> Base;
+
+  using Base::ColNormsKernel;
+
+  template <unsigned Nj>
+  KOKKOS_INLINE_FUNCTION
+  void run(const unsigned j_block, const unsigned nj_)
+  {
+    // nj.value == Nj_ if Nj_ > 0 and nj_ otherwise
+    Kokkos::Impl::integral_nonzero_constant<unsigned, Nj> nj(nj_);
+    ttb_real *norms_j = &(this->norms[j_block]);
+    ttb_real *tmp_i = &(this->tmp(this->team_index,0));
+
+    this->team.team_barrier();
+
+    Kokkos::parallel_for(Kokkos::ThreadVectorRange(this->team,unsigned(nj.value)),
+                         [&] (const unsigned& jj)
+    {
+      tmp_i[jj] = 0.0;
+    });
+
+    for (unsigned ii=this->team_index; ii<RowBlockSize; ii+=TeamSize) {
+      const unsigned i = this->i_block+ii;
+      const ttb_real *data_ij = &(this->data(i,j_block));
+      if (i < this->m) {
+        Kokkos::parallel_for(Kokkos::ThreadVectorRange(this->team,unsigned(nj.value)),
+                             [&] (const unsigned& jj)
+        {
+          auto d = data_ij[jj];
+          tmp_i[jj] += d*d;
+        });
+      }
+    }
+
+    this->team.team_barrier();
+
+    if (this->team_index == 0) {
+      for (unsigned ii=1; ii<TeamSize; ++ii) {
+        ttb_real *tmp_ii = &(this->tmp(ii,0));
+        Kokkos::parallel_for(Kokkos::ThreadVectorRange(this->team,unsigned(nj.value)),
+                             [&] (const unsigned& jj)
+        {
+          tmp_i[jj] += tmp_ii[jj];
+        });
+      }
+
+      Kokkos::parallel_for(Kokkos::ThreadVectorRange(this->team,unsigned(nj.value)),
+                           [&] (const unsigned& jj)
+      {
+        Kokkos::atomic_add(norms_j+jj, tmp_i[jj]);
+      });
+    }
+
+  }
+
+};
+
+template <unsigned ColBlockSize, typename ViewType, typename NormT>
+void colNorms_kernel(
+  const ViewType& data, Genten::NormType normtype,
+  const NormT& norms, ttb_real minval)
+{
+  typedef Kokkos::DefaultExecutionSpace ExecSpace;
+
+  // Compute team and vector sizes, depending on the architecture
+#if defined(KOKKOS_HAVE_CUDA)
+  const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
+#else
+  const bool is_cuda = false;
+#endif
+  const unsigned VectorSize =
+    is_cuda ? (ColBlockSize <= 32 ? ColBlockSize : 32) : 1;
+  const unsigned TeamSize = is_cuda ? 256/VectorSize : 1;
+  const unsigned RowBlockSize = 128;
+  const unsigned m = data.dimension_0();
+  const unsigned n = data.dimension_1();
+
+  // Initialize norms to 0
+  Kokkos::deep_copy(norms, 0.0);
+
+  // Compute norms
+  switch(normtype)
+  {
+  case Genten::NormInf:
+  {
+    typedef ColNormsKernel_Inf<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> Kernel;
+    typedef typename Kernel::TeamMember TeamMember;
+    Kokkos::parallel_for(Kernel::policy(m),
+                         KOKKOS_LAMBDA(TeamMember team)
+    {
+      ColNormsKernel_Inf<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> kernel(data, norms, team);
+      for (unsigned j_block=0; j_block<n; j_block+=ColBlockSize) {
+        if (j_block+ColBlockSize <= n)
+          kernel.template run<ColBlockSize>(j_block, ColBlockSize);
+        else
+          kernel.template run<0>(j_block, n-j_block);
+      }
+    });
+    break;
+  }
+
+  case Genten::NormOne:
+  {
+    typedef ColNormsKernel_1<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> Kernel;
+    typedef typename Kernel::TeamMember TeamMember;
+    Kokkos::parallel_for(Kernel::policy(m),
+                         KOKKOS_LAMBDA(TeamMember team)
+    {
+      ColNormsKernel_1<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> kernel(data, norms, team);
+      for (unsigned j_block=0; j_block<n; j_block+=ColBlockSize) {
+        if (j_block+ColBlockSize <= n)
+          kernel.template run<ColBlockSize>(j_block, ColBlockSize);
+        else
+          kernel.template run<0>(j_block, n-j_block);
+      }
+    });
+    break;
+  }
+  case Genten::NormTwo:
+  {
+    typedef ColNormsKernel_2<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> Kernel;
+    typedef typename Kernel::TeamMember TeamMember;
+    Kokkos::parallel_for(Kernel::policy(m),
+                         KOKKOS_LAMBDA(TeamMember team)
+    {
+      ColNormsKernel_2<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> kernel(data, norms, team);
+      for (unsigned j_block=0; j_block<n; j_block+=ColBlockSize) {
+        if (j_block+ColBlockSize <= n)
+          kernel.template run<ColBlockSize>(j_block, ColBlockSize);
+        else
+          kernel.template run<0>(j_block, n-j_block);
+      }
+    });
+    for (unsigned j=0; j<n; ++j)
+      norms[j] = std::sqrt(norms[j]);
+
+    break;
+  }
+  default:
+  {
+    error("Genten::FacMatrix::colNorms - unimplemented norm type");
+  }
+  }
+
+  // Check for min value
+  if (minval > 0)
+  {
+    for (unsigned j=0; j<n; ++j)
+    {
+      if (norms[j] < minval)
+      {
+        norms[j] = minval;
+      }
+    }
+  }
+}
+
+}
+}
+
+void Genten::FacMatrix::
+colNorms(Genten::NormType normtype, Genten::Array & norms, ttb_real minval)
+{
+  const ttb_indx nc = data.dimension_1();
+  if (nc < 2)
+    Impl::colNorms_kernel<1>(data, normtype, norms.data, minval);
+  else if (nc < 4)
+    Impl::colNorms_kernel<2>(data, normtype, norms.data, minval);
+  else if (nc < 8)
+    Impl::colNorms_kernel<4>(data, normtype, norms.data, minval);
+  else if (nc < 16)
+    Impl::colNorms_kernel<8>(data, normtype, norms.data, minval);
+  else if (nc < 32)
+    Impl::colNorms_kernel<16>(data, normtype, norms.data, minval);
+  else
+    Impl::colNorms_kernel<32>(data, normtype, norms.data, minval);
+}
+
+#else
 
 void Genten::FacMatrix::
 colNorms(Genten::NormType normtype, Genten::Array & norms, ttb_real minval)
@@ -664,7 +1351,137 @@ colNorms(Genten::NormType normtype, Genten::Array & norms, ttb_real minval)
 
 }
 
-//TBD could be much better vectorized instead of ncols trips through data.
+#endif
+
+#if USE_NEW_COLSCALE
+namespace Genten {
+namespace Impl {
+
+template <typename ExecSpace, typename View,
+          unsigned ColBlockSize, unsigned RowBlockSize,
+          unsigned TeamSize, unsigned VectorSize>
+struct ColScaleKernel {
+  typedef Kokkos::TeamPolicy <ExecSpace> Policy;
+  typedef typename Policy::member_type TeamMember;
+
+  const View& data;
+  const Genten::Array& v;
+  const TeamMember& team;
+  const unsigned team_index;
+  const unsigned i_block;
+  const unsigned m;
+
+  static inline Policy policy(const ttb_indx m_) {
+    const unsigned M = (m_+RowBlockSize-1)/RowBlockSize;
+    Policy policy(M,TeamSize,VectorSize);
+    return policy;
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  ColScaleKernel(const View& data_,
+                 const Genten::Array& v_,
+                 const TeamMember& team_) :
+    data(data_),
+    v(v_),
+    team(team_),
+    team_index(team.team_rank()),
+    i_block(team.league_rank()*RowBlockSize),
+    m(data.dimension_0())
+    {}
+
+  template <unsigned Nj>
+  KOKKOS_INLINE_FUNCTION
+  void run(const unsigned j, const unsigned nj_)
+  {
+    // nj.value == Nj_ if Nj_ > 0 and nj_ otherwise
+    Kokkos::Impl::integral_nonzero_constant<unsigned, Nj> nj(nj_);
+
+    const ttb_real *v_j = &v[j];
+
+    for (unsigned ii=team_index; ii<RowBlockSize; ii+=TeamSize) {
+      const unsigned i = i_block+ii;
+      if (i < m) {
+        ttb_real* data_i = &data(i,j);
+        Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,unsigned(nj.value)),
+                             [&] (const unsigned& jj)
+        {
+          data_i[jj] *= v_j[jj];
+        });
+      }
+    }
+  }
+};
+
+template <unsigned ColBlockSize, typename ViewType>
+void colScale_kernel(const ViewType& data, const Genten::Array& v)
+{
+  typedef Kokkos::DefaultExecutionSpace ExecSpace;
+
+  // Compute team and vector sizes, depending on the architecture
+#if defined(KOKKOS_HAVE_CUDA)
+  const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
+#else
+  const bool is_cuda = false;
+#endif
+  const unsigned VectorSize =
+     is_cuda ? (ColBlockSize <= 32 ? ColBlockSize : 32) : 1;
+  const unsigned TeamSize = is_cuda ? 256/VectorSize : 1;
+  const unsigned RowBlockSize = 128;
+  const unsigned m = data.dimension_0();
+  const unsigned n = data.dimension_1();
+
+  typedef ColScaleKernel<ExecSpace,ViewType,ColBlockSize,RowBlockSize,TeamSize,VectorSize> Kernel;
+  typedef typename Kernel::TeamMember TeamMember;
+
+  Kokkos::parallel_for(Kernel::policy(m), KOKKOS_LAMBDA(TeamMember team)
+  {
+    ColScaleKernel<ExecSpace,ViewType,ColBlockSize,RowBlockSize,TeamSize,VectorSize> kernel(data, v, team);
+    for (unsigned j_block=0; j_block<n; j_block+=ColBlockSize) {
+      if (j_block+ColBlockSize <= n)
+        kernel.template run<ColBlockSize>(j_block, ColBlockSize);
+      else
+        kernel.template run<0>(j_block, n-j_block);
+    }
+  });
+}
+
+}
+}
+
+void Genten::FacMatrix::
+colScale(const Genten::Array & v, bool inverse)
+{
+  const ttb_indx n = data.dimension_1();
+  assert(v.size() == n);
+
+  Genten::Array w;
+  if (inverse) {
+    w = Genten::Array(n);
+    for (ttb_indx j = 0; j < n; j ++) {
+      if (v[j] == 0)
+        Genten::error("Genten::FacMatrix::colScale - divide-by-zero error");
+      w[j] = 1.0 / v[j];
+    }
+  }
+  else
+    w = v;
+
+  if (n < 2)
+    Impl::colScale_kernel<1>(data, w);
+  else if (n < 4)
+    Impl::colScale_kernel<2>(data, w);
+  else if (n < 8)
+    Impl::colScale_kernel<4>(data, w);
+  else if (n < 16)
+    Impl::colScale_kernel<8>(data, w);
+  else if (n < 32)
+    Impl::colScale_kernel<16>(data, w);
+  else if (n < 64)
+    Impl::colScale_kernel<32>(data, w);
+  else
+    Impl::colScale_kernel<64>(data, w);
+}
+#else
 void Genten::FacMatrix::
 colScale(const Genten::Array & v, bool inverse)
 {
@@ -693,8 +1510,9 @@ colScale(const Genten::Array & v, bool inverse)
   const size_type VectorSize =
     n == 1 ? 1 : std::min(16,2 << int(std::log2(n))-1);
   const size_type TeamSize = is_cuda ? 256/VectorSize : thread_pool_size;
+  const size_type RowBlockSize = 128;
 
-  size_type M = (m+TeamSize-1)/TeamSize;
+  size_type M = (m+RowBlockSize-1)/RowBlockSize;
   typedef Kokkos::TeamPolicy <ExecSpace> Policy;
   Policy policy(M,TeamSize,VectorSize);
 
@@ -710,16 +1528,19 @@ colScale(const Genten::Array & v, bool inverse)
     {
       const size_type team_size = team.team_size();
       const size_type team_index = team.team_rank();
-      const size_type i = team.league_rank()*team_size + team_index;
+      const size_type i_block = team.league_rank()*RowBlockSize;
 
-      if (i >= m)
-        return;
-
-      Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,n),
-                           [&] (const size_type& j)
-      {
-        my_data(i,j) /= v[j];
-      });
+      for (size_type ii=team_index; ii<RowBlockSize; ii+=team_size) {
+        const size_type i = i_block+ii;
+        if (i < m) {
+          ttb_real *my_data_i = &(my_data(i,0));
+          Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,n),
+                               [&] (const size_type& j)
+          {
+            my_data_i[j] /= v[j];
+          });
+        }
+      }
     });
   }
   else {
@@ -727,19 +1548,23 @@ colScale(const Genten::Array & v, bool inverse)
     {
       const size_type team_size = team.team_size();
       const size_type team_index = team.team_rank();
-      const size_type i = team.league_rank()*team_size + team_index;
+      const size_type i_block = team.league_rank()*RowBlockSize;
 
-      if (i >= m)
-        return;
-
-      Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,n),
-                           [&] (const size_type& j)
-      {
-        my_data(i,j) *= v[j];
-      });
+      for (size_type ii=team_index; ii<RowBlockSize; ii+=team_size) {
+        const size_type i = i_block+ii;
+        if (i < m) {
+          ttb_real *my_data_i = &(my_data(i,0));
+          Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,n),
+                               [&] (const size_type& j)
+          {
+            my_data_i[j] *= v[j];
+          });
+        }
+      }
     });
   }
 }
+#endif
 
 // Only called by Ben Allan's parallel test code.  It appears he uses the Linux
 // random number generator in a special way.
@@ -1004,7 +1829,7 @@ namespace Genten {
                                 piv.data(), B.data(), ldb, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
-        ss << "Error!  ccusolverDnDgetrs() failed with status "
+        ss << "Error!  cusolverDnDgetrs() failed with status "
            << status;
         std::cerr << ss.str() << std::endl;
         throw ss.str();

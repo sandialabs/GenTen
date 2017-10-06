@@ -300,6 +300,22 @@ void dgemm(char *transaptr, char *transbptr, ptrdiff_t *mptr, ptrdiff_t *nptr, p
   }
 }
 
+void dsyrk(char *uploptr, char *transptr, ptrdiff_t *nptr, ptrdiff_t *kptr,
+           double *alphaptr, double *a, ptrdiff_t *ldaptr,
+           double *betaptr, double *c, ptrdiff_t *ldcptr)
+{
+  if (*transptr == 'N' || *transptr == 'n') {
+    char transb = 'T';
+    dgemm(transptr, &transb, nptr, nptr, kptr, alphaptr, a, ldaptr, a, ldaptr,
+          betaptr, c, ldcptr);
+  }
+  else {
+    char transb = 'N';
+    dgemm(transptr, &transb, nptr, nptr, kptr, alphaptr, a, ldaptr, a, ldaptr,
+          betaptr, c, ldcptr);
+  }
+}
+
 // -------------------------------------------------------------------------
 /* The code that follows below was extracted from Mark Sears' T++ project. */
 // -------------------------------------------------------------------------
@@ -685,6 +701,22 @@ void sgemm(char *transaptr, char *transbptr, ptrdiff_t *mptr, ptrdiff_t *nptr, p
   else
   {
     // Not implemented
+  }
+}
+
+void ssyrk(char *uploptr, char *transptr, ptrdiff_t *nptr, ptrdiff_t *kptr,
+           float *alphaptr, float *a, ptrdiff_t *ldaptr,
+           float *betaptr, float *c, ptrdiff_t *ldcptr)
+{
+  if (*transptr == 'N' || *transptr == 'n') {
+    char transb = 'T';
+    sgemm(transptr, &transb, nptr, nptr, kptr, alphaptr, a, ldaptr, a, ldaptr,
+          betaptr, c, ldcptr);
+  }
+  else {
+    char transb = 'N';
+    sgemm(transptr, &transb, nptr, nptr, kptr, alphaptr, a, ldaptr, a, ldaptr,
+          betaptr, c, ldcptr);
   }
 }
 

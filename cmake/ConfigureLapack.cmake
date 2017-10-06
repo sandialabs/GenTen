@@ -64,7 +64,7 @@
 #
 # Note that FIND_LIBRARY does not test if all references are resolved.
 # Do not use LAPACK_LIBRARIES as this is an internal CMake variable name.
-IF(NOT LAPACK_LIBS)
+IF(ENABLE_LAPACK AND NOT LAPACK_LIBS)
   MESSAGE (STATUS "TTB: Looking for LAPACK/BLAS libraries")
   
   FIND_LIBRARY(LAPACK lapack)
@@ -75,17 +75,17 @@ IF(NOT LAPACK_LIBS)
   ENDIF(LAPACK AND BLAS)
 ELSE (NOT LAPACK_LIBS)
   MESSAGE (STATUS "TTB: Attempting to use user-defined LAPACK/BLAS libraries: ${LAPACK_LIBS}")
-ENDIF(NOT LAPACK_LIBS)
+ENDIF(ENABLE_LAPACK AND NOT LAPACK_LIBS)
 
 # The following did not work on MacOSX, because the BLAS library was missing
 #FIND_LIBRARY (LAPACK_LIBS NAMES lapack
 #              DOC "Location of LAPACK library")
 
 # Set the boolean LAPACK_FOUND.
-IF (NOT LAPACK_LIBS)
+IF (NOT ENABLE_LAPACK OR NOT LAPACK_LIBS)
     SET (LAPACK_FOUND FALSE)
     SET (LAPACK_LIBS "")
-ELSE (NOT LAPACK_LIBS)
+ELSE (NOT ENABLE_LAPACK OR NOT LAPACK_LIBS)
     SET (LAPACK_FOUND TRUE)
 
     # Check if user-specified libraries exist.
@@ -94,7 +94,7 @@ ELSE (NOT LAPACK_LIBS)
             MESSAGE (FATAL_ERROR "TTB: Cannot find file " ${loopVar})
         ENDIF (NOT EXISTS ${loopVar})
     ENDFOREACH (loopVar)
-ENDIF (NOT LAPACK_LIBS)
+ENDIF (NOT ENABLE_LAPACK OR NOT LAPACK_LIBS)
 
 # Report which libraries will be used.
 IF (LAPACK_FOUND)

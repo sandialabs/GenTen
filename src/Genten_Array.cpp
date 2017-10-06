@@ -52,6 +52,7 @@
 #include "Genten_portability.h"
 #include "Genten_RandomMT.h"
 #include "Genten_Util.h"
+#include "Genten_Kokkos.h"
 
 Genten::Array::
 Array(ttb_indx n, bool parallel):
@@ -183,18 +184,33 @@ ttb_real & Genten::Array::at(ttb_indx i) const
 
 ttb_real Genten::Array::norm(Genten::NormType ntype) const
 {
+  typedef Kokkos::DefaultExecutionSpace ExecSpace;
   const ttb_indx sz = data.dimension_0();
+  Kokkos::RangePolicy<ExecSpace> policy(0,sz);
+  auto my_data = data; // can't capture *this by value
   ttb_real nrm;
   switch(ntype)
   {
   case NormOne:
   {
-    nrm = Genten::nrm1(sz, data.data(), 1);
+    //nrm = Genten::nrm1(sz, data.data(), 1);
+    Kokkos::parallel_reduce(policy,
+                            KOKKOS_LAMBDA(const ttb_indx i, ttb_real& t)
+    {
+      ttb_real v = my_data(i);
+      t += (v >= 0 ? v : -v);
+    }, nrm);
     break;
   }
   case NormTwo:
   {
-    nrm = Genten::nrm2(sz, data.data(), 1);
+    //nrm = Genten::nrm2(sz, data.data(), 1);
+    Kokkos::parallel_reduce(policy,
+                            KOKKOS_LAMBDA(const ttb_indx i, ttb_real& t)
+    {
+      t += my_data(i)*my_data(i);
+    }, nrm);
+    nrm = std::sqrt(nrm);
     break;
   }
   case NormInf:

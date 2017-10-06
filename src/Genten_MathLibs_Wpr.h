@@ -107,6 +107,18 @@ namespace Genten
             const double * a, ttb_indx ldaa, const double * b, ttb_indx ldab,
             double beta, double * c, ttb_indx ldac);
 
+  // SYRK - Compute C = alpha * A*A' + beta * C
+  /* C is always n x n.
+     C = A*A' : trans = 'N', A is n x k.
+     C = A'*A : trans = 'T', A is k x n.
+     Only the upper/lower triangular portion is computed as determined up uplo.
+
+     *** NOTE: The default implementation just uses gemm() ***
+     */
+  void syrk(char uplo, char trans, ttb_indx n, ttb_indx k, double alpha,
+            const double * a, ttb_indx ldaa,
+            double beta, double * c, ttb_indx ldac);
+
   // VMUL - Compute A = A .* B (Hadamard or elementwise product)
   void vmul(const ttb_indx n, double * a, const double * b);
 
@@ -195,6 +207,18 @@ namespace Genten
      */
   void gemm(char transa, char transb, ttb_indx m, ttb_indx n, ttb_indx k, float alpha,
             const float * a, ttb_indx ldaa, const float * b, ttb_indx ldab,
+            float beta, float * c, ttb_indx ldac);
+
+  // SYRK - Compute C = alpha * A*A' + beta * C
+  /* C is always n x n.
+     C = A*A' : trans = 'N', A is n x k.
+     C = A'*A : trans = 'T', A is k x n.
+     Only the upper/lower triangular portion is computed as determined up uplo.
+
+     *** NOTE: The default implementation just uses gemm() ***
+     */
+  void syrk(char uplo, char trans, ttb_indx n, ttb_indx k, float alpha,
+            const float * a, ttb_indx ldaa,
             float beta, float * c, ttb_indx ldac);
 
   // VMUL - Compute A = A .* B (Hadamard or elementwise product)

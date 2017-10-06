@@ -176,6 +176,21 @@ void Genten::gemm(char transa, char transb, ttb_indx m, ttb_indx n, ttb_indx k, 
   ::dgemm(&transa, &transb, &m_ml, &n_ml, &k_ml, &alpha, a_ml, &ldaa_ml, b_ml, &ldab_ml, &beta, c, &ldac_ml);
 }
 
+void Genten::syrk(char uplo, char trans, ttb_indx n, ttb_indx k, double alpha,
+                  const double * a, ttb_indx ldaa,
+                  double beta, double * c, ttb_indx ldac)
+{
+  ttb_blas_int n_ml = (ttb_blas_int) n;
+  ttb_blas_int k_ml = (ttb_blas_int) k;
+  ttb_blas_int ldaa_ml = (ttb_blas_int) ldaa;
+  ttb_blas_int ldac_ml = (ttb_blas_int) ldac;
+
+  // Just remove const; don't change type
+  double * a_ml = (double *) a;
+
+  ::dsyrk(&uplo, &trans, &n_ml, &k_ml, &alpha, a_ml, &ldaa_ml, &beta, c, &ldac_ml);
+}
+
 void Genten::gesv(ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb)
 {
   ttb_blas_int n_ml = (ttb_blas_int) n;
@@ -388,6 +403,21 @@ void Genten::gemm(char transa, char transb, ttb_indx m, ttb_indx n, ttb_indx k, 
   float * b_ml = (float *) b;
 
   ::sgemm(&transa, &transb, &m_ml, &n_ml, &k_ml, &alpha, a_ml, &ldaa_ml, b_ml, &ldab_ml, &beta, c, &ldac_ml);
+}
+
+void Genten::syrk(char uplo, char trans, ttb_indx n, ttb_indx k, float alpha,
+                  const float * a, ttb_indx ldaa,
+                  float beta, float * c, ttb_indx ldac)
+{
+  ttb_blas_int n_ml = (ttb_blas_int) n;
+  ttb_blas_int k_ml = (ttb_blas_int) k;
+  ttb_blas_int ldaa_ml = (ttb_blas_int) ldaa;
+  ttb_blas_int ldac_ml = (ttb_blas_int) ldac;
+
+  // Just remove const; don't change type
+  float * a_ml = (float *) a;
+
+  ::ssyrk(&uplo, &trans, &n_ml, &k_ml, &alpha, a_ml, &ldaa_ml, &beta, c, &ldac_ml);
 }
 
 void Genten::gesv(ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb)
