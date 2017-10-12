@@ -164,9 +164,9 @@ void Genten_Test_Array(int infolevel)
 
   // RESET
   MESSAGE("Testing reset");
-  b = Genten::Array(3, 0.5);
+  b = Genten::Array(3, ttb_real(0.5));
   ASSERT(a==b, "Reset worked as expected");
-  e = Genten::Array(0,0.0);
+  e = Genten::Array(0, ttb_real(0.0));
   ASSERT(e.empty(), "Reset to empty worked as expected");
 
   // SIZE
@@ -247,7 +247,7 @@ void Genten_Test_Array(int infolevel)
 
   // DOT
   // b = [2 2 2 2 2]
-  b = Genten::Array(5,2.0);
+  b = Genten::Array(5,ttb_real(2.0));
   ans = 0;
   for (ttb_indx i = 0; i < 5; i ++)
   {
@@ -262,95 +262,95 @@ void Genten_Test_Array(int infolevel)
 
   // TIMES
   Genten::Array answ;
-  a = Genten::Array(5, 2.5);
+  a = Genten::Array(5, ttb_real(2.5));
   a.times(3);
-  answ = Genten::Array(a.size(), 7.5);
+  answ = Genten::Array(a.size(), ttb_real(7.5));
   ASSERT(a.isEqual(answ,MACHINE_EPSILON), "times with scalar argument");
 
   // INVERT
   a.invert(9.375);
-  answ = Genten::Array(a.size(), 1.25);
+  answ = Genten::Array(a.size(), ttb_real(1.25));
   ASSERT(a.isEqual(answ,MACHINE_EPSILON), "invert with scalar argument");
 
   // SHIFT
   a.shift(3);
-  answ = Genten::Array(5, 4.25);
+  answ = Genten::Array(5, ttb_real(4.25));
   ASSERT(a.isEqual(answ,MACHINE_EPSILON), "shift with scalar argument");
 
   // POWER
   a.power(2);
-  answ = Genten::Array(5, 18.0625);
+  answ = Genten::Array(5, ttb_real(18.0625));
   ASSERT(a.isEqual(answ,MACHINE_EPSILON), "power with scalar argument");
 
   // TIMES
-  b = Genten::Array(5, 2.5);
+  b = Genten::Array(5, ttb_real(2.5));
   a.times(3, b);
-  answ = Genten::Array(5, 7.5);
+  answ = Genten::Array(5, ttb_real(7.5));
   ASSERT(a.isEqual(answ,MACHINE_EPSILON), "times with two arguments");
 
   // INVERT
   b = a;
   a.invert(9.375, b);
-  answ = Genten::Array(5, 1.25);
+  answ = Genten::Array(5, ttb_real(1.25));
   ASSERT(a.isEqual(answ,MACHINE_EPSILON), "a = 9.375 ./ b");
 
   // SHIFT
   b = a;
   a.shift(3, b);
-  answ = Genten::Array(5, 4.25);
+  answ = Genten::Array(5, ttb_real(4.25));
   ASSERT(a.isEqual(answ,MACHINE_EPSILON), "shift with two arguments");
 
   // POWER
   b = a;
   a.power(2, b);
-  answ = Genten::Array(5, 18.0625);
+  answ = Genten::Array(5, ttb_real(18.0625));
   ASSERT(a.isEqual(answ,MACHINE_EPSILON), "power with two arguments");
 
   // PLUS
-  a = Genten::Array(5, 2.3);
-  b = Genten::Array(5, 2.5);
+  a = Genten::Array(5, ttb_real(2.3));
+  b = Genten::Array(5, ttb_real(2.5));
   a.plus(b);
-  answ = Genten::Array(5, 4.8);
+  answ = Genten::Array(5, ttb_real(4.8));
   ASSERT(a.isEqual(answ, MACHINE_EPSILON), "plus with one input");
 
   // MINUS
-  a = Genten::Array(5, 2.3);
+  a = Genten::Array(5, ttb_real(2.3));
   a.minus(b);
-  answ = Genten::Array(5, -0.2);
+  answ = Genten::Array(5, ttb_real(-0.2));
   ASSERT(a.isEqual(answ, MACHINE_EPSILON), "minus with one input");
 
   // TIMES
-  a = Genten::Array(5, 2.3);
+  a = Genten::Array(5, ttb_real(2.3));
   a.times(b);
-  answ = Genten::Array(5, 5.75);
+  answ = Genten::Array(5, ttb_real(5.75));
   ASSERT(a.isEqual(answ, MACHINE_EPSILON), "a = a.* b");
 
   // DIVIDE
-  a = Genten::Array(5, 2.3);
+  a = Genten::Array(5, ttb_real(2.3));
   a.divide(b);
-  answ = Genten::Array(5, .92);
+  answ = Genten::Array(5, ttb_real(.92));
   ASSERT(a.isEqual(answ, MACHINE_EPSILON), "a = a ./ b");
 
   // PLUS
-  a = Genten::Array(5, 2.3);
-  b = Genten::Array(5, 2.5);
+  a = Genten::Array(5, ttb_real(2.3));
+  b = Genten::Array(5, ttb_real(2.5));
   c.plus(a,b);
-  answ = Genten::Array(5, 4.8);
+  answ = Genten::Array(5, ttb_real(4.8));
   ASSERT(c.isEqual(answ, MACHINE_EPSILON), "c = a + b");
 
   // MINUS
   c.minus(a,b);
-  answ = Genten::Array(5, -0.2);
+  answ = Genten::Array(5, ttb_real(-0.2));
   ASSERT(c.isEqual(answ, MACHINE_EPSILON), "c = a - b");
 
   // TIMES
   c.times(a,b);
-  answ = Genten::Array(5, 5.75);
+  answ = Genten::Array(5, ttb_real(5.75));
   ASSERT(c.isEqual(answ, MACHINE_EPSILON), "c = a .* b");
 
   // DIVIDE
   c.divide(a,b);
-  answ = Genten::Array(5, .92);
+  answ = Genten::Array(5, ttb_real(.92));
   ASSERT(c.isEqual(answ, MACHINE_EPSILON), "c = a ./ b");
 
   finalize();

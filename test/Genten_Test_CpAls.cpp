@@ -71,14 +71,14 @@ static void  evaluateResult (const int             infolevel,
   {
     ttb_real  diffA = fabs(wght0 - 2.828427);
     ttb_real  diffB = fabs(wght1 - 2.0);
-    ASSERT( (diffA <= 1.0e-4) && (diffB <= 1.e-04),
+    ASSERT( (diffA <= 1.0e-3) && (diffB <= 1.e-3),
             "Result ktensor weights match" );
   }
   else
   {
     ttb_real  diffA = fabs(wght0 - 2.0);
     ttb_real  diffB = fabs(wght1 - 2.8284);
-    ASSERT( (diffA <= 1.0e-4) && (diffB <= 1.0e-4),
+    ASSERT( (diffA <= 1.0e-3) && (diffB <= 1.0e-3),
             "Result ktensor weights match" );
   }
 
