@@ -59,6 +59,9 @@ class Sptensor
 
 public:
 
+  typedef Kokkos::View<ttb_indx**> subs_view_type;
+  typedef Kokkos::View<ttb_real*> vals_view_type;
+
   // Empty construtor.
   /* Creates an empty tensor with an empty size. */
   KOKKOS_INLINE_FUNCTION
@@ -170,6 +173,10 @@ public:
     return values[i];
   }
 
+  // Get whole values array
+  KOKKOS_INLINE_FUNCTION
+  vals_view_type getValues() const { return values.values(); }
+
   // Return reference to n-th subscript of i-th nonzero
   template <typename IType, typename NType>
   KOKKOS_INLINE_FUNCTION
@@ -195,6 +202,10 @@ public:
       sub[n] = subs(i,n);
     }
   }
+
+  // Get whole subscripts array
+  KOKKOS_INLINE_FUNCTION
+  subs_view_type getSubscripts() const { return subs; }
 
   // Return the norm (sqrt of the sum of the squares of all entries).
   ttb_real norm() const
@@ -232,7 +243,6 @@ protected:
 
   // Subscript array of nonzero elements.  This vector is treated as a 2D array
   // of size nnz by nNumDims.
-  typedef Kokkos::View<ttb_indx**> subs_view_type;
   subs_view_type subs;
 
 };

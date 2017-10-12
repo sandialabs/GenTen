@@ -70,6 +70,8 @@ class FacMatrix; // Forward declaration
   class Array
   {
   public:
+    typedef Kokkos::View<ttb_real*> view_type;
+
     // ----- CREATE & DESTROY -----
 
     //! @name Constructor/Destructor
@@ -288,9 +290,11 @@ class FacMatrix; // Forward declaration
       os << std::endl;
     }
 
+    KOKKOS_INLINE_FUNCTION
+    view_type values() const { return data; }
+
   private:
 
-    typedef Kokkos::View<ttb_real*> view_type;
     typedef Kokkos::View<ttb_real*,Kokkos::MemoryUnmanaged> unmanaged_view_type;
     typedef Kokkos::View<const ttb_real*,Kokkos::MemoryUnmanaged> unmanaged_const_view_type;
 
