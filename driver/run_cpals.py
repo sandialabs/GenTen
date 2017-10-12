@@ -181,7 +181,7 @@ options.args = args + ' --tensor perm'
 options.output = output + '_perm'
 its_p,cpals_p,mttkrp_p,fillComplete_p,tot_p = run_cpals_tensors(options, tensors)
 
-print '\nRow:'
-options.args = args + ' --tensor row'
-options.output = output + '_row'
-its_r,cpals_r,mttkrp_r,fillComplete_r,tot_r = run_cpals_tensors(options, tensors)
+#print '\nRow:'
+#options.args = args + ' --tensor row'
+#options.output = output + '_row'
+#its_r,cpals_r,mttkrp_r,fillComplete_r,tot_r = run_cpals_tensors(options, tensors)
