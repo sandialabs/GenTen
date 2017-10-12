@@ -588,7 +588,7 @@ void mttkrp_kernel(const Genten::Sptensor& X,
 #else
   const bool is_cuda = false;
 #endif
-  const unsigned VectorSize = is_cuda ? (FacBlockSize <= 8 ? FacBlockSize : 8) : 1;
+  const unsigned VectorSize = is_cuda ? (FacBlockSize <= 16 ? FacBlockSize : 16) : 1;
   const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
 
   const unsigned nc = u.ncomponents();
@@ -626,13 +626,6 @@ void Genten::mttkrp(const Genten::Sptensor& X,
                     const ttb_indx n,
                     Genten::FacMatrix& v)
 {
-  typedef Kokkos::DefaultExecutionSpace ExecSpace;
-#if defined(KOKKOS_HAVE_CUDA)
-  const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
-#else
-  const bool is_cuda = false;
-#endif
-
   const ttb_indx nc = u.ncomponents();     // Number of components
   const ttb_indx nd = u.ndims();           // Number of dimensions
 
@@ -656,7 +649,7 @@ void Genten::mttkrp(const Genten::Sptensor& X,
     Impl::mttkrp_kernel<4>(X,u,n,v);
   else if (nc <= 8)
     Impl::mttkrp_kernel<8>(X,u,n,v);
-  else if (nc <= 16 || is_cuda)
+  else if (nc <= 16)
     Impl::mttkrp_kernel<16>(X,u,n,v);
   else
     Impl::mttkrp_kernel<32>(X,u,n,v);
@@ -1076,8 +1069,8 @@ void mttkrp_perm_general_kernel(const Genten::Sptensor_perm& X,
 #else
   const bool is_cuda = false;
 #endif
-  const unsigned VectorSize = is_cuda ? (FacBlockSize <= 8 ? FacBlockSize : 8) : 1;
-  const unsigned TeamSize = is_cuda ? 256/VectorSize : 1;
+  const unsigned VectorSize = is_cuda ? (FacBlockSize <= 32 ? FacBlockSize : 32) : 1;
+  const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
   const unsigned RowBlockSize = 128;
 
   typedef MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, FacBlockSize, TeamSize, VectorSize> Kernel;
@@ -1108,6 +1101,13 @@ void Genten::mttkrp_perm_general(const Genten::Sptensor_perm& X,
                                  const ttb_indx n,
                                  Genten::FacMatrix& v)
 {
+  typedef Kokkos::DefaultExecutionSpace ExecSpace;
+#if defined(KOKKOS_HAVE_CUDA)
+  const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
+#else
+  const bool is_cuda = false;
+#endif
+
   const ttb_indx nc = u.ncomponents();     // Number of components
   const ttb_indx nd = u.ndims();           // Number of dimensions
 
@@ -1132,8 +1132,12 @@ void Genten::mttkrp_perm_general(const Genten::Sptensor_perm& X,
     Impl::mttkrp_perm_general_kernel<8>(X,u,n,v);
   else if (nc <= 16)
     Impl::mttkrp_perm_general_kernel<16>(X,u,n,v);
-  else
+  else if (nc < 64 || !is_cuda)
     Impl::mttkrp_perm_general_kernel<32>(X,u,n,v);
+  else if (nc < 128)
+    Impl::mttkrp_perm_general_kernel<64>(X,u,n,v);
+  else
+    Impl::mttkrp_perm_general_kernel<128>(X,u,n,v);
 
   return;
 }
