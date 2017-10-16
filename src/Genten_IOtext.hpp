@@ -48,9 +48,9 @@
 #include <string>
 #include <vector>
 
-#include "Genten_FacMatrix.h"
-#include "Genten_Ktensor.h"
-#include "Genten_Sptensor.h"
+#include "Genten_FacMatrix.hpp"
+#include "Genten_Ktensor.hpp"
+#include "Genten_Sptensor.hpp"
 
 
 //! Namespace for the Genten C++ project.

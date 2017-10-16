@@ -50,13 +50,13 @@
 
 using namespace std;
 
-#include "Genten_FacMatrix.h"
-#include "Genten_IOtext.h"
-#include "Genten_Ktensor.h"
-#include "Genten_Sptensor.h"
-#include "Genten_Sptensor_perm.h"
-#include "Genten_Sptensor_row.h"
-#include "Genten_Util.h"
+#include "Genten_FacMatrix.hpp"
+#include "Genten_IOtext.hpp"
+#include "Genten_Ktensor.hpp"
+#include "Genten_Sptensor.hpp"
+#include "Genten_Sptensor_perm.hpp"
+#include "Genten_Sptensor_row.hpp"
+#include "Genten_Util.hpp"
 
 #include "CMakeInclude.h"
 #ifdef HAVE_BOOST

@@ -45,10 +45,10 @@
 
 #pragma once
 
-#include "Genten_Array.h"
-#include "Genten_IndxArray.h"
-#include "Genten_RandomMT.h"
-#include "Genten_Util.h"
+#include "Genten_Array.hpp"
+#include "Genten_IndxArray.hpp"
+#include "Genten_RandomMT.hpp"
+#include "Genten_Util.hpp"
 #include <assert.h>
 
 namespace Genten

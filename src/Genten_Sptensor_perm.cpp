@@ -38,7 +38,7 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_Sptensor_perm.h"
+#include "Genten_Sptensor_perm.hpp"
 #include "Kokkos_Sort.hpp"
 
 #ifdef KOKKOS_HAVE_OPENMP

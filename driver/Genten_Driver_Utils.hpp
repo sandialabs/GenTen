@@ -45,8 +45,8 @@
 
 using namespace std;
 
-#include "Genten_Util.h"
-#include "Genten_IndxArray.h"
+#include "Genten_Util.hpp"
+#include "Genten_IndxArray.hpp"
 
 
 string IntToStr( int i ) { std::ostringstream r; r << i; return r.str(); }

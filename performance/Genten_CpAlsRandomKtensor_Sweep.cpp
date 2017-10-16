@@ -47,16 +47,16 @@
 #include <iostream>
 #include <stdio.h>
 
-#include "Genten_CpAls.h"
-#include "Genten_FacTestSetGenerator.h"
-#include "Genten_IndxArray.h"
-#include "Genten_IOtext.h"
-#include "Genten_Ktensor.h"
-#include "Genten_Sptensor.h"
-#include "Genten_SystemTimer.h"
-#include "Genten_Driver_Utils.h"
+#include "Genten_CpAls.hpp"
+#include "Genten_FacTestSetGenerator.hpp"
+#include "Genten_IndxArray.hpp"
+#include "Genten_IOtext.hpp"
+#include "Genten_Ktensor.hpp"
+#include "Genten_Sptensor.hpp"
+#include "Genten_SystemTimer.hpp"
+#include "Genten_Driver_Utils.hpp"
 
-#include "Genten_MixedFormatOps.h"
+#include "Genten_MixedFormatOps.hpp"
 
 using namespace std;
 

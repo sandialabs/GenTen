@@ -39,10 +39,10 @@
 //@HEADER
 
 
-#include "Genten_IndxArray.h"
-#include "Genten_IOtext.h"
-#include "Genten_Ktensor.h"
-#include "Genten_Test_Utils.h"
+#include "Genten_IndxArray.hpp"
+#include "Genten_IOtext.hpp"
+#include "Genten_Ktensor.hpp"
+#include "Genten_Test_Utils.hpp"
 
 using namespace Genten::Test;
 

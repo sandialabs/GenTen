@@ -39,10 +39,10 @@
 //@HEADER
 
 
-#include "Genten_FacMatrix.h"
-#include "Genten_IOtext.h"
-#include "Genten_Test_Utils.h"
-#include "Genten_Util.h"
+#include "Genten_FacMatrix.hpp"
+#include "Genten_IOtext.hpp"
+#include "Genten_Test_Utils.hpp"
+#include "Genten_Util.hpp"
 
 using namespace Genten::Test;
 

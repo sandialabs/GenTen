@@ -41,9 +41,9 @@
 
 #include <stdio.h>
 
-#include "Genten_Array.h"
-#include "Genten_DiscreteCDF.h"
-#include "Genten_FacMatrix.h"
+#include "Genten_Array.hpp"
+#include "Genten_DiscreteCDF.hpp"
+#include "Genten_FacMatrix.hpp"
 
 using namespace std;
 

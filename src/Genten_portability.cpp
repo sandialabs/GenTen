@@ -39,7 +39,7 @@
 //@HEADER
 
 
-#include "Genten_portability.h"
+#include "Genten_portability.hpp"
 
 #if defined(_WIN32)
   #include "float.h"

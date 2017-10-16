@@ -173,7 +173,9 @@ INCLUDE_DIRECTORIES (
   )
 FILE (GLOB genten_headers
   ${Genten_SOURCE_DIR}/src/*.h
+  ${Genten_SOURCE_DIR}/src/*.hpp
   ${Genten_SOURCE_DIR}/src/mathlib/*.h
+  ${Genten_SOURCE_DIR}/src/mathlib/*.hpp
   )
 INSTALL (
   FILES ${genten_headers}

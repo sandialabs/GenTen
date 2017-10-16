@@ -39,7 +39,7 @@
 //@HEADER
 
 
-#include "Genten_FacMatArray.h"
+#include "Genten_FacMatArray.hpp"
 
 ttb_indx Genten::FacMatArray::
 reals() const

@@ -49,16 +49,16 @@
 #include <stdio.h>
 #include <sstream>
 
-#include "Genten_Array.h"
-#include "Genten_CpAls.h"
-#include "Genten_FacMatrix.h"
-#include "Genten_Ktensor.h"
-#include "Genten_MixedFormatOps.h"
-#include "Genten_Sptensor.h"
-#include "Genten_Sptensor_perm.h"
-#include "Genten_Sptensor_row.h"
-#include "Genten_SystemTimer.h"
-#include "Genten_Util.h"
+#include "Genten_Array.hpp"
+#include "Genten_CpAls.hpp"
+#include "Genten_FacMatrix.hpp"
+#include "Genten_Ktensor.hpp"
+#include "Genten_MixedFormatOps.hpp"
+#include "Genten_Sptensor.hpp"
+#include "Genten_Sptensor_perm.hpp"
+#include "Genten_Sptensor_row.hpp"
+#include "Genten_SystemTimer.hpp"
+#include "Genten_Util.hpp"
 
 using namespace std;
 

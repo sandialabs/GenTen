@@ -41,7 +41,7 @@
 
 #include <iostream>
 #include <sstream>
-#include "Genten_Test_Utils.h"
+#include "Genten_Test_Utils.hpp"
 
 using namespace std;
 

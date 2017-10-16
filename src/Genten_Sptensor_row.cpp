@@ -38,7 +38,7 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_Sptensor_row.h"
+#include "Genten_Sptensor_row.hpp"
 
 // Implementation of createRow().  Has to be done as a non-member function
 // because lambda capture of *this doesn't work on Cuda.

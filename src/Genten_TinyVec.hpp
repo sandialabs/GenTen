@@ -41,7 +41,7 @@
 
 #pragma once
 
-#include "Genten_Kokkos.h"
+#include "Genten_Kokkos.hpp"
 #include <cmath>
 
 // extern "C" {

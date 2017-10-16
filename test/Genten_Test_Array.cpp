@@ -41,9 +41,9 @@
 
 #include <iostream>
 #include <cmath>
-#include "Genten_Array.h"
-#include "Genten_Test_Utils.h"
-#include "Genten_Util.h"
+#include "Genten_Array.hpp"
+#include "Genten_Test_Utils.hpp"
+#include "Genten_Util.hpp"
 
 using namespace Genten::Test;
 

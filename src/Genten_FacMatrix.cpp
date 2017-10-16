@@ -43,12 +43,12 @@
   @brief Implementation of Genten::FacMatrix.
 */
 
-#include "Genten_IndxArray.h"
-#include "Genten_FacMatrix.h"
-#include "Genten_FacMatArray.h"
-#include "Genten_MathLibs_Wpr.h"
-#include "Genten_portability.h"
-#include "Genten_TinyVec.h"
+#include "Genten_IndxArray.hpp"
+#include "Genten_FacMatrix.hpp"
+#include "Genten_FacMatArray.hpp"
+#include "Genten_MathLibs_Wpr.hpp"
+#include "Genten_portability.hpp"
+#include "Genten_TinyVec.hpp"
 #include "CMakeInclude.h"
 #include <algorithm>     // for std::max with MSVC compiler
 #include <assert.h>

@@ -38,7 +38,7 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_Sptensor.h"
+#include "Genten_Sptensor.hpp"
 
 Genten::Sptensor::
 Sptensor(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls,

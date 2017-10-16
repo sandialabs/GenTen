@@ -47,8 +47,8 @@
 #ifndef GENTEN_DISCRETECDF_H
 #define GENTEN_DISCRETECDF_H
 
-#include "Genten_Array.h"
-#include "Genten_FacMatrix.h"
+#include "Genten_Array.hpp"
+#include "Genten_FacMatrix.hpp"
 
 namespace Genten
 {

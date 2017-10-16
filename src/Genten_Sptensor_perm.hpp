@@ -42,7 +42,7 @@
 
 #include <assert.h>
 
-#include "Genten_Sptensor.h"
+#include "Genten_Sptensor.hpp"
 
 namespace Genten
 {

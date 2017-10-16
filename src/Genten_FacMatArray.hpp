@@ -44,9 +44,9 @@
  */
 
 #pragma once
-#include "Genten_Util.h"
-#include "Genten_IndxArray.h"
-#include "Genten_FacMatrix.h"
+#include "Genten_Util.hpp"
+#include "Genten_IndxArray.hpp"
+#include "Genten_FacMatrix.hpp"
 
 namespace Genten
 {

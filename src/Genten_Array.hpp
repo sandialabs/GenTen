@@ -47,8 +47,8 @@
 #include <vector>
 #include <assert.h>
 
-#include "Genten_Util.h"
-#include "Genten_RandomMT.h"
+#include "Genten_Util.hpp"
+#include "Genten_RandomMT.hpp"
 
 namespace Genten {
 

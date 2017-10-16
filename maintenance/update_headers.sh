@@ -8,7 +8,7 @@
 SCRIPT=${HOME}/Trilinos/Trilinos/commonTools/refactoring/update-copyright-header.py
 HEADER_DIR=$PWD/maintenance
 
-find . -name \*.h -not -path ./kokkos/\* -exec $SCRIPT --copyright-header=${HEADER_DIR}/copyright_header_cpp.txt --file={} \;
+find . -name \*.hpp -not -path ./kokkos/\* -exec $SCRIPT --copyright-header=${HEADER_DIR}/copyright_header_cpp.txt --file={} \;
 find . -name \*.cpp -not -path ./kokkos/\* -exec $SCRIPT --copyright-header=${HEADER_DIR}/copyright_header_cpp.txt --file={} \;
 find . -name \*.c -not -path ./kokkos/\* -exec $SCRIPT --copyright-header=${HEADER_DIR}/copyright_header_cpp.txt --file={} \;
 find . -name CMakeLists.txt -not -path ./kokkos/\* -exec $SCRIPT --copyright-header=${HEADER_DIR}/copyright_header_shell.txt --file={} \;

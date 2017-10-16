@@ -43,12 +43,12 @@
   @brief Unit tests for methods in Genten_IOtext.
 */
 
-#include "Genten_IndxArray.h"
-#include "Genten_IOtext.h"
-#include "Genten_Ktensor.h"
-#include "Genten_Sptensor.h"
-#include "Genten_Test_Utils.h"
-#include "Genten_Util.h"
+#include "Genten_IndxArray.hpp"
+#include "Genten_IOtext.hpp"
+#include "Genten_Ktensor.hpp"
+#include "Genten_Sptensor.hpp"
+#include "Genten_Test_Utils.hpp"
+#include "Genten_Util.hpp"
 
 using namespace std;
 using namespace Genten::Test;

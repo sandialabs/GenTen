@@ -39,14 +39,14 @@
 //@HEADER
 
 
-#include "Genten_Array.h"
-#include "Genten_FacMatrix.h"
-#include "Genten_IOtext.h"             // In case debug lines are uncommented
-#include "Genten_Ktensor.h"
-#include "Genten_MixedFormatOps.h"
-#include "Genten_Sptensor.h"
-#include "Genten_Test_Utils.h"
-#include "Genten_Util.h"
+#include "Genten_Array.hpp"
+#include "Genten_FacMatrix.hpp"
+#include "Genten_IOtext.hpp"             // In case debug lines are uncommented
+#include "Genten_Ktensor.hpp"
+#include "Genten_MixedFormatOps.hpp"
+#include "Genten_Sptensor.hpp"
+#include "Genten_Test_Utils.hpp"
+#include "Genten_Util.hpp"
 
 using namespace Genten::Test;
 

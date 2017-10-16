@@ -48,12 +48,12 @@
 
 #include <assert.h>
 
-#include "Genten_Util.h"
-#include "Genten_FacMatrix.h"
-#include "Genten_Ktensor.h"
-#include "Genten_MixedFormatOps.h"
-#include "Genten_Sptensor.h"
-#include "Genten_TinyVec.h"
+#include "Genten_Util.hpp"
+#include "Genten_FacMatrix.hpp"
+#include "Genten_Ktensor.hpp"
+#include "Genten_MixedFormatOps.hpp"
+#include "Genten_Sptensor.hpp"
+#include "Genten_TinyVec.hpp"
 
 #define USE_NEW_MTTKRP 1
 #define USE_NEW_MTTKRP_PERM 1

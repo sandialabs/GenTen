@@ -42,9 +42,9 @@
 
 #include <assert.h>
 
-#include "Genten_Array.h"
-#include "Genten_IndxArray.h"
-#include "Genten_Ktensor.h"
+#include "Genten_Array.hpp"
+#include "Genten_IndxArray.hpp"
+#include "Genten_Ktensor.hpp"
 
 namespace Genten
 {

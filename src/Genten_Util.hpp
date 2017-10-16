@@ -49,7 +49,7 @@
 #include <cstdlib>
 #include <cstddef>
 
-#include "Genten_Kokkos.h"
+#include "Genten_Kokkos.hpp"
 
 // What we align memory to (in bytes)
 #define GENTEN_MEMORY_ALIGNMENT 64

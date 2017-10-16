@@ -38,11 +38,11 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_IOtext.h"
-#include "Genten_CpAls.h"
-#include "Genten_Driver_Utils.h"
-#include "Genten_SystemTimer.h"
-#include "Genten_MixedFormatOps.h"
+#include "Genten_IOtext.hpp"
+#include "Genten_CpAls.hpp"
+#include "Genten_Driver_Utils.hpp"
+#include "Genten_SystemTimer.hpp"
+#include "Genten_MixedFormatOps.hpp"
 
 enum SPTENSOR_TYPE {
   SPTENSOR,

@@ -42,7 +42,7 @@
 #ifndef GENTEN_portability_h
 #define GENTEN_portability_h
 
-#include "Genten_Util.h"
+#include "Genten_Util.hpp"
 
 #ifdef __INTEL_COMPILER
 // for intel RESTRICT requires -restrict on CXXFLAGS, CFLAGS

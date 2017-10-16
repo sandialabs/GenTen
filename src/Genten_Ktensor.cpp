@@ -43,9 +43,9 @@
 #include <algorithm>
 #include <iostream>
 
-#include "Genten_Ktensor.h"
-#include "Genten_RandomMT.h"
-#include "Genten_IndxArray.h"
+#include "Genten_Ktensor.hpp"
+#include "Genten_RandomMT.hpp"
+#include "Genten_IndxArray.hpp"
 
 Genten::Ktensor::
 Ktensor(ttb_indx nc, ttb_indx nd):

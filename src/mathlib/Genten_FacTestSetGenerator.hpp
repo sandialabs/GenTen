@@ -48,10 +48,10 @@
 #ifndef GENTEN_FACTESTSETGENERATOR_H
 #define GENTEN_FACTESTSETGENERATOR_H
 
-#include "Genten_IndxArray.h"
-#include "Genten_Ktensor.h"
-#include "Genten_RandomMT.h"
-#include "Genten_Sptensor.h"
+#include "Genten_IndxArray.hpp"
+#include "Genten_Ktensor.hpp"
+#include "Genten_RandomMT.hpp"
+#include "Genten_Sptensor.hpp"
 
 namespace Genten
 {

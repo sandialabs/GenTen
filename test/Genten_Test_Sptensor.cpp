@@ -42,8 +42,8 @@
 #include <iostream>
 #include <cmath>
 #include <time.h>
-#include "Genten_Sptensor.h"
-#include "Genten_Test_Utils.h"
+#include "Genten_Sptensor.hpp"
+#include "Genten_Test_Utils.hpp"
 
 using namespace Genten::Test;
 

@@ -42,7 +42,7 @@
 #pragma once
 
 #include "CMakeInclude.h"
-#include "Genten_Util.h"
+#include "Genten_Util.hpp"
 
 typedef ptrdiff_t ttb_blas_int;
 typedef ptrdiff_t ttb_vml_int;

@@ -47,10 +47,10 @@
 #include <iostream>
 #include <stdio.h>
 
-#include "Genten_CpAls.h"
-#include "Genten_IOtext.h"
-#include "Genten_Ktensor.h"
-#include "Genten_Sptensor.h"
+#include "Genten_CpAls.hpp"
+#include "Genten_IOtext.hpp"
+#include "Genten_Ktensor.hpp"
+#include "Genten_Sptensor.hpp"
 
 using namespace std;
 

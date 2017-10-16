@@ -39,8 +39,8 @@
 //@HEADER
 
 
-#include "Genten_MathLibs.h"
-#include "Genten_MathLibs_Wpr.h"
+#include "Genten_MathLibs.hpp"
+#include "Genten_MathLibs_Wpr.hpp"
 
 //
 // Double precision

@@ -41,7 +41,7 @@
 
 #include<string>
 #include<vector>
-#include "Genten_Util.h"
+#include "Genten_Util.hpp"
 
 
 namespace Genten

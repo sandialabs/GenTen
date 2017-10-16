@@ -55,7 +55,7 @@
 #include <iostream>
 #include <iomanip>
 #include <sstream>
-#include "Genten_SystemTimer.h"
+#include "Genten_SystemTimer.hpp"
 
 
 //---- THIS IS WHERE HAVE_REALTIME_CLOCK WILL BE DEFINED (OR NOT).

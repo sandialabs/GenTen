@@ -38,7 +38,7 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_IndxArray.h"
+#include "Genten_IndxArray.hpp"
 #include <cstring>
 #include <cstdlib>
 

@@ -41,7 +41,7 @@
 
 #include <iostream>
 
-#include "Genten_Util.h"
+#include "Genten_Util.hpp"
 
 using namespace std;
 

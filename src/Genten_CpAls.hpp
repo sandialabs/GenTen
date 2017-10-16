@@ -45,8 +45,8 @@
 */
 
 #pragma once
-#include "Genten_Sptensor.h"
-#include "Genten_Ktensor.h"
+#include "Genten_Sptensor.hpp"
+#include "Genten_Ktensor.hpp"
 
 namespace Genten {
 

@@ -47,12 +47,12 @@
 #include <cstring>
 #include <limits>
 
-#include "Genten_Array.h"
-#include "Genten_MathLibs_Wpr.h"
-#include "Genten_portability.h"
-#include "Genten_RandomMT.h"
-#include "Genten_Util.h"
-#include "Genten_Kokkos.h"
+#include "Genten_Array.hpp"
+#include "Genten_MathLibs_Wpr.hpp"
+#include "Genten_portability.hpp"
+#include "Genten_RandomMT.hpp"
+#include "Genten_Util.hpp"
+#include "Genten_Kokkos.hpp"
 
 Genten::Array::
 Array(ttb_indx n, bool parallel):

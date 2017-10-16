@@ -43,8 +43,8 @@
 #include <assert.h>
 #include <initializer_list>
 
-#include "Genten_Util.h"
-#include "Genten_IndxArray.h"
+#include "Genten_Util.hpp"
+#include "Genten_IndxArray.hpp"
 
 namespace Genten {
 
