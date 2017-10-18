@@ -124,16 +124,16 @@ namespace Genten {
    *                        or tensor arguments are incompatible.
    */
 
-  template<class T>
-  void cpals_core (const T             & x,
-                   Genten::Ktensor  & u,
-                   const ttb_real        tol,
-                   const ttb_indx        maxIters,
-                   const ttb_real        maxSecs,
-                   const ttb_indx        printIter,
-                   ttb_indx      & numIters,
-                   ttb_real      & resNorm,
-                   const ttb_indx        perfIter,
-                   CpAlsPerfInfo   perfInfo[]);
+  template<typename TensorT, typename ExecSpace>
+  void cpals_core (const TensorT& x,
+                   KtensorT<ExecSpace>& u,
+                   const ttb_real tol,
+                   const ttb_indx maxIters,
+                   const ttb_real maxSecs,
+                   const ttb_indx printIter,
+                   ttb_indx& numIters,
+                   ttb_real& resNorm,
+                   const ttb_indx perfIter,
+                   CpAlsPerfInfo perfInfo[]);
 
 }

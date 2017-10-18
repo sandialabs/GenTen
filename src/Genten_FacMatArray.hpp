@@ -51,35 +51,48 @@
 namespace Genten
 {
 
-class FacMatArray
+template <typename ExecSpace> class FacMatArrayT;
+typedef FacMatArrayT<DefaultHostExecutionSpace> FacMatArray;
+
+template <typename ExecSpace>
+class FacMatArrayT
 {
 public:
+
+  typedef ExecSpace exec_space;
+  typedef Kokkos::View<FacMatrixT<ExecSpace>*,ExecSpace> view_type;
+  typedef typename view_type::host_mirror_space host_mirror_space;
+  typedef FacMatArrayT<host_mirror_space> HostMirror;
 
   // ----- CREATER & DESTROY -----
 
   // Empty constructor
   KOKKOS_INLINE_FUNCTION
-  FacMatArray() = default;
+  FacMatArrayT() = default;
 
   // Construct an array to hold n factor matrices.
-  FacMatArray(ttb_indx n) : data("Genten::FacMatArray::data",n) {}
+  FacMatArrayT(ttb_indx n) : data("Genten::FacMatArray::data",n) {}
 
   // Construct an array to hold n factor matrices.
-  FacMatArray(ttb_indx n, const Genten::IndxArray & nrow,
+  FacMatArrayT(ttb_indx n, const IndxArrayT<ExecSpace> & nrow,
               ttb_indx ncol) :
     data("Genten::FacMatArray::data",n)
   {
     for (ttb_indx i=0; i<n; ++i)
-      data[i] = Genten::FacMatrix(nrow[i],ncol);
+      data[i] = FacMatrixT<ExecSpace>(nrow[i],ncol);
   }
+
+  //! @brief Create array from supplied view
+  KOKKOS_INLINE_FUNCTION
+  FacMatArrayT(const view_type& v) : data(v) {}
 
   // Copy constructor
   KOKKOS_INLINE_FUNCTION
-  FacMatArray(const FacMatArray & src) = default;
+  FacMatArrayT(const FacMatArrayT & src) = default;
 
   // Destructor.
   KOKKOS_INLINE_FUNCTION
-  ~FacMatArray() = default;
+  ~FacMatArrayT() = default;
 
   // ----- RESIZE & RESET -----
 
@@ -93,7 +106,7 @@ public:
 
   // Make a copy of an existing array.
   KOKKOS_INLINE_FUNCTION
-  Genten::FacMatArray & operator=(const Genten::FacMatArray & src) = default;
+  FacMatArrayT & operator=(const FacMatArrayT & src) = default;
 
   // ----- PROPERTIES -----
 
@@ -111,16 +124,96 @@ public:
 
   // Return reference to n-th factor matrix
   KOKKOS_INLINE_FUNCTION
-  Genten::FacMatrix & operator[](ttb_indx n) const
+  FacMatrixT<ExecSpace> & operator[](ttb_indx n) const
   {
     return data[n];
   }
 
+  KOKKOS_INLINE_FUNCTION
+  view_type values() const { return data; }
+
 private:
 
   // Array of factor matrices stored as a 3-D array
-  typedef Kokkos::View<Genten::FacMatrix*> view_type;
   view_type data;
 };
+
+// Overload of create_mirror_view when memory_space and host memory_space are
+// the same
+template <typename ExecSpace>
+typename FacMatArrayT<ExecSpace>::HostMirror
+create_mirror_view(
+  const FacMatArrayT<ExecSpace>& a,
+  typename std::enable_if<
+    std::is_same< typename FacMatArrayT<ExecSpace>::view_type::memory_space,
+                  typename FacMatArrayT<ExecSpace>::HostMirror::view_type::memory_space >::value
+    >::type * = 0)
+{
+  return a;
+}
+
+// Overload of create_mirror_view when memory_space and host memory_space are
+// different
+template <typename ExecSpace>
+typename FacMatArrayT<ExecSpace>::HostMirror
+create_mirror_view(
+  const FacMatArrayT<ExecSpace>& a,
+  typename std::enable_if<
+    ! std::is_same< typename FacMatArrayT<ExecSpace>::view_type::memory_space,
+                  typename FacMatArrayT<ExecSpace>::HostMirror::view_type::memory_space >::value
+    >::type * = 0)
+{
+  const ttb_indx n = a.size();
+  typename FacMatArrayT<ExecSpace>::HostMirror h(n);
+
+  // First copy array of pointers to the host
+  auto ha = create_mirror_view( a.values() );
+  deep_copy( ha, a.values() );
+
+  // Now create mirrors for each factor matrix
+  for (ttb_indx i=0; i<n; ++i) {
+    h[i] = create_mirror_view( ha[i] );
+  }
+
+  return h;
+}
+
+template <typename E1, typename E2>
+void deep_copy(const FacMatArrayT<E1>& dst, const FacMatArrayT<E2>& src)
+{
+  typedef FacMatArrayT<E1> dst_type;
+  typedef FacMatArrayT<E2> src_type;
+
+  assert( dst.size() == src.size() );
+  const ttb_indx n = dst.size();
+
+  // Same space
+  if (std::is_same<typename dst_type::exec_space,
+      typename src_type::exec_space>::value)
+    deep_copy( dst.values(), src.values() );
+
+  // dst is host, src is not
+  else if (std::is_same<typename dst_type::view_type::memory_space,
+           typename dst_type::HostMirror::view_type::memory_space>::value) {
+    auto hsrc = create_mirror_view( src.values() );
+    deep_copy( hsrc, src.values() );
+    for (ttb_indx i=0; i<n; ++i)
+      deep_copy( dst[i], hsrc[i] );
+  }
+
+  // src is host, dst is not
+  else if (std::is_same<typename dst_type::view_type::memory_space,
+           typename dst_type::HostMirror::view_type::memory_space>::value) {
+    auto hdst = create_mirror_view( dst.values() );
+    deep_copy( hdst, dst.values() );
+    for (ttb_indx i=0; i<n; ++i)
+      deep_copy( hdst[i], src[i] );
+  }
+
+  // not implemented
+  else {
+    Genten::error("deep_copy not implemented unless src or dst is host.");
+  }
+}
 
 }

@@ -52,26 +52,36 @@ namespace Genten {
    * This is a refactored version to make better use of Kokkos, in particular
    * it uses view semantics instead of value semantics. */
 
-class IndxArray
+template <typename ExecSpace> class IndxArrayT;
+typedef IndxArrayT<DefaultHostExecutionSpace> IndxArray;
+
+template <typename ExecSpace>
+class IndxArrayT
 {
 public:
+
+  typedef ExecSpace exec_space;
+  typedef Kokkos::View<ttb_indx*,ExecSpace> view_type;
+  typedef typename view_type::host_mirror_space host_mirror_space;
+  typedef IndxArrayT<host_mirror_space> HostMirror;
+
   // ----- CREATE & DESTROY -----
 
   // Empty Constructor.
   /* Creates an empty size array of length 0. */
   KOKKOS_INLINE_FUNCTION
-  IndxArray() = default;
+  IndxArrayT() = default;
 
   // Constructor of length n
   /* Not necessarily initializes to zero. */
-  IndxArray(ttb_indx n);
+  IndxArrayT(ttb_indx n);
 
   // Constructor of length n and initialize all entries to given value
-  IndxArray(ttb_indx n, ttb_indx val);
+  IndxArrayT(ttb_indx n, ttb_indx val);
 
   // Constructor from initializer list
   template <typename T>
-  IndxArray(const std::initializer_list<T>& v) :
+  IndxArrayT(const std::initializer_list<T>& v) :
     data("Genten::IndxArray::data", v.size())
   {
     ttb_indx i = 0;
@@ -84,44 +94,48 @@ public:
   // Copy Constructor.
   /* Creates a size array of length n, making a (deep) copy of the elements
      of v. */
-  IndxArray(ttb_indx n, ttb_indx * v);
+  IndxArrayT(ttb_indx n, ttb_indx * v);
 
   // Copy Constructor (converts from double).
   /* Creates a size array of length n, copying and converting the entries of v.
      This is needed for MATLAB MEX compatibility because it passes some integer
      arrays as doubles. */
-  IndxArray(ttb_indx n, const ttb_real * v);
+  IndxArrayT(ttb_indx n, const ttb_real * v);
+
+  //! @brief Create array from supplied view
+  KOKKOS_INLINE_FUNCTION
+  IndxArrayT(const view_type& v) : data(v) {}
 
   // Copy Constructor.
   /* Does a (deep) copy of the data in src. The reserved size (rsz)
      is set to be equal to the length and may not be the same as for src. */
   KOKKOS_INLINE_FUNCTION
-  IndxArray(const IndxArray & src) = default;
+  IndxArrayT(const IndxArrayT & src) = default;
 
   // Leave-one-out Copy Constructor.
   /* Does a (deep) copy of the data in src except for the n-th element.
      The reserved size (rsz) is set to be equal to the length */
-  IndxArray(const IndxArray & src, ttb_indx n);
+  IndxArrayT(const IndxArrayT & src, ttb_indx n);
 
   // Destructor.
   KOKKOS_INLINE_FUNCTION
-  ~IndxArray() = default;
+  ~IndxArrayT() = default;
 
   // ----- MODIFY & RESET -----
 
   // Copies data from src, automatically resizing if necessary.
   KOKKOS_INLINE_FUNCTION
-  IndxArray& operator=(const IndxArray & src) = default;
+  IndxArrayT& operator=(const IndxArrayT & src) = default;
 
   template <typename IndxType>
   KOKKOS_INLINE_FUNCTION
-  IndxArray& operator=(const IndxType& indx)
+  IndxArrayT& operator=(const IndxType& indx)
   { data = indx;
     return *this;
   }
 
   // Deep copy
-  void deep_copy(const IndxArray & src) {
+  void deep_copy(const IndxArrayT & src) {
     assert(data.dimension_0() == src.data.dimension_0());
     Kokkos::deep_copy(data, src.data);
   }
@@ -161,8 +175,8 @@ public:
   // ----- FUNCTIONS -----
 
   // Comparison operators (according to lexicographic order)
-  ttb_bool operator==(const IndxArray & a) const;
-  ttb_bool operator<=(const IndxArray & a) const;
+  ttb_bool operator==(const IndxArrayT & a) const;
+  ttb_bool operator<=(const IndxArrayT & a) const;
 
   // Returns product of all the entries (total size).
   /* Returns dflt for an emtpy array. */
@@ -190,21 +204,38 @@ public:
   // Compute cummulative product of entries in src and store in this object.
   /* Computes the cummulative product of the entries in src. The result is the same size as the src array. Entry 0 is 1, and
      the i-th entry is the product of the first (i-1) entries of the src array. */
-  void cumprod(const IndxArray & src);
+  void cumprod(const IndxArrayT & src);
 
   // Return true if this is a valid permutation, false otherwise.
   ttb_bool isPermutation() const;
 
   // Increments entries in lexicographic order with respect to dims
-  void increment(const IndxArray & dims);
+  void increment(const IndxArrayT & dims);
+
+  KOKKOS_INLINE_FUNCTION
+  view_type values() const { return data; }
 
 private:
 
-  typedef Kokkos::View<ttb_indx*> view_type;
-  typedef Kokkos::View<ttb_indx*,Kokkos::MemoryUnmanaged> unmanaged_view_type;
-  typedef Kokkos::View<const ttb_indx*,Kokkos::MemoryUnmanaged> unmanaged_const_view_type;
+  typedef Kokkos::View<ttb_indx*,ExecSpace,Kokkos::MemoryUnmanaged> unmanaged_view_type;
+  typedef Kokkos::View<const ttb_indx*,ExecSpace,Kokkos::MemoryUnmanaged> unmanaged_const_view_type;
 
   // Pointer to the actual data. managed with new/delete[]
   view_type data;
 };
+
+template <typename ExecSpace>
+typename IndxArrayT<ExecSpace>::HostMirror
+create_mirror_view(const IndxArrayT<ExecSpace>& a)
+{
+  typedef typename IndxArrayT<ExecSpace>::HostMirror HostMirror;
+  return HostMirror( create_mirror_view(a.values()) );
+}
+
+template <typename E1, typename E2>
+void deep_copy(const IndxArrayT<E1>& dst, const IndxArrayT<E2>& src)
+{
+  deep_copy( dst.values(), src.values() );
+}
+
 }

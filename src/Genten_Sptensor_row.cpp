@@ -40,9 +40,12 @@
 
 #include "Genten_Sptensor_row.hpp"
 
+namespace Genten {
+namespace Impl {
 // Implementation of createRow().  Has to be done as a non-member function
 // because lambda capture of *this doesn't work on Cuda.
-template <typename row_ptr_type,
+template <typename ExecSpace,
+          typename row_ptr_type,
           typename perm_type,
           typename subs_type,
           typename siz_type>
@@ -51,8 +54,6 @@ createRowPtrImpl(const perm_type& perm,
                  const subs_type& subs,
                  const siz_type& siz)
 {
-  typedef typename subs_type::execution_space ExecSpace;
-
   // Create rowptr array with the starting index of each row
   const ttb_indx sz = perm.dimension_0();
   const ttb_indx nNumDims = perm.dimension_1();
@@ -114,9 +115,16 @@ createRowPtrImpl(const perm_type& perm,
 
   return rowptr;
 }
+}
+}
 
-void Genten::Sptensor_row::
+template <typename ExecSpace>
+void Genten::SptensorT_row<ExecSpace>::
 createRowPtr()
 {
-  rowptr = createRowPtrImpl<row_ptr_type>(perm, subs, siz);
+  rowptr =
+    Genten::Impl::createRowPtrImpl<ExecSpace,row_ptr_type>(this->perm, this->subs, this->siz);
 }
+
+#define INST_MACRO(SPACE) template class Genten::SptensorT_row<SPACE>;
+GENTEN_INST(INST_MACRO)

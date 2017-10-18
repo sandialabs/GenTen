@@ -54,25 +54,29 @@
 #include "Genten_Util.hpp"
 #include "Genten_Kokkos.hpp"
 
-Genten::Array::
-Array(ttb_indx n, bool parallel):
-  data("Genten::Array::data", n)
+template <typename ExecSpace>
+Genten::ArrayT<ExecSpace>::
+ArrayT(ttb_indx n, bool parallel):
+  data("Genten::ArrayT::data", n)
 {
 }
 
-Genten::Array::Array(ttb_indx n, ttb_real val):
-  data("Genten::Array::data", n)
+template <typename ExecSpace>
+Genten::ArrayT<ExecSpace>::
+ArrayT(ttb_indx n, ttb_real val):
+  data("Genten::ArrayT::data", n)
 {
   Kokkos::deep_copy(data, val);
 }
 
-
-Genten::Array::Array(ttb_indx n, ttb_real * d, ttb_bool shdw):
+template <typename ExecSpace>
+Genten::ArrayT<ExecSpace>::
+ArrayT(ttb_indx n, ttb_real * d, ttb_bool shdw):
   data()
 {
   if (!shdw)
   {
-    data = view_type("Genten::Array::data", n);
+    data = view_type("Genten::ArrayT::data", n);
     unmanaged_const_view_type d_view(d,n);
     Kokkos::deep_copy(data, d_view);
   }
@@ -82,32 +86,40 @@ Genten::Array::Array(ttb_indx n, ttb_real * d, ttb_bool shdw):
   }
 }
 
-void Genten::Array::copyFrom(ttb_indx n, const ttb_real * src)
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+copyFrom(ttb_indx n, const ttb_real * src)
 {
   if (n != data.dimension_0())
   {
-    error("Genten::Array::copy - Destination array is not the correct size");
+    error("Genten::ArrayT::copy - Destination array is not the correct size");
   }
   unmanaged_const_view_type src_view(src,n);
   Kokkos::deep_copy(data, src_view);
 }
 
-void Genten::Array::copyTo(ttb_indx n, ttb_real * dest) const
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+copyTo(ttb_indx n, ttb_real * dest) const
 {
   if (n != data.dimension_0())
   {
-    error("Genten::Array::copy - Destination array is not the correct size");
+    error("Genten::ArrayT::copy - Destination array is not the correct size");
   }
   unmanaged_view_type dest_view(dest,n);
   Kokkos::deep_copy(dest_view, data);
 }
 
-void Genten::Array::operator=(ttb_real val)
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+operator=(ttb_real val)
 {
   Kokkos::deep_copy(data, val);
 }
 
-void Genten::Array::rand()
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+rand()
 {
   RandomMT  cRNG(0);
   const ttb_indx sz = data.dimension_0();
@@ -118,8 +130,10 @@ void Genten::Array::rand()
   return;
 }
 
-void Genten::Array::scatter (const bool        bUseMatlabRNG,
-                                 RandomMT &  cRMT)
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+scatter (const bool        bUseMatlabRNG,
+         RandomMT &  cRMT)
 {
   const ttb_indx sz = data.dimension_0();
   for (ttb_indx  i = 0; i < sz; i++)
@@ -140,7 +154,9 @@ void Genten::Array::scatter (const bool        bUseMatlabRNG,
   return;
 }
 
-bool Genten::Array::operator==(const Genten::Array & a) const
+template <typename ExecSpace>
+bool Genten::ArrayT<ExecSpace>::
+operator==(const Genten::ArrayT<ExecSpace> & a) const
 {
   const ttb_indx sz = data.dimension_0();
   if (sz != a.data.dimension_0())
@@ -159,7 +175,9 @@ bool Genten::Array::operator==(const Genten::Array & a) const
   return(true);
 }
 
-bool Genten::Array::hasNonFinite(ttb_indx &where) const
+template <typename ExecSpace>
+bool Genten::ArrayT<ExecSpace>::
+hasNonFinite(ttb_indx &where) const
 {
   const ttb_indx sz = data.dimension_0();
   for  (ttb_indx i = 0; i < sz; i ++)
@@ -172,19 +190,22 @@ bool Genten::Array::hasNonFinite(ttb_indx &where) const
   return false;
 }
 
-ttb_real & Genten::Array::at(ttb_indx i) const
+template <typename ExecSpace>
+ttb_real & Genten::ArrayT<ExecSpace>::
+at(ttb_indx i) const
 {
   const ttb_indx sz = data.dimension_0();
   if ( i < sz) {
     return(data[i]);
   }
-  Genten::error("Genten::Array::at - out-of-bounds error");
+  Genten::error("Genten::ArrayT::at - out-of-bounds error");
   return data[0]; // not reached
 }
 
-ttb_real Genten::Array::norm(Genten::NormType ntype) const
+template <typename ExecSpace>
+ttb_real Genten::ArrayT<ExecSpace>::
+norm(Genten::NormType ntype) const
 {
-  typedef Kokkos::DefaultExecutionSpace ExecSpace;
   const ttb_indx sz = data.dimension_0();
   Kokkos::RangePolicy<ExecSpace> policy(0,sz);
   auto my_data = data; // can't capture *this by value
@@ -221,14 +242,15 @@ ttb_real Genten::Array::norm(Genten::NormType ntype) const
   }
   default:
   {
-    error("Genten::Array::norm - unimplemented norm type");
+    error("Genten::ArrayT::norm - unimplemented norm type");
   }
   }
   return(nrm);
 }
 
-
-ttb_indx Genten::Array::nnz() const
+template <typename ExecSpace>
+ttb_indx Genten::ArrayT<ExecSpace>::
+nnz() const
 {
   const ttb_indx sz = data.dimension_0();
   ttb_indx cnt = 0;
@@ -242,19 +264,22 @@ ttb_indx Genten::Array::nnz() const
   return(cnt);
 }
 
-ttb_real Genten::Array::dot(const Genten::Array & y) const
+template <typename ExecSpace>
+ttb_real Genten::ArrayT<ExecSpace>::
+dot(const Genten::ArrayT<ExecSpace> & y) const
 {
   const ttb_indx sz = data.dimension_0();
   if (sz != y.data.dimension_0())
   {
-    Genten::error("Genten::Array::dot - Size mismatch");
+    Genten::error("Genten::ArrayT::dot - Size mismatch");
   }
 
   return(Genten::dot(sz, data.data(), 1, y.data.data(), 1));
 }
 
-
-bool Genten::Array::isEqual(const Genten::Array & y, ttb_real tol) const
+template <typename ExecSpace>
+bool Genten::ArrayT<ExecSpace>::
+isEqual(const Genten::ArrayT<ExecSpace> & y, ttb_real tol) const
 {
   // Check for equal sizes.
   const ttb_indx sz = data.dimension_0();
@@ -273,25 +298,30 @@ bool Genten::Array::isEqual(const Genten::Array & y, ttb_real tol) const
   return(true);
 }
 
-
-void Genten::Array::times(ttb_real a)
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+times(ttb_real a)
 {
   const ttb_indx sz = data.dimension_0();
   Genten::scal(sz, a, data.data(), 1);
 }
 
-void Genten::Array::times(ttb_real a, const Genten::Array & y)
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+times(ttb_real a, const Genten::ArrayT<ExecSpace> & y)
 {
   const ttb_indx sz = data.dimension_0();
   if (sz != y.data.dimension_0())
   {
-    Genten::error("Genten::Array::dot - Size mismatch");
+    Genten::error("Genten::ArrayT::dot - Size mismatch");
   }
   Genten::copy(sz, y.data.data(), 1, data.data(), 1);
   Genten::scal(sz, a, data.data(), 1);
 }
 
-void Genten::Array::invert(ttb_real a)
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+invert(ttb_real a)
 {
   const ttb_indx sz = data.dimension_0();
   for (ttb_indx i = 0; i < sz; i ++)
@@ -300,19 +330,24 @@ void Genten::Array::invert(ttb_real a)
   }
 }
 
-void Genten::Array::invert(ttb_real a, const Genten::Array & y)
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+invert(ttb_real a, const Genten::ArrayT<ExecSpace> & y)
 {
   const ttb_indx sz = data.dimension_0();
   if (sz != y.data.dimension_0())
   {
-    Genten::error("Genten::Array::dot - Size mismatch");
+    Genten::error("Genten::ArrayT::dot - Size mismatch");
   }
   for (ttb_indx i = 0; i < data.dimension_0(); i ++)
   {
     data[i] = a / y.data[i];
   }
 }
-void Genten::Array::power(ttb_real a)
+
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+power(ttb_real a)
 {
   const ttb_indx sz = data.dimension_0();
   for (ttb_indx i = 0; i < sz; i ++)
@@ -321,12 +356,14 @@ void Genten::Array::power(ttb_real a)
   }
 }
 
-void Genten::Array::power(ttb_real a, const Genten::Array & y)
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+power(ttb_real a, const Genten::ArrayT<ExecSpace> & y)
 {
   const ttb_indx sz = data.dimension_0();
   if (sz != y.data.dimension_0())
   {
-    Genten::error("Genten::Array::dot - Size mismatch");
+    Genten::error("Genten::ArrayT::dot - Size mismatch");
   }
   for (ttb_indx i = 0; i < sz; i ++)
   {
@@ -334,8 +371,9 @@ void Genten::Array::power(ttb_real a, const Genten::Array & y)
   }
 }
 
-
-void Genten::Array::shift(ttb_real a)
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+shift(ttb_real a)
 {
   const ttb_indx sz = data.dimension_0();
   for (ttb_indx i = 0; i < sz; i ++)
@@ -344,12 +382,14 @@ void Genten::Array::shift(ttb_real a)
   }
 }
 
-void Genten::Array::shift(ttb_real a, const Genten::Array & y)
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+shift(ttb_real a, const Genten::ArrayT<ExecSpace> & y)
 {
   const ttb_indx sz = data.dimension_0();
   if (sz != y.data.dimension_0())
   {
-    Genten::error("Genten::Array::dot - Size mismatch");
+    Genten::error("Genten::ArrayT::dot - Size mismatch");
   }
   for (ttb_indx i = 0; i < sz; i ++)
   {
@@ -357,26 +397,30 @@ void Genten::Array::shift(ttb_real a, const Genten::Array & y)
   }
 }
 
-void Genten::Array::plus(const Genten::Array & y)
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+plus(const Genten::ArrayT<ExecSpace> & y)
 {
   const ttb_indx sz = data.dimension_0();
   if (sz != y.data.dimension_0())
   {
-    Genten::error("Genten::Array::plus (one input) - size mismatch");
+    Genten::error("Genten::ArrayT::plus (one input) - size mismatch");
   }
 
   Genten::axpy(sz, 1.0, y.data.data(), 1, data.data(), 1);
 }
 
 // x = x + sum(y[i] )
-void Genten::Array::plusVec(std::vector< const Array * > y)
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+plusVec(std::vector< const ArrayT<ExecSpace> * > y)
 {
   const ttb_indx sz = data.dimension_0();
-  std::vector< const Array * >::iterator it;
+  typename std::vector< const ArrayT * >::iterator it;
   for (it = y.begin(); it < y.end(); it++) {
     if (sz != (*it)->data.dimension_0())
     {
-      Genten::error("Genten::Array::plusVec - size mismatch");
+      Genten::error("Genten::ArrayT::plusVec - size mismatch");
     }
   }
   size_t nptrs = y.size();
@@ -396,60 +440,69 @@ void Genten::Array::plusVec(std::vector< const Array * > y)
   delete dptr;
 }
 
-
-void Genten::Array::plus(const Genten::Array & y, const Genten::Array & z)
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+plus(const Genten::ArrayT<ExecSpace> & y, const Genten::ArrayT<ExecSpace> & z)
 {
   const ttb_indx sz = data.dimension_0();
   if (y.data.dimension_0() != z.data.dimension_0())
   {
-    Genten::error("Genten::Array::plus (two inputs) - size mismatch");
+    Genten::error("Genten::ArrayT::plus (two inputs) - size mismatch");
   }
 
   deep_copy(y);
   Genten::axpy(sz, 1.0, z.data.data(), 1, data.data(), 1);
 }
 
-void Genten::Array::minus(const Genten::Array & y)
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+minus(const Genten::ArrayT<ExecSpace> & y)
 {
   const ttb_indx sz = data.dimension_0();
   if (sz != y.data.dimension_0())
   {
-    Genten::error("Genten::Array::minus (one input) - size mismatch");
+    Genten::error("Genten::ArrayT::minus (one input) - size mismatch");
   }
 
   Genten::axpy(sz, -1.0, y.data.data(), 1, data.data(), 1);
 }
 
-void Genten::Array::minus(const Genten::Array & y, const Genten::Array & z)
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+minus(const Genten::ArrayT<ExecSpace> & y, const Genten::ArrayT<ExecSpace> & z)
 {
   const ttb_indx sz = data.dimension_0();
   if (y.data.dimension_0() != z.data.dimension_0())
   {
-    Genten::error("Genten::Array::minus (two inputs) - size mismatch");
+    Genten::error("Genten::ArrayT::minus (two inputs) - size mismatch");
   }
 
   deep_copy(y);
   Genten::axpy(sz, -1.0, z.data.data(), 1, data.data(), 1);
 }
 
-void Genten::Array::times(const Genten::Array & y)
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+times(const Genten::ArrayT<ExecSpace> & y)
 {
   const ttb_indx sz = data.dimension_0();
   if (sz != y.data.dimension_0())
   {
-    Genten::error("Genten::Array::times (one input) - size mismatch");
+    Genten::error("Genten::ArrayT::times (one input) - size mismatch");
   }
 
   vmul(sz, data.data(), y.data.data());
 
 }
 
-void Genten::Array::times(const Genten::Array & y, const Genten::Array & z)
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+times(const Genten::ArrayT<ExecSpace> & y, const Genten::ArrayT<ExecSpace> & z)
 {
   const ttb_indx sz = data.dimension_0();
   if (y.data.dimension_0() != z.data.dimension_0())
   {
-    Genten::error("Genten::Array::times (two inputs) - size mismatch");
+    Genten::error("Genten::ArrayT::times (two inputs) - size mismatch");
   }
 
   for (ttb_indx i = 0; i < sz; i ++)
@@ -458,12 +511,14 @@ void Genten::Array::times(const Genten::Array & y, const Genten::Array & z)
   }
 }
 
-void Genten::Array::divide(const Genten::Array & y)
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+divide(const Genten::ArrayT<ExecSpace> & y)
 {
   const ttb_indx sz = data.dimension_0();
   if (sz != y.data.dimension_0())
   {
-    Genten::error("Genten::Array::divide (one input) - size mismatch");
+    Genten::error("Genten::ArrayT::divide (one input) - size mismatch");
   }
 
   for (ttb_indx i = 0; i < sz; i ++)
@@ -472,12 +527,14 @@ void Genten::Array::divide(const Genten::Array & y)
   }
 }
 
-void Genten::Array::divide(const Genten::Array & y, const Genten::Array & z)
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+divide(const Genten::ArrayT<ExecSpace> & y, const Genten::ArrayT<ExecSpace> & z)
 {
   const ttb_indx sz = data.dimension_0();
   if (y.data.dimension_0() != z.data.dimension_0())
   {
-    Genten::error("Genten::Array::divide (two inputs) - size mismatch");
+    Genten::error("Genten::ArrayT::divide (two inputs) - size mismatch");
   }
 
   for (ttb_indx i = 0; i < sz; i ++)
@@ -486,7 +543,9 @@ void Genten::Array::divide(const Genten::Array & y, const Genten::Array & z)
   }
 }
 
-ttb_real Genten::Array::sum() const
+template <typename ExecSpace>
+ttb_real Genten::ArrayT<ExecSpace>::
+sum() const
 {
   const ttb_indx sz = data.dimension_0();
   ttb_real value = 0;
@@ -496,3 +555,6 @@ ttb_real Genten::Array::sum() const
   }
   return value;
 }
+
+#define INST_MACRO(SPACE) template class Genten::ArrayT<SPACE>;
+GENTEN_INST(INST_MACRO)

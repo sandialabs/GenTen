@@ -54,21 +54,28 @@ namespace Genten
    * it uses view semantics instead of value semantics.
    */
 
-class Sptensor
+template <typename ExecSpace> class SptensorT;
+typedef SptensorT<DefaultHostExecutionSpace> Sptensor;
+
+template <typename ExecSpace>
+class SptensorT
 {
 
 public:
 
-  typedef Kokkos::View<ttb_indx**> subs_view_type;
-  typedef Kokkos::View<ttb_real*> vals_view_type;
+  typedef ExecSpace exec_space;
+  typedef Kokkos::View<ttb_indx**,ExecSpace> subs_view_type;
+  typedef Kokkos::View<ttb_real*,ExecSpace> vals_view_type;
+  typedef typename ArrayT<ExecSpace>::host_mirror_space host_mirror_space;
+  typedef SptensorT<host_mirror_space> HostMirror;
 
   // Empty construtor.
   /* Creates an empty tensor with an empty size. */
   KOKKOS_INLINE_FUNCTION
-  Sptensor() : siz(),nNumDims(0),values(),subs() {}
+  SptensorT() : siz(),nNumDims(0),values(),subs() {}
 
   // Constructor for a given size and number of nonzeros
-  Sptensor(const IndxArray& sz, ttb_indx nz) :
+  SptensorT(const IndxArrayT<ExecSpace>& sz, ttb_indx nz) :
     siz(sz), nNumDims(sz.size()), values(nz),
     subs("Genten::Sptensor::subs",nz,sz.size()) {}
 
@@ -80,14 +87,14 @@ public:
      @param vals values [nz] of nonzeros.
      @param subscripts [nz*nd] coordinates of each nonzero, grouped by indices of each nonzero adjacent.
   */
-  Sptensor(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals, ttb_indx *subscripts);
+  SptensorT(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals, ttb_indx *subscripts);
 
   // Constructor (for data from MATLAB).
   /* a) Copies everything locally.
      b) There are no checks for duplicate entries. Call sort() to dedup.
      c) It is assumed that sbs starts numbering at one,
      and so one is subtracted to make it start at zero. */
-  Sptensor(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls, ttb_real * sbs);
+  SptensorT(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls, ttb_real * sbs);
 
   /* Constructor from complete raw data indexed C-wise using STL types.
      All input are deep copied.
@@ -95,24 +102,30 @@ public:
      @param vals nonzero values.
      @param subscripts 2-d array of subscripts.
   */
-  Sptensor(const std::vector<ttb_indx>& dims,
-                  const std::vector<ttb_real>& vals,
-                  const std::vector< std::vector<ttb_indx> >& subscripts);
+  SptensorT(const std::vector<ttb_indx>& dims,
+            const std::vector<ttb_real>& vals,
+            const std::vector< std::vector<ttb_indx> >& subscripts);
+
+  // Create tensor from supplied dimensions, values, and subscripts
+  KOKKOS_INLINE_FUNCTION
+  SptensorT(const IndxArrayT<ExecSpace>& d, const vals_view_type& vals,
+            const subs_view_type& s) :
+    siz(d), nNumDims(s.size()), values(vals), subs(s) {}
 
   // Copy constructor.
   KOKKOS_INLINE_FUNCTION
-  Sptensor (const Sptensor & arg) = default;
+  SptensorT (const SptensorT & arg) = default;
 
   // Assignment operator.
   KOKKOS_INLINE_FUNCTION
-  Sptensor & operator= (const Sptensor & arg) = default;
+  SptensorT & operator= (const SptensorT & arg) = default;
 
   // Destructor.
   KOKKOS_INLINE_FUNCTION
-  ~Sptensor() = default;
+  ~SptensorT() = default;
 
   // Deep copy into tensor
-  void deep_copy(const Sptensor& X) {
+  void deep_copy(const SptensorT& X) {
     values.deep_copy(X.values);
     Kokkos::deep_copy(subs, X.subs);
   }
@@ -133,7 +146,7 @@ public:
 
   // Return the entire size array.
   KOKKOS_INLINE_FUNCTION
-  const Genten::IndxArray & size() const
+  const IndxArrayT<ExecSpace> & size() const
   {
     return siz;
   }
@@ -163,7 +176,7 @@ public:
         ---------------------------------   < TOL .
         max(1, fabs(a(i,j)), fabs(b(i,j))
   */
-  bool isEqual(const Sptensor & b, ttb_real tol) const;
+  bool isEqual(const SptensorT & b, ttb_real tol) const;
 
   // Return reference to i-th nonzero
   KOKKOS_INLINE_FUNCTION
@@ -188,7 +201,7 @@ public:
 
   // Get subscripts of i-th nonzero, place into IndxArray object
   KOKKOS_INLINE_FUNCTION
-  void getSubscripts(ttb_indx i,  const IndxArray & sub) const
+  void getSubscripts(ttb_indx i,  const IndxArrayT<ExecSpace> & sub) const
   {
     assert(i < values.size());
 
@@ -210,7 +223,7 @@ public:
   // Return the norm (sqrt of the sum of the squares of all entries).
   ttb_real norm() const
   {
-    return values.norm(Genten::NormTwo);
+    return values.norm(NormTwo);
   }
 
   // Return the i-th linearly indexed element.
@@ -224,27 +237,45 @@ public:
   void fillComplete() {}
 
   /* Result stored in this tensor */
-  void times(const Genten::Ktensor & K, const Genten::Sptensor & X);
+  void times(const KtensorT<ExecSpace> & K, const SptensorT & X);
 
   // Elementwise division of input tensor X and Ktensor K.
   /* Result stored in this tensor. The argument epsilon is the minimum value allowed for the division. */
-  void divide(const Genten::Ktensor & K, const Genten::Sptensor & X, ttb_real epsilon);
+  void divide(const KtensorT<ExecSpace> & K, const SptensorT & X, ttb_real epsilon);
 
 protected:
 
   // Size of the tensor
-  IndxArray siz;
+  IndxArrayT<ExecSpace> siz;
 
   // Number of dimensions, from siz.size(), but faster to store it.
   ttb_indx nNumDims;
 
   // Data array (an array of nonzero values)
-  Array values;
+  ArrayT<ExecSpace> values;
 
   // Subscript array of nonzero elements.  This vector is treated as a 2D array
   // of size nnz by nNumDims.
   subs_view_type subs;
 
 };
+
+template <typename ExecSpace>
+typename SptensorT<ExecSpace>::HostMirror
+create_mirror_view(const SptensorT<ExecSpace>& a)
+{
+  typedef typename SptensorT<ExecSpace>::HostMirror HostMirror;
+  return HostMirror( create_mirror_view(a.size()),
+                     create_mirror_view(a.getValues()),
+                     create_mirror_view(a.getSubscripts()) );
+}
+
+template <typename E1, typename E2>
+void deep_copy(const SptensorT<E1>& dst, const SptensorT<E2>& src)
+{
+  deep_copy( dst.size(), src.size() );
+  deep_copy( dst.getValues(), src.getValues() );
+  deep_copy( dst.getSubscripts(), src.getSubscripts() );
+}
 
 }

@@ -40,9 +40,10 @@
 
 #include "Genten_Sptensor.hpp"
 
-Genten::Sptensor::
-Sptensor(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls,
-         ttb_real * sbs):
+template <typename ExecSpace>
+Genten::SptensorT<ExecSpace>::
+SptensorT(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls,
+          ttb_real * sbs):
   siz(nd,sz), nNumDims(nd), values(nz,vls,false),
   subs("Genten::Sptensor::subs",nz,nd)
 {
@@ -57,9 +58,10 @@ Sptensor(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls,
   }
 }
 
-Genten::Sptensor::
-Sptensor(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals,
-         ttb_indx *subscripts):
+template <typename ExecSpace>
+Genten::SptensorT<ExecSpace>::
+SptensorT(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals,
+          ttb_indx *subscripts):
   siz(nd,dims), nNumDims(nd), values(nz,vals,false),
   subs("Genten::Sptensor::subs",nd,nz)
 {
@@ -74,10 +76,11 @@ Sptensor(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals,
   }
 }
 
-Genten::Sptensor::
-Sptensor(const std::vector<ttb_indx>& dims,
-         const std::vector<ttb_real>& vals,
-         const std::vector< std::vector<ttb_indx> >& subscripts):
+template <typename ExecSpace>
+Genten::SptensorT<ExecSpace>::
+SptensorT(const std::vector<ttb_indx>& dims,
+          const std::vector<ttb_real>& vals,
+          const std::vector< std::vector<ttb_indx> >& subscripts):
   siz(ttb_indx(dims.size()),const_cast<ttb_indx*>(dims.data())),
   nNumDims(dims.size()),
   values(vals.size(),const_cast<ttb_real*>(vals.data()),false),
@@ -92,15 +95,17 @@ Sptensor(const std::vector<ttb_indx>& dims,
   }
 }
 
-void Genten::Sptensor::
+template <typename ExecSpace>
+void Genten::SptensorT<ExecSpace>::
 words(ttb_indx& iw, ttb_indx& rw) const
 {
   rw = values.size();
   iw = subs.size() + nNumDims;
 }
 
-bool Genten::Sptensor::
-isEqual(const Genten::Sptensor & b, ttb_real tol) const
+template <typename ExecSpace>
+bool Genten::SptensorT<ExecSpace>::
+isEqual(const Genten::SptensorT<ExecSpace> & b, ttb_real tol) const
 {
   // Check for equal sizes.
   if (this->ndims() != b.ndims())
@@ -131,8 +136,10 @@ isEqual(const Genten::Sptensor & b, ttb_real tol) const
   return( true );
 }
 
-void Genten::Sptensor::
-times(const Genten::Ktensor & K, const Genten::Sptensor & X)
+template <typename ExecSpace>
+void Genten::SptensorT<ExecSpace>::
+times(const Genten::KtensorT<ExecSpace> & K,
+      const Genten::SptensorT<ExecSpace> & X)
 {
   // Copy X into this (including its size array)
   deep_copy(X);
@@ -141,7 +148,7 @@ times(const Genten::Ktensor & K, const Genten::Sptensor & X)
   assert(K.isConsistent(siz));
 
   // Stream through nonzeros
-  Genten::IndxArray subs(nNumDims);
+  Genten::IndxArrayT<ExecSpace> subs(nNumDims);
   ttb_indx nz = this->nnz();
   for (ttb_indx i = 0; i < nz; i ++)
   {
@@ -152,8 +159,10 @@ times(const Genten::Ktensor & K, const Genten::Sptensor & X)
   //TODO: Check for any zeros!
 }
 
-void Genten::Sptensor::
-divide(const Genten::Ktensor & K, const Genten::Sptensor & X, ttb_real epsilon)
+template <typename ExecSpace>
+void Genten::SptensorT<ExecSpace>::
+divide(const Genten::KtensorT<ExecSpace> & K,
+       const Genten::SptensorT<ExecSpace> & X, ttb_real epsilon)
 {
   // Copy X into this (including its size array)
   deep_copy(X);
@@ -162,7 +171,7 @@ divide(const Genten::Ktensor & K, const Genten::Sptensor & X, ttb_real epsilon)
   assert(K.isConsistent(siz));
 
   // Stream through nonzeros
-  Genten::IndxArray subs(nNumDims);
+  Genten::IndxArrayT<ExecSpace> subs(nNumDims);
   ttb_indx nz = this->nnz();
   for (ttb_indx i = 0; i < nz; i ++)
   {
@@ -178,3 +187,6 @@ divide(const Genten::Ktensor & K, const Genten::Sptensor & X, ttb_real epsilon)
     }
   }
 }
+
+#define INST_MACRO(SPACE) template class Genten::SptensorT<SPACE>;
+GENTEN_INST(INST_MACRO)

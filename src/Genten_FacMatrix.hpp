@@ -69,13 +69,20 @@ namespace Genten
  *  computation.  The ordering is mostly hidden from other classes.
  */
 
-class FacMatArray;   // Forward declaration to avoid circular referencing
-class Tensor;        // Forward declaration for friend declaration
-class Sptensor;      // Forward declaration for friend declaration
+template <typename ExecSpace> class FacMatArrayT;   // Forward declaration to avoid circular referencing
 
-class FacMatrix
+template <typename ExecSpace> class FacMatrixT;
+typedef FacMatrixT<DefaultHostExecutionSpace> FacMatrix;
+
+template <typename ExecSpace>
+class FacMatrixT
 {
 public:
+
+    typedef ExecSpace exec_space;
+    typedef Kokkos::View<ttb_real**,Kokkos::LayoutRight,ExecSpace> view_type;
+    typedef typename view_type::host_mirror_space host_mirror_space;
+    typedef FacMatrixT<host_mirror_space> HostMirror;
 
     /** ----------------------------------------------------------------
      *  @name Constructors and Destructors
@@ -84,7 +91,7 @@ public:
 
     //! Default constructor.
     KOKKOS_INLINE_FUNCTION
-    FacMatrix() = default;
+    FacMatrixT() = default;
 
     //! Constructor to create an uninitialized matrix of size M x N.
     /*!
@@ -93,7 +100,7 @@ public:
      *  @param[in] n  Number of columns, should equal the number of components
      *                in the Ktensor.
      */
-    FacMatrix(ttb_indx m, ttb_indx n) :
+    FacMatrixT(ttb_indx m, ttb_indx n) :
       //data("Genten::FacMatrix::data",m,n)
       data(Kokkos::view_alloc("Genten::FacMatrix::data", Kokkos::AllowPadding),m,n)
  {}
@@ -101,21 +108,25 @@ public:
     //! Constructor to create a Factor Matrix of Size M x N using the
     // given view
     template <typename T, typename ... P>
-    FacMatrix(ttb_indx m, ttb_indx n, const Kokkos::View<T,P...>& v) :
+    FacMatrixT(ttb_indx m, ttb_indx n, const Kokkos::View<T,P...>& v) :
       data(v) {}
 
     // Constructor to create a Factor Matrix of Size M x N using the
     // given data vector CVEC which is assumed to be stored *columnwise*.
     // Not currently used; therefore not part of doxygen API.
-    FacMatrix(ttb_indx m, ttb_indx n, const ttb_real * cvec);
+    FacMatrixT(ttb_indx m, ttb_indx n, const ttb_real * cvec);
+
+    //! @brief Create matrix from supplied view
+    KOKKOS_INLINE_FUNCTION
+    FacMatrixT(const view_type& v) : data(v) {}
 
     //! Copy Constructor.
     KOKKOS_INLINE_FUNCTION
-    FacMatrix(const FacMatrix & src) = default;
+    FacMatrixT(const FacMatrixT & src) = default;
 
     //! Destructor.
     KOKKOS_INLINE_FUNCTION
-    ~FacMatrix() = default;
+    ~FacMatrixT() = default;
 
     /** @} */
 
@@ -126,13 +137,13 @@ public:
 
     // Make a copy of an existing array.
     KOKKOS_INLINE_FUNCTION
-    FacMatrix & operator=(const FacMatrix & src) = default;
+    FacMatrixT & operator=(const FacMatrixT & src) = default;
 
     //! Set all entries to the given value.
     void operator= (ttb_real val);
 
     //! Deep copy between factor matrices
-    void deep_copy(const FacMatrix& src) {
+    void deep_copy(const FacMatrixT& src) {
       assert(data.dimension_0() == src.data.dimension_0());
       assert(data.dimension_1() == src.data.dimension_1());
       Kokkos::deep_copy(data, src.data);
@@ -221,27 +232,27 @@ public:
 
        for all i,j.
     */
-    bool isEqual(const Genten::FacMatrix & b, ttb_real tol) const;
+    bool isEqual(const FacMatrixT & b, ttb_real tol) const;
 
     // Compute X = a * X
     void times(ttb_real a);
 
     // x += y
     /* accumulate y into x */
-    void plus(const Genten::FacMatrix & y);
+    void plus(const FacMatrixT & y);
 
     // x += yi forall yi in ya
-    void plusAll(const Genten::FacMatArray & ya);
+    void plusAll(const FacMatArrayT<ExecSpace> & ya);
 
     // X = Y'.
     /* Set this matrix equal to the transpose of the input matrix. */
-    void transpose(const Genten::FacMatrix & y);
+    void transpose(const FacMatrixT & y);
 
     // Compute X = X.*V, the Hadamard (elementwise) product of this matrix and V.
-    void times(const Genten::FacMatrix & v);
+    void times(const FacMatrixT & v);
 
     // Set this matrix to the Gram Matrix of V:  this = V' * V.
-    void gramian(const Genten::FacMatrix & v);
+    void gramian(const FacMatrixT & v);
 
     // return the index of the first entry, s, such that entry(s,c) > r.
     // assumes/requires the values entry(s,c) are nondecreasing as s increases.
@@ -250,17 +261,17 @@ public:
 
     // Compute the rank-one matrix that is the outer product of the vector v.
     /* X(i,j) = V(i) * V(j). */
-    void oprod(const Genten::Array & v);
+    void oprod(const ArrayT<ExecSpace> & v);
 
     // Compute the norms of all the columns.
     /* The norm_type indicates the type of norm.
        The optional "minval" argument sets the minimum value of each column norm. */
-    void colNorms(Genten::NormType norm_type, Genten::Array & norms, ttb_real minval);
+    void colNorms(NormType norm_type, ArrayT<ExecSpace> & norms, ttb_real minval);
 
     // Scale each column by the corresponding scalar entry in s.
     /* If "inverse" is set to true, then scale by the reciprocal of the entries
      * in s. */
-    void colScale(const Genten::Array & s, bool inverse);
+    void colScale(const ArrayT<ExecSpace> & s, bool inverse);
 
     // see ktensor::scaleRandomElements
     void scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise);
@@ -275,7 +286,7 @@ public:
     // Permute columns in place using given column indices.
     // On return, column 0 will contain data moved from the column indicated
     // by indices[0], column 1 teh data indicated by indices[1], etc.
-    void permute(const Genten::IndxArray &indices);
+    void permute(const IndxArrayT<ExecSpace> &indices);
 
     //! Perform a matrix-vector multiply.
     /*!
@@ -288,8 +299,8 @@ public:
      *  @param[out] y  Vector of result.
      */
     void multByVector(bool                bTranspose,
-                      const Genten::Array &  x,
-                            Genten::Array &  y) const;
+                      const ArrayT<ExecSpace> &  x,
+                            ArrayT<ExecSpace> &  y) const;
 
     //! Solve AX = B' where B is this matrix.
     /*!
@@ -304,7 +315,7 @@ public:
      *
      * Throws an exception if A is singular.
      */
-    void solveTransposeRHS (const Genten::FacMatrix &  A);
+    void solveTransposeRHS (const FacMatrixT &  A);
 
     //! Multiply x elementwise by the ith row of the factor matrix, overwriting x.
     /*!
@@ -314,7 +325,7 @@ public:
      *  @param[in,out] x  Dense vector with length matching nCols().
      *  @param[in] nRow  Row number in the factor matrix to multiply by.
      */
-    void rowTimes(      Genten::Array &  x,
+    void rowTimes(      ArrayT<ExecSpace> &  x,
                   const ttb_indx      nRow) const;
 
     //! Multiply rows from two factor matrices elementwise.
@@ -328,7 +339,7 @@ public:
      *  @param[in] nRowOther  Row number in the other factor matrix.
      */
     void rowTimes(const ttb_indx         nRow,
-                  const Genten::FacMatrix & other,
+                  const FacMatrixT & other,
                   const ttb_indx         nRowOther);
 
     //! Multiply rows from two factor matrices to get the dot product.
@@ -342,7 +353,7 @@ public:
      *  @return  Dot product of the two rows.
      */
     ttb_real rowDot(const ttb_indx         nRow,
-                    const Genten::FacMatrix & other,
+                    const FacMatrixT & other,
                     const ttb_indx         nRowOther) const;
 
     //! Multiply a row by a scalar, putting the result in another factor matrix.
@@ -356,37 +367,11 @@ public:
      *  @param[in] dScalar  Scalar factor.
      */
     void rowDScale(const ttb_indx         nRow,
-                         Genten::FacMatrix & other,
+                         FacMatrixT & other,
                    const ttb_indx         nRowOther,
                    const ttb_real         dScalar) const;
 
     /** @} */
-
-
-  private:
-
-    // Data array containing the entries of the matrix.
-    typedef Kokkos::View<ttb_real**,Kokkos::LayoutRight> view_type;
-    view_type data;
-
-    // ----- Private Functions -----
-    // These are private to hide implementation details of the factor matrix.
-
-    Array make_data_1d() const {
-      return Array(data.span(),data.data(),true);
-    }
-
-    // Return pointer to data
-    KOKKOS_INLINE_FUNCTION
-    ttb_real * ptr()
-    { return data.data(); }
-
-    // Return pointer to data
-    KOKKOS_INLINE_FUNCTION
-    const ttb_real * ptr() const
-    { return data.data(); }
-
-public:
 
     // Return pointer to the ith row
     KOKKOS_INLINE_FUNCTION
@@ -401,10 +386,41 @@ public:
     KOKKOS_INLINE_FUNCTION
     view_type view() const { return data; }
 
-private:
+  private:
 
-    //TBD why?
-    friend class Sptensor;
+    // Data array containing the entries of the matrix.
+    view_type data;
+
+    // ----- Private Functions -----
+    // These are private to hide implementation details of the factor matrix.
+
+    ArrayT<ExecSpace> make_data_1d() const {
+      return ArrayT<ExecSpace>(data.span(),data.data(),true);
+    }
+
+    // Return pointer to data
+    KOKKOS_INLINE_FUNCTION
+    ttb_real * ptr()
+    { return data.data(); }
+
+    // Return pointer to data
+    KOKKOS_INLINE_FUNCTION
+    const ttb_real * ptr() const
+    { return data.data(); }
 };
+
+template <typename ExecSpace>
+typename FacMatrixT<ExecSpace>::HostMirror
+create_mirror_view(const FacMatrixT<ExecSpace>& a)
+{
+  typedef typename FacMatrixT<ExecSpace>::HostMirror HostMirror;
+  return HostMirror( create_mirror_view(a.view()) );
+}
+
+template <typename E1, typename E2>
+void deep_copy(const FacMatrixT<E1>& dst, const FacMatrixT<E2>& src)
+{
+  deep_copy( dst.view(), src.view() );
+}
 
 }

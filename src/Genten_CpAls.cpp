@@ -60,9 +60,6 @@
 #include "Genten_SystemTimer.hpp"
 #include "Genten_Util.hpp"
 
-using namespace std;
-
-
 namespace Genten {
 
   //------------------------------------------------------
@@ -105,9 +102,9 @@ namespace Genten {
    *  @throws string        if internal linear solve detects singularity,
    *                        or tensor arguments are incompatible.
    */
-  template<class T>
-  void cpals_core (const T             & x,
-                   Genten::Ktensor  & u,
+  template<typename TensorT, typename ExecSpace>
+  void cpals_core (const TensorT             & x,
+                   Genten::KtensorT<ExecSpace>  & u,
                    const ttb_real        tol,
                    const ttb_indx        maxIters,
                    const ttb_real        maxSecs,
@@ -165,16 +162,16 @@ namespace Genten {
 
     // Distribute the initial guess to have weights of one.
     u.distribute(0);
-    Genten::Array lambda(nc, (ttb_real) 1.0);
+    Genten::ArrayT<ExecSpace> lambda(nc, (ttb_real) 1.0);
 
     // Define gamma, an array of Gramian Matrices corresponding to the
     // factor matrices in u.
     // Note that we can skip the first entry of gamma since
     // it's not used in the first inner iteration.
-    Genten::FacMatArray gamma(nd);
+    Genten::FacMatArrayT<ExecSpace> gamma(nd);
     for (ttb_indx n = 0; n < nd; n ++)
     {
-      gamma[n] = FacMatrix(u[n].nCols(), u[n].nCols());
+      gamma[n] = FacMatrixT<ExecSpace>(u[n].nCols(), u[n].nCols());
     }
     for (ttb_indx n = 1; n < nd; n ++)
     {
@@ -183,10 +180,10 @@ namespace Genten {
 
     // Define upsilon to store Hadamard products of the gamma matrices.
     // The matrix is called Z in the Matlab Computations paper.
-    Genten::FacMatrix upsilon(nc,nc);
+    Genten::FacMatrixT<ExecSpace> upsilon(nc,nc);
 
     // Define a temporary matrix used in the loop.
-    Genten::FacMatrix tmpMat(nc,nc);
+    Genten::FacMatrixT<ExecSpace> tmpMat(nc,nc);
 
     // Pre-calculate the Frobenius norm of the tensor x.
     ttb_real xNorm = x.norm();
@@ -397,47 +394,6 @@ namespace Genten {
     return;
   }
 
-
-
-  // Declare all possible template instantiations for the compiler.
-
-  template
-  void cpals_core<Genten::Sptensor>(const Sptensor& x,
-                                    Genten::Ktensor  & u,
-                                    const ttb_real        tol,
-                                    const ttb_indx        maxIters,
-                                    const ttb_real        maxSecs,
-                                    const ttb_indx        printIter,
-                                    ttb_indx      & numIters,
-                                    ttb_real      & resNorm,
-                                    const ttb_indx        perfIter,
-                                    CpAlsPerfInfo   perfInfo[]);
-
-  template
-  void cpals_core<Genten::Sptensor_perm>(const Sptensor_perm & x,
-                                         Genten::Ktensor  & u,
-                                         const ttb_real        tol,
-                                         const ttb_indx        maxIters,
-                                         const ttb_real        maxSecs,
-                                         const ttb_indx        printIter,
-                                         ttb_indx      & numIters,
-                                         ttb_real      & resNorm,
-                                         const ttb_indx        perfIter,
-                                         CpAlsPerfInfo   perfInfo[]);
-
-  template
-  void cpals_core<Genten::Sptensor_row>(const Sptensor_row  & x,
-                                        Genten::Ktensor  & u,
-                                        const ttb_real        tol,
-                                        const ttb_indx        maxIters,
-                                        const ttb_real        maxSecs,
-                                        const ttb_indx        printIter,
-                                        ttb_indx      & numIters,
-                                        ttb_real      & resNorm,
-                                        const ttb_indx        perfIter,
-                                        CpAlsPerfInfo   perfInfo[]);
-
-
   //------------------------------------------------------
   // PRIVATE FUNCTIONS
   //------------------------------------------------------
@@ -465,7 +421,7 @@ namespace Genten {
       result = 0.0;
     else
     {
-      ostringstream  sMsg;
+      std::ostringstream  sMsg;
       sMsg << "Genten::cpals_core - residual norm is negative: " << d;
       Genten::error(sMsg.str());
     }
@@ -473,3 +429,42 @@ namespace Genten {
   }
 
 }
+
+#define INST_MACRO(SPACE)                                               \
+  template void cpals_core<SptensorT<SPACE>,SPACE>(                     \
+    const SptensorT<SPACE>& x,                                          \
+    KtensorT<SPACE>& u,                                                 \
+    const ttb_real tol,                                                 \
+    const ttb_indx maxIters,                                            \
+    const ttb_real maxSecs,                                             \
+    const ttb_indx printIter,                                           \
+    ttb_indx& numIters,                                                 \
+    ttb_real& resNorm,                                                  \
+    const ttb_indx perfIter,                                            \
+    CpAlsPerfInfo perfInfo[]);                                          \
+                                                                        \
+  template void cpals_core<SptensorT_perm<SPACE>,SPACE>(                \
+    const SptensorT_perm<SPACE>& x,                                     \
+    KtensorT<SPACE>& u,                                                 \
+    const ttb_real tol,                                                 \
+    const ttb_indx maxIters,                                            \
+    const ttb_real maxSecs,                                             \
+    const ttb_indx printIter,                                           \
+    ttb_indx& numIters,                                                 \
+    ttb_real& resNorm,                                                  \
+    const ttb_indx perfIter,                                            \
+    CpAlsPerfInfo perfInfo[]);                                          \
+                                                                        \
+  template void cpals_core<SptensorT_row<SPACE>,SPACE>(                 \
+    const SptensorT_row<SPACE>& x,                                      \
+    KtensorT<SPACE>& u,                                                 \
+    const ttb_real tol,                                                 \
+    const ttb_indx maxIters,                                            \
+    const ttb_real maxSecs,                                             \
+    const ttb_indx printIter,                                           \
+    ttb_indx& numIters,                                                 \
+    ttb_real& resNorm,                                                  \
+    const ttb_indx perfIter,                                            \
+    CpAlsPerfInfo perfInfo[]);
+
+GENTEN_INST(INST_MACRO)

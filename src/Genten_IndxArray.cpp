@@ -42,29 +42,33 @@
 #include <cstring>
 #include <cstdlib>
 
-Genten::IndxArray::
-IndxArray(ttb_indx n) :
+template <typename ExecSpace>
+Genten::IndxArrayT<ExecSpace>::
+IndxArrayT(ttb_indx n) :
   data("Genten::IndxArray::data", n)
 {
 }
 
-Genten::IndxArray::
-IndxArray(ttb_indx n, ttb_indx val) :
+template <typename ExecSpace>
+Genten::IndxArrayT<ExecSpace>::
+IndxArrayT(ttb_indx n, ttb_indx val) :
   data("Genten::IndxArray::data", n)
 {
   Kokkos::deep_copy( data, val );
 }
 
-Genten::IndxArray::
-IndxArray(ttb_indx n, ttb_indx * v) :
+template <typename ExecSpace>
+Genten::IndxArrayT<ExecSpace>::
+IndxArrayT(ttb_indx n, ttb_indx * v) :
   data("Genten::IndxArray::data", n)
 {
   unmanaged_const_view_type v_view(v,n);
   Kokkos::deep_copy(data, v_view);
 }
 
-Genten::IndxArray::
-IndxArray(ttb_indx n, const ttb_real * v) :
+template <typename ExecSpace>
+Genten::IndxArrayT<ExecSpace>::
+IndxArrayT(ttb_indx n, const ttb_real * v) :
   data("Genten::IndxArray::data", n)
 {
   // This is a horribly slow loop. We know that the doubles are really storing positive integers, so it would be mightly nice if we could just pull out the mantissa or something elegant like that.
@@ -74,8 +78,9 @@ IndxArray(ttb_indx n, const ttb_real * v) :
   }
 }
 
-Genten::IndxArray::
-IndxArray(const IndxArray & src, ttb_indx n):
+template <typename ExecSpace>
+Genten::IndxArrayT<ExecSpace>::
+IndxArrayT(const IndxArrayT<ExecSpace> & src, ttb_indx n):
   data("Genten::IndxArray::data", src.data.dimension_0()-1)
 {
   const ttb_indx sz = data.dimension_0();
@@ -85,8 +90,9 @@ IndxArray(const IndxArray & src, ttb_indx n):
                      Kokkos::subview( src.data, std::make_pair(n+1,sz+1) ) );
 }
 
-ttb_bool Genten::IndxArray::
-operator==(const Genten::IndxArray & a) const
+template <typename ExecSpace>
+ttb_bool Genten::IndxArrayT<ExecSpace>::
+operator==(const Genten::IndxArrayT<ExecSpace> & a) const
 {
   const ttb_indx sz = data.dimension_0();
   if (sz != a.data.dimension_0())
@@ -105,8 +111,9 @@ operator==(const Genten::IndxArray & a) const
   return true;
 }
 
-ttb_bool Genten::IndxArray::
-operator<=(const Genten::IndxArray & a) const
+template <typename ExecSpace>
+ttb_bool Genten::IndxArrayT<ExecSpace>::
+operator<=(const Genten::IndxArrayT<ExecSpace> & a) const
 {
   const ttb_indx sz = data.dimension_0();
   if (sz != a.data.dimension_0())
@@ -124,7 +131,8 @@ operator<=(const Genten::IndxArray & a) const
   return true;
 }
 
-ttb_indx & Genten::IndxArray::
+template <typename ExecSpace>
+ttb_indx & Genten::IndxArrayT<ExecSpace>::
 at(ttb_indx i) const
 {
   if (i < data.dimension_0()) {
@@ -134,7 +142,8 @@ at(ttb_indx i) const
   return data[0]; // notreached
 }
 
-ttb_indx Genten::IndxArray::
+template <typename ExecSpace>
+ttb_indx Genten::IndxArrayT<ExecSpace>::
 prod(ttb_indx i, ttb_indx j, ttb_indx dflt) const
 {
   if (j <= i)
@@ -150,8 +159,9 @@ prod(ttb_indx i, ttb_indx j, ttb_indx dflt) const
   return(p);
 }
 
-void Genten::IndxArray::
-cumprod(const Genten::IndxArray & src)
+template <typename ExecSpace>
+void Genten::IndxArrayT<ExecSpace>::
+cumprod(const Genten::IndxArrayT<ExecSpace> & src)
 {
   const ttb_indx sz = data.dimension_0();
   if (sz != src.data.dimension_0()+1)
@@ -163,18 +173,20 @@ cumprod(const Genten::IndxArray & src)
   }
 }
 
-void Genten::IndxArray::
+template <typename ExecSpace>
+void Genten::IndxArrayT<ExecSpace>::
 zero()
 {
   Kokkos::deep_copy( data, ttb_indx(0) );
 }
 
-ttb_bool Genten::IndxArray::
+template <typename ExecSpace>
+ttb_bool Genten::IndxArrayT<ExecSpace>::
 isPermutation() const
 {
   const ttb_indx sz = data.dimension_0();
   const ttb_indx invalid = ttb_indx(-1);
-  Genten::IndxArray chk(sz);
+  Genten::IndxArrayT<ExecSpace> chk(sz);
   chk.zero();
   for (ttb_indx i = 0; i < sz; i ++)
   {
@@ -194,8 +206,9 @@ isPermutation() const
   return(true);
 }
 
-void Genten::IndxArray::
-increment(const Genten::IndxArray & dims)
+template <typename ExecSpace>
+void Genten::IndxArrayT<ExecSpace>::
+increment(const Genten::IndxArrayT<ExecSpace> & dims)
 {
   const ttb_indx sz = data.dimension_0();
   if (sz != dims.data.dimension_0())
@@ -214,3 +227,6 @@ increment(const Genten::IndxArray & dims)
   }
   // most significant index will not be limited by dims[0]
 }
+
+#define INST_MACRO(SPACE) template class Genten::IndxArrayT<SPACE>;
+GENTEN_INST(INST_MACRO)

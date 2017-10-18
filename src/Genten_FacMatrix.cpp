@@ -65,31 +65,32 @@
 #define USE_NEW_COLNORMS 1
 #define USE_NEW_COLSCALE 1
 
-using namespace std;
-
-Genten::FacMatrix::
-FacMatrix(ttb_indx m, ttb_indx n, const ttb_real * cvec):
+template <typename ExecSpace>
+Genten::FacMatrixT<ExecSpace>::
+FacMatrixT(ttb_indx m, ttb_indx n, const ttb_real * cvec):
   //data("Genten::FacMatrix::data",m,n)
   data(Kokkos::view_alloc("Genten::FacMatrix::data", Kokkos::AllowPadding),m,n)
 {
   this->convertFromCol(m,n,cvec);
 }
 
-
-void Genten::FacMatrix::
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
 operator=(ttb_real val)
 {
   Kokkos::deep_copy(data, val);
 }
 
-void Genten::FacMatrix::
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
 rand()
 {
   auto data_1d = make_data_1d();
   data_1d.rand();
 }
 
-void Genten::FacMatrix::
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
 scatter (const bool bUseMatlabRNG,
          RandomMT &  cRMT)
 {
@@ -97,7 +98,8 @@ scatter (const bool bUseMatlabRNG,
   data_1d.scatter (bUseMatlabRNG, cRMT);
 }
 
-void Genten::FacMatrix::
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
 convertFromCol(ttb_indx nr, ttb_indx nc, const ttb_real * cvec)
 {
   const ttb_indx nrows = data.dimension_0();
@@ -111,9 +113,9 @@ convertFromCol(ttb_indx nr, ttb_indx nc, const ttb_real * cvec)
   }
 }
 
-
-bool Genten::FacMatrix::
-isEqual(const Genten::FacMatrix & b, ttb_real tol) const
+template <typename ExecSpace>
+bool Genten::FacMatrixT<ExecSpace>::
+isEqual(const Genten::FacMatrixT<ExecSpace> & b, ttb_real tol) const
 {
   // Check for equal sizes first
   if ((data.dimension_0() != b.data.dimension_0()) ||
@@ -129,8 +131,9 @@ isEqual(const Genten::FacMatrix & b, ttb_real tol) const
 
 }
 
-void Genten::FacMatrix::
-times(const Genten::FacMatrix & v)
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+times(const Genten::FacMatrixT<ExecSpace> & v)
 {
   if ((v.data.dimension_0() != data.dimension_0()) ||
       (v.data.dimension_1() != data.dimension_1()))
@@ -142,8 +145,9 @@ times(const Genten::FacMatrix & v)
   data_1d.times(v_data_1d);
 }
 
-void Genten::FacMatrix::
-plus(const Genten::FacMatrix & y)
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+plus(const Genten::FacMatrixT<ExecSpace> & y)
 {
   // TODO: check size compatibility, parallelize
   auto data_1d = make_data_1d();
@@ -151,8 +155,9 @@ plus(const Genten::FacMatrix & y)
   data_1d.plus(y_data_1d);
 }
 
-void Genten::FacMatrix::
-plusAll(const Genten::FacMatArray & ya)
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+plusAll(const Genten::FacMatArrayT<ExecSpace> & ya)
 {
   // TODO: check size compatibility
   auto data_1d = make_data_1d();
@@ -163,8 +168,9 @@ plusAll(const Genten::FacMatArray & ya)
   }
 }
 
-void Genten::FacMatrix::
-transpose(const Genten::FacMatrix & y)
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+transpose(const Genten::FacMatrixT<ExecSpace> & y)
 {
   // TODO: Replace with call to BLAS3: DGEMM (?)
   const ttb_indx nrows = data.dimension_0();
@@ -179,7 +185,8 @@ transpose(const Genten::FacMatrix & y)
   }
 }
 
-void Genten::FacMatrix::
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
 times(ttb_real a)
 {
   auto data_1d = make_data_1d();
@@ -191,7 +198,7 @@ namespace Impl {
 
 #if defined(LAPACK_FOUND)
 // Gramian implementation using gemm()
-template <typename ViewC, typename ViewA>
+template <typename ExecSpace, typename ViewC, typename ViewA>
 void gramianImpl(const ViewC& C, const ViewA& A)
 {
   const ttb_indx m = A.dimension_0();
@@ -308,11 +315,10 @@ struct GramianKernel {
   }
 };
 
-template <unsigned ColBlockSize, typename ViewC, typename ViewA>
+template <typename ExecSpace, unsigned ColBlockSize,
+          typename ViewC, typename ViewA>
 void gramian_kernel(const ViewC& C, const ViewA& A)
 {
-  typedef Kokkos::DefaultExecutionSpace ExecSpace;
-
   // Compute team and vector sizes, depending on the architecture
 #if defined(KOKKOS_HAVE_CUDA)
   const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
@@ -345,33 +351,32 @@ void gramian_kernel(const ViewC& C, const ViewA& A)
   });
 }
 
-template <typename ViewC, typename ViewA>
+template <typename ExecSpace, typename ViewC, typename ViewA>
 void gramianImpl(const ViewC& C, const ViewA& A)
 {
   const ttb_indx n = A.dimension_1();
   if (n < 2)
-    gramian_kernel<1>(C,A);
+    gramian_kernel<ExecSpace,1>(C,A);
   else if (n < 4)
-    gramian_kernel<2>(C,A);
+    gramian_kernel<ExecSpace,2>(C,A);
   else if (n < 8)
-    gramian_kernel<4>(C,A);
+    gramian_kernel<ExecSpace,4>(C,A);
   else if (n < 16)
-    gramian_kernel<8>(C,A);
+    gramian_kernel<ExecSpace,8>(C,A);
   else if (n < 32)
-    gramian_kernel<16>(C,A);
+    gramian_kernel<ExecSpace,16>(C,A);
   else
-    gramian_kernel<32>(C,A);
+    gramian_kernel<ExecSpace,32>(C,A);
 }
 #else
   // Gramian implementation using Kokkos
-  template <typename ViewC, typename ViewA>
+  template <typename ExecSpace, typename ViewC, typename ViewA>
   void gramianImpl(const ViewC& C, const ViewA& A)
   {
-    typedef Kokkos::DefaultExecutionSpace ExecSpace;
     typedef typename ExecSpace::size_type size_type;
 
     typedef Kokkos::TeamPolicy <ExecSpace> Policy;
-    typedef Kokkos::View< ttb_real**, Kokkos::LayoutRight, ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+    typedef Kokkos::View< ttb_real**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
    // Compute team and vector sizes, depending on the architecture
 #if defined(KOKKOS_HAVE_CUDA)
@@ -410,7 +415,7 @@ void gramianImpl(const ViewC& C, const ViewA& A)
 
     Kokkos::deep_copy( C, 0.0 );
     Kokkos::parallel_for(policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
-                         KOKKOS_LAMBDA(Policy::member_type team)
+                         KOKKOS_LAMBDA(typename Policy::member_type team)
     {
       const size_type team_size = team.team_size();
       const size_type team_index = team.team_rank();
@@ -512,13 +517,11 @@ void gramianImpl(const ViewC& C, const ViewA& A)
 
 #if defined(KOKKOS_HAVE_CUDA) && defined(HAVE_CUBLAS)
   // Gramian implementation for CUDA and double precision using cuBLAS
-  template <typename CT, typename ... CP,
+  template <typename ExecSpace,
+            typename CT, typename ... CP,
             typename AT, typename ... AP>
   typename std::enable_if<
-    ( std::is_same<typename Kokkos::View<CT,CP...>::execution_space,
-                   Kokkos::Cuda>::value &&
-      std::is_same<typename Kokkos::View<AT,AP...>::execution_space,
-                   Kokkos::Cuda>::value &&
+    ( std::is_same<ExecSpace,Kokkos::Cuda>::value &&
       std::is_same<typename Kokkos::View<AT,AP...>::non_const_value_type,
                    double>::value )
     >::type
@@ -568,13 +571,11 @@ void gramianImpl(const ViewC& C, const ViewA& A)
   }
 
   // Gramian implementation for CUDA and single precision using cuBLAS
-  template <typename CT, typename ... CP,
+  template <typename ExecSpace,
+            typename CT, typename ... CP,
             typename AT, typename ... AP>
   typename std::enable_if<
-    ( std::is_same<typename Kokkos::View<CT,CP...>::execution_space,
-                   Kokkos::Cuda>::value &&
-      std::is_same<typename Kokkos::View<AT,AP...>::execution_space,
-                   Kokkos::Cuda>::value &&
+    ( std::is_same<ExecSpace,Kokkos::Cuda>::value &&
       std::is_same<typename Kokkos::View<AT,AP...>::non_const_value_type,
                    float>::value )
     >::type
@@ -627,8 +628,9 @@ void gramianImpl(const ViewC& C, const ViewA& A)
 }
 }
 
-void Genten::FacMatrix::
-gramian(const Genten::FacMatrix & v)
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+gramian(const Genten::FacMatrixT<ExecSpace> & v)
 {
   const ttb_indx m = v.data.dimension_0();
   const ttb_indx n = v.data.dimension_1();
@@ -636,13 +638,14 @@ gramian(const Genten::FacMatrix & v)
   assert(data.dimension_0() == n);
   assert(data.dimension_1() == n);
 
-  Genten::Impl::gramianImpl(data,v.data);
+  Genten::Impl::gramianImpl<ExecSpace>(data,v.data);
 }
 
 // return the index of the first entry, s, such that entry(s,c) > r.
 // assumes/requires the values entry(s,c) are nondecreasing as s increases.
 // if the assumption fails, result is undefined but <= nrows.
-ttb_indx Genten::FacMatrix::
+template <typename ExecSpace>
+ttb_indx Genten::FacMatrixT<ExecSpace>::
 firstGreaterSortedIncreasing(ttb_real r, ttb_indx c) const
 {
   const ttb_indx nrows = data.dimension_0();
@@ -676,8 +679,9 @@ firstGreaterSortedIncreasing(ttb_real r, ttb_indx c) const
   return least;
 }
 
-void Genten::FacMatrix::
-oprod(const Genten::Array & v)
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+oprod(const Genten::ArrayT<ExecSpace> & v)
 {
   // TODO: Replace with call to BLAS2:DGER
 
@@ -946,13 +950,12 @@ struct ColNormsKernel_2
 
 };
 
-template <unsigned ColBlockSize, typename ViewType, typename NormT>
+template <typename ExecSpace, unsigned ColBlockSize,
+          typename ViewType, typename NormT>
 void colNorms_kernel(
   const ViewType& data, Genten::NormType normtype,
   const NormT& norms, ttb_real minval)
 {
-  typedef Kokkos::DefaultExecutionSpace ExecSpace;
-
   // Compute team and vector sizes, depending on the architecture
 #if defined(KOKKOS_HAVE_CUDA)
   const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
@@ -1049,37 +1052,38 @@ void colNorms_kernel(
 }
 }
 
-void Genten::FacMatrix::
-colNorms(Genten::NormType normtype, Genten::Array & norms, ttb_real minval)
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+colNorms(Genten::NormType normtype, Genten::ArrayT<ExecSpace> & norms, ttb_real minval)
 {
   const ttb_indx nc = data.dimension_1();
   if (nc < 2)
-    Impl::colNorms_kernel<1>(data, normtype, norms.data, minval);
+    Impl::colNorms_kernel<ExecSpace,1>(data, normtype, norms.values(), minval);
   else if (nc < 4)
-    Impl::colNorms_kernel<2>(data, normtype, norms.data, minval);
+    Impl::colNorms_kernel<ExecSpace,2>(data, normtype, norms.values(), minval);
   else if (nc < 8)
-    Impl::colNorms_kernel<4>(data, normtype, norms.data, minval);
+    Impl::colNorms_kernel<ExecSpace,4>(data, normtype, norms.values(), minval);
   else if (nc < 16)
-    Impl::colNorms_kernel<8>(data, normtype, norms.data, minval);
+    Impl::colNorms_kernel<ExecSpace,8>(data, normtype, norms.values(), minval);
   else if (nc < 32)
-    Impl::colNorms_kernel<16>(data, normtype, norms.data, minval);
+    Impl::colNorms_kernel<ExecSpace,16>(data, normtype, norms.values(), minval);
   else
-    Impl::colNorms_kernel<32>(data, normtype, norms.data, minval);
+    Impl::colNorms_kernel<ExecSpace,32>(data, normtype, norms.values(), minval);
 }
 
 #else
 
-void Genten::FacMatrix::
-colNorms(Genten::NormType normtype, Genten::Array & norms, ttb_real minval)
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+colNorms(Genten::NormType normtype, Genten::ArrayT<ExecSpace> & norms, ttb_real minval)
 {
-  typedef Kokkos::DefaultExecutionSpace ExecSpace;
   typedef typename ExecSpace::size_type size_type;
 
   const size_type m = data.dimension_0();
   const size_type n = data.dimension_1();
 
   typedef Kokkos::TeamPolicy <ExecSpace> Policy;
-  typedef Kokkos::View< ttb_real**, Kokkos::LayoutRight, ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+  typedef Kokkos::View< ttb_real**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
   // Compute team and vector sizes, depending on the architecture
 #if defined(KOKKOS_HAVE_CUDA)
@@ -1127,7 +1131,7 @@ colNorms(Genten::NormType normtype, Genten::Array & norms, ttb_real minval)
     }
     */
     Kokkos::parallel_for(policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
-                         KOKKOS_LAMBDA(Policy::member_type team)
+                         KOKKOS_LAMBDA(typename Policy::member_type team)
     {
       const size_type team_size = team.team_size();
       const size_type team_index = team.team_rank();
@@ -1210,7 +1214,7 @@ colNorms(Genten::NormType normtype, Genten::Array & norms, ttb_real minval)
     }
     */
     Kokkos::parallel_for(policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
-                         KOKKOS_LAMBDA(Policy::member_type team)
+                         KOKKOS_LAMBDA(typename Policy::member_type team)
     {
       const size_type team_size = team.team_size();
       const size_type team_index = team.team_rank();
@@ -1275,7 +1279,7 @@ colNorms(Genten::NormType normtype, Genten::Array & norms, ttb_real minval)
     }
     */
     Kokkos::parallel_for(policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
-                         KOKKOS_LAMBDA(Policy::member_type team)
+                         KOKKOS_LAMBDA(typename Policy::member_type team)
     {
       const size_type team_size = team.team_size();
       const size_type team_index = team.team_rank();
@@ -1365,7 +1369,7 @@ struct ColScaleKernel {
   typedef typename Policy::member_type TeamMember;
 
   const View& data;
-  const Genten::Array& v;
+  const Genten::ArrayT<ExecSpace>& v;
   const TeamMember& team;
   const unsigned team_index;
   const unsigned i_block;
@@ -1379,7 +1383,7 @@ struct ColScaleKernel {
 
   KOKKOS_INLINE_FUNCTION
   ColScaleKernel(const View& data_,
-                 const Genten::Array& v_,
+                 const Genten::ArrayT<ExecSpace>& v_,
                  const TeamMember& team_) :
     data(data_),
     v(v_),
@@ -1412,11 +1416,9 @@ struct ColScaleKernel {
   }
 };
 
-template <unsigned ColBlockSize, typename ViewType>
-void colScale_kernel(const ViewType& data, const Genten::Array& v)
+template <typename ExecSpace, unsigned ColBlockSize, typename ViewType>
+void colScale_kernel(const ViewType& data, const Genten::ArrayT<ExecSpace>& v)
 {
-  typedef Kokkos::DefaultExecutionSpace ExecSpace;
-
   // Compute team and vector sizes, depending on the architecture
 #if defined(KOKKOS_HAVE_CUDA)
   const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
@@ -1448,15 +1450,16 @@ void colScale_kernel(const ViewType& data, const Genten::Array& v)
 }
 }
 
-void Genten::FacMatrix::
-colScale(const Genten::Array & v, bool inverse)
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+colScale(const Genten::ArrayT<ExecSpace> & v, bool inverse)
 {
   const ttb_indx n = data.dimension_1();
   assert(v.size() == n);
 
-  Genten::Array w;
+  Genten::ArrayT<ExecSpace> w;
   if (inverse) {
-    w = Genten::Array(n);
+    w = Genten::ArrayT<ExecSpace>(n);
     for (ttb_indx j = 0; j < n; j ++) {
       if (v[j] == 0)
         Genten::error("Genten::FacMatrix::colScale - divide-by-zero error");
@@ -1467,25 +1470,25 @@ colScale(const Genten::Array & v, bool inverse)
     w = v;
 
   if (n < 2)
-    Impl::colScale_kernel<1>(data, w);
+    Impl::colScale_kernel<ExecSpace,1>(data, w);
   else if (n < 4)
-    Impl::colScale_kernel<2>(data, w);
+    Impl::colScale_kernel<ExecSpace,2>(data, w);
   else if (n < 8)
-    Impl::colScale_kernel<4>(data, w);
+    Impl::colScale_kernel<ExecSpace,4>(data, w);
   else if (n < 16)
-    Impl::colScale_kernel<8>(data, w);
+    Impl::colScale_kernel<ExecSpace,8>(data, w);
   else if (n < 32)
-    Impl::colScale_kernel<16>(data, w);
+    Impl::colScale_kernel<ExecSpace,16>(data, w);
   else if (n < 64)
-    Impl::colScale_kernel<32>(data, w);
+    Impl::colScale_kernel<ExecSpace,32>(data, w);
   else
-    Impl::colScale_kernel<64>(data, w);
+    Impl::colScale_kernel<ExecSpace,64>(data, w);
 }
 #else
-void Genten::FacMatrix::
-colScale(const Genten::Array & v, bool inverse)
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+colScale(const Genten::ArrayT<ExecSpace> & v, bool inverse)
 {
-  typedef Kokkos::DefaultExecutionSpace ExecSpace;
   typedef typename ExecSpace::size_type size_type;
 
   const size_type m = data.dimension_0();
@@ -1524,7 +1527,7 @@ colScale(const Genten::Array & v, bool inverse)
       if (v[j] == 0)
         Genten::error("Genten::FacMatrix::colScale - divide-by-zero error");
 
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(Policy::member_type team)
+    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(typename Policy::member_type team)
     {
       const size_type team_size = team.team_size();
       const size_type team_index = team.team_rank();
@@ -1544,7 +1547,7 @@ colScale(const Genten::Array & v, bool inverse)
     });
   }
   else {
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(Policy::member_type team)
+    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(typename Policy::member_type team)
     {
       const size_type team_size = team.team_size();
       const size_type team_index = team.team_rank();
@@ -1569,7 +1572,8 @@ colScale(const Genten::Array & v, bool inverse)
 // Only called by Ben Allan's parallel test code.  It appears he uses the Linux
 // random number generator in a special way.
 #if !defined(_WIN32)
-void Genten::FacMatrix::
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
 scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise)
 {
   const ttb_indx nrows = data.dimension_0();
@@ -1588,7 +1592,7 @@ scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise)
     ttb_indx i=0,k=0;
     if (n < 1) { n =1; }
     // flags array so we don't count repeats twice toward fraction target
-    Genten::IndxArray marked(tot,(ttb_indx)0);
+    Genten::IndxArrayT<ExecSpace> marked(tot,(ttb_indx)0);
     int misses = 0;
     while (i < n ) {
       k = ::random() % tot;
@@ -1617,7 +1621,8 @@ scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise)
 #endif
 
 // TODO: This function really should be removed and replaced with a ktensor norm function, because that's kind of how it's used.
-ttb_real Genten::FacMatrix::
+template <typename ExecSpace>
+ttb_real Genten::FacMatrixT<ExecSpace>::
 sum() const
 {
   const ttb_indx nrows = data.dimension_0();
@@ -1639,7 +1644,8 @@ sum() const
   return(sum);
 }
 
-bool Genten::FacMatrix::
+template <typename ExecSpace>
+bool Genten::FacMatrixT<ExecSpace>::
 hasNonFinite(ttb_indx &retval) const
 {
   const ttb_real * mptr = ptr();
@@ -1654,8 +1660,9 @@ hasNonFinite(ttb_indx &retval) const
   return false;
 }
 
-void Genten::FacMatrix::
-permute(const Genten::IndxArray &perm_indices)
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+permute(const Genten::IndxArrayT<ExecSpace> &perm_indices)
 {
   // The current implementation using a single column of temporary storage
   // (i.e., an array of size ncols) and requires at most 2*nrows*(ncols-1)
@@ -1673,12 +1680,12 @@ permute(const Genten::IndxArray &perm_indices)
   }
 
   // keep track of columns during permutation
-  Genten::IndxArray curr_indices(ncols);
+  Genten::IndxArrayT<ExecSpace> curr_indices(ncols);
   for (ttb_indx j=0; j<ncols; j++)
     curr_indices[j] = j;
 
   // storage for moving data aside during column permutation
-  Genten::Array temp(nrows);
+  Genten::ArrayT<ExecSpace> temp(nrows);
 
   for (ttb_indx j=0; j<ncols; j++)
   {
@@ -1718,10 +1725,11 @@ permute(const Genten::IndxArray &perm_indices)
   }
 }
 
-void Genten::FacMatrix::
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
 multByVector(bool bTranspose,
-             const Genten::Array &  x,
-             Genten::Array &  y) const
+             const Genten::ArrayT<ExecSpace> &  x,
+             Genten::ArrayT<ExecSpace> &  y) const
 {
   const ttb_indx nrows = data.dimension_0();
   const ttb_indx ncols = data.dimension_1();
@@ -1926,9 +1934,9 @@ namespace Genten {
   }
 }
 
-
-void Genten::FacMatrix::
-solveTransposeRHS (const Genten::FacMatrix &  A)
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+solveTransposeRHS (const Genten::FacMatrixT<ExecSpace> &  A)
 {
   const ttb_indx nrows = data.dimension_0();
   const ttb_indx ncols = data.dimension_1();
@@ -1947,9 +1955,9 @@ solveTransposeRHS (const Genten::FacMatrix &  A)
   return;
 }
 
-
-void Genten::FacMatrix::
-rowTimes(Genten::Array & x,
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+rowTimes(Genten::ArrayT<ExecSpace> & x,
          const ttb_indx nRow) const
 {
   assert(x.size() == data.dimension_1());
@@ -1962,9 +1970,10 @@ rowTimes(Genten::Array & x,
   return;
 }
 
-void Genten::FacMatrix::
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
 rowTimes(const ttb_indx         nRow,
-         const Genten::FacMatrix & other,
+         const Genten::FacMatrixT<ExecSpace> & other,
          const ttb_indx         nRowOther)
 {
   assert(other.nCols() == data.dimension_1());
@@ -1977,9 +1986,10 @@ rowTimes(const ttb_indx         nRow,
   return;
 }
 
-ttb_real Genten::FacMatrix::
+template <typename ExecSpace>
+ttb_real Genten::FacMatrixT<ExecSpace>::
 rowDot(const ttb_indx         nRow,
-       const Genten::FacMatrix & other,
+       const Genten::FacMatrixT<ExecSpace> & other,
        const ttb_indx         nRowOther) const
 {
   const ttb_indx ncols = data.dimension_1();
@@ -1999,9 +2009,10 @@ rowDot(const ttb_indx         nRow,
   return( result );
 }
 
-void Genten::FacMatrix::
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
 rowDScale(const ttb_indx         nRow,
-          Genten::FacMatrix & other,
+          Genten::FacMatrixT<ExecSpace> & other,
           const ttb_indx         nRowOther,
           const ttb_real         dScalar) const
 {
@@ -2019,3 +2030,6 @@ rowDScale(const ttb_indx         nRow,
 
   return;
 }
+
+#define INST_MACRO(SPACE) template class Genten::FacMatrixT<SPACE>;
+GENTEN_INST(INST_MACRO)

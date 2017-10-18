@@ -53,19 +53,28 @@ namespace Genten
    * dimension are non-decreasing.
    */
 
-class Sptensor_perm : public Sptensor
-{
+template <typename ExecSpace> class SptensorT_perm;
+typedef SptensorT_perm<DefaultHostExecutionSpace> Sptensor_perm;
 
+template <typename ExecSpace>
+class SptensorT_perm : public SptensorT<ExecSpace>
+{
 public:
+
+  typedef ExecSpace exec_space;
+  typedef typename SptensorT<ExecSpace>::host_mirror_space host_mirror_space;
+  typedef SptensorT_perm<host_mirror_space> HostMirror;
+  typedef typename SptensorT<ExecSpace>::subs_view_type subs_view_type;
+  typedef typename SptensorT<ExecSpace>::vals_view_type vals_view_type;
 
   // Empty construtor.
   /* Creates an empty tensor with an empty size. */
   KOKKOS_INLINE_FUNCTION
-    Sptensor_perm() : Sptensor(), perm() {}
+  SptensorT_perm() : SptensorT<ExecSpace>(), perm() {}
 
   // Constructor for a given size and number of nonzeros
-  Sptensor_perm(const IndxArray& sz, ttb_indx nz) :
-    Sptensor(sz,nz), perm() {}
+  SptensorT_perm(const IndxArrayT<ExecSpace>& sz, ttb_indx nz) :
+  SptensorT<ExecSpace>(sz,nz), perm() {}
 
   /* Constructor from complete raw data indexed C-wise in C types.
      All input are deep copied.
@@ -75,16 +84,16 @@ public:
      @param vals values [nz] of nonzeros.
      @param subscripts [nz*nd] coordinates of each nonzero, grouped by indices of each nonzero adjacent.
   */
-  Sptensor_perm(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals, ttb_indx *subscripts) :
-    Sptensor(nd,dims,nz,vals,subscripts), perm() {}
+  SptensorT_perm(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals, ttb_indx *subscripts) :
+    SptensorT<ExecSpace>(nd,dims,nz,vals,subscripts), perm() {}
 
   // Constructor (for data from MATLAB).
   /* a) Copies everything locally.
      b) There are no checks for duplicate entries. Call sort() to dedup.
      c) It is assumed that sbs starts numbering at one,
      and so one is subtracted to make it start at zero. */
-  Sptensor_perm(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls, ttb_real * sbs) :
-    Sptensor(nd,sz,nz,vls,sbs), perm() {}
+  SptensorT_perm(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls, ttb_real * sbs) :
+    SptensorT<ExecSpace>(nd,sz,nz,vls,sbs), perm() {}
 
   /* Constructor from complete raw data indexed C-wise using STL types.
      All input are deep copied.
@@ -92,22 +101,29 @@ public:
      @param vals nonzero values.
      @param subscripts 2-d array of subscripts.
   */
-  Sptensor_perm(const std::vector<ttb_indx>& dims,
-               const std::vector<ttb_real>& vals,
-               const std::vector< std::vector<ttb_indx> >& subscripts) :
-    Sptensor(dims, vals, subscripts) {}
+  SptensorT_perm(const std::vector<ttb_indx>& dims,
+                 const std::vector<ttb_real>& vals,
+                 const std::vector< std::vector<ttb_indx> >& subscripts) :
+    SptensorT<ExecSpace>(dims, vals, subscripts) {}
+
+  // Create tensor from supplied dimensions, values, and subscripts
+  KOKKOS_INLINE_FUNCTION
+  SptensorT_perm(const IndxArrayT<ExecSpace>& d, const vals_view_type& vals,
+                 const subs_view_type& s, const subs_view_type& p) :
+    SptensorT<ExecSpace>(d, vals, s),
+    perm(p) {}
 
   // Copy constructor.
   KOKKOS_INLINE_FUNCTION
-  Sptensor_perm (const Sptensor_perm & arg) = default;
+  SptensorT_perm (const SptensorT_perm & arg) = default;
 
   // Assignment operator.
   KOKKOS_INLINE_FUNCTION
-  Sptensor_perm & operator= (const Sptensor_perm & arg) = default;
+  SptensorT_perm & operator= (const SptensorT_perm & arg) = default;
 
   // Destructor.
   KOKKOS_INLINE_FUNCTION
-  ~Sptensor_perm() = default;
+  ~SptensorT_perm() = default;
 
   KOKKOS_INLINE_FUNCTION
   ttb_indx getPerm(ttb_indx i, ttb_indx n) const
@@ -115,6 +131,10 @@ public:
     assert((i < values.size()) && (n < nNumDims));
     return perm(i,n);
   }
+
+  // Get whole perm array
+  KOKKOS_INLINE_FUNCTION
+  subs_view_type getPerm() const { return perm; }
 
   // Finalize any setup of the tensor after all entries have been added
   void fillComplete() { createPermutation(); }
@@ -125,9 +145,28 @@ public:
 
 protected:
 
-  typedef Sptensor::subs_view_type subs_view_type;
   subs_view_type perm;
 
 };
+
+template <typename ExecSpace>
+typename SptensorT_perm<ExecSpace>::HostMirror
+create_mirror_view(const SptensorT_perm<ExecSpace>& a)
+{
+  typedef typename SptensorT_perm<ExecSpace>::HostMirror HostMirror;
+  return HostMirror( create_mirror_view(a.size()),
+                     create_mirror_view(a.getValues()),
+                     create_mirror_view(a.getSubscripts()),
+                     create_mirror_view(a.getPerm()) );
+}
+
+template <typename E1, typename E2>
+void deep_copy(const SptensorT_perm<E1>& dst, const SptensorT_perm<E2>& src)
+{
+  deep_copy( dst.size(), src.size() );
+  deep_copy( dst.getValues(), src.getValues() );
+  deep_copy( dst.getSubscripts(), src.getSubscripts() );
+  deep_copy( dst.getPerm(), src.getPerm() );
+}
 
 }

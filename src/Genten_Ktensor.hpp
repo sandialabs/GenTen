@@ -50,33 +50,46 @@
 namespace Genten
 {
 
-class Ktensor
+template <typename ExecSpace> class KtensorT;
+typedef KtensorT<DefaultHostExecutionSpace> Ktensor;
+
+template <typename ExecSpace>
+class KtensorT
 {
 public:
+
+  typedef ExecSpace exec_space;
+  typedef typename ArrayT<ExecSpace>::host_mirror_space host_mirror_space;
+  typedef KtensorT<host_mirror_space> HostMirror;
 
   // ----- CREATE & DESTROY -----
   // Empty constructor
   KOKKOS_INLINE_FUNCTION
-  Ktensor() = default;
+  KtensorT() = default;
 
   // Constructor with number of components and dimensions, but
   // factor matrix sizes are still undetermined.
-  Ktensor(ttb_indx nc, ttb_indx nd);
+  KtensorT(ttb_indx nc, ttb_indx nd);
 
   // Constructor with number of components, dimensions and factor matrix sizes
-  Ktensor(ttb_indx nc, ttb_indx nd, const Genten::IndxArray & sz);
+  KtensorT(ttb_indx nc, ttb_indx nd, const IndxArrayT<ExecSpace> & sz);
+
+  // Create Ktensor from supplied weights and values
+  KOKKOS_INLINE_FUNCTION
+  KtensorT(const ArrayT<ExecSpace>& w, const FacMatArrayT<ExecSpace>& vals) :
+    lambda(w), data(vals) {}
 
   // Destructor
   KOKKOS_INLINE_FUNCTION
-  ~Ktensor() = default;
+  ~KtensorT() = default;
 
   // Copy constructor
   KOKKOS_INLINE_FUNCTION
-  Ktensor (const Ktensor & arg) = default;
+  KtensorT (const KtensorT & arg) = default;
 
   // Assignment operator
   KOKKOS_INLINE_FUNCTION
-  Ktensor & operator= (const Ktensor & arg) = default;
+  KtensorT & operator= (const KtensorT & arg) = default;
 
   // ----- MODIFY & RESET -----
 
@@ -89,7 +102,7 @@ public:
 
   // Set all weights to new values.  The length of newWeights must equal
   // that of the weights, as returned by ncomponents().
-  void setWeights(const Genten::Array & newWeights);
+  void setWeights(const ArrayT<ExecSpace> & newWeights);
 
   // Set all matrix entries equal to val
   void setMatrices(ttb_real val);
@@ -140,7 +153,7 @@ public:
    *                            The seed should already be set.
    */
   void setRandomUniform (const bool bUseMatlabRNG,
-                         Genten::RandomMT & cRMT);
+                         RandomMT & cRMT);
 
   // multiply (plump) a fraction (indices randomly chosen) of each FacMatrix by scale
   // If columnwise is true, each the selection process is applied columnwise.
@@ -173,7 +186,7 @@ public:
 
   // Consistency check on sizes --- Same as above but also checks that the
   // number of rows in each matrix matches the specified size.
-  bool isConsistent(const Genten::IndxArray & sz) const;
+  bool isConsistent(const IndxArrayT<ExecSpace> & sz) const;
 
   bool hasNonFinite(ttb_indx &bad) const;
 
@@ -186,14 +199,14 @@ public:
 
   // Return reference to weights vector
   KOKKOS_INLINE_FUNCTION
-  Genten::Array & weights()
+  ArrayT<ExecSpace> & weights()
   {
     return(lambda);
   }
 
   // Return reference to weights vector
   KOKKOS_INLINE_FUNCTION
-  const Genten::Array & weights() const
+  const ArrayT<ExecSpace> & weights() const
   {
     return(lambda);
   }
@@ -208,7 +221,7 @@ public:
 
   // Return reference to factor matrix array
   KOKKOS_INLINE_FUNCTION
-  const Genten::FacMatArray & factors() const
+  const FacMatArrayT<ExecSpace> & factors() const
   {
     return data;
   }
@@ -219,7 +232,7 @@ public:
   // number of components, and the number of rows equals the length of factors
   // in the n-th dimension.
   KOKKOS_INLINE_FUNCTION
-  Genten::FacMatrix & operator[](ttb_indx n) const
+  FacMatrixT<ExecSpace> & operator[](ttb_indx n) const
   {
     assert((n >= 0) && (n < ndims()));
     return data[n];
@@ -236,29 +249,29 @@ public:
            ---------------------------------   < TOL .
            max(1, fabs(a(i,j)), fabs(b(i,j))
   */
-  bool isEqual(const Genten::Ktensor & b, ttb_real tol) const;
+  bool isEqual(const KtensorT & b, ttb_real tol) const;
 
   // Return entry of constructed Ktensor.
-  ttb_real entry(const Genten::IndxArray & subs) const;
+  ttb_real entry(const IndxArrayT<ExecSpace> & subs) const;
 
   // Return entry of constructed Ktensor, substituting altLambda for lambda.
-  ttb_real entry(const Genten::IndxArray & subs,
-                 const Genten::Array & altLambda);
+  ttb_real entry(const IndxArrayT<ExecSpace> & subs,
+                 const ArrayT<ExecSpace> & altLambda);
 
   // Distribute weights to i-th factor matrix (set lambda to vector of ones)
   void distribute(ttb_indx i);
 
   // Normalize i-th factor matrix using specified norm
-  void normalize(Genten::NormType norm_type, ttb_indx i);
+  void normalize(NormType norm_type, ttb_indx i);
 
   // Normalize the factor matrices using the specified norm type
-  void normalize(Genten::NormType norm_type);
+  void normalize(NormType norm_type);
 
   // Arrange the columns of the factor matrices by decreasing lambda value
   void arrange();
 
   // Arrange the columns of the factor matrices using a particular index permutation
-  void arrange(Genten::IndxArray permutation_indices);
+  void arrange(IndxArrayT<ExecSpace> permutation_indices);
 
   // Return the Frobenius norm squared (sum of squares of each tensor element).
   ttb_real normFsq() const;
@@ -267,12 +280,28 @@ public:
 private:
 
   // Weights array
-  Genten::Array lambda;
+  ArrayT<ExecSpace> lambda;
 
   // Factor matrix array.
   // See comments for access method operator[].
-  Genten::FacMatArray data;
+  FacMatArrayT<ExecSpace> data;
 
 };
+
+template <typename ExecSpace>
+typename KtensorT<ExecSpace>::HostMirror
+create_mirror_view(const KtensorT<ExecSpace>& a)
+{
+  typedef typename KtensorT<ExecSpace>::HostMirror HostMirror;
+  return HostMirror( create_mirror_view(a.weights()),
+                     create_mirror_view(a.factors()) );
+}
+
+template <typename E1, typename E2>
+void deep_copy(const KtensorT<E1>& dst, const KtensorT<E2>& src)
+{
+  deep_copy( dst.weights(), src.weights() );
+  deep_copy( dst.factors(), src.factors() );
+}
 
 }

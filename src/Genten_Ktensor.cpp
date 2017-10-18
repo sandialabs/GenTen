@@ -47,34 +47,39 @@
 #include "Genten_RandomMT.hpp"
 #include "Genten_IndxArray.hpp"
 
-Genten::Ktensor::
-Ktensor(ttb_indx nc, ttb_indx nd):
+template <typename ExecSpace>
+Genten::KtensorT<ExecSpace>::
+KtensorT(ttb_indx nc, ttb_indx nd):
   lambda(nc), data(nd)
 {
   setWeights(1.0);
 }
 
-Genten::Ktensor::
-Ktensor(ttb_indx nc, ttb_indx nd, const Genten::IndxArray & sz):
+template <typename ExecSpace>
+Genten::KtensorT<ExecSpace>::
+KtensorT(ttb_indx nc, ttb_indx nd, const Genten::IndxArrayT<ExecSpace> & sz):
   lambda(nc), data(nd,sz,nc)
 {
   setWeights(1.0);
 }
 
-void Genten::Ktensor::
+template <typename ExecSpace>
+void Genten::KtensorT<ExecSpace>::
 setWeightsRand()
 {
   lambda.rand();
 }
 
-void Genten::Ktensor::
+template <typename ExecSpace>
+void Genten::KtensorT<ExecSpace>::
 setWeights(ttb_real val)
 {
   lambda = val;
 }
 
-void Genten::Ktensor::
-setWeights(const Genten::Array &  newWeights)
+template <typename ExecSpace>
+void Genten::KtensorT<ExecSpace>::
+setWeights(const Genten::ArrayT<ExecSpace> &  newWeights)
 {
   assert(newWeights.size() == lambda.size());
   for (ttb_indx  i = 0; i < lambda.size(); i++)
@@ -82,9 +87,8 @@ setWeights(const Genten::Array &  newWeights)
   return;
 }
 
-
-
-void Genten::Ktensor::
+template <typename ExecSpace>
+void Genten::KtensorT<ExecSpace>::
 setMatricesRand()
 {
   ttb_indx nd = data.size();
@@ -94,7 +98,8 @@ setMatricesRand()
   }
 }
 
-void Genten::Ktensor::
+template <typename ExecSpace>
+void Genten::KtensorT<ExecSpace>::
 setMatricesScatter(const bool bUseMatlabRNG,
                    Genten::RandomMT &   cRMT)
 {
@@ -105,8 +110,8 @@ setMatricesScatter(const bool bUseMatlabRNG,
   }
 }
 
-
-void Genten::Ktensor::
+template <typename ExecSpace>
+void Genten::KtensorT<ExecSpace>::
 setRandomUniform (const bool bUseMatlabRNG,
                   Genten::RandomMT & cRMT)
 {
@@ -114,7 +119,7 @@ setRandomUniform (const bool bUseMatlabRNG,
   // vector so that it sums to one.
   ttb_indx nComps = lambda.size();
   ttb_indx nd = data.size();
-  Array  cTotals(nComps);
+  ArrayT<ExecSpace>  cTotals(nComps);
   setWeights (1.0);
   for(ttb_indx  n = 0; n < nd; n++)
   {
@@ -166,7 +171,8 @@ setRandomUniform (const bool bUseMatlabRNG,
 
 // Only called by Ben Allan's parallel test code.
 #if !defined(_WIN32)
-void Genten::Ktensor::
+template <typename ExecSpace>
+void Genten::KtensorT<ExecSpace>::
 scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise)
 {
   for (ttb_indx i =0; i< data.size(); i++) {
@@ -175,13 +181,15 @@ scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise)
 }
 #endif
 
-void Genten::Ktensor::
+template <typename ExecSpace>
+void Genten::KtensorT<ExecSpace>::
 setMatrices(ttb_real val)
 {
   data = val;
 }
 
-bool Genten::Ktensor::
+template <typename ExecSpace>
+bool Genten::KtensorT<ExecSpace>::
 isConsistent() const
 {
   ttb_indx nc = lambda.size();
@@ -195,8 +203,9 @@ isConsistent() const
   return true;
 }
 
-bool Genten::Ktensor::
-isConsistent(const Genten::IndxArray & sz) const
+template <typename ExecSpace>
+bool Genten::KtensorT<ExecSpace>::
+isConsistent(const Genten::IndxArrayT<ExecSpace> & sz) const
 {
   if (data.size() != sz.size())
   {
@@ -214,7 +223,8 @@ isConsistent(const Genten::IndxArray & sz) const
   return true;
 }
 
-bool Genten::Ktensor::
+template <typename ExecSpace>
+bool Genten::KtensorT<ExecSpace>::
 hasNonFinite(ttb_indx &bad) const
 {
   bad = 0;
@@ -232,8 +242,8 @@ hasNonFinite(ttb_indx &bad) const
   return false;
 }
 
-
-bool Genten::Ktensor::
+template <typename ExecSpace>
+bool Genten::KtensorT<ExecSpace>::
 isNonnegative(bool bDisplayErrors) const
 {
   for (ttb_indx  n = 0; n < ndims(); n++)
@@ -272,8 +282,9 @@ isNonnegative(bool bDisplayErrors) const
   return( true );
 }
 
-bool Genten::Ktensor::
-isEqual(const Genten::Ktensor & b, ttb_real tol) const
+template <typename ExecSpace>
+bool Genten::KtensorT<ExecSpace>::
+isEqual(const Genten::KtensorT<ExecSpace> & b, ttb_real tol) const
 {
   // Check for equal sizes.
   if ((this->ndims() != b.ndims()) || (this->ncomponents() != b.ncomponents()))
@@ -298,8 +309,9 @@ isEqual(const Genten::Ktensor & b, ttb_real tol) const
   return( true );
 }
 
-ttb_real Genten::Ktensor::
-entry(const Genten::IndxArray & subs) const
+template <typename ExecSpace>
+ttb_real Genten::KtensorT<ExecSpace>::
+entry(const Genten::IndxArrayT<ExecSpace> & subs) const
 {
   ttb_indx nd = this->ndims();
   assert(subs.size() == nd);
@@ -309,7 +321,7 @@ entry(const Genten::IndxArray & subs) const
   // are columns so that rowTimes() is across a row.
 
   // Copy lambda array to temp array.
-  Genten::Array x(lambda.size());
+  Genten::ArrayT<ExecSpace> x(lambda.size());
   x.deep_copy(lambda);
 
   // Compute a vector of elementwise products of corresponding rows
@@ -325,9 +337,10 @@ entry(const Genten::IndxArray & subs) const
   return(x.sum());
 }
 
-ttb_real Genten::Ktensor::
-entry(const Genten::IndxArray & subs,
-      const Genten::Array & altLambda)
+template <typename ExecSpace>
+ttb_real Genten::KtensorT<ExecSpace>::
+entry(const Genten::IndxArrayT<ExecSpace> & subs,
+      const Genten::ArrayT<ExecSpace> & altLambda)
 {
   ttb_indx nd = this->ndims();
   assert(subs.size() == nd);
@@ -338,7 +351,7 @@ entry(const Genten::IndxArray & subs,
   // the factor vectors are columns so that rowTimes() is across a row.
 
   // Copy lambda array to temp array.
-  Genten::Array lambdaForEntry(lambda.size());
+  Genten::ArrayT<ExecSpace> lambdaForEntry(lambda.size());
   for (ttb_indx  i = 0; i < lambdaForEntry.size(); i++)
     lambdaForEntry[i] = altLambda[i];
 
@@ -355,14 +368,16 @@ entry(const Genten::IndxArray & subs,
   return( lambdaForEntry.sum() );
 }
 
-void Genten::Ktensor::
+template <typename ExecSpace>
+void Genten::KtensorT<ExecSpace>::
 distribute(ttb_indx i)
 {
   data[i].colScale(lambda,false);
   lambda = 1.0;
 }
 
-void Genten::Ktensor::
+template <typename ExecSpace>
+void Genten::KtensorT<ExecSpace>::
 normalize(Genten::NormType norm_type, ttb_indx i)
 {
 
@@ -371,7 +386,7 @@ normalize(Genten::NormType norm_type, ttb_indx i)
 #else
 #define CKFINITE 1
 #endif
-  Genten::Array norms(lambda.size());
+  Genten::ArrayT<ExecSpace> norms(lambda.size());
 #if CKFINITE
   ttb_indx bad= 0;
   if (norms.hasNonFinite(bad)) {
@@ -420,8 +435,8 @@ normalize(Genten::NormType norm_type, ttb_indx i)
 #endif
 }
 
-
-void Genten::Ktensor::
+template <typename ExecSpace>
+void Genten::KtensorT<ExecSpace>::
 normalize(Genten::NormType norm_type)
 {
 // could be much better vectorized instead of walking memory data.size times.
@@ -431,14 +446,14 @@ normalize(Genten::NormType norm_type)
   }
 }
 
-
 struct greater_than
 {
   template<class T>
   bool operator()(T const &a, T const &b) const { return a.first > b.first; }
 };
 
-void Genten::Ktensor::
+template <typename ExecSpace>
+void Genten::KtensorT<ExecSpace>::
 arrange()
 {
   // sort lambda by value and keep track of sort index
@@ -449,7 +464,7 @@ arrange()
   sort(lambda_pair.begin(),lambda_pair.end(),greater_than());
 
   // create permuted indices
-  Genten::IndxArray p(lambda.size());
+  Genten::IndxArrayT<ExecSpace> p(lambda.size());
   for (size_t i = 0 ; i != lambda.size() ; i++)
     p[i] = lambda_pair[i].second;
 
@@ -457,15 +472,16 @@ arrange()
   this->arrange(p);
 }
 
-void Genten::Ktensor::
-arrange(Genten::IndxArray permutation_indices)
+template <typename ExecSpace>
+void Genten::KtensorT<ExecSpace>::
+arrange(Genten::IndxArrayT<ExecSpace> permutation_indices)
 {
   // permute factor matrices
   for (ttb_indx n = 0; n < data.size(); n ++)
     data[n].permute(permutation_indices);
 
   // permute lambda values
-  Genten::Array new_lambda(lambda.size());
+  Genten::ArrayT<ExecSpace> new_lambda(lambda.size());
   for (ttb_indx i = 0; i < lambda.size(); i ++)
     new_lambda[i] = lambda[permutation_indices[i]];
   for (ttb_indx i = 0; i < lambda.size(); i ++)
@@ -473,8 +489,8 @@ arrange(Genten::IndxArray permutation_indices)
 
 }
 
-
-ttb_real Genten::Ktensor::
+template <typename ExecSpace>
+ttb_real Genten::KtensorT<ExecSpace>::
 normFsq() const
 {
   ttb_real  dResult = 0.0;
@@ -482,9 +498,9 @@ normFsq() const
   // This technique computes an RxR matrix of dot products between all factor
   // column vectors of each mode, then forms the Hadamard product of these
   // matrices.  The last step is the scalar \lambda' H \lambda.
-  Genten::FacMatrix  cH(ncomponents(), ncomponents());
+  Genten::FacMatrixT<ExecSpace>  cH(ncomponents(), ncomponents());
   cH = 1;
-  Genten::FacMatrix  cG(ncomponents(),ncomponents());
+  Genten::FacMatrixT<ExecSpace>  cG(ncomponents(),ncomponents());
   for (ttb_indx  n = 0; n < ndims(); n++)
   {
     cG.gramian(data[n]);
@@ -502,3 +518,6 @@ normFsq() const
 
   return( dResult );
 }
+
+#define INST_MACRO(SPACE) template class Genten::KtensorT<SPACE>;
+GENTEN_INST(INST_MACRO)

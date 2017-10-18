@@ -41,7 +41,8 @@
 
 #include "Genten_FacMatArray.hpp"
 
-ttb_indx Genten::FacMatArray::
+template <typename ExecSpace>
+ttb_indx Genten::FacMatArrayT<ExecSpace>::
 reals() const
 {
   ttb_indx s =0;
@@ -53,3 +54,6 @@ reals() const
 
   return(s);
 }
+
+#define INST_MACRO(SPACE) template class Genten::FacMatArrayT<SPACE>;
+GENTEN_INST(INST_MACRO)

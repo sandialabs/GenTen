@@ -52,19 +52,30 @@ namespace Genten
    * Crs) into the permutation array where each row starts and stops.
    */
 
-class Sptensor_row : public Sptensor_perm
+template <typename ExecSpace> class SptensorT_row;
+typedef SptensorT_row<DefaultHostExecutionSpace> Sptensor_row;
+
+template <typename ExecSpace>
+class SptensorT_row : public SptensorT_perm<ExecSpace>
 {
 
 public:
 
+  typedef ExecSpace exec_space;
+  typedef typename SptensorT_perm<ExecSpace>::host_mirror_space host_mirror_space;
+  typedef SptensorT_row<host_mirror_space> HostMirror;
+  typedef typename SptensorT_perm<ExecSpace>::subs_view_type subs_view_type;
+  typedef typename SptensorT_perm<ExecSpace>::vals_view_type vals_view_type;
+  typedef Kokkos::View< Kokkos::View<ttb_indx*,ExecSpace>*,ExecSpace > row_ptr_type;
+
   // Empty construtor.
   /* Creates an empty tensor with an empty size. */
   KOKKOS_INLINE_FUNCTION
-  Sptensor_row() : Sptensor_perm(), rowptr() {}
+  SptensorT_row() : SptensorT_perm<ExecSpace>(), rowptr() {}
 
   // Constructor for a given size and number of nonzeros
-  Sptensor_row(const IndxArray& sz, ttb_indx nz) :
-    Sptensor_perm(sz,nz), rowptr() {}
+  SptensorT_row(const IndxArrayT<ExecSpace>& sz, ttb_indx nz) :
+    SptensorT_perm<ExecSpace>(sz,nz), rowptr() {}
 
   /* Constructor from complete raw data indexed C-wise in C types.
      All input are deep copied.
@@ -74,16 +85,16 @@ public:
      @param vals values [nz] of nonzeros.
      @param subscripts [nz*nd] coordinates of each nonzero, grouped by indices of each nonzero adjacent.
   */
-  Sptensor_row(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals, ttb_indx *subscripts) :
-    Sptensor_perm(nd,dims,nz,vals,subscripts), rowptr() {}
+  SptensorT_row(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals, ttb_indx *subscripts) :
+    SptensorT_perm<ExecSpace>(nd,dims,nz,vals,subscripts), rowptr() {}
 
   // Constructor (for data from MATLAB).
   /* a) Copies everything locally.
      b) There are no checks for duplicate entries. Call sort() to dedup.
      c) It is assumed that sbs starts numbering at one,
      and so one is subtracted to make it start at zero. */
-  Sptensor_row(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls, ttb_real * sbs) :
-    Sptensor_perm(nd,sz,nz,vls,sbs), rowptr() {}
+  SptensorT_row(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls, ttb_real * sbs) :
+    SptensorT_perm<ExecSpace>(nd,sz,nz,vls,sbs), rowptr() {}
 
   /* Constructor from complete raw data indexed C-wise using STL types.
      All input are deep copied.
@@ -91,22 +102,30 @@ public:
      @param vals nonzero values.
      @param subscripts 2-d array of subscripts.
   */
-  Sptensor_row(const std::vector<ttb_indx>& dims,
-               const std::vector<ttb_real>& vals,
-               const std::vector< std::vector<ttb_indx> >& subscripts) :
-    Sptensor_perm(dims, vals, subscripts) {}
+  SptensorT_row(const std::vector<ttb_indx>& dims,
+                const std::vector<ttb_real>& vals,
+                const std::vector< std::vector<ttb_indx> >& subscripts) :
+    SptensorT_perm<ExecSpace>(dims, vals, subscripts) {}
+
+  // Create tensor from supplied dimensions, values, and subscripts
+  KOKKOS_INLINE_FUNCTION
+  SptensorT_row(const IndxArrayT<ExecSpace>& d, const vals_view_type& vals,
+                const subs_view_type& s, const subs_view_type& p,
+                const row_ptr_type& r) :
+    SptensorT_perm<ExecSpace>(d, vals, s, p),
+    rowptr(r) {}
 
   // Copy constructor.
   KOKKOS_INLINE_FUNCTION
-  Sptensor_row (const Sptensor_row & arg) = default;
+  SptensorT_row (const SptensorT_row & arg) = default;
 
   // Assignment operator.
   KOKKOS_INLINE_FUNCTION
-  Sptensor_row & operator= (const Sptensor_row & arg) = default;
+  SptensorT_row & operator= (const SptensorT_row & arg) = default;
 
   // Destructor.
   KOKKOS_INLINE_FUNCTION
-  ~Sptensor_row() = default;
+  ~SptensorT_row() = default;
 
   // Create permutation array by sorting each column of subs
   void createPermutation();
@@ -118,9 +137,13 @@ public:
     return rowptr(n)(i);
   }
 
+  // Get whole perm array
+  KOKKOS_INLINE_FUNCTION
+  row_ptr_type getRowPtr() const { return rowptr; }
+
   // Finalize any setup of the tensor after all entries have been added
   void fillComplete() {
-    Sptensor_perm::createPermutation();
+    SptensorT_perm<ExecSpace>::createPermutation();
     createRowPtr();
   }
 
@@ -129,9 +152,38 @@ public:
 
 protected:
 
-  typedef Kokkos::View< Kokkos::View<ttb_indx*>* > row_ptr_type;
   row_ptr_type rowptr;
 
 };
+
+template <typename ExecSpace>
+typename SptensorT_row<ExecSpace>::HostMirror
+create_mirror_view(const SptensorT_row<ExecSpace>& a)
+{
+  typedef typename SptensorT_row<ExecSpace>::HostMirror HostMirror;
+  typedef typename SptensorT_row<ExecSpace>::row_ptr_type row_ptr_type;
+  row_ptr_type arow = a.getRowPtr();
+  auto harow = create_mirror_view(arow);
+  deep_copy(harow, arow);
+  const ttb_indx n = arow.dimension_0();
+  typename HostMirror::row_ptr_type hrow(arow.label() + "_host", n);
+  for (ttb_indx i=0; i<n; ++i)
+    hrow[i] = create_mirror_view( harow[i] );
+  return HostMirror( create_mirror_view(a.size()),
+                     create_mirror_view(a.getValues()),
+                     create_mirror_view(a.getSubscripts()),
+                     create_mirror_view(a.getPerm()),
+                     hrow );
+}
+
+template <typename E1, typename E2>
+void deep_copy(const SptensorT_row<E1>& dst, const SptensorT_row<E2>& src)
+{
+  Genten::error("deep_copy for Sptensor_row not implemented.");
+  deep_copy( dst.size(), src.size() );
+  deep_copy( dst.getValues(), src.getValues() );
+  deep_copy( dst.getSubscripts(), src.getSubscripts() );
+  deep_copy( dst.getPerm(), src.getPerm() );
+}
 
 }

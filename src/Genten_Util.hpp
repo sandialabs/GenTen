@@ -51,6 +51,43 @@
 
 #include "Genten_Kokkos.hpp"
 
+namespace Genten {
+  typedef Kokkos::DefaultExecutionSpace DefaultExecutionSpace;
+  typedef Kokkos::DefaultHostExecutionSpace DefaultHostExecutionSpace;
+}
+#ifdef KOKKOS_HAVE_CUDA
+#define GENTEN_INST_CUDA(INSTMACRO) \
+  INSTMACRO(Kokkos::Cuda)
+#else
+#define GENTEN_INST_CUDA(INSTMACRO) /* */
+#endif
+#ifdef KOKKOS_HAVE_OPENMP
+#define GENTEN_INST_OPENMP(INSTMACRO) \
+  INSTMACRO(Kokkos::OpenMP)
+#else
+#define GENTEN_INST_OPENMP(INSTMACRO) /* */
+#endif
+#ifdef KOKKOS_HAVE_THREADS
+#define GENTEN_INST_THREADS(INSTMACRO) \
+  INSTMACRO(Kokkos::Threads)
+#else
+#define GENTEN_INST_THREADS(INSTMACRO) /* */
+#endif
+#ifdef KOKKOS_HAVE_SERIAL
+#define GENTEN_INST_SERIAL(INSTMACRO) \
+  INSTMACRO(Kokkos::Serial)
+#else
+#define GENTEN_INST_SERIAL(INSTMACRO) /* */
+#endif
+
+#define GENTEN_INST(INSTMACRO)                  \
+namespace Genten {                              \
+  GENTEN_INST_CUDA(INSTMACRO)                   \
+  GENTEN_INST_OPENMP(INSTMACRO)                 \
+  GENTEN_INST_THREADS(INSTMACRO)                \
+  GENTEN_INST_SERIAL(INSTMACRO)                 \
+}
+
 // What we align memory to (in bytes)
 #define GENTEN_MEMORY_ALIGNMENT 64
 
@@ -126,20 +163,6 @@ namespace Genten {
 
   // Throw an error.
   void error(std::string s);
-
-  class IndxArray; // Forward declaration
-
-  // Subscipt to linear index conversion.
-  /* Converts an n-way subscript for a tensor element into a linear
-     index that can be used to index that data array. */
-  //TBD should move this into Tensor file
-  void sub2ind(const Genten::IndxArray & siz, const Genten::IndxArray & sub, ttb_indx & ind);
-
-  // Linear index to subscript conversion.
-  /* Converts an linear index that can be used to index the data array
-     into an n-way subscript. */
-  //TBD should move this into Tensor file
-  void ind2sub(const Genten::IndxArray & siz, const ttb_indx ind, Genten::IndxArray & sub);
 
   //! Return true if two real numbers are equal to a specified tolerance.
   /*!

@@ -52,25 +52,30 @@
 
 namespace Genten {
 
-class FacMatrix; // Forward declaration
+  template <typename ExecSpace> class ArrayT;
+  typedef ArrayT<DefaultExecutionSpace> Array;
 
- /*! @class Genten::Array
- *  @brief  Data class for "flat" versions of vectors, matrices and tensors.
- *
- *  The Genten::Array is similar to the
- *  std::vector<double> class. It will be used to serve "flat" versions
- *  of vectors, matrices, and tensors. It uses several typedefs defined
- *  in Genten_Util.h in order to increase future portability.
- *
- *  MKL has a vector library called VML which could be used for many
- *  of these functions (e.g., times could be a wrapper for
- *  "vdmul");
- *  this would ensure use of SIMD capabilities of Intel processors
- */
-  class Array
+  /*! @class Genten::Array
+   *  @brief  Data class for "flat" versions of vectors, matrices and tensors.
+   *
+   *  The Genten::Array is similar to the
+   *  std::vector<double> class. It will be used to serve "flat" versions
+   *  of vectors, matrices, and tensors. It uses several typedefs defined
+   *  in Genten_Util.h in order to increase future portability.
+   *
+   *  MKL has a vector library called VML which could be used for many
+   *  of these functions (e.g., times could be a wrapper for
+   *  "vdmul");
+   *  this would ensure use of SIMD capabilities of Intel processors
+   */
+  template <typename ExecSpace>
+  class ArrayT
   {
   public:
-    typedef Kokkos::View<ttb_real*> view_type;
+    typedef ExecSpace exec_space;
+    typedef Kokkos::View<ttb_real*,exec_space> view_type;
+    typedef typename view_type::host_mirror_space host_mirror_space;
+    typedef ArrayT<host_mirror_space> HostMirror;
 
     // ----- CREATE & DESTROY -----
 
@@ -81,15 +86,19 @@ class FacMatrix; // Forward declaration
     //!
     //! Creates an empty array of length zero.
     KOKKOS_INLINE_FUNCTION
-    Array() = default;
+    ArrayT() = default;
 
     //! @brief Size constructor.
     //!
     //! Creates an un-initialized array of length n.
-    Array(ttb_indx n, bool parallel=false);
+    ArrayT(ttb_indx n, bool parallel=false);
 
     //! @brief Size and initial value constructor.
-    Array(ttb_indx n, ttb_real val);
+    ArrayT(ttb_indx n, ttb_real val);
+
+    //! @brief Create array from supplied view
+    KOKKOS_INLINE_FUNCTION
+    ArrayT(const view_type& v) : data(v) {}
 
     //! @brief (Shadow) Copy constructor.
     //!
@@ -102,33 +111,33 @@ class FacMatrix; // Forward declaration
     //!
     //!  The ability for shadow copies is used for compatibility with MATLAB.
     //!  We do not want to do deep copies of large arrays.
-    Array(ttb_indx n, ttb_real * d, bool shdw = true);
+    ArrayT(ttb_indx n, ttb_real * d, bool shdw = true);
 
     //! @brief Copy constructor.
     //!
     //! Does a (deep) copy of the data in src. The reserved size (rsz)
     //! is set to be equal to the length and may not be the same as for src.
     KOKKOS_INLINE_FUNCTION
-    Array(const Array & src) = default;
+    ArrayT(const ArrayT & src) = default;
 
     //! @brief Destructor.
     KOKKOS_INLINE_FUNCTION
-    ~Array() = default;
+    ~ArrayT() = default;
     //@}
 
     //! @name Modify/Reset
     //@{
 
-    //! @brief Copy from another Genten::Array.
+    //! @brief Copy from another Genten::ArrayT.
     //!
     //! Does a shallow copy
     KOKKOS_INLINE_FUNCTION
-    Array & operator= (const Array & src) = default;
+    ArrayT & operator= (const ArrayT & src) = default;
 
-    //! @brief Copy from another Genten::Array.
+    //! @brief Copy from another Genten::ArrayT.
     //!
     //! Does a deep copy. Does not modify rsz unless it needs to be enlarged.
-    void deep_copy(const Array & src)
+    void deep_copy(const ArrayT & src)
     {
       assert(data.dimension_0() == src.data.dimension_0());
       Kokkos::deep_copy(data, src.data);
@@ -208,10 +217,10 @@ class FacMatrix; // Forward declaration
     ttb_real norm(Genten::NormType ntype) const;
 
     //! @brief Return dot product x'*y
-    ttb_real dot(const Array & y) const;
+    ttb_real dot(const ArrayT & y) const;
 
     //! @brief Return true if the two arrays are exactly equal.
-    bool operator==(const Array & a) const;
+    bool operator==(const ArrayT & a) const;
 
     //! @brief Return true if this matrix is equal to b within the specified tolerance
     //!
@@ -222,61 +231,61 @@ class FacMatrix; // Forward declaration
     //!   max(1, fabs(x(i)), fabs(y(i))
     //!
     //!   for all i.
-    bool isEqual(const Array & y, ttb_real tol) const;
+    bool isEqual(const ArrayT & y, ttb_real tol) const;
 
     //! @brief x = a * x
     void times(ttb_real a);
 
     //! @brief x = a * y
-    void times(ttb_real a, const Array & y);
+    void times(ttb_real a, const ArrayT & y);
 
     //! @brief x = a / x
     void invert(ttb_real a);
 
     // x = a / y
-    void invert(ttb_real a, const Array & y);
+    void invert(ttb_real a, const ArrayT & y);
 
     //! @brief x = x^a
     void power(ttb_real a);
 
     //! @brief x = y^a
-    void power(ttb_real a, const Array & y);
+    void power(ttb_real a, const ArrayT & y);
 
     //! @brief x = a + x
     void shift(ttb_real a);
 
     //! @brief x = a + y
-    void shift(ttb_real a, const Array & y);
+    void shift(ttb_real a, const ArrayT & y);
 
     //! @brief x = x + y
-    void plus(const Array & y);
+    void plus(const ArrayT & y);
 
     //! @brief x = x + sum(y[i])
-    void plusVec(std::vector< const Array * > y);
+    void plusVec(std::vector< const ArrayT * > y);
 
     //! @brief x = y + z
-    void plus(const Array & y, const Array & z);
+    void plus(const ArrayT & y, const ArrayT & z);
 
     //! @brief x = x - y
-    void minus(const Array & y);
+    void minus(const ArrayT & y);
 
     //! @brief x = y - z
-    void minus(const Array & y, const Array & z);
+    void minus(const ArrayT & y, const ArrayT & z);
 
     //! @brief x = x .* y (elementwise product)
-    void times(const Array & y);
+    void times(const ArrayT & y);
 
     //! @brief x = x .* y (elementwise product)
     //void times(const ttb_real * y, ttb_indx incy = 1);
 
     //! @brief x = y .* z (elementwise product)
-    void times(const Array & y, const Array & z);
+    void times(const ArrayT & y, const ArrayT & z);
 
     //! @brief x = x ./ y (elementwise divide)
-    void divide(const Array & y);
+    void divide(const ArrayT & y);
 
     //! @brief x = y ./ z (elementwise divide)
-    void divide(const Array & y, const Array & z);
+    void divide(const ArrayT & y, const ArrayT & z);
 
     //! @brief Returns sum of all the entries
     ttb_real sum() const;
@@ -293,23 +302,32 @@ class FacMatrix; // Forward declaration
     KOKKOS_INLINE_FUNCTION
     view_type values() const { return data; }
 
-  private:
-
-    typedef Kokkos::View<ttb_real*,Kokkos::MemoryUnmanaged> unmanaged_view_type;
-    typedef Kokkos::View<const ttb_real*,Kokkos::MemoryUnmanaged> unmanaged_const_view_type;
-
-    //! Pointer to the actual data.
-    view_type data;
-
-    // ----- Special Functions for Friends -----
-
     // Return pointer to data.
     inline const ttb_real * ptr() const { return data.data(); }
 
     // Return pointer to data.
     inline ttb_real * ptr() { return data.data(); }
 
-    friend class FacMatrix;
+  private:
 
+    typedef Kokkos::View<ttb_real*,exec_space,Kokkos::MemoryUnmanaged> unmanaged_view_type;
+    typedef Kokkos::View<const ttb_real*,exec_space,Kokkos::MemoryUnmanaged> unmanaged_const_view_type;
+
+    //! Pointer to the actual data.
+    view_type data;
   };
+
+  template <typename ExecSpace>
+  typename ArrayT<ExecSpace>::HostMirror
+  create_mirror_view(const ArrayT<ExecSpace>& a)
+  {
+    typedef typename ArrayT<ExecSpace>::HostMirror HostMirror;
+    return HostMirror( create_mirror_view(a.values()) );
+  }
+
+  template <typename E1, typename E2>
+  void deep_copy(const ArrayT<E1>& dst, const ArrayT<E2>& src)
+  {
+    deep_copy( dst.values(), src.values() );
+  }
 }

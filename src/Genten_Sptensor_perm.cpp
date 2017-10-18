@@ -50,15 +50,14 @@
 #include <thrust/device_ptr.h>
 #endif
 
-
+namespace Genten {
+namespace Impl {
 // Implementation of createPermutation().  Has to be done as a
 // non-member function because lambda capture of *this doesn't work on Cuda.
-template <typename subs_view_type, typename siz_type>
+template <typename ExecSpace, typename subs_view_type, typename siz_type>
 subs_view_type
 createPermutationImpl(const subs_view_type& subs, const siz_type& siz)
 {
-  typedef typename subs_view_type::execution_space ExecSpace;
-
   const ttb_indx sz = subs.dimension_0();
   const ttb_indx nNumDims = subs.dimension_1();
   subs_view_type perm(Kokkos::view_alloc(Kokkos::WithoutInitializing,
@@ -155,9 +154,15 @@ createPermutationImpl(const subs_view_type& subs, const siz_type& siz)
   return perm;
 
 }
+}
+}
 
-void Genten::Sptensor_perm::
+template <typename ExecSpace>
+void Genten::SptensorT_perm<ExecSpace>::
 createPermutation()
 {
-  perm = createPermutationImpl(subs, siz);
+  perm = Genten::Impl::createPermutationImpl<ExecSpace>(this->subs, this->siz);
 }
+
+#define INST_MACRO(SPACE) template class Genten::SptensorT_perm<SPACE>;
+GENTEN_INST(INST_MACRO)

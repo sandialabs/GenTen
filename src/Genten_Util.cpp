@@ -55,68 +55,6 @@ void Genten::error(std::string s)
   throw s;
 }
 
-void Genten::sub2ind(const Genten::IndxArray & siz, const Genten::IndxArray & sub, ttb_indx & ind)
-{
-  // Get the number of dimensions
-  ttb_indx nd = siz.size();
-
-  // Error checking
-  if (sub.size() != nd)
-  {
-    error("Genten::Tensor::sub2ind - Size mismatch");
-  }
-
-  // More error checking
-  for (ttb_indx i = 0; i < nd; i ++)
-  {
-    if (sub[i] >= siz[i])
-    {
-      error("Genten::Tensor::sub2ind - subscript out of range");
-    }
-  }
-
-  // Calculate the linear index from the subscripts
-  ind = 0;
-  ttb_indx cumprod = 1;
-  for (ttb_indx i = 0; i < nd; i ++)
-  {
-    ind += sub[i] * cumprod;
-    cumprod *= siz[i];
-  }
-}
-
-void Genten::ind2sub(const IndxArray & siz, ttb_indx ind, IndxArray & sub)
-{
-  // Get the number of dimensions
-  ttb_indx nd = siz.size();
-
-  // Error checking
-  if (sub.size() != nd)
-  {
-    error("Genten::Tensor::ind2sub - Size mismatch");
-  }
-
-  // Get the total size
-  ttb_indx cumprod = siz.prod();
-
-  // More error checking
-  if (ind >= cumprod)
-  {
-    error("Genten::Tensor::sub2ind - index out of range");
-  }
-
-  // Calculate the subscripts from the linear index
-  sub = IndxArray(nd);
-  ttb_indx sbs;
-  for (ttb_indx i = nd; i > 0; i --)
-  {
-    cumprod = cumprod / siz[i-1];
-    sbs = ind / cumprod;
-    sub[i-1] = sbs;
-    ind = ind - (sbs * cumprod);
-  }
-}
-
 bool  Genten::isEqualToTol(ttb_real  d1,
                            ttb_real  d2,
                            ttb_real  dTol)
