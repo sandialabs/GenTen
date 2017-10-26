@@ -133,7 +133,7 @@ public:
   // Set a factor matrix
   void set_factor(const ttb_indx i, const FacMatrixT<ExecSpace>& src) const
   {
-    assert((i >= 0) && (i < size()));
+    assert(i < size());
     host_data[i] = src;
     if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename ExecSpace::memory_space >::accessible)
       Genten::Impl::assign_factor_matrix_view(i, data, src);

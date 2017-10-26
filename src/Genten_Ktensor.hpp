@@ -240,7 +240,7 @@ public:
   KOKKOS_INLINE_FUNCTION
   const FacMatrixT<ExecSpace>& operator[](ttb_indx n) const
   {
-    assert((n >= 0) && (n < ndims()));
+    assert(n < ndims());
     return data[n];
   }
 
