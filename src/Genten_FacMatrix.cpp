@@ -67,23 +67,42 @@
 
 template <typename ExecSpace>
 Genten::FacMatrixT<ExecSpace>::
-FacMatrixT(ttb_indx m, ttb_indx n, const ttb_real * cvec):
-  //data("Genten::FacMatrix::data",m,n)
-  data(Kokkos::view_alloc("Genten::FacMatrix::data", Kokkos::AllowPadding),m,n)
+FacMatrixT(ttb_indx m, ttb_indx n)
+{
+  // Don't use padding if Cuda is the default execution space, so factor
+  // matrices allocated on the host have the same shape.  We really need a
+  // better way to do this.
+#if defined(KOKKOS_HAVE_CUDA)
+  const bool have_cuda =
+    std::is_same<DefaultExecutionSpace,Kokkos::Cuda>::value;
+#else
+  const bool have_cuda = false;
+#endif
+  if (have_cuda)
+    data = view_type("Genten::FacMatrix::data",m,n);
+  else
+    data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
+                                        Kokkos::AllowPadding),m,n);
+}
+
+template <typename ExecSpace>
+Genten::FacMatrixT<ExecSpace>::
+FacMatrixT(ttb_indx m, ttb_indx n, const ttb_real * cvec) :
+  FacMatrixT(m,n)
 {
   this->convertFromCol(m,n,cvec);
 }
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-operator=(ttb_real val)
+operator=(ttb_real val) const
 {
-  Kokkos::deep_copy(data, val);
+  deep_copy(data, val);
 }
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-rand()
+rand() const
 {
   auto data_1d = make_data_1d();
   data_1d.rand();
@@ -92,7 +111,7 @@ rand()
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 scatter (const bool bUseMatlabRNG,
-         RandomMT &  cRMT)
+         RandomMT &  cRMT) const
 {
   auto data_1d = make_data_1d();
   data_1d.scatter (bUseMatlabRNG, cRMT);
@@ -100,7 +119,7 @@ scatter (const bool bUseMatlabRNG,
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-convertFromCol(ttb_indx nr, ttb_indx nc, const ttb_real * cvec)
+convertFromCol(ttb_indx nr, ttb_indx nc, const ttb_real * cvec) const
 {
   const ttb_indx nrows = data.dimension_0();
   const ttb_indx ncols = data.dimension_1();
@@ -133,7 +152,7 @@ isEqual(const Genten::FacMatrixT<ExecSpace> & b, ttb_real tol) const
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-times(const Genten::FacMatrixT<ExecSpace> & v)
+times(const Genten::FacMatrixT<ExecSpace> & v) const
 {
   if ((v.data.dimension_0() != data.dimension_0()) ||
       (v.data.dimension_1() != data.dimension_1()))
@@ -147,7 +166,7 @@ times(const Genten::FacMatrixT<ExecSpace> & v)
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-plus(const Genten::FacMatrixT<ExecSpace> & y)
+plus(const Genten::FacMatrixT<ExecSpace> & y) const
 {
   // TODO: check size compatibility, parallelize
   auto data_1d = make_data_1d();
@@ -157,7 +176,7 @@ plus(const Genten::FacMatrixT<ExecSpace> & y)
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-plusAll(const Genten::FacMatArrayT<ExecSpace> & ya)
+plusAll(const Genten::FacMatArrayT<ExecSpace> & ya) const
 {
   // TODO: check size compatibility
   auto data_1d = make_data_1d();
@@ -170,7 +189,7 @@ plusAll(const Genten::FacMatArrayT<ExecSpace> & ya)
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-transpose(const Genten::FacMatrixT<ExecSpace> & y)
+transpose(const Genten::FacMatrixT<ExecSpace> & y) const
 {
   // TODO: Replace with call to BLAS3: DGEMM (?)
   const ttb_indx nrows = data.dimension_0();
@@ -187,7 +206,7 @@ transpose(const Genten::FacMatrixT<ExecSpace> & y)
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-times(ttb_real a)
+times(ttb_real a) const
 {
   auto data_1d = make_data_1d();
   data_1d.times(a);
@@ -335,7 +354,7 @@ void gramian_kernel(const ViewC& C, const ViewA& A)
   typedef GramianKernel<ExecSpace,ViewC,ViewA,ColBlockSize,RowBlockSize,TeamSize,VectorSize> Kernel;
   typedef typename Kernel::TeamMember TeamMember;
 
-  Kokkos::deep_copy( C, 0.0 );
+  deep_copy( C, 0.0 );
   Kokkos::parallel_for(Kernel::policy(m),
                        KOKKOS_LAMBDA(TeamMember team)
   {
@@ -413,7 +432,7 @@ void gramianImpl(const ViewC& C, const ViewA& A)
     size_type M = (m+NumRow-1)/NumRow;
     Policy policy(M,TeamSize,VectorSize);
 
-    Kokkos::deep_copy( C, 0.0 );
+    deep_copy( C, 0.0 );
     Kokkos::parallel_for(policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
                          KOKKOS_LAMBDA(typename Policy::member_type team)
     {
@@ -630,7 +649,7 @@ void gramianImpl(const ViewC& C, const ViewA& A)
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-gramian(const Genten::FacMatrixT<ExecSpace> & v)
+gramian(const Genten::FacMatrixT<ExecSpace> & v) const
 {
   const ttb_indx m = v.data.dimension_0();
   const ttb_indx n = v.data.dimension_1();
@@ -681,18 +700,26 @@ firstGreaterSortedIncreasing(ttb_real r, ttb_indx c) const
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-oprod(const Genten::ArrayT<ExecSpace> & v)
+oprod(const Genten::ArrayT<ExecSpace> & v) const
 {
   // TODO: Replace with call to BLAS2:DGER
 
-  ttb_indx n = v.size();
-  for (ttb_indx j = 0; j < n; j ++)
+  const ttb_indx n = v.size();
+  // for (ttb_indx j = 0; j < n; j ++)
+  // {
+  //   for (ttb_indx i = 0; i < n; i ++)
+  //   {
+  //     this->entry(i,j) = v[i] * v[j];
+  //   }
+  // }
+  view_type d = data;
+  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,n),
+                       KOKKOS_LAMBDA(const ttb_indx i)
   {
-    for (ttb_indx i = 0; i < n; i ++)
-    {
-      this->entry(i,j) = v[i] * v[j];
-    }
-  }
+    const ttb_real vi = v[i];
+    for (ttb_indx j = 0; j < n; j ++)
+      d(i,j) = vi * v[j];
+  });
 }
 
 #if USE_NEW_COLNORMS
@@ -772,8 +799,8 @@ struct ColNormsKernel_Inf
 
     for (unsigned ii=this->team_index; ii<RowBlockSize; ii+=TeamSize) {
       const unsigned i = this->i_block+ii;
-      const ttb_real *data_ij = &(this->data(i,j_block));
       if (i < this->m) {
+        const ttb_real *data_ij = &(this->data(i,j_block));
         Kokkos::parallel_for(Kokkos::ThreadVectorRange(this->team,unsigned(nj.value)),
                              [&] (const unsigned& jj)
         {
@@ -852,8 +879,8 @@ struct ColNormsKernel_1
 
     for (unsigned ii=this->team_index; ii<RowBlockSize; ii+=TeamSize) {
       const unsigned i = this->i_block+ii;
-      const ttb_real *data_ij = &(this->data(i,j_block));
       if (i < this->m) {
+        const ttb_real *data_ij = &(this->data(i,j_block));
         Kokkos::parallel_for(Kokkos::ThreadVectorRange(this->team,unsigned(nj.value)),
                              [&] (const unsigned& jj)
         {
@@ -916,8 +943,8 @@ struct ColNormsKernel_2
 
     for (unsigned ii=this->team_index; ii<RowBlockSize; ii+=TeamSize) {
       const unsigned i = this->i_block+ii;
-      const ttb_real *data_ij = &(this->data(i,j_block));
       if (i < this->m) {
+        const ttb_real *data_ij = &(this->data(i,j_block));
         Kokkos::parallel_for(Kokkos::ThreadVectorRange(this->team,unsigned(nj.value)),
                              [&] (const unsigned& jj)
         {
@@ -970,7 +997,8 @@ void colNorms_kernel(
   const unsigned n = data.dimension_1();
 
   // Initialize norms to 0
-  Kokkos::deep_copy(norms, 0.0);
+  deep_copy(norms, 0.0);
+  auto norms_host = create_mirror_view(norms);
 
   // Compute norms
   switch(normtype)
@@ -990,6 +1018,7 @@ void colNorms_kernel(
           kernel.template run<0>(j_block, n-j_block);
       }
     });
+    deep_copy(norms_host, norms);
     break;
   }
 
@@ -1008,6 +1037,7 @@ void colNorms_kernel(
           kernel.template run<0>(j_block, n-j_block);
       }
     });
+    deep_copy(norms_host, norms);
     break;
   }
   case Genten::NormTwo:
@@ -1025,8 +1055,9 @@ void colNorms_kernel(
           kernel.template run<0>(j_block, n-j_block);
       }
     });
+    deep_copy(norms_host, norms);
     for (unsigned j=0; j<n; ++j)
-      norms[j] = std::sqrt(norms[j]);
+      norms_host[j] = std::sqrt(norms_host[j]);
 
     break;
   }
@@ -1041,12 +1072,13 @@ void colNorms_kernel(
   {
     for (unsigned j=0; j<n; ++j)
     {
-      if (norms[j] < minval)
+      if (norms_host[j] < minval)
       {
-        norms[j] = minval;
+        norms_host[j] = minval;
       }
     }
   }
+  deep_copy(norms, norms_host);
 }
 
 }
@@ -1054,7 +1086,7 @@ void colNorms_kernel(
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-colNorms(Genten::NormType normtype, Genten::ArrayT<ExecSpace> & norms, ttb_real minval)
+colNorms(Genten::NormType normtype, Genten::ArrayT<ExecSpace> & norms, ttb_real minval) const
 {
   const ttb_indx nc = data.dimension_1();
   if (nc < 2)
@@ -1075,7 +1107,7 @@ colNorms(Genten::NormType normtype, Genten::ArrayT<ExecSpace> & norms, ttb_real 
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-colNorms(Genten::NormType normtype, Genten::ArrayT<ExecSpace> & norms, ttb_real minval)
+colNorms(Genten::NormType normtype, Genten::ArrayT<ExecSpace> & norms, ttb_real minval) const
 {
   typedef typename ExecSpace::size_type size_type;
 
@@ -1452,7 +1484,7 @@ void colScale_kernel(const ViewType& data, const Genten::ArrayT<ExecSpace>& v)
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-colScale(const Genten::ArrayT<ExecSpace> & v, bool inverse)
+colScale(const Genten::ArrayT<ExecSpace> & v, bool inverse) const
 {
   const ttb_indx n = data.dimension_1();
   assert(v.size() == n);
@@ -1460,11 +1492,15 @@ colScale(const Genten::ArrayT<ExecSpace> & v, bool inverse)
   Genten::ArrayT<ExecSpace> w;
   if (inverse) {
     w = Genten::ArrayT<ExecSpace>(n);
+    auto v_host = create_mirror_view(v);
+    auto w_host = create_mirror_view(w);
+    deep_copy(v_host, v);
     for (ttb_indx j = 0; j < n; j ++) {
-      if (v[j] == 0)
+      if (v_host[j] == 0)
         Genten::error("Genten::FacMatrix::colScale - divide-by-zero error");
-      w[j] = 1.0 / v[j];
+      w_host[j] = 1.0 / v_host[j];
     }
+    deep_copy(w, w_host);
   }
   else
     w = v;
@@ -1487,7 +1523,7 @@ colScale(const Genten::ArrayT<ExecSpace> & v, bool inverse)
 #else
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-colScale(const Genten::ArrayT<ExecSpace> & v, bool inverse)
+colScale(const Genten::ArrayT<ExecSpace> & v, bool inverse) const
 {
   typedef typename ExecSpace::size_type size_type;
 
@@ -1574,7 +1610,7 @@ colScale(const Genten::ArrayT<ExecSpace> & v, bool inverse)
 #if !defined(_WIN32)
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise)
+scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise) const
 {
   const ttb_indx nrows = data.dimension_0();
   const ttb_indx ncols = data.dimension_1();
@@ -1627,21 +1663,20 @@ sum() const
 {
   const ttb_indx nrows = data.dimension_0();
   const ttb_indx ncols = data.dimension_1();
-  /*
-  auto data_1d = make_data_1d();
-  ttb_indx n = nrows * ncols;
-  ttb_real sum = 0;
-  for (ttb_indx i = 0; i < n; i ++)
-  {
-    sum += data_1d[i];
-  }
-  */
-  ttb_real sum = 0;
-  for (ttb_indx i=0; i<nrows; ++i)
-    for (ttb_indx j=0; j<ncols; ++j)
-      sum += data(i,j);
 
-  return(sum);
+  ttb_real sum = 0;
+  // for (ttb_indx i=0; i<nrows; ++i)
+  //   for (ttb_indx j=0; j<ncols; ++j)
+  //     sum += data(i,j);
+  view_type d = data;
+  Kokkos::parallel_reduce(Kokkos::RangePolicy<ExecSpace>(0,nrows),
+                          KOKKOS_LAMBDA(const ttb_indx i, ttb_real& s)
+  {
+    for (ttb_indx j=0; j<ncols; ++j)
+      s += d(i,j);
+  }, sum);
+
+  return sum;
 }
 
 template <typename ExecSpace>
@@ -1662,7 +1697,7 @@ hasNonFinite(ttb_indx &retval) const
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-permute(const Genten::IndxArrayT<ExecSpace> &perm_indices)
+permute(const Genten::IndxArray& perm_indices) const
 {
   // The current implementation using a single column of temporary storage
   // (i.e., an array of size ncols) and requires at most 2*nrows*(ncols-1)
@@ -1680,12 +1715,12 @@ permute(const Genten::IndxArrayT<ExecSpace> &perm_indices)
   }
 
   // keep track of columns during permutation
-  Genten::IndxArrayT<ExecSpace> curr_indices(ncols);
+  Genten::IndxArray curr_indices(ncols);
   for (ttb_indx j=0; j<ncols; j++)
     curr_indices[j] = j;
 
   // storage for moving data aside during column permutation
-  Genten::ArrayT<ExecSpace> temp(nrows);
+  //Genten::ArrayT<ExecSpace> temp(nrows);
 
   for (ttb_indx j=0; j<ncols; j++)
   {
@@ -1705,6 +1740,7 @@ permute(const Genten::IndxArrayT<ExecSpace> &perm_indices)
     // Swap j with the location, or do nothing if already in order.
     if (j != loc) {
 
+      /*
       // Move data in column loc to temp column.
       for (ttb_indx i=0; i<nrows; i++)
         temp[i] = this->entry(i,loc);
@@ -1716,6 +1752,18 @@ permute(const Genten::IndxArrayT<ExecSpace> &perm_indices)
       // Move temp column to column loc.
       for (ttb_indx i=0; i<nrows; i++)
         this->entry(i,j) = temp[i];
+      */
+      // ETP 10/25/17:  Note this yields strided loads/stores, so it would
+      // be much more efficient to move the j-loop inside the parallel_for
+      // and use vector parallelism
+      view_type d = data;
+      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrows),
+                           KOKKOS_LAMBDA(const ttb_indx i)
+      {
+        const ttb_real temp = d(i,loc);
+        d(i,loc) = d(i,j);
+        d(i,j) = temp;
+      });
 
       // Swap curr_indices to mark where data was moved.
       ttb_indx  k = curr_indices[j];
@@ -1803,9 +1851,9 @@ namespace Genten {
         }
       }
 
-      Kokkos::View<int> lwork("lwork");
-      status = cusolverDnDgetrf_bufferSize(handle, n, n, A.data(), lda,
-                                           lwork.data());
+      // lwork is a host pointer, but info is a device pointer.  Go figure.
+      int lwork = 0;
+      status = cusolverDnDgetrf_bufferSize(handle, n, n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnDgetrf_bufferSize() failed with status "
@@ -1814,9 +1862,9 @@ namespace Genten {
         throw ss.str();
       }
 
-      Kokkos::View<double*> work("work",lwork());
-      Kokkos::View<int*> piv("piv",n);
-      Kokkos::View<int> info("info");
+      Kokkos::View<double*,Kokkos::Cuda> work("work",lwork);
+      Kokkos::View<int*,Kokkos::Cuda> piv("piv",n);
+      Kokkos::View<int,Kokkos::Cuda> info("info");
       status = cusolverDnDgetrf(handle, n, n, A.data(), lda, work.data(),
                                 piv.data(), info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
@@ -1826,9 +1874,11 @@ namespace Genten {
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
-      if (info() != 0) {
+      auto info_host = create_mirror_view(info);
+      deep_copy(info_host, info);
+      if (info_host() != 0) {
         std::stringstream ss;
-        ss << "Error!  cusolverDngetrf() info =  " << info();
+        ss << "Error!  cusolverDngetrf() info =  " << info_host();
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
@@ -1842,9 +1892,10 @@ namespace Genten {
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
-      if (info() != 0) {
+      deep_copy(info_host, info);
+      if (info_host() != 0) {
         std::stringstream ss;
-        ss << "Error!  cusolverDngetrf() info =  " << info();
+        ss << "Error!  cusolverDngetrf() info =  " << info_host();
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
@@ -1883,9 +1934,9 @@ namespace Genten {
         }
       }
 
-      Kokkos::View<int> lwork("lwork");
-      status = cusolverDnSgetrf_bufferSize(handle, n, n, A.data(), lda,
-                                           lwork.data());
+      // lwork is a host pointer, but info is a device pointer.  Go figure.
+      int lwork = 0;
+      status = cusolverDnSgetrf_bufferSize(handle, n, n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnDgetrf_bufferSize() failed with status "
@@ -1894,9 +1945,9 @@ namespace Genten {
         throw ss.str();
       }
 
-      Kokkos::View<float*> work("work",lwork());
-      Kokkos::View<int*> piv("piv",n);
-      Kokkos::View<int> info("info");
+      Kokkos::View<float*,Kokkos::Cuda> work("work",lwork);
+      Kokkos::View<int*,Kokkos::Cuda> piv("piv",n);
+      Kokkos::View<int,Kokkos::Cuda> info("info");
       status = cusolverDnSgetrf(handle, n, n, A.data(), lda, work.data(),
                                 piv.data(), info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
@@ -1906,9 +1957,11 @@ namespace Genten {
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
-      if (info() != 0) {
+      auto info_host = create_mirror_view(info);
+      deep_copy(info_host, info);
+      if (info_host() != 0) {
         std::stringstream ss;
-        ss << "Error!  cusolverDngetrf() info =  " << info();
+        ss << "Error!  cusolverDngetrf() info =  " << info_host();
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
@@ -1922,9 +1975,10 @@ namespace Genten {
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
-      if (info() != 0) {
+      deep_copy(info_host, info);
+      if (info_host() != 0) {
         std::stringstream ss;
-        ss << "Error!  cusolverDngetrf() info =  " << info();
+        ss << "Error!  cusolverDngetrf() info =  " << info_host();
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
@@ -1936,7 +1990,7 @@ namespace Genten {
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-solveTransposeRHS (const Genten::FacMatrixT<ExecSpace> &  A)
+solveTransposeRHS (const Genten::FacMatrixT<ExecSpace> &  A) const
 {
   const ttb_indx nrows = data.dimension_0();
   const ttb_indx ncols = data.dimension_1();
@@ -1948,7 +2002,7 @@ solveTransposeRHS (const Genten::FacMatrixT<ExecSpace> &  A)
   // Since the matrix is assumed symmetric, no need to worry about row major
   // versus column major storage.
   view_type Atmp("Atmp", A.nRows(), A.nCols());
-  Kokkos::deep_copy(Atmp, A.data);
+  deep_copy(Atmp, A.data);
 
   Genten::Impl::solveTransposeRHSImpl(Atmp, data);
 
@@ -1974,7 +2028,7 @@ template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 rowTimes(const ttb_indx         nRow,
          const Genten::FacMatrixT<ExecSpace> & other,
-         const ttb_indx         nRowOther)
+         const ttb_indx         nRowOther) const
 {
   assert(other.nCols() == data.dimension_1());
 

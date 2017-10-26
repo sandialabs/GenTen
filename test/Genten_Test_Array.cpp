@@ -112,7 +112,7 @@ void Genten_Test_Array(int infolevel)
   // f = [ 0 1 2 3 4 ]
   MESSAGE("Creating an array that copies an existing array");
   Genten::Array f(d.size());
-  f.deep_copy(d);
+  deep_copy(f,d);
   ASSERT(f == d, "Arrays are equal");
 
   // f = [ -1 1 2 3 4 ]

@@ -67,15 +67,16 @@ public:
   typedef typename SptensorT_perm<ExecSpace>::subs_view_type subs_view_type;
   typedef typename SptensorT_perm<ExecSpace>::vals_view_type vals_view_type;
   typedef Kokkos::View< Kokkos::View<ttb_indx*,ExecSpace>*,ExecSpace > row_ptr_type;
+  typedef Kokkos::View< Kokkos::View<ttb_indx*,ExecSpace>*,DefaultHostExecutionSpace > host_row_ptr_type;
 
   // Empty construtor.
   /* Creates an empty tensor with an empty size. */
   KOKKOS_INLINE_FUNCTION
-  SptensorT_row() : SptensorT_perm<ExecSpace>(), rowptr() {}
+  SptensorT_row() : SptensorT_perm<ExecSpace>(), rowptr(), host_rowptr() {}
 
   // Constructor for a given size and number of nonzeros
   SptensorT_row(const IndxArrayT<ExecSpace>& sz, ttb_indx nz) :
-    SptensorT_perm<ExecSpace>(sz,nz), rowptr() {}
+    SptensorT_perm<ExecSpace>(sz,nz), rowptr(), host_rowptr() {}
 
   /* Constructor from complete raw data indexed C-wise in C types.
      All input are deep copied.
@@ -86,7 +87,8 @@ public:
      @param subscripts [nz*nd] coordinates of each nonzero, grouped by indices of each nonzero adjacent.
   */
   SptensorT_row(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals, ttb_indx *subscripts) :
-    SptensorT_perm<ExecSpace>(nd,dims,nz,vals,subscripts), rowptr() {}
+    SptensorT_perm<ExecSpace>(nd,dims,nz,vals,subscripts),
+    rowptr(), host_rowptr() {}
 
   // Constructor (for data from MATLAB).
   /* a) Copies everything locally.
@@ -94,7 +96,7 @@ public:
      c) It is assumed that sbs starts numbering at one,
      and so one is subtracted to make it start at zero. */
   SptensorT_row(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls, ttb_real * sbs) :
-    SptensorT_perm<ExecSpace>(nd,sz,nz,vls,sbs), rowptr() {}
+    SptensorT_perm<ExecSpace>(nd,sz,nz,vls,sbs), rowptr(), host_rowptr() {}
 
   /* Constructor from complete raw data indexed C-wise using STL types.
      All input are deep copied.
@@ -105,15 +107,14 @@ public:
   SptensorT_row(const std::vector<ttb_indx>& dims,
                 const std::vector<ttb_real>& vals,
                 const std::vector< std::vector<ttb_indx> >& subscripts) :
-    SptensorT_perm<ExecSpace>(dims, vals, subscripts) {}
+    SptensorT_perm<ExecSpace>(dims, vals, subscripts),
+    rowptr(), host_rowptr() {}
 
   // Create tensor from supplied dimensions, values, and subscripts
   KOKKOS_INLINE_FUNCTION
   SptensorT_row(const IndxArrayT<ExecSpace>& d, const vals_view_type& vals,
-                const subs_view_type& s, const subs_view_type& p,
-                const row_ptr_type& r) :
-    SptensorT_perm<ExecSpace>(d, vals, s, p),
-    rowptr(r) {}
+                const subs_view_type& s) :
+    SptensorT_perm<ExecSpace>(d, vals, s), rowptr(), host_rowptr() {}
 
   // Copy constructor.
   KOKKOS_INLINE_FUNCTION
@@ -133,7 +134,7 @@ public:
   KOKKOS_INLINE_FUNCTION
   ttb_indx getPermRowBegin(ttb_indx i, ttb_indx n) const
   {
-    assert((n < nNumDims) && (i < rowptr(n).size()));
+    assert((n < this->nNumDims) && (i < rowptr(n).size()));
     return rowptr(n)(i);
   }
 
@@ -153,37 +154,36 @@ public:
 protected:
 
   row_ptr_type rowptr;
+  host_row_ptr_type host_rowptr;
 
 };
 
+// You must call fillComplete() after creating the mirror and deep_copying
 template <typename ExecSpace>
 typename SptensorT_row<ExecSpace>::HostMirror
-create_mirror_view(const SptensorT_row<ExecSpace>& a)
+create_mirror_view(const SptensorT<ExecSpace>& a)
 {
   typedef typename SptensorT_row<ExecSpace>::HostMirror HostMirror;
-  typedef typename SptensorT_row<ExecSpace>::row_ptr_type row_ptr_type;
-  row_ptr_type arow = a.getRowPtr();
-  auto harow = create_mirror_view(arow);
-  deep_copy(harow, arow);
-  const ttb_indx n = arow.dimension_0();
-  typename HostMirror::row_ptr_type hrow(arow.label() + "_host", n);
-  for (ttb_indx i=0; i<n; ++i)
-    hrow[i] = create_mirror_view( harow[i] );
   return HostMirror( create_mirror_view(a.size()),
                      create_mirror_view(a.getValues()),
-                     create_mirror_view(a.getSubscripts()),
-                     create_mirror_view(a.getPerm()),
-                     hrow );
+                     create_mirror_view(a.getSubscripts()) );
+}
+
+template <typename Space, typename ExecSpace>
+SptensorT_row<Space>
+create_mirror_view(const Space& s, const SptensorT_row<ExecSpace>& a)
+{
+  return SptensorT_row<Space>( create_mirror_view(s, a.size()),
+                               create_mirror_view(s, a.getValues()),
+                               create_mirror_view(s, a.getSubscripts()) );
 }
 
 template <typename E1, typename E2>
 void deep_copy(const SptensorT_row<E1>& dst, const SptensorT_row<E2>& src)
 {
-  Genten::error("deep_copy for Sptensor_row not implemented.");
   deep_copy( dst.size(), src.size() );
   deep_copy( dst.getValues(), src.getValues() );
   deep_copy( dst.getSubscripts(), src.getSubscripts() );
-  deep_copy( dst.getPerm(), src.getPerm() );
 }
 
 }

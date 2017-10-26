@@ -307,7 +307,7 @@ void Genten_Test_FacMatrix(int infolevel, const std::string & datadir)
   weights[1] = 2;
   weights[2] = 1;
   b = Genten::FacMatrix(a.nRows(), a.nCols());
-  b.deep_copy(a);
+  deep_copy(b,a);
   a.colScale(weights, false);
   tf = false;
   for (ttb_indx i = 0; i < 3; i ++)

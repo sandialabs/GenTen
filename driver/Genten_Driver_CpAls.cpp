@@ -55,7 +55,7 @@ SPTENSOR_TYPE sptensor_types[] =
 std::string sptensor_names[] =
   { "kokkos", "perm", "row" };
 
-template <typename Sptensor_type>
+template <template<class> class Sptensor_template, typename Space>
 int run_cpals(const std::string& inputfilename,
               const std::string& outputfilename,
               const ttb_indx index_base,
@@ -70,24 +70,33 @@ int run_cpals(const std::string& inputfilename,
               const bool warmup,
               const SPTENSOR_TYPE tensor_type)
 {
+  typedef Sptensor_template<Space> Sptensor_type;
+  typedef Sptensor_template<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
+  typedef Genten::KtensorT<Space> Ktensor_type;
+  typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
+
   Genten::SystemTimer timer(3);
 
   // Read in tensor data
   std::string fname(inputfilename);
   timer.start(0);
-  Sptensor_type x;
-  Genten::import_sptensor(fname, x, index_base, gz, true);
+  Sptensor_host_type x_host;
+  Genten::import_sptensor(fname, x_host, index_base, gz, true);
+  Sptensor_type x = create_mirror_view( Space(), x_host );
+  deep_copy( x, x_host );
   timer.stop(0);
   printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
-  if (debug) Genten::print_sptensor(x, std::cout, fname);
+  if (debug) Genten::print_sptensor(x_host, std::cout, fname);
 
   // Generate a random starting point
   // Matlab cp_als always sets the weights to one.
-  Genten::Ktensor u(rank,x.ndims(),x.size());
+  Ktensor_host_type u_host(rank,x_host.ndims(),x_host.size());
   Genten::RandomMT cRMT(seed);
-  u.setMatricesScatter(false,cRMT);
-  u.setWeights(1.0);
-  if (debug) Genten::print_ktensor(u, std::cout, "Initial guess");
+  u_host.setMatricesScatter(false,cRMT);
+  u_host.setWeights(1.0);
+  Ktensor_type u = create_mirror_view( Space(), u_host );
+  deep_copy( u, u_host );
+  if (debug) Genten::print_ktensor(u_host, std::cout, "Initial guess");
 
   if (warmup)
   {
@@ -95,8 +104,8 @@ int run_cpals(const std::string& inputfilename,
     // is copied to the device before generating any timings.  Use
     // Sptensor mttkrp and do this before fillComplete() so that
     // fillComplete() timings are not polluted by UVM transfers
-    Genten::Ktensor tmp (rank,x.ndims(),x.size());
-    Genten::Sptensor& x_tmp = x;
+    Ktensor_type tmp (rank,x.ndims(),x.size());
+    Genten::SptensorT<Genten::DefaultExecutionSpace>& x_tmp = x;
     for (ttb_indx  n = 0; n < x.ndims(); n++)
       Genten::mttkrp(x_tmp, u, n, tmp[n]);
   }
@@ -117,11 +126,12 @@ int run_cpals(const std::string& inputfilename,
   if (!no_save)
   {
     timer.start(2);
-    Genten::export_ktensor(outputfilename, u);
+    deep_copy( u_host, u );
+    Genten::export_ktensor(outputfilename, u_host);
     timer.stop(2);
     printf("Data export took %6.3f seconds\n", timer.getTotalTime(2));
   }
-  if (debug) Genten::print_ktensor(u, std::cout, "Solution");
+  if (debug) Genten::print_ktensor(u_host, std::cout, "Solution");
 
   return 0;
 }
@@ -221,15 +231,15 @@ int main(int argc, char* argv[])
     }
 
     if (tensor_type == SPTENSOR)
-      ret = run_cpals<Genten::Sptensor>(
+      ret = run_cpals< Genten::SptensorT, Genten::DefaultExecutionSpace >(
         inputfilename, outputfilename, index_base, gz, rank, seed, maxiters, tol,
         printitn, no_save, debug, warmup, tensor_type);
     else if (tensor_type == SPTENSOR_PERM)
-      ret = run_cpals<Genten::Sptensor_perm>(
+      ret = run_cpals< Genten::SptensorT_perm, Genten::DefaultExecutionSpace >(
         inputfilename, outputfilename, index_base, gz, rank, seed, maxiters, tol,
         printitn, no_save, debug, warmup, tensor_type);
     else if (tensor_type == SPTENSOR_ROW)
-      ret = run_cpals<Genten::Sptensor_row>(
+      ret = run_cpals< Genten::SptensorT_row, Genten::DefaultExecutionSpace >(
         inputfilename, outputfilename, index_base, gz, rank, seed, maxiters, tol,
         printitn, no_save, debug, warmup, tensor_type);
 

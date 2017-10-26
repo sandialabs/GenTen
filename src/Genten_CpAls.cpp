@@ -134,7 +134,8 @@ namespace Genten {
     const int timer_solve = 4;
     const int timer_scale = 5;
     const int timer_norm = 6;
-    Genten::SystemTimer  timer(7);
+    const int timer_arrange = 7;
+    Genten::SystemTimer  timer(8);
 
     timer.start(timer_cpals);
 
@@ -171,7 +172,7 @@ namespace Genten {
     Genten::FacMatArrayT<ExecSpace> gamma(nd);
     for (ttb_indx n = 0; n < nd; n ++)
     {
-      gamma[n] = FacMatrixT<ExecSpace>(u[n].nCols(), u[n].nCols());
+      gamma.set_factor( n, FacMatrixT<ExecSpace>(u[n].nCols(), u[n].nCols()) );
     }
     for (ttb_indx n = 1; n < nd; n ++)
     {
@@ -197,7 +198,6 @@ namespace Genten {
       // so bound it at zero.
       ttb_real  dUnorm = u.normFsq();
       ttb_real  dXtU = innerprod (x, u, lambda);
-      //ttb_real  d = (xNorm * xNorm) + (dUnorm * dUnorm) - (2 * dXtU);
       perfInfo[nNextPerf].dResNorm = computeResNorm(xNorm, dUnorm, dXtU);
       fit = 1.0 - (perfInfo[nNextPerf].dResNorm / xNorm);
       if (fit < 0.0)
@@ -220,18 +220,16 @@ namespace Genten {
     //--------------------------------------------------
     for (numIters = 0; numIters < maxIters; numIters++)
     {
-
-//            cout<<"TBD +++++ begin cpals iter " << numIters << endl;
       fitold = fit;
 
       // Iterate over all N modes of the tensor
       for (ttb_indx n = 0; n < nd; n++)
       {
-//                cout<<"TBD   begin inner iter over mode "<<n<<"\n";
         // Update u[n] via MTTKRP with x (Khattri-Rao product).
         // The size of u[n] is dim(n) rows by R columns.
         timer.start(timer_mttkrp);
         Genten::mttkrp (x, u, n);
+        Kokkos::fence();
         timer.stop(timer_mttkrp);
 
         // Compute the matrix of coefficients in the solve step.
@@ -243,15 +241,14 @@ namespace Genten {
             upsilon.times(gamma[idx]);
           }
         }
-//                print_matrix(upsilon,cout,"TBD upsilon");
 
         // Solve upsilon * X = u[n]' for X, and overwrite u[n]
         // with the result.  Equivalent to the Matlab operation
         //   u[n] = (upsilon \ u[n]')'.
         timer.start(timer_solve);
         u[n].solveTransposeRHS (upsilon);
+        Kokkos::fence();
         timer.stop(timer_solve);
-//                print_matrix(u[n],cout,"TBD after solve");
 
         // Compute lambda.
         timer.start(timer_norm);
@@ -265,6 +262,7 @@ namespace Genten {
           // L0 norm (max) on other iterations.
           u[n].colNorms(NormInf, lambda, 1.0);
         }
+        Kokkos::fence();
         timer.stop(timer_norm);
 
         // Scale u[n] by the inverse of lambda.
@@ -273,15 +271,15 @@ namespace Genten {
         //      I caused it with an unfortunate initial ktensor guess
         timer.start(timer_scale);
         u[n].colScale(lambda, true);
+        Kokkos::fence();
         timer.stop(timer_scale);
-//                print_ktensor(u,cout,"TBD u after rescaling");
 
         // Update u[n]'s corresponding Gramian matrix.
         timer.start(timer_gramian);
         gamma[n].gramian(u[n]);
+        Kokkos::fence();
         timer.stop(timer_gramian);
       }
-
 
       // Compute Frobenius norm of "p", the current factorization
       // consisting of lambda and u.
@@ -293,6 +291,7 @@ namespace Genten {
       // Compute inner product of input data x with "p".
       timer.start(timer_ip);
       ttb_real xpip = innerprod (x, u, lambda);
+      Kokkos::fence();
       timer.stop(timer_ip);
 
       // Compute the Frobenius norm of the residual using quantities
@@ -334,11 +333,11 @@ namespace Genten {
     // Normalize the final result, incorporating the final lambda values.
     u.normalize(Genten::NormTwo);
     lambda.times(u.weights());
-    //lambda.print(std::cout);
     u.setWeights(lambda);
+    timer.start(timer_arrange);
     u.arrange();
-
-    //TBD...matlab calls "fixsigns"
+    Kokkos::fence();
+    timer.stop(timer_arrange);
 
     timer.stop(timer_cpals);
 
@@ -389,6 +388,9 @@ namespace Genten {
       printf ("\tNorm total time = %.3f seconds, average time = %.3f seconds\n",
               timer.getTotalTime(timer_norm),
               timer.getAvgTime(timer_norm));
+      printf ("\tArrange total time = %.3f seconds, average time = %.3f seconds\n",
+              timer.getTotalTime(timer_arrange),
+              timer.getAvgTime(timer_arrange));
     }
 
     return;

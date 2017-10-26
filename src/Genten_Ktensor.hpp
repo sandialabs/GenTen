@@ -95,17 +95,17 @@ public:
 
   // Set all entries to random values between 0 and 1.
   // Does not change the matrix array, so the Ktensor can become inconsistent.
-  void setWeightsRand();
+  void setWeightsRand() const;
 
   // Set all weights equal to val.
-  void setWeights(ttb_real val);
+  void setWeights(ttb_real val) const;
 
   // Set all weights to new values.  The length of newWeights must equal
   // that of the weights, as returned by ncomponents().
-  void setWeights(const ArrayT<ExecSpace> & newWeights);
+  void setWeights(const ArrayT<ExecSpace> & newWeights) const;
 
   // Set all matrix entries equal to val
-  void setMatrices(ttb_real val);
+  void setMatrices(ttb_real val) const;
 
   // Set all entries to random values in [0,1).
   /*!
@@ -115,7 +115,7 @@ public:
    *  from an arbitrary seed value.  Use setMatricesScatter() for
    *  reproducibility.
    */
-  void setMatricesRand();
+  void setMatricesRand() const;
 
   // Set all entries to reproducible random values.
   /*!
@@ -132,7 +132,7 @@ public:
    *                            The seed should already be set.
    */
   void setMatricesScatter(const bool bUseMatlabRNG,
-                          RandomMT & cRMT);
+                          RandomMT & cRMT) const;
 
   //! Fill the Ktensor with uniform random values, normalized to be stochastic.
   /*!
@@ -153,7 +153,7 @@ public:
    *                            The seed should already be set.
    */
   void setRandomUniform (const bool bUseMatlabRNG,
-                         RandomMT & cRMT);
+                         RandomMT & cRMT) const;
 
   // multiply (plump) a fraction (indices randomly chosen) of each FacMatrix by scale
   // If columnwise is true, each the selection process is applied columnwise.
@@ -161,7 +161,7 @@ public:
   // yield some columns with no raisins.
   // For large column sizes and good RNGs, there may be no difference.
   // For small column sizes, inappropriate fractions may generate a warning.
-  void scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise);
+  void scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise) const;
 
 
   // ----- PROPERTIES -----
@@ -226,13 +226,19 @@ public:
     return data;
   }
 
+  // Set a factor matrix
+  void set_factor(const ttb_indx i, const FacMatrixT<ExecSpace>& src) const
+  {
+    data.set_factor(i, src);
+  }
+
   // Return a reference to the n-th factor matrix.
   // Factor matrices reference a component vector by column, and an element
   // within a component vector by row.  The number of columns equals the
   // number of components, and the number of rows equals the length of factors
   // in the n-th dimension.
   KOKKOS_INLINE_FUNCTION
-  FacMatrixT<ExecSpace> & operator[](ttb_indx n) const
+  const FacMatrixT<ExecSpace>& operator[](ttb_indx n) const
   {
     assert((n >= 0) && (n < ndims()));
     return data[n];
@@ -256,22 +262,22 @@ public:
 
   // Return entry of constructed Ktensor, substituting altLambda for lambda.
   ttb_real entry(const IndxArrayT<ExecSpace> & subs,
-                 const ArrayT<ExecSpace> & altLambda);
+                 const ArrayT<ExecSpace> & altLambda) const;
 
   // Distribute weights to i-th factor matrix (set lambda to vector of ones)
-  void distribute(ttb_indx i);
+  void distribute(ttb_indx i) const;
 
   // Normalize i-th factor matrix using specified norm
-  void normalize(NormType norm_type, ttb_indx i);
+  void normalize(NormType norm_type, ttb_indx i) const;
 
   // Normalize the factor matrices using the specified norm type
-  void normalize(NormType norm_type);
+  void normalize(NormType norm_type) const;
 
   // Arrange the columns of the factor matrices by decreasing lambda value
-  void arrange();
+  void arrange() const;
 
   // Arrange the columns of the factor matrices using a particular index permutation
-  void arrange(IndxArrayT<ExecSpace> permutation_indices);
+  void arrange(const IndxArray& permutation_indices) const;
 
   // Return the Frobenius norm squared (sum of squares of each tensor element).
   ttb_real normFsq() const;
@@ -295,6 +301,14 @@ create_mirror_view(const KtensorT<ExecSpace>& a)
   typedef typename KtensorT<ExecSpace>::HostMirror HostMirror;
   return HostMirror( create_mirror_view(a.weights()),
                      create_mirror_view(a.factors()) );
+}
+
+template <typename Space, typename ExecSpace>
+KtensorT<Space>
+create_mirror_view(const Space& s, const KtensorT<ExecSpace>& a)
+{
+  return KtensorT<Space>( create_mirror_view(s, a.weights()),
+                          create_mirror_view(s, a.factors()) );
 }
 
 template <typename E1, typename E2>

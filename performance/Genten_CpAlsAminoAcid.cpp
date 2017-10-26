@@ -148,28 +148,35 @@ int main(int argc, char* argv[])
     // A Matlab version of the data file will increase the three indices in each
     // record by one (Matlab indexes from 1, Genten tensors index from 0).
     string  filename = "aminoacid_data.txt";
-    Genten::Sptensor  data;
+    Genten::Sptensor  data_host;
     try
     {
-      Genten::import_sptensor ("./test_data/" + filename, data);
+      Genten::import_sptensor ("./data/" + filename, data_host);
     }
     catch (string)
     {
-      cout << "*** Exiting, failed to open ./test_data\n";
+      cout << "*** Exiting, failed to open ./data\n";
       return( -1 );
     }
+    Genten::SptensorT<Genten::DefaultExecutionSpace> data =
+      create_mirror_view( Genten::DefaultExecutionSpace(), data_host );
+    deep_copy( data, data_host );
 
     // Specify the number of components to factorize ("rank").
     // In the literature rank=3 captures all the essential features.
     ttb_indx  nNumComponents = 3;
 
     // Compute an initial guess.
-    Genten::Ktensor  initialGuess (nNumComponents, data.ndims(), data.size());
-    makeInitialGuess (nNumComponents, data.size(), initialGuess);
+    Genten::Ktensor initialGuess_host(nNumComponents, data_host.ndims(),
+                                      data_host.size());
+    makeInitialGuess (nNumComponents, data_host.size(), initialGuess_host);
+    Genten::KtensorT<Genten::DefaultExecutionSpace> initialGuess =
+      create_mirror_view( Genten::DefaultExecutionSpace(), initialGuess_host );
+    deep_copy( initialGuess, initialGuess_host );
 
     ttb_real  stopTol = 1.0e-5;
     ttb_indx  maxIters = 100;
-    Genten::Ktensor  result;
+    Genten::KtensorT<Genten::DefaultExecutionSpace> result;
     ttb_indx  itersCompleted;
     ttb_real  resNorm;
 
@@ -200,9 +207,11 @@ int main(int argc, char* argv[])
       cout << "  " << sExc << "\n";
       return( -1 );
     }
-    evaluateResult (itersCompleted, result);
+    auto result_host = create_mirror_view(result);
+    deep_copy( result_host, result );
+    evaluateResult (itersCompleted, result_host);
 
-    //Genten::export_ktensor("result.txt", result);
+    //Genten::export_ktensor("result.txt", result_host);
 
 
     cout << endl;

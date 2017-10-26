@@ -100,10 +100,7 @@ public:
      *  @param[in] n  Number of columns, should equal the number of components
      *                in the Ktensor.
      */
-    FacMatrixT(ttb_indx m, ttb_indx n) :
-      //data("Genten::FacMatrix::data",m,n)
-      data(Kokkos::view_alloc("Genten::FacMatrix::data", Kokkos::AllowPadding),m,n)
- {}
+    FacMatrixT(ttb_indx m, ttb_indx n);
 
     //! Constructor to create a Factor Matrix of Size M x N using the
     // given view
@@ -139,22 +136,23 @@ public:
     KOKKOS_INLINE_FUNCTION
     FacMatrixT & operator=(const FacMatrixT & src) = default;
 
-    //! Set all entries to the given value.
-    void operator= (ttb_real val);
-
-    //! Deep copy between factor matrices
-    void deep_copy(const FacMatrixT& src) {
-      assert(data.dimension_0() == src.data.dimension_0());
-      assert(data.dimension_1() == src.data.dimension_1());
-      Kokkos::deep_copy(data, src.data);
+    // Assign factor matrix as an unmanaged view of the supplied matrix
+    KOKKOS_INLINE_FUNCTION
+    void assign_view(const FacMatrixT& src) {
+      data = view_type(src.data.data(),
+                       src.data.dimension_0(),
+                       src.data.dimension_1());
     }
+
+    //! Set all entries to the given value.
+    void operator= (ttb_real val) const;
 
     //! Set all entries to random values drawn uniformly from [0,1).
     /*!
      *  A new stream of Mersenne twister random numbers is generated, starting
      *  from an arbitrary seed value.  Use scatter() for reproducibility.
      */
-    void rand();
+    void rand() const;
 
     //! Set all entries to reproducible random values drawn uniformly from [0,1).
     /*!
@@ -165,12 +163,12 @@ public:
      *                            The seed should already be set.
      */
     void scatter (const bool        bUseMatlabRNG,
-                        RandomMT &  cRMT);
+                  RandomMT &  cRMT) const;
 
     // Copy data from the column-oriented data array into a matrix of size m x n. 
     // Assumes that cvec is an array of length m*n.
     // Not currently used; therefore not part of doxygen API.
-    void convertFromCol(ttb_indx m, ttb_indx n, const ttb_real * cvec);
+    void convertFromCol(ttb_indx m, ttb_indx n, const ttb_real * cvec) const;
 
     /** @} */
 
@@ -235,24 +233,24 @@ public:
     bool isEqual(const FacMatrixT & b, ttb_real tol) const;
 
     // Compute X = a * X
-    void times(ttb_real a);
+    void times(ttb_real a) const;
 
     // x += y
     /* accumulate y into x */
-    void plus(const FacMatrixT & y);
+    void plus(const FacMatrixT & y) const;
 
     // x += yi forall yi in ya
-    void plusAll(const FacMatArrayT<ExecSpace> & ya);
+    void plusAll(const FacMatArrayT<ExecSpace> & ya) const;
 
     // X = Y'.
     /* Set this matrix equal to the transpose of the input matrix. */
-    void transpose(const FacMatrixT & y);
+    void transpose(const FacMatrixT & y) const;
 
     // Compute X = X.*V, the Hadamard (elementwise) product of this matrix and V.
-    void times(const FacMatrixT & v);
+    void times(const FacMatrixT & v) const;
 
     // Set this matrix to the Gram Matrix of V:  this = V' * V.
-    void gramian(const FacMatrixT & v);
+    void gramian(const FacMatrixT & v) const;
 
     // return the index of the first entry, s, such that entry(s,c) > r.
     // assumes/requires the values entry(s,c) are nondecreasing as s increases.
@@ -261,20 +259,20 @@ public:
 
     // Compute the rank-one matrix that is the outer product of the vector v.
     /* X(i,j) = V(i) * V(j). */
-    void oprod(const ArrayT<ExecSpace> & v);
+    void oprod(const ArrayT<ExecSpace> & v) const;
 
     // Compute the norms of all the columns.
     /* The norm_type indicates the type of norm.
        The optional "minval" argument sets the minimum value of each column norm. */
-    void colNorms(NormType norm_type, ArrayT<ExecSpace> & norms, ttb_real minval);
+    void colNorms(NormType norm_type, ArrayT<ExecSpace> & norms, ttb_real minval) const;
 
     // Scale each column by the corresponding scalar entry in s.
     /* If "inverse" is set to true, then scale by the reciprocal of the entries
      * in s. */
-    void colScale(const ArrayT<ExecSpace> & s, bool inverse);
+    void colScale(const ArrayT<ExecSpace> & s, bool inverse) const;
 
     // see ktensor::scaleRandomElements
-    void scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise);
+    void scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise) const;
 
     // Compute the sum of all the entries (no absolute value).
     // TODO: This function really should be removed and replaced with a ktensor norm function, because that's kind of how it's used.
@@ -286,7 +284,7 @@ public:
     // Permute columns in place using given column indices.
     // On return, column 0 will contain data moved from the column indicated
     // by indices[0], column 1 teh data indicated by indices[1], etc.
-    void permute(const IndxArrayT<ExecSpace> &indices);
+    void permute(const IndxArray& indices) const;
 
     //! Perform a matrix-vector multiply.
     /*!
@@ -315,7 +313,7 @@ public:
      *
      * Throws an exception if A is singular.
      */
-    void solveTransposeRHS (const FacMatrixT &  A);
+    void solveTransposeRHS (const FacMatrixT &  A) const;
 
     //! Multiply x elementwise by the ith row of the factor matrix, overwriting x.
     /*!
@@ -340,7 +338,7 @@ public:
      */
     void rowTimes(const ttb_indx         nRow,
                   const FacMatrixT & other,
-                  const ttb_indx         nRowOther);
+                  const ttb_indx         nRowOther) const;
 
     //! Multiply rows from two factor matrices to get the dot product.
     /*!
@@ -375,12 +373,7 @@ public:
 
     // Return pointer to the ith row
     KOKKOS_INLINE_FUNCTION
-    const ttb_real * rowptr(ttb_indx i) const
-    { return(data.data() + i*data.stride_0()); }
-
-    // Return pointer to the ith row
-    KOKKOS_INLINE_FUNCTION
-    ttb_real * rowptr(ttb_indx i)
+    ttb_real * rowptr(ttb_indx i) const
     { return(data.data() + i*data.stride_0()); }
 
     KOKKOS_INLINE_FUNCTION
@@ -415,6 +408,13 @@ create_mirror_view(const FacMatrixT<ExecSpace>& a)
 {
   typedef typename FacMatrixT<ExecSpace>::HostMirror HostMirror;
   return HostMirror( create_mirror_view(a.view()) );
+}
+
+template <typename Space, typename ExecSpace>
+FacMatrixT<Space>
+create_mirror_view(const Space& s, const FacMatrixT<ExecSpace>& a)
+{
+  return FacMatrixT<Space>( create_mirror_view(s, a.view()) );
 }
 
 template <typename E1, typename E2>

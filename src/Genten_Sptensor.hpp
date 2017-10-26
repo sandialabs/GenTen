@@ -64,7 +64,7 @@ class SptensorT
 public:
 
   typedef ExecSpace exec_space;
-  typedef Kokkos::View<ttb_indx**,ExecSpace> subs_view_type;
+  typedef Kokkos::View<ttb_indx**,Kokkos::LayoutRight,ExecSpace> subs_view_type;
   typedef Kokkos::View<ttb_real*,ExecSpace> vals_view_type;
   typedef typename ArrayT<ExecSpace>::host_mirror_space host_mirror_space;
   typedef SptensorT<host_mirror_space> HostMirror;
@@ -110,7 +110,7 @@ public:
   KOKKOS_INLINE_FUNCTION
   SptensorT(const IndxArrayT<ExecSpace>& d, const vals_view_type& vals,
             const subs_view_type& s) :
-    siz(d), nNumDims(s.size()), values(vals), subs(s) {}
+    siz(d), nNumDims(d.size()), values(vals), subs(s) {}
 
   // Copy constructor.
   KOKKOS_INLINE_FUNCTION
@@ -123,12 +123,6 @@ public:
   // Destructor.
   KOKKOS_INLINE_FUNCTION
   ~SptensorT() = default;
-
-  // Deep copy into tensor
-  void deep_copy(const SptensorT& X) {
-    values.deep_copy(X.values);
-    Kokkos::deep_copy(subs, X.subs);
-  }
 
   // Return the number of dimensions (i.e., the order).
   KOKKOS_INLINE_FUNCTION
@@ -268,6 +262,15 @@ create_mirror_view(const SptensorT<ExecSpace>& a)
   return HostMirror( create_mirror_view(a.size()),
                      create_mirror_view(a.getValues()),
                      create_mirror_view(a.getSubscripts()) );
+}
+
+template <typename Space, typename ExecSpace>
+SptensorT<Space>
+create_mirror_view(const Space& s, const SptensorT<ExecSpace>& a)
+{
+  return SptensorT<Space>( create_mirror_view(s, a.size()),
+                           create_mirror_view(s, a.getValues()),
+                           create_mirror_view(s, a.getSubscripts()) );
 }
 
 template <typename E1, typename E2>

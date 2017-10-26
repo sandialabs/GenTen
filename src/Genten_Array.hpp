@@ -53,7 +53,7 @@
 namespace Genten {
 
   template <typename ExecSpace> class ArrayT;
-  typedef ArrayT<DefaultExecutionSpace> Array;
+  typedef ArrayT<DefaultHostExecutionSpace> Array;
 
   /*! @class Genten::Array
    *  @brief  Data class for "flat" versions of vectors, matrices and tensors.
@@ -134,20 +134,14 @@ namespace Genten {
     KOKKOS_INLINE_FUNCTION
     ArrayT & operator= (const ArrayT & src) = default;
 
-    //! @brief Copy from another Genten::ArrayT.
-    //!
-    //! Does a deep copy. Does not modify rsz unless it needs to be enlarged.
-    void deep_copy(const ArrayT & src)
-    {
-      assert(data.dimension_0() == src.data.dimension_0());
-      Kokkos::deep_copy(data, src.data);
-    }
-
     //! @brief Copy from a double
-    void copyFrom(ttb_indx n, const ttb_real * src);
+    void copyFrom(ttb_indx n, const ttb_real * src) const;
 
     //! @brief Copy to a double. Assumes src has n elements allocated.
     void copyTo(ttb_indx n, ttb_real * dest) const;
+
+    //! @brief Set all entries to the specified value.
+    void operator=(ttb_real val) const;
 
     //! @brief Set all entries to the specified value.
     void operator=(ttb_real val);
@@ -156,7 +150,7 @@ namespace Genten {
     //!
     //!  A new stream of Mersenne twister random numbers is generated, starting
     //!  from an arbitrary seed value.  Use scatter() for reproducibility.
-    void rand();
+    void rand() const;
 
     //! @brief Set all entries to reproducible random values drawn uniformly from [0,1).
     //!
@@ -166,7 +160,7 @@ namespace Genten {
     //!  @param[in] cRMT           Mersenne Twister random number generator.
     //!                            The seed should already be set.
     void scatter (const bool        bUseMatlabRNG,
-                  RandomMT &  cRMT);
+                  RandomMT &  cRMT) const;
     //@}
 
     //! @name Properties
@@ -234,58 +228,58 @@ namespace Genten {
     bool isEqual(const ArrayT & y, ttb_real tol) const;
 
     //! @brief x = a * x
-    void times(ttb_real a);
+    void times(ttb_real a) const;
 
     //! @brief x = a * y
-    void times(ttb_real a, const ArrayT & y);
+    void times(ttb_real a, const ArrayT & y) const;
 
     //! @brief x = a / x
-    void invert(ttb_real a);
+    void invert(ttb_real a) const;
 
     // x = a / y
-    void invert(ttb_real a, const ArrayT & y);
+    void invert(ttb_real a, const ArrayT & y) const;
 
     //! @brief x = x^a
-    void power(ttb_real a);
+    void power(ttb_real a) const;
 
     //! @brief x = y^a
-    void power(ttb_real a, const ArrayT & y);
+    void power(ttb_real a, const ArrayT & y) const;
 
     //! @brief x = a + x
-    void shift(ttb_real a);
+    void shift(ttb_real a) const;
 
     //! @brief x = a + y
-    void shift(ttb_real a, const ArrayT & y);
+    void shift(ttb_real a, const ArrayT & y) const;
 
     //! @brief x = x + y
-    void plus(const ArrayT & y);
+    void plus(const ArrayT & y) const;
 
     //! @brief x = x + sum(y[i])
-    void plusVec(std::vector< const ArrayT * > y);
+    void plusVec(std::vector< const ArrayT * > y) const;
 
     //! @brief x = y + z
-    void plus(const ArrayT & y, const ArrayT & z);
+    void plus(const ArrayT & y, const ArrayT & z) const;
 
     //! @brief x = x - y
-    void minus(const ArrayT & y);
+    void minus(const ArrayT & y) const;
 
     //! @brief x = y - z
-    void minus(const ArrayT & y, const ArrayT & z);
+    void minus(const ArrayT & y, const ArrayT & z) const;
 
     //! @brief x = x .* y (elementwise product)
-    void times(const ArrayT & y);
+    void times(const ArrayT & y) const;
 
     //! @brief x = x .* y (elementwise product)
-    //void times(const ttb_real * y, ttb_indx incy = 1);
+    //void times(const ttb_real * y, ttb_indx incy = 1) const;
 
     //! @brief x = y .* z (elementwise product)
-    void times(const ArrayT & y, const ArrayT & z);
+    void times(const ArrayT & y, const ArrayT & z) const;
 
     //! @brief x = x ./ y (elementwise divide)
-    void divide(const ArrayT & y);
+    void divide(const ArrayT & y) const;
 
     //! @brief x = y ./ z (elementwise divide)
-    void divide(const ArrayT & y, const ArrayT & z);
+    void divide(const ArrayT & y, const ArrayT & z) const;
 
     //! @brief Returns sum of all the entries
     ttb_real sum() const;
@@ -303,10 +297,7 @@ namespace Genten {
     view_type values() const { return data; }
 
     // Return pointer to data.
-    inline const ttb_real * ptr() const { return data.data(); }
-
-    // Return pointer to data.
-    inline ttb_real * ptr() { return data.data(); }
+    inline ttb_real * ptr() const { return data.data(); }
 
   private:
 
@@ -323,6 +314,13 @@ namespace Genten {
   {
     typedef typename ArrayT<ExecSpace>::HostMirror HostMirror;
     return HostMirror( create_mirror_view(a.values()) );
+  }
+
+  template <typename Space, typename ExecSpace>
+  ArrayT<Space>
+  create_mirror_view(const Space& s, const ArrayT<ExecSpace>& a)
+  {
+    return ArrayT<Space>( create_mirror_view(s, a.values()) );
   }
 
   template <typename E1, typename E2>

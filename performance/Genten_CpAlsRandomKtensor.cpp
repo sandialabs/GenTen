@@ -71,8 +71,8 @@ SPTENSOR_TYPE sptensor_types[] =
 std::string sptensor_names[] =
 { "kokkos", "perm", "row" };
 
-template <typename Sptensor_type>
-int run_cpals(const Genten::IndxArray& cFacDims,
+template <template<class> class Sptensor_template, typename Space>
+int run_cpals(const Genten::IndxArray& cFacDims_host,
               ttb_indx  nNumComponents,
               ttb_indx  nMaxNonzeroes,
               unsigned long  nRNGseed,
@@ -80,11 +80,20 @@ int run_cpals(const Genten::IndxArray& cFacDims,
               ttb_real  dStopTol,
               SPTENSOR_TYPE tensor_type)
 {
+  typedef Sptensor_template<Space> Sptensor_type;
+  typedef Sptensor_template<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
+  typedef Genten::KtensorT<Space> Ktensor_type;
+  typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
+
+  Genten::IndxArrayT<Space> cFacDims =
+    create_mirror_view( Space(), cFacDims_host );
+  deep_copy( cFacDims, cFacDims_host );
+
   cout << "Will construct a random Ktensor/Sptensor_";
   cout << sptensor_names[tensor_type] << " pair:\n";
-  cout << "  Ndims = " << cFacDims.size() << ",  Size = [ ";
-  for (ttb_indx  n = 0; n < cFacDims.size(); n++)
-    cout << cFacDims[n] << ' ';
+  cout << "  Ndims = " << cFacDims_host.size() << ",  Size = [ ";
+  for (ttb_indx  n = 0; n < cFacDims_host.size(); n++)
+    cout << cFacDims_host[n] << ' ';
   cout << "]\n";
   cout << "  Ncomps = " << nNumComponents << "\n";
   cout << "  Maximum nnz = " << nMaxNonzeroes << "\n";
@@ -94,43 +103,52 @@ int run_cpals(const Genten::IndxArray& cFacDims,
 
   // Generate a random Ktensor, and from it a representative sparse
   // data tensor.
-  Sptensor_type  cData;
-  Genten::Ktensor   cSol;
+  Sptensor_host_type  cData_host;
+  Ktensor_host_type   cSol_host;
   Genten::FacTestSetGenerator  cTestGen;
 
   Genten::SystemTimer  timer(2);
   timer.start(0);
-  if (cTestGen.genSpFromRndKtensor (cFacDims, nNumComponents, nMaxNonzeroes,
-                                    cRNG, cData, cSol) == false)
+  if (cTestGen.genSpFromRndKtensor (cFacDims_host, nNumComponents,
+                                    nMaxNonzeroes,
+                                    cRNG, cData_host, cSol_host) == false)
   {
     cout << "*** Call to genSpFromRndKtensor failed.\n";
     return( -1 );
   }
   timer.stop(0);
   printf ("  (data generation took %6.3f seconds)\n", timer.getTotalTime(0));
-  cout << "  Actual nnz  = " << cData.nnz() << "\n";
+  cout << "  Actual nnz  = " << cData_host.nnz() << "\n";
+
+  Sptensor_type cData = create_mirror_view( Space(), cData_host );
+  Ktensor_type cSol = create_mirror_view( Space(), cSol_host );
+  deep_copy( cData, cData_host );
+  deep_copy( cSol, cSol_host );
 
   // Set a random initial guess, matching the Matlab code.
-  Genten::Ktensor  cInitialGuess (nNumComponents, cFacDims.size(), cFacDims);
-  cInitialGuess.setWeights (1.0);
-  cInitialGuess.setMatrices (0.0);
-  for (ttb_indx  n = 0; n < cFacDims.size(); n++)
+  Ktensor_host_type  cInitialGuess_host (nNumComponents, cFacDims.size(),
+                                         cFacDims_host);
+  cInitialGuess_host.setWeights (1.0);
+  cInitialGuess_host.setMatrices (0.0);
+  for (ttb_indx  n = 0; n < cFacDims_host.size(); n++)
   {
     for (ttb_indx  c = 0; c < nNumComponents; c++)
     {
-      for (ttb_indx  i = 0; i < cFacDims[n]; i++)
+      for (ttb_indx  i = 0; i < cFacDims_host[n]; i++)
       {
-        cInitialGuess[n].entry(i,c) = cRNG.genMatlabMT();
+        cInitialGuess_host[n].entry(i,c) = cRNG.genMatlabMT();
       }
     }
   }
+  Ktensor_type cInitialGuess = create_mirror_view( Space(), cInitialGuess_host );
+  deep_copy( cInitialGuess, cInitialGuess_host );
 
   // Do a pass through the mttkrp to warm up and make sure the tensor
   // is copied to the device before generating any timings.  Use
   // Sptensor mttkrp and do this before fillComplete() so that
   // fillComplete() timings are not polluted by UVM transfers
-  Genten::Ktensor  tmp (nNumComponents, cFacDims.size(), cFacDims);
-  Genten::Sptensor& cData_tmp = cData;
+  Ktensor_type  tmp (nNumComponents, cFacDims.size(), cFacDims);
+  Genten::SptensorT<Genten::DefaultExecutionSpace>& cData_tmp = cData;
   for (ttb_indx  n = 0; n < cFacDims.size(); n++)
     Genten::mttkrp(cData_tmp, cInitialGuess, n, tmp[n]);
 
@@ -141,7 +159,7 @@ int run_cpals(const Genten::IndxArray& cFacDims,
   printf ("  (fillComplete() took %6.3f seconds)\n", timer.getTotalTime(1));
 
   // Call CpAls to factorize, timing the performance.
-  Genten::Ktensor  cResult;
+  Ktensor_type  cResult;
   ttb_indx  nItersCompleted;
   ttb_real  dResNorm;
 
@@ -155,9 +173,9 @@ int run_cpals(const Genten::IndxArray& cFacDims,
   Genten::CpAlsPerfInfo *  perfInfo = new Genten::CpAlsPerfInfo[nMaxPerfSize];
   cResult = cInitialGuess;
   Genten::cpals_core (cData, cResult,
-                   dStopTol, nMaxIters, -1.0, 1,
-                   nItersCompleted, dResNorm,
-                   1, perfInfo);
+                      dStopTol, nMaxIters, -1.0, 1,
+                      nItersCompleted, dResNorm,
+                      1, perfInfo);
   printf ("Performance information per iteration:\n");
   for (ttb_indx  i = 0; i <= nItersCompleted; i++)
   {
@@ -169,8 +187,10 @@ int run_cpals(const Genten::IndxArray& cFacDims,
 
   printf ("  Final residual norm = %10.3e\n", dResNorm);
   printf ("  Weights (lambda):\n");
+  auto weights_host = create_mirror_view(cResult.weights());
+  deep_copy(weights_host, cResult.weights());
   for (ttb_indx  c = 0; c < nNumComponents; c++)
-    printf("    [%d] = %f\n", (int)c, cResult.weights(c));
+    printf("    [%d] = %f\n", (int)c, weights_host[c]);
 
   //    print_ktensor(cResult, std::cout, "TBD computed solution");
 
@@ -255,15 +275,15 @@ int main(int argc, char* argv[])
                      num_sptensor_types, sptensor_types, sptensor_names);
 
     if (tensor_type == SPTENSOR)
-      ret = run_cpals<Genten::Sptensor>(
+      ret = run_cpals< Genten::SptensorT, Genten::DefaultExecutionSpace >(
         cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nMaxIters, dStopTol,
         tensor_type);
     else if (tensor_type == SPTENSOR_PERM)
-      ret = run_cpals<Genten::Sptensor_perm>(
+      ret = run_cpals< Genten::SptensorT_perm, Genten::DefaultExecutionSpace >(
         cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nMaxIters, dStopTol,
         tensor_type);
     else if (tensor_type == SPTENSOR_ROW)
-      ret = run_cpals<Genten::Sptensor_row>(
+      ret = run_cpals< Genten::SptensorT_row, Genten::DefaultExecutionSpace >(
         cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nMaxIters, dStopTol,
         tensor_type);
 

@@ -62,6 +62,7 @@ public:
 
   typedef ExecSpace exec_space;
   typedef Kokkos::View<ttb_indx*,ExecSpace> view_type;
+  typedef Kokkos::View<ttb_indx*,DefaultHostExecutionSpace> host_view_type;
   typedef typename view_type::host_mirror_space host_mirror_space;
   typedef IndxArrayT<host_mirror_space> HostMirror;
 
@@ -82,13 +83,15 @@ public:
   // Constructor from initializer list
   template <typename T>
   IndxArrayT(const std::initializer_list<T>& v) :
-    data("Genten::IndxArray::data", v.size())
+    IndxArrayT(v.size())
   {
     ttb_indx i = 0;
     for (const T& x : v)
     {
-      data[i++] = (ttb_indx) x;
+      host_data[i++] = (ttb_indx) x;
     }
+    if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename ExecSpace::memory_space >::accessible)
+      deep_copy( data, host_data );
   }
 
   // Copy Constructor.
@@ -103,8 +106,15 @@ public:
   IndxArrayT(ttb_indx n, const ttb_real * v);
 
   //! @brief Create array from supplied view
-  KOKKOS_INLINE_FUNCTION
-  IndxArrayT(const view_type& v) : data(v) {}
+  IndxArrayT(const view_type& v) : data(v) {
+    if (Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename ExecSpace::memory_space >::accessible)
+      host_data = host_view_type(data.data(), data.dimension_0());
+    else {
+      host_data = host_view_type("Genten::IndxArray::hsot_data",
+                                 data.dimension_0());
+      deep_copy( host_data, data );
+    }
+  }
 
   // Copy Constructor.
   /* Does a (deep) copy of the data in src. The reserved size (rsz)
@@ -134,12 +144,6 @@ public:
     return *this;
   }
 
-  // Deep copy
-  void deep_copy(const IndxArrayT & src) {
-    assert(data.dimension_0() == src.data.dimension_0());
-    Kokkos::deep_copy(data, src.data);
-  }
-
   // Zero out all the data.
   void zero();
 
@@ -166,7 +170,10 @@ public:
   ttb_indx & operator[](ttb_indx i) const
   {
     assert(i < data.dimension_0());
-    return(data[i]);
+    if (Kokkos::Impl::MemorySpaceAccess< typename Kokkos::Impl::ActiveExecutionMemorySpace::memory_space, typename ExecSpace::memory_space >::accessible)
+      return data[i];
+    else
+      return host_data[i];
   }
 
   // Return reference to value at position i (out-of-bounds check).
@@ -183,7 +190,7 @@ public:
   KOKKOS_INLINE_FUNCTION
   ttb_indx prod(ttb_indx dflt = 0) const
   {
-    const ttb_indx sz = data.dimension_0();
+    const ttb_indx sz = host_data.dimension_0();
     if (sz == 0)
     {
       return dflt;
@@ -192,7 +199,7 @@ public:
     ttb_indx p = 1;
     for (ttb_indx i = 0; i < sz; i ++)
     {
-      p = p * data[i];
+      p = p * host_data[i];
     }
     return p;
   }
@@ -215,6 +222,9 @@ public:
   KOKKOS_INLINE_FUNCTION
   view_type values() const { return data; }
 
+  KOKKOS_INLINE_FUNCTION
+  host_view_type host_values() const { return host_data; }
+
 private:
 
   typedef Kokkos::View<ttb_indx*,ExecSpace,Kokkos::MemoryUnmanaged> unmanaged_view_type;
@@ -222,6 +232,7 @@ private:
 
   // Pointer to the actual data. managed with new/delete[]
   view_type data;
+  host_view_type host_data;
 };
 
 template <typename ExecSpace>
@@ -232,10 +243,19 @@ create_mirror_view(const IndxArrayT<ExecSpace>& a)
   return HostMirror( create_mirror_view(a.values()) );
 }
 
+template <typename Space, typename ExecSpace>
+IndxArrayT<Space>
+create_mirror_view(const Space& s, const IndxArrayT<ExecSpace>& a)
+{
+  return IndxArrayT<Space>( create_mirror_view(s, a.values()) );
+}
+
 template <typename E1, typename E2>
 void deep_copy(const IndxArrayT<E1>& dst, const IndxArrayT<E2>& src)
 {
-  deep_copy( dst.values(), src.values() );
+  deep_copy(dst.values(), src.values());
+  if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename E1::memory_space >::accessible)
+    deep_copy(dst.host_values(), src.host_values());
 }
 
 }

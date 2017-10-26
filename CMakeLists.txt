@@ -68,7 +68,7 @@ IF(NOT KOKKOS_PATH)
 
   # We must use UVM and enable Lambda support in Kokkos
   IF(KOKKOS_ENABLE_CUDA)
-    SET(KOKKOS_ENABLE_CUDA_UVM ON CACHE BOOL "Enable CUDA unified virtual memory.")
+    #SET(KOKKOS_ENABLE_CUDA_UVM ON CACHE BOOL "Enable CUDA unified virtual memory.")
     SET(KOKKOS_ENABLE_CUDA_LAMBDA ON CACHE BOOL "Enable lambdas for CUDA.")
   ENDIF()
 

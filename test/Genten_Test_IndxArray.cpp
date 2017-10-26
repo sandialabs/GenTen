@@ -108,7 +108,7 @@ void Genten_Test_IndxArray(int infolevel)
   // f = [ 1 2 3 ]
   MESSAGE("Testing copy constructor");
   Genten::IndxArray f(d.size());
-  f.deep_copy(d);
+  deep_copy(f,d);
   ASSERT(f == d, "Copy constructor works");
 
   // Leave-one-out copy constructor

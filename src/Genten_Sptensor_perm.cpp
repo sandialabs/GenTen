@@ -79,12 +79,12 @@ createPermutationImpl(const subs_view_type& subs, const siz_type& siz)
     typedef Kokkos::BinOp1D<ViewType> CompType;
     // Kokkos::sort doesn't allow supplying a custom comparator, so we
     // have to use its implementation to get the permutation vector
-    Kokkos::deep_copy( tmp, Kokkos::subview(subs, Kokkos::ALL(), n));
+    deep_copy( tmp, Kokkos::subview(subs, Kokkos::ALL(), n));
     Kokkos::BinSort<ViewType, CompType> bin_sort(
       tmp,CompType(sz/2,0,siz[n]),true);
     bin_sort.create_permute_vector();
-    Kokkos::deep_copy( Kokkos::subview(perm, Kokkos::ALL(), n),
-                       bin_sort.get_permute_vector() );
+    deep_copy( Kokkos::subview(perm, Kokkos::ALL(), n),
+               bin_sort.get_permute_vector() );
 
 #else
 
@@ -125,7 +125,7 @@ createPermutationImpl(const subs_view_type& subs, const siz_type& siz)
     });
 
 
-    Kokkos::deep_copy( Kokkos::subview(perm, Kokkos::ALL(), n), tmp );
+    deep_copy( Kokkos::subview(perm, Kokkos::ALL(), n), tmp );
 
 #endif
 

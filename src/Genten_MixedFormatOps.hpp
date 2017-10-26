@@ -122,16 +122,16 @@ namespace Genten
   void mttkrp(const Genten::SptensorT<ExecSpace>& X,
               const Genten::KtensorT<ExecSpace>& u,
               const ttb_indx n,
-              Genten::FacMatrixT<ExecSpace>& v);
+              const Genten::FacMatrixT<ExecSpace>& v);
   template <typename ExecSpace>
   void mttkrp(const Genten::SptensorT_perm<ExecSpace>& X,
               const Genten::KtensorT<ExecSpace>& u,
               const ttb_indx n,
-              Genten::FacMatrixT<ExecSpace>& v);
+              const Genten::FacMatrixT<ExecSpace>& v);
   template <typename ExecSpace>
   void mttkrp(const Genten::SptensorT_row<ExecSpace>& X,
               const Genten::KtensorT<ExecSpace>& u,
               const ttb_indx n,
-              Genten::FacMatrixT<ExecSpace>& v);
+              const Genten::FacMatrixT<ExecSpace>& v);
 
 }     //-- namespace Genten

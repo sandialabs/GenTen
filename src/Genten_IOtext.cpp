@@ -775,7 +775,7 @@ void Genten::import_ktensor (std::ifstream & fIn,
               << ", expecting " << naSizes[i] << " by " << naComps[0];
       Genten::error(sErrMsg.str());
     }
-    X[i] = nextFactor;
+    X.set_factor(i, nextFactor);
   }
 
   return;

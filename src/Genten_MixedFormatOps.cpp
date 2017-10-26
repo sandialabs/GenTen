@@ -547,7 +547,7 @@ template <typename ExecSpace, unsigned FacBlockSize>
 void mttkrp_kernel(const Genten::SptensorT<ExecSpace>& X,
                    const Genten::KtensorT<ExecSpace>& u,
                    const ttb_indx n,
-                   Genten::FacMatrixT<ExecSpace>& v)
+                   const Genten::FacMatrixT<ExecSpace>& v)
 {
   // Compute team and vector sizes, depending on the architecture
 #if defined(KOKKOS_HAVE_CUDA)
@@ -592,7 +592,7 @@ template <typename ExecSpace>
 void Genten::mttkrp(const Genten::SptensorT<ExecSpace>& X,
                     const Genten::KtensorT<ExecSpace>& u,
                     const ttb_indx n,
-                    Genten::FacMatrixT<ExecSpace>& v)
+                    const Genten::FacMatrixT<ExecSpace>& v)
 {
   const ttb_indx nc = u.ncomponents();     // Number of components
   const ttb_indx nd = u.ndims();           // Number of dimensions
@@ -606,7 +606,10 @@ void Genten::mttkrp(const Genten::SptensorT<ExecSpace>& X,
   }
 
   // Resize and initialize the output factor matrix to zero.
-  v = FacMatrixT<ExecSpace>(X.size(n), nc);
+  //v = FacMatrixT<ExecSpace>(X.size(n), nc);
+  assert( v.nRows() == X.size(n) );
+  assert( v.nCols() == nc );
+  v = ttb_real(0.0);
 
   // Call kernel with factor block size determined from nc
   if (nc == 1)
@@ -631,7 +634,7 @@ template <typename ExecSpace>
 void Genten::mttkrp(const Genten::SptensorT<ExecSpace>& X,
                     const Genten::KtensorT<ExecSpace>& u,
                     const  ttb_indx n,
-                    Genten::FacMatrixT<ExecSpace>& v)
+                    const Genten::FacMatrixT<ExecSpace>& v)
 {
   typedef typename ExecSpace::size_type size_type;
 
@@ -647,7 +650,10 @@ void Genten::mttkrp(const Genten::SptensorT<ExecSpace>& X,
   }
 
   // Resize and initialize the output factor matrix to zero.
-  v = FacMatrixT<ExecSpace>(X.size(n), nc);
+  //v = FacMatrixT<ExecSpace>(X.size(n), nc);
+  assert( v.nRows() == X.size(n) );
+  assert( v.nCols() == nc );
+  v = ttb_real(0.0);
 
   // Loop thru the nonzeros of the sparse tensor.  The inner loop updates
   // an entire row at a time, and is run only for nonzero elements.
@@ -751,13 +757,13 @@ template <typename ExecSpace>
 void mttkrp_perm(const Genten::SptensorT_perm<ExecSpace>& X,
                  const Genten::KtensorT<ExecSpace>& u,
                  ttb_indx n,
-                 Genten::FacMatrixT<ExecSpace>& v);
+                 const Genten::FacMatrixT<ExecSpace>& v);
 
 #if !USE_NEW_MTTKRP_PERM && defined(KOKKOS_HAVE_CUDA)
 void mttkrp_perm(const Genten::SptensorT_perm<Kokkos::Cuda>& X,
                  const Genten::KtensorT<Kokkos::Cuda>& u,
                  ttb_indx n,
-                 Genten::FacMatrixT<Kokkos::Cuda>& v);
+                 const Genten::FacMatrixT<Kokkos::Cuda>& v);
 #endif
 }
 }
@@ -770,7 +776,7 @@ template <typename ExecSpace>
 void Genten::mttkrp(const Genten::SptensorT_perm<ExecSpace>& X,
                     const Genten::KtensorT<ExecSpace>& u,
                     const ttb_indx n,
-                    Genten::FacMatrixT<ExecSpace>& v)
+                    const Genten::FacMatrixT<ExecSpace>& v)
 {
   Impl::mttkrp_perm(X,u,n,v);
 }
@@ -1024,7 +1030,7 @@ template <typename ExecSpace, ttb_indx FacBlockSize>
 void mttkrp_perm_kernel(const Genten::SptensorT_perm<ExecSpace>& X,
                         const Genten::KtensorT<ExecSpace>& u,
                         const ttb_indx n,
-                        Genten::FacMatrixT<ExecSpace>& v)
+                        const Genten::FacMatrixT<ExecSpace>& v)
 {
   // Compute team and vector sizes, depending on the architecture
 #if defined(KOKKOS_HAVE_CUDA)
@@ -1060,7 +1066,7 @@ template <typename ExecSpace>
 void mttkrp_perm(const Genten::SptensorT_perm<ExecSpace>& X,
                  const Genten::KtensorT<ExecSpace>& u,
                  const ttb_indx n,
-                 Genten::FacMatrixT<ExecSpace>& v)
+                 const Genten::FacMatrixT<ExecSpace>& v)
 {
 #if defined(KOKKOS_HAVE_CUDA)
   const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
@@ -1080,7 +1086,10 @@ void mttkrp_perm(const Genten::SptensorT_perm<ExecSpace>& X,
   }
 
   // Resize and initialize the output factor matrix to zero.
-  v = FacMatrixT<ExecSpace>(X.size(n), nc);
+  //v = FacMatrixT<ExecSpace>(X.size(n), nc);
+  assert( v.nRows() == X.size(n) );
+  assert( v.nCols() == nc );
+  v = ttb_real(0.0);
 
   if (nc == 1)
     Impl::mttkrp_perm_kernel<ExecSpace,1>(X,u,n,v);
@@ -1111,7 +1120,7 @@ void mttkrp_perm(const Genten::SptensorT_perm<ExecSpace>& X,
 void mttkrp_perm(const Genten::SptensorT_perm<Kokkos::Cuda>& X,
                  const Genten::KtensorT<Kokkos::Cuda>& u,
                  const ttb_indx n,
-                 Genten::FacMatrixT<Kokkos::Cuda>& v)
+                 const Genten::FacMatrixT<Kokkos::Cuda>& v)
 {
   typedef Kokkos::Cuda ExecSpace;
 
@@ -1127,7 +1136,10 @@ void mttkrp_perm(const Genten::SptensorT_perm<Kokkos::Cuda>& X,
   }
 
   // Resize and initialize the output factor matrix to zero.
-  v = FacMatrixT<ExecSpace>(X.size(n), nc);
+  //v = FacMatrixT<ExecSpace>(X.size(n), nc);
+  assert( v.nRows() == X.size(n) );
+  assert( v.nCols() == nc );
+  v = ttb_real(0.0);
 
   const ttb_indx nnz = X.nnz();
   const ttb_indx RowBlockSize = 128;
@@ -1224,7 +1236,7 @@ template <typename ExecSpace>
 void Genten::mttkrp(const Genten::SptensorT_row<ExecSpace>& X,
                     const Genten::KtensorT<ExecSpace>& u,
                     const ttb_indx n,
-                    Genten::FacMatrixT<ExecSpace>& v)
+                    const Genten::FacMatrixT<ExecSpace>& v)
 {
   typedef typename ExecSpace::size_type size_type;
 
@@ -1240,7 +1252,10 @@ void Genten::mttkrp(const Genten::SptensorT_row<ExecSpace>& X,
   }
 
   // Resize and initialize the output factor matrix to zero.
-  v = FacMatrixT<ExecSpace>(X.size(n), nc);
+  //v = FacMatrixT<ExecSpace>(X.size(n), nc);
+  assert( v.nRows() == X.size(n) );
+  assert( v.nCols() == nc );
+  v = ttb_real(0.0);
 
   // Loop thru the nonzeros of the sparse tensor.  The inner loop updates
   // an entire row at a time, and is run only for nonzero elements.
@@ -1321,15 +1336,15 @@ void Genten::mttkrp(const Genten::SptensorT_row<ExecSpace>& X,
   void mttkrp<SPACE>(const Genten::SptensorT<SPACE>& X,                 \
                      const Genten::KtensorT<SPACE>& u,                  \
                      const ttb_indx n,                                  \
-                     Genten::FacMatrixT<SPACE>& v);                     \
+                     const Genten::FacMatrixT<SPACE>& v);               \
   template                                                              \
   void mttkrp<SPACE>(const Genten::SptensorT_perm<SPACE>& X,            \
                      const Genten::KtensorT<SPACE>& u,                  \
                      const ttb_indx n,                                  \
-                     Genten::FacMatrixT<SPACE>& v);                     \
+                     const Genten::FacMatrixT<SPACE>& v);               \
   template                                                              \
   void mttkrp<SPACE>(const Genten::SptensorT_row<SPACE>& X,             \
                      const Genten::KtensorT<SPACE>& u,                  \
                      const ttb_indx n,                                  \
-                     Genten::FacMatrixT<SPACE>& v);
+                     const Genten::FacMatrixT<SPACE>& v);
 GENTEN_INST(INST_MACRO)

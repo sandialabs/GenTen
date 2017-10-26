@@ -213,6 +213,7 @@ void Genten_Test_MixedFormats(int infolevel)
   Genten::FacMatrix  oFM;
 
   // Matricizing on index 0 has result 12*15 = 180.
+  oFM = Genten::FacMatrix(a.size(0), oKtens.ncomponents());
   mttkrp (a, oKtens, 0, oFM);
   ASSERT((oFM.nRows() == 2) && (oFM.nCols() == 1),
          "mttkrp result shape correct for index [0]");
@@ -226,6 +227,7 @@ void Genten_Test_MixedFormats(int infolevel)
   */
 
   // Matricizing on index 1 has result 10*15 = 150.
+  oFM = Genten::FacMatrix(a.size(1), oKtens.ncomponents());
   mttkrp (a, oKtens, 1, oFM);
   ASSERT((oFM.nRows() == 3) && (oFM.nCols() == 1),
          "mttkrp result shape correct for index [1]");
@@ -233,6 +235,7 @@ void Genten_Test_MixedFormats(int infolevel)
           "mttkrp result values correct for index [1]");
 
   // Matricizing on index 2 has result 10*12 = 120.
+  oFM = Genten::FacMatrix(a.size(2), oKtens.ncomponents());
   mttkrp (a, oKtens, 2, oFM);
   ASSERT((oFM.nRows() == 4) && (oFM.nCols() == 1),
          "mttkrp result shape correct for index [2]");
@@ -242,12 +245,15 @@ void Genten_Test_MixedFormats(int infolevel)
   // Add another nonzero and repeat the three tests.
   a.subscript(1,0) = 1;  a.subscript(1,1) = 2;  a.subscript(1,2) = 3;
   a.value(1) = 1.0;
+  oFM = Genten::FacMatrix(a.size(0), oKtens.ncomponents());
   mttkrp (a, oKtens, 0, oFM);
   ASSERT( EQ(oFM.entry(0,0), 180.0) && EQ(oFM.entry(1,0), 252.0),
           "mttkrp result values correct for index [0], 2 sparse nnz");
+  oFM = Genten::FacMatrix(a.size(1), oKtens.ncomponents());
   mttkrp (a, oKtens, 1, oFM);
   ASSERT( EQ(oFM.entry(0,0), 150.0) && EQ(oFM.entry(2,0), 198.0),
           "mttkrp result values correct for index [0], 2 sparse nnz");
+  oFM = Genten::FacMatrix(a.size(2), oKtens.ncomponents());
   mttkrp (a, oKtens, 2, oFM);
   ASSERT( EQ(oFM.entry(0,0), 120.0) && EQ(oFM.entry(3,0), 154.0),
           "mttkrp result values correct for index [0], 2 sparse nnz");

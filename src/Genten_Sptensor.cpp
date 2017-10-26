@@ -142,7 +142,7 @@ times(const Genten::KtensorT<ExecSpace> & K,
       const Genten::SptensorT<ExecSpace> & X)
 {
   // Copy X into this (including its size array)
-  deep_copy(X);
+  deep_copy(*this, X);
 
   // Check sizes
   assert(K.isConsistent(siz));
@@ -165,7 +165,7 @@ divide(const Genten::KtensorT<ExecSpace> & K,
        const Genten::SptensorT<ExecSpace> & X, ttb_real epsilon)
 {
   // Copy X into this (including its size array)
-  deep_copy(X);
+  deep_copy(*this, X);
 
   // Check sizes
   assert(K.isConsistent(siz));
