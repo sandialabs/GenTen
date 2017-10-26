@@ -166,6 +166,8 @@ public:
   // ----- ELEMENT ACCESS -----
 
   // Return reference to value at position i (no out-of-bounds check).
+  // ETP 10/26/17:  This is very dangerous with the simulatneous host-
+  // device data and should be fixed.
   KOKKOS_INLINE_FUNCTION
   ttb_indx & operator[](ttb_indx i) const
   {
