@@ -65,7 +65,7 @@ cmake \
  -D CMAKE_CXX_COMPILER=g++ \
  -D CMAKE_C_COMPILER=gcc \
  -D KOKKOS_ENABLE_OPENMP=ON \
- -D KOKKOS_HOST_ARCH=SNB \
+ -D KOKKOS_ARCH=SNB \
  -D debug=OFF \
  ${EXTRA_ARGS} \
  ../../genten
@@ -141,7 +141,7 @@ cmake \
  -D CMAKE_CXX_FLAGS="-g -restrict" \
  -D CMAKE_C_FLAGS="-g -restrict" \
  -D KOKKOS_ENABLE_OPENMP=ON \
- -D KOKKOS_HOST_ARCH=HSW \
+ -D KOKKOS_ARCH=HSW \
  -D KOKKOS_ENABLE_AGGRESSIVE_VECTORIZATION=ON \
  -D LAPACK_LIBS=$MKLROOT/lib/intel64/libmkl_rt.so \
  -D LAPACK_ADD_LIBS="-liomp5;-lpthread;-lm;-ldl" \
@@ -158,7 +158,7 @@ The configure for Intel KNL is quite similar to CPU architectures
 above.  The only change is the host architecture:
 
 ```
- -D KOKKOS_HOST_ARCH=KNL \
+ -D KOKKOS_ARCH=KNL \
 ```
 
 #### Nvidia GPU architectures
@@ -186,8 +186,7 @@ cmake \
  -D CMAKE_C_FLAGS="-g" \
  -D KOKKOS_ENABLE_OPENMP=ON \
  -D KOKKOS_ENABLE_CUDA=ON \
- -D KOKKOS_HOST_ARCH=HSW \
- -D KOKKOS_GPU_ARCH=Kepler37 \
+ -D KOKKOS_ARCH="HSW;Kepler37" \
  -D ENABLE_CUBLAS=ON \
  -D ENABLE_CUSOLVER=ON \
  -D ENABLE_BOOST=ON \
