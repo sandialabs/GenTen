@@ -13,4 +13,4 @@ ${KOKKOS}/generate_makefile.bash \
   --with-cuda \
   --with-cuda-options=force_uvm,enable_lambda \
   --arch=HSW,Kepler37 \
-  --compiler=${KOKKOS}/config/nvcc_wrapper
+  --compiler=${KOKKOS}/bin/nvcc_wrapper

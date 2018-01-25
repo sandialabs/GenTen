@@ -180,7 +180,7 @@ EXTRA_ARGS=$@
 KOKKOS=${PWD}/../../genten/kokkos
 
 cmake \
- -D CMAKE_CXX_COMPILER=${KOKKOS}/config/nvcc_wrapper \
+ -D CMAKE_CXX_COMPILER=${KOKKOS}/bin/nvcc_wrapper \
  -D CMAKE_C_COMPILER=gcc \
  -D CMAKE_CXX_FLAGS="-g  -lineinfo" \
  -D CMAKE_C_FLAGS="-g" \
@@ -375,7 +375,7 @@ ${KOKKOS}/generate_makefile.bash \
   --with-cuda \
   --with-cuda-options=force_uvm,enable_lambda \
   --arch=HSW,Kepler37 \
-  --compiler=${KOKKOS}/config/nvcc_wrapper
+  --compiler=${KOKKOS}/bin/nvcc_wrapper
 ```
 
 Similarly, for the Genten configure script we have

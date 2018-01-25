@@ -11,7 +11,7 @@ EXTRA_ARGS=$@
 KOKKOS=${PWD}/../../genten/kokkos
 
 cmake \
- -D CMAKE_CXX_COMPILER=${KOKKOS}/config/nvcc_wrapper \
+ -D CMAKE_CXX_COMPILER=${KOKKOS}/bin/nvcc_wrapper \
  -D CMAKE_C_COMPILER=gcc \
  -D CMAKE_CXX_FLAGS="-g  -lineinfo" \
  -D CMAKE_C_FLAGS="-g" \
