@@ -39,8 +39,8 @@
 #@HEADER
 
 
-#---- Specify the CMake version required.  Kokkos requires 3.1
-CMAKE_MINIMUM_REQUIRED (VERSION 3.1)
+#---- Specify the CMake version required.  Kokkos requires 3.3
+CMAKE_MINIMUM_REQUIRED (VERSION 3.3)
 
 #---- Declaring the project name will define ${Genten_SOURCE_DIR} to be
 #---- the path to this source file, and ${Genten_BINARY_DIR} to be the path
@@ -54,17 +54,15 @@ SET(CMAKE_BUILD_TYPE "DEBUG")
 #---- Package OPTIONS
 #------------------------------------------------------------
 OPTION(BUILD_SHARED_LIBS "Build shared libraries." OFF)
+OPTION(KOKKOS_INLINE_BUILD "Build Kokkos inline with Genten.  Kokkos source must be in genten/kokkos." OFF)
 OPTION(KOKKOS_PATH "Path to Kokkos installation.  Do not set this for an inline build of Kokkos.")
 OPTION(ENABLE_CUBLAS "Flag to enable cuBLAS for Kokkos with Cuda" OFF)
 OPTION(ENABLE_CUSOLVER "Flag to enable cuSolver for Kokkos with Cuda" OFF)
 OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files" OFF)
 OPTION(ENABLE_LAPACK "Enable BLAS/LAPACK (if disabled, Genten implementations will be used" ON)
 
-# Determine whether we are doing an inline build of Kokkos based on KOKKOS_PATH
-IF(NOT KOKKOS_PATH)
-  # Kokkos requires C++11
-  SET(CMAKE_CXX_STANDARD 11)
-  SET(CMAKE_CXX_EXTENSIONS OFF)
+# If we are doing an inline build of Kokkos
+IF(KOKKOS_INLINE_BUILD)
 
   # We must use UVM and enable Lambda support in Kokkos
   IF(KOKKOS_ENABLE_CUDA)
@@ -74,6 +72,7 @@ IF(NOT KOKKOS_PATH)
 
   # Configure kokkos
   ADD_SUBDIRECTORY(kokkos)
+
 ENDIF()
 
 SET(GENTEN_LIBS "")
@@ -86,7 +85,7 @@ IF (ENABLE_BOOST)
 ENDIF()
 
 # For non-inline build of Kokkos, grep Makefile.kokkos for settings
-IF(KOKKOS_PATH)
+IF(NOT KOKKOS_INLINE_BUILD)
   SET(KOKKOS_LIBS "")
   SET(KOKKOS_LDFLAGS "")
   SET(KOKKOS_MAKEFILE "${KOKKOS_PATH}/Makefile.kokkos")
@@ -115,9 +114,9 @@ IF(KOKKOS_PATH)
 
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${KOKKOS_CXXFLAGS} ${KOKKOS_CPPFLAGS}")
   SET(GENTEN_LIBS "${GENTEN_LIBS} ${KOKKOS_LDFLAGS} ${KOKKOS_LIBS}")
+  MESSAGE("--   CMAKE_CXXFLAGS  = ${CMAKE_CXX_FLAGS}")
 ENDIF()
 SET(HAVE_KOKKOS ON)
-MESSAGE("--   CMAKE_CXXFLAGS  = ${CMAKE_CXX_FLAGS}")
 
 IF (ENABLE_CUBLAS)
   SET(GENTEN_LIBS "${GENTEN_LIBS} -lcublas")
@@ -242,7 +241,7 @@ ADD_LIBRARY (genten_mathlibs
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_RandomMT.cpp
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_SystemTimer.cpp
   )
-IF(KOKKOS_PATH)
+IF(NOT KOKKOS_INLINE_BUILD)
   SET(GENTEN_MATHLIBS
     genten_mathlibs
     genten_mathlibs_c
