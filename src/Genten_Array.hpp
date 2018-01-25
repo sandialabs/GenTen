@@ -73,7 +73,7 @@ namespace Genten {
   {
   public:
     typedef ExecSpace exec_space;
-    typedef Kokkos::View<ttb_real*,exec_space> view_type;
+    typedef Kokkos::View<ttb_real*,Kokkos::LayoutRight,exec_space> view_type;
     typedef typename view_type::host_mirror_space host_mirror_space;
     typedef ArrayT<host_mirror_space> HostMirror;
 
@@ -301,8 +301,8 @@ namespace Genten {
 
   private:
 
-    typedef Kokkos::View<ttb_real*,exec_space,Kokkos::MemoryUnmanaged> unmanaged_view_type;
-    typedef Kokkos::View<const ttb_real*,exec_space,Kokkos::MemoryUnmanaged> unmanaged_const_view_type;
+    typedef Kokkos::View<ttb_real*,typename view_type::array_layout,exec_space,Kokkos::MemoryUnmanaged> unmanaged_view_type;
+    typedef Kokkos::View<const ttb_real*,typename view_type::array_layout,exec_space,Kokkos::MemoryUnmanaged> unmanaged_const_view_type;
 
     //! Pointer to the actual data.
     view_type data;

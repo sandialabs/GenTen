@@ -66,7 +66,7 @@ createPermutationImpl(const subs_view_type& subs, const siz_type& siz)
 
   // Neither std::sort or the Kokkos sort will work with non-contiguous views,
   // so we need to sort into temporary views
-  typedef Kokkos::View<ttb_indx*,ExecSpace> ViewType;
+  typedef Kokkos::View<ttb_indx*,typename subs_view_type::array_layout,ExecSpace> ViewType;
   ViewType tmp(Kokkos::view_alloc(Kokkos::WithoutInitializing,"tmp_perm"),sz);
 
   for (ttb_indx n = 0; n < nNumDims; ++n) {

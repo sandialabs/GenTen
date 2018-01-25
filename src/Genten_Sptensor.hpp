@@ -65,7 +65,7 @@ public:
 
   typedef ExecSpace exec_space;
   typedef Kokkos::View<ttb_indx**,Kokkos::LayoutRight,ExecSpace> subs_view_type;
-  typedef Kokkos::View<ttb_real*,ExecSpace> vals_view_type;
+  typedef Kokkos::View<ttb_real*,Kokkos::LayoutRight,ExecSpace> vals_view_type;
   typedef typename ArrayT<ExecSpace>::host_mirror_space host_mirror_space;
   typedef SptensorT<host_mirror_space> HostMirror;
 

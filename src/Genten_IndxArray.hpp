@@ -61,8 +61,8 @@ class IndxArrayT
 public:
 
   typedef ExecSpace exec_space;
-  typedef Kokkos::View<ttb_indx*,ExecSpace> view_type;
-  typedef Kokkos::View<ttb_indx*,DefaultHostExecutionSpace> host_view_type;
+  typedef Kokkos::View<ttb_indx*,Kokkos::LayoutRight,ExecSpace> view_type;
+  typedef Kokkos::View<ttb_indx*,typename view_type::array_layout,DefaultHostExecutionSpace> host_view_type;
   typedef typename view_type::host_mirror_space host_mirror_space;
   typedef IndxArrayT<host_mirror_space> HostMirror;
 
@@ -229,8 +229,8 @@ public:
 
 private:
 
-  typedef Kokkos::View<ttb_indx*,ExecSpace,Kokkos::MemoryUnmanaged> unmanaged_view_type;
-  typedef Kokkos::View<const ttb_indx*,ExecSpace,Kokkos::MemoryUnmanaged> unmanaged_const_view_type;
+  typedef Kokkos::View<ttb_indx*,typename view_type::array_layout,ExecSpace,Kokkos::MemoryUnmanaged> unmanaged_view_type;
+  typedef Kokkos::View<const ttb_indx*,typename view_type::array_layout,ExecSpace,Kokkos::MemoryUnmanaged> unmanaged_const_view_type;
 
   // Pointer to the actual data. managed with new/delete[]
   view_type data;

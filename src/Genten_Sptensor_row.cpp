@@ -60,7 +60,7 @@ createRowPtrImpl(const perm_type& perm,
   row_ptr_type rowptr("Genten::Sptensor_kokkos::host_rowptr",nNumDims);
 
   for (ttb_indx n = 0; n < nNumDims; ++n) {
-    Kokkos::View<ttb_indx*,ExecSpace> rowptr_n(
+    Kokkos::View<ttb_indx*,Kokkos::LayoutRight,ExecSpace> rowptr_n(
       Kokkos::view_alloc(Kokkos::WithoutInitializing,"rowptr_n"),siz[n]+1);
 
     Kokkos::parallel_for( Kokkos::RangePolicy<ExecSpace>(0,sz+1),
@@ -133,7 +133,7 @@ createRowPtr()
     Kokkos::RangePolicy<ExecSpace> policy(0,1);
     Kokkos::parallel_for( policy, KOKKOS_LAMBDA(const ttb_indx j)
     {
-      r(i) = Kokkos::View<ttb_indx*,ExecSpace>(h.data(), h.dimension_0());
+      r(i) = Kokkos::View<ttb_indx*,Kokkos::LayoutRight,ExecSpace>(h.data(), h.dimension_0());
     });
   }
   rowptr = r;

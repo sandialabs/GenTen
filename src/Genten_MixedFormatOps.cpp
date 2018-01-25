@@ -55,9 +55,9 @@
 #include "Genten_Sptensor.hpp"
 #include "Genten_TinyVec.hpp"
 
-#define USE_NEW_MTTKRP 1
-#define USE_NEW_MTTKRP_PERM 1
-#define USE_NEW_IP 1
+#define USE_NEW_MTTKRP 0
+#define USE_NEW_MTTKRP_PERM 0
+#define USE_NEW_IP 0
 
 
 //-----------------------------------------------------------------------------

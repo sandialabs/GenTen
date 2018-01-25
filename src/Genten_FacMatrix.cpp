@@ -1862,9 +1862,9 @@ namespace Genten {
         throw ss.str();
       }
 
-      Kokkos::View<double*,Kokkos::Cuda> work("work",lwork);
-      Kokkos::View<int*,Kokkos::Cuda> piv("piv",n);
-      Kokkos::View<int,Kokkos::Cuda> info("info");
+      Kokkos::View<double*,Kokkos::LayoutRight,Kokkos::Cuda> work("work",lwork);
+      Kokkos::View<int*,Kokkos::LayoutRight,Kokkos::Cuda> piv("piv",n);
+      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Cuda> info("info");
       status = cusolverDnDgetrf(handle, n, n, A.data(), lda, work.data(),
                                 piv.data(), info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
@@ -1945,9 +1945,9 @@ namespace Genten {
         throw ss.str();
       }
 
-      Kokkos::View<float*,Kokkos::Cuda> work("work",lwork);
-      Kokkos::View<int*,Kokkos::Cuda> piv("piv",n);
-      Kokkos::View<int,Kokkos::Cuda> info("info");
+      Kokkos::View<float*,Kokkos::LayoutRight,Kokkos::Cuda> work("work",lwork);
+      Kokkos::View<int*,Kokkos::LayoutRight,Kokkos::Cuda> piv("piv",n);
+      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Cuda> info("info");
       status = cusolverDnSgetrf(handle, n, n, A.data(), lda, work.data(),
                                 piv.data(), info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {

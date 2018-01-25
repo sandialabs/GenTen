@@ -66,8 +66,8 @@ public:
   typedef SptensorT_row<host_mirror_space> HostMirror;
   typedef typename SptensorT_perm<ExecSpace>::subs_view_type subs_view_type;
   typedef typename SptensorT_perm<ExecSpace>::vals_view_type vals_view_type;
-  typedef Kokkos::View< Kokkos::View<ttb_indx*,ExecSpace>*,ExecSpace > row_ptr_type;
-  typedef Kokkos::View< Kokkos::View<ttb_indx*,ExecSpace>*,DefaultHostExecutionSpace > host_row_ptr_type;
+  typedef Kokkos::View< Kokkos::View<ttb_indx*,Kokkos::LayoutRight,ExecSpace>*,Kokkos::LayoutRight,ExecSpace > row_ptr_type;
+  typedef Kokkos::View< Kokkos::View<ttb_indx*,Kokkos::LayoutRight,ExecSpace>*,Kokkos::LayoutRight,DefaultHostExecutionSpace > host_row_ptr_type;
 
   // Empty construtor.
   /* Creates an empty tensor with an empty size. */
