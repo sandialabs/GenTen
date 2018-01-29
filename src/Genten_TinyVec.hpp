@@ -56,11 +56,11 @@ namespace Genten {
             bool Nonzero = ( Size != Ordinal(0) )>
   class TinyVec {
   public:
-    
+
     typedef Scalar scalar_type;
     typedef Ordinal ordinal_type;
     typedef Tag tag_type;
-    
+
     static const ordinal_type len = Length / WarpDim;
     static const ordinal_type sz = Size / WarpDim;
     alignas(64) scalar_type v[len];
@@ -215,11 +215,11 @@ namespace Genten {
             typename Tag>
   class TinyVec<Scalar,Ordinal,Length,Size,WarpDim,Tag,false> {
   public:
-    
+
     typedef Scalar scalar_type;
     typedef Ordinal ordinal_type;
     typedef Tag tag_type;
-    
+
     static const ordinal_type len = Length / WarpDim;
     ordinal_type sz;
     alignas(64) scalar_type v[len];
@@ -467,11 +467,11 @@ namespace Genten {
   template <typename ExecSpace, typename Ordinal>
   class TinyVec<ExecSpace,double,Ordinal,16,16,true> {
   public:
-    
+
     typedef Ordinal ordinal_type;
     typedef double scalar_type;
     typedef ExecSpace execution_space;
-    
+
     static const ordinal_type len = 16;
     static const ordinal_type sz = 16;
     static const ordinal_type vec_len = 4;
@@ -599,11 +599,11 @@ namespace Genten {
   template <typename ExecSpace, typename Ordinal>
   class TinyVec<ExecSpace,double,Ordinal,16,16,true> {
   public:
-    
+
     typedef Ordinal ordinal_type;
     typedef double scalar_type;
     typedef ExecSpace execution_space;
-    
+
     static const ordinal_type len = 16;
     static const ordinal_type sz = 16;
     __m256d v1, v2, v3, v4;
