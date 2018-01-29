@@ -175,6 +175,18 @@ namespace Genten {
     }
 
     KOKKOS_INLINE_FUNCTION
+    TinyVec& operator*=(const scalar_type* x) {
+#ifdef __CUDA_ARCH__
+      for (ordinal_type i=0; i<sz; ++i)
+        v[i] *= x[i*WarpDim+threadIdx.x];
+#else
+      for (ordinal_type i=0; i<sz; ++i)
+        v[i] *= x[i];
+#endif
+      return *this;
+    }
+
+    KOKKOS_INLINE_FUNCTION
     TinyVec& operator/=(const TinyVec& x) {
       for (ordinal_type i=0; i<sz; ++i)
         v[i] /= x.v[i];
@@ -330,6 +342,18 @@ namespace Genten {
     TinyVec& operator*=(const TinyVec& x) {
       for (ordinal_type i=0; i<sz; ++i)
         v[i] *= x.v[i];
+      return *this;
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    TinyVec& operator*=(const scalar_type* x) {
+#ifdef __CUDA_ARCH__
+      for (ordinal_type i=0; i<sz; ++i)
+        v[i] *= x[i*WarpDim+threadIdx.x];
+#else
+      for (ordinal_type i=0; i<sz; ++i)
+        v[i] *= x[i];
+#endif
       return *this;
     }
 

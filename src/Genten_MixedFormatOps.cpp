@@ -829,7 +829,7 @@ struct MTTKRP_PermKernelBlock {
     ttb_real x_val = 0.0;
 
     typedef Genten::TinyVec<ttb_real, unsigned, FacBlockSize, Nj, VectorSize> TV;
-    TV val(nj, 0.0), tmp(nj, 0.0), row_vec(nj);
+    TV val(nj, 0.0), tmp(nj, 0.0);
 
     const ttb_real* lambda = &u.weights(0);
 
@@ -868,9 +868,8 @@ struct MTTKRP_PermKernelBlock {
           if (m != n) {
             // Update tmp array with elementwise product of row i
             // from the m-th factor matrix.
-            const ttb_real *rowptr = u[m].rowptr(X.subscript(p,m));
-            row_vec.load(rowptr+j);
-            tmp *= row_vec;
+            const ttb_real *rowptr = &(u[m].entry(X.subscript(p,m),j));
+            tmp *= rowptr;
           }
         }
 
@@ -884,6 +883,106 @@ struct MTTKRP_PermKernelBlock {
     }
   }
 };
+
+template <typename ExecSpace, unsigned VS>
+void mttkrp_perm_kernel(const Genten::SptensorT_perm<ExecSpace>& X,
+			const Genten::KtensorT<ExecSpace>& u,
+			const ttb_indx n,
+			const Genten::FacMatrixT<ExecSpace>& v)
+{
+// Compute team and vector sizes, depending on the architecture
+#if defined(KOKKOS_HAVE_CUDA)
+  static const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
+#else
+  static const bool is_cuda = false;
+#endif
+  static const unsigned FacBlockSize = 128;
+  static const unsigned VectorSize = is_cuda ? VS : 1;
+  static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+  static const unsigned RowBlockSize = 128;
+
+  static const unsigned VS4 = 4*VS;
+  static const unsigned VS3 = 3*VS;
+  static const unsigned VS2 = 2*VS;
+  static const unsigned VS1 = 1*VS;
+
+  typedef MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, FacBlockSize, TeamSize, VectorSize> Kernel;
+  typedef typename Kernel::TeamMember TeamMember;
+
+  Kokkos::parallel_for(Kernel::policy(X.nnz()),
+                       KOKKOS_LAMBDA(TeamMember team)
+  {
+    unsigned nc = u.ncomponents();
+    unsigned j = 0;
+    while (nc >= VS4) {
+      MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, VS4, TeamSize, VectorSize> kernel(X, u, n, v, team);
+      kernel.template run<VS4>(j, VS4);
+      nc -= VS4;
+      j += VS4;
+    }
+    if (nc >= VS3) {
+      MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, VS3, TeamSize, VectorSize> kernel(X, u, n, v, team);
+      kernel.template run<VS3>(j, VS3);
+      nc -= VS3;
+      j += VS3;
+    }
+    if (nc >= VS2) {
+      MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, VS2, TeamSize, VectorSize> kernel(X, u, n, v, team);
+      kernel.template run<VS2>(j, VS2);
+      nc -= VS2;
+      j += VS2;
+    }
+    if (nc >= VS1) {
+      MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, VS1, TeamSize, VectorSize> kernel(X, u, n, v, team);
+      kernel.template run<VS1>(j, VS1);
+      nc -= VS1;
+      j += VS1;
+    }
+    if (nc > 0) {
+      MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, VS1, TeamSize, VectorSize> kernel(X, u, n, v, team);
+      kernel.template run<0>(j, nc);
+    }
+
+  });
+}
+
+template <typename ExecSpace>
+void mttkrp_perm(const Genten::SptensorT_perm<ExecSpace>& X,
+                 const Genten::KtensorT<ExecSpace>& u,
+                 const ttb_indx n,
+                 const Genten::FacMatrixT<ExecSpace>& v)
+{
+  ttb_indx nc = u.ncomponents();     // Number of components
+  const ttb_indx nd = u.ndims();           // Number of dimensions
+
+  assert(X.ndims() == nd);
+  assert(u.isConsistent());
+  for (ttb_indx i = 0; i < nd; i++)
+  {
+    if (i != n)
+      assert(u[i].nRows() == X.size(i));
+  }
+
+  // Resize and initialize the output factor matrix to zero.
+  assert( v.nRows() == X.size(n) );
+  assert( v.nCols() == nc );
+  v = ttb_real(0.0);
+
+  if (nc >= 96)
+    mttkrp_perm_kernel<ExecSpace,32>(X, u, n, v);
+  else if (nc >= 48)
+    mttkrp_perm_kernel<ExecSpace,16>(X, u, n, v);
+  else if (nc >= 8)
+    mttkrp_perm_kernel<ExecSpace,8>(X, u, n, v);
+  else if (nc >= 4)
+    mttkrp_perm_kernel<ExecSpace,4>(X, u, n, v);
+  else if (nc >= 2)
+    mttkrp_perm_kernel<ExecSpace,2>(X, u, n, v);
+  else
+    mttkrp_perm_kernel<ExecSpace,1>(X, u, n, v);
+
+  return;
+}
 
 #else
 
@@ -1024,9 +1123,7 @@ struct MTTKRP_PermKernelBlock {
   }
 };
 
-#endif
-
-template <typename ExecSpace, ttb_indx FacBlockSize>
+template <typename ExecSpace, ttb_indx FacBlockSize, ttb_indx VS>
 void mttkrp_perm_kernel(const Genten::SptensorT_perm<ExecSpace>& X,
                         const Genten::KtensorT<ExecSpace>& u,
                         const ttb_indx n,
@@ -1034,13 +1131,13 @@ void mttkrp_perm_kernel(const Genten::SptensorT_perm<ExecSpace>& X,
 {
   // Compute team and vector sizes, depending on the architecture
 #if defined(KOKKOS_HAVE_CUDA)
-  const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
+  static const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
 #else
-  const bool is_cuda = false;
+  static const bool is_cuda = false;
 #endif
-  const unsigned VectorSize = is_cuda ? (FacBlockSize <= 32 ? FacBlockSize : 32) : 1;
-  const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
-  const unsigned RowBlockSize = 128;
+  static const unsigned VectorSize = is_cuda ? VS : 1;
+  static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+  static const unsigned RowBlockSize = 128;
 
   typedef MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, FacBlockSize, TeamSize, VectorSize> Kernel;
   typedef typename Kernel::TeamMember TeamMember;
@@ -1086,30 +1183,41 @@ void mttkrp_perm(const Genten::SptensorT_perm<ExecSpace>& X,
   }
 
   // Resize and initialize the output factor matrix to zero.
-  //v = FacMatrixT<ExecSpace>(X.size(n), nc);
   assert( v.nRows() == X.size(n) );
   assert( v.nCols() == nc );
   v = ttb_real(0.0);
 
   if (nc == 1)
-    Impl::mttkrp_perm_kernel<ExecSpace,1>(X,u,n,v);
+    Impl::mttkrp_perm_kernel<ExecSpace,1,1>(X,u,n,v);
   else if (nc == 2)
-    Impl::mttkrp_perm_kernel<ExecSpace,2>(X,u,n,v);
+    Impl::mttkrp_perm_kernel<ExecSpace,2,2>(X,u,n,v);
   else if (nc <= 4)
-    Impl::mttkrp_perm_kernel<ExecSpace,4>(X,u,n,v);
+    Impl::mttkrp_perm_kernel<ExecSpace,4,4>(X,u,n,v);
   else if (nc <= 8)
-    Impl::mttkrp_perm_kernel<ExecSpace,8>(X,u,n,v);
+    Impl::mttkrp_perm_kernel<ExecSpace,8,8>(X,u,n,v);
   else if (nc <= 16)
-    Impl::mttkrp_perm_kernel<ExecSpace,16>(X,u,n,v);
-  else if (nc < 64 || !is_cuda)
-    Impl::mttkrp_perm_kernel<ExecSpace,32>(X,u,n,v);
+    Impl::mttkrp_perm_kernel<ExecSpace,16,8>(X,u,n,v);
+  else if (nc <= 24)
+    Impl::mttkrp_perm_kernel<ExecSpace,24,8>(X,u,n,v);
+  else if (nc < 40 || !is_cuda)
+    Impl::mttkrp_perm_kernel<ExecSpace,32,16>(X,u,n,v);
+  else if (nc < 48)
+    Impl::mttkrp_perm_kernel<ExecSpace,40,8>(X,u,n,v);
+  else if (nc < 64)
+    Impl::mttkrp_perm_kernel<ExecSpace,48,16>(X,u,n,v);
+  else if (nc < 80)
+    Impl::mttkrp_perm_kernel<ExecSpace,64,16>(X,u,n,v);
+  else if (nc < 96)
+    Impl::mttkrp_perm_kernel<ExecSpace,80,16>(X,u,n,v);
   else if (nc < 128)
-    Impl::mttkrp_perm_kernel<ExecSpace,64>(X,u,n,v);
+    Impl::mttkrp_perm_kernel<ExecSpace,96,32>(X,u,n,v);
   else
-    Impl::mttkrp_perm_kernel<ExecSpace,128>(X,u,n,v);
+    Impl::mttkrp_perm_kernel<ExecSpace,128,32>(X,u,n,v);
 
   return;
 }
+
+#endif
 
 #if !USE_NEW_MTTKRP_PERM && defined(KOKKOS_HAVE_CUDA)
 // Version of mttkrp using a permutation array to improve locality of writes,
@@ -1117,57 +1225,51 @@ void mttkrp_perm(const Genten::SptensorT_perm<ExecSpace>& X,
 // and performs a team-size segmented reduction while processing a large block
 // of nonzeros.  This is a pure-Cuda implementation of the same kernel above,
 // and it appears to therefore be somewhat faster.
-void mttkrp_perm(const Genten::SptensorT_perm<Kokkos::Cuda>& X,
-                 const Genten::KtensorT<Kokkos::Cuda>& u,
-                 const ttb_indx n,
-                 const Genten::FacMatrixT<Kokkos::Cuda>& v)
+template <unsigned FacBlockSize, unsigned VectorSize>
+void mttkrp_perm_cuda_kernel(const Genten::SptensorT_perm<Kokkos::Cuda>& X,
+                             const Genten::KtensorT<Kokkos::Cuda>& u,
+                             const ttb_indx n,
+                             const Genten::FacMatrixT<Kokkos::Cuda>& v)
 {
   typedef Kokkos::Cuda ExecSpace;
 
-  const ttb_indx nc = u.ncomponents();     // Number of components
-  const ttb_indx nd = u.ndims();           // Number of dimensions
-
-  assert(X.ndims() == nd);
-  assert(u.isConsistent());
-  for (ttb_indx i = 0; i < nd; i++)
-  {
-    if (i != n)
-      assert(u[i].nRows() == X.size(i));
-  }
-
-  // Resize and initialize the output factor matrix to zero.
-  //v = FacMatrixT<ExecSpace>(X.size(n), nc);
-  assert( v.nRows() == X.size(n) );
-  assert( v.nCols() == nc );
-  v = ttb_real(0.0);
+  const unsigned nc = u.ncomponents();     // Number of components
+  const unsigned nd = u.ndims();           // Number of dimensions
 
   const ttb_indx nnz = X.nnz();
-  const ttb_indx RowBlockSize = 128;
-  const int FacBlockSize = std::min(128, 2 << int(std::log2(nc)));
-  const ttb_indx TeamSize = 128 / FacBlockSize;
-  const ttb_indx RowsPerTeam = TeamSize * RowBlockSize;
+  static const unsigned RowBlockSize = 128;
+  static const unsigned TmpSize = FacBlockSize / VectorSize;
+  static const unsigned TeamSize = 128 / VectorSize;
+  static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
   const ttb_indx N = (nnz+RowsPerTeam-1)/RowsPerTeam;
 
-  typedef Kokkos::TeamPolicy <ExecSpace> Policy;
-  Policy policy(N,TeamSize,FacBlockSize);
+  typedef Kokkos::TeamPolicy <ExecSpace, Kokkos::LaunchBounds<128,8> > Policy;
+  Policy policy(N,TeamSize,VectorSize);
+
+  static const ttb_indx invalid_row = ttb_indx(-1);
 
   Kokkos::parallel_for(policy,
                        [=]__device__(typename Policy::member_type team)
   {
     const ttb_indx i_block = blockIdx.x*RowsPerTeam + RowBlockSize*threadIdx.y;
-    const ttb_indx invalid_row = ttb_indx(-1);
 
-    for (ttb_indx j=threadIdx.x; j<nc; j+=FacBlockSize) {
+    ttb_real tmp[TmpSize];
+    ttb_real val[TmpSize];
+
+    for (unsigned j_block=0; j_block<nc; j_block+=FacBlockSize) {
+
       ttb_indx row_prev = invalid_row;
       ttb_indx row = invalid_row;
       ttb_indx first_row = invalid_row;
       ttb_indx p = invalid_row;
       ttb_real x_val = 0.0;
 
-      ttb_real val = 0.0;
-      ttb_real tmp = 0.0;
+      for (unsigned k=0; k<TmpSize; ++k) {
+        val[k] = 0.0;
+        tmp[k] = 0.0;
+      }
 
-      for (int ii=0; ii<RowBlockSize; ++ii) {
+      for (unsigned ii=0; ii<RowBlockSize; ++ii) {
         const ttb_indx i = i_block+ii;
 
         if (i >= nnz)
@@ -1185,12 +1287,20 @@ void mttkrp_perm(const Genten::SptensorT_perm<Kokkos::Cuda>& X,
         if (row != row_prev) {
           if (row_prev != invalid_row) {
             if (row_prev == first_row) { // Only need atomics for first and last row in block
-              Kokkos::atomic_add(&v.entry(row_prev,j), val);
-              val = 0.0;
+              for (unsigned k=0; k<TmpSize; ++k) {
+                const unsigned j = j_block+k*VectorSize+threadIdx.x;
+                if (j < nc)
+                  Kokkos::atomic_add(&v.entry(row_prev,j), val[k]);
+                val[k] = 0.0;
+              }
             }
             else {
-              v.entry(row_prev,j) += val;
-              val = 0.0;
+              for (unsigned k=0; k<TmpSize; ++k) {
+                const unsigned j = j_block+k*VectorSize+threadIdx.x;
+                if (j < nc)
+                  v.entry(row_prev,j) += val[k];
+                val[k] = 0.0;
+              }
             }
           }
           row_prev = row;
@@ -1198,29 +1308,94 @@ void mttkrp_perm(const Genten::SptensorT_perm<Kokkos::Cuda>& X,
 
         if (row != invalid_row) {
           // Start tmp equal to the weights.
-          tmp = x_val * u.weights(j);
+          for (unsigned k=0; k<TmpSize; ++k) {
+            const unsigned j = j_block+k*VectorSize+threadIdx.x;
+            if (j < nc)
+              tmp[k] = x_val * u.weights(j);
+          }
 
-          for (int m=0; m<nd; ++m) {
+          for (unsigned m=0; m<nd; ++m) {
             if (m != n) {
               // Update tmp array with elementwise product of row i
               // from the m-th factor matrix.
               const ttb_real *rowptr = u[m].rowptr(X.subscript(p,m));
-              tmp *= rowptr[j];
+              for (unsigned k=0; k<TmpSize; ++k) {
+                const unsigned j = j_block+k*VectorSize+threadIdx.x;
+                if (j < nc)
+                  tmp[k] *= rowptr[j];
+              }
             }
           }
 
-          val += tmp;
+          for (unsigned k=0; k<TmpSize; ++k) {
+            val[k] += tmp[k];
+          }
         }
       }
 
       // Sum in last row
       if (row != invalid_row) {
-        Kokkos::atomic_add(&v.entry(row,j), val);
+        for (unsigned k=0; k<TmpSize; ++k) {
+          const unsigned j = j_block+k*VectorSize+threadIdx.x;
+          if (j < nc)
+            Kokkos::atomic_add(&v.entry(row,j), val[k]);
+        }
       }
 
     }
 
   });
+
+  return;
+}
+
+void mttkrp_perm(const Genten::SptensorT_perm<Kokkos::Cuda>& X,
+                 const Genten::KtensorT<Kokkos::Cuda>& u,
+                 const ttb_indx n,
+                 const Genten::FacMatrixT<Kokkos::Cuda>& v)
+{
+  const ttb_indx nc = u.ncomponents();     // Number of components
+  const ttb_indx nd = u.ndims();           // Number of dimensions
+
+  assert(X.ndims() == nd);
+  assert(u.isConsistent());
+  for (ttb_indx i = 0; i < nd; i++)
+  {
+    if (i != n)
+      assert(u[i].nRows() == X.size(i));
+  }
+
+  // Resize and initialize the output factor matrix to zero.
+  assert( v.nRows() == X.size(n) );
+  assert( v.nCols() == nc );
+  v = ttb_real(0.0);
+
+  if (nc == 1)
+    Impl::mttkrp_perm_cuda_kernel<1,1>(X,u,n,v);
+  else if (nc == 2)
+    Impl::mttkrp_perm_cuda_kernel<2,2>(X,u,n,v);
+  else if (nc <= 4)
+    Impl::mttkrp_perm_cuda_kernel<4,4>(X,u,n,v);
+  else if (nc <= 8)
+    Impl::mttkrp_perm_cuda_kernel<8,8>(X,u,n,v);
+  else if (nc <= 16)
+    Impl::mttkrp_perm_cuda_kernel<16,8>(X,u,n,v);
+  else if (nc <= 24)
+    Impl::mttkrp_perm_cuda_kernel<24,8>(X,u,n,v);
+  else if (nc < 40)
+    Impl::mttkrp_perm_cuda_kernel<32,16>(X,u,n,v);
+  else if (nc < 48)
+    Impl::mttkrp_perm_cuda_kernel<40,8>(X,u,n,v);
+  else if (nc < 64)
+    Impl::mttkrp_perm_cuda_kernel<48,16>(X,u,n,v);
+  else if (nc < 80)
+    Impl::mttkrp_perm_cuda_kernel<64,16>(X,u,n,v);
+  else if (nc < 96)
+    Impl::mttkrp_perm_cuda_kernel<80,16>(X,u,n,v);
+  else if (nc < 128)
+    Impl::mttkrp_perm_cuda_kernel<96,32>(X,u,n,v);
+  else
+    Impl::mttkrp_perm_cuda_kernel<128,32>(X,u,n,v);
 
   return;
 }
