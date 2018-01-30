@@ -886,9 +886,9 @@ struct MTTKRP_PermKernelBlock {
 
 template <typename ExecSpace, unsigned VS>
 void mttkrp_perm_kernel(const Genten::SptensorT_perm<ExecSpace>& X,
-			const Genten::KtensorT<ExecSpace>& u,
-			const ttb_indx n,
-			const Genten::FacMatrixT<ExecSpace>& v)
+                        const Genten::KtensorT<ExecSpace>& u,
+                        const ttb_indx n,
+                        const Genten::FacMatrixT<ExecSpace>& v)
 {
 // Compute team and vector sizes, depending on the architecture
 #if defined(KOKKOS_HAVE_CUDA)
