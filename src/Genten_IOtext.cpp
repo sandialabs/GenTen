@@ -294,22 +294,17 @@ void Genten::import_sptensor (std::istream& fIn,
   while (getLineContent(fIn,s))
   {
     ++nnz;
-    tokens.resize(0);
-    Genten::splitStr(s, tokens);
-    if (tokens.size() != nModes+1)
-    {
-      std::ostringstream  sErrMsg;
-      sErrMsg << "Genten::import_sptensor - error reading nonzero " << nnz
-              << ":  " << s;
-      Genten::error(sErrMsg.str());
-    }
+    // Don't use the above token parsing because it is too slow when
+    // reading large tensors.  Instead use strtol and strtod, which already
+    // handle white-space.
+    char *ss = const_cast<char*>(s.c_str());
     for (ttb_indx i=0; i<nModes; ++i)
     {
-      sub_row[i] = std::stol(tokens[i]) - offset;
+      sub_row[i] = std::strtol(ss, &ss, 10) - offset;
       if (compute_dims)
         dims[i] = std::max(dims[i], sub_row[i]+1);
     }
-    val_row = std::stod(tokens[nModes]);
+    val_row = std::strtod(ss, &ss);
     subs.push_back(sub_row);
     vals.push_back(val_row);
   }
@@ -906,11 +901,13 @@ void Genten::print_ktensor (const Genten::Ktensor & X,
 //! Read the next line with useful content from an opened stream.
 /*!
  *  Read a line from an opened stream, dropping the '\n' character.
- *  Skip over empty lines or lines containing only white space
- *  (blank and tab).  Skip over lines containing comments that begin
- *  with "//".
+ *  Skip over lines containing comments that begin with "//".
  *  For platform independence, check if the last character is '\r'
  *  (Windows text file) and remove if it is.
+ *
+ *  For better read performance, this no longer checks for blank lines,
+ *  which can easily double the cost of reading the tensor.
+ *  If that is important, we can maybe make it optional.
  *
  *  @param[in]  fIn  Input stream.
  *  @param[out] str  String variable where content is put.
@@ -920,13 +917,10 @@ void Genten::print_ktensor (const Genten::Ktensor & X,
 int Genten::getLineContent (istream  & fIn,
                             string   & str)
 {
-  const string &  sWhitespace = " \t";
-
-  string  sTmp;
   int  nNumLines = 0;
   while (true)
   {
-    getline(fIn, sTmp);
+    getline(fIn, str);
     if (fIn.eof() == true)
     {
       str = "";
@@ -935,27 +929,13 @@ int Genten::getLineContent (istream  & fIn,
     nNumLines++;
 
     // Remove end-of-line character(s).
-    int  nLast = (int) sTmp.size();
-    if (sTmp.c_str()[nLast-1] == '\r')
-      sTmp.erase(nLast-1, 1);
+    int  nLast = (int) str.size();
+    if (str[nLast-1] == '\r')
+      str.erase(nLast-1, 1);
 
-    if (sTmp.size() > 0)
-    {
-      // Trim leading white space.
-      size_t  nBegin = sTmp.find_first_not_of (sWhitespace);
-      if (nBegin != string::npos)
-      {
-        // Trim trailing white space.
-        size_t  nEnd = sTmp.find_last_not_of (sWhitespace);
-        str = sTmp.substr (nBegin, nEnd - nBegin + 1);
-        if (str.size() > 0)
-        {
-          // Check if the line is a comment.
-          if ((str[0] != '/') || (str[1] != '/'))
-            return( nNumLines );
-        }
-      }
-    }
+    // Remove comment lines
+    if ((str[0] != '/') || (str[1] != '/'))
+      return( nNumLines );
   }
 }
 
