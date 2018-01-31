@@ -84,7 +84,8 @@ def run_cpals(options):
         out_file.write(cmd + '\n')
         out_file.close()
         os.environ["OMP_NUM_THREADS"] = str(options.threads)
-        os.environ["KMP_AFFINITY"] = options.affinity
+        os.environ["OMP_PROC_BIND"] = options.bind
+        os.environ["OMP_PLACES"] = options.places
         os.system(cmd)
     return get_stats(options.output)
 
@@ -141,8 +142,10 @@ def parse_args(parser = OptionParser()):
                       help='Number of threads')
     parser.add_option('--numa', default=1,
                       help='Number of numa domains')
-    parser.add_option('--affinity', default='compact',
-                      help='Thread affinity')
+    parser.add_option('--bind', default='close',
+                      help='Thread binding (OMP_PROC_BIND)')
+    parser.add_option('--places', default='threads',
+                      help='Thread placement (OMP_PLACES)')
     parser.add_option('--input', default='sptensor.dat',
                       help='Input filename')
     parser.add_option('--output', default='cpals.out',
@@ -167,8 +170,10 @@ args = options.args
 output = options.output
 
 tensors = [ ('lbnl-network.tns', 'LBNL', 1),
+            ('uber.tns', 'Uber', 1),
+            ('vast-2015-mc1-5d.tns', 'VAST', 1),
+            ('enron.tns', 'Enron', 1),
             ('nell-2.tns', 'NELL2', 1),
-            ('nell-1.tns', 'NELL1', 1),
             ('delicious-4d.tns', 'Delicious', 1) ]
 
 print '\nKokkos:'
@@ -180,8 +185,3 @@ print '\nPerm:'
 options.args = args + ' --tensor perm'
 options.output = output + '_perm'
 its_p,cpals_p,mttkrp_p,fillComplete_p,tot_p = run_cpals_tensors(options, tensors)
-
-#print '\nRow:'
-#options.args = args + ' --tensor row'
-#options.output = output + '_row'
-#its_r,cpals_r,mttkrp_r,fillComplete_r,tot_r = run_cpals_tensors(options, tensors)
