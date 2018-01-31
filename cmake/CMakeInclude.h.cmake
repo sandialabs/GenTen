@@ -72,3 +72,11 @@
 
 //---- DEFINED IF BOOST IS ENABLED.
 #cmakedefine HAVE_BOOST
+
+#include <cstddef>
+
+// Floating-point type
+typedef @GENTEN_FLOAT_TYPE@ ttb_real;
+
+// Tensor index type
+typedef @GENTEN_INDEX_TYPE@ ttb_indx;

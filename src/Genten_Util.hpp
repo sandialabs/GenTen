@@ -49,6 +49,7 @@
 #include <cstdlib>
 #include <cstddef>
 
+#include "CMakeInclude.h"
 #include "Genten_Kokkos.hpp"
 
 namespace Genten {
@@ -91,66 +92,17 @@ namespace Genten {                              \
 // What we align memory to (in bytes)
 #define GENTEN_MEMORY_ALIGNMENT 64
 
-#define GENTEN_USE_FLOAT 0
-
 /* ----- Typedefs ----- */
 /* We use typedefs to make the code portable, especially for
    varying sizes of integers, etc.
    Note that ttb_indx should always be an unsigned integer type.
+   Note that ttb_real, ttb_indx are now set at configure time in CMakeInclude.h.
 */
-#if GENTEN_USE_FLOAT
-typedef float ttb_real;
-#else
-typedef double ttb_real;
-#endif
-
-typedef size_t ttb_indx;
-//typedef unsigned ttb_indx;
 typedef bool ttb_bool;
 
-
-//---- Define machine epsilon for double precision numbers.
-//---- Most compilers define DBL_EPSILON, but not all.
-#if GENTEN_USE_FLOAT
-#if defined(FLT_EPSILON)
-  #define MACHINE_EPSILON  FLT_EPSILON
-#else
-  #define MACHINE_EPSILON  1.19209290e-7f
-#endif
-#else
-#if defined(DBL_EPSILON)
-  #define MACHINE_EPSILON  DBL_EPSILON
-#else
-  #define MACHINE_EPSILON  2.220446049250313e-16
-#endif
-#endif
-
-//---- Most compilers define DBL_MAX = 1.7976931348623158e+308.
-//---- Most compilers define DBL_MIN = 2.2250738585072014e-308.
-#if GENTEN_USE_FLOAT
-#if defined(FLT_MAX)
-  #define DOUBLE_MAX  FLT_MAX
-#else
-  #define DOUBLE_MAX  3.40282347e+38f
-#endif
-#if defined(FLT_MIN)
-  #define DOUBLE_MIN  FLT_MIN
-#else
-  #define DOUBLE_MIN  1.17549435e-38f
-#endif
-#else
-#if defined(DBL_MAX)
-  #define DOUBLE_MAX  DBL_MAX
-#else
-  #define DOUBLE_MAX  1.0e+300
-#endif
-#if defined(DBL_MIN)
-  #define DOUBLE_MIN  DBL_MIN
-#else
-  #define DOUBLE_MIN  1.0e-300
-#endif
-#endif
-
+constexpr ttb_real MACHINE_EPSILON = std::numeric_limits<ttb_real>::epsilon();
+constexpr ttb_real DOUBLE_MAX = std::numeric_limits<ttb_real>::max();
+constexpr ttb_real DOUBLE_MIN = std::numeric_limits<ttb_real>::min();
 
 /* ----- Enums ----- */
 namespace Genten {

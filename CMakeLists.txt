@@ -60,6 +60,20 @@ OPTION(ENABLE_CUBLAS "Flag to enable cuBLAS for Kokkos with Cuda" OFF)
 OPTION(ENABLE_CUSOLVER "Flag to enable cuSolver for Kokkos with Cuda" OFF)
 OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files" OFF)
 OPTION(ENABLE_LAPACK "Enable BLAS/LAPACK (if disabled, Genten implementations will be used" ON)
+OPTION(FLOAT_TYPE "C++ data type used for floating-point values" OFF)
+OPTION(INDEX_TYPE "C++ data type used for tensor indices" OFF)
+
+IF(FLOAT_TYPE)
+  SET(GENTEN_FLOAT_TYPE ${FLOAT_TYPE})
+ELSE()
+  SET(GENTEN_FLOAT_TYPE "double")
+ENDIF()
+
+IF(INDEX_TYPE)
+  SET(GENTEN_INDEX_TYPE ${INDEX_TYPE})
+ELSE()
+  SET(GENTEN_INDEX_TYPE "size_t")
+ENDIF()
 
 # If we are doing an inline build of Kokkos
 IF(KOKKOS_INLINE_BUILD)
