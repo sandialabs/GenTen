@@ -455,7 +455,7 @@ ttb_real Genten::innerprod(const Genten::SptensorT<ExecSpace>& s,
 //  Method:  mttkrp, Sptensor X, output to FacMatrix
 //-----------------------------------------------------------------------------
 
-#if USE_NEW_MTTKRP
+#if USE_NEW_MTTKRP == 1
 
 namespace Genten {
 namespace Impl {
@@ -463,7 +463,6 @@ namespace Impl {
 template <typename ExecSpace, unsigned FacBlockSize,
           unsigned TeamSize, unsigned VectorSize>
 struct MTTKRP_KernelBlock {
-
   typedef Kokkos::TeamPolicy <ExecSpace> Policy;
   typedef typename Policy::member_type TeamMember;
   typedef Kokkos::View< ttb_real**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
@@ -624,6 +623,183 @@ void Genten::mttkrp(const Genten::SptensorT<ExecSpace>& X,
     Impl::mttkrp_kernel<ExecSpace,16>(X,u,n,v);
   else
     Impl::mttkrp_kernel<ExecSpace,32>(X,u,n,v);
+
+  return;
+}
+
+#elif USE_NEW_MTTKRP == 2
+
+namespace Genten {
+namespace Impl {
+
+template <typename ExecSpace, unsigned FacBlockSize,
+          unsigned TeamSize, unsigned VectorSize>
+struct MTTKRP_KernelBlock {
+  typedef Kokkos::TeamPolicy <ExecSpace> Policy;
+  typedef typename Policy::member_type TeamMember;
+
+  const Genten::SptensorT<ExecSpace>& X;
+  const Genten::KtensorT<ExecSpace>& u;
+  const unsigned n;
+  const unsigned nd;
+  const Genten::FacMatrixT<ExecSpace>& v;
+  const ttb_indx i;
+
+  const TeamMember& team;
+  const unsigned team_index;
+
+  const ttb_indx k;
+  const ttb_real x_val;
+  const ttb_real* lambda;
+
+  static inline Policy policy(const ttb_indx nnz_) {
+    const ttb_indx N = (nnz_+TeamSize-1)/TeamSize;
+    Policy policy(N,TeamSize,VectorSize);
+    return policy;
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  MTTKRP_KernelBlock(const Genten::SptensorT<ExecSpace>& X_,
+                     const Genten::KtensorT<ExecSpace>& u_,
+                     const unsigned n_,
+                     const Genten::FacMatrixT<ExecSpace>& v_,
+                     const ttb_indx i_,
+                     const TeamMember& team_) :
+    X(X_), u(u_), n(n_), nd(u.ndims()), v(v_), i(i_),
+    team(team_), team_index(team.team_rank()),
+    k(X.subscript(i,n)), x_val(X.value(i)),
+    lambda(&u.weights(0))
+    {}
+
+  template <unsigned Nj>
+  KOKKOS_INLINE_FUNCTION
+  void run(const unsigned j, const unsigned nj)
+  {
+    typedef Genten::TinyVec<ttb_real, unsigned, FacBlockSize, Nj, VectorSize> TV;
+    // Start tmp equal to the weights.
+    TV tmp(nj, x_val);
+    tmp *= lambda+j;
+
+    for (unsigned m=0; m<nd; ++m) {
+      if (m != n) {
+        // Update tmp array with elementwise product of row i
+        // from the m-th factor matrix.  Length of the row is nc.
+        const ttb_real *row = &(u[m].entry(X.subscript(i,m),j));
+        tmp *= row;
+      }
+    }
+
+    // Update output by adding tmp array.
+    Kokkos::atomic_add(&v.entry(k,j), tmp);
+  }
+};
+
+template <typename ExecSpace, unsigned VS>
+void mttkrp_kernel(const Genten::SptensorT<ExecSpace>& X,
+                   const Genten::KtensorT<ExecSpace>& u,
+                   const ttb_indx n,
+                   const Genten::FacMatrixT<ExecSpace>& v)
+{
+  // Compute team and vector sizes, depending on the architecture
+#if defined(KOKKOS_HAVE_CUDA)
+  static const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
+#else
+  static const bool is_cuda = false;
+#endif
+  static const unsigned FacBlockSize = 128;
+  static const unsigned VectorSize = is_cuda ? VS : 1;
+  static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+
+  static const unsigned VS4 = 4*VS;
+  static const unsigned VS3 = 3*VS;
+  static const unsigned VS2 = 2*VS;
+  static const unsigned VS1 = 1*VS;
+
+  const ttb_indx nnz = X.nnz();
+
+  typedef MTTKRP_KernelBlock<ExecSpace, FacBlockSize, TeamSize, VectorSize> Kernel;
+  typedef typename Kernel::TeamMember TeamMember;
+
+  Kokkos::parallel_for(Kernel::policy(nnz),
+                       KOKKOS_LAMBDA(TeamMember team)
+  {
+    const ttb_indx i = team.league_rank()*team.team_size()+team.team_rank();
+    if (i >= nnz)
+      return;
+
+    unsigned nc = u.ncomponents();
+    unsigned j = 0;
+    while (nc >= VS4) {
+      MTTKRP_KernelBlock<ExecSpace, VS4, TeamSize, VectorSize> kernel(X, u, n, v, i, team);
+      kernel.template run<VS4>(j, VS4);
+      nc -= VS4;
+      j += VS4;
+    }
+    if (nc >= VS3) {
+      MTTKRP_KernelBlock<ExecSpace, VS3, TeamSize, VectorSize> kernel(X, u, n, v, i, team);
+      kernel.template run<VS3>(j, VS3);
+      nc -= VS3;
+      j += VS3;
+    }
+    while (nc >= VS2) {
+      MTTKRP_KernelBlock<ExecSpace, VS2, TeamSize, VectorSize> kernel(X, u, n, v, i, team);
+      kernel.template run<VS2>(j, VS2);
+      nc -= VS2;
+      j += VS2;
+    }
+    if (nc >= VS1) {
+      MTTKRP_KernelBlock<ExecSpace, VS1, TeamSize, VectorSize> kernel(X, u, n, v, i, team);
+      kernel.template run<VS1>(j, VS1);
+      nc -= VS1;
+      j += VS1;
+    }
+    if (nc > 0) {
+      MTTKRP_KernelBlock<ExecSpace, VS1, TeamSize, VectorSize> kernel(X, u, n, v, i, team);
+      kernel.template run<0>(j, nc);
+    }
+
+  });
+
+  return;
+}
+
+}
+}
+
+template <typename ExecSpace>
+void Genten::mttkrp(const Genten::SptensorT<ExecSpace>& X,
+                    const Genten::KtensorT<ExecSpace>& u,
+                    const ttb_indx n,
+                    const Genten::FacMatrixT<ExecSpace>& v)
+{
+  const ttb_indx nc = u.ncomponents();     // Number of components
+  const ttb_indx nd = u.ndims();           // Number of dimensions
+
+  assert(X.ndims() == nd);
+  assert(u.isConsistent());
+  for (ttb_indx i = 0; i < nd; i++)
+  {
+    if (i != n)
+      assert(u[i].nRows() == X.size(i));
+  }
+
+  // Resize and initialize the output factor matrix to zero.
+  assert( v.nRows() == X.size(n) );
+  assert( v.nCols() == nc );
+  v = ttb_real(0.0);
+
+  if (nc >= 96)
+    Impl::mttkrp_kernel<ExecSpace,32>(X, u, n, v);
+  else if (nc >= 48)
+    Impl::mttkrp_kernel<ExecSpace,16>(X, u, n, v);
+  else if (nc >= 8)
+    Impl::mttkrp_kernel<ExecSpace,8>(X, u, n, v);
+  else if (nc >= 4)
+    Impl::mttkrp_kernel<ExecSpace,4>(X, u, n, v);
+  else if (nc >= 2)
+    Impl::mttkrp_kernel<ExecSpace,2>(X, u, n, v);
+  else
+    Impl::mttkrp_kernel<ExecSpace,1>(X, u, n, v);
 
   return;
 }
