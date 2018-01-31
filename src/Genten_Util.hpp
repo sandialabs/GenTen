@@ -48,6 +48,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstddef>
+#include <limits>
 
 #include "CMakeInclude.h"
 #include "Genten_Kokkos.hpp"
