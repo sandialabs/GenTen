@@ -58,7 +58,7 @@ def get_stats(file_name):
 
         m = re.search('MTTKRP total time = (.*) seconds, average time = (.*) seconds', line)
         if m != None:
-            mttkrp = float(m.group(2))
+            mttkrp = float(m.group(1))
 
         m = re.search('fillComplete\(\) took \s*(.*) seconds', line)
         if m != None:
