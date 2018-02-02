@@ -83,7 +83,8 @@ def run_cpals(options):
         out_file.write(cmd + '\n')
         out_file.close()
         os.environ["OMP_NUM_THREADS"] = str(options.threads)
-        os.environ["KMP_AFFINITY"] = options.affinity
+        os.environ["OMP_PROC_BIND"] = options.bind
+        os.environ["OMP_PLACES"] = options.places
         os.system(cmd)
     return get_stats(output_filename)
 
@@ -140,8 +141,10 @@ def parse_args(parser = OptionParser()):
                       help='Number of threads')
     parser.add_option('--numa', default=1,
                       help='Number of numa domains')
-    parser.add_option('--affinity', default='compact',
-                      help='Thread affinity')
+    parser.add_option('--bind', default='close',
+                      help='Thread binding (OMP_PROC_BIND)')
+    parser.add_option('--places', default='threads',
+                      help='Thread placement (OMP_PLACES)')
     parser.add_option('--output', default='cpals.out',
                       help='Output filename')
     parser.add_option('--args', default='',
