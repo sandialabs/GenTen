@@ -65,6 +65,7 @@ cmake \
  -D CMAKE_CXX_COMPILER=g++ \
  -D CMAKE_C_COMPILER=gcc \
  -D KOKKOS_ENABLE_OPENMP=ON \
+ -D KOKKOS_INLINE_BUILD=ON \
  -D KOKKOS_ARCH=SNB \
  -D debug=OFF \
  ${EXTRA_ARGS} \
@@ -140,6 +141,7 @@ cmake \
  -D CMAKE_C_COMPILER=icc \
  -D CMAKE_CXX_FLAGS="-g -restrict" \
  -D CMAKE_C_FLAGS="-g -restrict" \
+ -D KOKKOS_INLINE_BUILD=ON \
  -D KOKKOS_ENABLE_OPENMP=ON \
  -D KOKKOS_ARCH=HSW \
  -D KOKKOS_ENABLE_AGGRESSIVE_VECTORIZATION=ON \
@@ -184,6 +186,7 @@ cmake \
  -D CMAKE_C_COMPILER=gcc \
  -D CMAKE_CXX_FLAGS="-g  -lineinfo" \
  -D CMAKE_C_FLAGS="-g" \
+ -D KOKKOS_INLINE_BUILD=ON \
  -D KOKKOS_ENABLE_OPENMP=ON \
  -D KOKKOS_ENABLE_CUDA=ON \
  -D KOKKOS_ARCH="HSW;Kepler37" \
@@ -208,8 +211,15 @@ export NVCC_WRAPPER_DEFAULT_COMPILER=/home/software/gcc/4.9.2/bin/g++-4.9
 Note that instead of LAPACK, cuSolver and cuBLAS are used instead,
 which are part of the standard Cuda installation.
 
-Currently you must set the following environment variables when running any
-tests or examples due to usage of Cuda-UVM:
+Genten does not require the use of Cuda-UVM as all necessary data transfers
+between the host and device are implemented through Kokkos.  However one can
+enable UVM by adding the configure option
+
+```
+-D KOKKOS_ENABLE_CUDA_UVM=ON \
+```
+
+in which case one should also set the environment variables
 
 ```
 export CUDA_LAUNCH_BLOCKING=1
@@ -222,7 +232,7 @@ architecture is specified in the Kokkos configure script as Pascal60.
 ## External build with Kokkos
 
 For an external build of Kokkos, you must configure, build and install Kokkos
-first using their Makefiles.  Similar to the inline build above, the 
+first using their Makefiles.  Similar to the inline build above, the
 instructions below assume the following directory structure:
 
 ```
@@ -373,7 +383,7 @@ ${KOKKOS}/generate_makefile.bash \
   --prefix=${INSTALL} \
   --with-openmp \
   --with-cuda \
-  --with-cuda-options=force_uvm,enable_lambda \
+  --with-cuda-options=enable_lambda \
   --arch=HSW,Kepler37 \
   --compiler=${KOKKOS}/bin/nvcc_wrapper
 ```
@@ -405,8 +415,10 @@ cmake \
  ../../genten
 ```
 
-Currently you must set the following environment variables when running any
-tests or examples due to usage of Cuda-UVM:
+Genten does not require the use of Cuda-UVM as all necessary data transfers
+between the host and device are implemented through Kokkos.  However one can
+enable UVM by adding `force_uvm` to the Cuda options when configuring
+Kokkos, in which case one should also set the environment variables
 
 ```
 export CUDA_LAUNCH_BLOCKING=1
