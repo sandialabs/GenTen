@@ -192,11 +192,6 @@ options.args = args + ' --tensor perm'
 options.output = output + '_perm'
 its_p,cpals_p,mttkrp_p,fillComplete_p,tot_p = run_cpals_scaling(options, n, a)
 
-#print '\nRow:'
-#options.args = args + ' --tensor row'
-#options.output = output + '_row'
-#its_r,cpals_r,mttkrp_r,fillComplete_r,tot_r = run_cpals_scaling(options, n, a)
-
 if not has_mpl:
     quit()
 
@@ -226,14 +221,11 @@ if len(n) == 1:
     bar_width = 0.25
     ind_k = range(3)
     ind_p = [ i+bar_width for i in ind_k ]
-    #ind_r = [ i+bar_width for i in ind_p ]
     ind_t = [ i+bar_width/2 for i in ind_p ]
     kokkos = [ cpals_k[0], mttkrp_k[0], fillComplete_k[0] ]
     perm   = [ cpals_p[0], mttkrp_p[0], fillComplete_p[0] ]
-    #row    = [ cpals_r[0], mttkrp_r[0], fillComplete_r[0] ]
     bar(ind_k,kokkos,bar_width,color='b',label='Kokkos')
     bar(ind_p,perm,bar_width,color='r',label='Perm')
-    #bar(ind_r,row,bar_width,color='k',label='Row')
     legend()
     ylabel('Time (s)')
     xticks(ind_t, ('CP-ALS (total)', 'MTTKRP (avg)', 'fillComplete'))
@@ -245,8 +237,6 @@ if len(n) == 1:
             text(ind_k[i]+bar_width/2, kokkos[i], str(kokkos[i]), horizontalalignment='center', verticalalignment='bottom', rotation=0)
         for i in range(len(perm)):
             text(ind_p[i]+bar_width/2, perm[i], str(perm[i]), horizontalalignment='center', verticalalignment='bottom', rotation=0)
-#        for i in range(len(row)):
-#            text(ind_r[i]+bar_width/2, row[i], str(row[i]), horizontalalignment='center', verticalalignment='bottom', rotation=0)
 
 else:
     figure(1, figsize=(8.5,11))
@@ -254,9 +244,8 @@ else:
     subplot(3,1,1)
     loglog(n,tot_k,'b-*',
            n,tot_p,'r-s',
-           #n,tot_r,'k-d',
            basex=2, basey=2)
-    legend(('Kokkos','Perm','Row'))
+    legend(('Kokkos','Perm'))
     xlabel('Threads')
     ylabel('Time (s)')
     title('CP-ALS (total)')
@@ -266,7 +255,6 @@ else:
     subplot(3,1,2)
     loglog(n,mttkrp_k,'b-*',
            n,mttkrp_p,'r-s',
-           #n,mttkrp_r,'k-d',
            basex=2, basey=2)
     xlabel('Threads')
     ylabel('Time (s)')
@@ -277,7 +265,6 @@ else:
     subplot(3,1,3)
     loglog(n,fillComplete_k,'b-*',
            n,fillComplete_p,'r-s',
-           #n,fillComplete_r,'k-d',
            basex=2, basey=2)
     xlabel('Threads')
     ylabel('Time (s)')
