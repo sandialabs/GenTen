@@ -55,6 +55,10 @@
 #include "Genten_Sptensor.hpp"
 #include "Genten_TinyVec.hpp"
 
+#ifdef HAVE_CALIPER
+#include <caliper/cali.h>
+#endif
+
 #define USE_NEW_MTTKRP 1
 #define USE_NEW_MTTKRP_PERM 1
 #define USE_NEW_IP 1
@@ -263,7 +267,8 @@ ttb_real innerprod_kernel(const Genten::SptensorT<ExecSpace>& s,
 
   // Do the inner product
   ttb_real dTotal = 0.0;
-  Kokkos::parallel_reduce(Kernel::policy(s.nnz()),
+  Kokkos::parallel_reduce("Genten::innerprod_kernel",
+                          Kernel::policy(s.nnz()),
                           KOKKOS_LAMBDA(TeamMember team, ttb_real& d)
   {
     // For some reason using the above typedef causes a really strange
@@ -291,6 +296,10 @@ ttb_real Genten::innerprod(const Genten::SptensorT<ExecSpace>& s,
                            const Genten::KtensorT<ExecSpace>& u,
                            const Genten::ArrayT<ExecSpace>& lambda)
 {
+#ifdef HAVE_CALIPER
+    cali::Function cali_func("Genten::innerprod");
+#endif
+
 #if defined(KOKKOS_HAVE_CUDA)
   const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
 #else
@@ -332,6 +341,10 @@ ttb_real Genten::innerprod(const Genten::SptensorT<ExecSpace>& s,
                            const Genten::KtensorT<ExecSpace>& u,
                            const Genten::ArrayT<ExecSpace>& lambda)
 {
+#ifdef HAVE_CALIPER
+    cali::Function cali_func("Genten::innerprod");
+#endif
+
   typedef typename ExecSpace::size_type size_type;
 
   const ttb_indx nc = u.ncomponents();               // Number of components
@@ -380,7 +393,8 @@ ttb_real Genten::innerprod(const Genten::SptensorT<ExecSpace>& s,
   // Do the inner product
   ttb_real dTotal = 0.0;
 
-  Kokkos::parallel_reduce(policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+  Kokkos::parallel_reduce("Genten::innerprod_kernel",
+                          policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
                           KOKKOS_LAMBDA(typename Policy::member_type team,
                                         ttb_real& d)
   {
@@ -579,7 +593,7 @@ void mttkrp_kernel(const Genten::SptensorT<ExecSpace>& X,
         kernel.template run<0>(j, nc-j);
     }
 
-  });
+  }, "Genten::mttkrp_kernel");
 
   return;
 }
@@ -593,6 +607,10 @@ void Genten::mttkrp(const Genten::SptensorT<ExecSpace>& X,
                     const ttb_indx n,
                     const Genten::FacMatrixT<ExecSpace>& v)
 {
+#ifdef HAVE_CALIPER
+    cali::Function cali_func("Genten::mttkrp");
+#endif
+
   const ttb_indx nc = u.ncomponents();     // Number of components
   const ttb_indx nd = u.ndims();           // Number of dimensions
 
@@ -758,7 +776,7 @@ void mttkrp_kernel(const Genten::SptensorT<ExecSpace>& X,
       kernel.template run<0>(j, nc);
     }
 
-  });
+  }, "Genten::mttkrp_kernel");
 
   return;
 }
@@ -772,6 +790,10 @@ void Genten::mttkrp(const Genten::SptensorT<ExecSpace>& X,
                     const ttb_indx n,
                     const Genten::FacMatrixT<ExecSpace>& v)
 {
+#ifdef HAVE_CALIPER
+    cali::Function cali_func("Genten::mttkrp");
+#endif
+
   const ttb_indx nc = u.ncomponents();     // Number of components
   const ttb_indx nd = u.ndims();           // Number of dimensions
 
@@ -812,6 +834,10 @@ void Genten::mttkrp(const Genten::SptensorT<ExecSpace>& X,
                     const  ttb_indx n,
                     const Genten::FacMatrixT<ExecSpace>& v)
 {
+#ifdef HAVE_CALIPER
+    cali::Function cali_func("Genten::mttkrp");
+#endif
+
   typedef typename ExecSpace::size_type size_type;
 
   const ttb_indx nc = u.ncomponents();      // Number of components
@@ -920,7 +946,7 @@ void Genten::mttkrp(const Genten::SptensorT<ExecSpace>& X,
           Kokkos::atomic_add(&v.entry(k,j), tmp(team_index,jj));
       });
     }
-  });
+  }, "Genten::mttkrp_kernel");
 
   return;
 }
@@ -1119,7 +1145,7 @@ void mttkrp_perm_kernel(const Genten::SptensorT_perm<ExecSpace>& X,
       kernel.template run<0>(j, nc);
     }
 
-  });
+  }, "Genten::mttkrp_perm_kernel");
 }
 
 template <typename ExecSpace>
@@ -1128,6 +1154,10 @@ void mttkrp_perm(const Genten::SptensorT_perm<ExecSpace>& X,
                  const ttb_indx n,
                  const Genten::FacMatrixT<ExecSpace>& v)
 {
+#ifdef HAVE_CALIPER
+    cali::Function cali_func("Genten::mttkrp_perm");
+#endif
+
   ttb_indx nc = u.ncomponents();     // Number of components
   const ttb_indx nd = u.ndims();           // Number of dimensions
 
@@ -1330,7 +1360,7 @@ void mttkrp_perm_kernel(const Genten::SptensorT_perm<ExecSpace>& X,
         kernel.template run<0>(j, nc-j);
     }
 
-  });
+  }, "Genten::mttkrp_perm_kernel");
 
   return;
 }
@@ -1341,6 +1371,10 @@ void mttkrp_perm(const Genten::SptensorT_perm<ExecSpace>& X,
                  const ttb_indx n,
                  const Genten::FacMatrixT<ExecSpace>& v)
 {
+#ifdef HAVE_CALIPER
+    cali::Function cali_func("Genten::mttkrp_perm");
+#endif
+
 #if defined(KOKKOS_HAVE_CUDA)
   const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
 #else
@@ -1520,7 +1554,7 @@ void mttkrp_perm_cuda_kernel(const Genten::SptensorT_perm<Kokkos::Cuda>& X,
 
     }
 
-  });
+  }, "Genten::mttkrp_perm_kernel");
 
   return;
 }
@@ -1530,6 +1564,10 @@ void mttkrp_perm(const Genten::SptensorT_perm<Kokkos::Cuda>& X,
                  const ttb_indx n,
                  const Genten::FacMatrixT<Kokkos::Cuda>& v)
 {
+#ifdef HAVE_CALIPER
+    cali::Function cali_func("Genten::mttkrp_perm");
+#endif
+
   const ttb_indx nc = u.ncomponents();     // Number of components
   const ttb_indx nd = u.ndims();           // Number of dimensions
 
@@ -1589,6 +1627,10 @@ void Genten::mttkrp(const Genten::SptensorT_row<ExecSpace>& X,
                     const ttb_indx n,
                     const Genten::FacMatrixT<ExecSpace>& v)
 {
+#ifdef HAVE_CALIPER
+    cali::Function cali_func("Genten::mttkrp_row");
+#endif
+
   typedef typename ExecSpace::size_type size_type;
 
   const ttb_indx nc = u.ncomponents();      // Number of components
@@ -1673,7 +1715,7 @@ void Genten::mttkrp(const Genten::SptensorT_row<ExecSpace>& X,
 
     });
 
-  });
+  }, "Genten::mttkrp_row_kernel");
 
   return;
 }

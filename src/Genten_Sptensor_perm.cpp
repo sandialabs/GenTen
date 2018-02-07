@@ -50,6 +50,10 @@
 #include <thrust/device_ptr.h>
 #endif
 
+#ifdef HAVE_CALIPER
+#include <caliper/cali.h>
+#endif
+
 namespace Genten {
 namespace Impl {
 // Implementation of createPermutation().  Has to be done as a
@@ -93,7 +97,7 @@ createPermutationImpl(const subs_view_type& subs, const siz_type& siz)
                          KOKKOS_LAMBDA(const ttb_indx i)
     {
       tmp(i) = i;
-    });
+    }, "Genten::Sptensor_perm::createPermutationImpl_init_kernel");
 
 #if defined(KOKKOS_HAVE_CUDA)
     if (std::is_same<ExecSpace, Kokkos::Cuda>::value) {
@@ -155,6 +159,17 @@ createPermutationImpl(const subs_view_type& subs, const siz_type& siz)
 
 }
 }
+}
+
+template <typename ExecSpace>
+void Genten::SptensorT_perm<ExecSpace>::
+fillComplete()
+{
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::Sptensor_perm::fillComplete()");
+#endif
+
+  createPermutation();
 }
 
 template <typename ExecSpace>

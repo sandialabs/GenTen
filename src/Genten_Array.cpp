@@ -54,6 +54,10 @@
 #include "Genten_Util.hpp"
 #include "Genten_Kokkos.hpp"
 
+#ifdef HAVE_CALIPER
+#include <caliper/cali.h>
+#endif
+
 template <typename ExecSpace>
 Genten::ArrayT<ExecSpace>::
 ArrayT(ttb_indx n, bool parallel):
@@ -213,6 +217,10 @@ template <typename ExecSpace>
 ttb_real Genten::ArrayT<ExecSpace>::
 norm(Genten::NormType ntype) const
 {
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::Array::norm");
+#endif
+
   const ttb_indx sz = data.dimension_0();
   Kokkos::RangePolicy<ExecSpace> policy(0,sz);
   auto my_data = data; // can't capture *this by value
@@ -222,7 +230,8 @@ norm(Genten::NormType ntype) const
   case NormOne:
   {
     //nrm = Genten::nrm1(sz, data.data(), 1);
-    Kokkos::parallel_reduce(policy,
+    Kokkos::parallel_reduce("Genten::Array::norm_1_kernel",
+                            policy,
                             KOKKOS_LAMBDA(const ttb_indx i, ttb_real& t)
     {
       ttb_real v = my_data(i);
@@ -233,7 +242,8 @@ norm(Genten::NormType ntype) const
   case NormTwo:
   {
     //nrm = Genten::nrm2(sz, data.data(), 1);
-    Kokkos::parallel_reduce(policy,
+    Kokkos::parallel_reduce("Genten::Array::norm_2_kernel",
+                            policy,
                             KOKKOS_LAMBDA(const ttb_indx i, ttb_real& t)
     {
       t += my_data(i)*my_data(i);
@@ -492,6 +502,10 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 times(const Genten::ArrayT<ExecSpace> & y) const
 {
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::Array::times");
+#endif
+
   const ttb_indx sz = data.dimension_0();
   if (sz != y.data.dimension_0())
   {
@@ -505,7 +519,7 @@ times(const Genten::ArrayT<ExecSpace> & y) const
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
     d[i] *= yd[i];
-  });
+  }, "Genten::Array::times_kernel");
 }
 
 template <typename ExecSpace>

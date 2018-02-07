@@ -47,6 +47,10 @@
 #include "Genten_RandomMT.hpp"
 #include "Genten_IndxArray.hpp"
 
+#ifdef HAVE_CALIPER
+#include <caliper/cali.h>
+#endif
+
 template <typename ExecSpace>
 Genten::KtensorT<ExecSpace>::
 KtensorT(ttb_indx nc, ttb_indx nd):
@@ -379,6 +383,9 @@ template <typename ExecSpace>
 void Genten::KtensorT<ExecSpace>::
 normalize(Genten::NormType norm_type, ttb_indx i) const
 {
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::Ktensor::normalize");
+#endif
 
 #ifndef _GENTEN_CK_FINITE
 #define CKFINITE 0 // set to 1 to turn on inf/nan checking.
@@ -412,7 +419,7 @@ normalize(Genten::NormType norm_type, ttb_indx i) const
   {
     if (norms[k] == ttb_real(0))
       norms[k] = ttb_real(1);
-  });
+  }, "Genten::Ktensor::normalize_init_kernel");
 
 #if CKFINITE
   if (data[i].hasNonFinite(bad)) {
@@ -504,6 +511,10 @@ template <typename ExecSpace>
 ttb_real Genten::KtensorT<ExecSpace>::
 normFsq() const
 {
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::Ktensor::normFsq");
+#endif
+
   ttb_real  dResult = 0.0;
 
   // This technique computes an RxR matrix of dot products between all factor
@@ -529,7 +540,8 @@ normFsq() const
   //   }
   // }
   Genten::ArrayT<ExecSpace> l = lambda;
-  Kokkos::parallel_reduce(Kokkos::RangePolicy<ExecSpace>(0,n),
+  Kokkos::parallel_reduce("Genten::Ktensor::normFsq_kernel",
+                          Kokkos::RangePolicy<ExecSpace>(0,n),
                           KOKKOS_LAMBDA(const ttb_indx r, ttb_real& d)
   {
     const ttb_real lr = l[r];

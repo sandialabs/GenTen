@@ -65,7 +65,7 @@ void assign_factor_matrix_view(const ttb_indx i, const ViewType& v,
   Kokkos::parallel_for( policy, KOKKOS_LAMBDA(const ttb_indx j)
   {
     v[i].assign_view(mat);
-  });
+  }, "Genten::Impl::assign_factor_matrix_view");
 }
 
 }

@@ -60,6 +60,10 @@
 #include "Genten_SystemTimer.hpp"
 #include "Genten_Util.hpp"
 
+#ifdef HAVE_CALIPER
+#include <caliper/cali.h>
+#endif
+
 namespace Genten {
 
   //------------------------------------------------------
@@ -114,6 +118,10 @@ namespace Genten {
                    const ttb_indx        perfIter,
                    CpAlsPerfInfo   perfInfo[])
   {
+
+#ifdef HAVE_CALIPER
+    cali::Function cali_func("Genten::cpals_core");
+#endif
 
     // Check size compatibility of the arguments.
     if (u.isConsistent() == false)

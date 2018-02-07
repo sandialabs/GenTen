@@ -137,7 +137,7 @@ public:
   subs_view_type getPerm() const { return perm; }
 
   // Finalize any setup of the tensor after all entries have been added
-  void fillComplete() { createPermutation(); }
+  void fillComplete();
 
   // Create permutation array by sorting each column of subs
   // Currently must be public for Cuda-lambda

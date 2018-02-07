@@ -73,6 +73,9 @@
 //---- DEFINED IF BOOST IS ENABLED.
 #cmakedefine HAVE_BOOST
 
+//---- DEFINED IF Caliper IS ENABLED.
+#cmakedefine HAVE_CALIPER
+
 #include <cstddef>
 
 // Floating-point type

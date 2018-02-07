@@ -61,6 +61,10 @@
 #include "cublas_v2.h"
 #endif
 
+#ifdef HAVE_CALIPER
+#include <caliper/cali.h>
+#endif
+
 #define USE_NEW_GRAMIAN 1
 #define USE_NEW_COLNORMS 1
 #define USE_NEW_COLSCALE 1
@@ -367,7 +371,7 @@ void gramian_kernel(const ViewC& C, const ViewA& A)
           kernel.template run<0>(i_block, j_block, n-j_block);
       }
     }
-  });
+  }, "Genten::FacMatrix::gramian_kernel");
 }
 
 template <typename ExecSpace, typename ViewC, typename ViewA>
@@ -503,7 +507,7 @@ void gramianImpl(const ViewC& C, const ViewA& A)
           }
         }
       }
-    });
+    }, "Genten::FacMatrix::gramian_kernel");
 
     // Copy upper triangle into lower triangle
     // This seems to be the most efficient over adding the lower triangle in
@@ -651,6 +655,10 @@ template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 gramian(const Genten::FacMatrixT<ExecSpace> & v) const
 {
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::FacMatrix::gramian");
+#endif
+
   const ttb_indx m = v.data.dimension_0();
   const ttb_indx n = v.data.dimension_1();
 
@@ -702,6 +710,10 @@ template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 oprod(const Genten::ArrayT<ExecSpace> & v) const
 {
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::FacMatrix::oprod");
+#endif
+
   // TODO: Replace with call to BLAS2:DGER
 
   const ttb_indx n = v.size();
@@ -719,7 +731,7 @@ oprod(const Genten::ArrayT<ExecSpace> & v) const
     const ttb_real vi = v[i];
     for (ttb_indx j = 0; j < n; j ++)
       d(i,j) = vi * v[j];
-  });
+  }, "Genten::FacMatrix::oprod_kernel");
 }
 
 #if USE_NEW_COLNORMS
@@ -1017,7 +1029,7 @@ void colNorms_kernel(
         else
           kernel.template run<0>(j_block, n-j_block);
       }
-    });
+    }, "Genten::FacMatrix::colNorms_inf_kernel");
     deep_copy(norms_host, norms);
     break;
   }
@@ -1036,7 +1048,7 @@ void colNorms_kernel(
         else
           kernel.template run<0>(j_block, n-j_block);
       }
-    });
+    }, "Genten::FacMatrix::colNorms_1_kernel");
     deep_copy(norms_host, norms);
     break;
   }
@@ -1054,7 +1066,7 @@ void colNorms_kernel(
         else
           kernel.template run<0>(j_block, n-j_block);
       }
-    });
+    }, "Genten::FacMatrix::colNorms_2_kernel");
     deep_copy(norms_host, norms);
     for (unsigned j=0; j<n; ++j)
       norms_host[j] = std::sqrt(norms_host[j]);
@@ -1088,6 +1100,10 @@ template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 colNorms(Genten::NormType normtype, Genten::ArrayT<ExecSpace> & norms, ttb_real minval) const
 {
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::FacMatrix::colNorms");
+#endif
+
   const ttb_indx nc = data.dimension_1();
   if (nc < 2)
     Impl::colNorms_kernel<ExecSpace,1>(data, normtype, norms.values(), minval);
@@ -1109,6 +1125,10 @@ template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 colNorms(Genten::NormType normtype, Genten::ArrayT<ExecSpace> & norms, ttb_real minval) const
 {
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::FacMatrix::colNorms");
+#endif
+
   typedef typename ExecSpace::size_type size_type;
 
   const size_type m = data.dimension_0();
@@ -1232,7 +1252,7 @@ colNorms(Genten::NormType normtype, Genten::ArrayT<ExecSpace> & norms, ttb_real 
           });
         }
       }
-    });
+    }, "Genten::FacMatrix::colNorms_inf_kernel");
     break;
   }
   case Genten::NormOne:
@@ -1297,7 +1317,7 @@ colNorms(Genten::NormType normtype, Genten::ArrayT<ExecSpace> & norms, ttb_real 
           });
         }
       }
-    });
+    }, "Genten::FacMatrix::colNorms_1_kernel");
     break;
   }
   case Genten::NormTwo:
@@ -1362,7 +1382,7 @@ colNorms(Genten::NormType normtype, Genten::ArrayT<ExecSpace> & norms, ttb_real 
           });
         }
       }
-    });
+    }, "Genten::FacMatrix::colNorms_2_kernel");
     for (size_type j=0; j<n; ++j)
       norms[j] = std::sqrt(norms[j]);
     break;
@@ -1476,7 +1496,7 @@ void colScale_kernel(const ViewType& data, const Genten::ArrayT<ExecSpace>& v)
       else
         kernel.template run<0>(j_block, n-j_block);
     }
-  });
+  }, "Genten::FacMatrix::colScale_kernel");
 }
 
 }
@@ -1486,6 +1506,10 @@ template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 colScale(const Genten::ArrayT<ExecSpace> & v, bool inverse) const
 {
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::FacMatrix::colScale");
+#endif
+
   const ttb_indx n = data.dimension_1();
   assert(v.size() == n);
 
@@ -1525,6 +1549,10 @@ template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 colScale(const Genten::ArrayT<ExecSpace> & v, bool inverse) const
 {
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::FacMatrix::colScale");
+#endif
+
   typedef typename ExecSpace::size_type size_type;
 
   const size_type m = data.dimension_0();
@@ -1580,7 +1608,7 @@ colScale(const Genten::ArrayT<ExecSpace> & v, bool inverse) const
           });
         }
       }
-    });
+    }, "Genten::FacMatrix::colScale_kernel");
   }
   else {
     Kokkos::parallel_for(policy, KOKKOS_LAMBDA(typename Policy::member_type team)
@@ -1600,7 +1628,7 @@ colScale(const Genten::ArrayT<ExecSpace> & v, bool inverse) const
           });
         }
       }
-    });
+    }, "Genten::FacMatrix::colScale_kernel");
   }
 }
 #endif
@@ -1661,6 +1689,10 @@ template <typename ExecSpace>
 ttb_real Genten::FacMatrixT<ExecSpace>::
 sum() const
 {
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::FacMatrix::sum");
+#endif
+
   const ttb_indx nrows = data.dimension_0();
   const ttb_indx ncols = data.dimension_1();
 
@@ -1669,7 +1701,8 @@ sum() const
   //   for (ttb_indx j=0; j<ncols; ++j)
   //     sum += data(i,j);
   view_type d = data;
-  Kokkos::parallel_reduce(Kokkos::RangePolicy<ExecSpace>(0,nrows),
+  Kokkos::parallel_reduce("Genten::FacMatrix::sum_kernel",
+                          Kokkos::RangePolicy<ExecSpace>(0,nrows),
                           KOKKOS_LAMBDA(const ttb_indx i, ttb_real& s)
   {
     for (ttb_indx j=0; j<ncols; ++j)
@@ -1699,6 +1732,10 @@ template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 permute(const Genten::IndxArray& perm_indices) const
 {
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::FacMatrix::permute");
+#endif
+
   // The current implementation using a single column of temporary storage
   // (i.e., an array of size ncols) and requires at most 2*nrows*(ncols-1)
   // data moves (n-1 column swaps).  The number is less if a swap results
@@ -1763,7 +1800,7 @@ permute(const Genten::IndxArray& perm_indices) const
         const ttb_real temp = d(i,loc);
         d(i,loc) = d(i,j);
         d(i,j) = temp;
-      });
+      }, "Genten::FacMatrix::permute_kernel");
 
       // Swap curr_indices to mark where data was moved.
       ttb_indx  k = curr_indices[j];
