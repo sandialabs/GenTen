@@ -47,6 +47,8 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_Sptensor.hpp"
+#include "Genten_Sptensor_perm.hpp"
+#include "Genten_Sptensor_row.hpp"
 #include "Genten_Test_Utils.hpp"
 
 using namespace Genten::Test;
@@ -111,16 +113,17 @@ static void  evaluateResult (const int             infolevel,
  *    B0 = [0.5 0.5 ; 0.1 0.5 ; 0.5 0.1]
  *    C0 = [0.7 0.7 ; 0.7 0.1 ; 0.1 0.1 ; 0.1 0.7]
  */
-void Genten_Test_CpAls (int infolevel)
+template <typename Sptensor_type>
+void Genten_Test_CpAls_Type (int infolevel, const std::string& label)
 {
   SETUP_DISABLE_CERR;
 
-  initialize("Test of Genten::CpAls", infolevel);
+  initialize("Test of Genten::CpAls ("+label+")", infolevel);
 
   MESSAGE("Creating a sparse tensor with data to model");
   Genten::IndxArray  dims(3);
   dims[0] = 2;  dims[1] = 3;  dims[2] = 4;
-  Genten::Sptensor  X(dims,11);
+  Sptensor_type  X(dims,11);
   X.subscript(0,0) = 0;  X.subscript(0,1) = 0;  X.subscript(0,2) = 0;
   X.value(0) = 2.0;
   X.subscript(1,0) = 1;  X.subscript(1,1) = 0;  X.subscript(1,2) = 0;
@@ -143,6 +146,7 @@ void Genten_Test_CpAls (int infolevel)
   X.value(9) = 1.0;
   X.subscript(10,0) = 1;  X.subscript(10,1) = 1;  X.subscript(10,2) = 3;
   X.value(10) = 1.0;
+  X.fillComplete();
   ASSERT(X.nnz() == 11, "Data tensor has 11 nonzeroes");
 
   // Load a known initial guess.
@@ -187,10 +191,10 @@ void Genten_Test_CpAls (int infolevel)
     result = initialBasis;
     // Test with weights different from one.
     result.weights(0) = 2.0;
-    Genten::cpals_core <Genten::Sptensor> (X, result,
-                                           stopTol, maxIters, -1.0, infolevel,
-                                           itersCompleted, resNorm,
-                                           3, perfInfo);
+    Genten::cpals_core <Sptensor_type> (X, result,
+                                        stopTol, maxIters, -1.0, infolevel,
+                                        itersCompleted, resNorm,
+                                        3, perfInfo);
     // Check performance information.
     bool  bIsOK = true;
     for (ttb_indx  i = 0; i < nMaxPerfSize; i++)
@@ -228,10 +232,10 @@ void Genten_Test_CpAls (int infolevel)
   try
   {
     result = initialZero;
-    Genten::cpals_core <Genten::Sptensor> (X, result,
-                                           stopTol, maxIters, -1.0, 0,
-                                           itersCompleted, resNorm,
-                                           0, NULL);
+    Genten::cpals_core <Sptensor_type> (X, result,
+                                        stopTol, maxIters, -1.0, 0,
+                                        itersCompleted, resNorm,
+                                        0, NULL);
   }
   catch(std::string sExc)
   {
@@ -244,4 +248,11 @@ void Genten_Test_CpAls (int infolevel)
 
   finalize();
   return;
+}
+
+void Genten_Test_CpAls (int infolevel)
+{
+  Genten_Test_CpAls_Type<Genten::Sptensor>(infolevel,"Kokkos");
+  Genten_Test_CpAls_Type<Genten::Sptensor_perm>(infolevel,"Perm");
+  Genten_Test_CpAls_Type<Genten::Sptensor_row>(infolevel,"Row");
 }

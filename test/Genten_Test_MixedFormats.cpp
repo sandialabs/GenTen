@@ -45,6 +45,8 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_Sptensor.hpp"
+#include "Genten_Sptensor_perm.hpp"
+#include "Genten_Sptensor_row.hpp"
 #include "Genten_Test_Utils.hpp"
 #include "Genten_Util.hpp"
 
@@ -53,9 +55,12 @@ using namespace Genten::Test;
 
 /* This file contains unit tests for operations involving mixed tensor formats.
  */
-void Genten_Test_MixedFormats(int infolevel)
+
+template <typename Sptensor_type>
+void Genten_Test_MixedFormats_Type(int infolevel, const std::string& label)
 {
-  initialize("Tests involving mixed format tensors", infolevel);
+  initialize("Tests involving mixed format tensors ("+label+")",
+             infolevel);
 
   Genten::IndxArray dims;
 
@@ -66,7 +71,7 @@ void Genten_Test_MixedFormats(int infolevel)
 
   MESSAGE("Creating an Sptensor for innerprod test");
   dims = Genten::IndxArray(3); dims[0] = 4; dims[1] = 2; dims[2] = 3;
-  Genten::Sptensor a(dims,4);
+  Sptensor_type a(dims,4);
   a.subscript(0,0) = 2;  a.subscript(0,1) = 0;  a.subscript(0,2) = 0;
   a.value(0) = 1.0;
   a.subscript(1,0) = 1;  a.subscript(1,1) = 1;  a.subscript(1,2) = 1;
@@ -75,6 +80,7 @@ void Genten_Test_MixedFormats(int infolevel)
   a.value(2) = 3.0;
   a.subscript(3,0) = 0;  a.subscript(3,1) = 1;  a.subscript(3,2) = 2;
   a.value(3) = 4.0;
+  a.fillComplete();
 
   MESSAGE("Creating a Ktensor of matching shape");
   dims = Genten::IndxArray(3); dims[0] = 4; dims[1] = 2; dims[2] = 3;
@@ -115,13 +121,14 @@ void Genten_Test_MixedFormats(int infolevel)
 
   MESSAGE("Resizing Sptensor for times/divide test");
   dims = Genten::IndxArray(3); dims[0] = 3; dims[1] = 4; dims[2] = 2;
-  a = Genten::Sptensor(dims,3);
+  a = Sptensor_type(dims,3);
   a.subscript(0,0) = 1;  a.subscript(0,1) = 0;  a.subscript(0,2) = 0;
   a.value(0) = 1.0;
   a.subscript(1,0) = 1;  a.subscript(1,1) = 0;  a.subscript(1,2) = 1;
   a.value(1) = 1.0;
   a.subscript(2,0) = 1;  a.subscript(2,1) = 1;  a.subscript(2,2) = 0;
   a.value(2) = 1.0;
+  a.fillComplete();
   ASSERT(a.nnz() == 3, "Sptensor resized to correct nnz");
 
   MESSAGE("Resizing Ktensor for times test");
@@ -153,7 +160,7 @@ void Genten_Test_MixedFormats(int infolevel)
   */
 
   // Test times().
-  Genten::Sptensor  oTest(a.size(), a.nnz());
+  Sptensor_type  oTest(a.size(), a.nnz());
   oTest.times (oKtens, a);
   ASSERT( EQ(oTest.value(0), (3*7*15 + 4*8*16)), "times() element 0 OK");
   ASSERT( EQ(oTest.value(1), (3*7*17 + 4*8*18)), "times() element 1 OK");
@@ -185,11 +192,12 @@ void Genten_Test_MixedFormats(int infolevel)
 
   MESSAGE("Resizing Sptensor for mttkrp test");
   dims = Genten::IndxArray(3); dims[0] = 2; dims[1] = 3; dims[2] = 4;
-  a = Genten::Sptensor(dims,2);
+  a = Sptensor_type(dims,2);
   a.subscript(0,0) = 0;  a.subscript(0,1) = 0;  a.subscript(0,2) = 0;
   a.value(0) = 1.0;
   a.subscript(1,0) = 1;  a.subscript(1,1) = 2;  a.subscript(1,2) = 3;
   a.value(1) = 0.0;
+  a.fillComplete();
 
   MESSAGE("Resizing Ktensor of matching shape");
   nc = 1;
@@ -260,4 +268,11 @@ void Genten_Test_MixedFormats(int infolevel)
 
   finalize();
   return;
+}
+
+void Genten_Test_MixedFormats(int infolevel)
+{
+  Genten_Test_MixedFormats_Type<Genten::Sptensor>(infolevel,"Kokkos");
+  Genten_Test_MixedFormats_Type<Genten::Sptensor_perm>(infolevel,"Perm");
+  Genten_Test_MixedFormats_Type<Genten::Sptensor_row>(infolevel,"Row");
 }
