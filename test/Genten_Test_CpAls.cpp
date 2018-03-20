@@ -62,6 +62,7 @@ static void  evaluateResult (const int             infolevel,
   std::stringstream  sMsg;
   sMsg << "CpAls finished after " << itersCompleted << " iterations";
   MESSAGE(sMsg.str());
+  ttb_real tol = 1.0e-3;
 
   if (infolevel == 1)
     print_ktensor(result, std::cout,"Factorization result in ktensor form");
@@ -73,15 +74,93 @@ static void  evaluateResult (const int             infolevel,
   {
     ttb_real  diffA = fabs(wght0 - 2.828427);
     ttb_real  diffB = fabs(wght1 - 2.0);
-    ASSERT( (diffA <= 1.0e-3) && (diffB <= 1.e-3),
+    ASSERT( (diffA <= tol) && (diffB <= tol),
             "Result ktensor weights match" );
+
+    ASSERT( fabs(result[0].entry(0,0)-0.7071) <= tol,
+            "Result ktensor[0](0,0) matches");
+    ASSERT( fabs(result[0].entry(1,0)-0.7071) <= tol,
+            "Result ktensor[0](1,0) matches");
+    ASSERT( fabs(result[0].entry(0,1)-1.0) <= tol,
+            "Result ktensor[0](0,1) matches");
+    ASSERT( fabs(result[0].entry(1,1)-0.0) <= tol,
+            "Result ktensor[0](1,1) matches");
+
+    ASSERT( fabs(result[1].entry(0,0)-0.7071) <= tol,
+            "Result ktensor[1](0,0) matches");
+    ASSERT( fabs(result[1].entry(1,0)-0.7071) <= tol,
+            "Result ktensor[1](1,0) matches");
+    ASSERT( fabs(result[1].entry(2,0)-0.0) <= tol,
+            "Result ktensor[1](2,0) matches");
+    ASSERT( fabs(result[1].entry(0,1)-0.7071) <= tol,
+            "Result ktensor[1](0,1) matches");
+    ASSERT( fabs(result[1].entry(1,1)-0.0) <= tol,
+            "Result ktensor[1](1,1) matches");
+    ASSERT( fabs(result[1].entry(2,1)-0.7071) <= tol,
+            "Result ktensor[1](2,1) matches");
+
+    ASSERT( fabs(result[2].entry(0,0)-0.7071) <= tol,
+            "Result ktensor[2](0,0) matches");
+    ASSERT( fabs(result[2].entry(1,0)-0.0) <= tol,
+            "Result ktensor[2](1,0) matches");
+    ASSERT( fabs(result[2].entry(2,0)-0.0) <= tol,
+            "Result ktensor[2](2,0) matches");
+    ASSERT( fabs(result[2].entry(3,0)-0.7071) <= tol,
+            "Result ktensor[2](3,0) matches");
+    ASSERT( fabs(result[2].entry(0,1)-0.7071) <= tol,
+            "Result ktensor[2](0,1) matches");
+    ASSERT( fabs(result[2].entry(1,1)-0.7071) <= tol,
+            "Result ktensor[2](1,1) matches");
+    ASSERT( fabs(result[2].entry(2,1)-0.0) <= tol,
+            "Result ktensor[2](2,1) matches");
+    ASSERT( fabs(result[2].entry(3,1)-0.0) <= tol,
+            "Result ktensor[2](2,1) matches");
   }
   else
   {
     ttb_real  diffA = fabs(wght0 - 2.0);
     ttb_real  diffB = fabs(wght1 - 2.8284);
-    ASSERT( (diffA <= 1.0e-3) && (diffB <= 1.0e-3),
+    ASSERT( (diffA <= tol) && (diffB <= tol),
             "Result ktensor weights match" );
+
+    ASSERT( fabs(result[0].entry(0,1)-0.7071) <= tol,
+            "Result ktensor[0](0,1) matches");
+    ASSERT( fabs(result[0].entry(1,1)-0.7071) <= tol,
+            "Result ktensor[0](1,1) matches");
+    ASSERT( fabs(result[0].entry(0,0)-1.0) <= tol,
+            "Result ktensor[0](0,0) matches");
+    ASSERT( fabs(result[0].entry(1,0)-0.0) <= tol,
+            "Result ktensor[0](1,0) matches");
+
+    ASSERT( fabs(result[1].entry(0,1)-0.7071) <= tol,
+            "Result ktensor[1](0,1) matches");
+    ASSERT( fabs(result[1].entry(1,1)-0.7071) <= tol,
+            "Result ktensor[1](1,1) matches");
+    ASSERT( fabs(result[1].entry(2,1)-0.0) <= tol,
+            "Result ktensor[1](2,1) matches");
+    ASSERT( fabs(result[1].entry(0,0)-0.7071) <= tol,
+            "Result ktensor[1](0,0) matches");
+    ASSERT( fabs(result[1].entry(1,0)-0.0) <= tol,
+            "Result ktensor[1](1,0) matches");
+    ASSERT( fabs(result[1].entry(2,0)-0.7071) <= tol,
+            "Result ktensor[1](2,0) matches");
+
+    ASSERT( fabs(result[2].entry(0,1)-0.7071) <= tol,
+            "Result ktensor[2](0,1) matches");
+    ASSERT( fabs(result[2].entry(1,1)-0.0) <= tol,
+            "Result ktensor[2](1,1) matches");
+    ASSERT( fabs(result[2].entry(2,1)-0.0) <= tol,
+            "Result ktensor[2](2,1) matches");
+    ASSERT( fabs(result[2].entry(3,1)-0.7071) <= tol,
+            "Result ktensor[2](3,1) matches");
+    ASSERT( fabs(result[2].entry(0,0)-0.7071) <= tol,
+            "Result ktensor[2](0,0) matches");
+    ASSERT( fabs(result[2].entry(1,0)-0.7071) <= tol,
+            "Result ktensor[2](1,0) matches");
+    ASSERT( fabs(result[2].entry(2,0)-0.0) <= tol,
+            "Result ktensor[2](2,0) matches");
+    ASSERT( fabs(result[2].entry(3,0)-0.0) <= tol,
+            "Result ktensor[2](2,0) matches");
   }
 
   return;
@@ -103,7 +182,7 @@ static void  evaluateResult (const int             infolevel,
  *    B = [1 1 ; 0 1 ; 1 0]
  *    C = [1 1 ; 1 0 ; 0 0 ; 0 1]
  *  Exact solution as a normalized ktensor:
- *    lambda = [2.8284 2.0]
+ *    lambda = [2.0 2.8284]
  *    A = [1.0    0.7071 ; 0.0    0.7071]
  *    B = [0.7071 0.7071 ; 0.0    0.7071 ; 0.7071 0.0   ]
  *    C = [0.7071 0.7071 ; 0.7071 0.0    ; 0.0    0.0    ; 0.0    0.7071]
@@ -112,10 +191,18 @@ static void  evaluateResult (const int             infolevel,
  *    A0 = [0.8 0.5 ; 0.2 0.5]
  *    B0 = [0.5 0.5 ; 0.1 0.5 ; 0.5 0.1]
  *    C0 = [0.7 0.7 ; 0.7 0.1 ; 0.1 0.1 ; 0.1 0.7]
+ *
+ * Note ETP 03/20/2018:  Originally this comment as the weights as [2.8284 2.0],
+ * but based on my arithmetic, it should be [2.8284 2.0] based on the order of
+ * the factor matrix columns shown above.  This is consistent with what the code
+ * produces.
  */
 template <typename Sptensor_type>
 void Genten_Test_CpAls_Type (int infolevel, const std::string& label)
 {
+  typedef typename Sptensor_type::HostMirror Sptensor_host_type;
+  typedef typename Sptensor_type::exec_space exec_space;
+
   SETUP_DISABLE_CERR;
 
   initialize("Test of Genten::CpAls ("+label+")", infolevel);
@@ -123,7 +210,7 @@ void Genten_Test_CpAls_Type (int infolevel, const std::string& label)
   MESSAGE("Creating a sparse tensor with data to model");
   Genten::IndxArray  dims(3);
   dims[0] = 2;  dims[1] = 3;  dims[2] = 4;
-  Sptensor_type  X(dims,11);
+  Sptensor_host_type  X(dims,11);
   X.subscript(0,0) = 0;  X.subscript(0,1) = 0;  X.subscript(0,2) = 0;
   X.value(0) = 2.0;
   X.subscript(1,0) = 1;  X.subscript(1,1) = 0;  X.subscript(1,2) = 0;
@@ -146,8 +233,12 @@ void Genten_Test_CpAls_Type (int infolevel, const std::string& label)
   X.value(9) = 1.0;
   X.subscript(10,0) = 1;  X.subscript(10,1) = 1;  X.subscript(10,2) = 3;
   X.value(10) = 1.0;
-  X.fillComplete();
   ASSERT(X.nnz() == 11, "Data tensor has 11 nonzeroes");
+
+  // Copy X to device
+  Sptensor_type X_dev = create_mirror_view( exec_space(), X );
+  deep_copy( X_dev, X );
+  X_dev.fillComplete();
 
   // Load a known initial guess.
   MESSAGE("Creating a ktensor with initial guess of lin indep basis vectors");
@@ -173,13 +264,19 @@ void Genten_Test_CpAls_Type (int infolevel, const std::string& label)
   initialBasis[2].entry(1,1) = 0.1;
   initialBasis[2].entry(2,1) = 0.1;
   initialBasis[2].entry(3,1) = 0.7;
+  initialBasis.weights(0) = 2.0; // Test with weights different from one.
   if (infolevel == 1)
     print_ktensor(initialBasis,std::cout,"Initial guess for CpAls");
+
+  // Copy initialBasis to the device
+  Genten::KtensorT<exec_space> initialBasis_dev =
+    create_mirror_view( exec_space(), initialBasis );
+  deep_copy( initialBasis_dev, initialBasis );
 
   // Factorize.
   ttb_real  stopTol = 1.0e-6;
   ttb_indx  maxIters = 100;
-  Genten::Ktensor  result;
+  Genten::KtensorT<exec_space> result_dev;
   ttb_indx  itersCompleted;
   ttb_real  resNorm;
   try
@@ -188,10 +285,8 @@ void Genten_Test_CpAls_Type (int infolevel, const std::string& label)
     // Allocation adds two more for start and stop states of the algorithm.
     ttb_indx  nMaxPerfSize = 2 + (maxIters / 3);
     Genten::CpAlsPerfInfo *  perfInfo = new Genten::CpAlsPerfInfo[nMaxPerfSize];
-    result = initialBasis;
-    // Test with weights different from one.
-    result.weights(0) = 2.0;
-    Genten::cpals_core <Sptensor_type> (X, result,
+    result_dev = initialBasis_dev;
+    Genten::cpals_core <Sptensor_type> (X_dev, result_dev,
                                         stopTol, maxIters, -1.0, infolevel,
                                         itersCompleted, resNorm,
                                         3, perfInfo);
@@ -220,6 +315,10 @@ void Genten_Test_CpAls_Type (int infolevel, const std::string& label)
     return;
   }
 
+  // Copy result to host
+  Genten::Ktensor result = initialBasis;
+  deep_copy( result, result_dev );
+
   evaluateResult(infolevel, itersCompleted, stopTol, result);
 
   // Test factorization from a bad initial guess.
@@ -227,12 +326,15 @@ void Genten_Test_CpAls_Type (int infolevel, const std::string& label)
   Genten::Ktensor  initialZero (nNumComponents, dims.size(), dims);
   initialZero.setWeights(0.0);
   initialZero.setMatrices(0.0);
+  Genten::KtensorT<exec_space> initialZero_dev =
+    create_mirror_view( exec_space(), initialZero );
+  deep_copy( initialZero_dev, initialZero );
   MESSAGE("Checking if linear solver detects singular guess");
   DISABLE_CERR;
   try
   {
-    result = initialZero;
-    Genten::cpals_core <Sptensor_type> (X, result,
+    result_dev = initialZero_dev;
+    Genten::cpals_core <Sptensor_type> (X_dev, result_dev,
                                         stopTol, maxIters, -1.0, 0,
                                         itersCompleted, resNorm,
                                         0, NULL);
