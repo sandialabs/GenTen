@@ -56,12 +56,13 @@ using namespace Genten::Test;
 /* This file contains unit tests for operations involving mixed tensor formats.
  */
 
-template <typename Sptensor_type>
+template <template<class> class Sptensor_template>
 void Genten_Test_MixedFormats_Type(int infolevel, const std::string& label)
 {
-  typedef typename Sptensor_type::HostMirror Sptensor_host_type;
-  typedef typename Sptensor_type::exec_space exec_space;
-  typedef typename Sptensor_host_type::exec_space host_exec_space;
+  typedef Genten::DefaultExecutionSpace exec_space;
+  typedef Genten::DefaultHostExecutionSpace host_exec_space;
+  typedef Sptensor_template<exec_space> Sptensor_type;
+  typedef Sptensor_template<host_exec_space> Sptensor_host_type;
 
   initialize("Tests involving mixed format tensors ("+label+")",
              infolevel);
@@ -137,7 +138,7 @@ void Genten_Test_MixedFormats_Type(int infolevel, const std::string& label)
 
   MESSAGE("Resizing Sptensor for times/divide test");
   dims = Genten::IndxArray(3); dims[0] = 3; dims[1] = 4; dims[2] = 2;
-  a = Sptensor_type(dims,3);
+  a = Sptensor_host_type(dims,3);
   a.subscript(0,0) = 1;  a.subscript(0,1) = 0;  a.subscript(0,2) = 0;
   a.value(0) = 1.0;
   a.subscript(1,0) = 1;  a.subscript(1,1) = 0;  a.subscript(1,2) = 1;
@@ -176,7 +177,7 @@ void Genten_Test_MixedFormats_Type(int infolevel, const std::string& label)
   */
 
   // Test times().
-  Sptensor_type  oTest(a.size(), a.nnz());
+  Sptensor_host_type  oTest(a.size(), a.nnz());
   oTest.times (oKtens, a);
   ASSERT( EQ(oTest.value(0), (3*7*15 + 4*8*16)), "times() element 0 OK");
   ASSERT( EQ(oTest.value(1), (3*7*17 + 4*8*18)), "times() element 1 OK");
@@ -208,7 +209,7 @@ void Genten_Test_MixedFormats_Type(int infolevel, const std::string& label)
 
   MESSAGE("Resizing Sptensor for mttkrp test");
   dims = Genten::IndxArray(3); dims[0] = 2; dims[1] = 3; dims[2] = 4;
-  a = Sptensor_type(dims,2);
+  a = Sptensor_host_type(dims,2);
   a.subscript(0,0) = 0;  a.subscript(0,1) = 0;  a.subscript(0,2) = 0;
   a.value(0) = 1.0;
   a.subscript(1,0) = 1;  a.subscript(1,1) = 2;  a.subscript(1,2) = 3;
@@ -317,7 +318,7 @@ void Genten_Test_MixedFormats_Type(int infolevel, const std::string& label)
 
 void Genten_Test_MixedFormats(int infolevel)
 {
-  Genten_Test_MixedFormats_Type<Genten::Sptensor>(infolevel,"Kokkos");
-  Genten_Test_MixedFormats_Type<Genten::Sptensor_perm>(infolevel,"Perm");
-  Genten_Test_MixedFormats_Type<Genten::Sptensor_row>(infolevel,"Row");
+  Genten_Test_MixedFormats_Type<Genten::SptensorT>(infolevel,"Kokkos");
+  Genten_Test_MixedFormats_Type<Genten::SptensorT_perm>(infolevel,"Perm");
+  Genten_Test_MixedFormats_Type<Genten::SptensorT_row>(infolevel,"Row");
 }

@@ -197,11 +197,13 @@ static void  evaluateResult (const int             infolevel,
  * the factor matrix columns shown above.  This is consistent with what the code
  * produces.
  */
-template <typename Sptensor_type>
+template <template<class> class Sptensor_template>
 void Genten_Test_CpAls_Type (int infolevel, const std::string& label)
 {
-  typedef typename Sptensor_type::HostMirror Sptensor_host_type;
-  typedef typename Sptensor_type::exec_space exec_space;
+  typedef Genten::DefaultExecutionSpace exec_space;
+  typedef Genten::DefaultHostExecutionSpace host_exec_space;
+  typedef Sptensor_template<exec_space> Sptensor_type;
+  typedef Sptensor_template<host_exec_space> Sptensor_host_type;
 
   SETUP_DISABLE_CERR;
 
@@ -354,7 +356,7 @@ void Genten_Test_CpAls_Type (int infolevel, const std::string& label)
 
 void Genten_Test_CpAls (int infolevel)
 {
-  Genten_Test_CpAls_Type<Genten::Sptensor>(infolevel,"Kokkos");
-  Genten_Test_CpAls_Type<Genten::Sptensor_perm>(infolevel,"Perm");
-  Genten_Test_CpAls_Type<Genten::Sptensor_row>(infolevel,"Row");
+  Genten_Test_CpAls_Type<Genten::SptensorT>(infolevel,"Kokkos");
+  Genten_Test_CpAls_Type<Genten::SptensorT_perm>(infolevel,"Perm");
+  Genten_Test_CpAls_Type<Genten::SptensorT_row>(infolevel,"Row");
 }
