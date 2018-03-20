@@ -420,3 +420,20 @@ INSTALL (
   TARGETS cpals
   DESTINATION drivers
   )
+
+#------------------------------------------------------------
+#---- Testing
+#------------------------------------------------------------
+enable_testing()
+
+# Unit tests -- tests don't return nonzero on failure, so have to grep output
+add_test(Genten_Unit_Tests ${Genten_BINARY_DIR}/bin/unit_tests)
+SET_TESTS_PROPERTIES(Genten_Unit_Tests PROPERTIES FAIL_REGULAR_EXPRESSION "Error")
+
+# mttkrp -- returns nonzero on failure
+add_test(Genten_MTTKRP_random ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000)
+add_test(Genten_MTTKRP_random_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000 --tensor perm)
+add_test(Genten_MTTKRP_random_row ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000 --tensor row)
+add_test(Genten_MTTKRP_aminoacid ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt)
+add_test(Genten_MTTKRP_aminoacid_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt)
+add_test(Genten_MTTKRP_aminoacid_row ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt)

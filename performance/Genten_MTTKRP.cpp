@@ -210,6 +210,7 @@ int run_mttkrp(const std::string& inputfilename,
     "\tTotal:  average time = %.3f seconds, throughput = %.3f GFLOP/s\n",
       mttkrp_total_time, mttkrp_total_throughput);
 
+  bool success = true;
   if (check != 0) {
     // Check the results using a simple MTTKRP algorithm executed on the host
     std::cout << "Checking result for correctness:  " << std::endl;
@@ -255,8 +256,10 @@ int run_mttkrp(const std::string& inputfilename,
     }
     if (num_failures == 0)
       std::cout << "\tSuccess!" << std::endl;
-    else
+    else {
       std::cout << "\tFailed!" << std::endl;
+      success = false;
+    }
 
     // If there were failures, print out the differences (in serial)
     if (num_failures > 0) {
@@ -282,7 +285,9 @@ int run_mttkrp(const std::string& inputfilename,
     }
   }
 
-  return 0;
+  if (success)
+    return 0;
+  return 1;
 }
 
 void usage(char **argv)
@@ -375,9 +380,14 @@ int main(int argc, char* argv[])
   }
   catch(std::string sExc)
   {
-    std::cout << "*** Call to cpals_core threw an exception:\n";
+    std::cout << "*** Call to mttkrp threw an exception:\n";
     std::cout << "  " << sExc << "\n";
-    ret = 0;
+    ret = -1;
+  }
+  catch(...)
+  {
+    std::cout << "*** Call to mttkrp threw an exception:\n";
+    ret = -1;
   }
 
   Kokkos::finalize();
