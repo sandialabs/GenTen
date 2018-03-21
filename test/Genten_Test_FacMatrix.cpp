@@ -229,7 +229,7 @@ void Genten_Test_FacMatrix(int infolevel, const std::string & datadir)
   const Genten::Array h(3, hdata);
   a = Genten::FacMatrix(h.size(), h.size());
   Genten::FacMatrixT<exec_space> a_dev = create_mirror_view( exec_space(), a );
-  Genten::ArrayT<exec_space> h_dev = create_mirror_view( exec_space(), h);
+  Genten::ArrayT<exec_space> h_dev = create_mirror_view( exec_space(), h );
   deep_copy( a_dev, a );
   deep_copy( h_dev, h );
   a_dev.oprod(h_dev);

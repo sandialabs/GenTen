@@ -49,6 +49,9 @@ using namespace Genten::Test;
 
 void Genten_Test_Array(int infolevel)
 {
+  typedef Genten::DefaultExecutionSpace exec_space;
+  typedef Genten::DefaultHostExecutionSpace host_exec_space;
+
   //SETUP_DISABLE_CERR;
 
   bool tf;
@@ -222,7 +225,9 @@ void Genten_Test_Array(int infolevel)
     ans += (i/11.0)*(i/11.0);
   }
   ans = sqrt(ans);
-  ASSERT( EQ(a.norm(Genten::NormTwo), ans), "norm_two works as expected");
+  Genten::ArrayT<exec_space> a_dev = create_mirror_view( exec_space(), a );
+  deep_copy( a_dev, a );
+  ASSERT( EQ(a_dev.norm(Genten::NormTwo), ans), "norm_two works as expected");
 
 
   // NORM_ONE
@@ -235,9 +240,11 @@ void Genten_Test_Array(int infolevel)
     a[i] = pow((ttb_real)-1,(int)i)*i/11.0;
     ans += i/11.0;
   }
-  ASSERT( EQ(a.norm(Genten::NormOne), ans), "norm_one works as expected");
+  a_dev = create_mirror_view( exec_space(), a );
+  deep_copy( a_dev, a );
+  ASSERT( EQ(a_dev.norm(Genten::NormOne), ans), "norm_one works as expected");
 
-  // NORM_INF
+  // NORM_INF -- Not on device
   MESSAGE("Testing norm_inf");
   ans = 4.0/11.0;
   ASSERT( EQ(a.norm(Genten::NormInf), ans), "norm_inf works as expected");
@@ -321,7 +328,12 @@ void Genten_Test_Array(int infolevel)
 
   // TIMES
   a = Genten::Array(5, ttb_real(2.3));
-  a.times(b);
+  a_dev = create_mirror_view( exec_space(), a );
+  Genten::ArrayT<exec_space> b_dev = create_mirror_view( exec_space(), b );
+  deep_copy( a_dev, a );
+  deep_copy( b_dev, b );
+  a_dev.times(b_dev);
+  deep_copy( a, a_dev );
   answ = Genten::Array(5, ttb_real(5.75));
   ASSERT(a.isEqual(answ, MACHINE_EPSILON), "a = a.* b");
 
