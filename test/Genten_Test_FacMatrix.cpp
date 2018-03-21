@@ -48,6 +48,9 @@ using namespace Genten::Test;
 
 void Genten_Test_FacMatrix(int infolevel, const std::string & datadir)
 {
+  typedef Genten::DefaultExecutionSpace exec_space;
+  typedef Genten::DefaultHostExecutionSpace host_exec_space;
+
   SETUP_DISABLE_CERR;
 
   bool tf;
@@ -125,7 +128,11 @@ void Genten_Test_FacMatrix(int infolevel, const std::string & datadir)
   Genten::FacMatrix d;
   Genten::import_matrix(datadir + "D_matrix.txt", d);
   Genten::FacMatrix e(b.nCols(), b.nCols());
-  e.gramian(b);
+  Genten::FacMatrixT<exec_space> b_dev = create_mirror_view( exec_space(), b );
+  Genten::FacMatrixT<exec_space> e_dev = create_mirror_view( exec_space(), e );
+  deep_copy( b_dev, b );
+  e_dev.gramian(b_dev);
+  deep_copy( e, e_dev );
   ASSERT(e.nCols() == d.nCols(), "Gramian works");
   ASSERT(e.nRows() == d.nRows(), "Gramian works");
   tf = true;
@@ -166,7 +173,10 @@ void Genten_Test_FacMatrix(int infolevel, const std::string & datadir)
   MESSAGE("Now checking actual correctness");
   Genten::FacMatrix f(3,2);
   f = 2;
-  f.times(b);
+  Genten::FacMatrixT<exec_space> f_dev = create_mirror_view( exec_space(), f );
+  deep_copy( f_dev, f );
+  f_dev.times(b_dev);
+  deep_copy( f, f_dev );
   ASSERT(f.nRows() == 3, "Hadamard works");
   ASSERT(f.nCols() == 2, "Hadamard works");
   tf = true;
@@ -218,7 +228,12 @@ void Genten_Test_FacMatrix(int infolevel, const std::string & datadir)
   ttb_real hdata[] = {.1, .2, .3};
   const Genten::Array h(3, hdata);
   a = Genten::FacMatrix(h.size(), h.size());
-  a.oprod(h);
+  Genten::FacMatrixT<exec_space> a_dev = create_mirror_view( exec_space(), a );
+  Genten::ArrayT<exec_space> h_dev = create_mirror_view( exec_space(), h);
+  deep_copy( a_dev, a );
+  deep_copy( h_dev, h );
+  a_dev.oprod(h_dev);
+  deep_copy( a, a_dev );
   ASSERT(a.nRows() == 3, "Oprod # rows ok");
   ASSERT(a.nCols() == 3, "Oprod # cols ok");
   tf = true;
@@ -250,7 +265,12 @@ void Genten_Test_FacMatrix(int infolevel, const std::string & datadir)
   b = Genten::FacMatrix(1,2);
   b.entry(0,0) = 3.0;
   b.entry(0,1) = 4.0;
-  b.solveTransposeRHS (a);
+  a_dev = create_mirror_view( exec_space(), a );
+  b_dev = create_mirror_view( exec_space(), b );
+  deep_copy( a_dev, a );
+  deep_copy( b_dev, b );
+  b_dev.solveTransposeRHS (a_dev);
+  deep_copy( b, b_dev );
   c = Genten::FacMatrix(1,2);
   c.entry(0,0) = 3.0;
   c.entry(0,1) = 2.0;
@@ -269,7 +289,12 @@ void Genten_Test_FacMatrix(int infolevel, const std::string & datadir)
   b.entry(1,1) = 1.0;
   b.entry(2,0) = -1.0;
   b.entry(2,1) =  2.0;
-  b.solveTransposeRHS (a);
+  a_dev = create_mirror_view( exec_space(), a );
+  b_dev = create_mirror_view( exec_space(), b );
+  deep_copy( a_dev, a );
+  deep_copy( b_dev, b );
+  b_dev.solveTransposeRHS (a_dev);
+  deep_copy( b, b_dev );
   c = Genten::FacMatrix(3,2);
   c.entry(0,0) = -1.0 / 3.0;
   c.entry(0,1) =  2.0 / 3.0;
@@ -286,17 +311,23 @@ void Genten_Test_FacMatrix(int infolevel, const std::string & datadir)
   a.entry(0,0) = 3;
   a.entry(1,0) = 4;
   a.entry(1,1) = 1;
-  a.colNorms(Genten::NormInf,nrms,0.0);
+  a_dev = create_mirror_view( exec_space(), a );
+  Genten::ArrayT<exec_space> nrms_dev = create_mirror_view( exec_space(), nrms );
+  deep_copy( a_dev, a );
+  a_dev.colNorms(Genten::NormInf,nrms_dev,0.0);
+  deep_copy( nrms, nrms_dev );
   nrms_chk[0] = 4;
   nrms_chk[1] = 1;
   nrms_chk[2] = 0;
   ASSERT(nrms.isEqual(nrms_chk,MACHINE_EPSILON),
          "ColNorms (max norm) works as expected");
-  a.colNorms(Genten::NormOne,nrms,0.0);
+  a_dev.colNorms(Genten::NormOne,nrms_dev,0.0);
+  deep_copy( nrms, nrms_dev );
   nrms_chk[0] = 7;
   ASSERT(nrms.isEqual(nrms_chk,MACHINE_EPSILON),
          "ColNorms (1-norm) works as expected");
-  a.colNorms(Genten::NormTwo,nrms,0.0);
+  a_dev.colNorms(Genten::NormTwo,nrms_dev,0.0);
+  deep_copy( nrms, nrms_dev );
   nrms_chk[0] = 5;
   ASSERT(nrms.isEqual(nrms_chk,MACHINE_EPSILON),
          "ColNorms (2-norm) works as expected");
@@ -308,7 +339,11 @@ void Genten_Test_FacMatrix(int infolevel, const std::string & datadir)
   weights[2] = 1;
   b = Genten::FacMatrix(a.nRows(), a.nCols());
   deep_copy(b,a);
-  a.colScale(weights, false);
+  Genten::ArrayT<exec_space> weights_dev =
+    create_mirror_view( exec_space(), weights );
+  deep_copy( weights_dev, weights );
+  a_dev.colScale(weights_dev, false);
+  deep_copy( a, a_dev );
   tf = false;
   for (ttb_indx i = 0; i < 3; i ++)
   {
@@ -326,7 +361,8 @@ void Genten_Test_FacMatrix(int infolevel, const std::string & datadir)
     }
   }
   ASSERT(tf,"ColScale works as expected");
-  a.colScale(weights,true);
+  a_dev.colScale(weights_dev,true);
+  deep_copy( a, a_dev );
   ASSERT(a.isEqual(b,MACHINE_EPSILON),
          "ColScale (inverse) works as expected");
 
@@ -339,7 +375,10 @@ void Genten_Test_FacMatrix(int infolevel, const std::string & datadir)
   Genten::FacMatrix p(3, 3, pdata);
   Genten::FacMatrix p_new(3, 3, pdata_new);
 
-  p.permute(ind);
+  Genten::FacMatrixT<exec_space> p_dev = create_mirror_view( exec_space(), p );
+  deep_copy( p_dev, p );
+  p_dev.permute(ind);
+  deep_copy( p, p_dev );
 
   tf = false;
   for (ttb_indx i = 0; i < 3; i ++)
