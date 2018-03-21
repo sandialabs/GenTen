@@ -77,7 +77,8 @@ int run_mttkrp(const std::string& inputfilename,
                const unsigned long  nRNGseed,
                const ttb_indx  nIters,
                const SPTENSOR_TYPE tensor_type,
-               const ttb_indx check)
+               const ttb_indx check,
+               const ttb_indx warmup)
 {
   typedef Sptensor_template<Space> Sptensor_type;
   typedef Sptensor_template<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
@@ -168,9 +169,11 @@ int run_mttkrp(const std::string& inputfilename,
   // Sptensor mttkrp and do this before fillComplete() so that
   // fillComplete() timings are not polluted by UVM transfers
   Ktensor_type cResult(nNumComponents, nDims, cFacDims);
-  Genten::SptensorT<Genten::DefaultExecutionSpace>& cData_tmp = cData;
-  for (ttb_indx n=0; n<nDims; ++n)
-    Genten::mttkrp(cData_tmp, cInput, n, cResult[n]);
+  if (warmup == 1) {
+    Genten::SptensorT<Genten::DefaultExecutionSpace>& cData_tmp = cData;
+    for (ttb_indx n=0; n<nDims; ++n)
+      Genten::mttkrp(cData_tmp, cInput, n, cResult[n]);
+  }
 
   // Perform any post-processing (e.g., permutation and row ptr generation)
   timer.start(0);
@@ -303,6 +306,7 @@ void usage(char **argv)
   std::cout << "  --iters <int>        number of iterations to perform" << std::endl;
   std::cout << "  --seed <int>         seed for random number generator used in initial guess" << std::endl;
   std::cout << "  --check <0/1>        check the result for correctness" << std::endl;
+  std::cout << "  --warmup <0/1>       do an MTTKRP to warm up first" << std::endl;
   std::cout << "  --tensor <type>      Sptensor format: ";
   for (unsigned i=0; i<num_sptensor_types; ++i) {
     std::cout << sptensor_names[i];
@@ -357,6 +361,8 @@ int main(int argc, char* argv[])
       parse_ttb_indx(argc, argv, "--iters", 10, 1, INT_MAX);
     ttb_indx  check =
       parse_ttb_indx(argc, argv, "--check", 1, 0, 1);
+    ttb_indx  warmup =
+      parse_ttb_indx(argc, argv, "--warmup", 1, 0, 1);
     SPTENSOR_TYPE tensor_type =
       parse_ttb_enum(argc, argv, "--tensor", SPTENSOR,
                      num_sptensor_types, sptensor_types, sptensor_names);
@@ -365,17 +371,17 @@ int main(int argc, char* argv[])
       ret = run_mttkrp< Genten::SptensorT, Genten::DefaultExecutionSpace >(
         inputfilename, index_base, gz,
         cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nIters, tensor_type,
-        check);
+        check, warmup);
     else if (tensor_type == SPTENSOR_PERM)
       ret = run_mttkrp< Genten::SptensorT_perm, Genten::DefaultExecutionSpace >(
         inputfilename, index_base, gz,
         cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nIters, tensor_type,
-        check);
+        check, warmup);
     else if (tensor_type == SPTENSOR_ROW)
       ret = run_mttkrp< Genten::SptensorT_row, Genten::DefaultExecutionSpace >(
         inputfilename, index_base, gz,
         cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nIters, tensor_type,
-        check);
+        check, warmup);
 
   }
   catch(std::string sExc)
