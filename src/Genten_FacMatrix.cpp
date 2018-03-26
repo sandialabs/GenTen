@@ -48,7 +48,6 @@
 #include "Genten_FacMatArray.hpp"
 #include "Genten_MathLibs_Wpr.hpp"
 #include "Genten_portability.hpp"
-#include "Genten_TinyVec.hpp"
 #include "CMakeInclude.h"
 #include <algorithm>     // for std::max with MSVC compiler
 #include <assert.h>
