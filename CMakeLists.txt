@@ -404,6 +404,18 @@ INSTALL (
   DESTINATION test
   )
 
+ADD_EXECUTABLE (
+  perf_MTTKRP_Sweep
+  ${Genten_SOURCE_DIR}/performance/Genten_MTTKRP_Sweep.cpp
+  ${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
+  ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
+  )
+TARGET_LINK_LIBRARIES (perf_MTTKRP_Sweep ${GENTEN_LINK_LIBS})
+INSTALL (
+  TARGETS perf_MTTKRP_Sweep
+  DESTINATION test
+  )
+
 #------------------------------------------------------------
 #---- Drivers
 #------------------------------------------------------------
