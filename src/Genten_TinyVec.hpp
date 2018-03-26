@@ -42,199 +42,25 @@
 #pragma once
 
 #include "Genten_Kokkos.hpp"
-#include <cmath>
-
-// extern "C" {
-// #include <immintrin.h>
-// }
 
 namespace Genten {
 
-  template <typename Scalar, typename Ordinal,
+  template <typename ExecSpace, typename Scalar, typename Ordinal,
             unsigned Length, unsigned Size, unsigned WarpDim,
-            typename Tag = void,
-            bool Nonzero = ( Size != Ordinal(0) )>
+            typename Enabled = void>
   class TinyVec {
   public:
 
+    typedef ExecSpace exec_space;
     typedef Scalar scalar_type;
     typedef Ordinal ordinal_type;
-    typedef Tag tag_type;
 
     static const ordinal_type len = Length / WarpDim;
-    static const ordinal_type sz = Size / WarpDim;
+    Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpDim> sz;
     alignas(64) scalar_type v[len];
 
     KOKKOS_INLINE_FUNCTION
     TinyVec() = default;
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec(const ordinal_type size) {}
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec(const ordinal_type size, const scalar_type x) {
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] = x;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    ~TinyVec() = default;
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec(const TinyVec&) = default;
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator=(const TinyVec&) = default;
-
-    KOKKOS_INLINE_FUNCTION
-    void broadcast(const scalar_type x) {
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] = x;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    void load(const scalar_type* x) {
-#ifdef __CUDA_ARCH__
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] = x[i*WarpDim+threadIdx.x];
-#else
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] = x[i];
-#endif
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    void store(scalar_type* x) const {
-#ifdef __CUDA_ARCH__
-      for (ordinal_type i=0; i<sz; ++i)
-        x[i*WarpDim+threadIdx.x] = v[i];
-#else
-      for (ordinal_type i=0; i<sz; ++i)
-        x[i] = v[i];
-#endif
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    void store_plus(scalar_type* x) const {
-#ifdef __CUDA_ARCH__
-      for (ordinal_type i=0; i<sz; ++i)
-        x[i*WarpDim+threadIdx.x] += v[i];
-#else
-      for (ordinal_type i=0; i<sz; ++i)
-        x[i] += v[i];
-#endif
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator+=(const scalar_type x) {
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] += x;
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator-=(const scalar_type x) {
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] -= x;
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator*=(const scalar_type x) {
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] *= x;
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator/=(const scalar_type x) {
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] /= x;
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator+=(const TinyVec& x) {
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] += x.v[i];
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator-=(const TinyVec& x) {
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] -= x.v[i];
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator*=(const TinyVec& x) {
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] *= x.v[i];
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator*=(const scalar_type* x) {
-#ifdef __CUDA_ARCH__
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] *= x[i*WarpDim+threadIdx.x];
-#else
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] *= x[i];
-#endif
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator/=(const TinyVec& x) {
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] /= x.v[i];
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    Scalar sum() const {
-      Scalar s(0.0);
-      for (ordinal_type i=0; i<sz; ++i)
-        s += v[i];
-#ifdef __CUDA_ARCH__
-      for (ordinal_type i=1; i<WarpDim; i*=2) {
-        s += Kokkos::shfl_down(s, i, WarpDim);
-      }
-      s = Kokkos::shfl(s, 0, WarpDim);
-#endif
-      return s;
-    }
-
-  };
-
-  // Specialization for dynamically sized array where Size == 0
-  template <typename Scalar, typename Ordinal,
-            unsigned Length, unsigned Size, unsigned WarpDim,
-            typename Tag>
-  class TinyVec<Scalar,Ordinal,Length,Size,WarpDim,Tag,false> {
-  public:
-
-    typedef Scalar scalar_type;
-    typedef Ordinal ordinal_type;
-    typedef Tag tag_type;
-
-    static const ordinal_type len = Length / WarpDim;
-    ordinal_type sz;
-    alignas(64) scalar_type v[len];
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec() = default;
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec(const ordinal_type size) :
-#ifdef __CUDA_ARCH__
-      sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
-#else
-      sz(size)
-#endif
-    {}
 
     KOKKOS_INLINE_FUNCTION
     TinyVec(const ordinal_type size, const scalar_type x) :
@@ -244,7 +70,7 @@ namespace Genten {
       sz(size)
 #endif
     {
-      for (ordinal_type i=0; i<sz; ++i)
+      for (ordinal_type i=0; i<sz.value; ++i)
         v[i] = x;
     }
 
@@ -259,493 +85,435 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     void broadcast(const scalar_type x) {
-      for (ordinal_type i=0; i<sz; ++i)
+      for (ordinal_type i=0; i<sz.value; ++i)
         v[i] = x;
     }
 
     KOKKOS_INLINE_FUNCTION
     void load(const scalar_type* x) {
 #ifdef __CUDA_ARCH__
-      for (ordinal_type i=0; i<sz; ++i)
+      for (ordinal_type i=0; i<sz.value; ++i)
         v[i] = x[i*WarpDim+threadIdx.x];
 #else
-      for (ordinal_type i=0; i<sz; ++i)
+      for (ordinal_type i=0; i<sz.value; ++i)
         v[i] = x[i];
-#endif
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    void store(scalar_type* x) const {
-#ifdef __CUDA_ARCH__
-      for (ordinal_type i=0; i<sz; ++i)
-        x[i*WarpDim+threadIdx.x] = v[i];
-#else
-      for (ordinal_type i=0; i<sz; ++i)
-        x[i] = v[i];
 #endif
     }
 
     KOKKOS_INLINE_FUNCTION
     void store_plus(scalar_type* x) const {
 #ifdef __CUDA_ARCH__
-      for (ordinal_type i=0; i<sz; ++i)
+      for (ordinal_type i=0; i<sz.value; ++i)
         x[i*WarpDim+threadIdx.x] += v[i];
 #else
-      for (ordinal_type i=0; i<sz; ++i)
+      for (ordinal_type i=0; i<sz.value; ++i)
         x[i] += v[i];
 #endif
     }
 
     KOKKOS_INLINE_FUNCTION
-    TinyVec& operator+=(const scalar_type x) {
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] += x;
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator-=(const scalar_type x) {
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] -= x;
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator*=(const scalar_type x) {
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] *= x;
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator/=(const scalar_type x) {
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] /= x;
-      return *this;
+    void atomic_store_plus(volatile scalar_type* x) const {
+#ifdef __CUDA_ARCH__
+      for (ordinal_type i=0; i<sz.value; ++i)
+        Kokkos::atomic_add(x+i*WarpDim+threadIdx.x, v[i]);
+#else
+      for (ordinal_type i=0; i<sz.value; ++i)
+        Kokkos::atomic_add(x+i, v[i]);
+#endif
     }
 
     KOKKOS_INLINE_FUNCTION
     TinyVec& operator+=(const TinyVec& x) {
-      for (ordinal_type i=0; i<sz; ++i)
+      for (ordinal_type i=0; i<sz.value; ++i)
         v[i] += x.v[i];
       return *this;
     }
 
     KOKKOS_INLINE_FUNCTION
-    TinyVec& operator-=(const TinyVec& x) {
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] -= x.v[i];
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator*=(const TinyVec& x) {
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] *= x.v[i];
+    TinyVec& operator*=(const scalar_type x) {
+      for (ordinal_type i=0; i<sz.value; ++i)
+        v[i] *= x;
       return *this;
     }
 
     KOKKOS_INLINE_FUNCTION
     TinyVec& operator*=(const scalar_type* x) {
 #ifdef __CUDA_ARCH__
-      for (ordinal_type i=0; i<sz; ++i)
+      for (ordinal_type i=0; i<sz.value; ++i)
         v[i] *= x[i*WarpDim+threadIdx.x];
 #else
-      for (ordinal_type i=0; i<sz; ++i)
+      for (ordinal_type i=0; i<sz.value; ++i)
         v[i] *= x[i];
 #endif
       return *this;
     }
 
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator/=(const TinyVec& x) {
-      for (ordinal_type i=0; i<sz; ++i)
-        v[i] /= x.v[i];
+  };
+
+#if defined(KOKKOS_HAVE_CUDA) && defined(__CUDA_ARCH__)
+
+  // Specialization for Cuda where Length / WarpDim == 1.  Store the vector
+  // components in register space since Cuda may store them in global memory
+  // (especially in the dynamically sized case).
+  template <typename Scalar, typename Ordinal,
+            unsigned Length, unsigned Size, unsigned WarpDim>
+  class TinyVec< Kokkos::Cuda,Scalar,Ordinal,Length,Size,WarpDim,
+                 typename std::enable_if<Length/WarpDim == 1>::type >
+  {
+  public:
+
+    typedef Kokkos::Cuda exec_space;
+    typedef Scalar scalar_type;
+    typedef Ordinal ordinal_type;
+
+    static const ordinal_type len = 1; // = Length/WarpDim
+    Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpDim> sz;
+    scalar_type v0;
+
+    __device__ inline
+    TinyVec() = default;
+
+    __device__ inline
+    TinyVec(const ordinal_type size, const scalar_type x)
+      : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
+    {
+      v0 = x;
+    }
+
+    __device__ inline
+    ~TinyVec() = default;
+
+    __device__ inline
+    TinyVec(const TinyVec&) = default;
+
+    __device__ inline
+    TinyVec& operator=(const TinyVec&) = default;
+
+    __device__ inline
+    void broadcast(const scalar_type x) {
+      v0 = x;
+    }
+
+    __device__ inline
+    void load(const scalar_type* x) {
+      if (sz.value > 0) v0 = x[threadIdx.x];
+    }
+
+    __device__ inline
+    void store_plus(scalar_type* x) const {
+      if (sz.value > 0) x[threadIdx.x] += v0;
+    }
+
+    __device__ inline
+    void atomic_store_plus(volatile scalar_type* x) const {
+      if (sz.value > 0) Kokkos::atomic_add(x+threadIdx.x, v0);
+    }
+
+    __device__ inline
+    TinyVec& operator+=(const TinyVec& x) {
+      v0 += x.v0;
       return *this;
     }
 
-    KOKKOS_INLINE_FUNCTION
-    Scalar sum() const {
-      Scalar s(0.0);
-      for (ordinal_type i=0; i<sz; ++i)
-        s += v[i];
-#ifdef __CUDA_ARCH__
-      for (ordinal_type i=1; i<WarpDim; i*=2) {
-        s += Kokkos::shfl_down(s, i, WarpDim);
-      }
-      s = Kokkos::shfl(s, 0, WarpDim);
-#endif
-      return s;
+    __device__ inline
+    TinyVec& operator*=(const scalar_type x) {
+      v0 *= x;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator*=(const scalar_type* x) {
+      if (sz.value > 0) v0 *= x[threadIdx.x];
+      return *this;
     }
 
   };
 
+  // Specialization for Cuda where Length / WarpDim == 2.  Store the vector
+  // components in register space since Cuda may store them in global memory
+  // (especially in the dynamically sized case).
   template <typename Scalar, typename Ordinal,
-            unsigned Length, unsigned Size, unsigned WarpDim,
-            typename Tag>
-  KOKKOS_INLINE_FUNCTION
-  Genten::TinyVec<Scalar,Ordinal,Length,Size,WarpDim,Tag>
-  abs(const Genten::TinyVec<Scalar,Ordinal,Length,Size,WarpDim,Tag>& x)
+            unsigned Length, unsigned Size, unsigned WarpDim>
+  class TinyVec< Kokkos::Cuda,Scalar,Ordinal,Length,Size,WarpDim,
+                 typename std::enable_if<Length/WarpDim == 2>::type >
   {
-    using std::abs;
-    Genten::TinyVec<Scalar,Ordinal,Length,Size,WarpDim,Tag> y(x.sz);
-    for (Ordinal i=0; i<x.sz; ++i)
-      y.v[i] = abs(x.v[i]);
-    return y;
-  }
+  public:
+
+    typedef Kokkos::Cuda exec_space;
+    typedef Scalar scalar_type;
+    typedef Ordinal ordinal_type;
+
+    static const ordinal_type len = 2;  // = Length/WarpDim
+    Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpDim> sz;
+    scalar_type v0, v1;
+
+    __device__ inline
+    TinyVec() = default;
+
+    __device__ inline
+    TinyVec(const ordinal_type size, const scalar_type x)
+
+      : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
+    {
+      v0 = v1 = x;
+    }
+
+    __device__ inline
+    ~TinyVec() = default;
+
+    __device__ inline
+    TinyVec(const TinyVec&) = default;
+
+    __device__ inline
+    TinyVec& operator=(const TinyVec&) = default;
+
+    __device__ inline
+    void broadcast(const scalar_type x) {
+      v0 = v1 = x;
+    }
+
+    __device__ inline
+    void load(const scalar_type* x) {
+      if (sz.value > 0) v0 = x[threadIdx.x];
+      if (sz.value > 1) v1 = x[WarpDim + threadIdx.x];
+    }
+
+    __device__ inline
+    void store_plus(scalar_type* x) const {
+      if (sz.value > 0) x[threadIdx.x] += v0;
+      if (sz.value > 1) x[WarpDim + threadIdx.x] += v1;
+    }
+
+    __device__ inline
+    void atomic_store_plus(volatile scalar_type* x) const {
+      if (sz.value > 0) Kokkos::atomic_add(x+threadIdx.x, v0);
+      if (sz.value > 1) Kokkos::atomic_add(x+WarpDim+threadIdx.x, v1);
+    }
+
+    __device__ inline
+    TinyVec& operator+=(const TinyVec& x) {
+      v0 += x.v0;
+      v1 += x.v1;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator*=(const scalar_type x) {
+      v0 *= x;
+      v1 *= x;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator*=(const scalar_type* x) {
+      if (sz.value > 0) v0 *= x[threadIdx.x];
+      if (sz.value > 1) v1 *= x[WarpDim + threadIdx.x];
+      return *this;
+    }
+
+  };
+
+  // Specialization for Cuda where Length / WarpDim == 3.  Store the vector
+  // components in register space since Cuda may store them in global memory
+  // (especially in the dynamically sized case).
+  template <typename Scalar, typename Ordinal,
+            unsigned Length, unsigned Size, unsigned WarpDim>
+  class TinyVec< Kokkos::Cuda,Scalar,Ordinal,Length,Size,WarpDim,
+                 typename std::enable_if<Length/WarpDim == 3>::type >
+  {
+  public:
+
+    typedef Kokkos::Cuda exec_space;
+    typedef Scalar scalar_type;
+    typedef Ordinal ordinal_type;
+
+    static const ordinal_type len = 3;  // = Length/WarpDim
+    Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpDim> sz;
+    scalar_type v0, v1, v2;
+
+    __device__ inline
+    TinyVec() = default;
+
+    __device__ inline
+    TinyVec(const ordinal_type size, const scalar_type x)
+
+      : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
+    {
+      v0 = v1 = v2 = x;
+    }
+
+    __device__ inline
+    ~TinyVec() = default;
+
+    __device__ inline
+    TinyVec(const TinyVec&) = default;
+
+    __device__ inline
+    TinyVec& operator=(const TinyVec&) = default;
+
+    __device__ inline
+    void broadcast(const scalar_type x) {
+      v0 = v1 = v2 = x;
+    }
+
+    __device__ inline
+    void load(const scalar_type* x) {
+      if (sz.value > 0) v0 = x[threadIdx.x];
+      if (sz.value > 1) v1 = x[WarpDim + threadIdx.x];
+      if (sz.value > 2) v2 = x[2*WarpDim + threadIdx.x];
+    }
+
+    __device__ inline
+    void store_plus(scalar_type* x) const {
+      if (sz.value > 0) x[threadIdx.x] += v0;
+      if (sz.value > 1) x[WarpDim + threadIdx.x] += v1;
+      if (sz.value > 2) x[2*WarpDim + threadIdx.x] += v2;
+    }
+
+    __device__ inline
+    void atomic_store_plus(volatile scalar_type* x) const {
+      if (sz.value > 0) Kokkos::atomic_add(x+threadIdx.x, v0);
+      if (sz.value > 1) Kokkos::atomic_add(x+WarpDim+threadIdx.x, v1);
+      if (sz.value > 2) Kokkos::atomic_add(x+2*WarpDim+threadIdx.x, v2);
+    }
+
+    __device__ inline
+    TinyVec& operator+=(const TinyVec& x) {
+      v0 += x.v0;
+      v1 += x.v1;
+      v2 += x.v2;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator*=(const scalar_type x) {
+      v0 *= x;
+      v1 *= x;
+      v2 *= x;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator*=(const scalar_type* x) {
+      if (sz.value > 0) v0 *= x[threadIdx.x];
+      if (sz.value > 1) v1 *= x[WarpDim + threadIdx.x];
+      if (sz.value > 2) v2 *= x[2*WarpDim + threadIdx.x];
+      return *this;
+    }
+
+  };
+
+  // Specialization for Cuda where Length / WarpDim == 4.  Store the vector
+  // components in register space since Cuda may store them in global memory
+  // (especially in the dynamically sized case).
+  template <typename Scalar, typename Ordinal,
+            unsigned Length, unsigned Size, unsigned WarpDim>
+  class TinyVec< Kokkos::Cuda,Scalar,Ordinal,Length,Size,WarpDim,
+                 typename std::enable_if<Length/WarpDim == 4>::type >
+  {
+  public:
+
+    typedef Kokkos::Cuda exec_space;
+    typedef Scalar scalar_type;
+    typedef Ordinal ordinal_type;
+
+    static const ordinal_type len = 4;  // = Length/WarpDim
+    Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpDim> sz;
+    scalar_type v0, v1, v2, v3;
+
+    __device__ inline
+    TinyVec() = default;
+
+    __device__ inline
+    TinyVec(const ordinal_type size, const scalar_type x)
+
+      : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
+    {
+      v0 = v1 = v2 = v3 = x;
+    }
+
+    __device__ inline
+    ~TinyVec() = default;
+
+    __device__ inline
+    TinyVec(const TinyVec&) = default;
+
+    __device__ inline
+    TinyVec& operator=(const TinyVec&) = default;
+
+    __device__ inline
+    void broadcast(const scalar_type x) {
+      v0 = v1 = v2 = v3 = x;
+    }
+
+    __device__ inline
+    void load(const scalar_type* x) {
+      if (sz.value > 0) v0 = x[threadIdx.x];
+      if (sz.value > 1) v1 = x[WarpDim + threadIdx.x];
+      if (sz.value > 2) v2 = x[2*WarpDim + threadIdx.x];
+      if (sz.value > 3) v3 = x[3*WarpDim + threadIdx.x];
+    }
+
+    __device__ inline
+    void store_plus(scalar_type* x) const {
+      if (sz.value > 0) x[threadIdx.x] += v0;
+      if (sz.value > 1) x[WarpDim + threadIdx.x] += v1;
+      if (sz.value > 2) x[2*WarpDim + threadIdx.x] += v2;
+      if (sz.value > 3) x[3*WarpDim + threadIdx.x] += v3;
+    }
+
+    __device__ inline
+    void atomic_store_plus(volatile scalar_type* x) const {
+      if (sz.value > 0) Kokkos::atomic_add(x+threadIdx.x, v0);
+      if (sz.value > 1) Kokkos::atomic_add(x+WarpDim+threadIdx.x, v1);
+      if (sz.value > 2) Kokkos::atomic_add(x+2*WarpDim+threadIdx.x, v2);
+      if (sz.value > 3) Kokkos::atomic_add(x+3*WarpDim+threadIdx.x, v3);
+    }
+
+    __device__ inline
+    TinyVec& operator+=(const TinyVec& x) {
+      v0 += x.v0;
+      v1 += x.v1;
+      v2 += x.v2;
+      v3 += x.v3;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator*=(const scalar_type x) {
+      v0 *= x;
+      v1 *= x;
+      v2 *= x;
+      v3 *= x;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator*=(const scalar_type* x) {
+      if (sz.value > 0) v0 *= x[threadIdx.x];
+      if (sz.value > 1) v1 *= x[WarpDim + threadIdx.x];
+      if (sz.value > 2) v2 *= x[2*WarpDim + threadIdx.x];
+      if (sz.value > 3) v3 *= x[3*WarpDim + threadIdx.x];
+      return *this;
+    }
+
+  };
+
+#endif
+
 }
 
 namespace Kokkos {
 
-  template <typename Scalar, typename Ordinal,
+  template <typename ExecSpace, typename Scalar, typename Ordinal,
             unsigned Length, unsigned Size, unsigned WarpDim,
-            typename Tag>
+            typename Enabled>
   KOKKOS_INLINE_FUNCTION
   void atomic_add(
     volatile Scalar* x,
-    const Genten::TinyVec<Scalar,Ordinal,Length,Size,WarpDim,Tag>& tv)
+    const Genten::TinyVec<ExecSpace,Scalar,Ordinal,Length,Size,WarpDim,Enabled>& tv)
   {
-#ifdef __CUDA_ARCH__
-    for (Ordinal i=0; i<tv.sz; ++i)
-      atomic_add(x+i*WarpDim+threadIdx.x, tv.v[i]);
-#else
-    for (Ordinal i=0; i<tv.sz; ++i)
-      atomic_add(x+i, tv.v[i]);
-#endif
+    tv.atomic_store_plus(x);
   }
 
-//   template <typename ExecSpace, typename Scalar, typename Ordinal,
-//             unsigned Length>
-//   KOKKOS_INLINE_FUNCTION
-//   void atomic_add(
-//     volatile Scalar* x,
-//     const Genten::TinyVec<ExecSpace,Scalar,Ordinal,Length,Length,Length>& tv)
-//   {
-// #ifdef __CUDA_ARCH__
-//     atomic_add(x+threadIdx.x, tv.v);
-// #else
-//     atomic_add(x, tv.v);
-// #endif
-//   }
-
-  template <typename Scalar, typename Ordinal,
-            unsigned Length, unsigned Size, unsigned WarpDim,
-            typename Tag>
-  struct reduction_identity< Genten::TinyVec<Scalar,Ordinal,Length,Size,WarpDim,Tag> >
-  {
-    typedef Genten::TinyVec<Scalar,Ordinal,Length,Size,WarpDim,Tag> scalar;
-    typedef reduction_identity<Scalar> ris;
-    KOKKOS_FORCEINLINE_FUNCTION static scalar sum()  {
-      scalar x(Length);
-      x.broadcast(0.0);
-      return x;
-    }
-    KOKKOS_FORCEINLINE_FUNCTION static scalar prod() {
-      scalar x(Length);
-      x.broadcast(1.0);
-      return x;
-    }
-    KOKKOS_FORCEINLINE_FUNCTION static scalar max()  {
-      scalar x(Length);
-      x.broadcast(ris::max());
-      return x;
-    }
-    KOKKOS_FORCEINLINE_FUNCTION static scalar min()  {
-      scalar x(Length);
-      x.broadcast(ris::min());
-      return x;
-    }
-  };
-
 }
-
-#if 0 && defined(__AVX__)
-
-#if 1
-
-namespace Genten {
-  template <typename ExecSpace, typename Ordinal>
-  class TinyVec<ExecSpace,double,Ordinal,16,16,true> {
-  public:
-
-    typedef Ordinal ordinal_type;
-    typedef double scalar_type;
-    typedef ExecSpace execution_space;
-
-    static const ordinal_type len = 16;
-    static const ordinal_type sz = 16;
-    static const ordinal_type vec_len = 4;
-    static const ordinal_type N = len / vec_len;
-    __m256d v[N];
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec() = default;
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec(const ordinal_type size) {}
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec(const ordinal_type size, const scalar_type x) {
-      for (ordinal_type i=0; i<N; ++i)
-        v[i] = _mm256_set1_pd(x);
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    ~TinyVec() = default;
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec(const TinyVec&) = default;
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator=(const TinyVec&) = default;
-
-    KOKKOS_INLINE_FUNCTION
-    void broadcast(const scalar_type x) {
-      for (ordinal_type i=0; i<N; ++i)
-        v[i] = _mm256_set1_pd(x);
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    void load(const scalar_type* x) {
-      for (ordinal_type i=0; i<N; ++i)
-        v[i] = _mm256_load_pd(x+i*vec_len);
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    void store(scalar_type* x) const {
-      for (ordinal_type i=0; i<N; ++i)
-        _mm256_store_pd(x+i*vec_len, v[i]);
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator+=(const scalar_type x) {
-      __m256d xv = _mm256_set1_pd(x);
-      for (ordinal_type i=0; i<N; ++i)
-        v[i] = _mm256_add_pd(v[i], xv);
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator-=(const scalar_type x) {
-      __m256d xv = _mm256_set1_pd(x);
-      for (ordinal_type i=0; i<N; ++i)
-        v[i] = _mm256_sub_pd(v[i], xv);
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator*=(const scalar_type x) {
-      __m256d xv = _mm256_set1_pd(x);
-      for (ordinal_type i=0; i<N; ++i)
-        v[i] = _mm256_mul_pd(v[i], xv);
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator/=(const scalar_type x) {
-      __m256d xv = _mm256_set1_pd(x);
-      for (ordinal_type i=0; i<N; ++i)
-        v[i] = _mm256_div_pd(v[i], xv);
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator+=(const TinyVec& x) {
-      for (ordinal_type i=0; i<N; ++i)
-        v[i] = _mm256_add_pd(v[i], x.v[i]);
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator-=(const TinyVec& x) {
-      for (ordinal_type i=0; i<N; ++i)
-        v[i] = _mm256_sub_pd(v[i], x.v[i]);
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator*=(const TinyVec& x) {
-      for (ordinal_type i=0; i<N; ++i)
-        v[i] = _mm256_mul_pd(v[i], x.v[i]);
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator/=(const TinyVec& x) {
-      for (ordinal_type i=0; i<N; ++i)
-        v[i] = _mm256_div_pd(v[i], x.v[i]);
-      return *this;
-    }
-
-  };
-}
-
-namespace Kokkos {
-  template <typename ExecSpace, typename Ordinal>
-  KOKKOS_INLINE_FUNCTION
-  void atomic_add(
-    volatile double* x,
-    const Genten::TinyVec<ExecSpace,double,Ordinal,16,16>& tv)
-  {
-    for (Ordinal i=0; i<tv.N; ++i)
-      for (Ordinal j=0; j<tv.vec_len; ++j)
-        atomic_add(x+i*tv.vec_len+j, tv.v[i][j]);
-  }
-}
-
-#else
-
-namespace Genten {
-  template <typename ExecSpace, typename Ordinal>
-  class TinyVec<ExecSpace,double,Ordinal,16,16,true> {
-  public:
-
-    typedef Ordinal ordinal_type;
-    typedef double scalar_type;
-    typedef ExecSpace execution_space;
-
-    static const ordinal_type len = 16;
-    static const ordinal_type sz = 16;
-    __m256d v1, v2, v3, v4;
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec() = default;
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec(const ordinal_type size) {}
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec(const ordinal_type size, const scalar_type x) {
-      v1 = _mm256_set1_pd(x);
-      v2 = _mm256_set1_pd(x);
-      v3 = _mm256_set1_pd(x);
-      v4 = _mm256_set1_pd(x);
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    ~TinyVec() = default;
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec(const TinyVec&) = default;
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator=(const TinyVec&) = default;
-
-    KOKKOS_INLINE_FUNCTION
-    void broadcast(const scalar_type x) {
-      v1 = _mm256_set1_pd(x);
-      v2 = _mm256_set1_pd(x);
-      v3 = _mm256_set1_pd(x);
-      v4 = _mm256_set1_pd(x);
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    void load(const scalar_type* x) {
-      v1 = _mm256_load_pd(x);
-      v2 = _mm256_load_pd(x+4);
-      v3 = _mm256_load_pd(x+8);
-      v4 = _mm256_load_pd(x+12);
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    void store(scalar_type* x) const {
-      _mm256_store_pd(x, v1);
-      _mm256_store_pd(x+4, v2);
-      _mm256_store_pd(x+8, v3);
-      _mm256_store_pd(x+12, v4);
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator+=(const scalar_type x) {
-      __m256d xv = _mm256_set1_pd(x);
-      v1 = _mm256_add_pd(v1, xv);
-      v2 = _mm256_add_pd(v2, xv);
-      v3 = _mm256_add_pd(v3, xv);
-      v4 = _mm256_add_pd(v4, xv);
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator-=(const scalar_type x) {
-      __m256d xv = _mm256_set1_pd(x);
-      v1 = _mm256_sub_pd(v1, xv);
-      v2 = _mm256_sub_pd(v2, xv);
-      v3 = _mm256_sub_pd(v3, xv);
-      v4 = _mm256_sub_pd(v4, xv);
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator*=(const scalar_type x) {
-      __m256d xv = _mm256_set1_pd(x);
-      v1 = _mm256_mul_pd(v1, xv);
-      v2 = _mm256_mul_pd(v2, xv);
-      v3 = _mm256_mul_pd(v3, xv);
-      v4 = _mm256_mul_pd(v4, xv);
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator/=(const scalar_type x) {
-      __m256d xv = _mm256_set1_pd(x);
-      v1 = _mm256_div_pd(v1, xv);
-      v2 = _mm256_div_pd(v2, xv);
-      v3 = _mm256_div_pd(v3, xv);
-      v4 = _mm256_div_pd(v4, xv);
-      return *this;
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator+=(const TinyVec& x) {
-      v1 = _mm256_add_pd(v1, x.v1);
-      v2 = _mm256_add_pd(v2, x.v2);
-      v3 = _mm256_add_pd(v3, x.v3);
-      v4 = _mm256_add_pd(v4, x.v4);
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator-=(const TinyVec& x) {
-      v1 = _mm256_sub_pd(v1, x.v1);
-      v2 = _mm256_sub_pd(v2, x.v2);
-      v3 = _mm256_sub_pd(v3, x.v3);
-      v4 = _mm256_sub_pd(v4, x.v4);
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator*=(const TinyVec& x) {
-      v1 = _mm256_mul_pd(v1, x.v1);
-      v2 = _mm256_mul_pd(v2, x.v2);
-      v3 = _mm256_mul_pd(v3, x.v3);
-      v4 = _mm256_mul_pd(v4, x.v4);
-    }
-
-    KOKKOS_INLINE_FUNCTION
-    TinyVec& operator/=(const TinyVec& x) {
-      v1 = _mm256_div_pd(v1, x.v1);
-      v2 = _mm256_div_pd(v2, x.v2);
-      v3 = _mm256_div_pd(v3, x.v3);
-      v4 = _mm256_div_pd(v4, x.v4);
-    }
-
-  };
-}
-
-namespace Kokkos {
-  template <typename ExecSpace, typename Ordinal>
-  void atomic_add(
-    volatile double* x,
-    const Genten::TinyVec<ExecSpace,double,Ordinal,16,16>& tv)
-  {
-    for (Ordinal i=0; i<4; ++i)
-      atomic_add(x+i, tv.v1[i]);
-    for (Ordinal i=0; i<4; ++i)
-      atomic_add(x+i+4, tv.v2[i]);
-    for (Ordinal i=0; i<4; ++i)
-      atomic_add(x+i+8, tv.v3[i]);
-    for (Ordinal i=0; i<4; ++i)
-      atomic_add(x+i+12, tv.v4[i]);
-  }
-}
-#endif
-
-#endif

@@ -61,6 +61,7 @@
 
 #define USE_NEW_MTTKRP 1
 #define USE_NEW_MTTKRP_PERM 1
+#define USE_NEW_MTTKRP_PERM_SCHEDULE 1
 #define USE_NEW_IP 1
 
 
@@ -995,12 +996,12 @@ struct MTTKRP_PermKernelBlock {
   typedef Kokkos::TeamPolicy <ExecSpace> Policy;
   typedef typename Policy::member_type TeamMember;
 
-  const Genten::SptensorT_perm<ExecSpace>& X;
-  const Genten::KtensorT<ExecSpace>& u;
+  const Genten::SptensorT_perm<ExecSpace> X;
+  const Genten::KtensorT<ExecSpace> u;
   const unsigned n;
   const unsigned nd;
   const ttb_indx nnz;
-  const Genten::FacMatrixT<ExecSpace>& v;
+  const Genten::FacMatrixT<ExecSpace> v;
   const ttb_indx i_block;
 
   static inline Policy policy(const ttb_indx nnz_) {
@@ -1017,11 +1018,12 @@ struct MTTKRP_PermKernelBlock {
                          const Genten::FacMatrixT<ExecSpace>& v_,
                          const TeamMember& team) :
     X(X_), u(u_), n(n_), nd(u.ndims()), nnz(X.nnz()), v(v_),
-    i_block(team.league_rank()*RowBlockSize*TeamSize + RowBlockSize*team.team_rank()) {}
+    i_block(team.league_rank()*RowBlockSize*TeamSize + RowBlockSize*team.team_rank())
+    {}
 
   template <ttb_indx Nj>
   KOKKOS_INLINE_FUNCTION
-  void run(const unsigned j, const unsigned nj) {
+  void run(const unsigned j, const unsigned nj) const {
     const ttb_indx invalid_row = ttb_indx(-1);
 
     ttb_indx row_prev = invalid_row;
@@ -1030,7 +1032,7 @@ struct MTTKRP_PermKernelBlock {
     ttb_indx p = invalid_row;
     ttb_real x_val = 0.0;
 
-    typedef Genten::TinyVec<ttb_real, unsigned, FacBlockSize, Nj, VectorSize> TV;
+    typedef Genten::TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj, VectorSize> TV;
     TV val(nj, 0.0), tmp(nj, 0.0);
 
     const ttb_real* lambda = &u.weights(0);
@@ -1070,6 +1072,9 @@ struct MTTKRP_PermKernelBlock {
           if (m != n) {
             // Update tmp array with elementwise product of row i
             // from the m-th factor matrix.
+            // Note:  Doing this load through texture cache on the GPU
+            // could help performance.  However we would have to get rid
+            // of pointer to use the MemoryRandomAccess memory trait.
             const ttb_real *rowptr = &(u[m].entry(X.subscript(p,m),j));
             tmp *= rowptr;
           }
@@ -1111,6 +1116,68 @@ void mttkrp_perm_kernel(const Genten::SptensorT_perm<ExecSpace>& X,
   typedef MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, FacBlockSize, TeamSize, VectorSize> Kernel;
   typedef typename Kernel::TeamMember TeamMember;
 
+#if USE_NEW_MTTKRP_PERM_SCHEDULE
+
+  const unsigned nc = u.ncomponents();
+  if (nc > VS3) {
+    Kokkos::parallel_for(Kernel::policy(X.nnz()),
+                         KOKKOS_LAMBDA(TeamMember team)
+    {
+      MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, VS4, TeamSize, VectorSize> kernel(X, u, n, v, team);
+      for (unsigned j=0; j<nc; j+=VS4) {
+        if (j+VS4 <= nc)
+          kernel.template run<VS4>(j, VS4);
+        else
+          kernel.template run<0>(j, nc-j);
+      }
+
+    }, "Genten::mttkrp_perm_kernel");
+  }
+  else if (nc > VS2) {
+    Kokkos::parallel_for(Kernel::policy(X.nnz()),
+                         KOKKOS_LAMBDA(TeamMember team)
+    {
+      MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, VS3, TeamSize, VectorSize> kernel(X, u, n, v, team);
+      for (unsigned j=0; j<nc; j+=VS3) {
+        if (j+VS3 <= nc)
+          kernel.template run<VS3>(j, VS3);
+        else
+          kernel.template run<0>(j, nc-j);
+      }
+
+    }, "Genten::mttkrp_perm_kernel");
+  }
+  else if (nc > VS1) {
+    Kokkos::parallel_for(Kernel::policy(X.nnz()),
+                         KOKKOS_LAMBDA(TeamMember team)
+    {
+      MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, VS2, TeamSize, VectorSize> kernel(X, u, n, v, team);
+      for (unsigned j=0; j<nc; j+=VS2) {
+        if (j+VS2 <= nc)
+          kernel.template run<VS2>(j, VS2);
+        else
+          kernel.template run<0>(j, nc-j);
+      }
+
+    }, "Genten::mttkrp_perm_kernel");
+  }
+  else {
+    Kokkos::parallel_for(Kernel::policy(X.nnz()),
+                         KOKKOS_LAMBDA(TeamMember team)
+    {
+      MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, VS1, TeamSize, VectorSize> kernel(X, u, n, v, team);
+      for (unsigned j=0; j<nc; j+=VS1) {
+        if (j+VS1 <= nc)
+          kernel.template run<VS1>(j, VS1);
+        else
+          kernel.template run<0>(j, nc-j);
+      }
+
+    }, "Genten::mttkrp_perm_kernel");
+  }
+
+#else
+
   Kokkos::parallel_for(Kernel::policy(X.nnz()),
                        KOKKOS_LAMBDA(TeamMember team)
   {
@@ -1146,6 +1213,9 @@ void mttkrp_perm_kernel(const Genten::SptensorT_perm<ExecSpace>& X,
     }
 
   }, "Genten::mttkrp_perm_kernel");
+
+#endif
+
 }
 
 template <typename ExecSpace>
