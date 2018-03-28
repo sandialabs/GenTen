@@ -59,6 +59,91 @@
 #include <caliper/cali.h>
 #endif
 
+#define USE_SCATTER_VIEW 0
+
+#if USE_SCATTER_VIEW
+// This is a locally-modified version of Kokkos_ScatterView.hpp which we
+// need until the changes are moved into Kokkos
+#include "Genten_Kokkos_ScatterView.hpp"
+
+namespace Kokkos {
+namespace Impl {
+namespace Experimental {
+// Specialization of ReduceDuplicates for rank-2, LayoutRight dst views:
+//   * allows vectorization over 2nd dimension
+//   * works for padded dst views
+// Requires the locally modified ScatterView header included above.
+template <typename SrcViewType, typename DstViewType>
+struct ReduceDuplicates<
+  SrcViewType,
+  DstViewType,
+  Kokkos::Experimental::ScatterSum,
+  typename std::enable_if<
+    unsigned(SrcViewType::rank) == 3 &&
+    unsigned(DstViewType::rank) == 2 &&
+    std::is_same< typename SrcViewType::array_layout, LayoutRight >::value &&
+    std::is_same< typename DstViewType::array_layout, LayoutRight >::value
+  >::type >
+{
+  ReduceDuplicates(const SrcViewType& src,
+                   const DstViewType& dst,
+                   const size_t stride_in,
+                   const size_t start,
+                   const size_t n_in,
+                   const std::string& name)
+  {
+    run(src,dst,stride_in,start,n_in,name);
+  }
+
+  void run(const SrcViewType& src,
+           const DstViewType& dst,
+           const size_t stride_in,
+           const size_t start,
+           const size_t n_in,
+           const std::string& name)
+  {
+    typedef typename DstViewType::value_type ValueType;
+    typedef typename DstViewType::execution_space ExecSpace;
+    typedef TeamPolicy<ExecSpace, size_t> policy_type;
+    typedef typename policy_type::member_type member_type;
+
+#if defined(KOKKOS_HAVE_CUDA)
+  const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
+#else
+  const bool is_cuda = false;
+#endif
+
+    const size_t n0 = src.dimension_0();
+    const size_t n1 = src.dimension_1();
+    const size_t n2 = src.dimension_2();
+
+    const size_t vector_size = is_cuda ? 16 : 1;
+    const size_t team_size = is_cuda ? 256/vector_size : 1;
+    const size_t row_block_size = 128;
+    const size_t N1 = (n1+row_block_size-1) / row_block_size;
+    policy_type policy(N1,team_size,vector_size);
+    Kokkos::parallel_for( policy, KOKKOS_LAMBDA(const member_type& team)
+    {
+      for (size_t ii=team.team_rank(); ii<row_block_size; ii+=team_size) {
+        const size_t i = team.league_rank()*row_block_size + ii;
+        if (i < n1) {
+          ValueType* dst_i = &dst(i,0);
+          for (size_t k=start; k<n0; ++k) {
+            const ValueType* src_ki = &src(k,i,0);
+            Kokkos::parallel_for(Kokkos::ThreadVectorRange(team, n2),
+                                 [&] (const size_t j)
+            {
+              dst_i[j] += src_ki[j];
+            });
+          }
+        }
+      }
+    }, "reduce_"+name );
+  }
+};
+} } }
+#endif
+
 //-----------------------------------------------------------------------------
 //  Method:  innerprod, Sptensor and Ktensor with alternate weights
 //-----------------------------------------------------------------------------
@@ -331,6 +416,168 @@ ttb_real Genten::innerprod(const Genten::SptensorT<ExecSpace>& s,
 //  Method:  mttkrp, Sptensor X, output to FacMatrix
 //-----------------------------------------------------------------------------
 
+#if USE_SCATTER_VIEW
+
+namespace Genten {
+namespace Impl {
+
+template <typename ExecSpace, unsigned FacBlockSize,
+          unsigned TeamSize, unsigned VectorSize, typename ViewType>
+struct MTTKRP_KernelBlock {
+  typedef Kokkos::TeamPolicy <ExecSpace> Policy;
+  typedef typename Policy::member_type TeamMember;
+  typedef Kokkos::View< ttb_real**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+  const Genten::SptensorT<ExecSpace>& X;
+  const Genten::KtensorT<ExecSpace>& u;
+  const unsigned n;
+  const unsigned nd;
+  const ViewType& v;
+  const ttb_indx i;
+
+  const TeamMember& team;
+  const unsigned team_index;
+  TmpScratchSpace tmp;
+
+  const ttb_indx k;
+  const ttb_real x_val;
+  const ttb_real* lambda;
+
+  static inline Policy policy(const ttb_indx nnz_) {
+    const ttb_indx N = (nnz_+TeamSize-1)/TeamSize;
+    Policy policy(N,TeamSize,VectorSize);
+    size_t bytes = TmpScratchSpace::shmem_size(TeamSize,FacBlockSize);
+    return policy.set_scratch_size(0,Kokkos::PerTeam(bytes));
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  MTTKRP_KernelBlock(const Genten::SptensorT<ExecSpace>& X_,
+                     const Genten::KtensorT<ExecSpace>& u_,
+                     const unsigned n_,
+                     const ViewType& v_,
+                     const ttb_indx i_,
+                     const TeamMember& team_) :
+    X(X_), u(u_), n(n_), nd(u.ndims()), v(v_), i(i_),
+    team(team_), team_index(team.team_rank()),
+    tmp(team.team_scratch(0), TeamSize, FacBlockSize),
+    k(X.subscript(i,n)), x_val(X.value(i)),
+    lambda(&u.weights(0))
+    {}
+
+  template <unsigned Nj>
+  KOKKOS_INLINE_FUNCTION
+  void run(const unsigned j, const unsigned nj_)
+  {
+     // nj.value == Nj_ if Nj_ > 0 and nj_ otherwise
+    Kokkos::Impl::integral_nonzero_constant<unsigned, Nj> nj(nj_);
+
+    const ttb_real *l = &lambda[j];
+    auto sv = v.access();
+
+    // Start tmp equal to the weights.
+    Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,unsigned(nj.value)),
+                         [&] (const unsigned& jj)
+    {
+      tmp(team_index,jj) = x_val * l[jj];
+    });
+
+    for (unsigned m=0; m<nd; ++m) {
+      if (m != n) {
+        // Update tmp array with elementwise product of row i
+        // from the m-th factor matrix.  Length of the row is nc.
+        const ttb_real *row = &(u[m].entry(X.subscript(i,m),j));
+        Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,unsigned(nj.value)),
+                             [&] (const unsigned& jj)
+        {
+          tmp(team_index,jj) *= row[jj];
+        });
+      }
+    }
+
+    // Update output by adding tmp array.
+    Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,unsigned(nj.value)),
+                         [&] (const unsigned& jj)
+    {
+      sv(k,j+jj) += tmp(team_index,jj);
+    });
+  }
+};
+
+template <typename ExecSpace, unsigned FacBlockSize>
+void mttkrp_kernel(const Genten::SptensorT<ExecSpace>& X,
+                   const Genten::KtensorT<ExecSpace>& u,
+                   const ttb_indx n,
+                   const Genten::FacMatrixT<ExecSpace>& v)
+{
+  // Compute team and vector sizes, depending on the architecture
+#if defined(KOKKOS_HAVE_CUDA)
+  const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
+#else
+  const bool is_cuda = false;
+#endif
+// #if defined(KOKKOS_HAVE_SERIAL)
+//   const bool is_serial = std::is_same<ExecSpace,Kokkos::Serial>::value;
+// #else
+//   const bool is_serial = false;
+// #endif
+  const unsigned VectorSize = is_cuda ? (FacBlockSize <= 16 ? FacBlockSize : 16) : 1;
+  const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+
+  const unsigned nc = u.ncomponents();
+  const ttb_indx nnz = X.nnz();
+
+  using Kokkos::Experimental::create_scatter_view;
+  /*
+  using Kokkos::Experimental::ScatterSum;
+  using Kokkos::Experimental::ScatterDuplicated;
+  using Kokkos::Experimental::ScatterNonDuplicated;
+  using Kokkos::Experimental::ScatterAtomic;
+  using Kokkos::Experimental::ScatterNonAtomic;
+
+  const int dupl =
+    is_serial ? ScatterNonDuplicated : ScatterDuplicated;
+  const int cont = ScatterNonAtomic ;
+
+  auto vv = v.view();
+  auto sv = create_scatter_view<ScatterSum,dupl,cont>(vv);
+  */
+
+  auto vv = v.view();
+  auto sv = create_scatter_view(vv);
+
+  typedef decltype(sv) ScatterViewType;
+
+  typedef MTTKRP_KernelBlock<ExecSpace, FacBlockSize, TeamSize, VectorSize, ScatterViewType> Kernel;
+  typedef typename Kernel::TeamMember TeamMember;
+
+  Kokkos::parallel_for(Kernel::policy(nnz),
+                       KOKKOS_LAMBDA(TeamMember team)
+  {
+    const ttb_indx i = team.league_rank()*team.team_size()+team.team_rank();
+    if (i >= nnz)
+      return;
+
+    MTTKRP_KernelBlock<ExecSpace, FacBlockSize, TeamSize, VectorSize,ScatterViewType> kernel(X, u, n, sv, i, team);
+
+    for (unsigned j=0; j<nc; j+=FacBlockSize) {
+      if (j+FacBlockSize <= nc)
+        kernel.template run<FacBlockSize>(j, FacBlockSize);
+      else
+        kernel.template run<0>(j, nc-j);
+    }
+
+  }, "Genten::mttkrp_kernel");
+
+  Kokkos::Experimental::contribute(vv, sv);
+
+  return;
+}
+
+}
+}
+
+#else
+
 namespace Genten {
 namespace Impl {
 
@@ -460,6 +707,8 @@ void mttkrp_kernel(const Genten::SptensorT<ExecSpace>& X,
 
 }
 }
+
+#endif
 
 template <typename ExecSpace>
 void Genten::mttkrp(const Genten::SptensorT<ExecSpace>& X,
