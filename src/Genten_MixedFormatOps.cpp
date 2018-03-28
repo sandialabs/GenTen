@@ -61,9 +61,7 @@
 
 #define USE_NEW_MTTKRP 1
 #define USE_NEW_MTTKRP_PERM 1
-#define USE_NEW_MTTKRP_PERM_SCHEDULE 1
 #define USE_NEW_IP 1
-
 
 //-----------------------------------------------------------------------------
 //  Method:  innerprod, Sptensor and Ktensor with alternate weights
@@ -1116,8 +1114,6 @@ void mttkrp_perm_kernel(const Genten::SptensorT_perm<ExecSpace>& X,
   typedef MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, FacBlockSize, TeamSize, VectorSize> Kernel;
   typedef typename Kernel::TeamMember TeamMember;
 
-#if USE_NEW_MTTKRP_PERM_SCHEDULE
-
   const unsigned nc = u.ncomponents();
   if (nc > VS3) {
     Kokkos::parallel_for(Kernel::policy(X.nnz()),
@@ -1175,46 +1171,6 @@ void mttkrp_perm_kernel(const Genten::SptensorT_perm<ExecSpace>& X,
 
     }, "Genten::mttkrp_perm_kernel");
   }
-
-#else
-
-  Kokkos::parallel_for(Kernel::policy(X.nnz()),
-                       KOKKOS_LAMBDA(TeamMember team)
-  {
-    unsigned nc = u.ncomponents();
-    unsigned j = 0;
-    while (nc >= VS4) {
-      MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, VS4, TeamSize, VectorSize> kernel(X, u, n, v, team);
-      kernel.template run<VS4>(j, VS4);
-      nc -= VS4;
-      j += VS4;
-    }
-    if (nc >= VS3) {
-      MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, VS3, TeamSize, VectorSize> kernel(X, u, n, v, team);
-      kernel.template run<VS3>(j, VS3);
-      nc -= VS3;
-      j += VS3;
-    }
-    if (nc >= VS2) {
-      MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, VS2, TeamSize, VectorSize> kernel(X, u, n, v, team);
-      kernel.template run<VS2>(j, VS2);
-      nc -= VS2;
-      j += VS2;
-    }
-    if (nc >= VS1) {
-      MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, VS1, TeamSize, VectorSize> kernel(X, u, n, v, team);
-      kernel.template run<VS1>(j, VS1);
-      nc -= VS1;
-      j += VS1;
-    }
-    if (nc > 0) {
-      MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, VS1, TeamSize, VectorSize> kernel(X, u, n, v, team);
-      kernel.template run<0>(j, nc);
-    }
-
-  }, "Genten::mttkrp_perm_kernel");
-
-#endif
 
 }
 
