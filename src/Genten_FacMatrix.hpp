@@ -369,6 +369,10 @@ public:
                    const ttb_indx         nRowOther,
                    const ttb_real         dScalar) const;
 
+    //! Compute inner product of two matrices with column weight array
+  ttb_real innerprod(const FacMatrixT& A,
+                     const ArrayT<ExecSpace>& lambda) const;
+
     /** @} */
 
     // Return pointer to the ith row

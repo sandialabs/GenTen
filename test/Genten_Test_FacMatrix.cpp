@@ -398,6 +398,30 @@ void Genten_Test_FacMatrix(int infolevel, const std::string & datadir)
   }
   ASSERT(tf,"Permute works as expected");
 
+  // innerprod
+  const ttb_indx m = 50;
+  const ttb_indx n = 20;
+  a = Genten::FacMatrix(m,n);
+  b = Genten::FacMatrix(m,n);
+  Genten::Array w(n);
+  ttb_real ip_true = 0.0;
+  for (ttb_indx i=0; i<m; ++i) {
+    for (ttb_indx j=0; j<n; ++j) {
+      a.entry(i,j) = i+j;
+      b.entry(i,j) = 10*(i+j);
+      w[j] = j+1;
+      ip_true += w[j]*a.entry(i,j) * b.entry(i,j);
+    }
+  }
+  a_dev = create_mirror_view( exec_space(), a );
+  b_dev = create_mirror_view( exec_space(), b );
+  Genten::ArrayT<exec_space> w_dev = create_mirror_view( exec_space(), w );
+  deep_copy( a_dev, a );
+  deep_copy( b_dev, b );
+  deep_copy( w_dev, w );
+  ttb_real ip = a_dev.innerprod(b_dev, w_dev);
+  ASSERT( EQ(ip, ip_true), "innerprod works as expected");
+
   // sum TODO
 
   finalize();

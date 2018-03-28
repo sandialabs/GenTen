@@ -194,6 +194,10 @@ namespace Genten {
     // Define a temporary matrix used in the loop.
     Genten::FacMatrixT<ExecSpace> tmpMat(nc,nc);
 
+    // Matrix to store the result of MTTKRP for the last mode
+    // (Used to compute <x,u> using the trick described by Smith & Karypis)
+    Genten::FacMatrixT<ExecSpace> un(u[nd-1].nRows(), nc);
+
     // Pre-calculate the Frobenius norm of the tensor x.
     ttb_real xNorm = x.norm();
 
@@ -239,6 +243,10 @@ namespace Genten {
         Genten::mttkrp (x, u, n);
         Kokkos::fence();
         timer.stop(timer_mttkrp);
+
+        // Save result of MTTKRP for the last mode for computing <x,u>
+        if (n == nd-1)
+          deep_copy(un, u[n]);
 
         // Compute the matrix of coefficients in the solve step.
         upsilon = 1;
@@ -296,9 +304,11 @@ namespace Genten {
       upsilon.times(tmpMat);
       ttb_real pNorm = sqrt(fabs(upsilon.sum()));
 
-      // Compute inner product of input data x with "p".
+      // Compute inner product of input data x with "p" using the identity
+      // <x,u> = <un,u[nd-1]> where un = mttkrp(x,u,nd-1)
       timer.start(timer_ip);
-      ttb_real xpip = innerprod (x, u, lambda);
+      //ttb_real xpip = innerprod (x, u, lambda);
+      ttb_real xpip = un.innerprod(u[nd-1], lambda);
       Kokkos::fence();
       timer.stop(timer_ip);
 

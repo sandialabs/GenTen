@@ -2121,5 +2121,169 @@ rowDScale(const ttb_indx         nRow,
   return;
 }
 
+namespace Genten {
+namespace Impl {
+
+template <typename ExecSpace, typename MatViewType, typename WeightViewType,
+          unsigned RowBlockSize, unsigned ColBlockSize,
+          unsigned TeamSize, unsigned VectorSize>
+struct MatInnerProdKernel {
+
+  typedef Kokkos::TeamPolicy<ExecSpace> Policy;
+  typedef typename Policy::member_type TeamMember;
+  typedef Kokkos::View< ttb_real**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+  const MatViewType& x;
+  const MatViewType& y;
+  const WeightViewType& w;
+
+  const TeamMember& team;
+  const unsigned team_index;
+  const unsigned team_size;
+  TmpScratchSpace tmp;
+  const unsigned m, n, i_block;
+
+  static inline Policy policy(const unsigned m) {
+    const ttb_indx M = (m+RowBlockSize-1)/RowBlockSize;
+    Policy policy(M,TeamSize,VectorSize);
+    size_t bytes = TmpScratchSpace::shmem_size(RowBlockSize,ColBlockSize);
+    return policy.set_scratch_size(0,Kokkos::PerTeam(bytes));
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  MatInnerProdKernel(const MatViewType& x_,
+                     const MatViewType& y_,
+                     const WeightViewType& w_,
+                     const TeamMember& team_) :
+    x(x_), y(y_), w(w_),
+    team(team_), team_index(team.team_rank()), team_size(team.team_size()),
+    tmp(team.team_scratch(0), RowBlockSize, ColBlockSize),
+    m(x.dimension_0()), n(x.dimension_1()),
+    i_block(team.league_rank()*RowBlockSize)
+    {}
+
+  template <unsigned Nj>
+  KOKKOS_INLINE_FUNCTION
+  void run(const unsigned j, const unsigned nj_, ttb_real& d)
+  {
+    // nj.value == Nj_ if Nj_ > 0 and nj_ otherwise
+    Kokkos::Impl::integral_nonzero_constant<unsigned, Nj> nj(nj_);
+
+    const ttb_real *ww = &w[j];
+
+    for (unsigned ii=team_index; ii<RowBlockSize; ii+=team_size) {
+      Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,unsigned(nj.value)),
+                           [&] (const unsigned& jj)
+      {
+        tmp(ii,jj) = 0.0;
+      });
+
+      const unsigned i = i_block + ii;
+      if (i < m) {
+        const ttb_real *xx = &x(i,j);
+        const ttb_real *yy = &y(i,j);
+        Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,unsigned(nj.value)),
+                             [&] (const unsigned& jj)
+        {
+          tmp(ii,jj) += ww[jj]*xx[jj]*yy[jj];
+        });
+      }
+    }
+
+    // Do the inner product with 3 levels of parallelism
+    ttb_real t = 0.0;
+    Kokkos::parallel_reduce(Kokkos::TeamThreadRange( team, RowBlockSize ),
+                            [&] ( const unsigned& k, ttb_real& t_outer )
+    {
+      ttb_real update_outer = 0.0;
+
+      Kokkos::parallel_reduce(Kokkos::ThreadVectorRange(team,unsigned(nj.value)),
+                              [&] (const unsigned& jj, ttb_real& t_inner)
+      {
+        t_inner += tmp(k,jj);
+      }, update_outer);
+
+      Kokkos::single( Kokkos::PerThread( team ), [&] ()
+      {
+        t_outer += update_outer;
+      });
+
+    }, t);
+
+    Kokkos::single( Kokkos::PerTeam( team ), [&] ()
+    {
+      d += t;
+    });
+  }
+};
+
+template <typename ExecSpace, unsigned ColBlockSize,
+          typename MatViewType, typename WeightViewType>
+ttb_real mat_innerprod_kernel(const MatViewType& x, const MatViewType& y,
+                              const WeightViewType& w)
+{
+  // Compute team and vector sizes, depending on the architecture
+#if defined(KOKKOS_HAVE_CUDA)
+  const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
+#else
+  const bool is_cuda = false;
+#endif
+  const unsigned VectorSize =
+    is_cuda ? (ColBlockSize <= 32 ? ColBlockSize : 32) : 1;
+  const unsigned TeamSize = is_cuda ? 256/VectorSize : 1;
+  const unsigned RowBlockSize = 128;
+  const unsigned m = x.dimension_0();
+  const unsigned n = x.dimension_1();
+
+  typedef MatInnerProdKernel<ExecSpace,MatViewType,WeightViewType,RowBlockSize,ColBlockSize,TeamSize,VectorSize> Kernel;
+  typedef typename Kernel::TeamMember TeamMember;
+
+  ttb_real dTotal = 0.0;
+  Kokkos::parallel_reduce("Genten::FacMatrix::innerprod_kernel",
+                          Kernel::policy(m),
+                          KOKKOS_LAMBDA(TeamMember team, ttb_real& d)
+  {
+    MatInnerProdKernel<ExecSpace,MatViewType,WeightViewType,RowBlockSize,ColBlockSize,TeamSize,VectorSize> kernel(x, y, w, team);
+    for (unsigned j_block=0; j_block<n; j_block+=ColBlockSize) {
+      if (j_block+ColBlockSize <= n)
+        kernel.template run<ColBlockSize>(j_block, ColBlockSize, d);
+      else
+        kernel.template run<0>(j_block, n-j_block, d);
+    }
+  }, dTotal);
+
+  return dTotal;
+}
+
+}
+}
+
+template <typename ExecSpace>
+ttb_real Genten::FacMatrixT<ExecSpace>::
+innerprod(const Genten::FacMatrixT<ExecSpace>& A,
+          const Genten::ArrayT<ExecSpace>& lambda) const
+{
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::FacMatrix::innerprod");
+#endif
+
+  const ttb_indx nc = data.dimension_1();
+  ttb_real ret = 0.0;
+  if (nc < 2)
+    ret = Impl::mat_innerprod_kernel<ExecSpace,1>(data, A.data, lambda.values());
+  else if (nc < 4)
+    ret = Impl::mat_innerprod_kernel<ExecSpace,2>(data, A.data, lambda.values());
+  else if (nc < 8)
+    ret = Impl::mat_innerprod_kernel<ExecSpace,4>(data, A.data, lambda.values());
+  else if (nc < 16)
+    ret = Impl::mat_innerprod_kernel<ExecSpace,8>(data, A.data, lambda.values());
+  else if (nc < 32)
+    ret = Impl::mat_innerprod_kernel<ExecSpace,16>(data, A.data, lambda.values());
+  else
+    ret = Impl::mat_innerprod_kernel<ExecSpace,32>(data, A.data, lambda.values());
+
+  return ret;
+}
+
 #define INST_MACRO(SPACE) template class Genten::FacMatrixT<SPACE>;
 GENTEN_INST(INST_MACRO)
