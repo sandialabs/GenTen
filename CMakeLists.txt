@@ -447,5 +447,5 @@ add_test(Genten_MTTKRP_random ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dim
 add_test(Genten_MTTKRP_random_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000 --tensor perm)
 add_test(Genten_MTTKRP_random_row ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000 --tensor row)
 add_test(Genten_MTTKRP_aminoacid ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt)
-add_test(Genten_MTTKRP_aminoacid_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt)
-add_test(Genten_MTTKRP_aminoacid_row ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt)
+add_test(Genten_MTTKRP_aminoacid_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --tensor perm)
+add_test(Genten_MTTKRP_aminoacid_row ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --tensor row)
