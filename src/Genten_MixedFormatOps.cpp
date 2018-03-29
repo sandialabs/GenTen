@@ -581,7 +581,7 @@ void mttkrp_kernel(const Genten::SptensorT<ExecSpace>& X,
 namespace Genten {
 namespace Impl {
 
-template <typename ExecSpace, unsigned FacBlockSize,
+template <typename ExecSpace, unsigned FacBlockSize, unsigned RowBlockSize,
           unsigned TeamSize, unsigned VectorSize>
 struct MTTKRP_KernelBlock {
   typedef Kokkos::TeamPolicy <ExecSpace> Policy;
@@ -604,7 +604,8 @@ struct MTTKRP_KernelBlock {
   const ttb_real* lambda;
 
   static inline Policy policy(const ttb_indx nnz_) {
-    const ttb_indx N = (nnz_+TeamSize-1)/TeamSize;
+    const unsigned RowsPerTeam = RowBlockSize*TeamSize;
+    const ttb_indx N = (nnz_+RowsPerTeam-1)/RowsPerTeam;
     Policy policy(N,TeamSize,VectorSize);
     size_t bytes = TmpScratchSpace::shmem_size(TeamSize,FacBlockSize);
     return policy.set_scratch_size(0,Kokkos::PerTeam(bytes));
@@ -677,27 +678,39 @@ void mttkrp_kernel(const Genten::SptensorT<ExecSpace>& X,
 #endif
   const unsigned VectorSize = is_cuda ? (FacBlockSize <= 16 ? FacBlockSize : 16) : 1;
   const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+  const unsigned RowBlockSize = is_cuda ? 128 : 1;
 
   const unsigned nc = u.ncomponents();
   const ttb_indx nnz = X.nnz();
 
-  typedef MTTKRP_KernelBlock<ExecSpace, FacBlockSize, TeamSize, VectorSize> Kernel;
+  typedef MTTKRP_KernelBlock<ExecSpace, FacBlockSize, RowBlockSize, TeamSize, VectorSize> Kernel;
   typedef typename Kernel::TeamMember TeamMember;
 
   Kokkos::parallel_for(Kernel::policy(nnz),
                        KOKKOS_LAMBDA(TeamMember team)
   {
-    const ttb_indx i = team.league_rank()*team.team_size()+team.team_rank();
-    if (i >= nnz)
-      return;
+    // Loop over tensor non-zeros with a large stride on the GPU to
+    // reduce atomic contention when the non-zeros are in a nearly sorted
+    // order (often the first dimension of the tensor).  This is only done
+    // on the GPU because RowBlockSize == 1 otherwise.  This is similar to
+    // an approach used in ParTi (https://github.com/hpcgarage/ParTI)
+    // by Jaijai Li.
+    const ttb_indx offset = team.league_rank()*TeamSize+team.team_rank();
+    const ttb_indx stride = team.league_size()*TeamSize;
+    for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+      const ttb_indx i = offset + ii*stride;
+      if (i >= nnz)
+        return;
 
-    MTTKRP_KernelBlock<ExecSpace, FacBlockSize, TeamSize, VectorSize> kernel(X, u, n, v, i, team);
+      MTTKRP_KernelBlock<ExecSpace, FacBlockSize, RowBlockSize, TeamSize, VectorSize> kernel(X, u, n, v, i, team);
 
-    for (unsigned j=0; j<nc; j+=FacBlockSize) {
-      if (j+FacBlockSize <= nc)
-        kernel.template run<FacBlockSize>(j, FacBlockSize);
-      else
-        kernel.template run<0>(j, nc-j);
+      for (unsigned j=0; j<nc; j+=FacBlockSize) {
+        if (j+FacBlockSize <= nc)
+          kernel.template run<FacBlockSize>(j, FacBlockSize);
+        else
+          kernel.template run<0>(j, nc-j);
+      }
+
     }
 
   }, "Genten::mttkrp_kernel");
