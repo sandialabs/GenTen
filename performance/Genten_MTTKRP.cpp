@@ -191,6 +191,7 @@ int run_mttkrp(const std::string& inputfilename,
     for (ttb_indx n=0; n<nDims; ++n) {
       timer.start(1+n);
       Genten::mttkrp(cData, cInput, n, cResult[n]);
+      Kokkos::fence();
       timer.stop(1+n);
     }
   }
