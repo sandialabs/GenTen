@@ -593,14 +593,10 @@ struct MTTKRP_KernelBlock {
   const unsigned n;
   const unsigned nd;
   const Genten::FacMatrixT<ExecSpace>& v;
-  const ttb_indx i;
 
   const TeamMember& team;
   const unsigned team_index;
   TmpScratchSpace tmp;
-
-  const ttb_indx k;
-  const ttb_real x_val;
   const ttb_real* lambda;
 
   static inline Policy policy(const ttb_indx nnz_) {
@@ -616,18 +612,17 @@ struct MTTKRP_KernelBlock {
                      const Genten::KtensorT<ExecSpace>& u_,
                      const unsigned n_,
                      const Genten::FacMatrixT<ExecSpace>& v_,
-                     const ttb_indx i_,
                      const TeamMember& team_) :
-    X(X_), u(u_), n(n_), nd(u.ndims()), v(v_), i(i_),
+    X(X_), u(u_), n(n_), nd(u.ndims()), v(v_),
     team(team_), team_index(team.team_rank()),
     tmp(team.team_scratch(0), TeamSize, FacBlockSize),
-    k(X.subscript(i,n)), x_val(X.value(i)),
     lambda(&u.weights(0))
     {}
 
   template <unsigned Nj>
   KOKKOS_INLINE_FUNCTION
-  void run(const unsigned j, const unsigned nj_)
+  void run(const ttb_indx i, const ttb_indx k, const ttb_real x_val,
+           const unsigned j, const unsigned nj_)
   {
      // nj.value == Nj_ if Nj_ > 0 and nj_ otherwise
     Kokkos::Impl::integral_nonzero_constant<unsigned, Nj> nj(nj_);
@@ -689,6 +684,8 @@ void mttkrp_kernel(const Genten::SptensorT<ExecSpace>& X,
   Kokkos::parallel_for(Kernel::policy(nnz),
                        KOKKOS_LAMBDA(TeamMember team)
   {
+    MTTKRP_KernelBlock<ExecSpace, FacBlockSize, RowBlockSize, TeamSize, VectorSize> kernel(X, u, n, v, team);
+
     // Loop over tensor non-zeros with a large stride on the GPU to
     // reduce atomic contention when the non-zeros are in a nearly sorted
     // order (often the first dimension of the tensor).  This is only done
@@ -702,13 +699,14 @@ void mttkrp_kernel(const Genten::SptensorT<ExecSpace>& X,
       if (i >= nnz)
         return;
 
-      MTTKRP_KernelBlock<ExecSpace, FacBlockSize, RowBlockSize, TeamSize, VectorSize> kernel(X, u, n, v, i, team);
+      const ttb_indx k = X.subscript(i,n);
+      const ttb_real x_val = X.value(i);
 
       for (unsigned j=0; j<nc; j+=FacBlockSize) {
         if (j+FacBlockSize <= nc)
-          kernel.template run<FacBlockSize>(j, FacBlockSize);
+          kernel.template run<FacBlockSize>(i, k, x_val, j, FacBlockSize);
         else
-          kernel.template run<0>(j, nc-j);
+          kernel.template run<0>(i, k, x_val, j, nc-j);
       }
 
     }
