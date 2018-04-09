@@ -576,151 +576,6 @@ void mttkrp_kernel(const Genten::SptensorT<ExecSpace>& X,
 }
 }
 
-#else
-
-namespace Genten {
-namespace Impl {
-
-template <typename ExecSpace, unsigned FacBlockSize, unsigned RowBlockSize,
-          unsigned TeamSize, unsigned VectorSize>
-struct MTTKRP_KernelBlock {
-  typedef Kokkos::TeamPolicy <ExecSpace> Policy;
-  typedef typename Policy::member_type TeamMember;
-  typedef Kokkos::View< ttb_real**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
-
-  const Genten::SptensorT<ExecSpace>& X;
-  const Genten::KtensorT<ExecSpace>& u;
-  const unsigned n;
-  const unsigned nd;
-  const Genten::FacMatrixT<ExecSpace>& v;
-
-  const TeamMember& team;
-  const unsigned team_index;
-  TmpScratchSpace tmp;
-  const ttb_real* lambda;
-
-  static inline Policy policy(const ttb_indx nnz_) {
-    const unsigned RowsPerTeam = RowBlockSize*TeamSize;
-    const ttb_indx N = (nnz_+RowsPerTeam-1)/RowsPerTeam;
-    Policy policy(N,TeamSize,VectorSize);
-    size_t bytes = TmpScratchSpace::shmem_size(TeamSize,FacBlockSize);
-    return policy.set_scratch_size(0,Kokkos::PerTeam(bytes));
-  }
-
-  KOKKOS_INLINE_FUNCTION
-  MTTKRP_KernelBlock(const Genten::SptensorT<ExecSpace>& X_,
-                     const Genten::KtensorT<ExecSpace>& u_,
-                     const unsigned n_,
-                     const Genten::FacMatrixT<ExecSpace>& v_,
-                     const TeamMember& team_) :
-    X(X_), u(u_), n(n_), nd(u.ndims()), v(v_),
-    team(team_), team_index(team.team_rank()),
-    tmp(team.team_scratch(0), TeamSize, FacBlockSize),
-    lambda(&u.weights(0))
-    {}
-
-  template <unsigned Nj>
-  KOKKOS_INLINE_FUNCTION
-  void run(const ttb_indx i, const ttb_indx k, const ttb_real x_val,
-           const unsigned j, const unsigned nj_)
-  {
-     // nj.value == Nj_ if Nj_ > 0 and nj_ otherwise
-    Kokkos::Impl::integral_nonzero_constant<unsigned, Nj> nj(nj_);
-
-    const ttb_real *l = &lambda[j];
-    ttb_real *v_kj = &v.entry(k,j);
-
-    // Start tmp equal to the weights.
-    Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,unsigned(nj.value)),
-                         [&] (const unsigned& jj)
-    {
-      tmp(team_index,jj) = x_val * l[jj];
-    });
-
-    for (unsigned m=0; m<nd; ++m) {
-      if (m != n) {
-        // Update tmp array with elementwise product of row i
-        // from the m-th factor matrix.  Length of the row is nc.
-        const ttb_real *row = &(u[m].entry(X.subscript(i,m),j));
-        Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,unsigned(nj.value)),
-                             [&] (const unsigned& jj)
-        {
-          tmp(team_index,jj) *= row[jj];
-        });
-      }
-    }
-
-    // Update output by adding tmp array.
-    Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,unsigned(nj.value)),
-                         [&] (const unsigned& jj)
-    {
-      Kokkos::atomic_add(v_kj+jj, tmp(team_index,jj));
-    });
-  }
-};
-
-template <typename ExecSpace, unsigned FacBlockSize>
-void mttkrp_kernel(const Genten::SptensorT<ExecSpace>& X,
-                   const Genten::KtensorT<ExecSpace>& u,
-                   const ttb_indx n,
-                   const Genten::FacMatrixT<ExecSpace>& v)
-{
-  // Compute team and vector sizes, depending on the architecture
-#if defined(KOKKOS_HAVE_CUDA)
-  const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
-#else
-  const bool is_cuda = false;
-#endif
-  const unsigned VectorSize = is_cuda ? (FacBlockSize <= 16 ? FacBlockSize : 16) : 1;
-  const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
-  const unsigned RowBlockSize = is_cuda ? 128 : 1;
-
-  const unsigned nc = u.ncomponents();
-  const ttb_indx nnz = X.nnz();
-
-  typedef MTTKRP_KernelBlock<ExecSpace, FacBlockSize, RowBlockSize, TeamSize, VectorSize> Kernel;
-  typedef typename Kernel::TeamMember TeamMember;
-
-  Kokkos::parallel_for(Kernel::policy(nnz),
-                       KOKKOS_LAMBDA(TeamMember team)
-  {
-    MTTKRP_KernelBlock<ExecSpace, FacBlockSize, RowBlockSize, TeamSize, VectorSize> kernel(X, u, n, v, team);
-
-    // Loop over tensor non-zeros with a large stride on the GPU to
-    // reduce atomic contention when the non-zeros are in a nearly sorted
-    // order (often the first dimension of the tensor).  This is only done
-    // on the GPU because RowBlockSize == 1 otherwise.  This is similar to
-    // an approach used in ParTi (https://github.com/hpcgarage/ParTI)
-    // by Jaijai Li.
-    const ttb_indx offset = team.league_rank()*TeamSize+team.team_rank();
-    const ttb_indx stride = team.league_size()*TeamSize;
-    for (unsigned ii=0; ii<RowBlockSize; ++ii) {
-      const ttb_indx i = offset + ii*stride;
-      if (i >= nnz)
-        return;
-
-      const ttb_indx k = X.subscript(i,n);
-      const ttb_real x_val = X.value(i);
-
-      for (unsigned j=0; j<nc; j+=FacBlockSize) {
-        if (j+FacBlockSize <= nc)
-          kernel.template run<FacBlockSize>(i, k, x_val, j, FacBlockSize);
-        else
-          kernel.template run<0>(i, k, x_val, j, nc-j);
-      }
-
-    }
-
-  }, "Genten::mttkrp_kernel");
-
-  return;
-}
-
-}
-}
-
-#endif
-
 template <typename ExecSpace>
 void Genten::mttkrp(const Genten::SptensorT<ExecSpace>& X,
                     const Genten::KtensorT<ExecSpace>& u,
@@ -765,36 +620,100 @@ void Genten::mttkrp(const Genten::SptensorT<ExecSpace>& X,
   return;
 }
 
-namespace Genten {
-namespace Impl {
-template <typename ExecSpace>
-void mttkrp_perm(const Genten::SptensorT_perm<ExecSpace>& X,
-                 const Genten::KtensorT<ExecSpace>& u,
-                 ttb_indx n,
-                 const Genten::FacMatrixT<ExecSpace>& v);
-}
-}
-
-// Version of mttkrp using a permutation array to improve locality of writes,
-// and reduce atomic throughput needs.  This version is geared towards CPUs
-// and processes a large block of nonzeros before performing a segmented
-// reduction across the corresponding rows.
-template <typename ExecSpace>
-void Genten::mttkrp(const Genten::SptensorT_perm<ExecSpace>& X,
-                    const Genten::KtensorT<ExecSpace>& u,
-                    const ttb_indx n,
-                    const Genten::FacMatrixT<ExecSpace>& v)
-{
-  Impl::mttkrp_perm(X,u,n,v);
-}
+#else
 
 namespace Genten {
 namespace Impl {
 
+template <typename SparseTensor,
+          unsigned RowBlockSize, unsigned FacBlockSize,
+          unsigned TeamSize, unsigned VectorSize>
+struct MTTKRP_KernelBlock;
+
+// Specialization of MTTKRP_KernelBlock for Sptensor
 template <typename ExecSpace, unsigned RowBlockSize, unsigned FacBlockSize,
           unsigned TeamSize, unsigned VectorSize>
-struct MTTKRP_PermKernelBlock {
+struct MTTKRP_KernelBlock<
+  Genten::SptensorT<ExecSpace>, RowBlockSize, FacBlockSize, TeamSize,
+  VectorSize>
+{
+  typedef Kokkos::TeamPolicy <ExecSpace> Policy;
+  typedef typename Policy::member_type TeamMember;
 
+  const Genten::SptensorT<ExecSpace> X;
+  const Genten::KtensorT<ExecSpace> u;
+  const unsigned n;
+  const unsigned nd;
+  const ttb_indx nnz;
+  const Genten::FacMatrixT<ExecSpace> v;
+  const TeamMember team;
+
+  static inline Policy policy(const ttb_indx nnz_) {
+    const unsigned RowsPerTeam = TeamSize * RowBlockSize;
+    const ttb_indx N = (nnz_+RowsPerTeam-1)/RowsPerTeam;
+    Policy policy(N,TeamSize,VectorSize);
+    return policy;
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  MTTKRP_KernelBlock(const Genten::SptensorT<ExecSpace>& X_,
+                     const Genten::KtensorT<ExecSpace>& u_,
+                     const unsigned n_,
+                     const Genten::FacMatrixT<ExecSpace>& v_,
+                     const TeamMember& team_) :
+    X(X_), u(u_), n(n_), nd(u.ndims()), nnz(X.nnz()), v(v_), team(team_)
+    {}
+
+  template <unsigned Nj>
+  KOKKOS_INLINE_FUNCTION
+  void run(const unsigned j, const unsigned nj)
+  {
+    typedef Genten::TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj, VectorSize> TV;
+
+    const ttb_real* lambda = &u.weights(0);
+
+    // Loop over tensor non-zeros with a large stride on the GPU to
+    // reduce atomic contention when the non-zeros are in a nearly sorted
+    // order (often the first dimension of the tensor).  This is only done
+    // on the GPU because RowBlockSize == 1 otherwise.  This is similar to
+    // an approach used in ParTi (https://github.com/hpcgarage/ParTI)
+    // by Jaijai Li.
+    const ttb_indx offset = team.league_rank()*TeamSize+team.team_rank();
+    const ttb_indx stride = team.league_size()*TeamSize;
+    for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+      const ttb_indx i = offset + ii*stride;
+      if (i >= nnz)
+        return;
+
+      const ttb_indx k = X.subscript(i,n);
+      const ttb_real x_val = X.value(i);
+
+      // Start tmp equal to the weights.
+      TV tmp(nj, x_val);
+      tmp *= lambda+j;
+
+      for (unsigned m=0; m<nd; ++m) {
+        if (m != n) {
+          // Update tmp array with elementwise product of row i
+          // from the m-th factor matrix.  Length of the row is nc.
+          const ttb_real *row = &(u[m].entry(X.subscript(i,m),j));
+          tmp *= row;
+        }
+      }
+
+      // Update output by adding tmp array.
+      Kokkos::atomic_add(&v.entry(k,j), tmp);
+    }
+  }
+};
+
+// Specialization of MTTKRP_KernelBlock for Sptensor_perm
+template <typename ExecSpace, unsigned RowBlockSize, unsigned FacBlockSize,
+          unsigned TeamSize, unsigned VectorSize>
+struct MTTKRP_KernelBlock<
+  Genten::SptensorT_perm<ExecSpace>, RowBlockSize, FacBlockSize, TeamSize,
+  VectorSize>
+{
   typedef Kokkos::TeamPolicy <ExecSpace> Policy;
   typedef typename Policy::member_type TeamMember;
 
@@ -814,11 +733,11 @@ struct MTTKRP_PermKernelBlock {
   }
 
   KOKKOS_INLINE_FUNCTION
-  MTTKRP_PermKernelBlock(const Genten::SptensorT_perm<ExecSpace>& X_,
-                         const Genten::KtensorT<ExecSpace>& u_,
-                         const ttb_indx n_,
-                         const Genten::FacMatrixT<ExecSpace>& v_,
-                         const TeamMember& team) :
+  MTTKRP_KernelBlock(const Genten::SptensorT_perm<ExecSpace>& X_,
+                     const Genten::KtensorT<ExecSpace>& u_,
+                     const ttb_indx n_,
+                     const Genten::FacMatrixT<ExecSpace>& v_,
+                     const TeamMember& team) :
     X(X_), u(u_), n(n_), nd(u.ndims()), nnz(X.nnz()), v(v_),
     i_block(team.league_rank()*RowBlockSize*TeamSize + RowBlockSize*team.team_rank())
     {}
@@ -893,13 +812,16 @@ struct MTTKRP_PermKernelBlock {
   }
 };
 
-template <typename ExecSpace, unsigned VS>
-void mttkrp_perm_kernel(const Genten::SptensorT_perm<ExecSpace>& X,
-                        const Genten::KtensorT<ExecSpace>& u,
-                        const ttb_indx n,
-                        const Genten::FacMatrixT<ExecSpace>& v)
+template <typename SparseTensor, unsigned VS>
+void mttkrp_kernel(
+  const SparseTensor& X,
+  const Genten::KtensorT<typename SparseTensor::exec_space>& u,
+  const ttb_indx n,
+  const Genten::FacMatrixT<typename SparseTensor::exec_space>& v)
 {
-// Compute team and vector sizes, depending on the architecture
+  typedef typename SparseTensor::exec_space ExecSpace;
+
+  // Compute team and vector sizes, depending on the architecture
 #if defined(KOKKOS_HAVE_CUDA)
   static const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
 #else
@@ -915,7 +837,7 @@ void mttkrp_perm_kernel(const Genten::SptensorT_perm<ExecSpace>& X,
   static const unsigned VS2 = 2*VS;
   static const unsigned VS1 = 1*VS;
 
-  typedef MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, FacBlockSize, TeamSize, VectorSize> Kernel;
+  typedef MTTKRP_KernelBlock<SparseTensor, RowBlockSize, FacBlockSize, TeamSize, VectorSize> Kernel;
   typedef typename Kernel::TeamMember TeamMember;
 
   const unsigned nc = u.ncomponents();
@@ -923,7 +845,7 @@ void mttkrp_perm_kernel(const Genten::SptensorT_perm<ExecSpace>& X,
     Kokkos::parallel_for(Kernel::policy(X.nnz()),
                          KOKKOS_LAMBDA(TeamMember team)
     {
-      MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, VS4, TeamSize, VectorSize> kernel(X, u, n, v, team);
+      MTTKRP_KernelBlock<SparseTensor, RowBlockSize, VS4, TeamSize, VectorSize> kernel(X, u, n, v, team);
       for (unsigned j=0; j<nc; j+=VS4) {
         if (j+VS4 <= nc)
           kernel.template run<VS4>(j, VS4);
@@ -931,13 +853,13 @@ void mttkrp_perm_kernel(const Genten::SptensorT_perm<ExecSpace>& X,
           kernel.template run<0>(j, nc-j);
       }
 
-    }, "Genten::mttkrp_perm_kernel");
+    }, "Genten::mttkrp_kernel");
   }
   else if (nc > VS2) {
     Kokkos::parallel_for(Kernel::policy(X.nnz()),
                          KOKKOS_LAMBDA(TeamMember team)
     {
-      MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, VS3, TeamSize, VectorSize> kernel(X, u, n, v, team);
+      MTTKRP_KernelBlock<SparseTensor, RowBlockSize, VS3, TeamSize, VectorSize> kernel(X, u, n, v, team);
       for (unsigned j=0; j<nc; j+=VS3) {
         if (j+VS3 <= nc)
           kernel.template run<VS3>(j, VS3);
@@ -945,13 +867,13 @@ void mttkrp_perm_kernel(const Genten::SptensorT_perm<ExecSpace>& X,
           kernel.template run<0>(j, nc-j);
       }
 
-    }, "Genten::mttkrp_perm_kernel");
+    }, "Genten::mttkrp_kernel");
   }
   else if (nc > VS1) {
     Kokkos::parallel_for(Kernel::policy(X.nnz()),
                          KOKKOS_LAMBDA(TeamMember team)
     {
-      MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, VS2, TeamSize, VectorSize> kernel(X, u, n, v, team);
+      MTTKRP_KernelBlock<SparseTensor, RowBlockSize, VS2, TeamSize, VectorSize> kernel(X, u, n, v, team);
       for (unsigned j=0; j<nc; j+=VS2) {
         if (j+VS2 <= nc)
           kernel.template run<VS2>(j, VS2);
@@ -959,13 +881,13 @@ void mttkrp_perm_kernel(const Genten::SptensorT_perm<ExecSpace>& X,
           kernel.template run<0>(j, nc-j);
       }
 
-    }, "Genten::mttkrp_perm_kernel");
+    }, "Genten::mttkrp_kernel");
   }
   else {
     Kokkos::parallel_for(Kernel::policy(X.nnz()),
                          KOKKOS_LAMBDA(TeamMember team)
     {
-      MTTKRP_PermKernelBlock<ExecSpace, RowBlockSize, VS1, TeamSize, VectorSize> kernel(X, u, n, v, team);
+      MTTKRP_KernelBlock<SparseTensor, RowBlockSize, VS1, TeamSize, VectorSize> kernel(X, u, n, v, team);
       for (unsigned j=0; j<nc; j+=VS1) {
         if (j+VS1 <= nc)
           kernel.template run<VS1>(j, VS1);
@@ -973,22 +895,25 @@ void mttkrp_perm_kernel(const Genten::SptensorT_perm<ExecSpace>& X,
           kernel.template run<0>(j, nc-j);
       }
 
-    }, "Genten::mttkrp_perm_kernel");
+    }, "Genten::mttkrp_kernel");
   }
-
 }
 
-template <typename ExecSpace>
-void mttkrp_perm(const Genten::SptensorT_perm<ExecSpace>& X,
-                 const Genten::KtensorT<ExecSpace>& u,
-                 const ttb_indx n,
-                 const Genten::FacMatrixT<ExecSpace>& v)
+}
+}
+
+template <typename SparseTensor, typename ExecSpace>
+void Genten::mttkrp(
+  const SparseTensor& X,
+  const Genten::KtensorT<ExecSpace>& u,
+  const ttb_indx n,
+  const Genten::FacMatrixT<ExecSpace>& v)
 {
 #ifdef HAVE_CALIPER
-    cali::Function cali_func("Genten::mttkrp_perm");
+    cali::Function cali_func("Genten::mttkrp");
 #endif
 
-  ttb_indx nc = u.ncomponents();     // Number of components
+  const ttb_indx nc = u.ncomponents();     // Number of components
   const ttb_indx nd = u.ndims();           // Number of dimensions
 
   assert(X.ndims() == nd);
@@ -1005,23 +930,22 @@ void mttkrp_perm(const Genten::SptensorT_perm<ExecSpace>& X,
   v = ttb_real(0.0);
 
   if (nc >= 96)
-    mttkrp_perm_kernel<ExecSpace,32>(X, u, n, v);
+    Impl::mttkrp_kernel<SparseTensor,32>(X, u, n, v);
   else if (nc >= 48)
-    mttkrp_perm_kernel<ExecSpace,16>(X, u, n, v);
+    Impl::mttkrp_kernel<SparseTensor,16>(X, u, n, v);
   else if (nc >= 8)
-    mttkrp_perm_kernel<ExecSpace,8>(X, u, n, v);
+    Impl::mttkrp_kernel<SparseTensor,8>(X, u, n, v);
   else if (nc >= 4)
-    mttkrp_perm_kernel<ExecSpace,4>(X, u, n, v);
+    Impl::mttkrp_kernel<SparseTensor,4>(X, u, n, v);
   else if (nc >= 2)
-    mttkrp_perm_kernel<ExecSpace,2>(X, u, n, v);
+    Impl::mttkrp_kernel<SparseTensor,2>(X, u, n, v);
   else
-    mttkrp_perm_kernel<ExecSpace,1>(X, u, n, v);
+    Impl::mttkrp_kernel<SparseTensor,1>(X, u, n, v);
 
   return;
 }
 
-}
-}
+#endif // USE_SCATTER_VIEW
 
 // Version of mttkrp using a permutation array to improve locality of writes,
 // and reduce atomic throughput needs.  This version is uses a rowptr array
@@ -1127,22 +1051,22 @@ void Genten::mttkrp(const Genten::SptensorT_row<ExecSpace>& X,
 
 #define INST_MACRO(SPACE)                                               \
   template                                                              \
-  ttb_real innerprod<SPACE>(const Genten::SptensorT<SPACE>& s,          \
-                            const Genten::KtensorT<SPACE>& u,           \
-                            const Genten::ArrayT<SPACE>& lambda);       \
+  ttb_real innerprod<>(const Genten::SptensorT<SPACE>& s,               \
+                       const Genten::KtensorT<SPACE>& u,                \
+                       const Genten::ArrayT<SPACE>& lambda);            \
   template                                                              \
-  void mttkrp<SPACE>(const Genten::SptensorT<SPACE>& X,                 \
-                     const Genten::KtensorT<SPACE>& u,                  \
-                     const ttb_indx n,                                  \
-                     const Genten::FacMatrixT<SPACE>& v);               \
+  void mttkrp<>(const Genten::SptensorT<SPACE>& X,                      \
+                const Genten::KtensorT<SPACE>& u,                       \
+                const ttb_indx n,                                       \
+                const Genten::FacMatrixT<SPACE>& v);                    \
   template                                                              \
-  void mttkrp<SPACE>(const Genten::SptensorT_perm<SPACE>& X,            \
-                     const Genten::KtensorT<SPACE>& u,                  \
-                     const ttb_indx n,                                  \
-                     const Genten::FacMatrixT<SPACE>& v);               \
+  void mttkrp<>(const Genten::SptensorT_perm<SPACE>& X,                 \
+                const Genten::KtensorT<SPACE>& u,                       \
+                const ttb_indx n,                                       \
+                const Genten::FacMatrixT<SPACE>& v);                    \
   template                                                              \
-  void mttkrp<SPACE>(const Genten::SptensorT_row<SPACE>& X,             \
-                     const Genten::KtensorT<SPACE>& u,                  \
-                     const ttb_indx n,                                  \
-                     const Genten::FacMatrixT<SPACE>& v);
+  void mttkrp<>(const Genten::SptensorT_row<SPACE>& X,                  \
+                const Genten::KtensorT<SPACE>& u,                       \
+                const ttb_indx n,                                       \
+                const Genten::FacMatrixT<SPACE>& v);
 GENTEN_INST(INST_MACRO)

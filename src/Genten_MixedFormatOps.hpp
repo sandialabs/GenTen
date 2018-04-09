@@ -80,6 +80,24 @@ namespace Genten
   //---- Methods for mttkrp.
 
   // Matricized sparse tensor times Khatri-Rao product.
+  /* Same as below except that rather than overwrite u[n],
+     the answer is put into v.
+
+     Note: couldn't figure out how to get the ETI right with the
+     SptensorT_row overload without ExecSpace as a second template paramter
+     (as opposed to being deduced from SparseTensor. */
+  template <typename SparseTensor, typename ExecSpace>
+  void mttkrp(const SparseTensor& X,
+              const Genten::KtensorT<ExecSpace>& u,
+              const ttb_indx n,
+              const Genten::FacMatrixT<ExecSpace>& v);
+  template <typename ExecSpace>
+  void mttkrp(const Genten::SptensorT_row<ExecSpace>& X,
+              const Genten::KtensorT<ExecSpace>& u,
+              const ttb_indx n,
+              const Genten::FacMatrixT<ExecSpace>& v);
+
+  // Matricized sparse tensor times Khatri-Rao product.
   /* Matricizes the Sptensor X along mode n, and computes the product
      of this with the factor matrices of Ktensor u, excluding mode n.
      Modes are indexed starting with 0.
@@ -90,48 +108,13 @@ namespace Genten
      mode n matricization of X, and W_n is the cumulative Khatri-Rao product
      of all factor matrices in u except the nth.
   */
-  template <typename ExecSpace>
-  void mttkrp(const Genten::SptensorT<ExecSpace>& X,
-              const Genten::KtensorT<ExecSpace>& u,
+  template <typename SparseTensor>
+  void mttkrp(const SparseTensor& X,
+              const Genten::KtensorT<typename SparseTensor::exec_space>& u,
               const ttb_indx n)
   {
     mttkrp (X, u, n, u[n]);
     return;
   }
-  template <typename ExecSpace>
-  void mttkrp(const Genten::SptensorT_perm<ExecSpace>& X,
-              const Genten::KtensorT<ExecSpace>& u,
-              const ttb_indx n)
-  {
-    mttkrp (X, u, n, u[n]);
-    return;
-  }
-  template <typename ExecSpace>
-  void mttkrp(const Genten::SptensorT_row<ExecSpace>& X,
-              const Genten::KtensorT<ExecSpace>& u,
-              const ttb_indx n)
-  {
-    mttkrp (X, u, n, u[n]);
-    return;
-  }
-
-  // Matricized sparse tensor times Khatri-Rao product.
-  /* Same as above except that rather than overwrite u[n],
-     the answer is put into v. */
-  template <typename ExecSpace>
-  void mttkrp(const Genten::SptensorT<ExecSpace>& X,
-              const Genten::KtensorT<ExecSpace>& u,
-              const ttb_indx n,
-              const Genten::FacMatrixT<ExecSpace>& v);
-  template <typename ExecSpace>
-  void mttkrp(const Genten::SptensorT_perm<ExecSpace>& X,
-              const Genten::KtensorT<ExecSpace>& u,
-              const ttb_indx n,
-              const Genten::FacMatrixT<ExecSpace>& v);
-  template <typename ExecSpace>
-  void mttkrp(const Genten::SptensorT_row<ExecSpace>& X,
-              const Genten::KtensorT<ExecSpace>& u,
-              const ttb_indx n,
-              const Genten::FacMatrixT<ExecSpace>& v);
 
 }     //-- namespace Genten
