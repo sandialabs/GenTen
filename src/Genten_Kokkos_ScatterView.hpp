@@ -54,6 +54,8 @@
 #include <Kokkos_Core.hpp>
 #include <utility>
 
+#include "Genten_TinyVec.hpp"
+
 namespace Kokkos {
 namespace Experimental {
 
@@ -153,30 +155,38 @@ struct ScatterValue;
 template <typename ValueType>
 struct ScatterValue<ValueType, Kokkos::Experimental::ScatterSum, Kokkos::Experimental::ScatterNonAtomic> {
   public:
-    KOKKOS_FORCEINLINE_FUNCTION ScatterValue(ValueType& value_in) : value( value_in ) {}
+    KOKKOS_FORCEINLINE_FUNCTION ScatterValue(ValueType* value_in) : value( value_in ) {}
     KOKKOS_FORCEINLINE_FUNCTION ScatterValue(ScatterValue&& other) : value( other.value ) {}
+    template <typename E, typename S, typename O,
+              unsigned L, unsigned Sz, unsigned W,
+              typename En>
+    KOKKOS_FORCEINLINE_FUNCTION
+    void operator+=(Genten::TinyVec<E,S,O,L,Sz,W,En> const& rhs) {
+      rhs.store_plus(value);
+    }
     KOKKOS_FORCEINLINE_FUNCTION void operator+=(ValueType const& rhs) {
-      value += rhs;
+      *value += rhs;
     }
     KOKKOS_FORCEINLINE_FUNCTION void operator-=(ValueType const& rhs) {
-      value -= rhs;
+      *value -= rhs;
     }
   private:
-    ValueType& value;
+    ValueType* value;
 };
 
 template <typename ValueType>
 struct ScatterValue<ValueType, Kokkos::Experimental::ScatterSum, Kokkos::Experimental::ScatterAtomic> {
   public:
-    KOKKOS_FORCEINLINE_FUNCTION ScatterValue(ValueType& value_in) : value( value_in ) {}
-    KOKKOS_FORCEINLINE_FUNCTION void operator+=(ValueType const& rhs) {
-      Kokkos::atomic_add(&value, rhs);
+    KOKKOS_FORCEINLINE_FUNCTION ScatterValue(ValueType* value_in) : value( value_in ) {}
+    template <typename T>
+    KOKKOS_FORCEINLINE_FUNCTION void operator+=(T const& rhs) {
+      Kokkos::atomic_add(value, rhs);
     }
     KOKKOS_FORCEINLINE_FUNCTION void operator-=(ValueType const& rhs) {
-      Kokkos::atomic_add(&value, -rhs);
+      Kokkos::atomic_add(value, -rhs);
     }
   private:
-    ValueType& value;
+    ValueType* value;
 };
 
 /* DuplicatedDataType, given a View DataType, will create a new DataType
@@ -531,7 +541,7 @@ public:
   template <typename ... Args>
   KOKKOS_FORCEINLINE_FUNCTION
   value_type operator()(Args ... args) const {
-    return view.at(args...);
+    return &view.at(args...);
   }
 
   template <typename Arg>
@@ -539,7 +549,7 @@ public:
   typename std::enable_if<view_type::original_view_type::rank == 1 &&
   std::is_integral<Arg>::value, value_type>::type
   operator[](Arg arg) const {
-    return view.at(arg);
+    return &view.at(arg);
   }
 
 private:
@@ -897,7 +907,7 @@ public:
   template <typename ... Args>
   KOKKOS_FORCEINLINE_FUNCTION
   value_type operator()(Args ... args) const {
-    return view.at(thread_id, args...);
+    return &view.at(thread_id, args...);
   }
 
   template <typename Arg>
@@ -905,7 +915,7 @@ public:
   typename std::enable_if<view_type::original_view_type::rank == 1 &&
   std::is_integral<Arg>::value, value_type>::type
   operator[](Arg arg) const {
-    return view.at(thread_id, arg);
+    return &view.at(thread_id, arg);
   }
 
 private:
