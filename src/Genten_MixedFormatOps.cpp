@@ -464,6 +464,11 @@ struct MTTKRP_KernelBlock<
   KOKKOS_INLINE_FUNCTION
   void run(const unsigned j, const unsigned nj)
   {
+#if defined(KOKKOS_HAVE_CUDA)
+    static const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
+#else
+    static const bool is_cuda = false;
+#endif
     typedef Genten::TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj, VectorSize> TV;
 
     const ttb_real* lambda = &u.weights(0);
@@ -471,12 +476,19 @@ struct MTTKRP_KernelBlock<
 
     // Loop over tensor non-zeros with a large stride on the GPU to
     // reduce atomic contention when the non-zeros are in a nearly sorted
-    // order (often the first dimension of the tensor).  This is only done
-    // on the GPU because RowBlockSize == 1 otherwise.  This is similar to
+    // order (often the first dimension of the tensor).  This is similar to
     // an approach used in ParTi (https://github.com/hpcgarage/ParTI)
     // by Jaijai Li.
-    const ttb_indx offset = team.league_rank()*TeamSize+team.team_rank();
-    const ttb_indx stride = team.league_size()*TeamSize;
+    ttb_indx offset;
+    ttb_indx stride;
+    if (is_cuda) {
+      offset = team.league_rank()*TeamSize+team.team_rank();
+      stride = team.league_size()*TeamSize;
+    }
+    else {
+      offset = (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+      stride = 1;
+    }
     for (unsigned ii=0; ii<RowBlockSize; ++ii) {
       const ttb_indx i = offset + ii*stride;
       if (i >= nnz)
@@ -544,18 +556,30 @@ struct MTTKRP_KernelBlock<
   KOKKOS_INLINE_FUNCTION
   void run(const unsigned j, const unsigned nj)
   {
+#if defined(KOKKOS_HAVE_CUDA)
+    static const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
+#else
+    static const bool is_cuda = false;
+#endif
     typedef Genten::TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj, VectorSize> TV;
 
     const ttb_real* lambda = &u.weights(0);
 
     // Loop over tensor non-zeros with a large stride on the GPU to
     // reduce atomic contention when the non-zeros are in a nearly sorted
-    // order (often the first dimension of the tensor).  This is only done
-    // on the GPU because RowBlockSize == 1 otherwise.  This is similar to
+    // order (often the first dimension of the tensor).  This is similar to
     // an approach used in ParTi (https://github.com/hpcgarage/ParTI)
     // by Jaijai Li.
-    const ttb_indx offset = team.league_rank()*TeamSize+team.team_rank();
-    const ttb_indx stride = team.league_size()*TeamSize;
+    ttb_indx offset;
+    ttb_indx stride;
+    if (is_cuda) {
+      offset = team.league_rank()*TeamSize+team.team_rank();
+      stride = team.league_size()*TeamSize;
+    }
+    else {
+      offset = (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+      stride = 1;
+    }
     for (unsigned ii=0; ii<RowBlockSize; ++ii) {
       const ttb_indx i = offset + ii*stride;
       if (i >= nnz)
