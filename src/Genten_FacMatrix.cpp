@@ -71,13 +71,7 @@ FacMatrixT(ttb_indx m, ttb_indx n)
   // Don't use padding if Cuda is the default execution space, so factor
   // matrices allocated on the host have the same shape.  We really need a
   // better way to do this.
-#if defined(KOKKOS_HAVE_CUDA)
-  const bool have_cuda =
-    std::is_same<DefaultExecutionSpace,Kokkos::Cuda>::value;
-#else
-  const bool have_cuda = false;
-#endif
-  if (have_cuda)
+  if (Genten::is_cuda_space<DefaultExecutionSpace>::value)
     data = view_type("Genten::FacMatrix::data",m,n);
   else
     data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
@@ -340,11 +334,7 @@ template <typename ExecSpace, unsigned ColBlockSize,
 void gramian_kernel(const ViewC& C, const ViewA& A)
 {
   // Compute team and vector sizes, depending on the architecture
-#if defined(KOKKOS_HAVE_CUDA)
-  const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
-#else
-  const bool is_cuda = false;
-#endif
+  const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
   const unsigned VectorSize =
     is_cuda ? (ColBlockSize <= 16 ? ColBlockSize : 16) : 1;
   const unsigned TeamSize = is_cuda ? 256/VectorSize : 1;
@@ -847,11 +837,7 @@ void colNorms_kernel(
   const NormT& norms, ttb_real minval)
 {
   // Compute team and vector sizes, depending on the architecture
-#if defined(KOKKOS_HAVE_CUDA)
-  const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
-#else
-  const bool is_cuda = false;
-#endif
+  const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
   const unsigned VectorSize =
     is_cuda ? (ColBlockSize <= 32 ? ColBlockSize : 32) : 1;
   const unsigned TeamSize = is_cuda ? 256/VectorSize : 1;
@@ -1032,11 +1018,7 @@ template <typename ExecSpace, unsigned ColBlockSize, typename ViewType>
 void colScale_kernel(const ViewType& data, const Genten::ArrayT<ExecSpace>& v)
 {
   // Compute team and vector sizes, depending on the architecture
-#if defined(KOKKOS_HAVE_CUDA)
-  const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
-#else
-  const bool is_cuda = false;
-#endif
+  const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
   const unsigned VectorSize =
      is_cuda ? (ColBlockSize <= 32 ? ColBlockSize : 32) : 1;
   const unsigned TeamSize = is_cuda ? 256/VectorSize : 1;
@@ -1696,11 +1678,7 @@ ttb_real mat_innerprod_kernel(const MatViewType& x, const MatViewType& y,
                               const WeightViewType& w)
 {
   // Compute team and vector sizes, depending on the architecture
-#if defined(KOKKOS_HAVE_CUDA)
-  const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
-#else
-  const bool is_cuda = false;
-#endif
+  const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
   const unsigned VectorSize =
     is_cuda ? (ColBlockSize <= 32 ? ColBlockSize : 32) : 1;
   const unsigned TeamSize = is_cuda ? 256/VectorSize : 1;

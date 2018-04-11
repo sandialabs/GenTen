@@ -107,11 +107,7 @@ struct ReduceDuplicates<
     typedef TeamPolicy<ExecSpace, size_t> policy_type;
     typedef typename policy_type::member_type member_type;
 
-#if defined(KOKKOS_HAVE_CUDA)
-  const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
-#else
-  const bool is_cuda = false;
-#endif
+    const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
 
     const size_t n0 = src.dimension_0();
     const size_t n1 = src.dimension_1();
@@ -327,11 +323,7 @@ ttb_real innerprod_kernel(const Genten::SptensorT<ExecSpace>& s,
                           const Genten::ArrayT<ExecSpace>& lambda)
 {
   // Compute team and vector sizes, depending on the architecture
-#if defined(KOKKOS_HAVE_CUDA)
-  const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
-#else
-  const bool is_cuda = false;
-#endif
+  const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
 
   const unsigned VectorSize =
     is_cuda ? (FacBlockSize <= 16 ? FacBlockSize : 16) : 1;
@@ -375,14 +367,10 @@ ttb_real Genten::innerprod(const Genten::SptensorT<ExecSpace>& s,
                            const Genten::ArrayT<ExecSpace>& lambda)
 {
 #ifdef HAVE_CALIPER
-    cali::Function cali_func("Genten::innerprod");
+  cali::Function cali_func("Genten::innerprod");
 #endif
 
-#if defined(KOKKOS_HAVE_CUDA)
-  const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
-#else
-  const bool is_cuda = false;
-#endif
+  const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
 
   const ttb_indx nc = u.ncomponents();               // Number of components
   const ttb_indx nd = u.ndims();                     // Number of dimensions
@@ -464,11 +452,6 @@ struct MTTKRP_KernelBlock<
   KOKKOS_INLINE_FUNCTION
   void run(const unsigned j, const unsigned nj)
   {
-#if defined(KOKKOS_HAVE_CUDA)
-    static const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
-#else
-    static const bool is_cuda = false;
-#endif
     typedef Genten::TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj, VectorSize> TV;
 
     const ttb_real* lambda = &u.weights(0);
@@ -481,7 +464,7 @@ struct MTTKRP_KernelBlock<
     // by Jaijai Li.
     ttb_indx offset;
     ttb_indx stride;
-    if (is_cuda) {
+    if (Genten::is_cuda_space<ExecSpace>::value) {
       offset = team.league_rank()*TeamSize+team.team_rank();
       stride = team.league_size()*TeamSize;
     }
@@ -556,11 +539,6 @@ struct MTTKRP_KernelBlock<
   KOKKOS_INLINE_FUNCTION
   void run(const unsigned j, const unsigned nj)
   {
-#if defined(KOKKOS_HAVE_CUDA)
-    static const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
-#else
-    static const bool is_cuda = false;
-#endif
     typedef Genten::TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj, VectorSize> TV;
 
     const ttb_real* lambda = &u.weights(0);
@@ -572,7 +550,7 @@ struct MTTKRP_KernelBlock<
     // by Jaijai Li.
     ttb_indx offset;
     ttb_indx stride;
-    if (is_cuda) {
+    if (Genten::is_cuda_space<ExecSpace>::value) {
       offset = team.league_rank()*TeamSize+team.team_rank();
       stride = team.league_size()*TeamSize;
     }
@@ -724,11 +702,7 @@ void mttkrp_kernel(
   typedef typename SparseTensor::exec_space ExecSpace;
 
   // Compute team and vector sizes, depending on the architecture
-#if defined(KOKKOS_HAVE_CUDA)
-  static const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
-#else
-  static const bool is_cuda = false;
-#endif
+  static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
   static const unsigned FacBlockSize = 128;
   static const unsigned VectorSize = is_cuda ? VS : 1;
   static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
@@ -811,11 +785,7 @@ void mttkrp_kernel(
   const Genten::FacMatrixT<ExecSpace>& v)
 {
   // Compute team and vector sizes, depending on the architecture
-#if defined(KOKKOS_HAVE_CUDA)
-  static const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
-#else
-  static const bool is_cuda = false;
-#endif
+  static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
 // #if defined(KOKKOS_HAVE_SERIAL)
 //   const bool is_serial = std::is_same<ExecSpace,Kokkos::Serial>::value;
 // #else
@@ -1008,12 +978,9 @@ void Genten::mttkrp(const Genten::SptensorT_row<ExecSpace>& X,
   // will be useful for GPU.
   typedef Kokkos::TeamPolicy <ExecSpace> Policy;
 
-// Compute team and vector sizes, depending on the architecture
-#if defined(KOKKOS_HAVE_CUDA)
-  const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
-#else
-  const bool is_cuda = false;
-#endif
+  // Compute team and vector sizes, depending on the architecture
+  const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+
   // Use the largest power of 2 <= nc, with a maximum of 64 for the vector size.
   const size_type VectorSize =
     nc == 1 ? 1 : std::min(64,2 << int(std::log2(nc))-1);

@@ -49,3 +49,21 @@
 #define KOKKOS_MEMORY_ALIGNMENT_THRESHOLD 0
 
 #include "Kokkos_Core.hpp"
+
+namespace Genten {
+
+  // A helper trait to determine whether an execution space is Cuda or not,
+  // and his always defined, regardless if Cuda is enabled.
+  template <typename ExecSpace>
+  struct is_cuda_space {
+    static const bool value = false;
+  };
+
+#if defined(KOKKOS_HAVE_CUDA)
+  template <>
+  struct is_cuda_space<Kokkos::Cuda> {
+    static const bool value = true;
+  };
+#endif
+
+}
