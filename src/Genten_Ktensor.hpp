@@ -124,14 +124,19 @@ public:
    *  A new stream of Mersenne twister random numbers is generated, starting
    *  from an arbitrary seed value.  Use scatter() for reproducibility.
    *
-
-   *  @param[in] bUseMatlabRNG  If true, then generate random samples
-   *                            consistent with Matlab (costs twice as much
-   *                            compared with no Matlab consistency).
-   *  @param[in] cRMT           Mersenne Twister random number generator.
-   *                            The seed should already be set.
+   *
+   *  @param[in] bUseMatlabRNG   If true, then generate random samples
+   *                             consistent with Matlab (costs twice as much
+   *                             compared with no Matlab consistency).
+   *  @param[in] bUseParallelRNG If true, then generate random samples in
+   *                             parallel (resulting random number sequence
+   *                             will depend on number of threads and
+   *                             aarchitecture).
+   *  @param[in] cRMT            Mersenne Twister random number generator.
+   *                             The seed should already be set.
    */
   void setMatricesScatter(const bool bUseMatlabRNG,
+                          const bool bUseParallelRNG,
                           RandomMT & cRMT) const;
 
   //! Fill the Ktensor with uniform random values, normalized to be stochastic.

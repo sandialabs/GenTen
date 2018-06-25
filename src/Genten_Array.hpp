@@ -157,9 +157,14 @@ namespace Genten {
     //!  @param[in] bUseMatlabRNG  If true, then generate random samples
     //!                            consistent with Matlab (costs twice as much
     //!                            compared with no Matlab consistency).
+    //! @param[in] bUseParallelRNG If true, then generate random samples in
+    //!                            parallel (resulting random number sequence
+    //!                            will depend on number of threads and
+    //!                            architecture).
     //!  @param[in] cRMT           Mersenne Twister random number generator.
     //!                            The seed should already be set.
     void scatter (const bool        bUseMatlabRNG,
+                  const bool bUseParallelRNG,
                   RandomMT &  cRMT) const;
     //@}
 

@@ -104,10 +104,11 @@ rand() const
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 scatter (const bool bUseMatlabRNG,
+         const bool bUseParallelRNG,
          RandomMT &  cRMT) const
 {
   auto data_1d = make_data_1d();
-  data_1d.scatter (bUseMatlabRNG, cRMT);
+  data_1d.scatter (bUseMatlabRNG, bUseParallelRNG, cRMT);
 }
 
 template <typename ExecSpace>

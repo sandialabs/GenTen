@@ -53,6 +53,7 @@
 #include "Genten_RandomMT.hpp"
 #include "Genten_Util.hpp"
 #include "Genten_Kokkos.hpp"
+#include "Kokkos_Random.hpp"
 
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
@@ -143,24 +144,36 @@ rand() const
 
 template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
-scatter (const bool        bUseMatlabRNG,
+scatter (const bool bUseMatlabRNG,
+         const bool bUseParallelRNG,
          RandomMT &  cRMT) const
 {
   const ttb_indx sz = data.dimension_0();
-  for (ttb_indx  i = 0; i < sz; i++)
+  if (bUseParallelRNG)
   {
-    ttb_real  dNextRan;
-    if (bUseMatlabRNG)
-      dNextRan = cRMT.genMatlabMT();
-    else
-      dNextRan = cRMT.genrnd_double();
-    data[i] = dNextRan;
-    /*TBD...legacy randomization
-      data[i]= 0;
-      while (data[i] == 0.0) {
-      data[i] = drand48();
-      }
-    */
+    const ttb_indx seed = cRMT.genrnd_int32();
+    Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
+    ttb_real min_val = 0.0;
+    ttb_real max_val = 1.0;
+    Kokkos::fill_random(data, rand_pool, min_val, max_val);
+  }
+  else
+  {
+    for (ttb_indx  i = 0; i < sz; i++)
+    {
+      ttb_real  dNextRan;
+      if (bUseMatlabRNG)
+        dNextRan = cRMT.genMatlabMT();
+      else
+        dNextRan = cRMT.genrnd_double();
+      data[i] = dNextRan;
+      /*TBD...legacy randomization
+        data[i]= 0;
+        while (data[i] == 0.0) {
+        data[i] = drand48();
+        }
+      */
+    }
   }
   return;
 }

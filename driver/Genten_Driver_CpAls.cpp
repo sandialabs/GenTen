@@ -62,6 +62,7 @@ int run_cpals(const std::string& inputfilename,
               const bool gz,
               const ttb_indx rank,
               const unsigned long seed,
+              const bool prng,
               const ttb_indx maxiters,
               const ttb_real tol,
               const ttb_indx printitn,
@@ -90,12 +91,26 @@ int run_cpals(const std::string& inputfilename,
 
   // Generate a random starting point
   // Matlab cp_als always sets the weights to one.
-  Ktensor_host_type u_host(rank,x_host.ndims(),x_host.size());
+  Ktensor_host_type u_host;
+  Ktensor_type u;
   Genten::RandomMT cRMT(seed);
-  u_host.setMatricesScatter(false,cRMT);
-  u_host.setWeights(1.0);
-  Ktensor_type u = create_mirror_view( Space(), u_host );
-  deep_copy( u, u_host );
+  timer.start(0);
+  if (prng) {
+    u = Ktensor_type(rank, x.ndims(), x.size());
+    u.setMatricesScatter(false, true, cRMT);
+    u.setWeights(1.0);
+    u_host = create_mirror_view( Genten::DefaultHostExecutionSpace(), u );
+    if (debug) deep_copy( u_host, u );
+  }
+  else {
+    u_host = Ktensor_host_type(rank, x_host.ndims(), x_host.size());
+    u_host.setMatricesScatter(false, false, cRMT);
+    u_host.setWeights(1.0);
+    u = create_mirror_view( Space(), u_host );
+    deep_copy( u, u_host );
+  }
+  timer.stop(0);
+  printf("Creating random initial guess took %6.3f seconds\n", timer.getTotalTime(0));
   if (debug) Genten::print_ktensor(u_host, std::cout, "Initial guess");
 
   if (warmup)
@@ -150,6 +165,7 @@ void usage(char **argv)
   std::cout << "  --printitn <int>   print every <int>th iteration; 0 for no printing" << std::endl;
   std::cout << "  --tol <float>      stopping tolerance" << std::endl;
   std::cout << "  --seed <int>       seed for random number generator used in initial guess" << std::endl;
+  std::cout << "  --prng             use parallel random number generator (not consistent with Matlab)" << std::endl;
   std::cout << "  --save             whether to save the output tensor" << std::endl;
   std::cout << "  --debug            turn on debugging output" << std::endl;
   std::cout << "  --warmup           do an iteration of mttkrp to warmup (useful for generating accurate timing information)" << std::endl;
@@ -197,6 +213,8 @@ int main(int argc, char* argv[])
       parse_ttb_indx(argc, argv, "--printitn", 1, 0, INT_MAX);
     ttb_indx seed =
       parse_ttb_indx(argc, argv, "--seed", 12345, 0, INT_MAX);
+    ttb_bool prng =
+      parse_ttb_bool(argc, argv, "--prng", false);
     ttb_bool no_save =
       parse_ttb_bool(argc, argv, "--no_save", false);
     ttb_bool debug =
@@ -223,6 +241,7 @@ int main(int argc, char* argv[])
       std::cout << "printitn = " << printitn << std::endl;
       std::cout << "tol = " << tol << std::endl;
       std::cout << "seed = " << seed << std::endl;
+      std::cout << "parallel rng = " << (prng ? "true" : "false") << std::endl;
       std::cout << "no_save = " << (no_save ? "true" : "false") << std::endl;
       std::cout << "debug = " << (debug ? "true" : "false") << std::endl;
       std::cout << "warmup = " << (warmup ? "true" : "false") << std::endl;
@@ -232,16 +251,16 @@ int main(int argc, char* argv[])
 
     if (tensor_type == SPTENSOR)
       ret = run_cpals< Genten::SptensorT, Genten::DefaultExecutionSpace >(
-        inputfilename, outputfilename, index_base, gz, rank, seed, maxiters, tol,
-        printitn, no_save, debug, warmup, tensor_type);
+        inputfilename, outputfilename, index_base, gz, rank, seed, prng,
+        maxiters, tol, printitn, no_save, debug, warmup, tensor_type);
     else if (tensor_type == SPTENSOR_PERM)
       ret = run_cpals< Genten::SptensorT_perm, Genten::DefaultExecutionSpace >(
-        inputfilename, outputfilename, index_base, gz, rank, seed, maxiters, tol,
-        printitn, no_save, debug, warmup, tensor_type);
+        inputfilename, outputfilename, index_base, gz, rank, seed, prng,
+        maxiters, tol, printitn, no_save, debug, warmup, tensor_type);
     else if (tensor_type == SPTENSOR_ROW)
       ret = run_cpals< Genten::SptensorT_row, Genten::DefaultExecutionSpace >(
-        inputfilename, outputfilename, index_base, gz, rank, seed, maxiters, tol,
-        printitn, no_save, debug, warmup, tensor_type);
+        inputfilename, outputfilename, index_base, gz, rank, seed, prng,
+        maxiters, tol, printitn, no_save, debug, warmup, tensor_type);
 
   }
   catch(std::string sExc)

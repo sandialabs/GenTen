@@ -104,12 +104,13 @@ setMatricesRand() const
 template <typename ExecSpace>
 void Genten::KtensorT<ExecSpace>::
 setMatricesScatter(const bool bUseMatlabRNG,
+                   const bool bUseParallelRNG,
                    Genten::RandomMT &   cRMT) const
 {
   ttb_indx nd = data.size();
   for (ttb_indx n = 0; n < nd; n ++)
   {
-    data[n].scatter (bUseMatlabRNG, cRMT);
+    data[n].scatter (bUseMatlabRNG, bUseParallelRNG, cRMT);
   }
 }
 
