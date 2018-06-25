@@ -62,8 +62,8 @@ template <typename ExecSpace, typename subs_view_type, typename siz_type>
 subs_view_type
 createPermutationImpl(const subs_view_type& subs, const siz_type& siz)
 {
-  const ttb_indx sz = subs.dimension_0();
-  const ttb_indx nNumDims = subs.dimension_1();
+  const ttb_indx sz = subs.extent(0);
+  const ttb_indx nNumDims = subs.extent(1);
   subs_view_type perm(Kokkos::view_alloc(Kokkos::WithoutInitializing,
                                          "Genten::Sptensor_kokkos::perm"),
                       sz,nNumDims);

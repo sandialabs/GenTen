@@ -108,10 +108,10 @@ public:
   //! @brief Create array from supplied view
   IndxArrayT(const view_type& v) : data(v) {
     if (Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename ExecSpace::memory_space >::accessible)
-      host_data = host_view_type(data.data(), data.dimension_0());
+      host_data = host_view_type(data.data(), data.extent(0));
     else {
       host_data = host_view_type("Genten::IndxArray::hsot_data",
-                                 data.dimension_0());
+                                 data.extent(0));
       deep_copy( host_data, data );
     }
   }
@@ -153,14 +153,14 @@ public:
   KOKKOS_INLINE_FUNCTION
   ttb_bool empty() const
   {
-    return (data.dimension_0() == 0);
+    return (data.extent(0) == 0);
   }
 
   // Returns array length.
   KOKKOS_INLINE_FUNCTION
   ttb_indx size() const
   {
-    return data.dimension_0();
+    return data.extent(0);
   }
 
   // ----- ELEMENT ACCESS -----
@@ -171,7 +171,7 @@ public:
   KOKKOS_INLINE_FUNCTION
   ttb_indx & operator[](ttb_indx i) const
   {
-    assert(i < data.dimension_0());
+    assert(i < data.extent(0));
     if (Kokkos::Impl::MemorySpaceAccess< typename Kokkos::Impl::ActiveExecutionMemorySpace::memory_space, typename ExecSpace::memory_space >::accessible)
       return data[i];
     else
@@ -192,7 +192,7 @@ public:
   KOKKOS_INLINE_FUNCTION
   ttb_indx prod(ttb_indx dflt = 0) const
   {
-    const ttb_indx sz = host_data.dimension_0();
+    const ttb_indx sz = host_data.extent(0);
     if (sz == 0)
     {
       return dflt;

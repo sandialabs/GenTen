@@ -175,7 +175,7 @@ namespace Genten {
     KOKKOS_INLINE_FUNCTION
     ttb_bool empty() const
     {
-      return (data.dimension_0()==0);
+      return (data.extent(0)==0);
     }
 
     //! @brief Tell where the inf/nan is first seen.
@@ -188,7 +188,7 @@ namespace Genten {
     KOKKOS_INLINE_FUNCTION
     ttb_indx size() const
     {
-      return data.dimension_0();
+      return data.extent(0);
     }
 
     //@}
@@ -203,7 +203,7 @@ namespace Genten {
     KOKKOS_INLINE_FUNCTION
     ttb_real & operator[](ttb_indx i) const
     {
-      assert(i < data.dimension_0());
+      assert(i < data.extent(0));
       return(data[i]);
     }
 
@@ -291,7 +291,7 @@ namespace Genten {
     //@}
 
     void print(std::ostream& os) const {
-      const ttb_indx sz = data.dimension_0();
+      const ttb_indx sz = data.extent(0);
       os << std::endl;
       for (ttb_indx i=0; i<sz; ++i)
         os << data[i] << " ";

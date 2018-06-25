@@ -91,9 +91,9 @@ IndxArrayT(ttb_indx n, const ttb_real * v) :
 template <typename ExecSpace>
 Genten::IndxArrayT<ExecSpace>::
 IndxArrayT(const IndxArrayT<ExecSpace> & src, ttb_indx n):
-  IndxArrayT(src.data.dimension_0()-1)
+  IndxArrayT(src.data.extent(0)-1)
 {
-  const ttb_indx sz = data.dimension_0();
+  const ttb_indx sz = data.extent(0);
   deep_copy( Kokkos::subview( data,     std::make_pair(ttb_indx(0),n) ),
              Kokkos::subview( src.data, std::make_pair(ttb_indx(0),n) ) );
   deep_copy( Kokkos::subview( data,     std::make_pair(n,sz) ),
@@ -106,8 +106,8 @@ template <typename ExecSpace>
 ttb_bool Genten::IndxArrayT<ExecSpace>::
 operator==(const Genten::IndxArrayT<ExecSpace> & a) const
 {
-  const ttb_indx sz = host_data.dimension_0();
-  if (sz != a.host_data.dimension_0())
+  const ttb_indx sz = host_data.extent(0);
+  if (sz != a.host_data.extent(0))
   {
     return false;
   }
@@ -127,8 +127,8 @@ template <typename ExecSpace>
 ttb_bool Genten::IndxArrayT<ExecSpace>::
 operator<=(const Genten::IndxArrayT<ExecSpace> & a) const
 {
-  const ttb_indx sz = host_data.dimension_0();
-  if (sz != a.host_data.dimension_0())
+  const ttb_indx sz = host_data.extent(0);
+  if (sz != a.host_data.extent(0))
     Genten::error("Genten::IndxArray::operator<= not comparable (different sizes).");
 
   for (ttb_indx i = 0; i < sz; i ++)
@@ -147,7 +147,7 @@ template <typename ExecSpace>
 ttb_indx & Genten::IndxArrayT<ExecSpace>::
 at(ttb_indx i) const
 {
-  if (i < host_data.dimension_0()) {
+  if (i < host_data.extent(0)) {
     return(host_data[i]);
   }
   Genten::error("Genten::IndxArray::at ref - input i >= array size.");
@@ -175,8 +175,8 @@ template <typename ExecSpace>
 void Genten::IndxArrayT<ExecSpace>::
 cumprod(const Genten::IndxArrayT<ExecSpace> & src)
 {
-  const ttb_indx sz = host_data.dimension_0();
-  if (sz != src.host_data.dimension_0()+1)
+  const ttb_indx sz = host_data.extent(0);
+  if (sz != src.host_data.extent(0)+1)
     Genten::error("Genten::IndxArray::cumprod not comparable (different sizes).");
   host_data[0] = 1;
   for (ttb_indx i = 0; i < sz-1; i++)
@@ -197,7 +197,7 @@ template <typename ExecSpace>
 ttb_bool Genten::IndxArrayT<ExecSpace>::
 isPermutation() const
 {
-  const ttb_indx sz = host_data.dimension_0();
+  const ttb_indx sz = host_data.extent(0);
   const ttb_indx invalid = ttb_indx(-1);
   Genten::IndxArrayT<ExecSpace> chk(sz);
   chk.zero();
@@ -223,8 +223,8 @@ template <typename ExecSpace>
 void Genten::IndxArrayT<ExecSpace>::
 increment(const Genten::IndxArrayT<ExecSpace> & dims)
 {
-  const ttb_indx sz = host_data.dimension_0();
-  if (sz != dims.host_data.dimension_0())
+  const ttb_indx sz = host_data.extent(0);
+  if (sz != dims.host_data.extent(0))
     Genten::error("Genten::IndxArray::increment different sizes");
 
   ttb_indx nd = dims.size();

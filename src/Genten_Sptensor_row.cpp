@@ -55,8 +55,8 @@ createRowPtrImpl(const perm_type& perm,
                  const siz_type& siz)
 {
   // Create rowptr array with the starting index of each row
-  const ttb_indx sz = perm.dimension_0();
-  const ttb_indx nNumDims = perm.dimension_1();
+  const ttb_indx sz = perm.extent(0);
+  const ttb_indx nNumDims = perm.extent(1);
   row_ptr_type rowptr("Genten::Sptensor_kokkos::host_rowptr",nNumDims);
 
   for (ttb_indx n = 0; n < nNumDims; ++n) {
@@ -126,14 +126,14 @@ createRowPtr()
     Genten::Impl::createRowPtrImpl<ExecSpace,host_row_ptr_type>(this->perm,
                                                                 this->subs,
                                                                 this->siz);
-  const ttb_indx n = host_rowptr.dimension_0();
+  const ttb_indx n = host_rowptr.extent(0);
   row_ptr_type r("Genten::Sptensor_kokkos::rowptr", n);
   for (ttb_indx i=0; i<n; ++i) {
     auto h = host_rowptr(i);
     Kokkos::RangePolicy<ExecSpace> policy(0,1);
     Kokkos::parallel_for( policy, KOKKOS_LAMBDA(const ttb_indx j)
     {
-      r(i) = Kokkos::View<ttb_indx*,Kokkos::LayoutRight,ExecSpace>(h.data(), h.dimension_0());
+      r(i) = Kokkos::View<ttb_indx*,Kokkos::LayoutRight,ExecSpace>(h.data(), h.extent(0));
     });
   }
   rowptr = r;

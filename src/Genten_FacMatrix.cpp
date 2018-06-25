@@ -115,8 +115,8 @@ template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 convertFromCol(ttb_indx nr, ttb_indx nc, const ttb_real * cvec) const
 {
-  const ttb_indx nrows = data.dimension_0();
-  const ttb_indx ncols = data.dimension_1();
+  const ttb_indx nrows = data.extent(0);
+  const ttb_indx ncols = data.extent(1);
   for (ttb_indx  i = 0; i < nrows; i++)
   {
     for (ttb_indx  j = 0; j < ncols; j++)
@@ -131,8 +131,8 @@ bool Genten::FacMatrixT<ExecSpace>::
 isEqual(const Genten::FacMatrixT<ExecSpace> & b, ttb_real tol) const
 {
   // Check for equal sizes first
-  if ((data.dimension_0() != b.data.dimension_0()) ||
-      (data.dimension_1() != b.data.dimension_1()))
+  if ((data.extent(0) != b.data.extent(0)) ||
+      (data.extent(1) != b.data.extent(1)))
   {
     return false;
   }
@@ -148,8 +148,8 @@ template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 times(const Genten::FacMatrixT<ExecSpace> & v) const
 {
-  if ((v.data.dimension_0() != data.dimension_0()) ||
-      (v.data.dimension_1() != data.dimension_1()))
+  if ((v.data.extent(0) != data.extent(0)) ||
+      (v.data.extent(1) != data.extent(1)))
   {
     error("Genten::FacMatrix::hadamard - size mismatch");
   }
@@ -186,8 +186,8 @@ void Genten::FacMatrixT<ExecSpace>::
 transpose(const Genten::FacMatrixT<ExecSpace> & y) const
 {
   // TODO: Replace with call to BLAS3: DGEMM (?)
-  const ttb_indx nrows = data.dimension_0();
-  const ttb_indx ncols = data.dimension_1();
+  const ttb_indx nrows = data.extent(0);
+  const ttb_indx ncols = data.extent(1);
 
   for (ttb_indx i = 0; i < nrows; i ++)
   {
@@ -215,8 +215,8 @@ namespace Impl {
 template <typename ExecSpace, typename ViewC, typename ViewA>
 void gramianImpl(const ViewC& C, const ViewA& A)
 {
-  const ttb_indx m = A.dimension_0();
-  const ttb_indx n = A.dimension_1();
+  const ttb_indx m = A.extent(0);
+  const ttb_indx n = A.extent(1);
   const ttb_indx lda = A.stride_0();
   const ttb_indx ldc = C.stride_0();
 
@@ -267,8 +267,8 @@ struct GramianKernel {
     team_index(team.team_rank()),
     tmp(team.team_scratch(0), ColBlockSize, ColBlockSize),
     k_block(team.league_rank()*RowBlockSize),
-    m(A.dimension_0()),
-    n(A.dimension_1())
+    m(A.extent(0)),
+    n(A.extent(1))
     {
       if (tmp.data() == 0)
         Kokkos::abort("GramianKernel:  Allocation of temp space failed.");
@@ -340,8 +340,8 @@ void gramian_kernel(const ViewC& C, const ViewA& A)
     is_cuda ? (ColBlockSize <= 16 ? ColBlockSize : 16) : 1;
   const unsigned TeamSize = is_cuda ? 256/VectorSize : 1;
   const unsigned RowBlockSize = 128;
-  const unsigned m = A.dimension_0();
-  const unsigned n = A.dimension_1();
+  const unsigned m = A.extent(0);
+  const unsigned n = A.extent(1);
 
   typedef GramianKernel<ExecSpace,ViewC,ViewA,ColBlockSize,RowBlockSize,TeamSize,VectorSize> Kernel;
   typedef typename Kernel::TeamMember TeamMember;
@@ -365,7 +365,7 @@ void gramian_kernel(const ViewC& C, const ViewA& A)
 template <typename ExecSpace, typename ViewC, typename ViewA>
 void gramianImpl(const ViewC& C, const ViewA& A)
 {
-  const ttb_indx n = A.dimension_1();
+  const ttb_indx n = A.extent(1);
   if (n < 2)
     gramian_kernel<ExecSpace,1>(C,A);
   else if (n < 4)
@@ -394,8 +394,8 @@ void gramianImpl(const ViewC& C, const ViewA& A)
     >::type
   gramianImpl(const Kokkos::View<CT,CP...>& C, const Kokkos::View<AT,AP...>& A)
   {
-    const int m = A.dimension_0();
-    const int n = A.dimension_1();
+    const int m = A.extent(0);
+    const int n = A.extent(1);
     const int lda = A.stride_0();
     const int ldc = C.stride_0();
     const double alpha = 1.0;
@@ -448,8 +448,8 @@ void gramianImpl(const ViewC& C, const ViewA& A)
     >::type
   gramianImpl(const Kokkos::View<CT,CP...>& C, const Kokkos::View<AT,AP...>& A)
   {
-    const int m = A.dimension_0();
-    const int n = A.dimension_1();
+    const int m = A.extent(0);
+    const int n = A.extent(1);
     const int lda = A.stride_0();
     const int ldc = C.stride_0();
     const float alpha = 1.0;
@@ -503,11 +503,11 @@ gramian(const Genten::FacMatrixT<ExecSpace> & v) const
   cali::Function cali_func("Genten::FacMatrix::gramian");
 #endif
 
-  const ttb_indx m = v.data.dimension_0();
-  const ttb_indx n = v.data.dimension_1();
+  const ttb_indx m = v.data.extent(0);
+  const ttb_indx n = v.data.extent(1);
 
-  assert(data.dimension_0() == n);
-  assert(data.dimension_1() == n);
+  assert(data.extent(0) == n);
+  assert(data.extent(1) == n);
 
   Genten::Impl::gramianImpl<ExecSpace>(data,v.data);
 }
@@ -519,8 +519,8 @@ template <typename ExecSpace>
 ttb_indx Genten::FacMatrixT<ExecSpace>::
 firstGreaterSortedIncreasing(ttb_real r, ttb_indx c) const
 {
-  const ttb_indx nrows = data.dimension_0();
-  const ttb_indx ncols = data.dimension_1();
+  const ttb_indx nrows = data.extent(0);
+  const ttb_indx ncols = data.extent(1);
 
   ttb_indx least = 0;
   const ttb_real *base = ptr();
@@ -614,7 +614,7 @@ struct ColNormsKernel {
     team(team_), team_index(team.team_rank()), team_size(team.team_size()),
     tmp(team.team_scratch(0), TeamSize, ColBlockSize),
     i_block(team.league_rank()*RowBlockSize),
-    m(data.dimension_0())
+    m(data.extent(0))
     {
       if (tmp.data() == 0)
         Kokkos::abort("ColNormsKernel:  Allocation of temp space failed.");
@@ -843,8 +843,8 @@ void colNorms_kernel(
     is_cuda ? (ColBlockSize <= 32 ? ColBlockSize : 32) : 1;
   const unsigned TeamSize = is_cuda ? 256/VectorSize : 1;
   const unsigned RowBlockSize = 128;
-  const unsigned m = data.dimension_0();
-  const unsigned n = data.dimension_1();
+  const unsigned m = data.extent(0);
+  const unsigned n = data.extent(1);
 
   // Initialize norms to 0
   deep_copy(norms, 0.0);
@@ -942,7 +942,7 @@ colNorms(Genten::NormType normtype, Genten::ArrayT<ExecSpace> & norms, ttb_real 
   cali::Function cali_func("Genten::FacMatrix::colNorms");
 #endif
 
-  const ttb_indx nc = data.dimension_1();
+  const ttb_indx nc = data.extent(1);
   if (nc < 2)
     Impl::colNorms_kernel<ExecSpace,1>(data, normtype, norms.values(), minval);
   else if (nc < 4)
@@ -989,7 +989,7 @@ struct ColScaleKernel {
     team(team_),
     team_index(team.team_rank()),
     i_block(team.league_rank()*RowBlockSize),
-    m(data.dimension_0())
+    m(data.extent(0))
     {}
 
   template <unsigned Nj>
@@ -1024,8 +1024,8 @@ void colScale_kernel(const ViewType& data, const Genten::ArrayT<ExecSpace>& v)
      is_cuda ? (ColBlockSize <= 32 ? ColBlockSize : 32) : 1;
   const unsigned TeamSize = is_cuda ? 256/VectorSize : 1;
   const unsigned RowBlockSize = 128;
-  const unsigned m = data.dimension_0();
-  const unsigned n = data.dimension_1();
+  const unsigned m = data.extent(0);
+  const unsigned n = data.extent(1);
 
   typedef ColScaleKernel<ExecSpace,ViewType,ColBlockSize,RowBlockSize,TeamSize,VectorSize> Kernel;
   typedef typename Kernel::TeamMember TeamMember;
@@ -1053,7 +1053,7 @@ colScale(const Genten::ArrayT<ExecSpace> & v, bool inverse) const
   cali::Function cali_func("Genten::FacMatrix::colScale");
 #endif
 
-  const ttb_indx n = data.dimension_1();
+  const ttb_indx n = data.extent(1);
   assert(v.size() == n);
 
   Genten::ArrayT<ExecSpace> w;
@@ -1095,8 +1095,8 @@ template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise) const
 {
-  const ttb_indx nrows = data.dimension_0();
-  const ttb_indx ncols = data.dimension_1();
+  const ttb_indx nrows = data.extent(0);
+  const ttb_indx ncols = data.extent(1);
   auto data_1d = make_data_1d();
   if (fraction < 0.0 || fraction > 1.0) {
     Genten::error("Genten::FacMatrix::scaleRandomElements - input fraction invalid");
@@ -1148,8 +1148,8 @@ sum() const
   cali::Function cali_func("Genten::FacMatrix::sum");
 #endif
 
-  const ttb_indx nrows = data.dimension_0();
-  const ttb_indx ncols = data.dimension_1();
+  const ttb_indx nrows = data.extent(0);
+  const ttb_indx ncols = data.extent(1);
 
   ttb_real sum = 0;
   // for (ttb_indx i=0; i<nrows; ++i)
@@ -1196,8 +1196,8 @@ permute(const Genten::IndxArray& perm_indices) const
   // data moves (n-1 column swaps).  The number is less if a swap results
   // in placing both columns in the desired permutation order).
 
-  const ttb_indx nrows = data.dimension_0();
-  const ttb_indx ncols = data.dimension_1();
+  const ttb_indx nrows = data.extent(0);
+  const ttb_indx ncols = data.extent(1);
   const ttb_indx invalid = ttb_indx(-1);
 
   // check that the length of indices equals the number of data columns
@@ -1271,8 +1271,8 @@ multByVector(bool bTranspose,
              const Genten::ArrayT<ExecSpace> &  x,
              Genten::ArrayT<ExecSpace> &  y) const
 {
-  const ttb_indx nrows = data.dimension_0();
-  const ttb_indx ncols = data.dimension_1();
+  const ttb_indx nrows = data.extent(0);
+  const ttb_indx ncols = data.extent(1);
 
   if (bTranspose == false)
   {
@@ -1300,8 +1300,8 @@ namespace Genten {
 
     template <typename ViewA, typename ViewB>
     void solveTransposeRHSImpl(const ViewA& A, const ViewB& B) {
-      const ttb_indx nrows = B.dimension_0();
-      const ttb_indx ncols = B.dimension_1();
+      const ttb_indx nrows = B.extent(0);
+      const ttb_indx ncols = B.extent(1);
 
       // Throws an exception if Atmp is (exactly?) singular.
       //TBD...consider LAPACK sysv instead of gesv since A is sym indef
@@ -1322,14 +1322,14 @@ namespace Genten {
       >::type
     solveTransposeRHSImpl(const Kokkos::View<AT,AP...>& A,
                           const Kokkos::View<BT,BP...>& B) {
-      const int m = B.dimension_0();
-      const int n = B.dimension_1();
+      const int m = B.extent(0);
+      const int n = B.extent(1);
       const int lda = A.stride_0();
       const int ldb = B.stride_0();
       cusolverStatus_t status;
 
-      assert(A.dimension_0() == n);
-      assert(A.dimension_1() == n);
+      assert(A.extent(0) == n);
+      assert(A.extent(1) == n);
 
       static cusolverDnHandle_t handle = 0;
       if (handle == 0) {
@@ -1405,14 +1405,14 @@ namespace Genten {
       >::type
     solveTransposeRHSImpl(const Kokkos::View<AT,AP...>& A,
                           const Kokkos::View<BT,BP...>& B) {
-      const int m = B.dimension_0();
-      const int n = B.dimension_1();
+      const int m = B.extent(0);
+      const int n = B.extent(1);
       const int lda = A.stride_0();
       const int ldb = B.stride_0();
       cusolverStatus_t status;
 
-      assert(A.dimension_0() == n);
-      assert(A.dimension_1() == n);
+      assert(A.extent(0) == n);
+      assert(A.extent(1) == n);
 
       static cusolverDnHandle_t handle = 0;
       if (handle == 0) {
@@ -1484,8 +1484,8 @@ template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 solveTransposeRHS (const Genten::FacMatrixT<ExecSpace> &  A) const
 {
-  const ttb_indx nrows = data.dimension_0();
-  const ttb_indx ncols = data.dimension_1();
+  const ttb_indx nrows = data.extent(0);
+  const ttb_indx ncols = data.extent(1);
 
   assert(A.nRows() == A.nCols());
   assert(nCols() == A.nRows());
@@ -1506,12 +1506,12 @@ void Genten::FacMatrixT<ExecSpace>::
 rowTimes(Genten::ArrayT<ExecSpace> & x,
          const ttb_indx nRow) const
 {
-  assert(x.size() == data.dimension_1());
+  assert(x.size() == data.extent(1));
 
   const ttb_real * rptr = this->rowptr(nRow);
   ttb_real * xptr = x.ptr();
 
-  vmul(data.dimension_1(),xptr,rptr);
+  vmul(data.extent(1),xptr,rptr);
 
   return;
 }
@@ -1522,12 +1522,12 @@ rowTimes(const ttb_indx         nRow,
          const Genten::FacMatrixT<ExecSpace> & other,
          const ttb_indx         nRowOther) const
 {
-  assert(other.nCols() == data.dimension_1());
+  assert(other.nCols() == data.extent(1));
 
   ttb_real * rowPtr1 = this->rowptr(nRow);
   const ttb_real * rowPtr2 = other.rowptr(nRowOther);
 
-  vmul(data.dimension_1(), rowPtr1, rowPtr2);
+  vmul(data.extent(1), rowPtr1, rowPtr2);
 
   return;
 }
@@ -1538,7 +1538,7 @@ rowDot(const ttb_indx         nRow,
        const Genten::FacMatrixT<ExecSpace> & other,
        const ttb_indx         nRowOther) const
 {
-  const ttb_indx ncols = data.dimension_1();
+  const ttb_indx ncols = data.extent(1);
   assert(other.nCols() == ncols);
 
   // Using LAPACK ddot is slower on perf_CpAprRandomKtensor.
@@ -1562,7 +1562,7 @@ rowDScale(const ttb_indx         nRow,
           const ttb_indx         nRowOther,
           const ttb_real         dScalar) const
 {
-  const ttb_indx ncols = data.dimension_1();
+  const ttb_indx ncols = data.extent(1);
   assert(other.nCols() == ncols);
 
   // Using LAPACK daxpy is slower on perf_CpAprRandomKtensor.
@@ -1614,7 +1614,7 @@ struct MatInnerProdKernel {
     x(x_), y(y_), w(w_),
     team(team_), team_index(team.team_rank()), team_size(team.team_size()),
     tmp(team.team_scratch(0), RowBlockSize, ColBlockSize),
-    m(x.dimension_0()), n(x.dimension_1()),
+    m(x.extent(0)), n(x.extent(1)),
     i_block(team.league_rank()*RowBlockSize)
     {}
 
@@ -1684,8 +1684,8 @@ ttb_real mat_innerprod_kernel(const MatViewType& x, const MatViewType& y,
     is_cuda ? (ColBlockSize <= 32 ? ColBlockSize : 32) : 1;
   const unsigned TeamSize = is_cuda ? 256/VectorSize : 1;
   const unsigned RowBlockSize = 128;
-  const unsigned m = x.dimension_0();
-  const unsigned n = x.dimension_1();
+  const unsigned m = x.extent(0);
+  const unsigned n = x.extent(1);
 
   typedef MatInnerProdKernel<ExecSpace,MatViewType,WeightViewType,RowBlockSize,ColBlockSize,TeamSize,VectorSize> Kernel;
   typedef typename Kernel::TeamMember TeamMember;
@@ -1719,7 +1719,7 @@ innerprod(const Genten::FacMatrixT<ExecSpace>& A,
   cali::Function cali_func("Genten::FacMatrix::innerprod");
 #endif
 
-  const ttb_indx nc = data.dimension_1();
+  const ttb_indx nc = data.extent(1);
   ttb_real ret = 0.0;
   if (nc < 2)
     ret = Impl::mat_innerprod_kernel<ExecSpace,1>(data, A.data, lambda.values());

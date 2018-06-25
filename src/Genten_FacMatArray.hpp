@@ -145,7 +145,7 @@ public:
   KOKKOS_INLINE_FUNCTION
   ttb_indx size() const
   {
-    return data.dimension_0();
+    return data.extent(0);
   }
 
   // count the total ttb_reals currently stored here for any purpose

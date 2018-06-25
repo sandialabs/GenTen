@@ -109,9 +109,9 @@ struct ReduceDuplicates<
 
     const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
 
-    const size_t n0 = src.dimension_0();
-    const size_t n1 = src.dimension_1();
-    const size_t n2 = src.dimension_2();
+    const size_t n0 = src.extent(0);
+    const size_t n1 = src.extent(1);
+    const size_t n2 = src.extent(2);
 
     const size_t vector_size = is_cuda ? 16 : 1;
     const size_t team_size = is_cuda ? 256/vector_size : 1;

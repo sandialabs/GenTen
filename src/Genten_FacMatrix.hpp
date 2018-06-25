@@ -140,8 +140,8 @@ public:
     KOKKOS_INLINE_FUNCTION
     void assign_view(const FacMatrixT& src) {
       data = view_type(src.data.data(),
-                       src.data.dimension_0(),
-                       src.data.dimension_1());
+                       src.data.extent(0),
+                       src.data.extent(1));
     }
 
     //! Set all entries to the given value.
@@ -186,14 +186,14 @@ public:
     KOKKOS_INLINE_FUNCTION
     ttb_indx nRows() const
     {
-      return data.dimension_0();
+      return data.extent(0);
     }
 
     //! Return the number of columns.
     KOKKOS_INLINE_FUNCTION
     ttb_indx nCols() const
     {
-      return data.dimension_1();
+      return data.extent(1);
     }
 
     //! Return a read-only entry (i,j).
@@ -205,7 +205,7 @@ public:
     KOKKOS_INLINE_FUNCTION
     ttb_real & entry(IType i, JType j) const
     {
-      assert((i < data.dimension_0()) && (j < data.dimension_1()));
+      assert((i < data.extent(0)) && (j < data.extent(1)));
       return data(i,j);
     }
 

@@ -95,7 +95,7 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 copyFrom(ttb_indx n, const ttb_real * src) const
 {
-  if (n != data.dimension_0())
+  if (n != data.extent(0))
   {
     error("Genten::ArrayT::copy - Destination array is not the correct size");
   }
@@ -107,7 +107,7 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 copyTo(ttb_indx n, ttb_real * dest) const
 {
-  if (n != data.dimension_0())
+  if (n != data.extent(0))
   {
     error("Genten::ArrayT::copy - Destination array is not the correct size");
   }
@@ -134,7 +134,7 @@ void Genten::ArrayT<ExecSpace>::
 rand() const
 {
   RandomMT  cRNG(0);
-  const ttb_indx sz = data.dimension_0();
+  const ttb_indx sz = data.extent(0);
   for (ttb_indx  i = 0; i < sz; i++)
   {
     data[i] = cRNG.genrnd_double();
@@ -148,7 +148,7 @@ scatter (const bool bUseMatlabRNG,
          const bool bUseParallelRNG,
          RandomMT &  cRMT) const
 {
-  const ttb_indx sz = data.dimension_0();
+  const ttb_indx sz = data.extent(0);
   if (bUseParallelRNG)
   {
     const ttb_indx seed = cRMT.genrnd_int32();
@@ -182,8 +182,8 @@ template <typename ExecSpace>
 bool Genten::ArrayT<ExecSpace>::
 operator==(const Genten::ArrayT<ExecSpace> & a) const
 {
-  const ttb_indx sz = data.dimension_0();
-  if (sz != a.data.dimension_0())
+  const ttb_indx sz = data.extent(0);
+  if (sz != a.data.extent(0))
   {
     return(false);
   }
@@ -203,7 +203,7 @@ template <typename ExecSpace>
 bool Genten::ArrayT<ExecSpace>::
 hasNonFinite(ttb_indx &where) const
 {
-  const ttb_indx sz = data.dimension_0();
+  const ttb_indx sz = data.extent(0);
   for  (ttb_indx i = 0; i < sz; i ++)
   {
     if (isRealValid(data[i]) == false) {
@@ -218,7 +218,7 @@ template <typename ExecSpace>
 ttb_real & Genten::ArrayT<ExecSpace>::
 at(ttb_indx i) const
 {
-  const ttb_indx sz = data.dimension_0();
+  const ttb_indx sz = data.extent(0);
   if ( i < sz) {
     return(data[i]);
   }
@@ -234,7 +234,7 @@ norm(Genten::NormType ntype) const
   cali::Function cali_func("Genten::Array::norm");
 #endif
 
-  const ttb_indx sz = data.dimension_0();
+  const ttb_indx sz = data.extent(0);
   Kokkos::RangePolicy<ExecSpace> policy(0,sz);
   auto my_data = data; // can't capture *this by value
   ttb_real nrm;
@@ -282,7 +282,7 @@ template <typename ExecSpace>
 ttb_indx Genten::ArrayT<ExecSpace>::
 nnz() const
 {
-  const ttb_indx sz = data.dimension_0();
+  const ttb_indx sz = data.extent(0);
   ttb_indx cnt = 0;
   for (ttb_indx i = 0; i < sz; i ++)
   {
@@ -298,8 +298,8 @@ template <typename ExecSpace>
 ttb_real Genten::ArrayT<ExecSpace>::
 dot(const Genten::ArrayT<ExecSpace> & y) const
 {
-  const ttb_indx sz = data.dimension_0();
-  if (sz != y.data.dimension_0())
+  const ttb_indx sz = data.extent(0);
+  if (sz != y.data.extent(0))
   {
     Genten::error("Genten::ArrayT::dot - Size mismatch");
   }
@@ -312,8 +312,8 @@ bool Genten::ArrayT<ExecSpace>::
 isEqual(const Genten::ArrayT<ExecSpace> & y, ttb_real tol) const
 {
   // Check for equal sizes.
-  const ttb_indx sz = data.dimension_0();
-  if (sz != y.data.dimension_0())
+  const ttb_indx sz = data.extent(0);
+  if (sz != y.data.extent(0))
   {
     return( false );
   }
@@ -332,7 +332,7 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 times(ttb_real a) const
 {
-  const ttb_indx sz = data.dimension_0();
+  const ttb_indx sz = data.extent(0);
   Genten::scal(sz, a, data.data(), 1);
 }
 
@@ -340,8 +340,8 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 times(ttb_real a, const Genten::ArrayT<ExecSpace> & y) const
 {
-  const ttb_indx sz = data.dimension_0();
-  if (sz != y.data.dimension_0())
+  const ttb_indx sz = data.extent(0);
+  if (sz != y.data.extent(0))
   {
     Genten::error("Genten::ArrayT::dot - Size mismatch");
   }
@@ -353,7 +353,7 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 invert(ttb_real a) const
 {
-  const ttb_indx sz = data.dimension_0();
+  const ttb_indx sz = data.extent(0);
   for (ttb_indx i = 0; i < sz; i ++)
   {
     data[i] = a / data[i];
@@ -364,12 +364,12 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 invert(ttb_real a, const Genten::ArrayT<ExecSpace> & y) const
 {
-  const ttb_indx sz = data.dimension_0();
-  if (sz != y.data.dimension_0())
+  const ttb_indx sz = data.extent(0);
+  if (sz != y.data.extent(0))
   {
     Genten::error("Genten::ArrayT::dot - Size mismatch");
   }
-  for (ttb_indx i = 0; i < data.dimension_0(); i ++)
+  for (ttb_indx i = 0; i < data.extent(0); i ++)
   {
     data[i] = a / y.data[i];
   }
@@ -379,7 +379,7 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 power(ttb_real a) const
 {
-  const ttb_indx sz = data.dimension_0();
+  const ttb_indx sz = data.extent(0);
   for (ttb_indx i = 0; i < sz; i ++)
   {
     data[i] = pow(data[i], a);
@@ -390,8 +390,8 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 power(ttb_real a, const Genten::ArrayT<ExecSpace> & y) const
 {
-  const ttb_indx sz = data.dimension_0();
-  if (sz != y.data.dimension_0())
+  const ttb_indx sz = data.extent(0);
+  if (sz != y.data.extent(0))
   {
     Genten::error("Genten::ArrayT::dot - Size mismatch");
   }
@@ -405,7 +405,7 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 shift(ttb_real a) const
 {
-  const ttb_indx sz = data.dimension_0();
+  const ttb_indx sz = data.extent(0);
   for (ttb_indx i = 0; i < sz; i ++)
   {
     data[i] = data[i] + a;
@@ -416,8 +416,8 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 shift(ttb_real a, const Genten::ArrayT<ExecSpace> & y) const
 {
-  const ttb_indx sz = data.dimension_0();
-  if (sz != y.data.dimension_0())
+  const ttb_indx sz = data.extent(0);
+  if (sz != y.data.extent(0))
   {
     Genten::error("Genten::ArrayT::dot - Size mismatch");
   }
@@ -431,8 +431,8 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 plus(const Genten::ArrayT<ExecSpace> & y) const
 {
-  const ttb_indx sz = data.dimension_0();
-  if (sz != y.data.dimension_0())
+  const ttb_indx sz = data.extent(0);
+  if (sz != y.data.extent(0))
   {
     Genten::error("Genten::ArrayT::plus (one input) - size mismatch");
   }
@@ -445,10 +445,10 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 plusVec(std::vector< const ArrayT<ExecSpace> * > y) const
 {
-  const ttb_indx sz = data.dimension_0();
+  const ttb_indx sz = data.extent(0);
   typename std::vector< const ArrayT * >::iterator it;
   for (it = y.begin(); it < y.end(); it++) {
-    if (sz != (*it)->data.dimension_0())
+    if (sz != (*it)->data.extent(0))
     {
       Genten::error("Genten::ArrayT::plusVec - size mismatch");
     }
@@ -474,8 +474,8 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 plus(const Genten::ArrayT<ExecSpace> & y, const Genten::ArrayT<ExecSpace> & z) const
 {
-  const ttb_indx sz = data.dimension_0();
-  if (y.data.dimension_0() != z.data.dimension_0())
+  const ttb_indx sz = data.extent(0);
+  if (y.data.extent(0) != z.data.extent(0))
   {
     Genten::error("Genten::ArrayT::plus (two inputs) - size mismatch");
   }
@@ -488,8 +488,8 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 minus(const Genten::ArrayT<ExecSpace> & y) const
 {
-  const ttb_indx sz = data.dimension_0();
-  if (sz != y.data.dimension_0())
+  const ttb_indx sz = data.extent(0);
+  if (sz != y.data.extent(0))
   {
     Genten::error("Genten::ArrayT::minus (one input) - size mismatch");
   }
@@ -501,8 +501,8 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 minus(const Genten::ArrayT<ExecSpace> & y, const Genten::ArrayT<ExecSpace> & z) const
 {
-  const ttb_indx sz = data.dimension_0();
-  if (y.data.dimension_0() != z.data.dimension_0())
+  const ttb_indx sz = data.extent(0);
+  if (y.data.extent(0) != z.data.extent(0))
   {
     Genten::error("Genten::ArrayT::minus (two inputs) - size mismatch");
   }
@@ -519,8 +519,8 @@ times(const Genten::ArrayT<ExecSpace> & y) const
   cali::Function cali_func("Genten::Array::times");
 #endif
 
-  const ttb_indx sz = data.dimension_0();
-  if (sz != y.data.dimension_0())
+  const ttb_indx sz = data.extent(0);
+  if (sz != y.data.extent(0))
   {
     Genten::error("Genten::ArrayT::times (one input) - size mismatch");
   }
@@ -539,8 +539,8 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 times(const Genten::ArrayT<ExecSpace> & y, const Genten::ArrayT<ExecSpace> & z) const
 {
-  const ttb_indx sz = data.dimension_0();
-  if (y.data.dimension_0() != z.data.dimension_0())
+  const ttb_indx sz = data.extent(0);
+  if (y.data.extent(0) != z.data.extent(0))
   {
     Genten::error("Genten::ArrayT::times (two inputs) - size mismatch");
   }
@@ -555,8 +555,8 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 divide(const Genten::ArrayT<ExecSpace> & y) const
 {
-  const ttb_indx sz = data.dimension_0();
-  if (sz != y.data.dimension_0())
+  const ttb_indx sz = data.extent(0);
+  if (sz != y.data.extent(0))
   {
     Genten::error("Genten::ArrayT::divide (one input) - size mismatch");
   }
@@ -571,8 +571,8 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 divide(const Genten::ArrayT<ExecSpace> & y, const Genten::ArrayT<ExecSpace> & z) const
 {
-  const ttb_indx sz = data.dimension_0();
-  if (y.data.dimension_0() != z.data.dimension_0())
+  const ttb_indx sz = data.extent(0);
+  if (y.data.extent(0) != z.data.extent(0))
   {
     Genten::error("Genten::ArrayT::divide (two inputs) - size mismatch");
   }
@@ -587,7 +587,7 @@ template <typename ExecSpace>
 ttb_real Genten::ArrayT<ExecSpace>::
 sum() const
 {
-  const ttb_indx sz = data.dimension_0();
+  const ttb_indx sz = data.extent(0);
   ttb_real value = 0;
   for (ttb_indx i = 0; i < sz; i ++)
   {
