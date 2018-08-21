@@ -198,7 +198,7 @@ void run_mttkrp(const std::string& inputfilename,
     const double mttkrp_total_time = timer.getTotalTime(0);
     const double mttkrp_total_throughput =
       ( mttkrp_flops / mttkrp_total_time ) / (1024.0 * 1024.0 * 1024.0);
-    std::printf("\t%3d\t    %.3f\n", R, mttkrp_total_throughput);
+    std::printf("\t%3d\t    %.3f\n", int(R), mttkrp_total_throughput);
   }
 }
 

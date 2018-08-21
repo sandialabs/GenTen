@@ -467,7 +467,7 @@ plusVec(std::vector< const ArrayT<ExecSpace> * > y) const
     }
     atmp[i] += stmp;
   }
-  delete dptr;
+  delete [] dptr;
 }
 
 template <typename ExecSpace>

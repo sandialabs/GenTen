@@ -203,7 +203,7 @@ namespace Genten {
 
     ttb_real fit;
     ttb_real fitold;
-    if (perfInfo > 0)
+    if (perfInfo != nullptr)
     {
       // Compute residual norm and fit of the initial guess.
       // Fit can be a huge negative number for bad start points,

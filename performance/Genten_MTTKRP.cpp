@@ -204,7 +204,7 @@ int run_mttkrp(const std::string& inputfilename,
       ( mttkrp_flops / mttkrp_time ) / (1024.0 * 1024.0 * 1024.0);
     std::printf(
       "\tMode %i: average time = %.3f seconds, throughput = %.3f GFLOP/s\n",
-      n, mttkrp_time, mttkrp_throughput);
+      int(n), mttkrp_time, mttkrp_throughput);
     mttkrp_total_time += mttkrp_time;
   }
   mttkrp_total_time /= nDims;

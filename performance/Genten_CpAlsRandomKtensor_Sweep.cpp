@@ -194,7 +194,7 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
     ttb_indx last_perf =
       nItersCompleted > nMaxIters ? nMaxIters+1 : nItersCompleted+1;
     ttb_real mttkrp_gflops = perfInfo[last_perf].dmttkrp_gflops;
-    printf("\t%3d\t    %.3f\n", R, mttkrp_gflops);
+    printf("\t%3d\t    %.3f\n", int(R), mttkrp_gflops);
     delete[] perfInfo;
   }
 

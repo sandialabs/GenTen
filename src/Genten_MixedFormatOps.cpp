@@ -983,7 +983,7 @@ void Genten::mttkrp(const Genten::SptensorT_row<ExecSpace>& X,
 
   // Use the largest power of 2 <= nc, with a maximum of 64 for the vector size.
   const size_type VectorSize =
-    nc == 1 ? 1 : std::min(64,2 << int(std::log2(nc))-1);
+    nc == 1 ? 1 : std::min(64,2 << (int(std::log2(nc))-1));
   const size_type TeamSize =
     is_cuda ? 128/VectorSize : 1;
   const ttb_indx Nrow = X.size(n);
