@@ -115,6 +115,7 @@ namespace Genten {
     const unsigned nc = M.ncomponents();
     tensor_type XX = X;  // Can't capture *this
     ktensor_type MM = M;
+    loss_function_type ff = f;
     Kokkos::RangePolicy<exec_space> policy(0, nnz);
     ttb_real v = 0.0;
     Kokkos::parallel_reduce(policy, KOKKOS_LAMBDA(const ttb_indx i, ttb_real& d)
@@ -129,7 +130,7 @@ namespace Genten {
       }
 
       // Evaluate link function
-      d += f.value(XX.value(i), m_val);
+      d += ff.value(XX.value(i), m_val);
     }, v);
 
     v /= nnz;
@@ -158,6 +159,7 @@ namespace Genten {
     tensor_type XX = X;  // Can't capture *this
     tensor_type YY = Y;
     ktensor_type MM = M;
+    loss_function_type ff = f;
     Kokkos::RangePolicy<exec_space> policy(0, nnz);
     Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ttb_indx i)
     {
@@ -171,7 +173,7 @@ namespace Genten {
       }
 
       // Evaluate link function derivative
-      YY.value(i) = f.deriv(XX.value(i), m_val) / nnz;
+      YY.value(i) = ff.deriv(XX.value(i), m_val) / nnz;
     });
 
     // Compute gradient

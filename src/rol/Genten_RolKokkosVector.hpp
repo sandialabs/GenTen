@@ -64,7 +64,7 @@ namespace Genten {
       const RolKokkosVector& x = dynamic_cast<const RolKokkosVector&>(xx);
       view_type my_v = v;
       view_type xv = x.v;
-      apply_func(KOKKOS_LAMBDA(const int i)
+      apply_func<exec_space>(KOKKOS_LAMBDA(const int i)
       {
         my_v(i) += xv(i);
       });
@@ -73,7 +73,7 @@ namespace Genten {
     virtual void scale(const ttb_real alpha)
     {
       view_type my_v = v;
-      apply_func(KOKKOS_LAMBDA(const int i)
+      apply_func<exec_space>(KOKKOS_LAMBDA(const int i)
       {
         my_v(i) *= alpha;
       });
@@ -85,7 +85,7 @@ namespace Genten {
       view_type my_v = v;
       view_type xv = x.v;
       ttb_real result = 0.0;
-      reduce_func(KOKKOS_LAMBDA(const int i, ttb_real& d)
+      reduce_func<exec_space>(KOKKOS_LAMBDA(const int i, ttb_real& d)
       {
         d += my_v(i)*xv(i);
       }, result);
@@ -107,7 +107,7 @@ namespace Genten {
       const RolKokkosVector& x = dynamic_cast<const RolKokkosVector&>(xx);
       view_type my_v = v;
       view_type xv = x.v;
-      apply_func(KOKKOS_LAMBDA(const int i)
+      apply_func<exec_space>(KOKKOS_LAMBDA(const int i)
       {
         my_v(i) += alpha*xv(i);
       });
@@ -116,7 +116,7 @@ namespace Genten {
     virtual void zero()
     {
       view_type my_v = v;
-      apply_func(KOKKOS_LAMBDA(const int i)
+      apply_func<exec_space>(KOKKOS_LAMBDA(const int i)
       {
         my_v(i) = 0.0;
       });
@@ -145,7 +145,7 @@ namespace Genten {
       const RolKokkosVector& x = dynamic_cast<const RolKokkosVector&>(xx);
       view_type my_v = v;
       view_type xv = x.v;
-      apply_func(KOKKOS_LAMBDA(const int i)
+      apply_func<exec_space>(KOKKOS_LAMBDA(const int i)
       {
         my_v(i) = xv(i);
       });
@@ -156,18 +156,18 @@ namespace Genten {
       return *this;
     }
 
-    /*
     virtual void applyUnary(
       const ROL::Elementwise::UnaryFunction<ttb_real>& f)
     {
-      view_type my_v = v;
-      // Todo:  Hack to avoid capture of abstract class.
-      // This won't work on a GPU
-      const ROL::Elementwise::UnaryFunction<ttb_real>* fp = &f;
-      apply_func(KOKKOS_LAMBDA(const int i)
+      // Have to transfer to the host because these functions classes
+      // use virtual functions
+      host_view_type h_v = Kokkos::create_mirror_view(v);
+      Kokkos::deep_copy(h_v, v);
+      apply_func<host_exec_space>([&](const int i)
       {
-        my_v(i) = fp->apply(my_v(i));
+        h_v(i) = f.apply(h_v(i));
       });
+      Kokkos::deep_copy(v, h_v);
     }
 
     virtual void applyBinary(
@@ -175,36 +175,38 @@ namespace Genten {
       const ROL::Vector<ttb_real>& xx)
     {
       const RolKokkosVector& x = dynamic_cast<const RolKokkosVector&>(xx);
-      view_type my_v = v;
-      view_type xv = x.v;
-      // Todo:  Hack to avoid capture of abstract class.
-      // This won't work on a GPU
-      const ROL::Elementwise::BinaryFunction<ttb_real>* fp = &f;
-      apply_func(KOKKOS_LAMBDA(const int i)
+
+      // Have to transfer to the host because these functions classes
+      // use virtual functions
+      host_view_type h_v = Kokkos::create_mirror_view(v);
+      host_view_type h_x = Kokkos::create_mirror_view(x.v);
+      Kokkos::deep_copy(h_v, v);
+      Kokkos::deep_copy(h_x, x.v);
+      apply_func<host_exec_space>([&](const int i)
       {
-        my_v(i) = fp->apply(my_v(i), xv(i));
+        h_v(i) = f.apply(h_v(i), h_x(i));
       });
+      Kokkos::deep_copy(v, h_v);
     }
 
     virtual ttb_real reduce(
       const ROL::Elementwise::ReductionOp<ttb_real>& r) const
     {
-      view_type my_v = v;
+      // Have to transfer to the host because these functions classes
+      // use virtual functions
+      host_view_type h_v = Kokkos::create_mirror_view(v);
+      Kokkos::deep_copy(h_v, v);
       ttb_real result = 0.0;
-      // Todo:  Hack to avoid capture of abstract class.
-      // This won't work on a GPU
-      const ROL::Elementwise::ReductionOp<ttb_real>* rp = &r;
-      reduce_func(KOKKOS_LAMBDA(const int i, ttb_real& d)
+      reduce_func<host_exec_space>([&](const int i, ttb_real& d)
       {
-        rp->reduce(my_v(i), d);
+        r.reduce(h_v(i), d);
       }, result);
       return result;
     }
-    */
 
     virtual void print(std::ostream& outStream) const
     {
-      typename view_type::HostMirror h_v = Kokkos::create_mirror_view(v);
+      host_view_type h_v = Kokkos::create_mirror_view(v);
       Kokkos::deep_copy(h_v, v);
       const ttb_indx n = h_v.extent(0);
       outStream << "v = [" << std::endl;
@@ -215,7 +217,7 @@ namespace Genten {
 
     virtual void setScalar( const ttb_real C ) {
       view_type my_v = v;
-      apply_func(KOKKOS_LAMBDA(const int i)
+      apply_func<exec_space>(KOKKOS_LAMBDA(const int i)
       {
         my_v(i) = C;
       });
@@ -223,19 +225,22 @@ namespace Genten {
 
   protected:
 
-    template <typename Func>
+    typedef typename view_type::HostMirror host_view_type;
+    typedef typename host_view_type::execution_space host_exec_space;
+
+    template <typename Space, typename Func>
     void apply_func(const Func& f) const
     {
       const ttb_indx n = v.extent(0);
-      Kokkos::RangePolicy<exec_space> policy(0,n);
+      Kokkos::RangePolicy<Space> policy(0,n);
       Kokkos::parallel_for(policy, f);
     }
 
-    template <typename Func>
+    template <typename Space, typename Func>
     void reduce_func(const Func& f, ttb_real& d) const
     {
       const ttb_indx n = v.extent(0);
-      Kokkos::RangePolicy<exec_space> policy(0,n);
+      Kokkos::RangePolicy<Space> policy(0,n);
       Kokkos::parallel_reduce(policy, f, d);
     }
 
