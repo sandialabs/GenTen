@@ -113,6 +113,11 @@ public:
     SptensorT<ExecSpace>(d, vals, s),
     perm() {}
 
+  // Create tensor from supplied dimensions and subscripts, zero values
+  SptensorT_perm(const IndxArrayT<ExecSpace>& d, const subs_view_type& s) :
+    SptensorT<ExecSpace>(d, s),
+    perm() {}
+
   // Copy constructor.
   KOKKOS_INLINE_FUNCTION
   SptensorT_perm (const SptensorT_perm & arg) = default;

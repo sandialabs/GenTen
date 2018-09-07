@@ -76,6 +76,9 @@
 //---- DEFINED IF Caliper IS ENABLED.
 #cmakedefine HAVE_CALIPER
 
+//---- DEFINED IF ROL IS ENABLED.
+#cmakedefine HAVE_ROL
+
 #include <cstddef>
 
 // Floating-point type

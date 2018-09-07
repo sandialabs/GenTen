@@ -61,6 +61,7 @@ OPTION(ENABLE_CUSOLVER "Flag to enable cuSolver for Kokkos with Cuda" OFF)
 OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files" OFF)
 OPTION(ENABLE_LAPACK "Enable BLAS/LAPACK (if disabled, Genten implementations will be used" ON)
 OPTION(ENABLE_CALIPER "Enable Caliper for application profiling" OFF)
+OPTION(ENABLE_ROL "Enable ROL for optimization" OFF)
 OPTION(FLOAT_TYPE "C++ data type used for floating-point values" OFF)
 OPTION(INDEX_TYPE "C++ data type used for tensor indices" OFF)
 
@@ -112,6 +113,28 @@ IF (ENABLE_CALIPER)
     SET(GENTEN_LIBS "${GENTEN_LIBS} -L${LIBUNWIND_PATH}/lib -lunwind")
   ENDIF()
   SET(HAVE_CALIPER ${ENABLE_CALIPER})
+ENDIF()
+
+SET(ROL_LIBRARIES "")
+SET(ROL_TPL_LIBRARIES "")
+IF (ENABLE_ROL)
+  OPTION(ROL_PATH "Path to ROL installation")
+  FIND_PACKAGE(ROL PATHS "${ROL_PATH}" NO_DEFAULT_PATH)
+
+  MESSAGE("\nFound ROL: ")
+  MESSAGE("   ROL_DIR = ${ROL_DIR}")
+  MESSAGE("   ROL_PACKAGE_LIST = ${ROL_PACKAGE_LIST}")
+  MESSAGE("   ROL_LIBRARIES = ${ROL_LIBRARIES}")
+  MESSAGE("   ROL_INCLUDE_DIRS = ${ROL_INCLUDE_DIRS}")
+  MESSAGE("   ROL_LIBRARY_DIRS = ${ROL_LIBRARY_DIRS}")
+  MESSAGE("   ROL_TPL_LIST = ${ROL_TPL_LIST}")
+  MESSAGE("   ROL_TPL_INCLUDE_DIRS = ${ROL_TPL_INCLUDE_DIRS}")
+  MESSAGE("   ROL_TPL_LIBRARIES = ${ROL_TPL_LIBRARIES}")
+  MESSAGE("   ROL_TPL_LIBRARY_DIRS = ${ROL_TPL_LIBRARY_DIRS}")
+
+  INCLUDE_DIRECTORIES(${ROL_INCLUDE_DIRS} ${ROL_TPL_INCLUDE_DIRS})
+  LINK_DIRECTORIES(${ROL_LIBRARY_DIRS} ${ROL_TPL_LIBRARY_DIRS} )
+  SET(HAVE_ROL ${ENABLE_ROL})
 ENDIF()
 
 # For non-inline build of Kokkos, grep Makefile.kokkos for settings
@@ -197,14 +220,16 @@ INCLUDE_DIRECTORIES (
   ${Kokkos_INCLUDE_DIRS_RET}
   ${Genten_SOURCE_DIR}/src/
   ${Genten_SOURCE_DIR}/src/mathlib/
+  ${Genten_SOURCE_DIR}/src/rol/
   ${Genten_BINARY_DIR}/CMakeInclude/
   ${Genten_SOURCE_DIR}/driver/
   )
 FILE (GLOB genten_headers
   ${Genten_SOURCE_DIR}/src/*.h
-  ${Genten_SOURCE_DIR}/src/*.hpp
+  ${Genten_SOURCE_DIR}/src/*.hp/
   ${Genten_SOURCE_DIR}/src/mathlib/*.h
   ${Genten_SOURCE_DIR}/src/mathlib/*.hpp
+  ${Genten_SOURCE_DIR}/src/rol*.hpp
   )
 INSTALL (
   FILES ${genten_headers}
@@ -316,12 +341,18 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_Util.cpp
   )
 
+IF (ENABLE_ROL)
+  SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+    ${Genten_SOURCE_DIR}/src/rol/Genten_GCP_Opt.cpp
+    )
+ENDIF()
+
 #---- Tell CMake to build the library.
-ADD_LIBRARY (genten ${Genten_SOURCE_LIST})
-SET(GENTEN_LINK_LIBS genten ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
+ADD_LIBRARY (gentenlib ${Genten_SOURCE_LIST})
+SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${ROL_LIBRARIES} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
 TARGET_LINK_LIBRARIES(${GENTEN_LINK_LIBS})
 INSTALL (
-  TARGETS genten
+  TARGETS gentenlib
   DESTINATION lib
   )
 
@@ -424,12 +455,12 @@ INSTALL (
 #---- In each case specify the executable and its link library dependencies.
 
 ADD_EXECUTABLE (
-  cpals
-  ${Genten_SOURCE_DIR}/driver/Genten_Driver_CpAls.cpp
+  genten
+  ${Genten_SOURCE_DIR}/driver/Genten_Driver.cpp
   )
-TARGET_LINK_LIBRARIES (cpals ${GENTEN_LINK_LIBS})
+TARGET_LINK_LIBRARIES (genten ${GENTEN_LINK_LIBS})
 INSTALL (
-  TARGETS cpals
+  TARGETS genten
   DESTINATION drivers
   )
 
