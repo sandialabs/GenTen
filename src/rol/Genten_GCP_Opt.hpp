@@ -46,6 +46,8 @@
 
 #pragma once
 
+#include <ostream>
+
 #include "Genten_Ktensor.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
 
@@ -71,12 +73,14 @@ namespace Genten {
    *  @param[in] loss_type  Type of loss function defining GCP optimization
    *                        param
    *  @param[in] params     ROL solver parameters
+   *  @param[out] stream    ROL output stream (set to null for no output)
    *  @param[in] loss_eps   Perturbation size for loss function evaluation
    */
   template<typename TensorT, typename ExecSpace>
   void gcp_opt(const TensorT& x, KtensorT<ExecSpace>& u,
                const LOSS_FUNCTION_TYPE loss_type,
                Teuchos::ParameterList& rol_params,
+               std::ostream* stream = nullptr,
                const ttb_real loss_eps = 0.0);
 
   //! Compute the CP decomposition of a tensor based on a general objective.
@@ -101,6 +105,7 @@ namespace Genten {
    *                        param
    *  @param[in] tol        Stop tolerance for convergence of "fit function".
    *  @param[in] maxIters   Maximum number of iterations allowed.
+   *  @param[out] stream    ROL output stream (set to null for no output)
    *  @param[in] loss_eps   Perturbation size for loss function evaluation
    */
   template<typename TensorT, typename ExecSpace>
@@ -108,6 +113,7 @@ namespace Genten {
                const LOSS_FUNCTION_TYPE loss_type,
                const ttb_real tol,
                const ttb_indx maxIters,
+               std::ostream* stream = nullptr,
                const ttb_real loss_eps = 0.0)
   {
     // Setup ROL to do optimization algorithm similar to L-BFGS-B
@@ -121,7 +127,7 @@ namespace Genten {
     status_params.set<double>("Step Tolerance", tol);
     status_params.set<int>("Iteration Limit", maxIters);
 
-    gcp_opt(x, u, loss_type, rol_params, loss_eps);
+    gcp_opt(x, u, loss_type, rol_params, stream, loss_eps);
   }
 
 }

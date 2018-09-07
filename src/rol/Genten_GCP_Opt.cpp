@@ -68,7 +68,8 @@ namespace Genten {
     template<typename TensorT, typename ExecSpace, typename LossFunction>
     void gcp_opt_impl(const TensorT& x, KtensorT<ExecSpace>& u,
                       const LossFunction& loss_func,
-                      Teuchos::ParameterList& params)
+                      Teuchos::ParameterList& params,
+                      std::ostream* stream)
     {
       // Create ROL interface
       typedef Genten::GCP_RolObjective<TensorT, LossFunction> objective_type;
@@ -95,7 +96,10 @@ namespace Genten {
       ROL::OptimizationSolver<ttb_real> solver(problem, params);
 
       // Run GCP
-      solver.solve(std::cout);
+      if (stream != nullptr)
+        solver.solve(*stream);
+      else
+        solver.solve();
       objective->vector2Ktensor(*z, u);
 
       // Normalize Ktensor u
@@ -110,6 +114,7 @@ namespace Genten {
   void gcp_opt(const TensorT& x, KtensorT<ExecSpace>& u,
                const LOSS_FUNCTION_TYPE loss_function_type,
                Teuchos::ParameterList& params,
+               std::ostream* stream,
                const ttb_real loss_eps)
   {
 #ifdef HAVE_CALIPER
@@ -129,15 +134,15 @@ namespace Genten {
 
     // Dispatch implementation based on loss function type
     if (loss_function_type == GAUSSIAN)
-      Impl::gcp_opt_impl(x, u, GaussianLossFunction(loss_eps), params);
+      Impl::gcp_opt_impl(x, u, GaussianLossFunction(loss_eps), params, stream);
     else if (loss_function_type == RAYLEIGH)
-      Impl::gcp_opt_impl(x, u, RayleighLossFunction(loss_eps), params);
+      Impl::gcp_opt_impl(x, u, RayleighLossFunction(loss_eps), params, stream);
     else if (loss_function_type == GAMMA)
-      Impl::gcp_opt_impl(x, u, GammaLossFunction(loss_eps), params);
+      Impl::gcp_opt_impl(x, u, GammaLossFunction(loss_eps), params, stream);
     else if (loss_function_type == BERNOULLI)
-      Impl::gcp_opt_impl(x, u, BernoulliLossFunction(loss_eps), params);
+      Impl::gcp_opt_impl(x, u, BernoulliLossFunction(loss_eps), params, stream);
     else if (loss_function_type == POISSON)
-      Impl::gcp_opt_impl(x, u, PoissonLossFunction(loss_eps), params);
+      Impl::gcp_opt_impl(x, u, PoissonLossFunction(loss_eps), params, stream);
     else
        Genten::error("Genten::gcp_opt - unknown loss function");
   }
@@ -150,6 +155,7 @@ namespace Genten {
     KtensorT<SPACE>& u,                                                 \
     const LOSS_FUNCTION_TYPE loss_function_type,                        \
     Teuchos::ParameterList& params,                                     \
+    std::ostream* stream,                                                \
     const ttb_real loss_eps);                                           \
                                                                         \
   template void gcp_opt<SptensorT_perm<SPACE>,SPACE>(                   \
@@ -157,6 +163,7 @@ namespace Genten {
     KtensorT<SPACE>& u,                                                 \
     const LOSS_FUNCTION_TYPE loss_function_type,                        \
     Teuchos::ParameterList& params,                                     \
+    std::ostream* stream,                                                \
     const ttb_real loss_eps);                                           \
                                                                         \
   template void gcp_opt<SptensorT_row<SPACE>,SPACE>(                    \
@@ -164,6 +171,7 @@ namespace Genten {
     KtensorT<SPACE>& u,                                                 \
     const LOSS_FUNCTION_TYPE loss_function_type,                        \
     Teuchos::ParameterList& params,                                     \
+    std::ostream* stream,                                                \
     const ttb_real loss_eps);
 
 GENTEN_INST(INST_MACRO)

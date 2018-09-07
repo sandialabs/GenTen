@@ -362,8 +362,7 @@ INSTALL (
 
 #---- Specifications for building unit_tests.
 
-ADD_EXECUTABLE (
-  unit_tests
+SET(UNIT_TEST_SRCS
   ${Genten_SOURCE_DIR}/test/Genten_Test_Array.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_CpAls.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_FacMatrix.cpp
@@ -374,6 +373,16 @@ ADD_EXECUTABLE (
   ${Genten_SOURCE_DIR}/test/Genten_Test_Sptensor.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_UnitTests.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_Utils.cpp
+  )
+IF(ENABLE_ROL)
+  SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
+    ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_Opt.cpp
+    )
+ENDIF()
+
+ADD_EXECUTABLE (
+  unit_tests
+  ${UNIT_TEST_SRCS}
   )
 TARGET_LINK_LIBRARIES (unit_tests ${GENTEN_LINK_LIBS})
 INSTALL (

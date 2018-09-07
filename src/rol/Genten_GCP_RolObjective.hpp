@@ -69,6 +69,9 @@ namespace Genten {
       const unsigned nc = M.ncomponents();
       for (unsigned i=0; i<nd; ++i)
         G.set_factor(i, FacMatrixT<exec_space>(M[i].nRows(), nc));
+
+      // Todo:  maybe do a deep copy instead so we don't have to resort?
+      Y.fillComplete();
     }
 
     virtual ~GCP_RolObjective() {}

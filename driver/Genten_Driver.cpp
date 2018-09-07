@@ -164,9 +164,9 @@ int run(const std::string& method,
       rol_params = Teuchos::getParametersFromXmlFile(rolfilename);
     timer.start(2);
     if (rol_params != Teuchos::null)
-      gcp_opt(x, u, loss_function_type, *rol_params, loss_eps);
+      gcp_opt(x, u, loss_function_type, *rol_params, &std::cout, loss_eps);
     else
-      gcp_opt(x, u, loss_function_type, tol, maxiters, loss_eps);
+      gcp_opt(x, u, loss_function_type, tol, maxiters, &std::cout, loss_eps);
     timer.stop(2);
     printf("GCP took %6.3f seconds\n", timer.getTotalTime(2));
   }
