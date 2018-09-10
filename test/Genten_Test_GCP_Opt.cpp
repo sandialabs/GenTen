@@ -74,8 +74,6 @@ void Genten_Test_GCP_Opt_Type (int infolevel, const std::string& label,
   typedef Sptensor_template<exec_space> Sptensor_type;
   typedef Sptensor_template<host_exec_space> Sptensor_host_type;
 
-  SETUP_DISABLE_CERR;
-
   initialize("Test of Genten::GCP_Opt ("+label+")", infolevel);
 
   MESSAGE("Creating a sparse tensor with data to model");
@@ -129,15 +127,16 @@ void Genten_Test_GCP_Opt_Type (int infolevel, const std::string& label,
   deep_copy( initialBasis_dev, initialBasis );
 
   // Factorize.
-  ttb_real  stopTol = 1.0e-6;
-  ttb_indx  maxIters = 100;
+  ttb_real stopTol = 1.0e-6;
+  ttb_indx maxIters = 100;
+  ttb_real eps = 1.0e-10;
   Genten::KtensorT<exec_space> result_dev;
   std::ostream* stream = (infolevel == 1) ? &std::cout : nullptr;
   try
   {
     result_dev = initialBasis_dev;
     Genten::gcp_opt <Sptensor_type> (X_dev, result_dev, loss_type,
-                                     stopTol, maxIters, stream);
+                                     stopTol, maxIters, stream, eps);
   }
   catch(std::string sExc)
   {
@@ -171,20 +170,26 @@ void Genten_Test_GCP_Opt_Type (int infolevel, const std::string& label,
     ASSERT( fabs(x_val-val) <= tol, "Result matches" );
   }
 
-  REENABLE_CERR;
   finalize();
   return;
 }
 
 void Genten_Test_GCP_Opt (int infolevel)
 {
-  Genten_Test_GCP_Opt_Type<Genten::SptensorT>(infolevel,"Kokkos",
+  Genten_Test_GCP_Opt_Type<Genten::SptensorT>(infolevel,"Kokkos, Gaussian",
                                               Genten::GAUSSIAN);
-  Genten_Test_GCP_Opt_Type<Genten::SptensorT_perm>(infolevel,"Perm",
+  Genten_Test_GCP_Opt_Type<Genten::SptensorT_perm>(infolevel,"Perm, Gaussian",
                                                    Genten::GAUSSIAN);
-  Genten_Test_GCP_Opt_Type<Genten::SptensorT_row>(infolevel,"Row",
+  Genten_Test_GCP_Opt_Type<Genten::SptensorT_row>(infolevel,"Row, Gaussian",
                                                   Genten::GAUSSIAN);
-
-  // Genten_Test_GCP_Opt_Type<Genten::SptensorT>(infolevel,"Kokkos",
-  //                                             Genten::POISSON);
+  /*
+  Genten_Test_GCP_Opt_Type<Genten::SptensorT>(infolevel,"Kokkos, Rayleigh",
+                                              Genten::RAYLEIGH);
+  Genten_Test_GCP_Opt_Type<Genten::SptensorT>(infolevel,"Kokkos, Gamma",
+                                              Genten::GAMMA);
+  // Genten_Test_GCP_Opt_Type<Genten::SptensorT>(infolevel,"Kokkos, Bernoulli",
+  //                                             Genten::BERNOULLI);
+  Genten_Test_GCP_Opt_Type<Genten::SptensorT>(infolevel,"Kokkos, Poisson",
+                                              Genten::POISSON);
+  */
 }
