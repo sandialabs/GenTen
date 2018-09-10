@@ -50,12 +50,13 @@
 #include "Genten_Sptensor.hpp"
 #include "Genten_Sptensor_perm.hpp"
 #include "Genten_Sptensor_row.hpp"
+#include "Genten_RolKokkosVector.hpp"
+#include "Genten_RolKokkosBoundConstraint.hpp"
 #include "Genten_GCP_RolObjective.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
 
 #include "ROL_OptimizationProblem.hpp"
 #include "ROL_OptimizationSolver.hpp"
-#include "ROL_Bounds.hpp"
 
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
@@ -86,7 +87,8 @@ namespace Genten {
         ROL::Ptr<vector_type> upper = objective->createDesignVector();
         lower->setScalar(loss_func.lower_bound());
         upper->setScalar(loss_func.upper_bound());
-        bounds = ROL::makePtr<ROL::Bounds<ttb_real> >(lower, upper);
+        bounds =
+          ROL::makePtr<RolKokkosBoundConstraint<ExecSpace> >(lower, upper);
       }
 
       // Create optimization problem

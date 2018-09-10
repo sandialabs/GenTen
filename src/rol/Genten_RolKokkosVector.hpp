@@ -156,6 +156,12 @@ namespace Genten {
       return *this;
     }
 
+    // Comment out applyUnary/applyBinary/reduce since they are not efficient
+    // on the GPU.  These shouldn't be needed for the optimization methods
+    // we're using, and this way an exception will be thrown if they are
+    // called.
+
+    /*
     virtual void applyUnary(
       const ROL::Elementwise::UnaryFunction<ttb_real>& f)
     {
@@ -203,6 +209,7 @@ namespace Genten {
       }, result);
       return result;
     }
+    */
 
     virtual void print(std::ostream& outStream) const
     {
