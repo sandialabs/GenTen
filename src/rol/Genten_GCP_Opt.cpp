@@ -45,6 +45,7 @@
 */
 
 #include <assert.h>
+#include <cstdio>
 
 #include "Genten_GCP_Opt.hpp"
 #include "Genten_Sptensor.hpp"
@@ -81,6 +82,33 @@ namespace Genten {
         ROL::makePtr<objective_type>(x, u, loss_func);
       ROL::Ptr<vector_type> z = objective->createDesignVector();
       objective->ktensor2Vector(u, *z);
+
+      // Check objective gradient if requested
+      Teuchos::ParameterList& fd_check_pl =
+        params.sublist("Finite Difference Check");
+      const bool do_fd_check = fd_check_pl.get("Check Gradient", false);
+      if (do_fd_check) {
+        const int fdOrder = fd_check_pl.get("Finite Difference Order", 1);
+        const int numSteps = fd_check_pl.get("Number of Steps", 9);
+        const ttb_real largestStep = fd_check_pl.get("Largest Step Size", 1.e0);
+        const ttb_real stepReduction = fd_check_pl.get("Step Reduction Factor",
+                                                       1.e-1);
+        std::vector<ttb_real> fdSteps(numSteps,largestStep);
+        for (int i=1; i<numSteps; ++i)
+          fdSteps[i] = stepReduction * fdSteps[i-1];
+
+        // Base point for finite difference calculation
+        ROL::Ptr< ROL::Vector<ttb_real> > base = z->clone();
+        base->set(*z);
+
+        // Direction -- uniformaly random between 0 and 1
+        ROL::Ptr< ROL::Vector<ttb_real> > dir = z->clone();
+        std::srand(12345);
+        dir->randomize(0.0,1.0);
+
+        // Run f.d. calculation
+        objective->checkGradient(*base, *dir, fdSteps, true, *stream, fdOrder);
+      }
 
       // Create constraints
       ROL::Ptr<ROL::BoundConstraint<ttb_real> > bounds;

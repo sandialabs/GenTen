@@ -40,8 +40,11 @@
 
 #pragma once
 
+#include <cstdlib>
+
 #include "ROL_Vector.hpp"
 #include "Genten_Kokkos.hpp"
+#include "Kokkos_Random.hpp"
 
 namespace Genten {
 
@@ -222,12 +225,19 @@ namespace Genten {
       outStream << std::endl;
     }
 
-    virtual void setScalar( const ttb_real C ) {
+    virtual void setScalar(const ttb_real C) {
       view_type my_v = v;
       apply_func<exec_space>(KOKKOS_LAMBDA(const int i)
       {
         my_v(i) = C;
       });
+    }
+
+    virtual void randomize(const ttb_real l = 0.0, const ttb_real u = 1.0)
+    {
+      const ttb_indx seed = std::rand();
+      Kokkos::Random_XorShift64_Pool<exec_space> rand_pool(seed);
+      Kokkos::fill_random(v, rand_pool, l, u);
     }
 
   protected:
