@@ -49,6 +49,7 @@
 #include "Genten_GCP_Opt.hpp"
 #include "Teuchos_RCP.hpp"
 #include "Teuchos_XMLParameterListHelpers.hpp"
+#include "Teuchos_TimeMonitor.hpp"
 #endif
 
 enum SPTENSOR_TYPE {
@@ -148,7 +149,13 @@ int run(const std::string& method,
   timer.stop(1);
   printf ("fillComplete() took %6.3f seconds\n", timer.getTotalTime(1));
 
-  if (method == "CP-ALS" || method == "cp-als" || method == "cpals") {
+  const bool do_cpals =
+    method == "CP-ALS" || method == "cp-als" || method == "cpals";
+  const bool do_gcp =
+    method == "GCP" || method == "gcp" || method == "GCP-OPT" ||
+    method == "gcp_opt" || method == "gcp-opt";
+
+  if (do_cpals) {
     // Run CP-ALS
     ttb_indx iter;
     ttb_real resNorm;
@@ -156,8 +163,7 @@ int run(const std::string& method,
                         iter, resNorm, 0, NULL);
   }
 #ifdef HAVE_ROL
-  else if (method == "GCP" || method == "gcp" || method == "GCP-OPT" ||
-           method == "gcp_opt" || method == "gcp-opt") {
+  else if (do_gcp) {
     // Run GCP
     Teuchos::RCP<Teuchos::ParameterList> rol_params;
     if (rolfilename != "")
@@ -185,6 +191,11 @@ int run(const std::string& method,
     printf("Data export took %6.3f seconds\n", timer.getTotalTime(2));
   }
   if (debug) Genten::print_ktensor(u_host, std::cout, "Solution");
+
+#ifdef HAVE_ROL
+  if (do_gcp)
+    Teuchos::TimeMonitor::summarize();
+#endif
 
   return 0;
 }

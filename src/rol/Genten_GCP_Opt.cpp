@@ -58,6 +58,8 @@
 #include "ROL_OptimizationProblem.hpp"
 #include "ROL_OptimizationSolver.hpp"
 
+#include "Teuchos_TimeMonitor.hpp"
+
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
 #endif
@@ -98,11 +100,14 @@ namespace Genten {
       ROL::OptimizationSolver<ttb_real> solver(problem, params);
 
       // Run GCP
-      if (stream != nullptr)
-        solver.solve(*stream);
-      else
-        solver.solve();
-      objective->vector2Ktensor(*z, u);
+      {
+        TEUCHOS_FUNC_TIME_MONITOR("GCP_Optimization");
+        if (stream != nullptr)
+          solver.solve(*stream);
+        else
+          solver.solve();
+        objective->vector2Ktensor(*z, u);
+      }
 
       // Normalize Ktensor u
       u.normalize(Genten::NormTwo);

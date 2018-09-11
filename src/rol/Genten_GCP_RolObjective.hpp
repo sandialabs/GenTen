@@ -45,6 +45,8 @@
 #include "Genten_RolKokkosVector.hpp"
 #include "Genten_MixedFormatOps.hpp"
 
+#include "Teuchos_TimeMonitor.hpp"
+
 namespace Genten {
 
   //! Implementation of ROL::Objective for GCP problem
@@ -102,6 +104,8 @@ namespace Genten {
   GCP_RolObjective<Tensor,LossFunction>::
   value(const ROL::Vector<ttb_real>& xx, ttb_real& tol)
   {
+    TEUCHOS_FUNC_TIME_MONITOR("GCP_RolObjective::value");
+
     const vector_type& x = dynamic_cast<const vector_type&>(xx);
 
     // Convert input vector to a Ktensor
@@ -144,6 +148,8 @@ namespace Genten {
   gradient(ROL::Vector<ttb_real>& gg, const ROL::Vector<ttb_real>& xx,
            ttb_real &tol)
   {
+    TEUCHOS_FUNC_TIME_MONITOR("GCP_RolObjective::gradient");
+
     const vector_type& x = dynamic_cast<const vector_type&>(xx);
     vector_type& g = dynamic_cast<vector_type&>(gg);
 
@@ -156,31 +162,38 @@ namespace Genten {
     const ttb_indx nnz = X.nnz();
     const unsigned nd = M.ndims();
     const unsigned nc = M.ncomponents();
-    tensor_type XX = X;  // Can't capture *this
-    tensor_type YY = Y;
-    ktensor_type MM = M;
-    loss_function_type ff = f;
-    Kokkos::RangePolicy<exec_space> policy(0, nnz);
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ttb_indx i)
+
     {
-      // Compute Ktensor value
-      ttb_real m_val = 0.0;
-      for (unsigned j=0; j<nc; ++j) {
-        ttb_real tmp = MM.weights(j);
-        for (unsigned m=0; m<nd; ++m)
-          tmp *= MM[m].entry(XX.subscript(i,m),j);
-        m_val += tmp;
-      }
+      TEUCHOS_FUNC_TIME_MONITOR("GCP_RolObjective::gradient: Y eval");
+      tensor_type XX = X;  // Can't capture *this
+      tensor_type YY = Y;
+      ktensor_type MM = M;
+      loss_function_type ff = f;
+      Kokkos::RangePolicy<exec_space> policy(0, nnz);
+      Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ttb_indx i)
+      {
+        // Compute Ktensor value
+        ttb_real m_val = 0.0;
+        for (unsigned j=0; j<nc; ++j) {
+          ttb_real tmp = MM.weights(j);
+          for (unsigned m=0; m<nd; ++m)
+            tmp *= MM[m].entry(XX.subscript(i,m),j);
+          m_val += tmp;
+        }
 
-      // Evaluate link function derivative
-      YY.value(i) = ff.deriv(XX.value(i), m_val) / nnz;
-    });
+        // Evaluate link function derivative
+        YY.value(i) = ff.deriv(XX.value(i), m_val) / nnz;
+      });
+    }
 
-    // Compute gradient
-    // Todo: new mttkrp kernel that does all nd dimensions
-    G.weights() = 1.0;
-    for (unsigned m=0; m<nd; ++m)
-      mttkrp(Y, M, m, G[m]);
+    {
+      TEUCHOS_FUNC_TIME_MONITOR("GCP_RolObjective::gradient: mttkrp");
+      // Compute gradient
+      // Todo: new mttkrp kernel that does all nd dimensions
+      G.weights() = 1.0;
+      for (unsigned m=0; m<nd; ++m)
+        mttkrp(Y, M, m, G[m]);
+    }
 
     // Convert Ktensor to vector
     ktensor2Vector(G, g);
@@ -203,6 +216,8 @@ namespace Genten {
   GCP_RolObjective<Tensor,LossFunction>::
   ktensor2Vector(const ktensor_type& Kt, const vector_type& vec) const
   {
+    TEUCHOS_FUNC_TIME_MONITOR("GCP_RolObjective::ktensor2vector");
+
     const unsigned nd = Kt.ndims();
     const unsigned nc = Kt.ncomponents();
     ttb_indx offset = 0;
@@ -224,6 +239,8 @@ namespace Genten {
   GCP_RolObjective<Tensor,LossFunction>::
   vector2Ktensor(const vector_type& vec, const ktensor_type& Kt) const
   {
+    TEUCHOS_FUNC_TIME_MONITOR("GCP_RolObjective::vector2ktensor");
+
     const unsigned nd = Kt.ndims();
     const unsigned nc = Kt.ncomponents();
     ttb_indx offset = 0;
