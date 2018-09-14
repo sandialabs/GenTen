@@ -487,9 +487,6 @@ void FacMatrixT<ExecSpace>::reduce_func(const Func& f, const Reducer& r) const
 // Note:  must use tranposed indexing to be consistent with MDRange
 // implementation above.
 
-// Note, this currently won't compile due to non-default reduction types
-// in Genten_RolBoundConstraint.hpp
-
 template <typename ExecSpace>
 template <typename Func>
 void FacMatrixT<ExecSpace>::apply_func(const Func& f) const
