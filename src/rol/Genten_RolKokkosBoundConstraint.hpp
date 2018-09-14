@@ -43,105 +43,67 @@
 #include "ROL_BoundConstraint.hpp"
 #include "Genten_Kokkos.hpp"
 #include "Genten_RolKokkosVector.hpp"
+#include "Genten_RolKtensorVector.hpp"
 
 namespace Genten {
 
-  namespace Impl {
+  template <typename VectorType>
+  class RolBoundConstraint {};
 
-    // Find the minimum u_i-l_i
-    template <typename ViewType>
-    struct MinGap {
-      typedef typename ViewType::execution_space execution_space;
-      ViewType L_; // Lower bounds
-      ViewType U_; // Upper bounds
-
-      MinGap(const ViewType& L, const ViewType& U) : L_(L), U_(U) {}
-
-      KOKKOS_INLINE_FUNCTION
-      void operator() (const ttb_indx i, ttb_real& min) const {
-        ttb_real gap = U_(i)-L_(i);
-        if (gap < min)
-          min = gap;
-      }
-
-      KOKKOS_INLINE_FUNCTION
-      void init(ttb_real& min) const {
-        min = DOUBLE_MAX;
-      }
-
-      KOKKOS_INLINE_FUNCTION
-      void join(volatile ttb_real& globalMin,
-                const volatile ttb_real& localMin) const {
-        if (localMin < globalMin)
-          globalMin = localMin;
-      }
-    };
-
-    // Determine if every l_i<=x_i<=u_i
-    template <typename ViewType>
-    struct Feasible {
-      typedef typename ViewType::execution_space execution_space;
-      ViewType X_; // Optimization variable
-      ViewType L_; // Lower bounds
-      ViewType U_; // Upper bounds
-
-      Feasible(const ViewType& X, const ViewType& L, const ViewType& U) :
-        X_(X), L_(L), U_(U) {}
-
-      KOKKOS_INLINE_FUNCTION
-      void operator() (const ttb_indx i, unsigned& feasible) const {
-        if ( (X_(i) < L_(i)) || (X_(i) > U_(i)) )
-          feasible = 0;
-        else
-          feasible = 1;
-      }
-
-      KOKKOS_INLINE_FUNCTION
-      void init(unsigned& feasible) const {
-        feasible = 1;
-      }
-
-      KOKKOS_INLINE_FUNCTION
-      void join(volatile unsigned& globalFeasible,
-                const volatile unsigned& localFeasible) const {
-        globalFeasible *= localFeasible;
-      }
-    };
-  }
-
-  //! Implementation of ROL::BoundConstraint using Kokkos::View
+  //! Implementation of ROL::BoundConstraint using RolKokkosVector
   template <typename ExecSpace>
-  class RolKokkosBoundConstraint : public ROL::BoundConstraint<ttb_real> {
+  class RolBoundConstraint< RolKokkosVector<ExecSpace> > :
+    public ROL::BoundConstraint<ttb_real> {
   public:
 
     typedef ExecSpace exec_space;
     typedef RolKokkosVector<exec_space> vector_type;
     typedef typename vector_type::view_type view_type;
 
-    RolKokkosBoundConstraint(const ROL::Ptr<vector_type>& lower,
-                             const ROL::Ptr<vector_type>& upper,
-                             const ttb_real& scale = 1.0) :
+    RolBoundConstraint(const ROL::Ptr<vector_type>& lower,
+                       const ROL::Ptr<vector_type>& upper,
+                       const ttb_real& scale = 1.0) :
       l(lower->getView()),
       u(upper->getView()),
       policy(0,l.extent(0)),
       s(scale)
     {
-      Impl::MinGap<view_type> findmin(l,u);
-      ttb_real gap = 0.0;
-      Kokkos::parallel_reduce(policy,findmin,gap);
+      compute_gap();
+    }
+
+    void compute_gap() // Can't have host/device lambda in constructor
+    {
+      view_type L = l;
+      view_type U = u;
+      ttb_real gap;
+      Kokkos::parallel_reduce(
+        policy,
+        KOKKOS_LAMBDA(const ttb_indx i, ttb_real& min)
+        {
+          ttb_real gap = U(i)-L(i);
+          if (gap < min)
+            min = gap;
+        }, Kokkos::Min<ttb_real>(gap));
       min_diff = 0.5*gap;
     }
 
-    virtual ~RolKokkosBoundConstraint() {}
+    virtual ~RolBoundConstraint() {}
 
     bool isFeasible(const ROL::Vector<ttb_real>& xx)
     {
-      view_type x = dynamic_cast<const vector_type&>(xx).getView();
-
-      unsigned feasible = 1;
-      Impl::Feasible<view_type> check(x, l, u);
-      Kokkos::parallel_reduce(policy,check,feasible);
-
+      view_type X = dynamic_cast<const vector_type&>(xx).getView();
+      view_type L = l;
+      view_type U = u;
+      unsigned feasible;
+      Kokkos::parallel_reduce(
+        policy,
+        KOKKOS_LAMBDA(const ttb_indx i, unsigned& fsbl)
+        {
+          if ( (X(i) < L(i)) || (X(i) > U(i)) )
+            fsbl = 0;
+          else
+            fsbl = 1;
+        }, Kokkos::LAnd<unsigned>(feasible));
       return feasible == 1 ? true : false;
     }
 
@@ -265,6 +227,228 @@ namespace Genten {
     ttb_real s;
     Kokkos::RangePolicy<exec_space> policy;
     ttb_real min_diff;
+
+  };
+
+  //! Implementation of ROL::BoundConstraint using RolKtensorVector
+  template <typename ExecSpace>
+  class RolBoundConstraint< RolKtensorVector<ExecSpace> > :
+    public ROL::BoundConstraint<ttb_real> {
+  public:
+
+    typedef ExecSpace exec_space;
+    typedef RolKtensorVector<exec_space> vector_type;
+
+    RolBoundConstraint(const ROL::Ptr<vector_type>& lower,
+                       const ROL::Ptr<vector_type>& upper,
+                       const ttb_real& scale = 1.0) :
+      l(lower->getKtensor()),
+      u(upper->getKtensor()),
+      s(scale),
+      nd(l.ndims())
+    {
+      compute_gap();
+    }
+
+    void compute_gap()  // Can't have host/device lambda in constructor
+    {
+      ttb_real gap = DOUBLE_MAX;
+      for (unsigned k=0; k<nd; ++k) {
+        view_type L = l[k].view();
+        view_type U = u[k].view();
+        ttb_real local_gap;
+        Kokkos::Min<ttb_real> min_reducer(local_gap);
+        l[k].reduce_func(
+          KOKKOS_LAMBDA(const ttb_indx j, const ttb_indx i, ttb_real& min)
+          {
+            ttb_real gap = U(i,j)-L(i,j);
+            if (gap < min)
+              min = gap;
+          }, min_reducer);
+        min_reducer.join(gap, local_gap);
+      }
+      min_diff = 0.5*gap;
+    }
+
+    virtual ~RolBoundConstraint() {}
+
+    bool isFeasible(const ROL::Vector<ttb_real>& xx)
+    {
+      Ktensor_type x = dynamic_cast<const vector_type&>(xx).getKtensor();
+      unsigned feasible = 1;
+      for (unsigned k=0; k<nd; ++k) {
+        view_type L = l[k].view();
+        view_type U = u[k].view();
+        view_type X = x[k].view();
+        unsigned local_feasible;
+        Kokkos::LAnd<unsigned> and_reducer(local_feasible);
+        x[k].reduce_func(
+          KOKKOS_LAMBDA(const ttb_indx j, const ttb_indx i, unsigned& fsbl)
+          {
+            if ( (X(i,j) < L(i,j)) || (X(i,j) > U(i,j)) )
+              fsbl = 0;
+            else
+              fsbl = 1;
+          }, and_reducer);
+        and_reducer.join(feasible, local_feasible);
+      }
+      return feasible == 1 ? true : false;
+    }
+
+    void project(ROL::Vector<ttb_real>& xx)
+    {
+      Ktensor_type x = dynamic_cast<vector_type&>(xx).getKtensor();
+      for (unsigned k=0; k<nd; ++k) {
+        view_type L = l[k].view();
+        view_type U = u[k].view();
+        view_type X = x[k].view();
+        x[k].apply_func(KOKKOS_LAMBDA(const ttb_indx j, const ttb_indx i)
+        {
+          if (X(i,j) < L(i,j))
+            X(i,j) = L(i,j);
+          else if (X(i,j) > U(i,j))
+            X(i,j) = U(i,j);
+        });
+      }
+    }
+
+    void pruneLowerActive(ROL::Vector<ttb_real>& vv,
+                          const ROL::Vector<ttb_real>& xx,
+                          ttb_real eps)
+    {
+      Ktensor_type v = dynamic_cast<vector_type&>(vv).getKtensor();
+      Ktensor_type x = dynamic_cast<const vector_type&>(xx).getKtensor();
+      ttb_real epsn = std::min(s*eps, min_diff);
+      for (unsigned k=0; k<nd; ++k) {
+        view_type L = l[k].view();
+        view_type V = v[k].view();
+        view_type X = x[k].view();
+        v[k].apply_func(KOKKOS_LAMBDA(const ttb_indx j, const ttb_indx i)
+        {
+          if (X(i,j) <= L(i,j)+epsn)
+            V(i,j) = 0.0;
+        });
+      }
+    }
+
+    void pruneUpperActive(ROL::Vector<ttb_real>& vv,
+                          const ROL::Vector<ttb_real>& xx,
+                          ttb_real eps)
+    {
+      Ktensor_type v = dynamic_cast<vector_type&>(vv).getKtensor();
+      Ktensor_type x = dynamic_cast<const vector_type&>(xx).getKtensor();
+      ttb_real epsn = std::min(s*eps, min_diff);
+      for (unsigned k=0; k<nd; ++k) {
+        view_type U = u[k].view();
+        view_type V = v[k].view();
+        view_type X = x[k].view();
+        v[k].apply_func(KOKKOS_LAMBDA(const ttb_indx j, const ttb_indx i)
+        {
+          if (X(i,j) >= U(i,j)-epsn)
+            V(i,j) = 0.0;
+        });
+      }
+    }
+
+    void pruneActive(ROL::Vector<ttb_real>& vv,
+                     const ROL::Vector<ttb_real>& xx,
+                     ttb_real eps)
+    {
+      Ktensor_type v = dynamic_cast<vector_type&>(vv).getKtensor();
+      Ktensor_type x = dynamic_cast<const vector_type&>(xx).getKtensor();
+      ttb_real epsn = std::min(s*eps, min_diff);
+      for (unsigned k=0; k<nd; ++k) {
+        view_type L = l[k].view();
+        view_type U = u[k].view();
+        view_type V = v[k].view();
+        view_type X = x[k].view();
+        v[k].apply_func(KOKKOS_LAMBDA(const ttb_indx j, const ttb_indx i)
+        {
+          if (X(i,j) <= L(i,j)+epsn || X(i,j) >= U(i,j)-epsn)
+            V(i,j) = 0.0;
+        });
+      }
+    }
+
+    void pruneLowerActive(ROL::Vector<ttb_real>& vv,
+                          const ROL::Vector<ttb_real>& gg,
+                          const ROL::Vector<ttb_real>& xx,
+                          ttb_real eps)
+    {
+      Ktensor_type v = dynamic_cast<vector_type&>(vv).getKtensor();
+      Ktensor_type g = dynamic_cast<const vector_type&>(gg).getKtensor();
+      Ktensor_type x = dynamic_cast<const vector_type&>(xx).getKtensor();
+      ttb_real epsn = std::min(s*eps, min_diff);
+      for (unsigned k=0; k<nd; ++k) {
+        view_type L = l[k].view();
+        view_type V = v[k].view();
+        view_type G = g[k].view();
+        view_type X = x[k].view();
+        v[k].apply_func(KOKKOS_LAMBDA(const ttb_indx j, const ttb_indx i)
+        {
+          if (X(i,j) <= L(i,j)+epsn && G(i,j) > 0.0)
+            V(i,j) = 0.0;
+        });
+      }
+    }
+
+    void pruneUpperActive(ROL::Vector<ttb_real>& vv,
+                          const ROL::Vector<ttb_real>& gg,
+                          const ROL::Vector<ttb_real>& xx,
+                          ttb_real eps)
+    {
+      Ktensor_type v = dynamic_cast<vector_type&>(vv).getKtensor();
+      Ktensor_type g = dynamic_cast<const vector_type&>(gg).getKtensor();
+      Ktensor_type x = dynamic_cast<const vector_type&>(xx).getKtensor();
+      ttb_real epsn = std::min(s*eps, min_diff);
+      for (unsigned k=0; k<nd; ++k) {
+        view_type U = u[k].view();
+        view_type V = v[k].view();
+        view_type G = g[k].view();
+        view_type X = x[k].view();
+        v[k].apply_func(KOKKOS_LAMBDA(const ttb_indx j, const ttb_indx i)
+        {
+          if (X(i,j) >= U(i,j)-epsn && G(i,j) < 0.0)
+            V(i,j) = 0.0;
+        });
+      }
+    }
+
+    void pruneActive(ROL::Vector<ttb_real>& vv,
+                     const ROL::Vector<ttb_real>& gg,
+                     const ROL::Vector<ttb_real>& xx,
+                     ttb_real eps)
+    {
+      Ktensor_type v = dynamic_cast<vector_type&>(vv).getKtensor();
+      Ktensor_type g = dynamic_cast<const vector_type&>(gg).getKtensor();
+      Ktensor_type x = dynamic_cast<const vector_type&>(xx).getKtensor();
+      ttb_real epsn = std::min(s*eps, min_diff);
+      for (unsigned k=0; k<nd; ++k) {
+        view_type L = l[k].view();
+        view_type U = u[k].view();
+        view_type V = v[k].view();
+        view_type G = g[k].view();
+        view_type X = x[k].view();
+        v[k].apply_func(KOKKOS_LAMBDA(const ttb_indx j, const ttb_indx i)
+        {
+          if ( (X(i,j) <= L(i,j)+epsn && G(i,j) > 0.0) ||
+               (X(i,j) >= U(i,j)-epsn && G(i,j) < 0.0) )
+            V(i,j) = 0.0;
+        });
+      }
+    }
+
+  protected:
+
+    typedef typename vector_type::Ktensor_type Ktensor_type;
+    typedef FacMatrixT<ExecSpace> fac_matrix_type;
+    typedef typename fac_matrix_type::view_type view_type;
+
+    Ktensor_type l;
+    Ktensor_type u;
+    ttb_real s;
+    ttb_real min_diff;
+    unsigned nd;
 
   };
 

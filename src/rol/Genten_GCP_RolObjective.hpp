@@ -43,9 +43,18 @@
 #include "ROL_Objective.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_RolKokkosVector.hpp"
+#include "Genten_RolKtensorVector.hpp"
 #include "Genten_MixedFormatOps.hpp"
 
 #include "Teuchos_TimeMonitor.hpp"
+
+// Choose implementation of ROL::Vector (KtensorVector or KokkosVector)
+#define USE_KTENSOR_VECTOR 0
+
+// Whether to copy the ROL::Vector into a new Ktensor before accessing data.
+// This adds cost for the copy, but allows mttkrp to use a padded Ktensor
+// when using RolKokkosVector.
+#define COPY_KTENSOR 0
 
 namespace Genten {
 
@@ -59,18 +68,24 @@ namespace Genten {
     typedef LossFunction loss_function_type;
     typedef typename tensor_type::exec_space exec_space;
     typedef KtensorT<exec_space> ktensor_type;
+#if USE_KTENSOR_VECTOR
+    typedef RolKtensorVector<exec_space> vector_type;
+#else
     typedef RolKokkosVector<exec_space> vector_type;
+#endif
 
     GCP_RolObjective(const tensor_type& x,
                      const ktensor_type& m,
                      const loss_function_type& func) :
-      X(x), Y(X.size(), X.getSubscripts()), M(m), G(M.ncomponents(), M.ndims()),
-      f(func)
+      X(x), Y(X.size(), X.getSubscripts()), M(m), f(func)
     {
+#if COPY_KTENSOR
       const unsigned nd = M.ndims();
       const unsigned nc = M.ncomponents();
+      G = ktensor_type(nc, nd);
       for (unsigned i=0; i<nd; ++i)
         G.set_factor(i, FacMatrixT<exec_space>(M[i].nRows(), nc));
+#endif
 
       // Todo:  maybe do a deep copy instead so we don't have to resort?
       Y.fillComplete();
@@ -83,11 +98,10 @@ namespace Genten {
     virtual void gradient(ROL::Vector<ttb_real>& g,
                           const ROL::Vector<ttb_real>& x, ttb_real &tol);
 
-    ROL::Ptr<vector_type> createDesignVector() const;
-
-    void ktensor2Vector(const ktensor_type& Kt, const vector_type& vec) const;
-
-    void vector2Ktensor(const vector_type& vec, const ktensor_type& Kt) const;
+    ROL::Ptr<vector_type> createDesignVector() const
+    {
+      return ROL::makePtr<vector_type>(M, false);
+    }
 
   protected:
 
@@ -109,8 +123,10 @@ namespace Genten {
     const vector_type& x = dynamic_cast<const vector_type&>(xx);
 
     // Convert input vector to a Ktensor
-    // Todo:  wrap Ktensor in ROL::Vector interface to eliminate this
-    vector2Ktensor(x, M);
+    M = x.getKtensor();
+#if COPY_KTENSOR
+    x.copyToKtensor(M);
+#endif
 
     // value = \sum_i f(X_i, M_i)
     // Todo:  make this a row-based kernel using TinyVec
@@ -154,7 +170,11 @@ namespace Genten {
     vector_type& g = dynamic_cast<vector_type&>(gg);
 
     // Convert input vector to a Ktensor
-    vector2Ktensor(x, M);
+    M = x.getKtensor();
+    G = g.getKtensor();
+#if COPY_KTENSOR
+    x.copyToKtensor(M);
+#endif
 
     // Compute Y tensor
     // Todo:  make this a row-based kernel using TinyVec
@@ -196,66 +216,9 @@ namespace Genten {
     }
 
     // Convert Ktensor to vector
-    ktensor2Vector(G, g);
-  }
-
-  template <typename Tensor, typename LossFunction>
-  ROL::Ptr<typename GCP_RolObjective<Tensor,LossFunction>::vector_type>
-  GCP_RolObjective<Tensor,LossFunction>::
-  createDesignVector() const
-  {
-    const unsigned nd = M.ndims();
-    ttb_indx n = 0;
-    for (unsigned i=0; i<nd; ++i)
-      n += M[i].nRows()*M[i].nCols();
-    return ROL::makePtr<vector_type>(n);
-  }
-
-  template <typename Tensor, typename LossFunction>
-  void
-  GCP_RolObjective<Tensor,LossFunction>::
-  ktensor2Vector(const ktensor_type& Kt, const vector_type& vec) const
-  {
-    TEUCHOS_FUNC_TIME_MONITOR("GCP_RolObjective::ktensor2vector");
-
-    const unsigned nd = Kt.ndims();
-    const unsigned nc = Kt.ncomponents();
-    ttb_indx offset = 0;
-    for (unsigned i=0; i<nd; ++i) {
-      const FacMatrixT<exec_space>& A = Kt[i];
-      const unsigned nr = A.nRows();
-      for (unsigned j=0; j<nc; ++j) {
-        auto s = Kokkos::subview(vec.getView(),
-                                 std::make_pair(offset, offset+nr));
-        auto Aj = Kokkos::subview(A.view(), Kokkos::ALL, j);
-        Kokkos::deep_copy(s, Aj);
-        offset += nr;
-      }
-    }
-  }
-
-  template <typename Tensor, typename LossFunction>
-  void
-  GCP_RolObjective<Tensor,LossFunction>::
-  vector2Ktensor(const vector_type& vec, const ktensor_type& Kt) const
-  {
-    TEUCHOS_FUNC_TIME_MONITOR("GCP_RolObjective::vector2ktensor");
-
-    const unsigned nd = Kt.ndims();
-    const unsigned nc = Kt.ncomponents();
-    ttb_indx offset = 0;
-    for (unsigned i=0; i<nd; ++i) {
-      const FacMatrixT<exec_space>& A = Kt[i];
-      const unsigned nr = A.nRows();
-      for (unsigned j=0; j<nc; ++j) {
-        auto s = Kokkos::subview(vec.getView(),
-                                 std::make_pair(offset, offset+nr));
-        auto Aj = Kokkos::subview(A.view(), Kokkos::ALL, j);
-        Kokkos::deep_copy(Aj, s);
-        offset += nr;
-      }
-    }
-    Kt.weights() = 1.0;
+#if COPY_KTENSOR
+    g.copyFromKtensor(G);
+#endif
   }
 
 }

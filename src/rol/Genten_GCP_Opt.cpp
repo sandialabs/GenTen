@@ -81,7 +81,7 @@ namespace Genten {
       ROL::Ptr<objective_type> objective =
         ROL::makePtr<objective_type>(x, u, loss_func);
       ROL::Ptr<vector_type> z = objective->createDesignVector();
-      objective->ktensor2Vector(u, *z);
+      z->copyFromKtensor(u);
 
       // Check objective gradient if requested
       Teuchos::ParameterList& fd_check_pl =
@@ -118,7 +118,7 @@ namespace Genten {
         lower->setScalar(loss_func.lower_bound());
         upper->setScalar(loss_func.upper_bound());
         bounds =
-          ROL::makePtr<RolKokkosBoundConstraint<ExecSpace> >(lower, upper);
+          ROL::makePtr<RolBoundConstraint<vector_type> >(lower, upper);
       }
 
       // Create optimization problem
@@ -134,7 +134,7 @@ namespace Genten {
           solver.solve(*stream);
         else
           solver.solve();
-        objective->vector2Ktensor(*z, u);
+        z->copyToKtensor(u);
       }
 
       // Normalize Ktensor u

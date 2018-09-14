@@ -388,6 +388,14 @@ public:
     KOKKOS_INLINE_FUNCTION
     view_type view() const { return data; }
 
+    // Apply a functor across each element of matrix
+    template <typename Func>
+    void apply_func(const Func& f) const;
+
+    // Apply a reduction across each element of matrix
+    template <typename Func, typename Reducer>
+    void reduce_func(const Func& f, const Reducer& r) const;
+
   private:
 
     // Data array containing the entries of the matrix.
@@ -431,5 +439,139 @@ void deep_copy(const FacMatrixT<E1>& dst, const FacMatrixT<E2>& src)
 {
   deep_copy( dst.view(), src.view() );
 }
+
+#if 1
+
+// MDRange-based versions of apply/reduce
+// Note:  we transpose the i and j dimensions because MDRange always maps
+// threadIdx.x to the first dimension (regardless of the iteration
+// direction).
+
+template <typename ExecSpace>
+template <typename Func>
+void FacMatrixT<ExecSpace>::apply_func(const Func& f) const
+{
+  typedef  Kokkos::MDRangePolicy<
+    ExecSpace,
+    Kokkos::Rank<2, Kokkos::Iterate::Left, Kokkos::Iterate::Left>,
+    Kokkos::IndexType<ttb_indx> > policy_type;
+
+  const ttb_indx nr = data.extent(0);
+  const unsigned nc = data.extent(1);
+  policy_type policy({0,0}, {static_cast<long>(nc),static_cast<long>(nr)},
+                     {16,16});
+
+  Kokkos::parallel_for(policy, f);
+}
+
+template <typename ExecSpace>
+template <typename Func, typename Reducer>
+void FacMatrixT<ExecSpace>::reduce_func(const Func& f, const Reducer& r) const
+{
+  typedef  Kokkos::MDRangePolicy<
+    ExecSpace,
+    Kokkos::Rank<2, Kokkos::Iterate::Left, Kokkos::Iterate::Left>,
+    Kokkos::IndexType<ttb_indx> > policy_type;
+
+  const ttb_indx nr = data.extent(0);
+  const unsigned nc = data.extent(1);
+  policy_type policy({0,0}, {static_cast<long>(nc),static_cast<long>(nr)},
+                     {16,16});
+
+  Kokkos::parallel_reduce(policy, f, r);
+}
+
+#else
+
+// Team-based versions of apply/reduce
+// Note:  must use tranposed indexing to be consistent with MDRange
+// implementation above.
+
+// Note, this currently won't compile due to non-default reduction types
+// in Genten_RolBoundConstraint.hpp
+
+template <typename ExecSpace>
+template <typename Func>
+void FacMatrixT<ExecSpace>::apply_func(const Func& f) const
+{
+  typedef Kokkos::TeamPolicy<ExecSpace> TeamPolicy;
+  typedef typename TeamPolicy::member_type team_member;
+
+  const unsigned block_size = 128;
+  const unsigned team_size =
+    Genten::is_cuda_space<ExecSpace>::value ? 16 : 1;
+  const unsigned vector_size =
+    Genten::is_cuda_space<ExecSpace>::value ? 256/team_size : 1;
+  const ttb_indx nr = data.extent(0);
+  const unsigned nc = data.extent(1);
+  const ttb_indx N = (nr+block_size-1)/block_size;
+  TeamPolicy policy(N,team_size,vector_size);
+
+  Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const team_member& team)
+  {
+    for (unsigned ii=team.team_rank(); ii<block_size; ii+=team.team_size()){
+      const ttb_indx i = team.league_rank()*block_size+ii;
+      if (i < nr) {
+        Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,nc),
+                             [&](const unsigned j)
+        {
+          f(j,i);
+        });
+      }
+    }
+  });
+}
+
+template <typename ExecSpace>
+template <typename Func, typename Reducer>
+void FacMatrixT<ExecSpace>::reduce_func(const Func& f, const Reducer& r) const
+{
+  typedef typename Reducer::value_type reduct_type;
+  typedef Kokkos::TeamPolicy<ExecSpace> TeamPolicy;
+  typedef typename TeamPolicy::member_type team_member;
+
+  const unsigned block_size = 128;
+  const unsigned team_size =
+    Genten::is_cuda_space<ExecSpace>::value ? 16 : 1;
+  const unsigned vector_size =
+    Genten::is_cuda_space<ExecSpace>::value ? 256/team_size : 1;
+  const ttb_indx nr = data.extent(0);
+  const unsigned nc = data.extent(1);
+  const ttb_indx N = (nr+block_size-1)/block_size;
+
+  TeamPolicy policy(N,team_size,vector_size);
+  Kokkos::parallel_reduce(policy, KOKKOS_LAMBDA(const team_member& team,
+                                                reduct_type& d)
+  {
+    reduct_type t;
+    Reducer r_t(t);
+    Kokkos::parallel_reduce(Kokkos::TeamThreadRange(team, block_size),
+                            [&] ( const unsigned& k, reduct_type& t_outer )
+    {
+      const ttb_indx i = team.league_rank()*block_size+k;
+      reduct_type update_outer;
+      Reducer r_outer(update_outer);
+      if (i < nr) {
+        Kokkos::parallel_reduce(Kokkos::ThreadVectorRange(team,nc),
+                                [&](const unsigned j, reduct_type& t_inner)
+        {
+          f(j,i,t_inner);
+        }, r_outer);
+
+        Kokkos::single( Kokkos::PerThread( team ), [&] ()
+        {
+          r_outer.join(t_outer, update_outer);
+        });
+      }
+    }, r_t);
+
+    Kokkos::single( Kokkos::PerTeam( team ), [&] ()
+    {
+      r_t.join(d, t);
+    });
+  }, r);
+}
+
+#endif
 
 }
