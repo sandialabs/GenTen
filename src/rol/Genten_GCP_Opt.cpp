@@ -51,8 +51,7 @@
 #include "Genten_Sptensor.hpp"
 #include "Genten_Sptensor_perm.hpp"
 #include "Genten_Sptensor_row.hpp"
-#include "Genten_RolKokkosVector.hpp"
-#include "Genten_RolKokkosBoundConstraint.hpp"
+#include "Genten_RolBoundConstraint.hpp"
 #include "Genten_GCP_RolObjective.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
 
