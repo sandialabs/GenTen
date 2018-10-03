@@ -999,8 +999,8 @@ void Genten::mttkrp(const Genten::SptensorT_row<ExecSpace>& X,
     if (row >= Nrow)
       return;
 
-    const ttb_indx i_begin = X.getPermRowBegin(row,n);
-    const ttb_indx i_end = X.getPermRowBegin(row+1,n);
+    /*const*/ ttb_indx i_begin = X.getPermRowBegin(row,n);
+    /*const*/ ttb_indx i_end = X.getPermRowBegin(row+1,n);
     if (i_end == i_begin)
       return;
 
@@ -1051,11 +1051,6 @@ void Genten::mttkrp(const Genten::SptensorT_row<ExecSpace>& X,
                 const Genten::FacMatrixT<SPACE>& v);                    \
   template                                                              \
   void mttkrp<>(const Genten::SptensorT_perm<SPACE>& X,                 \
-                const Genten::KtensorT<SPACE>& u,                       \
-                const ttb_indx n,                                       \
-                const Genten::FacMatrixT<SPACE>& v);                    \
-  template                                                              \
-  void mttkrp<>(const Genten::SptensorT_row<SPACE>& X,                  \
                 const Genten::KtensorT<SPACE>& u,                       \
                 const ttb_indx n,                                       \
                 const Genten::FacMatrixT<SPACE>& v);

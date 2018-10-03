@@ -47,7 +47,6 @@
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_Sptensor_perm.hpp"
-#include "Genten_Sptensor_row.hpp"
 #include "Genten_Test_Utils.hpp"
 
 using namespace Genten::Test;
@@ -180,8 +179,6 @@ void Genten_Test_GCP_Opt (int infolevel)
                                               Genten::GAUSSIAN);
   Genten_Test_GCP_Opt_Type<Genten::SptensorT_perm>(infolevel,"Perm, Gaussian",
                                                    Genten::GAUSSIAN);
-  Genten_Test_GCP_Opt_Type<Genten::SptensorT_row>(infolevel,"Row, Gaussian",
-                                                  Genten::GAUSSIAN);
   /*
   Genten_Test_GCP_Opt_Type<Genten::SptensorT>(infolevel,"Kokkos, Rayleigh",
                                               Genten::RAYLEIGH);

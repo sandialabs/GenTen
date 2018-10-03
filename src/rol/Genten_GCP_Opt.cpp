@@ -189,7 +189,7 @@ namespace Genten {
     KtensorT<SPACE>& u,                                                 \
     const LOSS_FUNCTION_TYPE loss_function_type,                        \
     Teuchos::ParameterList& params,                                     \
-    std::ostream* stream,                                                \
+    std::ostream* stream,                                               \
     const ttb_real loss_eps);                                           \
                                                                         \
   template void gcp_opt<SptensorT_perm<SPACE>,SPACE>(                   \
@@ -197,15 +197,7 @@ namespace Genten {
     KtensorT<SPACE>& u,                                                 \
     const LOSS_FUNCTION_TYPE loss_function_type,                        \
     Teuchos::ParameterList& params,                                     \
-    std::ostream* stream,                                                \
-    const ttb_real loss_eps);                                           \
-                                                                        \
-  template void gcp_opt<SptensorT_row<SPACE>,SPACE>(                    \
-    const SptensorT_row<SPACE>& x,                                      \
-    KtensorT<SPACE>& u,                                                 \
-    const LOSS_FUNCTION_TYPE loss_function_type,                        \
-    Teuchos::ParameterList& params,                                     \
-    std::ostream* stream,                                                \
+    std::ostream* stream,                                               \
     const ttb_real loss_eps);
 
 GENTEN_INST(INST_MACRO)

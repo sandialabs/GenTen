@@ -47,8 +47,9 @@ CMAKE_MINIMUM_REQUIRED (VERSION 3.3)
 #---- to the directory where cmake has been invoked.
 PROJECT (Genten)
 
-SET(CMAKE_BUILD_TYPE "DEBUG")
-
+#---- Require C++14 without GNU extensions
+SET(CMAKE_CXX_STANDARD 14)
+SET(CMAKE_CXX_EXTENSIONS OFF)
 
 #------------------------------------------------------------
 #---- Package OPTIONS
@@ -82,7 +83,6 @@ IF(KOKKOS_INLINE_BUILD)
 
   # We must use UVM and enable Lambda support in Kokkos
   IF(KOKKOS_ENABLE_CUDA)
-    #SET(KOKKOS_ENABLE_CUDA_UVM ON CACHE BOOL "Enable CUDA unified virtual memory.")
     SET(KOKKOS_ENABLE_CUDA_LAMBDA ON CACHE BOOL "Enable lambdas for CUDA.")
   ENDIF()
 
@@ -179,6 +179,11 @@ ENDIF()
 IF (ENABLE_CUSOLVER)
   SET(GENTEN_LIBS "${GENTEN_LIBS} -lcusolver")
   SET(HAVE_CUSOLVER ${ENABLE_CUSOLVER})
+ENDIF()
+
+# Add useful CXX flags when building with Cuda
+IF(KOKKOS_ENABLE_CUDA)
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --expt-relaxed-constexpr -Xcudafe --diag_suppress=code_is_unreachable")
 ENDIF()
 
 # Strip leading/trailing whitespace from GENTEN_LIBS

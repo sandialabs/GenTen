@@ -54,14 +54,13 @@
 
 enum SPTENSOR_TYPE {
   SPTENSOR,
-  SPTENSOR_PERM,
-  SPTENSOR_ROW
+  SPTENSOR_PERM
 };
-const unsigned num_sptensor_types = 3;
+const unsigned num_sptensor_types = 2;
 SPTENSOR_TYPE sptensor_types[] =
-  { SPTENSOR, SPTENSOR_PERM, SPTENSOR_ROW };
+  { SPTENSOR, SPTENSOR_PERM };
 std::string sptensor_names[] =
-  { "kokkos", "perm", "row" };
+  { "kokkos", "perm" };
 
 const unsigned num_loss_function_types = 5;
 const Genten::LOSS_FUNCTION_TYPE loss_function_types[] =
@@ -330,11 +329,6 @@ int main(int argc, char* argv[])
         maxiters, tol, printitn, save, debug, warmup, tensor_type);
     else if (tensor_type == SPTENSOR_PERM)
       ret = run< Genten::SptensorT_perm, Genten::DefaultExecutionSpace >(
-        method, inputfilename, outputfilename, rolfilename, index_base, gz,
-        rank, loss_function_type, eps, seed, prng,
-        maxiters, tol, printitn, save, debug, warmup, tensor_type);
-    else if (tensor_type == SPTENSOR_ROW)
-      ret = run< Genten::SptensorT_row, Genten::DefaultExecutionSpace >(
         method, inputfilename, outputfilename, rolfilename, index_base, gz,
         rank, loss_function_type, eps, seed, prng,
         maxiters, tol, printitn, save, debug, warmup, tensor_type);

@@ -58,14 +58,13 @@
 
 enum SPTENSOR_TYPE {
   SPTENSOR,
-  SPTENSOR_PERM,
-  SPTENSOR_ROW
+  SPTENSOR_PERM
 };
-const unsigned num_sptensor_types = 3;
+const unsigned num_sptensor_types = 2;
 SPTENSOR_TYPE sptensor_types[] =
-{ SPTENSOR, SPTENSOR_PERM, SPTENSOR_ROW };
+{ SPTENSOR, SPTENSOR_PERM };
 std::string sptensor_names[] =
-{ "kokkos", "perm", "row" };
+{ "kokkos", "perm" };
 
 template <template<class> class Sptensor_template, typename Space>
 int run_mttkrp(const std::string& inputfilename,
@@ -375,11 +374,6 @@ int main(int argc, char* argv[])
         check, warmup);
     else if (tensor_type == SPTENSOR_PERM)
       ret = run_mttkrp< Genten::SptensorT_perm, Genten::DefaultExecutionSpace >(
-        inputfilename, index_base, gz,
-        cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nIters, tensor_type,
-        check, warmup);
-    else if (tensor_type == SPTENSOR_ROW)
-      ret = run_mttkrp< Genten::SptensorT_row, Genten::DefaultExecutionSpace >(
         inputfilename, index_base, gz,
         cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nIters, tensor_type,
         check, warmup);

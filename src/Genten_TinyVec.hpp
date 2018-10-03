@@ -42,8 +42,27 @@
 #pragma once
 
 #include "Genten_Kokkos.hpp"
+#if defined(KOKKOS_ENABLE_CUDA)
+#include "Cuda/Kokkos_Cuda_Vectorization.hpp"
+#endif
 
 namespace Genten {
+
+  namespace Impl {
+
+#ifdef __CUDA_ARCH__
+    // Reduce y across the warp and broadcast to all lanes
+    template <typename T, typename Ordinal>
+     __device__ inline T warpReduce(T y, const Ordinal warp_size) {
+      for (Ordinal i=1; i<warp_size; i*=2) {
+        y += Kokkos::shfl_down(y, i, warp_size);
+      }
+      y = Kokkos::shfl(y, 0, warp_size);
+      return y;
+    }
+#endif
+
+  }
 
   template <typename ExecSpace, typename Scalar, typename Ordinal,
             unsigned Length, unsigned Size, unsigned WarpDim,
@@ -129,6 +148,15 @@ namespace Genten {
       return *this;
     }
 
+    template <unsigned S>
+    KOKKOS_INLINE_FUNCTION
+    TinyVec& operator+=(
+      const TinyVec<ExecSpace,Scalar,Ordinal,Length,S,WarpDim,Enabled>& x) {
+      for (ordinal_type i=0; i<x.sz.value; ++i)
+        v[i] += x.v[i];
+      return *this;
+    }
+
     KOKKOS_INLINE_FUNCTION
     TinyVec& operator*=(const scalar_type x) {
       for (ordinal_type i=0; i<sz.value; ++i)
@@ -146,6 +174,17 @@ namespace Genten {
         v[i] *= x[i];
 #endif
       return *this;
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    scalar_type sum() const {
+      scalar_type s = 0.0;
+      for (ordinal_type i=0; i<sz.value; ++i)
+        s += v[i];
+#ifdef __CUDA_ARCH__
+      s = Impl::warpReduce(s, WarpDim);
+#endif
+      return s;
     }
 
   };
@@ -215,6 +254,14 @@ namespace Genten {
       return *this;
     }
 
+    template <unsigned S>
+    __device__ inline
+    TinyVec& operator+=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      if (x.sz.value > 0) v0 += x.v0;
+      return *this;
+    }
+
     __device__ inline
     TinyVec& operator*=(const scalar_type x) {
       v0 *= x;
@@ -225,6 +272,14 @@ namespace Genten {
     TinyVec& operator*=(const scalar_type* x) {
       if (sz.value > 0) v0 *= x[threadIdx.x];
       return *this;
+    }
+
+    __device__ inline
+    scalar_type sum() const {
+      scalar_type s = 0.0;
+      if (sz.value > 0) s += v0;
+      s = Impl::warpReduce(s, WarpDim);
+      return s;
     }
 
   };
@@ -297,6 +352,15 @@ namespace Genten {
       return *this;
     }
 
+    template <unsigned S>
+    __device__ inline
+    TinyVec& operator+=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      if (x.sz.value > 0) v0 += x.v0;
+      if (x.sz.value > 1) v1 += x.v1;
+      return *this;
+    }
+
     __device__ inline
     TinyVec& operator*=(const scalar_type x) {
       v0 *= x;
@@ -309,6 +373,15 @@ namespace Genten {
       if (sz.value > 0) v0 *= x[threadIdx.x];
       if (sz.value > 1) v1 *= x[WarpDim + threadIdx.x];
       return *this;
+    }
+
+    __device__ inline
+    scalar_type sum() const {
+      scalar_type s = 0.0;
+      if (sz.value > 0) s += v0;
+      if (sz.value > 1) s += v1;
+      s = Impl::warpReduce(s, WarpDim);
+      return s;
     }
 
   };
@@ -385,6 +458,16 @@ namespace Genten {
       return *this;
     }
 
+    template <unsigned S>
+    __device__ inline
+    TinyVec& operator+=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      if (x.sz.value > 0) v0 += x.v0;
+      if (x.sz.value > 1) v1 += x.v1;
+      if (x.sz.value > 2) v2 += x.v2;
+      return *this;
+    }
+
     __device__ inline
     TinyVec& operator*=(const scalar_type x) {
       v0 *= x;
@@ -399,6 +482,16 @@ namespace Genten {
       if (sz.value > 1) v1 *= x[WarpDim + threadIdx.x];
       if (sz.value > 2) v2 *= x[2*WarpDim + threadIdx.x];
       return *this;
+    }
+
+    __device__ inline
+    scalar_type sum() const {
+      scalar_type s = 0.0;
+      if (sz.value > 0) s += v0;
+      if (sz.value > 1) s += v1;
+      if (sz.value > 2) s += v2;
+      s = Impl::warpReduce(s, WarpDim);
+      return s;
     }
 
   };
@@ -479,6 +572,17 @@ namespace Genten {
       return *this;
     }
 
+    template <unsigned S>
+    __device__ inline
+    TinyVec& operator+=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      if (x.sz.value > 0) v0 += x.v0;
+      if (x.sz.value > 1) v1 += x.v1;
+      if (x.sz.value > 2) v2 += x.v2;
+      if (x.sz.value > 3) v3 += x.v3;
+      return *this;
+    }
+
     __device__ inline
     TinyVec& operator*=(const scalar_type x) {
       v0 *= x;
@@ -495,6 +599,17 @@ namespace Genten {
       if (sz.value > 2) v2 *= x[2*WarpDim + threadIdx.x];
       if (sz.value > 3) v3 *= x[3*WarpDim + threadIdx.x];
       return *this;
+    }
+
+    __device__ inline
+    scalar_type sum() const {
+      scalar_type s = 0.0;
+      if (sz.value > 0) s += v0;
+      if (sz.value > 1) s += v1;
+      if (sz.value > 2) s += v2;
+      if (sz.value > 3) s += v3;
+      s = Impl::warpReduce(s, WarpDim);
+      return s;
     }
 
   };

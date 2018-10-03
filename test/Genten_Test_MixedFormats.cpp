@@ -46,7 +46,6 @@
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_Sptensor_perm.hpp"
-#include "Genten_Sptensor_row.hpp"
 #include "Genten_Test_Utils.hpp"
 #include "Genten_Util.hpp"
 
@@ -320,5 +319,4 @@ void Genten_Test_MixedFormats(int infolevel)
 {
   Genten_Test_MixedFormats_Type<Genten::SptensorT>(infolevel,"Kokkos");
   Genten_Test_MixedFormats_Type<Genten::SptensorT_perm>(infolevel,"Perm");
-  Genten_Test_MixedFormats_Type<Genten::SptensorT_row>(infolevel,"Row");
 }

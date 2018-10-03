@@ -62,14 +62,13 @@ using namespace std;
 
 enum SPTENSOR_TYPE {
   SPTENSOR,
-  SPTENSOR_PERM,
-  SPTENSOR_ROW
+  SPTENSOR_PERM
 };
-const unsigned num_sptensor_types = 3;
+const unsigned num_sptensor_types = 2;
 SPTENSOR_TYPE sptensor_types[] =
-{ SPTENSOR, SPTENSOR_PERM, SPTENSOR_ROW };
+{ SPTENSOR, SPTENSOR_PERM };
 std::string sptensor_names[] =
-{ "kokkos", "perm", "row" };
+{ "kokkos", "perm" };
 
 template <template<class> class Sptensor_template, typename Space>
 int run_cpals(const Genten::IndxArray& cFacDims_host,
@@ -280,10 +279,6 @@ int main(int argc, char* argv[])
         tensor_type);
     else if (tensor_type == SPTENSOR_PERM)
       ret = run_cpals< Genten::SptensorT_perm, Genten::DefaultExecutionSpace >(
-        cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nMaxIters, dStopTol,
-        tensor_type);
-    else if (tensor_type == SPTENSOR_ROW)
-      ret = run_cpals< Genten::SptensorT_row, Genten::DefaultExecutionSpace >(
         cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nMaxIters, dStopTol,
         tensor_type);
 

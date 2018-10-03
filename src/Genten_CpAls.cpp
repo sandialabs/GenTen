@@ -473,18 +473,6 @@ namespace Genten {
     ttb_indx& numIters,                                                 \
     ttb_real& resNorm,                                                  \
     const ttb_indx perfIter,                                            \
-    CpAlsPerfInfo perfInfo[]);                                          \
-                                                                        \
-  template void cpals_core<SptensorT_row<SPACE>,SPACE>(                 \
-    const SptensorT_row<SPACE>& x,                                      \
-    KtensorT<SPACE>& u,                                                 \
-    const ttb_real tol,                                                 \
-    const ttb_indx maxIters,                                            \
-    const ttb_real maxSecs,                                             \
-    const ttb_indx printIter,                                           \
-    ttb_indx& numIters,                                                 \
-    ttb_real& resNorm,                                                  \
-    const ttb_indx perfIter,                                            \
     CpAlsPerfInfo perfInfo[]);
 
 GENTEN_INST(INST_MACRO)
