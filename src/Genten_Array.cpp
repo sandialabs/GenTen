@@ -250,6 +250,7 @@ norm(Genten::NormType ntype) const
       ttb_real v = my_data(i);
       t += (v >= 0 ? v : -v);
     }, nrm);
+    Kokkos::fence();
     break;
   }
   case NormTwo:
@@ -261,6 +262,7 @@ norm(Genten::NormType ntype) const
     {
       t += my_data(i)*my_data(i);
     }, nrm);
+    Kokkos::fence();
     nrm = std::sqrt(nrm);
     break;
   }

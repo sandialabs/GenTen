@@ -550,6 +550,7 @@ normFsq() const
     for (ttb_indx q=r+1; q<n; ++q)
       d += ttb_real(2) * lr * l[q] * cH.entry(r,q);
   }, dResult);
+  Kokkos::fence();
 
   return dResult;
 }

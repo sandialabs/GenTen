@@ -354,6 +354,7 @@ ttb_real innerprod_kernel(const Genten::SptensorT<ExecSpace>& s,
     }
 
   }, dTotal);
+  Kokkos::fence();
 
   return dTotal;
 }

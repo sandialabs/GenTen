@@ -224,7 +224,7 @@ namespace Genten {
             // Evaluate link function derivative
             Y.value(i) = f.deriv(X.value(i), m_val.sum()) / nnz;
           }
-        });
+        }, "GCP_RolObjective::gradient: Y eval");
       }
     };
 
@@ -267,7 +267,8 @@ namespace Genten {
 
         Policy policy(N, TeamSize, VectorSize);
         ttb_real v = 0.0;
-        Kokkos::parallel_reduce(policy, KOKKOS_LAMBDA(const TeamMember& team,
+        Kokkos::parallel_reduce("GCP_RolObjective::value",
+                                policy, KOKKOS_LAMBDA(const TeamMember& team,
                                                       ttb_real& d)
         {
           for (ttb_indx ii=team.team_rank(); ii<RowBlockSize; ii+=TeamSize) {
@@ -337,7 +338,7 @@ namespace Genten {
 
         // Evaluate link function derivative
         Y.value(i) = f.deriv(X.value(i), m_val) / nnz;
-      });
+      }, "GCP_RolObjective::gradient: Y eval");
 #endif
     }
 
@@ -356,7 +357,7 @@ namespace Genten {
       const unsigned nc = M.ncomponents();
       Kokkos::RangePolicy<ExecSpace> policy(0, nnz);
       ttb_real v = 0.0;
-      Kokkos::parallel_reduce(policy,
+      Kokkos::parallel_reduce("GCP_RolObjective::value", policy,
                               KOKKOS_LAMBDA(const ttb_indx i, ttb_real& d)
       {
         // Compute Ktensor value

@@ -461,7 +461,7 @@ void FacMatrixT<ExecSpace>::apply_func(const Func& f) const
   policy_type policy({0,0}, {static_cast<long>(nc),static_cast<long>(nr)},
                      {16,16});
 
-  Kokkos::parallel_for(policy, f);
+  Kokkos::parallel_for(policy, f, "Genten::FacMatrix::apply_func");
 }
 
 template <typename ExecSpace>
@@ -478,7 +478,8 @@ void FacMatrixT<ExecSpace>::reduce_func(const Func& f, const Reducer& r) const
   policy_type policy({0,0}, {static_cast<long>(nc),static_cast<long>(nr)},
                      {16,16});
 
-  Kokkos::parallel_reduce(policy, f, r);
+  Kokkos::parallel_reduce("Genten::FacMatrix::reduce_func", policy, f, r);
+  Kokkos::fence();
 }
 
 #else
@@ -516,7 +517,7 @@ void FacMatrixT<ExecSpace>::apply_func(const Func& f) const
         });
       }
     }
-  });
+  }, "Genten::FacMatrix::apply_func");
 }
 
 template <typename ExecSpace>
@@ -537,7 +538,8 @@ void FacMatrixT<ExecSpace>::reduce_func(const Func& f, const Reducer& r) const
   const ttb_indx N = (nr+block_size-1)/block_size;
 
   TeamPolicy policy(N,team_size,vector_size);
-  Kokkos::parallel_reduce(policy, KOKKOS_LAMBDA(const team_member& team,
+  Kokkos::parallel_reduce("Genten::FacMatrix::reduce_func",
+                          policy, KOKKOS_LAMBDA(const team_member& team,
                                                 reduct_type& d)
   {
     reduct_type t;
@@ -567,6 +569,7 @@ void FacMatrixT<ExecSpace>::reduce_func(const Func& f, const Reducer& r) const
       r_t.join(d, t);
     });
   }, r);
+  Kokkos::fence();
 }
 
 #endif

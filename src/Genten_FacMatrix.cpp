@@ -1163,6 +1163,7 @@ sum() const
     for (ttb_indx j=0; j<ncols; ++j)
       s += d(i,j);
   }, sum);
+  Kokkos::fence();
 
   return sum;
 }
@@ -1703,6 +1704,7 @@ ttb_real mat_innerprod_kernel(const MatViewType& x, const MatViewType& y,
         kernel.template run<0>(j_block, n-j_block, d);
     }
   }, dTotal);
+  Kokkos::fence();
 
   return dTotal;
 }
