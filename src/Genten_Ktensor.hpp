@@ -46,6 +46,7 @@
 #include "Genten_IndxArray.hpp"
 #include "Genten_RandomMT.hpp"
 #include "Genten_Util.hpp"
+#include "Genten_TinyVec.hpp"
 
 namespace Genten
 {
@@ -287,7 +288,6 @@ public:
   // Return the Frobenius norm squared (sum of squares of each tensor element).
   ttb_real normFsq() const;
 
-
 private:
 
   // Weights array
@@ -321,6 +321,44 @@ void deep_copy(const KtensorT<E1>& dst, const KtensorT<E2>& src)
 {
   deep_copy( dst.weights(), src.weights() );
   deep_copy( dst.factors(), src.factors() );
+}
+
+template <typename ExecSpace> class SptensorT;
+
+// Compute Ktensor value using Sptensor subscripts
+template <typename ExecSpace, unsigned Len, unsigned WarpSize>
+KOKKOS_INLINE_FUNCTION
+ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
+                               const SptensorT<ExecSpace>& X,
+                               const ttb_indx i) {
+  typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Len, WarpSize> TV1;
+
+  /*const*/ unsigned nd = M.ndims();
+  /*const*/ unsigned nc = M.ncomponents();
+
+  TV1 m_val(Len,0.0);
+
+  auto row_func = [&](auto j, auto nj, auto Nj) {
+    typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Nj(), WarpSize> TV2;
+    TV2 tmp(nj, 0.0);
+    tmp.load(&(M.weights(j)));
+    for (unsigned m=0; m<nd; ++m)
+      tmp *= &(M[m].entry(X.subscript(i,m),j));
+    m_val += tmp;
+  };
+
+  for (unsigned j=0; j<nc; j+=Len) {
+    if (j+Len < nc) {
+      const unsigned nj = Len;
+      row_func(j, nj, std::integral_constant<unsigned,Len>());
+    }
+    else {
+      const unsigned nj = nc-j;
+      row_func(j, nj, std::integral_constant<unsigned,0>());
+    }
+  }
+
+  return m_val.sum();
 }
 
 }

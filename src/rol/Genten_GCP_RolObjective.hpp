@@ -183,9 +183,7 @@ namespace Genten {
         static const unsigned VectorSize = is_cuda ? VS : 1;
         static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
 
-        /*const*/ ttb_indx nnz = X.nnz();
-        /*const*/ unsigned nd = M.ndims();
-        /*const*/ unsigned nc = M.ncomponents();
+        const ttb_indx nnz = X.nnz();
         const ttb_indx N = (nnz+RowBlockSize-1)/RowBlockSize;
 
         Policy policy(N, TeamSize, VectorSize);
@@ -197,32 +195,12 @@ namespace Genten {
               continue;
 
             // Compute Ktensor value
-            typedef TinyVec<exec_space, ttb_real, unsigned, FacBlockSize, FacBlockSize, VectorSize> TV1;
-
-            TV1 m_val(FacBlockSize,0.0);
-
-            auto row_func = [&](auto j, auto nj, auto Nj) {
-              typedef TinyVec<exec_space, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV2;
-              TV2 tmp(nj, 0.0);
-              tmp.load(&(M.weights(j)));
-              for (unsigned m=0; m<nd; ++m)
-                tmp *= &(M[m].entry(X.subscript(i,m),j));
-              m_val += tmp;
-            };
-
-            for (unsigned j=0; j<nc; j+=FacBlockSize) {
-              if (j+FacBlockSize < nc) {
-                const unsigned nj = FacBlockSize;
-                row_func(j, nj, std::integral_constant<unsigned,FacBlockSize>());
-              }
-              else {
-                const unsigned nj = nc-j;
-                row_func(j, nj, std::integral_constant<unsigned,0>());
-              }
-            }
+            ttb_real m_val =
+              compute_Ktensor_value<exec_space, FacBlockSize, VectorSize>(
+                M, X, i);
 
             // Evaluate link function derivative
-            Y.value(i) = f.deriv(X.value(i), m_val.sum()) / nnz;
+            Y.value(i) = f.deriv(X.value(i), m_val) / nnz;
           }
         }, "GCP_RolObjective::gradient: Y eval");
       }
@@ -260,9 +238,7 @@ namespace Genten {
         static const unsigned VectorSize = is_cuda ? VS : 1;
         static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
 
-        /*const*/ ttb_indx nnz = X.nnz();
-        /*const*/ unsigned nd = M.ndims();
-        /*const*/ unsigned nc = M.ncomponents();
+        const ttb_indx nnz = X.nnz();
         const ttb_indx N = (nnz+RowBlockSize-1)/RowBlockSize;
 
         Policy policy(N, TeamSize, VectorSize);
@@ -277,32 +253,12 @@ namespace Genten {
               continue;
 
             // Compute Ktensor value
-            typedef TinyVec<exec_space, ttb_real, unsigned, FacBlockSize, FacBlockSize, VectorSize> TV1;
-
-            TV1 m_val(FacBlockSize,0.0);
-
-            auto row_func = [&](auto j, auto nj, auto Nj) {
-              typedef TinyVec<exec_space, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV2;
-              TV2 tmp(nj, 0.0);
-              tmp.load(&(M.weights(j)));
-              for (unsigned m=0; m<nd; ++m)
-                tmp *= &(M[m].entry(X.subscript(i,m),j));
-              m_val += tmp;
-            };
-
-            for (unsigned j=0; j<nc; j+=FacBlockSize) {
-              if (j+FacBlockSize < nc) {
-                const unsigned nj = FacBlockSize;
-                row_func(j, nj, std::integral_constant<unsigned,FacBlockSize>());
-              }
-              else {
-                const unsigned nj = nc-j;
-                row_func(j, nj, std::integral_constant<unsigned,0>());
-              }
-            }
+            ttb_real m_val =
+              compute_Ktensor_value<exec_space, FacBlockSize, VectorSize>(
+                M, X, i);
 
             // Evaluate link function
-            d += f.value(X.value(i), m_val.sum());
+            d += f.value(X.value(i), m_val);
           }
         }, v);
         Kokkos::fence();  // ensure v is updated before using it
