@@ -57,6 +57,9 @@
 // when using RolKokkosVector.
 #define COPY_KTENSOR 0
 
+// Whether to compute gradient tensor "Y" explicitly
+#define COMPUTE_Y 0
+
 namespace Genten {
 
   //! Implementation of ROL::Objective for GCP problem
@@ -78,7 +81,8 @@ namespace Genten {
     GCP_RolObjective(const tensor_type& x,
                      const ktensor_type& m,
                      const loss_function_type& func) :
-      X(x), Y(X.size(), X.getSubscripts()), M(m), f(func)
+      X(x),
+      M(m), f(func)
     {
 #if COPY_KTENSOR
       const unsigned nd = M.ndims();
@@ -88,8 +92,10 @@ namespace Genten {
         G.set_factor(i, FacMatrixT<exec_space>(M[i].nRows(), nc));
 #endif
 
-      // Todo:  maybe do a deep copy instead so we don't have to resort?
-      Y.fillComplete();
+#if COMPUTE_Y
+      Y = tensor_type(X.size(), X.getSubscripts());
+      Y.fillComplete(); // Todo:  Deep copy instead so we don't have to re-sort?
+#endif
     }
 
     virtual ~GCP_RolObjective() {}
@@ -266,6 +272,239 @@ namespace Genten {
       }
     };
 
+    template <typename Tensor, typename loss_type>
+    struct GCP_Grad {};
+
+    // Specialization of GCP_Grad for Sptensor
+    template <typename ExecSpace, typename loss_type>
+    struct GCP_Grad< SptensorT<ExecSpace>, loss_type >
+    {
+      typedef SptensorT<ExecSpace> tensor_type;
+      typedef KtensorT<ExecSpace> Ktensor_type;
+      typedef typename tensor_type::exec_space exec_space;
+
+      const tensor_type XX;
+      const Ktensor_type MM;
+      const loss_type ff;
+      const Ktensor_type GG;
+
+      KOKKOS_INLINE_FUNCTION
+      GCP_Grad(const tensor_type& X_, const Ktensor_type& M_,
+               const loss_type& f_, const Ktensor_type& G_) :
+        XX(X_), MM(M_), ff(f_), GG(G_) {}
+
+      template <unsigned FBS, unsigned VS>
+      void run() const
+      {
+        typedef Kokkos::TeamPolicy<exec_space> Policy;
+        typedef typename Policy::member_type TeamMember;
+
+        const tensor_type X = XX;
+        const Ktensor_type M = MM;
+        const loss_type f = ff;
+        const Ktensor_type G = GG;
+
+        G.setMatrices(0.0);
+
+        static const bool is_cuda = Genten::is_cuda_space<exec_space>::value;
+        static const unsigned RowBlockSize = 128;
+        static const unsigned FacBlockSize = FBS;
+        static const unsigned VectorSize = is_cuda ? VS : 1;
+        static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+        static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
+
+        /*const*/ unsigned nd = M.ndims();
+        /*const*/ unsigned nc = M.ncomponents();
+        const ttb_indx nnz = X.nnz();
+        const ttb_indx N = (nnz+RowsPerTeam-1)/RowsPerTeam;
+
+        Policy policy(N, TeamSize, VectorSize);
+        Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+        {
+          // Loop over tensor non-zeros with a large stride on the GPU to
+          // reduce atomic contention when the non-zeros are in a nearly sorted
+          // order (often the first dimension of the tensor).  This is similar
+          // to an approach used in ParTi (https://github.com/hpcgarage/ParTI)
+          // by Jaijai Li.
+          ttb_indx offset;
+          ttb_indx stride;
+          if (is_cuda) {
+            offset = team.league_rank()*TeamSize+team.team_rank();
+            stride = team.league_size()*TeamSize;
+          }
+          else {
+            offset =
+              (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+            stride = 1;
+          }
+          for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+            const ttb_indx i = offset + ii*stride;
+            if (i >= nnz)
+              continue;
+
+            // Compute Ktensor value
+            const ttb_real m_val =
+              compute_Ktensor_value<exec_space, FacBlockSize, VectorSize>(
+                M, X, i);
+
+            // Compute Y value
+            const ttb_real y_val = f.deriv(X.value(i), m_val) / nnz;
+
+            auto row_func = [&](auto j, auto nj, auto Nj) {
+              typedef TinyVec<exec_space, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+
+              // MTTKRP on each dimension n
+              for (unsigned n=0; n<nd; ++n) {
+                TV tmp(nj, y_val);
+                tmp *= &(M.weights(j));
+                for (unsigned m=0; m<nd; ++m) {
+                  if (m != n)
+                    tmp *= &(M[m].entry(X.subscript(i,m),j));
+                }
+                Kokkos::atomic_add(&(G[n].entry(X.subscript(i,n),j)), tmp);
+              }
+            };
+
+            for (unsigned j=0; j<nc; j+=FacBlockSize) {
+              if (j+FacBlockSize < nc) {
+                const unsigned nj = FacBlockSize;
+                row_func(j, nj, std::integral_constant<unsigned,nj>());
+              }
+              else {
+                const unsigned nj = nc-j;
+                row_func(j, nj, std::integral_constant<unsigned,0>());
+              }
+            }
+          }
+        });
+      }
+    };
+
+    // Specialization of GCP_Grad for Sptensor_perm
+    template <typename ExecSpace, typename loss_type>
+    struct GCP_Grad< SptensorT_perm<ExecSpace>, loss_type >
+    {
+      typedef SptensorT_perm<ExecSpace> tensor_type;
+      typedef KtensorT<ExecSpace> Ktensor_type;
+      typedef typename tensor_type::exec_space exec_space;
+
+      const tensor_type XX;
+      const Ktensor_type MM;
+      const loss_type ff;
+      const Ktensor_type GG;
+
+      KOKKOS_INLINE_FUNCTION
+      GCP_Grad(const tensor_type& X_, const Ktensor_type& M_,
+               const loss_type& f_, const Ktensor_type& G_) :
+        XX(X_), MM(M_), ff(f_), GG(G_) {}
+
+      template <unsigned FBS, unsigned VS>
+      void run() const
+      {
+        typedef Kokkos::TeamPolicy<exec_space> Policy;
+        typedef typename Policy::member_type TeamMember;
+
+        const tensor_type X = XX;
+        const Ktensor_type M = MM;
+        const loss_type f = ff;
+        const Ktensor_type G = GG;
+
+        G.setMatrices(0.0);
+
+        static const bool is_cuda = Genten::is_cuda_space<exec_space>::value;
+        static const unsigned RowBlockSize = 128;
+        static const unsigned FacBlockSize = FBS;
+        static const unsigned VectorSize = is_cuda ? VS : 1;
+        static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+        static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
+
+        /*const*/ unsigned nd = M.ndims();
+        /*const*/ unsigned nc = M.ncomponents();
+        /*const*/ ttb_indx nnz = X.nnz();
+        const ttb_indx N = (nnz+RowsPerTeam-1)/RowsPerTeam;
+
+        Policy policy(N, TeamSize, VectorSize);
+        for (unsigned n=0; n<nd; ++n) {
+          Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+          {
+            /*const*/ ttb_indx invalid_row = ttb_indx(-1);
+            /*const*/ ttb_indx i_block =
+              (team.league_rank()*TeamSize + team.team_rank())*RowBlockSize;
+
+            auto row_func = [&](auto j, auto nj, auto Nj) {
+              typedef TinyVec<exec_space, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+              TV val(nj, 0.0), tmp(nj, 0.0);
+
+              ttb_indx row_prev = invalid_row;
+              ttb_indx row = invalid_row;
+              ttb_indx first_row = invalid_row;
+              ttb_indx p = invalid_row;
+              ttb_real y_val = 0.0;
+
+              for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+                /*const*/ ttb_indx i = i_block+ii;
+                if (i >= nnz)
+                  row = invalid_row;
+                else {
+                  p = X.getPerm(i,n);
+                  row = X.subscript(p,n);
+
+                  // Compute Ktensor value
+                  const ttb_real m_val =
+                    compute_Ktensor_value<exec_space, FacBlockSize, VectorSize>(
+                      M, X, p);
+
+                  // Compute Y value
+                  y_val = f.deriv(X.value(p), m_val) / nnz;
+                }
+
+                if (ii == 0)
+                  first_row = row;
+
+                // If we got a different row index, add in result
+                if (row != row_prev) {
+                  if (row_prev != invalid_row) {
+                    if (row_prev == first_row)
+                      Kokkos::atomic_add(&(G[n].entry(row_prev,j)), val);
+                    else
+                      val.store_plus(&(G[n].entry(row_prev,j)));
+                    val.broadcast(0.0);
+                  }
+                  row_prev = row;
+                }
+
+                if (row != invalid_row) {
+                  tmp.load(&(M.weights(j)));
+                  tmp *= y_val;
+                  for (unsigned m=0; m<nd; ++m) {
+                    if (m != n)
+                      tmp *= &(M[m].entry(X.subscript(p,m),j));
+                  }
+                  val += tmp;
+                }
+              }
+
+              // Sum in last row
+              if (row != invalid_row) {
+                Kokkos::atomic_add(&(G[n].entry(row,j)), val);
+              }
+            };
+
+            for (unsigned j=0; j<nc; j+=FacBlockSize) {
+              if (j+FacBlockSize < nc) {
+                const unsigned nj = FacBlockSize;
+                row_func(j, nj, std::integral_constant<unsigned,nj>());
+              }
+              else {
+                const unsigned nj = nc-j;
+                row_func(j, nj, std::integral_constant<unsigned,0>());
+              }
+            }
+          });
+        }
+      }
+    };
+
     template <typename ExecSpace, typename loss_type>
     void gcp_grad_tensor(const SptensorT<ExecSpace>& X,
                          const KtensorT<ExecSpace>& M,
@@ -295,6 +534,39 @@ namespace Genten {
         // Evaluate link function derivative
         Y.value(i) = f.deriv(X.value(i), m_val) / nnz;
       }, "GCP_RolObjective::gradient: Y eval");
+#endif
+    }
+
+    template <typename Tensor, typename loss_type>
+    void gcp_gradient(const Tensor& X,
+                      const Tensor& Y,
+                      const KtensorT<typename Tensor::exec_space>& M,
+                      const loss_type& f,
+                      const KtensorT<typename Tensor::exec_space>& G)
+    {
+#if !COMPUTE_Y
+      // Compute gradient evaluating Y tensor implicitly
+      {
+        TEUCHOS_FUNC_TIME_MONITOR("GCP_RolObjective::gradient: mttkrp");
+        G.weights() = 1.0;
+        GCP_Grad<Tensor,loss_type> kernel(X,M,f,G);
+        run_row_simd_kernel(kernel, M.ncomponents());
+      }
+#else
+      // Compute Y tensor
+      {
+        TEUCHOS_FUNC_TIME_MONITOR("GCP_RolObjective::gradient: Y eval");
+        Impl::gcp_grad_tensor(X, M, f, Y);
+      }
+
+      // Compute gradient
+      {
+        TEUCHOS_FUNC_TIME_MONITOR("GCP_RolObjective::gradient: mttkrp");
+        G.weights() = 1.0;
+        const unsigned nd = M.ndims();
+        for (unsigned m=0; m<nd; ++m)
+          mttkrp(Y, M, m, G[m]);
+      }
 #endif
     }
 
@@ -371,21 +643,7 @@ namespace Genten {
     x.copyToKtensor(M);
 #endif
 
-    // Compute Y tensor
-    {
-      TEUCHOS_FUNC_TIME_MONITOR("GCP_RolObjective::gradient: Y eval");
-      Impl::gcp_grad_tensor(X, M, f, Y);
-    }
-
-    {
-      TEUCHOS_FUNC_TIME_MONITOR("GCP_RolObjective::gradient: mttkrp");
-      // Compute gradient
-      // Todo: new mttkrp kernel that does all nd dimensions
-      G.weights() = 1.0;
-      const unsigned nd = M.ndims();
-      for (unsigned m=0; m<nd; ++m)
-        mttkrp(Y, M, m, G[m]);
-    }
+    Impl::gcp_gradient(X, Y, M, f, G);
 
     // Convert Ktensor to vector
 #if COPY_KTENSOR
