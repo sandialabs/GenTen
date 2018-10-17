@@ -169,14 +169,14 @@ namespace Genten {
     // Dispatch implementation based on loss function type
     if (loss_function_type == GAUSSIAN)
       Impl::gcp_opt_impl(x, u, GaussianLossFunction(loss_eps), params, stream);
-    else if (loss_function_type == RAYLEIGH)
-      Impl::gcp_opt_impl(x, u, RayleighLossFunction(loss_eps), params, stream);
-    else if (loss_function_type == GAMMA)
-      Impl::gcp_opt_impl(x, u, GammaLossFunction(loss_eps), params, stream);
-    else if (loss_function_type == BERNOULLI)
-      Impl::gcp_opt_impl(x, u, BernoulliLossFunction(loss_eps), params, stream);
-    else if (loss_function_type == POISSON)
-      Impl::gcp_opt_impl(x, u, PoissonLossFunction(loss_eps), params, stream);
+    // else if (loss_function_type == RAYLEIGH)
+    //   Impl::gcp_opt_impl(x, u, RayleighLossFunction(loss_eps), params, stream);
+    // else if (loss_function_type == GAMMA)
+    //   Impl::gcp_opt_impl(x, u, GammaLossFunction(loss_eps), params, stream);
+    // else if (loss_function_type == BERNOULLI)
+    //   Impl::gcp_opt_impl(x, u, BernoulliLossFunction(loss_eps), params, stream);
+    // else if (loss_function_type == POISSON)
+    //   Impl::gcp_opt_impl(x, u, PoissonLossFunction(loss_eps), params, stream);
     else
        Genten::error("Genten::gcp_opt - unknown loss function");
   }
