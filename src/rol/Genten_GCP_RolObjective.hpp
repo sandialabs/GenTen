@@ -47,6 +47,9 @@
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_TinyVec.hpp"
 
+#include "Genten_MTTKRP.hpp"
+#include "Genten_GCP_GradTensor.hpp"
+
 #include "Teuchos_TimeMonitor.hpp"
 
 // Choose implementation of ROL::Vector (KtensorVector or KokkosVector)
@@ -121,41 +124,6 @@ namespace Genten {
   };
 
   namespace Impl {
-
-    template <unsigned VS, typename Func>
-    void run_row_simd_kernel_impl(Func& f, const unsigned nc)
-    {
-      static const unsigned VS4 = 4*VS;
-      static const unsigned VS3 = 3*VS;
-      static const unsigned VS2 = 2*VS;
-      static const unsigned VS1 = 1*VS;
-
-      if (nc > VS3)
-        f.template run<VS4,VS>();
-      else if (nc > VS2)
-        f.template run<VS3,VS>();
-      else if (nc > VS1)
-        f.template run<VS2,VS>();
-      else
-        f.template run<VS1,VS>();
-    }
-
-    template <typename Func>
-    void run_row_simd_kernel(Func& f, const unsigned nc)
-    {
-      if (nc >= 96)
-        run_row_simd_kernel_impl<32>(f, nc);
-      else if (nc >= 48)
-        run_row_simd_kernel_impl<16>(f, nc);
-      else if (nc >= 8)
-        run_row_simd_kernel_impl<8>(f, nc);
-      else if (nc >= 4)
-        run_row_simd_kernel_impl<4>(f, nc);
-      else if (nc >= 2)
-        run_row_simd_kernel_impl<2>(f, nc);
-      else
-        run_row_simd_kernel_impl<1>(f, nc);
-    }
 
     template <typename ExecSpace, typename loss_type>
     struct GCP_Grad_Tensor {
@@ -272,6 +240,30 @@ namespace Genten {
       }
     };
 
+#if 1
+    template <typename tensor_type, typename loss_type>
+    struct GCP_Grad {
+      typedef typename tensor_type::exec_space exec_space;
+      typedef KtensorT<exec_space> Ktensor_type;
+
+      const tensor_type X;
+      const Ktensor_type M;
+      const loss_type f;
+      const Ktensor_type G;
+
+      GCP_Grad(const tensor_type& X_, const Ktensor_type& M_,
+               const loss_type& f_, const Ktensor_type& G_) :
+        X(X_), M(M_), f(f_), G(G_) {}
+
+      template <unsigned FBS, unsigned VS>
+      void run() const {
+        GCP_GradTensor<tensor_type,loss_type,FBS,VS> XX(X, M, f);
+        const unsigned nd = M.ndims();
+        for (unsigned n=0; n<nd; ++n)
+          mttkrp_kernel<FBS,VS>(XX,M,n,G[n]);
+      }
+    };
+#else
     template <typename Tensor, typename loss_type>
     struct GCP_Grad {};
 
@@ -288,7 +280,6 @@ namespace Genten {
       const loss_type ff;
       const Ktensor_type GG;
 
-      KOKKOS_INLINE_FUNCTION
       GCP_Grad(const tensor_type& X_, const Ktensor_type& M_,
                const loss_type& f_, const Ktensor_type& G_) :
         XX(X_), MM(M_), ff(f_), GG(G_) {}
@@ -393,7 +384,6 @@ namespace Genten {
       const loss_type ff;
       const Ktensor_type GG;
 
-      KOKKOS_INLINE_FUNCTION
       GCP_Grad(const tensor_type& X_, const Ktensor_type& M_,
                const loss_type& f_, const Ktensor_type& G_) :
         XX(X_), MM(M_), ff(f_), GG(G_) {}
@@ -504,6 +494,7 @@ namespace Genten {
         }
       }
     };
+#endif
 
     template <typename ExecSpace, typename loss_type>
     void gcp_grad_tensor(const SptensorT<ExecSpace>& X,

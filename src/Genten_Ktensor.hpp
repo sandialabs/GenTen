@@ -342,8 +342,9 @@ ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
     typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Nj(), WarpSize> TV2;
     TV2 tmp(nj, 0.0);
     tmp.load(&(M.weights(j)));
-    for (unsigned m=0; m<nd; ++m)
+    for (unsigned m=0; m<nd; ++m) {
       tmp *= &(M[m].entry(X.subscript(i,m),j));
+    }
     m_val += tmp;
   };
 
