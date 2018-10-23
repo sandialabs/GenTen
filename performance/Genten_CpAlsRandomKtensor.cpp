@@ -77,7 +77,8 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
               unsigned long  nRNGseed,
               ttb_indx  nMaxIters,
               ttb_real  dStopTol,
-              SPTENSOR_TYPE tensor_type)
+              SPTENSOR_TYPE tensor_type,
+              const Genten::AlgParams& algParams)
 {
   typedef Sptensor_template<Space> Sptensor_type;
   typedef Sptensor_template<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
@@ -149,7 +150,7 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
   Ktensor_type  tmp (nNumComponents, cFacDims.size(), cFacDims);
   Genten::SptensorT<Genten::DefaultExecutionSpace>& cData_tmp = cData;
   for (ttb_indx  n = 0; n < cFacDims.size(); n++)
-    Genten::mttkrp(cData_tmp, cInitialGuess, n, tmp[n]);
+    Genten::mttkrp(cData_tmp, cInitialGuess, n, tmp[n], algParams);
 
   // Perform any post-processing (e.g., permutation and row ptr generation)
   timer.start(1);
@@ -174,7 +175,7 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
   Genten::cpals_core (cData, cResult,
                       dStopTol, nMaxIters, -1.0, 1,
                       nItersCompleted, dResNorm,
-                      1, perfInfo);
+                      1, perfInfo, algParams);
   printf ("Performance information per iteration:\n");
   for (ttb_indx  i = 0; i <= nItersCompleted; i++)
   {
@@ -215,6 +216,7 @@ void usage(char **argv)
       std::cout << ", ";
   }
   std::cout << std::endl;
+  std::cout << "  --mttkrptlsz <int> tile size for mttkrp algorithm" << std::endl;
   std::cout << "  --vtune              connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
 }
 
@@ -272,15 +274,20 @@ int main(int argc, char* argv[])
     SPTENSOR_TYPE tensor_type =
       parse_ttb_enum(argc, argv, "--tensor", SPTENSOR,
                      num_sptensor_types, sptensor_types, sptensor_names);
+    ttb_indx mttkrp_tile_size =
+      parse_ttb_indx(argc, argv, "--mttkrptlsz", 0, 0, INT_MAX);
+
+    Genten::AlgParams algParams;
+    algParams.MTTKRPFactorMatrixTileSize = mttkrp_tile_size;
 
     if (tensor_type == SPTENSOR)
       ret = run_cpals< Genten::SptensorT, Genten::DefaultExecutionSpace >(
         cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nMaxIters, dStopTol,
-        tensor_type);
+        tensor_type, algParams);
     else if (tensor_type == SPTENSOR_PERM)
       ret = run_cpals< Genten::SptensorT_perm, Genten::DefaultExecutionSpace >(
         cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nMaxIters, dStopTol,
-        tensor_type);
+        tensor_type, algParams);
 
   }
   catch(std::string sExc)

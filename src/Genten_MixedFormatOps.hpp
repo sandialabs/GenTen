@@ -90,12 +90,14 @@ namespace Genten
   void mttkrp(const SparseTensor& X,
               const Genten::KtensorT<ExecSpace>& u,
               const ttb_indx n,
-              const Genten::FacMatrixT<ExecSpace>& v);
+              const Genten::FacMatrixT<ExecSpace>& v,
+              const AlgParams& algParams = AlgParams());
   template <typename ExecSpace>
   void mttkrp(const Genten::SptensorT_row<ExecSpace>& X,
               const Genten::KtensorT<ExecSpace>& u,
               const ttb_indx n,
-              const Genten::FacMatrixT<ExecSpace>& v);
+              const Genten::FacMatrixT<ExecSpace>& v,
+              const AlgParams& algParams = AlgParams());
 
   // Matricized sparse tensor times Khatri-Rao product.
   /* Matricizes the Sptensor X along mode n, and computes the product
@@ -111,9 +113,10 @@ namespace Genten
   template <typename SparseTensor>
   void mttkrp(const SparseTensor& X,
               const Genten::KtensorT<typename SparseTensor::exec_space>& u,
-              const ttb_indx n)
+              const ttb_indx n,
+              const AlgParams& algParams = AlgParams())
   {
-    mttkrp (X, u, n, u[n]);
+    mttkrp (X, u, n, u[n], algParams);
     return;
   }
 

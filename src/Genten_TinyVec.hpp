@@ -158,6 +158,18 @@ namespace Genten {
     }
 
     KOKKOS_INLINE_FUNCTION
+    TinyVec& operator+=(const scalar_type* x) {
+#ifdef __CUDA_ARCH__
+      for (ordinal_type i=0; i<sz.value; ++i)
+        v[i] += x[i*WarpDim+threadIdx.x];
+#else
+      for (ordinal_type i=0; i<sz.value; ++i)
+        v[i] += x[i];
+#endif
+      return *this;
+    }
+
+    KOKKOS_INLINE_FUNCTION
     TinyVec& operator*=(const scalar_type x) {
       for (ordinal_type i=0; i<sz.value; ++i)
         v[i] *= x;
@@ -263,6 +275,12 @@ namespace Genten {
     }
 
     __device__ inline
+    TinyVec& operator+=(const scalar_type* x) {
+      if (sz.value > 0) v0 += x[threadIdx.x];
+      return *this;
+    }
+
+    __device__ inline
     TinyVec& operator*=(const scalar_type x) {
       v0 *= x;
       return *this;
@@ -349,6 +367,13 @@ namespace Genten {
     TinyVec& operator+=(const TinyVec& x) {
       v0 += x.v0;
       v1 += x.v1;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator+=(const scalar_type* x) {
+      if (sz.value > 0) v0 += x[threadIdx.x];
+      if (sz.value > 1) v1 += x[WarpDim + threadIdx.x];
       return *this;
     }
 
@@ -469,6 +494,14 @@ namespace Genten {
     }
 
     __device__ inline
+    TinyVec& operator+=(const scalar_type* x) {
+      if (sz.value > 0) v0 += x[threadIdx.x];
+      if (sz.value > 1) v1 += x[WarpDim + threadIdx.x];
+      if (sz.value > 2) v2 += x[2*WarpDim + threadIdx.x];
+      return *this;
+    }
+
+    __device__ inline
     TinyVec& operator*=(const scalar_type x) {
       v0 *= x;
       v1 *= x;
@@ -580,6 +613,15 @@ namespace Genten {
       if (x.sz.value > 1) v1 += x.v1;
       if (x.sz.value > 2) v2 += x.v2;
       if (x.sz.value > 3) v3 += x.v3;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator+=(const scalar_type* x) {
+      if (sz.value > 0) v0 += x[threadIdx.x];
+      if (sz.value > 1) v1 += x[WarpDim + threadIdx.x];
+      if (sz.value > 2) v2 += x[2*WarpDim + threadIdx.x];
+      if (sz.value > 3) v3 += x[3*WarpDim + threadIdx.x];
       return *this;
     }
 

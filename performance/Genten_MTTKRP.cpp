@@ -77,7 +77,8 @@ int run_mttkrp(const std::string& inputfilename,
                const ttb_indx  nIters,
                const SPTENSOR_TYPE tensor_type,
                const ttb_indx check,
-               const ttb_indx warmup)
+               const ttb_indx warmup,
+               const Genten::AlgParams& algParams)
 {
   typedef Sptensor_template<Space> Sptensor_type;
   typedef Sptensor_template<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
@@ -171,7 +172,7 @@ int run_mttkrp(const std::string& inputfilename,
   if (warmup == 1) {
     Genten::SptensorT<Genten::DefaultExecutionSpace>& cData_tmp = cData;
     for (ttb_indx n=0; n<nDims; ++n)
-      Genten::mttkrp(cData_tmp, cInput, n, cResult[n]);
+      Genten::mttkrp(cData_tmp, cInput, n, cResult[n], algParams);
   }
 
   // Perform any post-processing (e.g., permutation and row ptr generation)
@@ -189,7 +190,7 @@ int run_mttkrp(const std::string& inputfilename,
   for (ttb_indx iter=0; iter<nIters; ++iter) {
     for (ttb_indx n=0; n<nDims; ++n) {
       timer.start(1+n);
-      Genten::mttkrp(cData, cInput, n, cResult[n]);
+      Genten::mttkrp(cData, cInput, n, cResult[n], algParams);
       Kokkos::fence();
       timer.stop(1+n);
     }
@@ -314,6 +315,7 @@ void usage(char **argv)
       std::cout << ", ";
   }
   std::cout << std::endl;
+  std::cout << "  --mttkrptlsz <int> tile size for mttkrp algorithm" << std::endl;
   std::cout << "  --vtune              connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
 }
 
@@ -366,17 +368,22 @@ int main(int argc, char* argv[])
     SPTENSOR_TYPE tensor_type =
       parse_ttb_enum(argc, argv, "--tensor", SPTENSOR,
                      num_sptensor_types, sptensor_types, sptensor_names);
+    ttb_indx mttkrp_tile_size =
+      parse_ttb_indx(argc, argv, "--mttkrptlsz", 0, 0, INT_MAX);
+
+    Genten::AlgParams algParams;
+    algParams.MTTKRPFactorMatrixTileSize = mttkrp_tile_size;
 
     if (tensor_type == SPTENSOR)
       ret = run_mttkrp< Genten::SptensorT, Genten::DefaultExecutionSpace >(
         inputfilename, index_base, gz,
         cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nIters, tensor_type,
-        check, warmup);
+        check, warmup, algParams);
     else if (tensor_type == SPTENSOR_PERM)
       ret = run_mttkrp< Genten::SptensorT_perm, Genten::DefaultExecutionSpace >(
         inputfilename, index_base, gz,
         cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nIters, tensor_type,
-        check, warmup);
+        check, warmup, algParams);
 
   }
   catch(std::string sExc)

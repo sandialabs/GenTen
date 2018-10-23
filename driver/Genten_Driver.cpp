@@ -86,7 +86,8 @@ int run(const std::string& method,
         const bool save,
         const bool debug,
         const bool warmup,
-        const SPTENSOR_TYPE tensor_type)
+        const SPTENSOR_TYPE tensor_type,
+        const Genten::AlgParams& algParams)
 {
   typedef Sptensor_template<Space> Sptensor_type;
   typedef Sptensor_template<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
@@ -139,7 +140,7 @@ int run(const std::string& method,
     Ktensor_type tmp (rank,x.ndims(),x.size());
     Genten::SptensorT<Genten::DefaultExecutionSpace>& x_tmp = x;
     for (ttb_indx  n = 0; n < x.ndims(); n++)
-      Genten::mttkrp(x_tmp, u, n, tmp[n]);
+      Genten::mttkrp(x_tmp, u, n, tmp[n], algParams);
   }
 
   // Perform any post-processing (e.g., permutation and row ptr generation)
@@ -159,7 +160,7 @@ int run(const std::string& method,
     ttb_indx iter;
     ttb_real resNorm;
     Genten::cpals_core (x, u, tol, maxiters, -1.0, printitn,
-                        iter, resNorm, 0, NULL);
+                        iter, resNorm, 0, NULL, algParams);
   }
 #ifdef HAVE_ROL
   else if (do_gcp) {
@@ -169,9 +170,11 @@ int run(const std::string& method,
       rol_params = Teuchos::getParametersFromXmlFile(rolfilename);
     timer.start(2);
     if (rol_params != Teuchos::null)
-      gcp_opt(x, u, loss_function_type, *rol_params, &std::cout, loss_eps);
+      gcp_opt(x, u, loss_function_type, *rol_params, &std::cout, loss_eps,
+              algParams);
     else
-      gcp_opt(x, u, loss_function_type, tol, maxiters, &std::cout, loss_eps);
+      gcp_opt(x, u, loss_function_type, tol, maxiters, &std::cout, loss_eps,
+              algParams);
     timer.stop(2);
     printf("GCP took %6.3f seconds\n", timer.getTotalTime(2));
   }
@@ -234,6 +237,7 @@ void usage(char **argv)
       std::cout << ", ";
   }
   std::cout << std::endl;
+  std::cout << "  --mttkrptlsz <int> tile size for mttkrp algorithm" << std::endl;
   std::cout << "  --vtune            connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
 }
 
@@ -294,6 +298,8 @@ int main(int argc, char* argv[])
     SPTENSOR_TYPE tensor_type =
       parse_ttb_enum(argc, argv, "--tensor", SPTENSOR,
                      num_sptensor_types, sptensor_types, sptensor_names);
+    ttb_indx mttkrp_tile_size =
+      parse_ttb_indx(argc, argv, "--mttkrptlsz", 0, 0, INT_MAX);
 
     if (vtune)
       Genten::connect_vtune();
@@ -319,19 +325,23 @@ int main(int argc, char* argv[])
       std::cout << "debug = " << (debug ? "true" : "false") << std::endl;
       std::cout << "warmup = " << (warmup ? "true" : "false") << std::endl;
       std::cout << "tensor type = " << sptensor_names[tensor_type] << std::endl;
+      std::cout << "mttkrptlsz = " << mttkrp_tile_size << std::endl;
       std::cout << std::endl;
     }
+
+    Genten::AlgParams algParams;
+    algParams.MTTKRPFactorMatrixTileSize = mttkrp_tile_size;
 
     if (tensor_type == SPTENSOR)
       ret = run< Genten::SptensorT, Genten::DefaultExecutionSpace >(
         method, inputfilename, outputfilename, rolfilename, index_base, gz,
         rank, loss_function_type, eps, seed, prng,
-        maxiters, tol, printitn, save, debug, warmup, tensor_type);
+        maxiters, tol, printitn, save, debug, warmup, tensor_type, algParams);
     else if (tensor_type == SPTENSOR_PERM)
       ret = run< Genten::SptensorT_perm, Genten::DefaultExecutionSpace >(
         method, inputfilename, outputfilename, rolfilename, index_base, gz,
         rank, loss_function_type, eps, seed, prng,
-        maxiters, tol, printitn, save, debug, warmup, tensor_type);
+        maxiters, tol, printitn, save, debug, warmup, tensor_type, algParams);
 
   }
   catch(std::string sExc)

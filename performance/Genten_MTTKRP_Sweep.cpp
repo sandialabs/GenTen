@@ -68,16 +68,17 @@ std::string sptensor_names[] =
 
 template <template<class> class Sptensor_template, typename Space>
 void run_mttkrp(const std::string& inputfilename,
-               const ttb_indx index_base,
-               const bool gz,
-               const Genten::IndxArray& cFacDims_rnd_host,
-               const ttb_indx  nNumComponentsMin,
-               const ttb_indx  nNumComponentsMax,
-               const ttb_indx  nNumComponentsStep,
-               const ttb_indx  nMaxNonzeroes,
-               const unsigned long  nRNGseed,
-               const ttb_indx  nIters,
-               const SPTENSOR_TYPE tensor_type)
+                const ttb_indx index_base,
+                const bool gz,
+                const Genten::IndxArray& cFacDims_rnd_host,
+                const ttb_indx  nNumComponentsMin,
+                const ttb_indx  nNumComponentsMax,
+                const ttb_indx  nNumComponentsStep,
+                const ttb_indx  nMaxNonzeroes,
+                const unsigned long  nRNGseed,
+                const ttb_indx  nIters,
+                const SPTENSOR_TYPE tensor_type,
+                const Genten::AlgParams& algParams)
 {
   typedef Sptensor_template<Space> Sptensor_type;
   typedef Sptensor_template<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
@@ -187,7 +188,7 @@ void run_mttkrp(const std::string& inputfilename,
     timer.start(0);
     for (ttb_indx iter=0; iter<nIters; ++iter) {
       for (ttb_indx n=0; n<nDims; ++n) {
-        Genten::mttkrp(cData, cInput2, n, cResult[n]);
+        Genten::mttkrp(cData, cInput2, n, cResult[n], algParams);
       }
     }
     timer.stop(0);
@@ -223,6 +224,7 @@ void usage(char **argv)
     if (i != num_sptensor_types-1)
       std::cout << ", ";
   }
+  std::cout << "  --mttkrptlsz <int> tile size for mttkrp algorithm" << std::endl;
   std::cout << std::endl;
   std::cout << "  --vtune              connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
 }
@@ -276,17 +278,22 @@ int main(int argc, char* argv[])
     SPTENSOR_TYPE tensor_type =
       parse_ttb_enum(argc, argv, "--tensor", SPTENSOR,
                      num_sptensor_types, sptensor_types, sptensor_names);
+    ttb_indx mttkrp_tile_size =
+      parse_ttb_indx(argc, argv, "--mttkrptlsz", 0, 0, INT_MAX);
+
+    Genten::AlgParams algParams;
+    algParams.MTTKRPFactorMatrixTileSize = mttkrp_tile_size;
 
     if (tensor_type == SPTENSOR)
       run_mttkrp< Genten::SptensorT, Genten::DefaultExecutionSpace >(
         inputfilename, index_base, gz,
         cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
-        nMaxNonzeroes, nRNGseed, nIters, tensor_type);
+        nMaxNonzeroes, nRNGseed, nIters, tensor_type, algParams);
     else if (tensor_type == SPTENSOR_PERM)
       run_mttkrp< Genten::SptensorT_perm, Genten::DefaultExecutionSpace >(
         inputfilename, index_base, gz,
         cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
-        nMaxNonzeroes, nRNGseed, nIters, tensor_type);
+        nMaxNonzeroes, nRNGseed, nIters, tensor_type, algParams);
 
   }
   catch(std::string sExc)

@@ -116,7 +116,8 @@ namespace Genten {
                    ttb_indx      & numIters,
                    ttb_real      & resNorm,
                    const ttb_indx        perfIter,
-                   CpAlsPerfInfo   perfInfo[])
+                   CpAlsPerfInfo   perfInfo[],
+                   const AlgParams& algParams)
   {
 
 #ifdef HAVE_CALIPER
@@ -240,7 +241,7 @@ namespace Genten {
         // Update u[n] via MTTKRP with x (Khattri-Rao product).
         // The size of u[n] is dim(n) rows by R columns.
         timer.start(timer_mttkrp);
-        Genten::mttkrp (x, u, n);
+        Genten::mttkrp (x, u, n, algParams);
         Kokkos::fence();
         timer.stop(timer_mttkrp);
 
@@ -461,7 +462,8 @@ namespace Genten {
     ttb_indx& numIters,                                                 \
     ttb_real& resNorm,                                                  \
     const ttb_indx perfIter,                                            \
-    CpAlsPerfInfo perfInfo[]);                                          \
+    CpAlsPerfInfo perfInfo[],                                           \
+const AlgParams& algParams);                                            \
                                                                         \
   template void cpals_core<SptensorT_perm<SPACE>,SPACE>(                \
     const SptensorT_perm<SPACE>& x,                                     \
@@ -473,6 +475,7 @@ namespace Genten {
     ttb_indx& numIters,                                                 \
     ttb_real& resNorm,                                                  \
     const ttb_indx perfIter,                                            \
-    CpAlsPerfInfo perfInfo[]);
+    CpAlsPerfInfo perfInfo[],                                           \
+    const AlgParams& algParams);
 
 GENTEN_INST(INST_MACRO)

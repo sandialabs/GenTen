@@ -83,9 +83,10 @@ namespace Genten {
 
     GCP_RolObjective(const tensor_type& x,
                      const ktensor_type& m,
-                     const loss_function_type& func) :
+                     const loss_function_type& func,
+                     const AlgParams& algParms) :
       X(x),
-      M(m), f(func)
+      M(m), f(func), algParams(algParms)
     {
 #if COPY_KTENSOR
       const unsigned nd = M.ndims();
@@ -120,6 +121,7 @@ namespace Genten {
     ktensor_type M;
     ktensor_type G;
     loss_function_type f;
+    AlgParams algParams;
 
   };
 
@@ -250,17 +252,19 @@ namespace Genten {
       const Ktensor_type M;
       const loss_type f;
       const Ktensor_type G;
+      const AlgParams algParams;
 
       GCP_Grad(const tensor_type& X_, const Ktensor_type& M_,
-               const loss_type& f_, const Ktensor_type& G_) :
-        X(X_), M(M_), f(f_), G(G_) {}
+               const loss_type& f_, const Ktensor_type& G_,
+               const AlgParams& algParams_) :
+        X(X_), M(M_), f(f_), G(G_), algParams(algParams_) {}
 
       template <unsigned FBS, unsigned VS>
       void run() const {
         GCP_GradTensor<tensor_type,loss_type,FBS,VS> XX(X, M, f);
         const unsigned nd = M.ndims();
         for (unsigned n=0; n<nd; ++n)
-          mttkrp_kernel<FBS,VS>(XX,M,n,G[n]);
+          mttkrp_kernel<FBS,VS>(XX,M,n,G[n],algParams);
       }
     };
 #else
@@ -279,10 +283,12 @@ namespace Genten {
       const Ktensor_type MM;
       const loss_type ff;
       const Ktensor_type GG;
+      const AlgParams algParams;
 
       GCP_Grad(const tensor_type& X_, const Ktensor_type& M_,
-               const loss_type& f_, const Ktensor_type& G_) :
-        XX(X_), MM(M_), ff(f_), GG(G_) {}
+               const loss_type& f_, const Ktensor_type& G_,
+              const AlgParams& algParams) :
+        XX(X_), MM(M_), ff(f_), GG(G_), algParams(algParams_) {}
 
       template <unsigned FBS, unsigned VS>
       void run() const
@@ -383,10 +389,12 @@ namespace Genten {
       const Ktensor_type MM;
       const loss_type ff;
       const Ktensor_type GG;
+      const AlgParams alParams;
 
       GCP_Grad(const tensor_type& X_, const Ktensor_type& M_,
-               const loss_type& f_, const Ktensor_type& G_) :
-        XX(X_), MM(M_), ff(f_), GG(G_) {}
+               const loss_type& f_, const Ktensor_type& G_,
+               const AlgParams& algParams) :
+        XX(X_), MM(M_), ff(f_), GG(G_), algParams(algParams_) {}
 
       template <unsigned FBS, unsigned VS>
       void run() const
@@ -533,14 +541,15 @@ namespace Genten {
                       const Tensor& Y,
                       const KtensorT<typename Tensor::exec_space>& M,
                       const loss_type& f,
-                      const KtensorT<typename Tensor::exec_space>& G)
+                      const KtensorT<typename Tensor::exec_space>& G,
+                      const AlgParams& algParams)
     {
 #if !COMPUTE_Y
       // Compute gradient evaluating Y tensor implicitly
       {
         TEUCHOS_FUNC_TIME_MONITOR("GCP_RolObjective::gradient: mttkrp");
         G.weights() = 1.0;
-        GCP_Grad<Tensor,loss_type> kernel(X,M,f,G);
+        GCP_Grad<Tensor,loss_type> kernel(X,M,f,G,algParams);
         run_row_simd_kernel(kernel, M.ncomponents());
       }
 #else
@@ -556,7 +565,7 @@ namespace Genten {
         G.weights() = 1.0;
         const unsigned nd = M.ndims();
         for (unsigned m=0; m<nd; ++m)
-          mttkrp(Y, M, m, G[m]);
+          mttkrp(Y, M, m, G[m], algParams);
       }
 #endif
     }
@@ -634,7 +643,7 @@ namespace Genten {
     x.copyToKtensor(M);
 #endif
 
-    Impl::gcp_gradient(X, Y, M, f, G);
+    Impl::gcp_gradient(X, Y, M, f, G, algParams);
 
     // Convert Ktensor to vector
 #if COPY_KTENSOR

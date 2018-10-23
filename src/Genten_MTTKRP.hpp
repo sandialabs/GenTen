@@ -57,6 +57,47 @@
 
 #define USE_SCATTER_VIEW 0
 
+namespace Genten {
+namespace Impl {
+
+template <unsigned VS, typename Func>
+void run_row_simd_kernel_impl(Func& f, const unsigned nc)
+{
+  static const unsigned VS4 = 4*VS;
+  static const unsigned VS3 = 3*VS;
+  static const unsigned VS2 = 2*VS;
+  static const unsigned VS1 = 1*VS;
+
+  if (nc > VS3)
+    f.template run<VS4,VS>();
+  else if (nc > VS2)
+    f.template run<VS3,VS>();
+  else if (nc > VS1)
+    f.template run<VS2,VS>();
+  else
+    f.template run<VS1,VS>();
+}
+
+template <typename Func>
+void run_row_simd_kernel(Func& f, const unsigned nc)
+{
+  if (nc >= 96)
+    run_row_simd_kernel_impl<32>(f, nc);
+  else if (nc >= 48)
+    run_row_simd_kernel_impl<16>(f, nc);
+  else if (nc >= 8)
+    run_row_simd_kernel_impl<8>(f, nc);
+  else if (nc >= 4)
+    run_row_simd_kernel_impl<4>(f, nc);
+  else if (nc >= 2)
+    run_row_simd_kernel_impl<2>(f, nc);
+  else
+    run_row_simd_kernel_impl<1>(f, nc);
+}
+
+}
+}
+
 #if USE_SCATTER_VIEW
 // This is a locally-modified version of Kokkos_ScatterView.hpp which we
 // need until the changes are moved into Kokkos
@@ -77,18 +118,20 @@ struct ReduceDuplicates<
   typename std::enable_if<
     unsigned(SrcViewType::rank) == 3 &&
     unsigned(DstViewType::rank) == 2 &&
-    std::is_same< typename SrcViewType::array_layout, LayoutRight >::value &&
-    std::is_same< typename DstViewType::array_layout, LayoutRight >::value
+    (std::is_same< typename SrcViewType::array_layout, LayoutRight >::value ||
+     std::is_same< typename SrcViewType::array_layout, LayoutStride >::value) &&
+    (std::is_same< typename DstViewType::array_layout, LayoutRight >::value ||
+     std::is_same< typename DstViewType::array_layout, LayoutStride >::value)
   >::type >
 {
   ReduceDuplicates(const SrcViewType& src,
                    const DstViewType& dst,
-                   const size_t stride_in,
+                   const size_t stride,
                    const size_t start,
-                   const size_t n_in,
+                   const size_t n,
                    const std::string& name)
   {
-    run(src,dst,stride_in,start,n_in,name);
+    run(src,dst,stride,start,n,name);
   }
 
   void run(const SrcViewType& src,
@@ -143,41 +186,6 @@ struct ReduceDuplicates<
 namespace Genten {
 namespace Impl {
 
-template <unsigned VS, typename Func>
-void run_row_simd_kernel_impl(Func& f, const unsigned nc)
-{
-  static const unsigned VS4 = 4*VS;
-  static const unsigned VS3 = 3*VS;
-  static const unsigned VS2 = 2*VS;
-  static const unsigned VS1 = 1*VS;
-
-  if (nc > VS3)
-    f.template run<VS4,VS>();
-  else if (nc > VS2)
-    f.template run<VS3,VS>();
-  else if (nc > VS1)
-    f.template run<VS2,VS>();
-  else
-    f.template run<VS1,VS>();
-}
-
-template <typename Func>
-void run_row_simd_kernel(Func& f, const unsigned nc)
-{
-  if (nc >= 96)
-    run_row_simd_kernel_impl<32>(f, nc);
-  else if (nc >= 48)
-    run_row_simd_kernel_impl<16>(f, nc);
-  else if (nc >= 8)
-    run_row_simd_kernel_impl<8>(f, nc);
-  else if (nc >= 4)
-    run_row_simd_kernel_impl<4>(f, nc);
-  else if (nc >= 2)
-    run_row_simd_kernel_impl<2>(f, nc);
-  else
-    run_row_simd_kernel_impl<1>(f, nc);
-}
-
 #if USE_SCATTER_VIEW
 
 // MTTKRP kernel for Sptensor
@@ -189,7 +197,8 @@ typename std::enable_if<
 mttkrp_kernel(const SparseTensor& X,
               const Genten::KtensorT<ExecSpace>& u,
               const unsigned n,
-              const Genten::FacMatrixT<ExecSpace>& v)
+              const Genten::FacMatrixT<ExecSpace>& v,
+              const AlgParams& algParams)
 {
   v = ttb_real(0.0);
 
@@ -201,14 +210,6 @@ mttkrp_kernel(const SparseTensor& X,
   // using Kokkos::Experimental::ScatterAtomic;
   // using Kokkos::Experimental::ScatterNonAtomic;
 
-  /*
-    const int dupl =
-    is_serial ? ScatterNonDuplicated : ScatterDuplicated;
-    const int cont = ScatterNonAtomic ;
-    auto sv = create_scatter_view<ScatterSum,dupl,cont>(v.view());
-  */
-  auto sv = create_scatter_view(v.view());
-
   static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
   static const unsigned RowBlockSize = 128;
   static const unsigned FacBlockSize = FBS;
@@ -216,7 +217,7 @@ mttkrp_kernel(const SparseTensor& X,
   static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
 
   /*const*/ unsigned nd = u.ndims();
-  /*const*/ unsigned nc = u.ncomponents();
+  /*const*/ unsigned nc_total = u.ncomponents();
   /*const*/ ttb_indx nnz = X.nnz();
   const unsigned RowsPerTeam = TeamSize * RowBlockSize;
   const ttb_indx N = (nnz+RowsPerTeam-1)/RowsPerTeam;
@@ -224,61 +225,80 @@ mttkrp_kernel(const SparseTensor& X,
   typedef Kokkos::TeamPolicy<ExecSpace> Policy;
   typedef typename Policy::member_type TeamMember;
   Policy policy(N, TeamSize, VectorSize);
-  Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
-  {
-    auto va = sv.access();
 
-    // Loop over tensor non-zeros with a large stride on the GPU to
-    // reduce atomic contention when the non-zeros are in a nearly sorted
-    // order (often the first dimension of the tensor).  This is similar
-    // to an approach used in ParTi (https://github.com/hpcgarage/ParTI)
-    // by Jaijai Li.
-    ttb_indx offset;
-    ttb_indx stride;
-    if (is_cuda) {
-      offset = team.league_rank()*TeamSize+team.team_rank();
-      stride = team.league_size()*TeamSize;
-    }
-    else {
-      offset =
-        (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
-      stride = 1;
-    }
+  // Use factor matrix tile size as requested by the user, or all columns if
+  // unspecified
+  const unsigned FacTileSize =
+    algParams.MTTKRPFactorMatrixTileSize > 0 ? algParams.MTTKRPFactorMatrixTileSize : nc_total;
+  for (unsigned nc_beg=0; nc_beg<nc_total; nc_beg += FacTileSize) {
+    /*
+      const int dupl =
+      is_serial ? ScatterNonDuplicated : ScatterDuplicated;
+      const int cont = ScatterNonAtomic ;
+      auto sv = create_scatter_view<ScatterSum,dupl,cont>(v.view());
+    */
+    const unsigned nc =
+      nc_beg+FacTileSize <= nc_total ? FacTileSize : nc_total-nc_beg;
+    const unsigned nc_end = nc_beg+nc;
+    auto vv = Kokkos::subview(v.view(),Kokkos::ALL,
+                              std::make_pair(nc_beg,nc_end));
+    auto sv = create_scatter_view(vv);
+    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+    {
+      auto va = sv.access();
 
-    auto row_func = [&](auto j, auto nj, auto Nj) {
-      typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
-      for (unsigned ii=0; ii<RowBlockSize; ++ii) {
-        const ttb_indx i = offset + ii*stride;
-        if (i >= nnz)
-          continue;
-
-        const ttb_indx k = X.subscript(i,n);
-        const ttb_real x_val = X.value(i);
-
-        // MTTKRP for dimension n
-        TV tmp(nj, x_val);
-        tmp *= &(u.weights(j));
-        for (unsigned m=0; m<nd; ++m) {
-          if (m != n)
-            tmp *= &(u[m].entry(X.subscript(i,m),j));
-        }
-        va(k,j) += tmp;
-      }
-    };
-
-    for (unsigned j=0; j<nc; j+=FacBlockSize) {
-      if (j+FacBlockSize < nc) {
-        const unsigned nj = FacBlockSize;
-        row_func(j, nj, std::integral_constant<unsigned,nj>());
+      // Loop over tensor non-zeros with a large stride on the GPU to
+      // reduce atomic contention when the non-zeros are in a nearly sorted
+      // order (often the first dimension of the tensor).  This is similar
+      // to an approach used in ParTi (https://github.com/hpcgarage/ParTI)
+      // by Jaijai Li.
+      ttb_indx offset;
+      ttb_indx stride;
+      if (is_cuda) {
+        offset = team.league_rank()*TeamSize+team.team_rank();
+        stride = team.league_size()*TeamSize;
       }
       else {
-        const unsigned nj = nc-j;
-        row_func(j, nj, std::integral_constant<unsigned,0>());
+        offset =
+          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+        stride = 1;
       }
-    }
-  });
 
-  sv.contribute_into(v.view());
+      auto row_func = [&](auto j, auto nj, auto Nj) {
+        typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+          const ttb_indx i = offset + ii*stride;
+          if (i >= nnz)
+            continue;
+
+          const ttb_indx k = X.subscript(i,n);
+          const ttb_real x_val = X.value(i);
+
+          // MTTKRP for dimension n
+          TV tmp(nj, x_val);
+          tmp *= &(u.weights(nc_beg+j));
+          for (unsigned m=0; m<nd; ++m) {
+            if (m != n)
+              tmp *= &(u[m].entry(X.subscript(i,m),nc_beg+j));
+          }
+          va(k,j) += tmp;
+        }
+      };
+
+      for (unsigned j=0; j<nc; j+=FacBlockSize) {
+        if (j+FacBlockSize < nc) {
+          const unsigned nj = FacBlockSize;
+          row_func(j, nj, std::integral_constant<unsigned,nj>());
+        }
+        else {
+          const unsigned nj = nc-j;
+          row_func(j, nj, std::integral_constant<unsigned,0>());
+        }
+      }
+    }, "mttkrp_kernel");
+
+    sv.contribute_into(vv);
+  }
 }
 
 #else
@@ -292,7 +312,8 @@ typename std::enable_if<
 mttkrp_kernel(const SparseTensor& X,
               const Genten::KtensorT<ExecSpace>& u,
               const unsigned n,
-              const Genten::FacMatrixT<ExecSpace>& v)
+              const Genten::FacMatrixT<ExecSpace>& v,
+              const AlgParams& algParams)
 {
   v = ttb_real(0.0);
 
@@ -361,7 +382,7 @@ mttkrp_kernel(const SparseTensor& X,
         row_func(j, nj, std::integral_constant<unsigned,0>());
       }
     }
-  });
+  }, "mttkrp_kernel");
 }
 
 #endif
@@ -374,7 +395,8 @@ typename std::enable_if<
 mttkrp_kernel(const SparseTensor& X,
               const Genten::KtensorT<ExecSpace>& u,
               const unsigned n,
-              const Genten::FacMatrixT<ExecSpace>& v)
+              const Genten::FacMatrixT<ExecSpace>& v,
+              const AlgParams& algParams)
 {
   v = ttb_real(0.0);
 
@@ -464,7 +486,7 @@ mttkrp_kernel(const SparseTensor& X,
         row_func(j, nj, std::integral_constant<unsigned,0>());
       }
     }
-  });
+  }, "mttkrp_kernel");
 }
 
 template <typename SparseTensor>
@@ -475,16 +497,18 @@ struct MTTKRP_Kernel {
   const Genten::KtensorT<ExecSpace> u;
   const ttb_indx n;
   const Genten::FacMatrixT<ExecSpace> v;
+  const AlgParams algParams;
 
   MTTKRP_Kernel(const SparseTensor& X_,
                 const Genten::KtensorT<ExecSpace>& u_,
                 const ttb_indx n_,
-                const Genten::FacMatrixT<ExecSpace>& v_) :
-    X(X_), u(u_), n(n_), v(v_) {}
+                const Genten::FacMatrixT<ExecSpace>& v_,
+                const AlgParams& algParams_) :
+    X(X_), u(u_), n(n_), v(v_), algParams(algParams_) {}
 
   template <unsigned FBS, unsigned VS>
   void run() const {
-    mttkrp_kernel<FBS,VS>(X,u,n,v);
+    mttkrp_kernel<FBS,VS>(X,u,n,v,algParams);
   }
 };
 
@@ -496,7 +520,8 @@ void Genten::mttkrp(
   const SparseTensor& X,
   const Genten::KtensorT<ExecSpace>& u,
   const ttb_indx n,
-  const Genten::FacMatrixT<ExecSpace>& v)
+  const Genten::FacMatrixT<ExecSpace>& v,
+  const AlgParams& algParams)
 {
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::mttkrp");
@@ -515,7 +540,7 @@ void Genten::mttkrp(
   assert( v.nRows() == X.size(n) );
   assert( v.nCols() == nc );
 
-  Genten::Impl::MTTKRP_Kernel<SparseTensor> kernel(X,u,n,v);
+  Genten::Impl::MTTKRP_Kernel<SparseTensor> kernel(X,u,n,v,algParams);
   Genten::Impl::run_row_simd_kernel(kernel, nc);
 }
 
@@ -526,7 +551,8 @@ template <typename ExecSpace>
 void Genten::mttkrp(const Genten::SptensorT_row<ExecSpace>& X,
                     const Genten::KtensorT<ExecSpace>& u,
                     const ttb_indx n,
-                    const Genten::FacMatrixT<ExecSpace>& v)
+                    const Genten::FacMatrixT<ExecSpace>& v,
+                    const AlgParams& algParams)
 {
 #ifdef HAVE_CALIPER
     cali::Function cali_func("Genten::mttkrp_row");

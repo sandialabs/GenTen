@@ -142,4 +142,13 @@ namespace Genten {
   // Connect executable to vtune for profiling
   void connect_vtune(const int p_rank = 0);
 
+  // Struct for passing various algorithmic parameters
+  struct AlgParams {
+    unsigned MTTKRPFactorMatrixTileSize;
+
+    AlgParams() :
+      MTTKRPFactorMatrixTileSize(0)  // Use default choice
+      {}
+  };
+
 }

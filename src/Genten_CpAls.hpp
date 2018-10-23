@@ -134,6 +134,7 @@ namespace Genten {
                    ttb_indx& numIters,
                    ttb_real& resNorm,
                    const ttb_indx perfIter,
-                   CpAlsPerfInfo perfInfo[]);
+                   CpAlsPerfInfo perfInfo[],
+                   const AlgParams& algParams = AlgParams());
 
 }

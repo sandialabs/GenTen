@@ -81,7 +81,8 @@ namespace Genten {
                const LOSS_FUNCTION_TYPE loss_type,
                Teuchos::ParameterList& rol_params,
                std::ostream* stream = nullptr,
-               const ttb_real loss_eps = 0.0);
+               const ttb_real loss_eps = 0.0,
+               const AlgParams& algParams = AlgParams());
 
   //! Compute the CP decomposition of a tensor based on a general objective.
   /*!
@@ -114,7 +115,8 @@ namespace Genten {
                const ttb_real tol,
                const ttb_indx maxIters,
                std::ostream* stream = nullptr,
-               const ttb_real loss_eps = 0.0)
+               const ttb_real loss_eps = 0.0,
+               const AlgParams& algParams = AlgParams())
   {
     // Setup ROL to do optimization algorithm similar to L-BFGS-B
     Teuchos::ParameterList rol_params;
@@ -127,7 +129,7 @@ namespace Genten {
     status_params.set<double>("Step Tolerance", tol);
     status_params.set<int>("Iteration Limit", maxIters);
 
-    gcp_opt(x, u, loss_type, rol_params, stream, loss_eps);
+    gcp_opt(x, u, loss_type, rol_params, stream, loss_eps, algParams);
   }
 
 }
