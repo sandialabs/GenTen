@@ -60,28 +60,17 @@
 
 using namespace std;
 
-enum SPTENSOR_TYPE {
-  SPTENSOR,
-  SPTENSOR_PERM
-};
-const unsigned num_sptensor_types = 2;
-SPTENSOR_TYPE sptensor_types[] =
-{ SPTENSOR, SPTENSOR_PERM };
-std::string sptensor_names[] =
-{ "kokkos", "perm" };
-
-template <template<class> class Sptensor_template, typename Space>
+template <typename Space>
 int run_cpals(const Genten::IndxArray& cFacDims_host,
               ttb_indx  nNumComponents,
               ttb_indx  nMaxNonzeroes,
               unsigned long  nRNGseed,
               ttb_indx  nMaxIters,
               ttb_real  dStopTol,
-              SPTENSOR_TYPE tensor_type,
               const Genten::AlgParams& algParams)
 {
-  typedef Sptensor_template<Space> Sptensor_type;
-  typedef Sptensor_template<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
+  typedef Genten::SptensorT<Space> Sptensor_type;
+  typedef Genten::SptensorT<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
   typedef Genten::KtensorT<Space> Ktensor_type;
   typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
 
@@ -89,8 +78,7 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
     create_mirror_view( Space(), cFacDims_host );
   deep_copy( cFacDims, cFacDims_host );
 
-  cout << "Will construct a random Ktensor/Sptensor_";
-  cout << sptensor_names[tensor_type] << " pair:\n";
+  cout << "Will construct a random Ktensor/Sptensor pair:\n";
   cout << "  Ndims = " << cFacDims_host.size() << ",  Size = [ ";
   for (ttb_indx  n = 0; n < cFacDims_host.size(); n++)
     cout << cFacDims_host[n] << ' ';
@@ -145,18 +133,21 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
 
   // Do a pass through the mttkrp to warm up and make sure the tensor
   // is copied to the device before generating any timings.  Use
-  // Sptensor mttkrp and do this before fillComplete() so that
-  // fillComplete() timings are not polluted by UVM transfers
+  // Sptensor mttkrp and do this before createPermutation() so that
+  // createPermutation() timings are not polluted by UVM transfers
   Ktensor_type  tmp (nNumComponents, cFacDims.size(), cFacDims);
   Genten::SptensorT<Genten::DefaultExecutionSpace>& cData_tmp = cData;
+  Genten::AlgParams ap = algParams;
+  ap.mttkrp_method = Genten::MTTKRP_Atomic;
   for (ttb_indx  n = 0; n < cFacDims.size(); n++)
-    Genten::mttkrp(cData_tmp, cInitialGuess, n, tmp[n], algParams);
+    Genten::mttkrp(cData_tmp, cInitialGuess, n, tmp[n], ap);
 
   // Perform any post-processing (e.g., permutation and row ptr generation)
   timer.start(1);
-  cData.fillComplete();
+  if (algParams.mttkrp_method == Genten::MTTKRP_Perm)
+    cData.createPermutation();
   timer.stop(1);
-  printf ("  (fillComplete() took %6.3f seconds)\n", timer.getTotalTime(1));
+  printf ("  (createPermutation() took %6.3f seconds)\n", timer.getTotalTime(1));
 
   // Call CpAls to factorize, timing the performance.
   Ktensor_type  cResult;
@@ -209,14 +200,14 @@ void usage(char **argv)
   std::cout << "  --maxiters <int>     maximum iterations to perform" << std::endl;
   std::cout << "  --tol <float>        stopping tolerance" << std::endl;
   std::cout << "  --seed <int>         seed for random number generator used in initial guess" << std::endl;
-  std::cout << "  --tensor <type>      Sptensor format: ";
-  for (unsigned i=0; i<num_sptensor_types; ++i) {
-    std::cout << sptensor_names[i];
-    if (i != num_sptensor_types-1)
+  std::cout << "  --mttkrp_method <method> MTTKRP algorithm: ";
+  for (unsigned i=0; i<Genten::MTTKRP_Method_Info::num_types; ++i) {
+    std::cout << Genten::MTTKRP_Method_Info::names[i];
+    if (i != Genten::MTTKRP_Method_Info::num_types-1)
       std::cout << ", ";
   }
   std::cout << std::endl;
-  std::cout << "  --mttkrptlsz <int> tile size for mttkrp algorithm" << std::endl;
+  std::cout << "  --mttkrp_tile_size <int> tile size for mttkrp algorithm" << std::endl;
   std::cout << "  --vtune              connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
 }
 
@@ -271,23 +262,21 @@ int main(int argc, char* argv[])
       parse_ttb_indx(argc, argv, "--maxiters", 100, 1, INT_MAX);
     ttb_real  dStopTol =
       parse_ttb_real(argc, argv, "--tol", 1.0e-7, 0.0, 1.0);
-    SPTENSOR_TYPE tensor_type =
-      parse_ttb_enum(argc, argv, "--tensor", SPTENSOR,
-                     num_sptensor_types, sptensor_types, sptensor_names);
+    Genten::MTTKRP_Method mttkrp_method =
+      parse_ttb_enum(argc, argv, "--mttkrp_method", Genten::MTTKRP_Atomic,
+                     Genten::MTTKRP_Method_Info::num_types,
+                     Genten::MTTKRP_Method_Info::methods,
+                     Genten::MTTKRP_Method_Info::names);
     ttb_indx mttkrp_tile_size =
-      parse_ttb_indx(argc, argv, "--mttkrptlsz", 0, 0, INT_MAX);
+      parse_ttb_indx(argc, argv, "--mttkrp_tile_size", 0, 0, INT_MAX);
 
     Genten::AlgParams algParams;
-    algParams.MTTKRPFactorMatrixTileSize = mttkrp_tile_size;
+    algParams.mttkrp_method = mttkrp_method;
+    algParams.mttkrp_duplicated_factor_matrix_tile_size = mttkrp_tile_size;
 
-    if (tensor_type == SPTENSOR)
-      ret = run_cpals< Genten::SptensorT, Genten::DefaultExecutionSpace >(
+    ret = run_cpals< Genten::DefaultExecutionSpace >(
         cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nMaxIters, dStopTol,
-        tensor_type, algParams);
-    else if (tensor_type == SPTENSOR_PERM)
-      ret = run_cpals< Genten::SptensorT_perm, Genten::DefaultExecutionSpace >(
-        cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nMaxIters, dStopTol,
-        tensor_type, algParams);
+        algParams);
 
   }
   catch(std::string sExc)

@@ -66,4 +66,18 @@ namespace Genten {
   };
 #endif
 
+  // A helper trait to determine whether an execution space is Serial or not,
+  // and his always defined, regardless if Serial is enabled.
+  template <typename ExecSpace>
+  struct is_serial_space {
+    static const bool value = false;
+  };
+
+#if defined(KOKKOS_HAVE_SERIAL)
+  template <>
+  struct is_serial_space<Kokkos::Serial> {
+    static const bool value = true;
+  };
+#endif
+
 }

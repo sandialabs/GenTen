@@ -47,7 +47,6 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_Sptensor.hpp"
-#include "Genten_Sptensor_perm.hpp"
 #include "Genten_Test_Utils.hpp"
 
 using namespace Genten::Test;
@@ -196,13 +195,13 @@ static void  evaluateResult (const int             infolevel,
  * the factor matrix columns shown above.  This is consistent with what the code
  * produces.
  */
-template <template<class> class Sptensor_template>
-void Genten_Test_CpAls_Type (int infolevel, const std::string& label)
+void Genten_Test_CpAls_Type (Genten::MTTKRP_Method mttkrp_method,
+                             int infolevel, const std::string& label)
 {
   typedef Genten::DefaultExecutionSpace exec_space;
   typedef Genten::DefaultHostExecutionSpace host_exec_space;
-  typedef Sptensor_template<exec_space> Sptensor_type;
-  typedef Sptensor_template<host_exec_space> Sptensor_host_type;
+  typedef Genten::SptensorT<exec_space> Sptensor_type;
+  typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
 
   SETUP_DISABLE_CERR;
 
@@ -239,7 +238,8 @@ void Genten_Test_CpAls_Type (int infolevel, const std::string& label)
   // Copy X to device
   Sptensor_type X_dev = create_mirror_view( exec_space(), X );
   deep_copy( X_dev, X );
-  X_dev.fillComplete();
+  if (mttkrp_method == Genten::MTTKRP_Perm)
+    X_dev.createPermutation();
 
   // Load a known initial guess.
   MESSAGE("Creating a ktensor with initial guess of lin indep basis vectors");
@@ -274,6 +274,9 @@ void Genten_Test_CpAls_Type (int infolevel, const std::string& label)
     create_mirror_view( exec_space(), initialBasis );
   deep_copy( initialBasis_dev, initialBasis );
 
+  Genten::AlgParams algParams;
+  algParams.mttkrp_method = mttkrp_method;
+
   // Factorize.
   ttb_real  stopTol = 1.0e-6;
   ttb_indx  maxIters = 100;
@@ -290,7 +293,7 @@ void Genten_Test_CpAls_Type (int infolevel, const std::string& label)
     Genten::cpals_core <Sptensor_type> (X_dev, result_dev,
                                         stopTol, maxIters, -1.0, infolevel,
                                         itersCompleted, resNorm,
-                                        3, perfInfo);
+                                        3, perfInfo, algParams);
     // Check performance information.
     bool  bIsOK = true;
     for (ttb_indx  i = 0; i < nMaxPerfSize; i++)
@@ -355,6 +358,7 @@ void Genten_Test_CpAls_Type (int infolevel, const std::string& label)
 
 void Genten_Test_CpAls (int infolevel)
 {
-  Genten_Test_CpAls_Type<Genten::SptensorT>(infolevel,"Kokkos");
-  Genten_Test_CpAls_Type<Genten::SptensorT_perm>(infolevel,"Perm");
+  Genten_Test_CpAls_Type(Genten::MTTKRP_Atomic,infolevel,"Atomic");
+  Genten_Test_CpAls_Type(Genten::MTTKRP_Duplicated,infolevel,"Duplicated");
+  Genten_Test_CpAls_Type(Genten::MTTKRP_Perm,infolevel,"Perm");
 }

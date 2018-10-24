@@ -56,17 +56,7 @@
 #include "Genten_Driver_Utils.hpp"
 #include "Genten_MixedFormatOps.hpp"
 
-enum SPTENSOR_TYPE {
-  SPTENSOR,
-  SPTENSOR_PERM
-};
-const unsigned num_sptensor_types = 2;
-SPTENSOR_TYPE sptensor_types[] =
-{ SPTENSOR, SPTENSOR_PERM };
-std::string sptensor_names[] =
-{ "kokkos", "perm" };
-
-template <template<class> class Sptensor_template, typename Space>
+template <typename Space>
 void run_mttkrp(const std::string& inputfilename,
                 const ttb_indx index_base,
                 const bool gz,
@@ -77,11 +67,10 @@ void run_mttkrp(const std::string& inputfilename,
                 const ttb_indx  nMaxNonzeroes,
                 const unsigned long  nRNGseed,
                 const ttb_indx  nIters,
-                const SPTENSOR_TYPE tensor_type,
                 const Genten::AlgParams& algParams)
 {
-  typedef Sptensor_template<Space> Sptensor_type;
-  typedef Sptensor_template<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
+  typedef Genten::SptensorT<Space> Sptensor_type;
+  typedef Genten::SptensorT<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
   typedef Genten::KtensorT<Space> Ktensor_type;
   typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
 
@@ -114,8 +103,7 @@ void run_mttkrp(const std::string& inputfilename,
     deep_copy( cFacDims, cFacDims_host );
     nDims = cFacDims_host.size();
 
-    std::cout << "Will construct a random Ktensor/Sptensor_";
-    std::cout << sptensor_names[tensor_type] << " pair:\n";
+    std::cout << "Will construct a random Ktensor/Sptensor pair:\n";
     std::cout << "  Ndims = " << nDims << ",  Size = [ ";
     for (ttb_indx n=0; n<nDims; ++n)
       std::cout << cFacDims_host[n] << ' ';
@@ -143,7 +131,8 @@ void run_mttkrp(const std::string& inputfilename,
                 gen_timer.getTotalTime(0));
     std::cout << "  Actual nnz  = " << cData_host.nnz() << "\n";
   }
-  cData.fillComplete();
+  if (algParams.mttkrp_method == Genten::MTTKRP_Perm)
+    cData.createPermutation();
 
   // Set a random input Ktensor, matching the Matlab code.
   Ktensor_host_type  cInput_host(nNumComponentsMax, nDims, cFacDims_host);
@@ -218,14 +207,14 @@ void usage(char **argv)
   std::cout << "  --seed <int>         seed for random number generator used in initial guess" << std::endl;
   std::cout << "  --check <0/1>        check the result for correctness" << std::endl;
   std::cout << "  --warmup <0/1>       do an MTTKRP to warm up first" << std::endl;
-  std::cout << "  --tensor <type>      Sptensor format: ";
-  for (unsigned i=0; i<num_sptensor_types; ++i) {
-    std::cout << sptensor_names[i];
-    if (i != num_sptensor_types-1)
+  std::cout << "  --mttkrp_method <method> MTTKRP algorithm: ";
+  for (unsigned i=0; i<Genten::MTTKRP_Method_Info::num_types; ++i) {
+    std::cout << Genten::MTTKRP_Method_Info::names[i];
+    if (i != Genten::MTTKRP_Method_Info::num_types-1)
       std::cout << ", ";
   }
-  std::cout << "  --mttkrptlsz <int> tile size for mttkrp algorithm" << std::endl;
   std::cout << std::endl;
+  std::cout << "  --mttkrp_tile_size <int> tile size for mttkrp algorithm" << std::endl;
   std::cout << "  --vtune              connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
 }
 
@@ -275,25 +264,22 @@ int main(int argc, char* argv[])
       parse_ttb_indx(argc, argv, "--seed", 1, 0, INT_MAX);
     ttb_indx  nIters =
       parse_ttb_indx(argc, argv, "--iters", 10, 1, INT_MAX);
-    SPTENSOR_TYPE tensor_type =
-      parse_ttb_enum(argc, argv, "--tensor", SPTENSOR,
-                     num_sptensor_types, sptensor_types, sptensor_names);
+    Genten::MTTKRP_Method mttkrp_method =
+      parse_ttb_enum(argc, argv, "--mttkrp_method", Genten::MTTKRP_Atomic,
+                     Genten::MTTKRP_Method_Info::num_types,
+                     Genten::MTTKRP_Method_Info::methods,
+                     Genten::MTTKRP_Method_Info::names);
     ttb_indx mttkrp_tile_size =
-      parse_ttb_indx(argc, argv, "--mttkrptlsz", 0, 0, INT_MAX);
+      parse_ttb_indx(argc, argv, "--mttkrp_tile_size", 0, 0, INT_MAX);
 
     Genten::AlgParams algParams;
-    algParams.MTTKRPFactorMatrixTileSize = mttkrp_tile_size;
+    algParams.mttkrp_method = mttkrp_method;
+    algParams.mttkrp_duplicated_factor_matrix_tile_size = mttkrp_tile_size;
 
-    if (tensor_type == SPTENSOR)
-      run_mttkrp< Genten::SptensorT, Genten::DefaultExecutionSpace >(
-        inputfilename, index_base, gz,
-        cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
-        nMaxNonzeroes, nRNGseed, nIters, tensor_type, algParams);
-    else if (tensor_type == SPTENSOR_PERM)
-      run_mttkrp< Genten::SptensorT_perm, Genten::DefaultExecutionSpace >(
-        inputfilename, index_base, gz,
-        cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
-        nMaxNonzeroes, nRNGseed, nIters, tensor_type, algParams);
+    run_mttkrp< Genten::DefaultExecutionSpace >(
+      inputfilename, index_base, gz,
+      cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
+      nMaxNonzeroes, nRNGseed, nIters, algParams);
 
   }
   catch(std::string sExc)

@@ -342,8 +342,6 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_MathLibs_Wpr.cpp
   ${Genten_SOURCE_DIR}/src/Genten_portability.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Sptensor.cpp
-  ${Genten_SOURCE_DIR}/src/Genten_Sptensor_perm.cpp
-  ${Genten_SOURCE_DIR}/src/Genten_Sptensor_row.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Util.cpp
   )
 
@@ -490,6 +488,8 @@ SET_TESTS_PROPERTIES(Genten_Unit_Tests PROPERTIES FAIL_REGULAR_EXPRESSION "Error
 
 # mttkrp -- returns nonzero on failure
 add_test(Genten_MTTKRP_random ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000)
-add_test(Genten_MTTKRP_random_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000 --tensor perm)
+add_test(Genten_MTTKRP_random_dupl ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000 --mttkrp_method duplicated)
+add_test(Genten_MTTKRP_random_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000 --mttkrp_method perm)
 add_test(Genten_MTTKRP_aminoacid ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt)
-add_test(Genten_MTTKRP_aminoacid_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --tensor perm)
+add_test(Genten_MTTKRP_aminoacid_dupl ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp_method duplicated)
+add_test(Genten_MTTKRP_aminoacid_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp_method perm)

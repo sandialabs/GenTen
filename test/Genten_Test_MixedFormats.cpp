@@ -45,7 +45,6 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_Sptensor.hpp"
-#include "Genten_Sptensor_perm.hpp"
 #include "Genten_Test_Utils.hpp"
 #include "Genten_Util.hpp"
 
@@ -55,13 +54,13 @@ using namespace Genten::Test;
 /* This file contains unit tests for operations involving mixed tensor formats.
  */
 
-template <template<class> class Sptensor_template>
-void Genten_Test_MixedFormats_Type(int infolevel, const std::string& label)
+void Genten_Test_MixedFormats_Type(Genten::MTTKRP_Method mttkrp_method,
+                                   int infolevel, const std::string& label)
 {
   typedef Genten::DefaultExecutionSpace exec_space;
   typedef Genten::DefaultHostExecutionSpace host_exec_space;
-  typedef Sptensor_template<exec_space> Sptensor_type;
-  typedef Sptensor_template<host_exec_space> Sptensor_host_type;
+  typedef Genten::SptensorT<exec_space> Sptensor_type;
+  typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
 
   initialize("Tests involving mixed format tensors ("+label+")",
              infolevel);
@@ -84,7 +83,6 @@ void Genten_Test_MixedFormats_Type(int infolevel, const std::string& label)
   a.value(2) = 3.0;
   a.subscript(3,0) = 0;  a.subscript(3,1) = 1;  a.subscript(3,2) = 2;
   a.value(3) = 4.0;
-  a.fillComplete();
 
   MESSAGE("Creating a Ktensor of matching shape");
   dims = Genten::IndxArray(3); dims[0] = 4; dims[1] = 2; dims[2] = 3;
@@ -111,7 +109,6 @@ void Genten_Test_MixedFormats_Type(int infolevel, const std::string& label)
   // Copy a and oKtens to device
   Sptensor_type a_dev = create_mirror_view( exec_space(), a );
   deep_copy( a_dev, a );
-  a_dev.fillComplete();
   Genten::KtensorT<exec_space> oKtens_dev =
     create_mirror_view( exec_space(), oKtens );
   deep_copy( oKtens_dev, oKtens );
@@ -144,7 +141,6 @@ void Genten_Test_MixedFormats_Type(int infolevel, const std::string& label)
   a.value(1) = 1.0;
   a.subscript(2,0) = 1;  a.subscript(2,1) = 1;  a.subscript(2,2) = 0;
   a.value(2) = 1.0;
-  a.fillComplete();
   ASSERT(a.nnz() == 3, "Sptensor resized to correct nnz");
 
   MESSAGE("Resizing Ktensor for times test");
@@ -213,7 +209,6 @@ void Genten_Test_MixedFormats_Type(int infolevel, const std::string& label)
   a.value(0) = 1.0;
   a.subscript(1,0) = 1;  a.subscript(1,1) = 2;  a.subscript(1,2) = 3;
   a.value(1) = 0.0;
-  a.fillComplete();
 
   MESSAGE("Resizing Ktensor of matching shape");
   nc = 1;
@@ -237,18 +232,22 @@ void Genten_Test_MixedFormats_Type(int infolevel, const std::string& label)
   // Copy a and oKtens to device
   a_dev = create_mirror_view( exec_space(), a );
   deep_copy( a_dev, a );
-  a_dev.fillComplete();
+  if (mttkrp_method == Genten::MTTKRP_Perm)
+    a_dev.createPermutation();
   oKtens_dev = create_mirror_view( exec_space(), oKtens );
   deep_copy( oKtens_dev, oKtens );
 
   Genten::FacMatrix oFM;
   Genten::FacMatrixT<exec_space> oFM_dev;
 
+  Genten::AlgParams algParams;
+  algParams.mttkrp_method = mttkrp_method;
+
   // Matricizing on index 0 has result 12*15 = 180.
   oFM = Genten::FacMatrix(a.size(0), oKtens.ncomponents());
   oFM_dev = create_mirror_view( exec_space(), oFM );
   deep_copy( oFM_dev, oFM );
-  mttkrp (a_dev, oKtens_dev, 0, oFM_dev);
+  mttkrp (a_dev, oKtens_dev, 0, oFM_dev, algParams);
   deep_copy( oFM, oFM_dev );
   ASSERT((oFM.nRows() == 2) && (oFM.nCols() == 1),
          "mttkrp result shape correct for index [0]");
@@ -265,7 +264,7 @@ void Genten_Test_MixedFormats_Type(int infolevel, const std::string& label)
   oFM = Genten::FacMatrix(a.size(1), oKtens.ncomponents());
   oFM_dev = create_mirror_view( exec_space(), oFM );
   deep_copy( oFM_dev, oFM );
-  mttkrp (a_dev, oKtens_dev, 1, oFM_dev);
+  mttkrp (a_dev, oKtens_dev, 1, oFM_dev, algParams);
   deep_copy( oFM, oFM_dev );
   ASSERT((oFM.nRows() == 3) && (oFM.nCols() == 1),
          "mttkrp result shape correct for index [1]");
@@ -276,7 +275,7 @@ void Genten_Test_MixedFormats_Type(int infolevel, const std::string& label)
   oFM = Genten::FacMatrix(a.size(2), oKtens.ncomponents());
   oFM_dev = create_mirror_view( exec_space(), oFM );
   deep_copy( oFM_dev, oFM );
-  mttkrp (a_dev, oKtens_dev, 2, oFM_dev);
+  mttkrp (a_dev, oKtens_dev, 2, oFM_dev, algParams);
   deep_copy( oFM, oFM_dev );
   ASSERT((oFM.nRows() == 4) && (oFM.nCols() == 1),
          "mttkrp result shape correct for index [2]");
@@ -288,25 +287,26 @@ void Genten_Test_MixedFormats_Type(int infolevel, const std::string& label)
   a.value(1) = 1.0;
   a_dev = create_mirror_view( exec_space(), a );
   deep_copy( a_dev, a );
-  a_dev.fillComplete();
+  if (mttkrp_method == Genten::MTTKRP_Perm)
+    a_dev.createPermutation();
   oFM = Genten::FacMatrix(a.size(0), oKtens.ncomponents());
   oFM_dev = create_mirror_view( exec_space(), oFM );
   deep_copy( oFM_dev, oFM );
-  mttkrp (a_dev, oKtens_dev, 0, oFM_dev);
+  mttkrp (a_dev, oKtens_dev, 0, oFM_dev, algParams);
   deep_copy( oFM, oFM_dev );
   ASSERT( EQ(oFM.entry(0,0), 180.0) && EQ(oFM.entry(1,0), 252.0),
           "mttkrp result values correct for index [0], 2 sparse nnz");
   oFM = Genten::FacMatrix(a.size(1), oKtens.ncomponents());
   oFM_dev = create_mirror_view( exec_space(), oFM );
   deep_copy( oFM_dev, oFM );
-  mttkrp (a_dev, oKtens_dev, 1, oFM_dev);
+  mttkrp (a_dev, oKtens_dev, 1, oFM_dev, algParams);
   deep_copy( oFM, oFM_dev );
   ASSERT( EQ(oFM.entry(0,0), 150.0) && EQ(oFM.entry(2,0), 198.0),
           "mttkrp result values correct for index [0], 2 sparse nnz");
   oFM = Genten::FacMatrix(a.size(2), oKtens.ncomponents());
   oFM_dev = create_mirror_view( exec_space(), oFM );
   deep_copy( oFM_dev, oFM );
-  mttkrp (a_dev, oKtens_dev, 2, oFM_dev);
+  mttkrp (a_dev, oKtens_dev, 2, oFM_dev, algParams);
   deep_copy( oFM, oFM_dev );
   ASSERT( EQ(oFM.entry(0,0), 120.0) && EQ(oFM.entry(3,0), 154.0),
           "mttkrp result values correct for index [0], 2 sparse nnz");
@@ -317,6 +317,7 @@ void Genten_Test_MixedFormats_Type(int infolevel, const std::string& label)
 
 void Genten_Test_MixedFormats(int infolevel)
 {
-  Genten_Test_MixedFormats_Type<Genten::SptensorT>(infolevel,"Kokkos");
-  Genten_Test_MixedFormats_Type<Genten::SptensorT_perm>(infolevel,"Perm");
+  Genten_Test_MixedFormats_Type(Genten::MTTKRP_Atomic,infolevel,"Atomic");
+  Genten_Test_MixedFormats_Type(Genten::MTTKRP_Duplicated,infolevel,"Duplicated");
+  Genten_Test_MixedFormats_Type(Genten::MTTKRP_Perm,infolevel,"Perm");
 }

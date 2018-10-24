@@ -108,7 +108,28 @@ constexpr ttb_real DOUBLE_MIN = std::numeric_limits<ttb_real>::min();
 /* ----- Enums ----- */
 namespace Genten {
 
-  enum NormType {NormOne, NormTwo, NormInf};
+  enum NormType { NormOne, NormTwo, NormInf };
+
+  // MTTKRP algorithm
+  enum MTTKRP_Method {
+    MTTKRP_Atomic,      // Use atomics factor matrix update
+    MTTKRP_Duplicated,  // Duplicate factor matrix then inter-thread reduce
+    MTTKRP_Single,      // Single-thread algorithm (no atomics or duplication)
+    MTTKRP_Perm         // Permutation-based algorithm
+  };
+
+  struct MTTKRP_Method_Info {
+    static constexpr unsigned num_types = 4;
+    static constexpr MTTKRP_Method methods[] = {
+      MTTKRP_Atomic,
+      MTTKRP_Duplicated,
+      MTTKRP_Single,
+      MTTKRP_Perm
+    };
+    static constexpr const char* names[] = {
+      "atomic", "duplicated", "single", "perm"
+    };
+  };
 }
 
 /* ----- Utility Functions ----- */
@@ -144,10 +165,15 @@ namespace Genten {
 
   // Struct for passing various algorithmic parameters
   struct AlgParams {
-    unsigned MTTKRPFactorMatrixTileSize;
+    // MTTKRP algorithm
+    MTTKRP_Method mttkrp_method;
+
+    // Factor matrix tile size for MTTKRP_Duplicated algorithm
+    unsigned mttkrp_duplicated_factor_matrix_tile_size;
 
     AlgParams() :
-      MTTKRPFactorMatrixTileSize(0)  // Use default choice
+      mttkrp_method(MTTKRP_Atomic),
+      mttkrp_duplicated_factor_matrix_tile_size(0)  // Use default choice
       {}
   };
 

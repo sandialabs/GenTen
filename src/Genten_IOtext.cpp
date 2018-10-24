@@ -54,8 +54,6 @@ using namespace std;
 #include "Genten_IOtext.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_Sptensor.hpp"
-#include "Genten_Sptensor_perm.hpp"
-#include "Genten_Sptensor_row.hpp"
 #include "Genten_Util.hpp"
 
 #include "CMakeInclude.h"
@@ -195,9 +193,8 @@ static void  verifyEOF (      istream &     fIn,
 //  METHODS FOR Sptensor (type "sptensor")
 //----------------------------------------------------------------------
 
-template <typename tensor_type>
 void Genten::import_sptensor (std::istream& fIn,
-                              tensor_type& X,
+                              Genten::Sptensor& X,
                               const ttb_indx index_base,
                               const bool verbose)
 {
@@ -311,7 +308,7 @@ void Genten::import_sptensor (std::istream& fIn,
 
   verifyEOF(fIn, "Genten::import_sptensor");
 
-  X = tensor_type(dims, vals, subs);
+  X = Sptensor(dims, vals, subs);
 
   if (verbose) {
     std::cout << "Read tensor with " << nnz << " nonzeros, dimensions [ ";
@@ -321,25 +318,8 @@ void Genten::import_sptensor (std::istream& fIn,
   }
 }
 
-template void
-Genten::import_sptensor<Genten::Sptensor>(std::istream& fIn,
-                                          Genten::Sptensor& X,
-                                          const ttb_indx index_base,
-                                          const bool verbose);
-template void
-Genten::import_sptensor<Genten::Sptensor_perm>(std::istream& fIn,
-                                               Genten::Sptensor_perm& X,
-                                               const ttb_indx index_base,
-                                               const bool verbose);
-template void
-Genten::import_sptensor<Genten::Sptensor_row>(std::istream& fIn,
-                                              Genten::Sptensor_row& X,
-                                              const ttb_indx index_base,
-                                              const bool verbose);
-
-template <typename tensor_type>
 void Genten::import_sptensor (const std::string& fName,
-                              tensor_type& X,
+                              Genten::Sptensor& X,
                               const ttb_indx index_base,
                               const bool bCompressed,
                               const bool verbose)
@@ -372,25 +352,6 @@ void Genten::import_sptensor (const std::string& fName,
     fIn.close();
   }
 }
-
-template void
-Genten::import_sptensor<Genten::Sptensor>(const std::string& fName,
-                                          Genten::Sptensor& X,
-                                          const ttb_indx index_base,
-                                          const bool bCompressed,
-                                          const bool verbose);
-template void
-Genten::import_sptensor<Genten::Sptensor_perm>(const std::string& fName,
-                                               Genten::Sptensor_perm& X,
-                                               const ttb_indx index_base,
-                                               const bool bCompressed,
-                                               const bool verbose);
-template void
-Genten::import_sptensor<Genten::Sptensor_row>(const std::string& fName,
-                                              Genten::Sptensor_row& X,
-                                              const ttb_indx index_base,
-                                              const bool bCompressed,
-                                              const bool verbose);
 
 void Genten::export_sptensor (const std::string   & fName,
                               const Genten::Sptensor & X,

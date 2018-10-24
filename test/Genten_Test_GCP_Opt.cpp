@@ -46,7 +46,6 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_Sptensor.hpp"
-#include "Genten_Sptensor_perm.hpp"
 #include "Genten_Test_Utils.hpp"
 
 using namespace Genten::Test;
@@ -64,14 +63,14 @@ using namespace Genten::Test;
  *  solution, just check that when you multiply the factors together, you
  *  get the original tensor.
  */
-template <template<class> class Sptensor_template>
 void Genten_Test_GCP_Opt_Type (int infolevel, const std::string& label,
+                               Genten::MTTKRP_Method mttkrp_method,
                                const Genten::LOSS_FUNCTION_TYPE loss_type)
 {
   typedef Genten::DefaultExecutionSpace exec_space;
   typedef Genten::DefaultHostExecutionSpace host_exec_space;
-  typedef Sptensor_template<exec_space> Sptensor_type;
-  typedef Sptensor_template<host_exec_space> Sptensor_host_type;
+  typedef Genten::SptensorT<exec_space> Sptensor_type;
+  typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
 
   initialize("Test of Genten::GCP_Opt ("+label+")", infolevel);
 
@@ -106,7 +105,8 @@ void Genten_Test_GCP_Opt_Type (int infolevel, const std::string& label,
   // Copy X to device
   Sptensor_type X_dev = create_mirror_view( exec_space(), X );
   deep_copy( X_dev, X );
-  X_dev.fillComplete();
+  if (mttkrp_method == Genten::MTTKRP_Perm)
+    X_dev.createPermutation();
 
   // Load a known initial guess.
   MESSAGE("Creating a ktensor with initial guess of lin indep basis vectors");
@@ -125,6 +125,9 @@ void Genten_Test_GCP_Opt_Type (int infolevel, const std::string& label,
     create_mirror_view( exec_space(), initialBasis );
   deep_copy( initialBasis_dev, initialBasis );
 
+  Genten::AlgParams algParams;
+  algParams.mttkrp_method = mttkrp_method;
+
   // Factorize.
   ttb_real stopTol = 1.0e-6;
   ttb_indx maxIters = 100;
@@ -135,7 +138,7 @@ void Genten_Test_GCP_Opt_Type (int infolevel, const std::string& label,
   {
     result_dev = initialBasis_dev;
     Genten::gcp_opt <Sptensor_type> (X_dev, result_dev, loss_type,
-                                     stopTol, maxIters, stream, eps);
+                                     stopTol, maxIters, stream, eps, algParams);
   }
   catch(std::string sExc)
   {
@@ -175,10 +178,12 @@ void Genten_Test_GCP_Opt_Type (int infolevel, const std::string& label,
 
 void Genten_Test_GCP_Opt (int infolevel)
 {
-  Genten_Test_GCP_Opt_Type<Genten::SptensorT>(infolevel,"Kokkos, Gaussian",
-                                              Genten::GAUSSIAN);
-  Genten_Test_GCP_Opt_Type<Genten::SptensorT_perm>(infolevel,"Perm, Gaussian",
-                                                   Genten::GAUSSIAN);
+  Genten_Test_GCP_Opt_Type(infolevel,"Atomic, Gaussian",
+                           Genten::MTTKRP_Atomic, Genten::GAUSSIAN);
+  Genten_Test_GCP_Opt_Type(infolevel,"Duplicated, Gaussian",
+                           Genten::MTTKRP_Duplicated, Genten::GAUSSIAN);
+  Genten_Test_GCP_Opt_Type(infolevel,"Perm, Gaussian",
+                           Genten::MTTKRP_Perm, Genten::GAUSSIAN);
   /*
   Genten_Test_GCP_Opt_Type<Genten::SptensorT>(infolevel,"Kokkos, Rayleigh",
                                               Genten::RAYLEIGH);

@@ -52,23 +52,13 @@
 #include "Teuchos_TimeMonitor.hpp"
 #endif
 
-enum SPTENSOR_TYPE {
-  SPTENSOR,
-  SPTENSOR_PERM
-};
-const unsigned num_sptensor_types = 2;
-SPTENSOR_TYPE sptensor_types[] =
-  { SPTENSOR, SPTENSOR_PERM };
-std::string sptensor_names[] =
-  { "kokkos", "perm" };
-
 const unsigned num_loss_function_types = 5;
 const Genten::LOSS_FUNCTION_TYPE loss_function_types[] =
 { Genten::GAUSSIAN, Genten::RAYLEIGH, Genten::GAMMA, Genten::BERNOULLI, Genten::POISSON };
-const std::string loss_function_names[] =
+const char* loss_function_names[] =
 { "gaussian", "rayleigh", "gamma", "bernoulli", "poisson" };
 
-template <template<class> class Sptensor_template, typename Space>
+template <typename Space>
 int run(const std::string& method,
         const std::string& inputfilename,
         const std::string& outputfilename,
@@ -86,11 +76,10 @@ int run(const std::string& method,
         const bool save,
         const bool debug,
         const bool warmup,
-        const SPTENSOR_TYPE tensor_type,
         const Genten::AlgParams& algParams)
 {
-  typedef Sptensor_template<Space> Sptensor_type;
-  typedef Sptensor_template<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
+  typedef Genten::SptensorT<Space> Sptensor_type;
+  typedef Genten::SptensorT<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
   typedef Genten::KtensorT<Space> Ktensor_type;
   typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
 
@@ -135,19 +124,22 @@ int run(const std::string& method,
   {
     // Do a pass through the mttkrp to warm up and make sure the tensor
     // is copied to the device before generating any timings.  Use
-    // Sptensor mttkrp and do this before fillComplete() so that
-    // fillComplete() timings are not polluted by UVM transfers
+    // Sptensor mttkrp and do this before createPermutation() so that
+    // createPermutation() timings are not polluted by UVM transfers
     Ktensor_type tmp (rank,x.ndims(),x.size());
     Genten::SptensorT<Genten::DefaultExecutionSpace>& x_tmp = x;
+    Genten::AlgParams ap = algParams;
+    ap.mttkrp_method = Genten::MTTKRP_Atomic;
     for (ttb_indx  n = 0; n < x.ndims(); n++)
-      Genten::mttkrp(x_tmp, u, n, tmp[n], algParams);
+      Genten::mttkrp(x_tmp, u, n, tmp[n], ap);
   }
 
   // Perform any post-processing (e.g., permutation and row ptr generation)
   timer.start(1);
-  x.fillComplete();
+  if (algParams.mttkrp_method == Genten::MTTKRP_Perm)
+    x.createPermutation();
   timer.stop(1);
-  printf ("fillComplete() took %6.3f seconds\n", timer.getTotalTime(1));
+  printf ("createPermutation() took %6.3f seconds\n", timer.getTotalTime(1));
 
   const bool do_cpals =
     method == "CP-ALS" || method == "cp-als" || method == "cpals";
@@ -230,14 +222,14 @@ void usage(char **argv)
   std::cout << "  --save             whether to save the output tensor" << std::endl;
   std::cout << "  --debug            turn on debugging output" << std::endl;
   std::cout << "  --warmup           do an iteration of mttkrp to warmup (useful for generating accurate timing information)" << std::endl;
-  std::cout << "  --tensor <type>    Sptensor format: ";
-  for (unsigned i=0; i<num_sptensor_types; ++i) {
-    std::cout << sptensor_names[i];
-    if (i != num_sptensor_types-1)
+  std::cout << "  --mttkrp_method <method> MTTKRP algorithm: ";
+  for (unsigned i=0; i<Genten::MTTKRP_Method_Info::num_types; ++i) {
+    std::cout << Genten::MTTKRP_Method_Info::names[i];
+    if (i != Genten::MTTKRP_Method_Info::num_types-1)
       std::cout << ", ";
   }
   std::cout << std::endl;
-  std::cout << "  --mttkrptlsz <int> tile size for mttkrp algorithm" << std::endl;
+  std::cout << "  --mttkrp_tile_size <int> tile size for mttkrp algorithm" << std::endl;
   std::cout << "  --vtune            connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
 }
 
@@ -295,11 +287,13 @@ int main(int argc, char* argv[])
       parse_ttb_bool(argc, argv, "--warmup", false);
     ttb_bool vtune =
       parse_ttb_bool(argc, argv, "--vtune", false);
-    SPTENSOR_TYPE tensor_type =
-      parse_ttb_enum(argc, argv, "--tensor", SPTENSOR,
-                     num_sptensor_types, sptensor_types, sptensor_names);
+    Genten::MTTKRP_Method mttkrp_method =
+      parse_ttb_enum(argc, argv, "--mttkrp_method", Genten::MTTKRP_Atomic,
+                     Genten::MTTKRP_Method_Info::num_types,
+                     Genten::MTTKRP_Method_Info::methods,
+                     Genten::MTTKRP_Method_Info::names);
     ttb_indx mttkrp_tile_size =
-      parse_ttb_indx(argc, argv, "--mttkrptlsz", 0, 0, INT_MAX);
+      parse_ttb_indx(argc, argv, "--mttkrp_tile_size", 0, 0, INT_MAX);
 
     if (vtune)
       Genten::connect_vtune();
@@ -324,24 +318,19 @@ int main(int argc, char* argv[])
       std::cout << "save = " << (save ? "true" : "false") << std::endl;
       std::cout << "debug = " << (debug ? "true" : "false") << std::endl;
       std::cout << "warmup = " << (warmup ? "true" : "false") << std::endl;
-      std::cout << "tensor type = " << sptensor_names[tensor_type] << std::endl;
-      std::cout << "mttkrptlsz = " << mttkrp_tile_size << std::endl;
+      std::cout << "mttkrp_method = " << Genten::MTTKRP_Method_Info::methods[mttkrp_method] << std::endl;
+      std::cout << "mttkrp_tile_size = " << mttkrp_tile_size << std::endl;
       std::cout << std::endl;
     }
 
     Genten::AlgParams algParams;
-    algParams.MTTKRPFactorMatrixTileSize = mttkrp_tile_size;
+    algParams.mttkrp_method = mttkrp_method;
+    algParams.mttkrp_duplicated_factor_matrix_tile_size = mttkrp_tile_size;
 
-    if (tensor_type == SPTENSOR)
-      ret = run< Genten::SptensorT, Genten::DefaultExecutionSpace >(
-        method, inputfilename, outputfilename, rolfilename, index_base, gz,
-        rank, loss_function_type, eps, seed, prng,
-        maxiters, tol, printitn, save, debug, warmup, tensor_type, algParams);
-    else if (tensor_type == SPTENSOR_PERM)
-      ret = run< Genten::SptensorT_perm, Genten::DefaultExecutionSpace >(
-        method, inputfilename, outputfilename, rolfilename, index_base, gz,
-        rank, loss_function_type, eps, seed, prng,
-        maxiters, tol, printitn, save, debug, warmup, tensor_type, algParams);
+    ret = run< Genten::DefaultExecutionSpace >(
+      method, inputfilename, outputfilename, rolfilename, index_base, gz,
+      rank, loss_function_type, eps, seed, prng,
+      maxiters, tol, printitn, save, debug, warmup, algParams);
 
   }
   catch(std::string sExc)

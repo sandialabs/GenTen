@@ -101,3 +101,6 @@ void Genten::connect_vtune(const int p_rank) {
   system(cmd.str().c_str());
   system("sleep 10");
 }
+
+const Genten::MTTKRP_Method Genten::MTTKRP_Method_Info::methods[];
+const char*const Genten::MTTKRP_Method_Info::names[];

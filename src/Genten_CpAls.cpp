@@ -55,8 +55,6 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_Sptensor.hpp"
-#include "Genten_Sptensor_perm.hpp"
-#include "Genten_Sptensor_row.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_Util.hpp"
 
@@ -454,19 +452,6 @@ namespace Genten {
 #define INST_MACRO(SPACE)                                               \
   template void cpals_core<SptensorT<SPACE>,SPACE>(                     \
     const SptensorT<SPACE>& x,                                          \
-    KtensorT<SPACE>& u,                                                 \
-    const ttb_real tol,                                                 \
-    const ttb_indx maxIters,                                            \
-    const ttb_real maxSecs,                                             \
-    const ttb_indx printIter,                                           \
-    ttb_indx& numIters,                                                 \
-    ttb_real& resNorm,                                                  \
-    const ttb_indx perfIter,                                            \
-    CpAlsPerfInfo perfInfo[],                                           \
-const AlgParams& algParams);                                            \
-                                                                        \
-  template void cpals_core<SptensorT_perm<SPACE>,SPACE>(                \
-    const SptensorT_perm<SPACE>& x,                                     \
     KtensorT<SPACE>& u,                                                 \
     const ttb_real tol,                                                 \
     const ttb_indx maxIters,                                            \

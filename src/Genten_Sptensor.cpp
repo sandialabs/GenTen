@@ -40,12 +40,27 @@
 
 #include "Genten_Sptensor.hpp"
 
+#include "Kokkos_Sort.hpp"
+
+#ifdef KOKKOS_HAVE_OPENMP
+#include "parallel_stable_sort.hpp"
+#endif
+
+#ifdef KOKKOS_HAVE_CUDA
+#include <thrust/sort.h>
+#include <thrust/device_ptr.h>
+#endif
+
+#ifdef HAVE_CALIPER
+#include <caliper/cali.h>
+#endif
+
 template <typename ExecSpace>
 Genten::SptensorT<ExecSpace>::
 SptensorT(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls,
           ttb_real * sbs):
   siz(nd,sz), nNumDims(nd), values(nz,vls,false),
-  subs("Genten::Sptensor::subs",nz,nd)
+  subs("Genten::Sptensor::subs",nz,nd), perm()
 {
   // convert subscripts to ttb_indx with zero indexing and transpose subs array
   // to store each nonzero's subscripts contiguously
@@ -63,7 +78,7 @@ Genten::SptensorT<ExecSpace>::
 SptensorT(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals,
           ttb_indx *subscripts):
   siz(nd,dims), nNumDims(nd), values(nz,vals,false),
-  subs("Genten::Sptensor::subs",nd,nz)
+  subs("Genten::Sptensor::subs",nd,nz), perm()
 {
   // Copy subscripts into subs.  Because of polymorphic layout, we can't
   // assume subs and subscripts are ordered in the same way
@@ -84,7 +99,7 @@ SptensorT(const std::vector<ttb_indx>& dims,
   siz(ttb_indx(dims.size()),const_cast<ttb_indx*>(dims.data())),
   nNumDims(dims.size()),
   values(vals.size(),const_cast<ttb_real*>(vals.data()),false),
-  subs("Genten::Sptensor::subs",vals.size(),dims.size())
+  subs("Genten::Sptensor::subs",vals.size(),dims.size()), perm()
 {
   for (ttb_indx i = 0; i < vals.size(); i ++)
   {
@@ -186,6 +201,124 @@ divide(const Genten::KtensorT<ExecSpace> & K,
       values[i] /= val;
     }
   }
+}
+
+namespace Genten {
+namespace Impl {
+// Implementation of createPermutation().  Has to be done as a
+// non-member function because lambda capture of *this doesn't work on Cuda.
+template <typename ExecSpace, typename subs_view_type, typename siz_type>
+subs_view_type
+createPermutationImpl(const subs_view_type& subs, const siz_type& siz)
+{
+  const ttb_indx sz = subs.extent(0);
+  const ttb_indx nNumDims = subs.extent(1);
+  subs_view_type perm(Kokkos::view_alloc(Kokkos::WithoutInitializing,
+                                         "Genten::Sptensor_kokkos::perm"),
+                      sz,nNumDims);
+
+  // Neither std::sort or the Kokkos sort will work with non-contiguous views,
+  // so we need to sort into temporary views
+  typedef Kokkos::View<ttb_indx*,typename subs_view_type::array_layout,ExecSpace> ViewType;
+  ViewType tmp(Kokkos::view_alloc(Kokkos::WithoutInitializing,"tmp_perm"),sz);
+
+  for (ttb_indx n = 0; n < nNumDims; ++n) {
+
+// Whether to sort using Kokkos or device specific approaches
+// The Kokkos sort seems slower
+#define USE_KOKKOS_SORT 0
+#if USE_KOKKOS_SORT
+
+    typedef Kokkos::BinOp1D<ViewType> CompType;
+    // Kokkos::sort doesn't allow supplying a custom comparator, so we
+    // have to use its implementation to get the permutation vector
+    deep_copy( tmp, Kokkos::subview(subs, Kokkos::ALL(), n));
+    Kokkos::BinSort<ViewType, CompType> bin_sort(
+      tmp,CompType(sz/2,0,siz[n]),true);
+    bin_sort.create_permute_vector();
+    deep_copy( Kokkos::subview(perm, Kokkos::ALL(), n),
+               bin_sort.get_permute_vector() );
+
+#else
+
+    // Sort tmp=[1:sz] using subs(:,n) as a comparator
+    Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+                         KOKKOS_LAMBDA(const ttb_indx i)
+    {
+      tmp(i) = i;
+    }, "Genten::Sptensor_perm::createPermutationImpl_init_kernel");
+
+#if defined(KOKKOS_HAVE_CUDA)
+    if (std::is_same<ExecSpace, Kokkos::Cuda>::value) {
+      thrust::stable_sort(thrust::device_ptr<ttb_indx>(tmp.data()),
+                          thrust::device_ptr<ttb_indx>(tmp.data()+sz),
+                          KOKKOS_LAMBDA(const ttb_indx& a, const ttb_indx& b)
+      {
+        return (subs(a,n) < subs(b,n));
+      });
+    }
+    else
+#endif
+
+#if defined(KOKKOS_HAVE_OPENMP)
+    if (std::is_same<ExecSpace, Kokkos::OpenMP>::value) {
+      pss::parallel_stable_sort(tmp.data(), tmp.data()+sz,
+                                [&](const ttb_indx& a, const ttb_indx& b)
+      {
+        return (subs(a,n) < subs(b,n));
+      });
+    }
+    else
+#endif
+
+    std::stable_sort(tmp.data(), tmp.data()+sz,
+                     [&](const ttb_indx& a, const ttb_indx& b)
+    {
+      return (subs(a,n) < subs(b,n));
+    });
+
+
+    deep_copy( Kokkos::subview(perm, Kokkos::ALL(), n), tmp );
+
+#endif
+
+  }
+
+#undef USE_KOKKOS_SORT
+
+  const bool check = false;
+  if (check) {
+    for (ttb_indx n = 0; n < nNumDims; ++n) {
+      for (ttb_indx i = 1; i < sz; ++i) {
+        if (subs(perm(i,n),n) < subs(perm(i-1,n),n)) {
+          std::cout << "Check failed: " << std::endl
+                    << "\t" << "i = " << i << std::endl
+                    << "\t" << "n = " << n << std::endl
+                    << "\t" << "perm(i,n) = " << perm(i,n) << std::endl
+                    << "\t" << "perm(i-1,n) = " << perm(i-1,n) << std::endl
+                    << "\t" << "subs(perm(i,n),n) = " << subs(perm(i,n),n) << std::endl
+                    << "\t" << "subs(perm(i-1,n),n)) = " << subs(perm(i-1,n),n) << std::endl
+                    << std::endl;
+        }
+      }
+    }
+  }
+
+  return perm;
+
+}
+}
+}
+
+template <typename ExecSpace>
+void Genten::SptensorT<ExecSpace>::
+createPermutation()
+{
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::Sptensor::createPermutation()");
+#endif
+
+  perm = Genten::Impl::createPermutationImpl<ExecSpace>(this->subs, this->siz);
 }
 
 #define INST_MACRO(SPACE) template class Genten::SptensorT<SPACE>;

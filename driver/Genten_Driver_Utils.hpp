@@ -205,7 +205,7 @@ Genten::IndxArray parse_ttb_indx_array(int argc, char** argv, string cl_arg, con
 
 template <typename T>
 T parse_ttb_enum(int argc, char** argv, string cl_arg, T default_value,
-                 unsigned num_values, const T* values, const std::string* names) {
+                 unsigned num_values, const T* values, const char*const* names) {
   int arg=1;
   while (arg < argc) {
     if (cl_arg == string(argv[arg])) {

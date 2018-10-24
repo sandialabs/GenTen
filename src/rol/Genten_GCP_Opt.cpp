@@ -49,8 +49,6 @@
 
 #include "Genten_GCP_Opt.hpp"
 #include "Genten_Sptensor.hpp"
-#include "Genten_Sptensor_perm.hpp"
-#include "Genten_Sptensor_row.hpp"
 #include "Genten_RolBoundConstraint.hpp"
 #include "Genten_GCP_RolObjective.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
@@ -193,15 +191,6 @@ namespace Genten {
 #define INST_MACRO(SPACE)                                               \
   template void gcp_opt<SptensorT<SPACE>,SPACE>(                        \
     const SptensorT<SPACE>& x,                                          \
-    KtensorT<SPACE>& u,                                                 \
-    const LOSS_FUNCTION_TYPE loss_function_type,                        \
-    Teuchos::ParameterList& params,                                     \
-    std::ostream* stream,                                               \
-    const ttb_real loss_eps,                                            \
-    const AlgParams& algParms);                                         \
-                                                                        \
-  template void gcp_opt<SptensorT_perm<SPACE>,SPACE>(                   \
-    const SptensorT_perm<SPACE>& x,                                     \
     KtensorT<SPACE>& u,                                                 \
     const LOSS_FUNCTION_TYPE loss_function_type,                        \
     Teuchos::ParameterList& params,                                     \

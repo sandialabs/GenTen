@@ -331,11 +331,5 @@ ttb_real Genten::innerprod(const Genten::SptensorT<ExecSpace>& s,
                 const Genten::KtensorT<SPACE>& u,                       \
                 const ttb_indx n,                                       \
                 const Genten::FacMatrixT<SPACE>& v,                     \
-                const AlgParams& algParams);                            \
-  template                                                              \
-  void mttkrp<>(const Genten::SptensorT_perm<SPACE>& X,                 \
-                const Genten::KtensorT<SPACE>& u,                       \
-                const ttb_indx n,                                       \
-                const Genten::FacMatrixT<SPACE>& v,                     \
                 const AlgParams& algParams);
 GENTEN_INST(INST_MACRO)

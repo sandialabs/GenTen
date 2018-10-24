@@ -56,17 +56,7 @@
 #include "Genten_Driver_Utils.hpp"
 #include "Genten_MixedFormatOps.hpp"
 
-enum SPTENSOR_TYPE {
-  SPTENSOR,
-  SPTENSOR_PERM
-};
-const unsigned num_sptensor_types = 2;
-SPTENSOR_TYPE sptensor_types[] =
-{ SPTENSOR, SPTENSOR_PERM };
-std::string sptensor_names[] =
-{ "kokkos", "perm" };
-
-template <template<class> class Sptensor_template, typename Space>
+template <typename Space>
 int run_mttkrp(const std::string& inputfilename,
                const ttb_indx index_base,
                const bool gz,
@@ -75,13 +65,12 @@ int run_mttkrp(const std::string& inputfilename,
                const ttb_indx  nMaxNonzeroes,
                const unsigned long  nRNGseed,
                const ttb_indx  nIters,
-               const SPTENSOR_TYPE tensor_type,
                const ttb_indx check,
                const ttb_indx warmup,
                const Genten::AlgParams& algParams)
 {
-  typedef Sptensor_template<Space> Sptensor_type;
-  typedef Sptensor_template<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
+  typedef Genten::SptensorT<Space> Sptensor_type;
+  typedef Genten::SptensorT<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
   typedef Genten::KtensorT<Space> Ktensor_type;
   typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
 
@@ -114,8 +103,7 @@ int run_mttkrp(const std::string& inputfilename,
     deep_copy( cFacDims, cFacDims_host );
     nDims = cFacDims_host.size();
 
-    std::cout << "Will construct a random Ktensor/Sptensor_";
-    std::cout << sptensor_names[tensor_type] << " pair:\n";
+    std::cout << "Will construct a random Ktensor/Sptensor pair:\n";
     std::cout << "  Ndims = " << nDims << ",  Size = [ ";
     for (ttb_indx n=0; n<nDims; ++n)
       std::cout << cFacDims_host[n] << ' ';
@@ -166,20 +154,23 @@ int run_mttkrp(const std::string& inputfilename,
 
   // Do a pass through the mttkrp to warm up and make sure the tensor
   // is copied to the device before generating any timings.  Use
-  // Sptensor mttkrp and do this before fillComplete() so that
-  // fillComplete() timings are not polluted by UVM transfers
+  // Sptensor mttkrp and do this before createPermutation() so that
+  // createPermutation() timings are not polluted by UVM transfers
   Ktensor_type cResult(nNumComponents, nDims, cFacDims);
   if (warmup == 1) {
     Genten::SptensorT<Genten::DefaultExecutionSpace>& cData_tmp = cData;
+    Genten::AlgParams ap = algParams;
+    ap.mttkrp_method = Genten::MTTKRP_Atomic;
     for (ttb_indx n=0; n<nDims; ++n)
-      Genten::mttkrp(cData_tmp, cInput, n, cResult[n], algParams);
+      Genten::mttkrp(cData_tmp, cInput, n, cResult[n], ap);
   }
 
   // Perform any post-processing (e.g., permutation and row ptr generation)
   timer.start(0);
-  cData.fillComplete();
+  if (algParams.mttkrp_method == Genten::MTTKRP_Perm)
+    cData.createPermutation();
   timer.stop(0);
-  std::printf("  (fillComplete() took %6.3f seconds)\n", timer.getTotalTime(0));
+  std::printf("  (createPermutation() took %6.3f seconds)\n", timer.getTotalTime(0));
 
   // Perform nIters iterations of MTTKRP on each mode, timing performance
   // We do each mode sequentially as this is more representative of CpALS
@@ -308,14 +299,14 @@ void usage(char **argv)
   std::cout << "  --seed <int>         seed for random number generator used in initial guess" << std::endl;
   std::cout << "  --check <0/1>        check the result for correctness" << std::endl;
   std::cout << "  --warmup <0/1>       do an MTTKRP to warm up first" << std::endl;
-  std::cout << "  --tensor <type>      Sptensor format: ";
-  for (unsigned i=0; i<num_sptensor_types; ++i) {
-    std::cout << sptensor_names[i];
-    if (i != num_sptensor_types-1)
+  std::cout << "  --mttkrp_method <method> MTTKRP algorithm: ";
+  for (unsigned i=0; i<Genten::MTTKRP_Method_Info::num_types; ++i) {
+    std::cout << Genten::MTTKRP_Method_Info::names[i];
+    if (i != Genten::MTTKRP_Method_Info::num_types-1)
       std::cout << ", ";
   }
   std::cout << std::endl;
-  std::cout << "  --mttkrptlsz <int> tile size for mttkrp algorithm" << std::endl;
+  std::cout << "  --mttkrp_tile_size <int> tile size for mttkrp algorithm" << std::endl;
   std::cout << "  --vtune              connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
 }
 
@@ -365,25 +356,22 @@ int main(int argc, char* argv[])
       parse_ttb_indx(argc, argv, "--check", 1, 0, 1);
     ttb_indx  warmup =
       parse_ttb_indx(argc, argv, "--warmup", 1, 0, 1);
-    SPTENSOR_TYPE tensor_type =
-      parse_ttb_enum(argc, argv, "--tensor", SPTENSOR,
-                     num_sptensor_types, sptensor_types, sptensor_names);
+    Genten::MTTKRP_Method mttkrp_method =
+      parse_ttb_enum(argc, argv, "--mttkrp_method", Genten::MTTKRP_Atomic,
+                     Genten::MTTKRP_Method_Info::num_types,
+                     Genten::MTTKRP_Method_Info::methods,
+                     Genten::MTTKRP_Method_Info::names);
     ttb_indx mttkrp_tile_size =
-      parse_ttb_indx(argc, argv, "--mttkrptlsz", 0, 0, INT_MAX);
+      parse_ttb_indx(argc, argv, "--mttkrp_tile_size", 0, 0, INT_MAX);
 
     Genten::AlgParams algParams;
-    algParams.MTTKRPFactorMatrixTileSize = mttkrp_tile_size;
+    algParams.mttkrp_method = mttkrp_method;
+    algParams.mttkrp_duplicated_factor_matrix_tile_size = mttkrp_tile_size;
 
-    if (tensor_type == SPTENSOR)
-      ret = run_mttkrp< Genten::SptensorT, Genten::DefaultExecutionSpace >(
-        inputfilename, index_base, gz,
-        cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nIters, tensor_type,
-        check, warmup, algParams);
-    else if (tensor_type == SPTENSOR_PERM)
-      ret = run_mttkrp< Genten::SptensorT_perm, Genten::DefaultExecutionSpace >(
-        inputfilename, index_base, gz,
-        cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nIters, tensor_type,
-        check, warmup, algParams);
+    ret = run_mttkrp< Genten::DefaultExecutionSpace >(
+      inputfilename, index_base, gz,
+      cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nIters,
+      check, warmup, algParams);
 
   }
   catch(std::string sExc)

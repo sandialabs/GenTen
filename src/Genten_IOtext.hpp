@@ -79,14 +79,12 @@ namespace Genten
    *  @param[in,out] X  Sptensor resized and filled with data.
    *  @throws string    for any error.
    */
-  template <typename tensor_type>
   void import_sptensor (std::istream& fIn,
-                        tensor_type& X,
+                        Genten::Sptensor& X,
                         const ttb_indx index_base = 0,
                         const bool verbose = false);
-  template <typename tensor_type>
   void import_sptensor (const std::string& fName,
-                        tensor_type& X,
+                        Genten::Sptensor& X,
                         const ttb_indx index_base = 0,
                         const bool bCompressed = false,
                         const bool verbose = false);

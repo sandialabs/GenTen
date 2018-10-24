@@ -72,12 +72,12 @@ public:
   // Empty construtor.
   /* Creates an empty tensor with an empty size. */
   KOKKOS_INLINE_FUNCTION
-  SptensorT() : siz(),nNumDims(0),values(),subs() {}
+  SptensorT() : siz(),nNumDims(0),values(),subs(),perm() {}
 
   // Constructor for a given size and number of nonzeros
   SptensorT(const IndxArrayT<ExecSpace>& sz, ttb_indx nz) :
     siz(sz), nNumDims(sz.size()), values(nz),
-    subs("Genten::Sptensor::subs",nz,sz.size()) {}
+    subs("Genten::Sptensor::subs",nz,sz.size()), perm() {}
 
   /* Constructor from complete raw data indexed C-wise in C types.
      All input are deep copied.
@@ -110,11 +110,11 @@ public:
   KOKKOS_INLINE_FUNCTION
   SptensorT(const IndxArrayT<ExecSpace>& d, const vals_view_type& vals,
             const subs_view_type& s) :
-    siz(d), nNumDims(d.size()), values(vals), subs(s) {}
+    siz(d), nNumDims(d.size()), values(vals), subs(s), perm() {}
 
   // Create tensor from supplied dimensions and subscripts, zero values
   SptensorT(const IndxArrayT<ExecSpace>& d, const subs_view_type& s) :
-    siz(d), nNumDims(d.size()), values(s.extent(0),0.0), subs(s) {}
+    siz(d), nNumDims(d.size()), values(s.extent(0),0.0), subs(s), perm() {}
 
   // Copy constructor.
   KOKKOS_INLINE_FUNCTION
@@ -231,15 +231,27 @@ public:
     return values[i];
   }
 
-  // Finalize any setup of the tensor after all entries have been added
-  void fillComplete() {}
-
   /* Result stored in this tensor */
   void times(const KtensorT<ExecSpace> & K, const SptensorT & X);
 
   // Elementwise division of input tensor X and Ktensor K.
   /* Result stored in this tensor. The argument epsilon is the minimum value allowed for the division. */
   void divide(const KtensorT<ExecSpace> & K, const SptensorT & X, ttb_real epsilon);
+
+  KOKKOS_INLINE_FUNCTION
+  ttb_indx getPerm(ttb_indx i, ttb_indx n) const
+  {
+    assert((i < this->values.size()) && (n < this->nNumDims));
+    return perm(i,n);
+  }
+
+  // Get whole perm array
+  KOKKOS_INLINE_FUNCTION
+  subs_view_type getPerm() const { return perm; }
+
+  // Create permutation array by sorting each column of subs
+  // Currently must be public for Cuda-lambda
+  void createPermutation();
 
 protected:
 
@@ -255,6 +267,9 @@ protected:
   // Subscript array of nonzero elements.  This vector is treated as a 2D array
   // of size nnz by nNumDims.
   subs_view_type subs;
+
+  // Permutation array for iterating over subs in non-decreasing fashion
+  subs_view_type perm;
 
 };
 

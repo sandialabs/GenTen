@@ -48,8 +48,6 @@
 #include "Genten_FacMatrix.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_Sptensor.hpp"
-#include "Genten_Sptensor_perm.hpp"
-#include "Genten_Sptensor_row.hpp"
 #include "Genten_Util.hpp"
 
 namespace Genten
@@ -82,18 +80,9 @@ namespace Genten
   // Matricized sparse tensor times Khatri-Rao product.
   /* Same as below except that rather than overwrite u[n],
      the answer is put into v.
-
-     Note: couldn't figure out how to get the ETI right with the
-     SptensorT_row overload without ExecSpace as a second template paramter
-     (as opposed to being deduced from SparseTensor. */
+  */
   template <typename SparseTensor, typename ExecSpace>
   void mttkrp(const SparseTensor& X,
-              const Genten::KtensorT<ExecSpace>& u,
-              const ttb_indx n,
-              const Genten::FacMatrixT<ExecSpace>& v,
-              const AlgParams& algParams = AlgParams());
-  template <typename ExecSpace>
-  void mttkrp(const Genten::SptensorT_row<ExecSpace>& X,
               const Genten::KtensorT<ExecSpace>& u,
               const ttb_indx n,
               const Genten::FacMatrixT<ExecSpace>& v,
