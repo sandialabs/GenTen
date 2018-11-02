@@ -55,22 +55,40 @@
 #include <caliper/cali.h>
 #endif
 
+namespace Genten {
+namespace Impl {
+
+template <typename SubsViewType, typename T>
+void init_subs(const SubsViewType& subs, const T* sbs, const ttb_indx shift)
+{
+  typedef typename SubsViewType::execution_space exec_space;
+  const ttb_indx nz = subs.extent(0);
+  const ttb_indx nd = subs.extent(1);
+  Kokkos::parallel_for(Kokkos::RangePolicy<exec_space>(0,nz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
+  {
+    for (ttb_indx j=0; j<nd; ++j)
+    {
+      subs(i,j) = (ttb_indx) sbs[i+j*nz] - shift;
+    }
+  });
+}
+
+}
+}
+
 template <typename ExecSpace>
 Genten::SptensorT<ExecSpace>::
 SptensorT(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls,
           ttb_real * sbs):
   siz(nd,sz), nNumDims(nd), values(nz,vls,false),
-  subs("Genten::Sptensor::subs",nz,nd), perm()
+  subs(Kokkos::view_alloc("Genten::Sptensor::subs",
+                          Kokkos::WithoutInitializing),nz,nd),
+  perm()
 {
   // convert subscripts to ttb_indx with zero indexing and transpose subs array
   // to store each nonzero's subscripts contiguously
-  for (ttb_indx i = 0; i < nz; i ++)
-  {
-    for (ttb_indx j = 0; j < nd; j ++)
-    {
-      subs(i,j) = (ttb_indx) sbs[i+j*nz] - 1;
-    }
-  }
+  Impl::init_subs(subs, sbs, 1);
 }
 
 template <typename ExecSpace>
@@ -78,17 +96,12 @@ Genten::SptensorT<ExecSpace>::
 SptensorT(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals,
           ttb_indx *subscripts):
   siz(nd,dims), nNumDims(nd), values(nz,vals,false),
-  subs("Genten::Sptensor::subs",nd,nz), perm()
+  subs(Kokkos::view_alloc("Genten::Sptensor::subs",
+                          Kokkos::WithoutInitializing),nd,nz), perm()
 {
   // Copy subscripts into subs.  Because of polymorphic layout, we can't
   // assume subs and subscripts are ordered in the same way
-  for (ttb_indx i = 0; i < nz; i ++)
-  {
-    for (ttb_indx j = 0; j < nd; j ++)
-    {
-      subs(i,j) = (ttb_indx) subscripts[i*nd+j];
-    }
-  }
+  Impl::init_subs(subs, subscripts, 0);
 }
 
 template <typename ExecSpace>

@@ -131,7 +131,7 @@ void run_mttkrp(const std::string& inputfilename,
                 gen_timer.getTotalTime(0));
     std::cout << "  Actual nnz  = " << cData_host.nnz() << "\n";
   }
-  if (algParams.mttkrp_method == Genten::MTTKRP_Perm)
+  if (algParams.mttkrp_method == Genten::MTTKRP_Method::Perm)
     cData.createPermutation();
 
   // Set a random input Ktensor, matching the Matlab code.
@@ -208,9 +208,9 @@ void usage(char **argv)
   std::cout << "  --check <0/1>        check the result for correctness" << std::endl;
   std::cout << "  --warmup <0/1>       do an MTTKRP to warm up first" << std::endl;
   std::cout << "  --mttkrp_method <method> MTTKRP algorithm: ";
-  for (unsigned i=0; i<Genten::MTTKRP_Method_Info::num_types; ++i) {
-    std::cout << Genten::MTTKRP_Method_Info::names[i];
-    if (i != Genten::MTTKRP_Method_Info::num_types-1)
+  for (unsigned i=0; i<Genten::MTTKRP_Method::num_types; ++i) {
+    std::cout << Genten::MTTKRP_Method::names[i];
+    if (i != Genten::MTTKRP_Method::num_types-1)
       std::cout << ", ";
   }
   std::cout << std::endl;
@@ -264,11 +264,12 @@ int main(int argc, char* argv[])
       parse_ttb_indx(argc, argv, "--seed", 1, 0, INT_MAX);
     ttb_indx  nIters =
       parse_ttb_indx(argc, argv, "--iters", 10, 1, INT_MAX);
-    Genten::MTTKRP_Method mttkrp_method =
-      parse_ttb_enum(argc, argv, "--mttkrp_method", Genten::MTTKRP_Atomic,
-                     Genten::MTTKRP_Method_Info::num_types,
-                     Genten::MTTKRP_Method_Info::methods,
-                     Genten::MTTKRP_Method_Info::names);
+    Genten::MTTKRP_Method::type mttkrp_method =
+      parse_ttb_enum(argc, argv, "--mttkrp_method",
+                     Genten::MTTKRP_Method::Atomic,
+                     Genten::MTTKRP_Method::num_types,
+                     Genten::MTTKRP_Method::types,
+                     Genten::MTTKRP_Method::names);
     ttb_indx mttkrp_tile_size =
       parse_ttb_indx(argc, argv, "--mttkrp_tile_size", 0, 0, INT_MAX);
 

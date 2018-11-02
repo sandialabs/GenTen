@@ -160,14 +160,14 @@ int run_mttkrp(const std::string& inputfilename,
   if (warmup == 1) {
     Genten::SptensorT<Genten::DefaultExecutionSpace>& cData_tmp = cData;
     Genten::AlgParams ap = algParams;
-    ap.mttkrp_method = Genten::MTTKRP_Atomic;
+    ap.mttkrp_method = Genten::MTTKRP_Method::Atomic;
     for (ttb_indx n=0; n<nDims; ++n)
       Genten::mttkrp(cData_tmp, cInput, n, cResult[n], ap);
   }
 
   // Perform any post-processing (e.g., permutation and row ptr generation)
   timer.start(0);
-  if (algParams.mttkrp_method == Genten::MTTKRP_Perm)
+  if (algParams.mttkrp_method == Genten::MTTKRP_Method::Perm)
     cData.createPermutation();
   timer.stop(0);
   std::printf("  (createPermutation() took %6.3f seconds)\n", timer.getTotalTime(0));
@@ -300,9 +300,9 @@ void usage(char **argv)
   std::cout << "  --check <0/1>        check the result for correctness" << std::endl;
   std::cout << "  --warmup <0/1>       do an MTTKRP to warm up first" << std::endl;
   std::cout << "  --mttkrp_method <method> MTTKRP algorithm: ";
-  for (unsigned i=0; i<Genten::MTTKRP_Method_Info::num_types; ++i) {
-    std::cout << Genten::MTTKRP_Method_Info::names[i];
-    if (i != Genten::MTTKRP_Method_Info::num_types-1)
+  for (unsigned i=0; i<Genten::MTTKRP_Method::num_types; ++i) {
+    std::cout << Genten::MTTKRP_Method::names[i];
+    if (i != Genten::MTTKRP_Method::num_types-1)
       std::cout << ", ";
   }
   std::cout << std::endl;
@@ -356,11 +356,12 @@ int main(int argc, char* argv[])
       parse_ttb_indx(argc, argv, "--check", 1, 0, 1);
     ttb_indx  warmup =
       parse_ttb_indx(argc, argv, "--warmup", 1, 0, 1);
-    Genten::MTTKRP_Method mttkrp_method =
-      parse_ttb_enum(argc, argv, "--mttkrp_method", Genten::MTTKRP_Atomic,
-                     Genten::MTTKRP_Method_Info::num_types,
-                     Genten::MTTKRP_Method_Info::methods,
-                     Genten::MTTKRP_Method_Info::names);
+    Genten::MTTKRP_Method::type mttkrp_method =
+      parse_ttb_enum(argc, argv, "--mttkrp_method",
+                     Genten::MTTKRP_Method::Atomic,
+                     Genten::MTTKRP_Method::num_types,
+                     Genten::MTTKRP_Method::types,
+                     Genten::MTTKRP_Method::names);
     ttb_indx mttkrp_tile_size =
       parse_ttb_indx(argc, argv, "--mttkrp_tile_size", 0, 0, INT_MAX);
 

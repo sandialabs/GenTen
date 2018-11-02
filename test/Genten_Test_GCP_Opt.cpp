@@ -64,8 +64,8 @@ using namespace Genten::Test;
  *  get the original tensor.
  */
 void Genten_Test_GCP_Opt_Type (int infolevel, const std::string& label,
-                               Genten::MTTKRP_Method mttkrp_method,
-                               const Genten::LOSS_FUNCTION_TYPE loss_type)
+                               Genten::MTTKRP_Method::type mttkrp_method,
+                               const Genten::GCP_LossFunction::type loss_type)
 {
   typedef Genten::DefaultExecutionSpace exec_space;
   typedef Genten::DefaultHostExecutionSpace host_exec_space;
@@ -105,7 +105,7 @@ void Genten_Test_GCP_Opt_Type (int infolevel, const std::string& label,
   // Copy X to device
   Sptensor_type X_dev = create_mirror_view( exec_space(), X );
   deep_copy( X_dev, X );
-  if (mttkrp_method == Genten::MTTKRP_Perm)
+  if (mttkrp_method == Genten::MTTKRP_Method::Perm)
     X_dev.createPermutation();
 
   // Load a known initial guess.
@@ -179,19 +179,12 @@ void Genten_Test_GCP_Opt_Type (int infolevel, const std::string& label,
 void Genten_Test_GCP_Opt (int infolevel)
 {
   Genten_Test_GCP_Opt_Type(infolevel,"Atomic, Gaussian",
-                           Genten::MTTKRP_Atomic, Genten::GAUSSIAN);
+                           Genten::MTTKRP_Method::Atomic,
+                           Genten::GCP_LossFunction::Gaussian);
   Genten_Test_GCP_Opt_Type(infolevel,"Duplicated, Gaussian",
-                           Genten::MTTKRP_Duplicated, Genten::GAUSSIAN);
+                           Genten::MTTKRP_Method::Duplicated,
+                           Genten::GCP_LossFunction::Gaussian);
   Genten_Test_GCP_Opt_Type(infolevel,"Perm, Gaussian",
-                           Genten::MTTKRP_Perm, Genten::GAUSSIAN);
-  /*
-  Genten_Test_GCP_Opt_Type<Genten::SptensorT>(infolevel,"Kokkos, Rayleigh",
-                                              Genten::RAYLEIGH);
-  Genten_Test_GCP_Opt_Type<Genten::SptensorT>(infolevel,"Kokkos, Gamma",
-                                              Genten::GAMMA);
-  // Genten_Test_GCP_Opt_Type<Genten::SptensorT>(infolevel,"Kokkos, Bernoulli",
-  //                                             Genten::BERNOULLI);
-  Genten_Test_GCP_Opt_Type<Genten::SptensorT>(infolevel,"Kokkos, Poisson",
-                                              Genten::POISSON);
-  */
+                           Genten::MTTKRP_Method::Perm,
+                           Genten::GCP_LossFunction::Gaussian);
 }

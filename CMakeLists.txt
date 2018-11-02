@@ -63,6 +63,7 @@ OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files" OFF)
 OPTION(ENABLE_LAPACK "Enable BLAS/LAPACK (if disabled, Genten implementations will be used" ON)
 OPTION(ENABLE_CALIPER "Enable Caliper for application profiling" OFF)
 OPTION(ENABLE_ROL "Enable ROL for optimization" OFF)
+OPTION(ENABLE_MATLAB "Enable MATLAB linkage to Tensor Toolbox" OFF)
 OPTION(FLOAT_TYPE "C++ data type used for floating-point values" OFF)
 OPTION(INDEX_TYPE "C++ data type used for tensor indices" OFF)
 
@@ -136,6 +137,22 @@ IF (ENABLE_ROL)
   INCLUDE_DIRECTORIES(SYSTEM ${ROL_INCLUDE_DIRS} ${ROL_TPL_INCLUDE_DIRS})
   LINK_DIRECTORIES(${ROL_LIBRARY_DIRS} ${ROL_TPL_LIBRARY_DIRS} )
   SET(HAVE_ROL ${ENABLE_ROL})
+ENDIF()
+
+IF(ENABLE_MATLAB)
+  IF(NOT BUILD_SHARED_LIBS)
+    MESSAGE(FATAL_ERROR "Must build shared libraries when enabling Matlab!")
+  ENDIF()
+  OPTION(MATLAB_PATH "Path to MATLAB installation")
+  SET(Matlab_ROOT_DIR "${MATLAB_PATH}")
+  FIND_PACKAGE(Matlab)
+  IF(Matlab_FOUND)
+    MESSAGE("\nFound MATLAB: ")
+    MESSAGE("   Matlab_ROOT_DIR = ${Matlab_ROOT_DIR}")
+    SET(HAVE_MATLAB ON)
+  ELSE()
+    MESSAGE("\n Could not find MATLAB")
+  ENDIF()
 ENDIF()
 
 # For non-inline build of Kokkos, grep Makefile.kokkos for settings
@@ -343,6 +360,7 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_portability.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Sptensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Util.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
   )
 
 IF (ENABLE_ROL)
@@ -476,6 +494,47 @@ INSTALL (
   TARGETS genten
   DESTINATION drivers
   )
+
+#------------------------------------------------------------
+#---- Matlab
+#------------------------------------------------------------
+
+IF(HAVE_MATLAB)
+
+ADD_LIBRARY(
+  gt_matlab
+  ${Genten_SOURCE_DIR}/matlab/Genten_Matlab.hpp
+  ${Genten_SOURCE_DIR}/matlab/Genten_Matlab.cpp)
+TARGET_INCLUDE_DIRECTORIES(gt_matlab PRIVATE ${Matlab_INCLUDE_DIRS})
+TARGET_LINK_LIBRARIES(gt_matlab ${GENTEN_LINK_LIBS} ${Matlab_MEX_LIBRARY})
+SET(GENTEN_MATLAB_LINK_LIBS gt_matlab ${GENTEN_LINK_LIBS})
+
+MATLAB_ADD_MEX(
+  NAME gt_cp
+  SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Driver.cpp)
+MATLAB_ADD_MEX(
+  NAME gt_initialize
+  SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Initialize.cpp)
+MATLAB_ADD_MEX(
+  NAME gt_finalize
+  SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Finalize.cpp)
+TARGET_LINK_LIBRARIES (gt_cp ${GENTEN_MATLAB_LINK_LIBS})
+TARGET_LINK_LIBRARIES (gt_initialize ${GENTEN_MATLAB_LINK_LIBS})
+TARGET_LINK_LIBRARIES (gt_finalize ${GENTEN_MATLAB_LINK_LIBS})
+INSTALL(
+  TARGETS gt_matlab gt_cp gt_initialize gt_finalize
+  DESTINATION matlab)
+SET_PROPERTY(
+  TARGET gt_matlab gt_cp gt_initialize gt_finalize
+  PROPERTY LIBRARY_OUTPUT_DIRECTORY ${Genten_BINARY_DIR}/matlab)
+
+# Remove -DDLL_EXPORT_SYMBOL=... since it causes problems with nvcc_wrapper
+# Instead we define this inside the source
+SET_PROPERTY(
+  TARGET gt_matlab gt_cp gt_initialize gt_finalize
+  PROPERTY DEFINE_SYMBOL "")
+
+ENDIF()
 
 #------------------------------------------------------------
 #---- Testing

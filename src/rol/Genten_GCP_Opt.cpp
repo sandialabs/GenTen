@@ -145,7 +145,7 @@ namespace Genten {
 
   template<typename TensorT, typename ExecSpace>
   void gcp_opt(const TensorT& x, KtensorT<ExecSpace>& u,
-               const LOSS_FUNCTION_TYPE loss_function_type,
+               const GCP_LossFunction::type loss_function_type,
                Teuchos::ParameterList& params,
                std::ostream* stream,
                const ttb_real loss_eps,
@@ -167,19 +167,19 @@ namespace Genten {
     }
 
     // Dispatch implementation based on loss function type
-    if (loss_function_type == GAUSSIAN)
+    if (loss_function_type == GCP_LossFunction::Gaussian)
       Impl::gcp_opt_impl(x, u, GaussianLossFunction(loss_eps), params, stream,
                          algParams);
-    // else if (loss_function_type == RAYLEIGH)
+    // else if (loss_function_type == GCP_LossFunction::Rayleigh)
     //   Impl::gcp_opt_impl(x, u, RayleighLossFunction(loss_eps), params, stream,
     //                      algParams);
-    // else if (loss_function_type == GAMMA)
+    // else if (loss_function_type == GCP_LossFunction::Gamma)
     //   Impl::gcp_opt_impl(x, u, GammaLossFunction(loss_eps), params, stream,
     //                      algParams);
-    // else if (loss_function_type == BERNOULLI)
+    // else if (loss_function_type == GCP_LossFunction::Bernoulli)
     //   Impl::gcp_opt_impl(x, u, BernoulliLossFunction(loss_eps), params, stream,
     //                      algParams);
-    // else if (loss_function_type == POISSON)
+    // else if (loss_function_type == GCP_LossFunction::Poisson)
     //   Impl::gcp_opt_impl(x, u, PoissonLossFunction(loss_eps), params, stream,
     //                      algParams);
     else
@@ -192,7 +192,7 @@ namespace Genten {
   template void gcp_opt<SptensorT<SPACE>,SPACE>(                        \
     const SptensorT<SPACE>& x,                                          \
     KtensorT<SPACE>& u,                                                 \
-    const LOSS_FUNCTION_TYPE loss_function_type,                        \
+    const GCP_LossFunction::type loss_function_type,                    \
     Teuchos::ParameterList& params,                                     \
     std::ostream* stream,                                               \
     const ttb_real loss_eps,                                            \

@@ -170,10 +170,15 @@ public:
                   const bool bUseParallelRNG,
                   RandomMT &  cRMT) const;
 
-    // Copy data from the column-oriented data array into a matrix of size m x n. 
+    // Copy data from the column-oriented data array into a matrix of size m x n
     // Assumes that cvec is an array of length m*n.
     // Not currently used; therefore not part of doxygen API.
     void convertFromCol(ttb_indx m, ttb_indx n, const ttb_real * cvec) const;
+
+    // Copy data to the column-oriented data array
+    // Assumes that cvec is an array of length m*n.
+    // Not currently used; therefore not part of doxygen API.
+    void convertToCol(ttb_indx m, ttb_indx n, ttb_real * cvec) const;
 
     /** @} */
 

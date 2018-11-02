@@ -80,9 +80,18 @@ FacMatrixT(ttb_indx m, ttb_indx n)
 
 template <typename ExecSpace>
 Genten::FacMatrixT<ExecSpace>::
-FacMatrixT(ttb_indx m, ttb_indx n, const ttb_real * cvec) :
-  FacMatrixT(m,n)
+FacMatrixT(ttb_indx m, ttb_indx n, const ttb_real * cvec)
 {
+  // Don't use padding if Cuda is the default execution space, so factor
+  // matrices allocated on the host have the same shape.  We really need a
+  // better way to do this.
+  if (Genten::is_cuda_space<DefaultExecutionSpace>::value)
+    data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
+                                        Kokkos::WithoutInitializing),m,n);
+  else
+    data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
+                                        Kokkos::WithoutInitializing,
+                                        Kokkos::AllowPadding),m,n);
   this->convertFromCol(m,n,cvec);
 }
 
@@ -117,13 +126,32 @@ convertFromCol(ttb_indx nr, ttb_indx nc, const ttb_real * cvec) const
 {
   const ttb_indx nrows = data.extent(0);
   const ttb_indx ncols = data.extent(1);
-  for (ttb_indx  i = 0; i < nrows; i++)
+  view_type my_data = data;
+  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrows),
+                       KOKKOS_LAMBDA(const ttb_indx i)
   {
     for (ttb_indx  j = 0; j < ncols; j++)
     {
-      data(i,j) = cvec[i + j * nrows];
+      my_data(i,j) = cvec[i + j * nrows];
     }
-  }
+  });
+}
+
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+convertToCol(ttb_indx nr, ttb_indx nc, ttb_real * cvec) const
+{
+  const ttb_indx nrows = data.extent(0);
+  const ttb_indx ncols = data.extent(1);
+  view_type my_data = data;
+  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrows),
+                       KOKKOS_LAMBDA(const ttb_indx i)
+  {
+    for (ttb_indx  j = 0; j < ncols; j++)
+    {
+      cvec[i + j * nrows] = my_data(i,j);
+    }
+  });
 }
 
 template <typename ExecSpace>

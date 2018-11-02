@@ -111,24 +111,43 @@ namespace Genten {
   enum NormType { NormOne, NormTwo, NormInf };
 
   // MTTKRP algorithm
-  enum MTTKRP_Method {
-    MTTKRP_Atomic,      // Use atomics factor matrix update
-    MTTKRP_Duplicated,  // Duplicate factor matrix then inter-thread reduce
-    MTTKRP_Single,      // Single-thread algorithm (no atomics or duplication)
-    MTTKRP_Perm         // Permutation-based algorithm
-  };
-
-  struct MTTKRP_Method_Info {
+  struct MTTKRP_Method {
+    enum type {
+      Atomic,      // Use atomics factor matrix update
+      Duplicated,  // Duplicate factor matrix then inter-thread reduce
+      Single,      // Single-thread algorithm (no atomics or duplication)
+      Perm         // Permutation-based algorithm
+    };
     static constexpr unsigned num_types = 4;
-    static constexpr MTTKRP_Method methods[] = {
-      MTTKRP_Atomic,
-      MTTKRP_Duplicated,
-      MTTKRP_Single,
-      MTTKRP_Perm
+    static constexpr type types[] = {
+      Atomic,
+      Duplicated,
+      Single,
+      Perm
     };
     static constexpr const char* names[] = {
       "atomic", "duplicated", "single", "perm"
     };
+    static constexpr type default_type = Atomic;
+  };
+
+  // Loss functions supported by GCP
+  struct GCP_LossFunction {
+    enum type {
+      Gaussian,
+      Rayleigh,
+      Gamma,
+      Bernoulli,
+      Poisson
+    };
+    static constexpr unsigned num_types = 5;
+    static constexpr type types[] = {
+      Gaussian, Rayleigh, Gamma, Bernoulli, Poisson
+    };
+    static constexpr const char* names[] = {
+      "gaussian", "rayleigh", "gamma", "bernoulli", "poisson"
+    };
+    static constexpr type default_type = Gaussian;
   };
 }
 
@@ -166,15 +185,36 @@ namespace Genten {
   // Struct for passing various algorithmic parameters
   struct AlgParams {
     // MTTKRP algorithm
-    MTTKRP_Method mttkrp_method;
+    MTTKRP_Method::type mttkrp_method;
 
     // Factor matrix tile size for MTTKRP_Duplicated algorithm
     unsigned mttkrp_duplicated_factor_matrix_tile_size;
 
     AlgParams() :
-      mttkrp_method(MTTKRP_Atomic),
+      mttkrp_method(MTTKRP_Method::Atomic),
       mttkrp_duplicated_factor_matrix_tile_size(0)  // Use default choice
       {}
   };
+
+  template <typename T>
+  typename T::type parse_enum(const std::string& name) {
+    for (unsigned i=0; i<T::num_types; ++i) {
+      if (name == T::names[i])
+        return T::types[i];
+    }
+
+    // if we got here, name wasn't found
+    std::ostringstream error_string;
+    error_string << "Invalid enum choice " << name
+                 << ",  must be one of the values: ";
+    for (unsigned i=0; i<T::num_types; ++i) {
+      error_string << T::names[i];
+      if (i != T::num_types-1)
+        error_string << ", ";
+    }
+    error_string << "." << std::endl;
+    Genten::error(error_string.str());
+    return T::default_type;
+  }
 
 }

@@ -38,72 +38,32 @@
 // ************************************************************************
 //@HEADER
 
-
-#include "Genten_Util.hpp"
-#include "Genten_IndxArray.hpp"
-#include <iostream>
-
-// For vtune
-#include <sstream>
-#include <sys/types.h>
-#include <unistd.h>
+#include "Genten_Matlab.hpp"
 
 
-void Genten::error(std::string s)
-{
-  std::cerr << "FATAL ERROR: " << s << std::endl;
-  throw s;
+
+std::string mxGetStdString(const mxArray* ptr) {
+  const mwSize str_len = mxGetNumberOfElements(ptr);
+  char *c_str = new char[str_len+1];
+  int ret = mxGetString(ptr, c_str, str_len+1);
+  if (ret != 0)
+    Genten::error("mxGetString failed!");
+  std::string str(c_str);
+  delete [] c_str;
+  return str;
 }
 
-bool  Genten::isEqualToTol(ttb_real  d1,
-                           ttb_real  d2,
-                           ttb_real  dTol)
-{
-  // Numerator = fabs(d1 - d2).
-  ttb_real  dDiff = fabs(d1 - d2);
+void GentenInitialize() {
+  // Initialize Kokkos
+  if (!Kokkos::is_initialized()) {
+    Kokkos::initialize();
 
-  // Denominator  = max(1, fabs(d1), fabs(d2).
-  ttb_real  dAbs1 = fabs(d1);
-  ttb_real  dAbs2 = fabs(d2);
-  ttb_real  dD = 1.0;
-  if ((dAbs1 > 1.0) || (dAbs2 > 1.0))
-  {
-    if (dAbs1 > dAbs2)
-      dD = dAbs1;
-    else
-      dD = dAbs2;
+    // Register at-exit function to finalize Kokkos
+    mexAtExit(GentenAtExitFcn);
   }
-
-  // Relative difference.
-  ttb_real  dRelDiff = dDiff / dD;
-
-  // Compare the relative difference to the tolerance.
-  return( dRelDiff < dTol );
 }
 
-char *  Genten::getGentenVersion(void)
-{
-  return( (char *)("Genten Tensor Toolbox 0.0.0") );
+void GentenAtExitFcn() {
+  if (Kokkos::is_initialized())
+    Kokkos::finalize();
 }
-
-// Connect executable to vtune for profiling
-void Genten::connect_vtune(const int p_rank) {
-  std::stringstream cmd;
-  pid_t my_os_pid=getpid();
-  const std::string vtune_loc =
-    "amplxe-cl";
-  const std::string output_dir = "./vtune/vtune.";
-  cmd << vtune_loc
-      << " -collect hotspots -result-dir " << output_dir << p_rank
-      << " -target-pid " << my_os_pid << " &";
-  if (p_rank == 0)
-    std::cout << cmd.str() << std::endl;
-  system(cmd.str().c_str());
-  system("sleep 10");
-}
-
-const Genten::MTTKRP_Method::type Genten::MTTKRP_Method::types[];
-const char*const Genten::MTTKRP_Method::names[];
-
-const Genten::GCP_LossFunction::type Genten::GCP_LossFunction::types[];
-const char*const Genten::GCP_LossFunction::names[];

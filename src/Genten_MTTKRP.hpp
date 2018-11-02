@@ -410,26 +410,27 @@ struct MTTKRP_Kernel {
     const bool is_serial = Genten::is_serial_space<ExecSpace>::value;
     const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
 
-    MTTKRP_Method method = algParams.mttkrp_method;
+    MTTKRP_Method::type method = algParams.mttkrp_method;
 
     // Never use Duplicated or Atomic for Serial, use Single instead
-    if (is_serial && (method == MTTKRP_Duplicated || method == MTTKRP_Atomic))
-      method = MTTKRP_Single;
+    if (is_serial && (method == MTTKRP_Method::Duplicated ||
+                      method == MTTKRP_Method::Atomic))
+      method = MTTKRP_Method::Single;
 
     // Never use Duplicated for Cuda, use Atomic instead
-    if (is_cuda && method == MTTKRP_Duplicated)
-      method = MTTKRP_Atomic;
+    if (is_cuda && method == MTTKRP_Method::Duplicated)
+      method = MTTKRP_Method::Atomic;
 
-    if (method == MTTKRP_Single)
+    if (method == MTTKRP_Method::Single)
       mttkrp_kernel<ScatterNonDuplicated,ScatterNonAtomic,FBS,VS>(
         X,u,n,v,algParams);
-    else if (method == MTTKRP_Atomic)
+    else if (method == MTTKRP_Method::Atomic)
       mttkrp_kernel<ScatterNonDuplicated,ScatterAtomic,FBS,VS>(
         X,u,n,v,algParams);
-    else if (method == MTTKRP_Duplicated)
+    else if (method == MTTKRP_Method::Duplicated)
       mttkrp_kernel<ScatterDuplicated,ScatterNonAtomic,FBS,VS>(
         X,u,n,v,algParams);
-    else if (method == MTTKRP_Perm)
+    else if (method == MTTKRP_Method::Perm)
       mttkrp_kernel_perm<FBS,VS>(X,u,n,v,algParams);
   }
 };

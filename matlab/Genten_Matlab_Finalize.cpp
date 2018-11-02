@@ -38,72 +38,19 @@
 // ************************************************************************
 //@HEADER
 
+// Mex function for finalizing Kokkos to shut down parallel resources
 
-#include "Genten_Util.hpp"
-#include "Genten_IndxArray.hpp"
-#include <iostream>
+#include "Genten_Kokkos.hpp"
 
-// For vtune
-#include <sstream>
-#include <sys/types.h>
-#include <unistd.h>
+extern "C" {
 
+#include "mex.h"
 
-void Genten::error(std::string s)
+void mexFunction(int nlhs, mxArray *plhs[],
+                 int nrhs, const mxArray *prhs[])
 {
-  std::cerr << "FATAL ERROR: " << s << std::endl;
-  throw s;
+  if (Kokkos::is_initialized())
+    Kokkos::finalize();
 }
 
-bool  Genten::isEqualToTol(ttb_real  d1,
-                           ttb_real  d2,
-                           ttb_real  dTol)
-{
-  // Numerator = fabs(d1 - d2).
-  ttb_real  dDiff = fabs(d1 - d2);
-
-  // Denominator  = max(1, fabs(d1), fabs(d2).
-  ttb_real  dAbs1 = fabs(d1);
-  ttb_real  dAbs2 = fabs(d2);
-  ttb_real  dD = 1.0;
-  if ((dAbs1 > 1.0) || (dAbs2 > 1.0))
-  {
-    if (dAbs1 > dAbs2)
-      dD = dAbs1;
-    else
-      dD = dAbs2;
-  }
-
-  // Relative difference.
-  ttb_real  dRelDiff = dDiff / dD;
-
-  // Compare the relative difference to the tolerance.
-  return( dRelDiff < dTol );
 }
-
-char *  Genten::getGentenVersion(void)
-{
-  return( (char *)("Genten Tensor Toolbox 0.0.0") );
-}
-
-// Connect executable to vtune for profiling
-void Genten::connect_vtune(const int p_rank) {
-  std::stringstream cmd;
-  pid_t my_os_pid=getpid();
-  const std::string vtune_loc =
-    "amplxe-cl";
-  const std::string output_dir = "./vtune/vtune.";
-  cmd << vtune_loc
-      << " -collect hotspots -result-dir " << output_dir << p_rank
-      << " -target-pid " << my_os_pid << " &";
-  if (p_rank == 0)
-    std::cout << cmd.str() << std::endl;
-  system(cmd.str().c_str());
-  system("sleep 10");
-}
-
-const Genten::MTTKRP_Method::type Genten::MTTKRP_Method::types[];
-const char*const Genten::MTTKRP_Method::names[];
-
-const Genten::GCP_LossFunction::type Genten::GCP_LossFunction::types[];
-const char*const Genten::GCP_LossFunction::names[];

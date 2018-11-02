@@ -81,7 +81,8 @@ ArrayT(ttb_indx n, ttb_real * d, ttb_bool shdw):
 {
   if (!shdw)
   {
-    data = view_type("Genten::ArrayT::data", n);
+    data = view_type(Kokkos::view_alloc("Genten::ArrayT::data",
+                                        Kokkos::WithoutInitializing), n);
     unmanaged_const_view_type d_view(d,n);
     deep_copy(data, d_view);
   }
@@ -99,8 +100,14 @@ copyFrom(ttb_indx n, const ttb_real * src) const
   {
     error("Genten::ArrayT::copy - Destination array is not the correct size");
   }
-  unmanaged_const_view_type src_view(src,n);
-  deep_copy(data, src_view);
+  //unmanaged_const_view_type src_view(src,n);
+  //deep_copy(data, src_view);
+  view_type my_data = data;
+  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,n),
+                       KOKKOS_LAMBDA(const ttb_indx i)
+  {
+    my_data(i) = src[i];
+  });
 }
 
 template <typename ExecSpace>

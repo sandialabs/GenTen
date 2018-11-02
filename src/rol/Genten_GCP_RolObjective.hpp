@@ -269,31 +269,31 @@ namespace Genten {
         const bool is_serial = Genten::is_serial_space<exec_space>::value;
         const bool is_cuda = Genten::is_cuda_space<exec_space>::value;
 
-        MTTKRP_Method method = algParams.mttkrp_method;
+        MTTKRP_Method::type method = algParams.mttkrp_method;
 
         // Never use Duplicated or Atomic for Serial, use Single instead
-        if (is_serial && (method == MTTKRP_Duplicated ||
-                          method == MTTKRP_Atomic))
-          method = MTTKRP_Single;
+        if (is_serial && (method == MTTKRP_Method::Duplicated ||
+                          method == MTTKRP_Method::Atomic))
+          method = MTTKRP_Method::Single;
 
         // Never use Duplicated for Cuda, use Atomic instead
-        if (is_cuda && method == MTTKRP_Duplicated)
-          method = MTTKRP_Atomic;
+        if (is_cuda && method == MTTKRP_Method::Duplicated)
+          method = MTTKRP_Method::Atomic;
 
         GCP_GradTensor<tensor_type,loss_type,FBS,VS> XX(X, M, f);
         const unsigned nd = M.ndims();
         for (unsigned n=0; n<nd; ++n) {
-          if (method == MTTKRP_Single ||
+          if (method == MTTKRP_Method::Single ||
               Genten::is_serial_space<exec_space>::value)
             mttkrp_kernel<ScatterNonDuplicated,ScatterNonAtomic,FBS,VS>(
               XX,M,n,G[n],algParams);
-          else if (method == MTTKRP_Atomic)
+          else if (method == MTTKRP_Method::Atomic)
             mttkrp_kernel<ScatterNonDuplicated,ScatterAtomic,FBS,VS>(
               XX,M,n,G[n],algParams);
-          else if (method == MTTKRP_Duplicated)
+          else if (method == MTTKRP_Method::Duplicated)
             mttkrp_kernel<ScatterDuplicated,ScatterNonAtomic,FBS,VS>(
               XX,M,n,G[n],algParams);
-          else if (method == MTTKRP_Perm)
+          else if (method == MTTKRP_Method::Perm)
             mttkrp_kernel_perm<FBS,VS>(XX,M,n,G[n],algParams);
         }
       }
@@ -538,31 +538,31 @@ namespace Genten {
         const bool is_serial = Genten::is_serial_space<exec_space>::value;
         const bool is_cuda = Genten::is_cuda_space<exec_space>::value;
 
-        MTTKRP_Method method = algParams.mttkrp_method;
+        MTTKRP_Method::type method = algParams.mttkrp_method;
 
         // Never use Duplicated or Atomic for Serial, use Single instead
-        if (is_serial && (method == MTTKRP_Duplicated ||
-                          method == MTTKRP_Atomic))
-          method = MTTKRP_Single;
+        if (is_serial && (method == MTTKRP_Method::Duplicated ||
+                          method == MTTKRP_Method::Atomic))
+          method = MTTKRP_Method::Single;
 
         // Never use Duplicated for Cuda, use Atomic instead
         if (is_cuda && method == MTTKRP_Duplicated)
-          method = MTTKRP_Atomic;
+          method = MTTKRP_Method::Atomic;
 
         GCP_GradTensor<tensor_type,loss_type,FBS,VS> XX(X, M, f);
         const unsigned nd = M.ndims();
         for (unsigned n=0; n<nd; ++n) {
-          if (method == MTTKRP_Single ||
+          if (method == MTTKRP_Method::Single ||
               Genten::is_serial_space<exec_space>::value)
             gcp_mttkrp_kernel<ScatterNonDuplicated,ScatterNonAtomic,FBS,VS>(
               XX,M,n,G[n],algParams);
-          else if (method == MTTKRP_Atomic)
+          else if (method == MTTKRP_Method::Atomic)
             gcp_mttkrp_kernel<ScatterNonDuplicated,ScatterAtomic,FBS,VS>(
               XX,M,n,G[n],algParams);
-          else if (method == MTTKRP_Duplicated)
+          else if (method == MTTKRP_Method::Duplicated)
             gcp_mttkrp_kernel<ScatterDuplicated,ScatterNonAtomic,FBS,VS>(
               XX,M,n,G[n],algParams);
-          else if (method == MTTKRP_Perm)
+          else if (method == MTTKRP_Method::Perm)
             gcp_mttkrp_kernel_perm<FBS,VS>(XX,M,n,G[n],algParams);
         }
       }

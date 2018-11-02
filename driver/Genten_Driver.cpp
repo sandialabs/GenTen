@@ -38,163 +38,11 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_IOtext.hpp"
-#include "Genten_CpAls.hpp"
+#include "Genten_Driver.hpp"
 #include "Genten_Driver_Utils.hpp"
 #include "Genten_SystemTimer.hpp"
-#include "Genten_MixedFormatOps.hpp"
-#include "Genten_GCP_LossFunctions.hpp"
+#include "Genten_IOtext.hpp"
 
-#ifdef HAVE_ROL
-#include "Genten_GCP_Opt.hpp"
-#include "Teuchos_RCP.hpp"
-#include "Teuchos_XMLParameterListHelpers.hpp"
-#include "Teuchos_TimeMonitor.hpp"
-#endif
-
-const unsigned num_loss_function_types = 5;
-const Genten::LOSS_FUNCTION_TYPE loss_function_types[] =
-{ Genten::GAUSSIAN, Genten::RAYLEIGH, Genten::GAMMA, Genten::BERNOULLI, Genten::POISSON };
-const char* loss_function_names[] =
-{ "gaussian", "rayleigh", "gamma", "bernoulli", "poisson" };
-
-template <typename Space>
-int run(const std::string& method,
-        const std::string& inputfilename,
-        const std::string& outputfilename,
-        const std::string& rolfilename,
-        const ttb_indx index_base,
-        const bool gz,
-        const ttb_indx rank,
-        const Genten::LOSS_FUNCTION_TYPE loss_function_type,
-        const ttb_real loss_eps,
-        const unsigned long seed,
-        const bool prng,
-        const ttb_indx maxiters,
-        const ttb_real tol,
-        const ttb_indx printitn,
-        const bool save,
-        const bool debug,
-        const bool warmup,
-        const Genten::AlgParams& algParams)
-{
-  typedef Genten::SptensorT<Space> Sptensor_type;
-  typedef Genten::SptensorT<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
-  typedef Genten::KtensorT<Space> Ktensor_type;
-  typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
-
-  Genten::SystemTimer timer(3);
-
-  // Read in tensor data
-  std::string fname(inputfilename);
-  timer.start(0);
-  Sptensor_host_type x_host;
-  Genten::import_sptensor(fname, x_host, index_base, gz, true);
-  Sptensor_type x = create_mirror_view( Space(), x_host );
-  deep_copy( x, x_host );
-  timer.stop(0);
-  printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
-  if (debug) Genten::print_sptensor(x_host, std::cout, fname);
-
-  // Generate a random starting point
-  // Matlab cp_als always sets the weights to one.
-  Ktensor_host_type u_host;
-  Ktensor_type u;
-  Genten::RandomMT cRMT(seed);
-  timer.start(0);
-  if (prng) {
-    u = Ktensor_type(rank, x.ndims(), x.size());
-    u.setMatricesScatter(false, true, cRMT);
-    u.setWeights(1.0);
-    u_host = create_mirror_view( Genten::DefaultHostExecutionSpace(), u );
-    if (debug) deep_copy( u_host, u );
-  }
-  else {
-    u_host = Ktensor_host_type(rank, x_host.ndims(), x_host.size());
-    u_host.setMatricesScatter(false, false, cRMT);
-    u_host.setWeights(1.0);
-    u = create_mirror_view( Space(), u_host );
-    deep_copy( u, u_host );
-  }
-  timer.stop(0);
-  printf("Creating random initial guess took %6.3f seconds\n", timer.getTotalTime(0));
-  if (debug) Genten::print_ktensor(u_host, std::cout, "Initial guess");
-
-  if (warmup)
-  {
-    // Do a pass through the mttkrp to warm up and make sure the tensor
-    // is copied to the device before generating any timings.  Use
-    // Sptensor mttkrp and do this before createPermutation() so that
-    // createPermutation() timings are not polluted by UVM transfers
-    Ktensor_type tmp (rank,x.ndims(),x.size());
-    Genten::SptensorT<Genten::DefaultExecutionSpace>& x_tmp = x;
-    Genten::AlgParams ap = algParams;
-    ap.mttkrp_method = Genten::MTTKRP_Atomic;
-    for (ttb_indx  n = 0; n < x.ndims(); n++)
-      Genten::mttkrp(x_tmp, u, n, tmp[n], ap);
-  }
-
-  // Perform any post-processing (e.g., permutation and row ptr generation)
-  timer.start(1);
-  if (algParams.mttkrp_method == Genten::MTTKRP_Perm)
-    x.createPermutation();
-  timer.stop(1);
-  printf ("createPermutation() took %6.3f seconds\n", timer.getTotalTime(1));
-
-  const bool do_cpals =
-    method == "CP-ALS" || method == "cp-als" || method == "cpals";
-  const bool do_gcp =
-    method == "GCP" || method == "gcp" || method == "GCP-OPT" ||
-    method == "gcp_opt" || method == "gcp-opt";
-
-  if (do_cpals) {
-    // Run CP-ALS
-    ttb_indx iter;
-    ttb_real resNorm;
-    Genten::cpals_core (x, u, tol, maxiters, -1.0, printitn,
-                        iter, resNorm, 0, NULL, algParams);
-  }
-#ifdef HAVE_ROL
-  else if (do_gcp) {
-    // Run GCP
-    Teuchos::RCP<Teuchos::ParameterList> rol_params;
-    if (rolfilename != "")
-      rol_params = Teuchos::getParametersFromXmlFile(rolfilename);
-    timer.start(2);
-    if (rol_params != Teuchos::null)
-      gcp_opt(x, u, loss_function_type, *rol_params, &std::cout, loss_eps,
-              algParams);
-    else
-      gcp_opt(x, u, loss_function_type, tol, maxiters, &std::cout, loss_eps,
-              algParams);
-    timer.stop(2);
-    printf("GCP took %6.3f seconds\n", timer.getTotalTime(2));
-  }
-#endif
-  else {
-    Genten::error("Unknown decomposition method:  " + method);
-  }
-
-  // Save results to file
-  if (save)
-  {
-    timer.start(2);
-    deep_copy( u_host, u );
-    Genten::export_ktensor(outputfilename, u_host);
-    timer.stop(2);
-    printf("Data export took %6.3f seconds\n", timer.getTotalTime(2));
-  }
-  if (debug) Genten::print_ktensor(u_host, std::cout, "Solution");
-
-#ifdef HAVE_ROL
-  if (do_gcp)
-    Teuchos::TimeMonitor::summarize();
-#endif
-
-  return 0;
-}
-
-// forward declarations
 void usage(char **argv)
 {
   std::cout << "Usage: "<< argv[0]<<" [options]" << std::endl;
@@ -207,9 +55,9 @@ void usage(char **argv)
   std::cout << "  --gz               read tensor in gzip compressed format" << std::endl;
   std::cout << "  --rank <int>       rank of factorization to compute" << std::endl;
   std::cout << "  --type <type>      loss function type for GCP: ";
-  for (unsigned i=0; i<num_loss_function_types; ++i) {
-    std::cout << loss_function_names[i];
-    if (i != num_loss_function_types-1)
+  for (unsigned i=0; i<Genten::GCP_LossFunction::num_types; ++i) {
+    std::cout << Genten::GCP_LossFunction::names[i];
+    if (i != Genten::GCP_LossFunction::num_types-1)
       std::cout << ", ";
   }
   std::cout << std::endl;
@@ -223,9 +71,9 @@ void usage(char **argv)
   std::cout << "  --debug            turn on debugging output" << std::endl;
   std::cout << "  --warmup           do an iteration of mttkrp to warmup (useful for generating accurate timing information)" << std::endl;
   std::cout << "  --mttkrp_method <method> MTTKRP algorithm: ";
-  for (unsigned i=0; i<Genten::MTTKRP_Method_Info::num_types; ++i) {
-    std::cout << Genten::MTTKRP_Method_Info::names[i];
-    if (i != Genten::MTTKRP_Method_Info::num_types-1)
+  for (unsigned i=0; i<Genten::MTTKRP_Method::num_types; ++i) {
+    std::cout << Genten::MTTKRP_Method::names[i];
+    if (i != Genten::MTTKRP_Method::num_types-1)
       std::cout << ", ";
   }
   std::cout << std::endl;
@@ -263,10 +111,12 @@ int main(int argc, char* argv[])
       parse_ttb_bool(argc, argv, "--gz", false);
     ttb_indx rank =
       parse_ttb_indx(argc, argv, "--rank", 1, 1, INT_MAX);
-    Genten::LOSS_FUNCTION_TYPE loss_function_type =
-      parse_ttb_enum(argc, argv, "--type", Genten::GAUSSIAN,
-                     num_loss_function_types, loss_function_types,
-                     loss_function_names);
+    Genten::GCP_LossFunction::type loss_function_type =
+      parse_ttb_enum(argc, argv, "--type",
+                     Genten::GCP_LossFunction::Gaussian,
+                     Genten::GCP_LossFunction::num_types,
+                     Genten::GCP_LossFunction::types,
+                     Genten::GCP_LossFunction::names);
     ttb_real eps =
       parse_ttb_real(argc, argv, "--eps", 1.0e-10, 0.0, 1.0);
     ttb_indx maxiters =
@@ -287,11 +137,12 @@ int main(int argc, char* argv[])
       parse_ttb_bool(argc, argv, "--warmup", false);
     ttb_bool vtune =
       parse_ttb_bool(argc, argv, "--vtune", false);
-    Genten::MTTKRP_Method mttkrp_method =
-      parse_ttb_enum(argc, argv, "--mttkrp_method", Genten::MTTKRP_Atomic,
-                     Genten::MTTKRP_Method_Info::num_types,
-                     Genten::MTTKRP_Method_Info::methods,
-                     Genten::MTTKRP_Method_Info::names);
+    Genten::MTTKRP_Method::type mttkrp_method =
+      parse_ttb_enum(argc, argv, "--mttkrp_method",
+                     Genten::MTTKRP_Method::Atomic,
+                     Genten::MTTKRP_Method::num_types,
+                     Genten::MTTKRP_Method::types,
+                     Genten::MTTKRP_Method::names);
     ttb_indx mttkrp_tile_size =
       parse_ttb_indx(argc, argv, "--mttkrp_tile_size", 0, 0, INT_MAX);
 
@@ -307,8 +158,7 @@ int main(int argc, char* argv[])
       std::cout << "gz = " << (gz ? "true" : "false") << std::endl;
       std::cout << "index_base = " << index_base << std::endl;
       std::cout << "rank = " << rank << std::endl;
-      std::cout << "loss type = " << loss_function_names[loss_function_type]
-                << std::endl;
+      std::cout << "loss type = " << Genten::GCP_LossFunction::names[loss_function_type] << std::endl;
       std::cout << "eps = " << eps << std::endl;
       std::cout << "maxiters = " << maxiters << std::endl;
       std::cout << "printitn = " << printitn << std::endl;
@@ -318,7 +168,7 @@ int main(int argc, char* argv[])
       std::cout << "save = " << (save ? "true" : "false") << std::endl;
       std::cout << "debug = " << (debug ? "true" : "false") << std::endl;
       std::cout << "warmup = " << (warmup ? "true" : "false") << std::endl;
-      std::cout << "mttkrp_method = " << Genten::MTTKRP_Method_Info::methods[mttkrp_method] << std::endl;
+      std::cout << "mttkrp_method = " << Genten::MTTKRP_Method::types[mttkrp_method] << std::endl;
       std::cout << "mttkrp_tile_size = " << mttkrp_tile_size << std::endl;
       std::cout << std::endl;
     }
@@ -327,10 +177,43 @@ int main(int argc, char* argv[])
     algParams.mttkrp_method = mttkrp_method;
     algParams.mttkrp_duplicated_factor_matrix_tile_size = mttkrp_tile_size;
 
-    ret = run< Genten::DefaultExecutionSpace >(
-      method, inputfilename, outputfilename, rolfilename, index_base, gz,
-      rank, loss_function_type, eps, seed, prng,
-      maxiters, tol, printitn, save, debug, warmup, algParams);
+    typedef Genten::DefaultExecutionSpace Space;
+    typedef Genten::SptensorT<Space> Sptensor_type;
+    typedef Genten::SptensorT<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
+    typedef Genten::KtensorT<Space> Ktensor_type;
+    typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
+
+    Genten::SystemTimer timer(2);
+
+    // Read in tensor data
+    std::string fname(inputfilename);
+    timer.start(0);
+    Sptensor_host_type x_host;
+    Genten::import_sptensor(fname, x_host, index_base, gz, true);
+    Sptensor_type x = create_mirror_view( Space(), x_host );
+    deep_copy( x, x_host );
+    timer.stop(0);
+    printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
+    if (debug) Genten::print_sptensor(x_host, std::cout, fname);
+
+    // Compute decomposition
+    Ktensor_type u_init;
+    Ktensor_type u = Genten::driver(x, u_init, method, rank, rolfilename,
+                                    loss_function_type, eps, seed, prng,
+                                    maxiters, tol, printitn, debug, warmup,
+                                    std::cout, algParams);
+
+    // Save results to file
+    if (save)
+    {
+      timer.start(1);
+      Ktensor_host_type u_host =
+        create_mirror_view(Genten::DefaultHostExecutionSpace(), u);
+      deep_copy( u_host, u );
+      Genten::export_ktensor(outputfilename, u_host);
+      timer.stop(1);
+      printf("Data export took %6.3f seconds\n", timer.getTotalTime(2));
+    }
 
   }
   catch(std::string sExc)

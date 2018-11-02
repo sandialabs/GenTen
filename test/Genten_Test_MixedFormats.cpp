@@ -54,7 +54,7 @@ using namespace Genten::Test;
 /* This file contains unit tests for operations involving mixed tensor formats.
  */
 
-void Genten_Test_MixedFormats_Type(Genten::MTTKRP_Method mttkrp_method,
+void Genten_Test_MixedFormats_Type(Genten::MTTKRP_Method::type mttkrp_method,
                                    int infolevel, const std::string& label)
 {
   typedef Genten::DefaultExecutionSpace exec_space;
@@ -232,7 +232,7 @@ void Genten_Test_MixedFormats_Type(Genten::MTTKRP_Method mttkrp_method,
   // Copy a and oKtens to device
   a_dev = create_mirror_view( exec_space(), a );
   deep_copy( a_dev, a );
-  if (mttkrp_method == Genten::MTTKRP_Perm)
+  if (mttkrp_method == Genten::MTTKRP_Method::Perm)
     a_dev.createPermutation();
   oKtens_dev = create_mirror_view( exec_space(), oKtens );
   deep_copy( oKtens_dev, oKtens );
@@ -287,7 +287,7 @@ void Genten_Test_MixedFormats_Type(Genten::MTTKRP_Method mttkrp_method,
   a.value(1) = 1.0;
   a_dev = create_mirror_view( exec_space(), a );
   deep_copy( a_dev, a );
-  if (mttkrp_method == Genten::MTTKRP_Perm)
+  if (mttkrp_method == Genten::MTTKRP_Method::Perm)
     a_dev.createPermutation();
   oFM = Genten::FacMatrix(a.size(0), oKtens.ncomponents());
   oFM_dev = create_mirror_view( exec_space(), oFM );
@@ -317,7 +317,10 @@ void Genten_Test_MixedFormats_Type(Genten::MTTKRP_Method mttkrp_method,
 
 void Genten_Test_MixedFormats(int infolevel)
 {
-  Genten_Test_MixedFormats_Type(Genten::MTTKRP_Atomic,infolevel,"Atomic");
-  Genten_Test_MixedFormats_Type(Genten::MTTKRP_Duplicated,infolevel,"Duplicated");
-  Genten_Test_MixedFormats_Type(Genten::MTTKRP_Perm,infolevel,"Perm");
+  Genten_Test_MixedFormats_Type(Genten::MTTKRP_Method::Atomic,infolevel,
+                                "Atomic");
+  Genten_Test_MixedFormats_Type(Genten::MTTKRP_Method::Duplicated,infolevel,
+                                "Duplicated");
+  Genten_Test_MixedFormats_Type(Genten::MTTKRP_Method::Perm,infolevel,
+                                "Perm");
 }

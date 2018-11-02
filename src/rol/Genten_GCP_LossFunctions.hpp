@@ -50,15 +50,6 @@
 
 namespace Genten {
 
-  //! Loss functions supported by GCP
-  enum LOSS_FUNCTION_TYPE {
-    GAUSSIAN,
-    RAYLEIGH,
-    GAMMA,
-    BERNOULLI,
-    POISSON
-  };
-
   class GaussianLossFunction {
   public:
     GaussianLossFunction(const ttb_real&) {}

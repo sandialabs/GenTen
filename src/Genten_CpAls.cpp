@@ -44,9 +44,8 @@
   @brief CP-ALS algorithm, in template form to allow different data tensor types.
 */
 
-#include <assert.h>
-#include <float.h>
-#include <stdio.h>
+#include <ostream>
+#include <iomanip>
 #include <sstream>
 
 #include "Genten_Array.hpp"
@@ -115,6 +114,7 @@ namespace Genten {
                    ttb_real      & resNorm,
                    const ttb_indx        perfIter,
                    CpAlsPerfInfo   perfInfo[],
+                   std::ostream& out,
                    const AlgParams& algParams)
   {
 
@@ -322,8 +322,13 @@ namespace Genten {
       // Print progress of the current iteration.
       if ((printIter > 0) && (((numIters + 1) % printIter) == 0))
       {
-        printf ("Iter %2d: fit = %13.6e  fitdelta = %8.1e\n",
-                (int) (numIters + 1), fit, fitchange);
+        // printf ("Iter %2d: fit = %13.6e  fitdelta = %8.1e\n",
+        //         (int) (numIters + 1), fit, fitchange);
+        out << "Iter " << std::setw(3) << numIters + 1 << ": fit = "
+            << std::setw(13) << std::setprecision(6) << std::scientific << fit
+            << " fitdelta = "
+            << std::setw(8) << std::setprecision(1) << std::scientific
+            << fitchange << std::endl;
       }
 
       // Fill in performance information if requested.
@@ -384,30 +389,32 @@ namespace Genten {
 
     if (printIter > 0)
     {
-      printf ("CpAls completed %d iterations in %.3f seconds\n",
-              (int) numIters, timer.getTotalTime(timer_cpals));
-      printf ("\tMTTKRP total time = %.3f seconds, average time = %.3f seconds\n",
-              mttkrp_total_time, mttkrp_avg_time);
-      printf ("\tMTTKRP throughput = %.3f GFLOP/s, bandwidth factor = %.3f\n",
-              mttkrp_tput, mttkrp_factor);
-      printf ("\tInner product total time = %.3f seconds, average time = %.3f seconds\n",
-              timer.getTotalTime(timer_ip),
-              timer.getAvgTime(timer_ip));
-      printf ("\tGramian total time = %.3f seconds, average time = %.3f seconds\n",
-              timer.getTotalTime(timer_gramian),
-              timer.getAvgTime(timer_gramian));
-      printf ("\tSolve total time = %.3f seconds, average time = %.3f seconds\n",
-              timer.getTotalTime(timer_solve),
-              timer.getAvgTime(timer_solve));
-      printf ("\tScale total time = %.3f seconds, average time = %.3f seconds\n",
-              timer.getTotalTime(timer_scale),
-              timer.getAvgTime(timer_scale));
-      printf ("\tNorm total time = %.3f seconds, average time = %.3f seconds\n",
-              timer.getTotalTime(timer_norm),
-              timer.getAvgTime(timer_norm));
-      printf ("\tArrange total time = %.3f seconds, average time = %.3f seconds\n",
-              timer.getTotalTime(timer_arrange),
-              timer.getAvgTime(timer_arrange));
+      out.setf(std::ios_base::scientific);
+      out.precision(2);
+      out << "CpAls completed " << numIters << " iterations in "
+          << timer.getTotalTime(timer_cpals) << " seconds\n";
+      out << "\tMTTKRP total time = " << mttkrp_total_time
+          << " seconds, average time = " << mttkrp_avg_time << " seconds\n";
+      out << "\tMTTKRP throughput = " << mttkrp_tput
+          << " GFLOP/s, bandwidth factor = " << mttkrp_factor << "\n";
+      out << "\tInner product total time = " << timer.getTotalTime(timer_ip)
+          << " seconds, average time = " << timer.getAvgTime(timer_ip)
+          << " seconds\n";
+      out << "\tGramian total time = " << timer.getTotalTime(timer_gramian)
+          << " seconds, average time = " << timer.getAvgTime(timer_gramian)
+          << " seconds\n";
+      out << "\tSolve total time = " << timer.getTotalTime(timer_solve)
+          << " seconds, average time = " << timer.getAvgTime(timer_solve)
+          << " seconds\n";
+      out << "\tScale total time = " << timer.getTotalTime(timer_scale)
+          << " seconds, average time = " << timer.getAvgTime(timer_scale)
+          << " seconds\n";
+      out << "\tNorm total time = " << timer.getTotalTime(timer_norm)
+          << " seconds, average time = " << timer.getAvgTime(timer_norm)
+          << " seconds\n";
+      out << "\tArrange total time = " << timer.getTotalTime(timer_arrange)
+          << " seconds, average time = " << timer.getAvgTime(timer_arrange)
+          << " seconds\n";
     }
 
     return;
@@ -461,6 +468,7 @@ namespace Genten {
     ttb_real& resNorm,                                                  \
     const ttb_indx perfIter,                                            \
     CpAlsPerfInfo perfInfo[],                                           \
+    std::ostream& out,                                                  \
     const AlgParams& algParams);
 
 GENTEN_INST(INST_MACRO)

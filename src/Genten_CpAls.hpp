@@ -45,6 +45,9 @@
 */
 
 #pragma once
+
+#include <ostream>
+
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
 
@@ -135,6 +138,23 @@ namespace Genten {
                    ttb_real& resNorm,
                    const ttb_indx perfIter,
                    CpAlsPerfInfo perfInfo[],
+                   std::ostream& out,
                    const AlgParams& algParams = AlgParams());
+
+  template<typename TensorT, typename ExecSpace>
+  void cpals_core (const TensorT& x,
+                   KtensorT<ExecSpace>& u,
+                   const ttb_real tol,
+                   const ttb_indx maxIters,
+                   const ttb_real maxSecs,
+                   const ttb_indx printIter,
+                   ttb_indx& numIters,
+                   ttb_real& resNorm,
+                   const ttb_indx perfIter,
+                   CpAlsPerfInfo perfInfo[],
+                   const AlgParams& algParams = AlgParams()) {
+    cpals_core(x,u,tol,maxIters,maxSecs,printIter,numIters,resNorm,perfIter,
+               perfInfo,std::cout,algParams);
+  }
 
 }

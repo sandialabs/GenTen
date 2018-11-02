@@ -195,7 +195,7 @@ static void  evaluateResult (const int             infolevel,
  * the factor matrix columns shown above.  This is consistent with what the code
  * produces.
  */
-void Genten_Test_CpAls_Type (Genten::MTTKRP_Method mttkrp_method,
+void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
                              int infolevel, const std::string& label)
 {
   typedef Genten::DefaultExecutionSpace exec_space;
@@ -238,7 +238,7 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method mttkrp_method,
   // Copy X to device
   Sptensor_type X_dev = create_mirror_view( exec_space(), X );
   deep_copy( X_dev, X );
-  if (mttkrp_method == Genten::MTTKRP_Perm)
+  if (mttkrp_method == Genten::MTTKRP_Method::Perm)
     X_dev.createPermutation();
 
   // Load a known initial guess.
@@ -358,7 +358,10 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method mttkrp_method,
 
 void Genten_Test_CpAls (int infolevel)
 {
-  Genten_Test_CpAls_Type(Genten::MTTKRP_Atomic,infolevel,"Atomic");
-  Genten_Test_CpAls_Type(Genten::MTTKRP_Duplicated,infolevel,"Duplicated");
-  Genten_Test_CpAls_Type(Genten::MTTKRP_Perm,infolevel,"Perm");
+  Genten_Test_CpAls_Type(Genten::MTTKRP_Method::Atomic,infolevel,
+                         "Atomic");
+  Genten_Test_CpAls_Type(Genten::MTTKRP_Method::Duplicated,infolevel,
+                         "Duplicated");
+  Genten_Test_CpAls_Type(Genten::MTTKRP_Method::Perm,infolevel,
+                         "Perm");
 }

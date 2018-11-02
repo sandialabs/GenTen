@@ -78,7 +78,7 @@ namespace Genten {
    */
   template<typename TensorT, typename ExecSpace>
   void gcp_opt(const TensorT& x, KtensorT<ExecSpace>& u,
-               const LOSS_FUNCTION_TYPE loss_type,
+               const GCP_LossFunction::type loss_type,
                Teuchos::ParameterList& rol_params,
                std::ostream* stream = nullptr,
                const ttb_real loss_eps = 0.0,
@@ -111,7 +111,7 @@ namespace Genten {
    */
   template<typename TensorT, typename ExecSpace>
   void gcp_opt(const TensorT& x, KtensorT<ExecSpace>& u,
-               const LOSS_FUNCTION_TYPE loss_type,
+               const GCP_LossFunction::type loss_type,
                const ttb_real tol,
                const ttb_indx maxIters,
                std::ostream* stream = nullptr,
