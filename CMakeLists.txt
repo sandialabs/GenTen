@@ -499,40 +499,42 @@ INSTALL (
 #---- Matlab
 #------------------------------------------------------------
 
-IF(HAVE_MATLAB)
+# Matlab Tensor Toolbox stores floats as doubles, so the interface will
+# only compile if ttb_real == double
+IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
 
-ADD_LIBRARY(
-  gt_matlab
-  ${Genten_SOURCE_DIR}/matlab/Genten_Matlab.hpp
-  ${Genten_SOURCE_DIR}/matlab/Genten_Matlab.cpp)
-TARGET_INCLUDE_DIRECTORIES(gt_matlab PRIVATE ${Matlab_INCLUDE_DIRS})
-TARGET_LINK_LIBRARIES(gt_matlab ${GENTEN_LINK_LIBS} ${Matlab_MEX_LIBRARY})
-SET(GENTEN_MATLAB_LINK_LIBS gt_matlab ${GENTEN_LINK_LIBS})
+  ADD_LIBRARY(
+    gt_matlab
+    ${Genten_SOURCE_DIR}/matlab/Genten_Matlab.hpp
+    ${Genten_SOURCE_DIR}/matlab/Genten_Matlab.cpp)
+  TARGET_INCLUDE_DIRECTORIES(gt_matlab PRIVATE ${Matlab_INCLUDE_DIRS})
+  TARGET_LINK_LIBRARIES(gt_matlab ${GENTEN_LINK_LIBS} ${Matlab_MEX_LIBRARY})
+  SET(GENTEN_MATLAB_LINK_LIBS gt_matlab ${GENTEN_LINK_LIBS})
 
-MATLAB_ADD_MEX(
-  NAME gt_cp
-  SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Driver.cpp)
-MATLAB_ADD_MEX(
-  NAME gt_initialize
-  SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Initialize.cpp)
-MATLAB_ADD_MEX(
-  NAME gt_finalize
-  SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Finalize.cpp)
-TARGET_LINK_LIBRARIES (gt_cp ${GENTEN_MATLAB_LINK_LIBS})
-TARGET_LINK_LIBRARIES (gt_initialize ${GENTEN_MATLAB_LINK_LIBS})
-TARGET_LINK_LIBRARIES (gt_finalize ${GENTEN_MATLAB_LINK_LIBS})
-INSTALL(
-  TARGETS gt_matlab gt_cp gt_initialize gt_finalize
-  DESTINATION matlab)
-SET_PROPERTY(
-  TARGET gt_matlab gt_cp gt_initialize gt_finalize
-  PROPERTY LIBRARY_OUTPUT_DIRECTORY ${Genten_BINARY_DIR}/matlab)
+  MATLAB_ADD_MEX(
+    NAME gt_cp
+    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Driver.cpp)
+  MATLAB_ADD_MEX(
+    NAME gt_initialize
+    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Initialize.cpp)
+  MATLAB_ADD_MEX(
+    NAME gt_finalize
+    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Finalize.cpp)
+  TARGET_LINK_LIBRARIES (gt_cp ${GENTEN_MATLAB_LINK_LIBS})
+  TARGET_LINK_LIBRARIES (gt_initialize ${GENTEN_MATLAB_LINK_LIBS})
+  TARGET_LINK_LIBRARIES (gt_finalize ${GENTEN_MATLAB_LINK_LIBS})
+  INSTALL(
+    TARGETS gt_matlab gt_cp gt_initialize gt_finalize
+    DESTINATION matlab)
+  SET_PROPERTY(
+    TARGET gt_matlab gt_cp gt_initialize gt_finalize
+    PROPERTY LIBRARY_OUTPUT_DIRECTORY ${Genten_BINARY_DIR}/matlab)
 
-# Remove -DDLL_EXPORT_SYMBOL=... since it causes problems with nvcc_wrapper
-# Instead we define this inside the source
-SET_PROPERTY(
-  TARGET gt_matlab gt_cp gt_initialize gt_finalize
-  PROPERTY DEFINE_SYMBOL "")
+  # Remove -DDLL_EXPORT_SYMBOL=... since it causes problems with nvcc_wrapper
+  # Instead we define this inside the source
+  SET_PROPERTY(
+    TARGET gt_matlab gt_cp gt_initialize gt_finalize
+    PROPERTY DEFINE_SYMBOL "")
 
 ENDIF()
 
