@@ -1,0 +1,12 @@
+% GT_CP Compute a CP decomposition using Genten
+%
+%  GT_CP makes available the CP decomposition methods in Genten to Matlab,
+%  and works similarly to the CP_ALS function provided by the Tensor Toolbox.
+%  See CP_ALS for more information.  The differences with CP_ALS are:
+%    - The input tensor must be a sparse tensor
+%    - The 'dimorder' parameter is not accepted
+%    - The 'init' option can only be used to specify an initial guess as a
+%      ktensor (whereas CP_ALS accepts a variety of options).  If the intial
+%      guess is not specified, a random initial guess is used.
+%
+%  See also CP_ALS, SPTENSOR, KTENSOR

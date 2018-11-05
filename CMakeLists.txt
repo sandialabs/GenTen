@@ -513,13 +513,16 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
 
   MATLAB_ADD_MEX(
     NAME gt_cp
-    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Driver.cpp)
+    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Driver.cpp
+    DOCUMENTATION ${Genten_SOURCE_DIR}/matlab/gt_cp.txt)
   MATLAB_ADD_MEX(
     NAME gt_initialize
-    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Initialize.cpp)
+    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Initialize.cpp
+    DOCUMENTATION ${Genten_SOURCE_DIR}/matlab/gt_initialize.txt)
   MATLAB_ADD_MEX(
     NAME gt_finalize
-    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Finalize.cpp)
+    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Finalize.cpp
+    DOCUMENTATION ${Genten_SOURCE_DIR}/matlab/gt_finalize.txt)
   TARGET_LINK_LIBRARIES (gt_cp ${GENTEN_MATLAB_LINK_LIBS})
   TARGET_LINK_LIBRARIES (gt_initialize ${GENTEN_MATLAB_LINK_LIBS})
   TARGET_LINK_LIBRARIES (gt_finalize ${GENTEN_MATLAB_LINK_LIBS})
