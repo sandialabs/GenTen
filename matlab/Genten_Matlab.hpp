@@ -58,22 +58,42 @@ Genten::SptensorT<ExecSpace>
 mxGetSptensor(const mxArray *ptr, const bool print = false) {
   typedef Genten::SptensorT<ExecSpace> Sptensor_type;
   typedef Genten::Sptensor Sptensor_host_type;
+  typedef typename Sptensor_host_type::exec_space host_exec_space;
+  typedef typename Sptensor_host_type::subs_view_type subs_type;
+  typedef typename Sptensor_host_type::vals_view_type vals_type;
 
-  if (!mxIsStruct(ptr))
-    Genten::error("Arg is not a struct!");
+  if (!mxIsClass(ptr, "sptensor") && !mxIsClass(ptr, "sptensor_gt"))
+    Genten::error("Arg is not a sptensor or sptensor_gt!");
 
+  Sptensor_host_type X_host;
   mxArray* vals_field = mxGetField(ptr, 0, "vals");
   mxArray* subs_field = mxGetField(ptr, 0, "subs");
   mxArray* size_field = mxGetField(ptr, 0, "size");
   ttb_real* vals = mxGetDoubles(vals_field);
-  ttb_real* subs = mxGetDoubles(subs_field);
   ttb_real* size = mxGetDoubles(size_field);
   ttb_indx nd = mxGetNumberOfElements(size_field);
   ttb_indx nz = mxGetNumberOfElements(vals_field);
 
-  Sptensor_host_type X_host(nd, size, nz, vals, subs);
+  // Create sparse tensor from Tensor Toolbox sptensor format
+  // (subs transposed, 1-based, stored as doubles)
+  if (mxIsClass(ptr, "sptensor")) {
+    ttb_real* subs = mxGetDoubles(subs_field);
+    X_host = Sptensor_host_type(nd, size, nz, vals, subs);
+  }
+
+  // Create sparse tensor from Tensor Toolbox sptensor_gt format.
+  // Here we just create a view with no copies.
+  else if (mxIsClass(ptr, "sptensor_gt")) {
+    ttb_indx* subs = mxGetUint64s(subs_field);
+    Genten::IndxArrayT<host_exec_space> sz(nd, size);
+    subs_type s(subs,nz,nd);
+    vals_type v(vals,nz);
+    X_host = Sptensor_host_type(sz, v, s);
+  }
+
   Sptensor_type X = create_mirror_view(ExecSpace(), X_host);
   deep_copy(X, X_host);
+
   if (print)
     Genten::print_sptensor(X_host, std::cout, "X");
 

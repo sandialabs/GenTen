@@ -273,7 +273,7 @@ ADD_CUSTOM_COMMAND (
   ${Genten_BINARY_DIR}/data
   )
 INSTALL (
-  DIRECTORY ${Genten_SOURCE_DIR}/test_data
+  DIRECTORY ${Genten_SOURCE_DIR}/data
   DESTINATION .
   DIRECTORY_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
                         GROUP_READ GROUP_EXECUTE
@@ -284,7 +284,7 @@ INSTALL (
 #---- The location of test data is unfortunately hard-coded into source code.
 #---- The CMake directive below puts the relative location into source, but it
 #---- causes strange compiler errors on Windows.
-#---- ADD_DEFINITIONS (-DDATADIR=\"${Genten_SOURCE_DIR}/test_data/\")
+#---- ADD_DEFINITIONS (-DDATADIR=\"${Genten_SOURCE_DIR}/data/\")
 
 
 #------------------------------------------------------------
@@ -513,16 +513,13 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
 
   MATLAB_ADD_MEX(
     NAME gt_cp
-    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Driver.cpp
-    DOCUMENTATION ${Genten_SOURCE_DIR}/matlab/gt_cp.txt)
+    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Driver.cpp)
   MATLAB_ADD_MEX(
     NAME gt_initialize
-    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Initialize.cpp
-    DOCUMENTATION ${Genten_SOURCE_DIR}/matlab/gt_initialize.txt)
+    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Initialize.cpp)
   MATLAB_ADD_MEX(
     NAME gt_finalize
-    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Finalize.cpp
-    DOCUMENTATION ${Genten_SOURCE_DIR}/matlab/gt_finalize.txt)
+    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Finalize.cpp)
   TARGET_LINK_LIBRARIES (gt_cp ${GENTEN_MATLAB_LINK_LIBS})
   TARGET_LINK_LIBRARIES (gt_initialize ${GENTEN_MATLAB_LINK_LIBS})
   TARGET_LINK_LIBRARIES (gt_finalize ${GENTEN_MATLAB_LINK_LIBS})
@@ -538,6 +535,19 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
   SET_PROPERTY(
     TARGET gt_matlab gt_cp gt_initialize gt_finalize
     PROPERTY DEFINE_SYMBOL "")
+
+  # Targets to install matlab source files
+  ADD_CUSTOM_TARGET (copy_matlab_dir ALL)
+  ADD_CUSTOM_COMMAND (
+    TARGET copy_matlab_dir POST_BUILD
+    COMMAND cmake -E copy_directory
+    ${Genten_SOURCE_DIR}/matlab/matlab_src
+    ${Genten_BINARY_DIR}/matlab
+    )
+  # Hint:  Use trailing slash in directory name to remove it from install tree
+  INSTALL (
+    DIRECTORY ${Genten_SOURCE_DIR}/matlab/matlab_src/
+    DESTINATION matlab)
 
 ENDIF()
 
