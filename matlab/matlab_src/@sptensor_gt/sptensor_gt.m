@@ -16,7 +16,7 @@ function t = sptensor_gt(varargin)
 %
 %   X = SPTENSOR_GT(SUBS,VALS,SZ) uses FUN=@SUM.
 %
-%   X = SPTENSOR_GT(SUBS,VALS) uses SM = max(SUBS,[],1).
+%   X = SPTENSOR_GT(SUBS,VALS) uses SZ = max(SUBS,[],1).
 %
 %   X = SPTENSOR_GT(SZ) abbreviates X = SPTENSOR_GT([],[],SZ).
 %
