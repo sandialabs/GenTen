@@ -40,14 +40,15 @@
 
 // Mex function for finalizing Kokkos to shut down parallel resources
 
+#include "Genten_Matlab.hpp"
 #include "Genten_Kokkos.hpp"
 
 extern "C" {
 
 #include "mex.h"
 
-void mexFunction(int nlhs, mxArray *plhs[],
-                 int nrhs, const mxArray *prhs[])
+DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
+				int nrhs, const mxArray *prhs[])
 {
   if (Kokkos::is_initialized())
     Kokkos::finalize();

@@ -145,7 +145,7 @@ IF(ENABLE_MATLAB)
   ENDIF()
   OPTION(MATLAB_PATH "Path to MATLAB installation")
   SET(Matlab_ROOT_DIR "${MATLAB_PATH}")
-  FIND_PACKAGE(Matlab)
+  FIND_PACKAGE(Matlab COMPONENTS MX_LIBRARY)
   IF(Matlab_FOUND)
     MESSAGE("\nFound MATLAB: ")
     MESSAGE("   Matlab_ROOT_DIR = ${Matlab_ROOT_DIR}")
@@ -313,32 +313,18 @@ INSTALL (
   TARGETS genten_mathlibs_c
   DESTINATION lib
   )
-
-# Mathlibs
-ADD_LIBRARY (genten_mathlibs
-  ${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
-  ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
-  ${Genten_SOURCE_DIR}/src/mathlib/Genten_RandomMT.cpp
-  ${Genten_SOURCE_DIR}/src/mathlib/Genten_SystemTimer.cpp
-  )
 IF(NOT KOKKOS_INLINE_BUILD)
   SET(GENTEN_MATHLIBS
-    genten_mathlibs
     genten_mathlibs_c
     )
 ELSE()
   SET(GENTEN_MATHLIBS
-    genten_mathlibs
     genten_mathlibs_c
     kokkos
     )
 ENDIF()
 TARGET_LINK_LIBRARIES(
   ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
-  )
-INSTALL (
-  TARGETS genten_mathlibs
-  DESTINATION lib
   )
 
 
@@ -348,6 +334,10 @@ INSTALL (
 
 #---- List the source files to be built.
 SET (Genten_SOURCE_LIST
+  ${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
+  ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
+  ${Genten_SOURCE_DIR}/src/mathlib/Genten_RandomMT.cpp
+  ${Genten_SOURCE_DIR}/src/mathlib/Genten_SystemTimer.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Array.cpp
   ${Genten_SOURCE_DIR}/src/Genten_CpAls.cpp
   ${Genten_SOURCE_DIR}/src/Genten_FacMatArray.cpp
@@ -508,7 +498,8 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
     ${Genten_SOURCE_DIR}/matlab/Genten_Matlab.hpp
     ${Genten_SOURCE_DIR}/matlab/Genten_Matlab.cpp)
   TARGET_INCLUDE_DIRECTORIES(gt_matlab PRIVATE ${Matlab_INCLUDE_DIRS})
-  TARGET_LINK_LIBRARIES(gt_matlab ${GENTEN_LINK_LIBS} ${Matlab_MEX_LIBRARY})
+  TARGET_LINK_LIBRARIES(gt_matlab ${GENTEN_LINK_LIBS} ${Matlab_MEX_LIBRARY}
+    ${Matlab_MX_LIBRARY})
   SET(GENTEN_MATLAB_LINK_LIBS gt_matlab ${GENTEN_LINK_LIBS})
 
   MATLAB_ADD_MEX(
