@@ -1,5 +1,11 @@
-function t = sptensor(X)
-%SPTENSOR Convert a sparse tensor in sptensor_gt format to sptensor format.
+function n = ndims(t)
+%NDIMS Number of dimensions of a sparse tensor.
+%
+%   NDIMS(T) returns the number of dimensions of sparse tensor T.  
+%
+%   Examples:
+%   T = sptenrand([3 2 2],5); 
+%   ndims(T) %<-- should return 3
 %
 %   See also SPTENSOR_GT.
 %
@@ -14,5 +20,5 @@ function t = sptensor(X)
 % require a license from the United States Government.
 % The full license terms can be found in the file LICENSE.txt
 
-t = sptensor(double(X.subs)'+1, X.vals, X.size);
-return;
+
+n = size(t.size,2);

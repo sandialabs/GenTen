@@ -1,7 +1,12 @@
-function t = sptensor(X)
-%SPTENSOR Convert a sparse tensor in sptensor_gt format to sptensor format.
+function m = size(t,idx)
+%SIZE Sparse tensor dimensions.
+%  
+%   D = SIZE(T) returns the size of the tensor.  
 %
-%   See also SPTENSOR_GT.
+%   I = size(T,DIM) returns the sizes of the dimensions specified by DIM,
+%   which is either a scalar or a vector of dimensions.
+%
+%   See also SPTENSOR_GT, SPTENSOR_GT/NDIMS.
 %
 %MATLAB Tensor Toolbox.
 %Copyright 2015, Sandia Corporation.
@@ -14,5 +19,9 @@ function t = sptensor(X)
 % require a license from the United States Government.
 % The full license terms can be found in the file LICENSE.txt
 
-t = sptensor(double(X.subs)'+1, X.vals, X.size);
-return;
+
+if exist('idx','var')
+    m = t.size(idx);
+else
+    m = t.size;
+end

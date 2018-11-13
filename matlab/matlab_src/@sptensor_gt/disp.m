@@ -6,7 +6,17 @@ function disp(X,name)
 %   DISP(X,NAME) displays the tensor with the given name.
 %
 %   See also SPTENSOR_GT, SPTENSOR_GT/DISPLAY.
+%
+%MATLAB Tensor Toolbox.
+%Copyright 2015, Sandia Corporation.
 
+% This is the MATLAB Tensor Toolbox by T. Kolda, B. Bader, and others.
+% http://www.sandia.gov/~tgkolda/TensorToolbox.
+% Copyright (2015) Sandia Corporation. Under the terms of Contract
+% DE-AC04-94AL85000, there is a non-exclusive license for use of this
+% work by or on behalf of the U.S. Government. Export of this data may
+% require a license from the United States Government.
+% The full license terms can be found in the file LICENSE.txt
 
 % Extract the number of nonzeros and number of dimensions
 nz = nnz(X);
@@ -33,7 +43,7 @@ end
 % preallocate
 output = cell(nz,1);
 %%
-spc = floor(log10(max(double(X.subs),[],2)))+1;
+spc = floor(log10(max(double(X.subs),[],2)+1))+1;
 if numel(spc) == 1
     fmt = ['\t(%' num2str(spc(1)) 'd)%s'];
 else
@@ -57,7 +67,7 @@ if ~isempty(strfind(S{1},'*'))
 end
 %%
 for i = 1:nz
-    output{i} = sprintf(fmt,X.subs(:,i),S{i});
+    output{i} = sprintf(fmt,X.subs(:,i)+1,S{i});
 end
 fprintf('%s\n',output{:});
 

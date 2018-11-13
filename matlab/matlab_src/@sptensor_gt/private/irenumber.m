@@ -1,7 +1,7 @@
-function t = sptensor(X)
-%SPTENSOR Convert a sparse tensor in sptensor_gt format to sptensor format.
+function newsubs = irenumber(t, sz, range)
+%RENUMBER indices for sptensor subsasgn
 %
-%   See also SPTENSOR_GT.
+%  See also SPTENSOR_GT/SUBSASGN
 %
 %MATLAB Tensor Toolbox.
 %Copyright 2015, Sandia Corporation.
@@ -14,5 +14,22 @@ function t = sptensor(X)
 % require a license from the United States Government.
 % The full license terms can be found in the file LICENSE.txt
 
-t = sptensor(double(X.subs)'+1, X.vals, X.size);
-return;
+
+nz = nnz(t);
+if (nz == 0)
+    newsubs = [];
+    return;
+end
+
+newsubs = t.subs'+1;
+for i = 1 : numel(range)
+    r = range{i};
+    if ischar(r) && r == ':'
+        continue;
+    elseif numel(r) == 1
+        newsubs = [newsubs(:,1:i-1), r*ones(nz,1), newsubs(:,i:end)];
+    else
+        newsubs(:,i) = r(newsubs(:,i));
+    end
+end
+
