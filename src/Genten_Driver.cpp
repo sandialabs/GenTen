@@ -133,12 +133,14 @@ driver(SptensorT<ExecSpace>& x,
   }
 
   // Perform any post-processing (e.g., permutation and row ptr generation)
-  timer.start(1);
-  if (algParams.mttkrp_method == Genten::MTTKRP_Method::Perm)
+  if (algParams.mttkrp_method == Genten::MTTKRP_Method::Perm &&
+      !x.havePerm()) {
+    timer.start(1);
     x.createPermutation();
-  timer.stop(1);
-  out << "createPermutation() took " << timer.getTotalTime(1)
-      << " seconds\n";
+    timer.stop(1);
+    out << "createPermutation() took " << timer.getTotalTime(1)
+        << " seconds\n";
+  }
 
   const bool do_cpals =
     method == "CP-ALS" || method == "cp-als" || method == "cpals";

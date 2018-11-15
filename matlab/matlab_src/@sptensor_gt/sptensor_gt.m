@@ -64,6 +64,7 @@ if (nargin == 0) || ((nargin == 1) && isempty(varargin{1}))
     t.subs = [];
     t.vals = [];
     t.size = [];
+    t.perm = [];
     t = class(t,'sptensor_gt');
     return;
 end
@@ -80,6 +81,7 @@ if (nargin == 1)
             t.subs = source.subs;
             t.vals = source.vals;
             t.size = source.size;
+            t.perm = source.perm;
             t = class(t, 'sptensor_gt');
             return;
 
@@ -88,6 +90,7 @@ if (nargin == 1)
             t.subs = uint64(source.subs-1)';
             t.vals = source.vals;
             t.size = source.size;
+            t.perm = [];
             t = class(t, 'sptensor_gt');
             return;
 
@@ -108,6 +111,7 @@ if (nargin == 4) && (isnumeric(varargin{4})) && (varargin{4} == 0)
     t.subs = varargin{1};
     t.vals = varargin{2};
     t.size = varargin{3};
+    t.perm = [];
 
     % Create the tensor
     t = class(t, 'sptensor_gt');

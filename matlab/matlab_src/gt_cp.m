@@ -1,3 +1,4 @@
+function [U,varargout] = gt_cp(X,R,varargin)
 % GT_CP Compute a CP decomposition using Genten
 %
 %  GT_CP makes available the CP decomposition methods in Genten to Matlab.
@@ -38,4 +39,8 @@
 %            in each MTTKRP for the 'duplicated' method {0, which
 %            means all columns}
 %
-%  See also CP_ALS, SPTENSOR, KTENSOR
+%  See also CP_ALS, SPTENSOR_GT, KTENSOR
+
+argout = cell(1,nargout-1);
+[U,argout{:}] = gt_cp_driver(X,R,varargin{:});
+varargout = argout;

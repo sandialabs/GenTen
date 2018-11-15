@@ -69,10 +69,14 @@ mxGetSptensor(const mxArray *ptr, const bool print = false) {
   mxArray* vals_field = mxGetField(ptr, 0, "vals");
   mxArray* subs_field = mxGetField(ptr, 0, "subs");
   mxArray* size_field = mxGetField(ptr, 0, "size");
+  mxArray* perm_field = mxGetField(ptr, 0, "perm");
   ttb_real* vals = mxGetDoubles(vals_field);
   ttb_real* size = mxGetDoubles(size_field);
   ttb_indx nd = mxGetNumberOfElements(size_field);
   ttb_indx nz = mxGetNumberOfElements(vals_field);
+
+  mxArray* have_perm_field = nullptr;
+  bool have_perm = false;
 
   // Create sparse tensor from Tensor Toolbox sptensor format
   // (subs transposed, 1-based, stored as doubles)
@@ -85,10 +89,16 @@ mxGetSptensor(const mxArray *ptr, const bool print = false) {
   // Here we just create a view with no copies.
   else if (mxIsClass(ptr, "sptensor_gt")) {
     ttb_indx* subs = mxGetUint64s(subs_field);
+    ttb_indx* perm = mxGetUint64s(perm_field);
     Genten::IndxArrayT<host_exec_space> sz(nd, size);
     subs_type s(subs,nz,nd);
     vals_type v(vals,nz);
-    X_host = Sptensor_host_type(sz, v, s);
+    if (mxGetNumberOfElements(perm_field) > 0) {
+      subs_type p(perm,nz,nd);
+      X_host = Sptensor_host_type(sz, v, s, p);
+    }
+    else
+      X_host = Sptensor_host_type(sz, v, s);
   }
 
   Sptensor_type X = create_mirror_view(ExecSpace(), X_host);

@@ -109,8 +109,9 @@ public:
   // Create tensor from supplied dimensions, values, and subscripts
   KOKKOS_INLINE_FUNCTION
   SptensorT(const IndxArrayT<ExecSpace>& d, const vals_view_type& vals,
-            const subs_view_type& s) :
-    siz(d), nNumDims(d.size()), values(vals), subs(s), perm() {}
+            const subs_view_type& s,
+            const subs_view_type& p = subs_view_type()) :
+    siz(d), nNumDims(d.size()), values(vals), subs(s), perm(p) {}
 
   // Create tensor from supplied dimensions and subscripts, zero values
   SptensorT(const IndxArrayT<ExecSpace>& d, const subs_view_type& s) :
@@ -241,7 +242,7 @@ public:
   KOKKOS_INLINE_FUNCTION
   ttb_indx getPerm(ttb_indx i, ttb_indx n) const
   {
-    assert((i < this->values.size()) && (n < this->nNumDims));
+    assert((i < perm.extent(0)) && (n < perm.extent(1)));
     return perm(i,n);
   }
 
@@ -250,8 +251,11 @@ public:
   subs_view_type getPerm() const { return perm; }
 
   // Create permutation array by sorting each column of subs
-  // Currently must be public for Cuda-lambda
   void createPermutation();
+
+  // Whether permutation array is computed
+  KOKKOS_INLINE_FUNCTION
+  bool havePerm() const { return perm.span() == subs.span(); }
 
 protected:
 
@@ -280,7 +284,8 @@ create_mirror_view(const SptensorT<ExecSpace>& a)
   typedef typename SptensorT<ExecSpace>::HostMirror HostMirror;
   return HostMirror( create_mirror_view(a.size()),
                      create_mirror_view(a.getValues()),
-                     create_mirror_view(a.getSubscripts()) );
+                     create_mirror_view(a.getSubscripts()),
+                     create_mirror_view(a.getPerm()) );
 }
 
 template <typename Space, typename ExecSpace>
@@ -289,15 +294,17 @@ create_mirror_view(const Space& s, const SptensorT<ExecSpace>& a)
 {
   return SptensorT<Space>( create_mirror_view(s, a.size()),
                            create_mirror_view(s, a.getValues()),
-                           create_mirror_view(s, a.getSubscripts()) );
+                           create_mirror_view(s, a.getSubscripts()),
+                           create_mirror_view(s, a.getPerm()) );
 }
 
 template <typename E1, typename E2>
-void deep_copy(const SptensorT<E1>& dst, const SptensorT<E2>& src)
+void deep_copy(SptensorT<E1>& dst, const SptensorT<E2>& src)
 {
   deep_copy( dst.size(), src.size() );
   deep_copy( dst.getValues(), src.getValues() );
   deep_copy( dst.getSubscripts(), src.getSubscripts() );
+  deep_copy( dst.getPerm(), src.getPerm() );
 }
 
 }

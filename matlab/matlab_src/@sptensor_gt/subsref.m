@@ -61,6 +61,8 @@ switch s(1).type
                 a = tt_subsubsref(t.vals, s);
             case 'size'
                 a = tt_subsubsref(t.size, s);
+            case {'perm','perms'}
+                a = tt_subsubsref(t.perm'+1, s);
             otherwise
                 error(['No such field: ', s(1).subs]);
         end
