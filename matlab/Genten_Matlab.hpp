@@ -75,9 +75,6 @@ mxGetSptensor(const mxArray *ptr, const bool print = false) {
   ttb_indx nd = mxGetNumberOfElements(size_field);
   ttb_indx nz = mxGetNumberOfElements(vals_field);
 
-  mxArray* have_perm_field = nullptr;
-  bool have_perm = false;
-
   // Create sparse tensor from Tensor Toolbox sptensor format
   // (subs transposed, 1-based, stored as doubles)
   if (mxIsClass(ptr, "sptensor")) {
