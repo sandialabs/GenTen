@@ -52,20 +52,6 @@
 
 namespace Genten {
 
-  // A helper trait to determine whether an execution space is Cuda or not,
-  // and his always defined, regardless if Cuda is enabled.
-  template <typename ExecSpace>
-  struct is_cuda_space {
-    static const bool value = false;
-  };
-
-#if defined(KOKKOS_HAVE_CUDA)
-  template <>
-  struct is_cuda_space<Kokkos::Cuda> {
-    static const bool value = true;
-  };
-#endif
-
   // A helper trait to determine whether an execution space is Serial or not,
   // and his always defined, regardless if Serial is enabled.
   template <typename ExecSpace>
@@ -73,11 +59,93 @@ namespace Genten {
     static const bool value = false;
   };
 
+  // A helper trait to determine whether an execution space is OpenMP or not,
+  // and his always defined, regardless if OpenMP is enabled.
+  template <typename ExecSpace>
+  struct is_openmp_space {
+    static constexpr bool value = false;
+  };
+
+  // A helper trait to determine whether an execution space is Threads or not,
+  // and his always defined, regardless if Threads is enabled.
+  template <typename ExecSpace>
+  struct is_threads_space {
+    static constexpr bool value = false;
+  };
+
+  // A helper trait to determine whether an execution space is Cuda or not,
+  // and his always defined, regardless if Cuda is enabled.
+  template <typename ExecSpace>
+  struct is_cuda_space {
+    static constexpr bool value = false;
+  };
+
+  // A helper trait to determine the cuda architecture,
+  // and his always defined, regardless if Cuda is enabled.
+  template <typename ExecSpace>
+  struct cuda_device_arch {
+    static typename ExecSpace::size_type eval() { return 0; }
+  };
+
 #if defined(KOKKOS_HAVE_SERIAL)
   template <>
   struct is_serial_space<Kokkos::Serial> {
-    static const bool value = true;
+    static constexpr bool value = true;
   };
 #endif
+
+#if defined(KOKKOS_HAVE_OPENMP)
+  template <>
+  struct is_openmp_space<Kokkos::OpenMP> {
+    static constexpr bool value = true;
+  };
+#endif
+
+#if defined(KOKKOS_HAVE_THREADS)
+  template <>
+  struct is_threads_space<Kokkos::Threads> {
+    static constexpr bool value = true;
+  };
+#endif
+
+#if defined(KOKKOS_HAVE_CUDA)
+  template <>
+  struct is_cuda_space<Kokkos::Cuda> {
+    static constexpr bool value = true;
+  };
+
+  template <>
+  struct cuda_device_arch<Kokkos::Cuda> {
+    static typename Kokkos::Cuda::size_type eval() {
+      return Kokkos::Cuda::device_arch();
+    }
+  };
+#endif
+
+
+  // Set of traits and functions for inquiring about the execution space
+  template <typename ExecSpace>
+  struct SpaceProperties {
+    using exec_space = ExecSpace;
+    using size_type  = typename exec_space::size_type;
+
+    static constexpr bool is_serial = is_serial_space<exec_space>::value;
+    static constexpr bool is_openmp = is_openmp_space<exec_space>::value;
+    static constexpr bool is_threads = is_threads_space<exec_space>::value;
+    static constexpr bool is_cuda = is_cuda_space<exec_space>::value;
+
+    // Level of concurrency (i.e., threads) supported by the architecture
+    static size_type concurrency() {
+      using Kokkos::Experimental::UniqueToken;
+      using Kokkos::Experimental::UniqueTokenScope;
+      UniqueToken<exec_space, UniqueTokenScope::Global> token;
+      return token.size();
+    }
+
+    // The Cuda architecture type (e.g., 35, 61, 70, ...)
+    static size_type cuda_arch() {
+      return cuda_device_arch<exec_space>::eval();
+    }
+  };
 
 }

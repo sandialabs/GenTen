@@ -266,18 +266,25 @@ namespace Genten {
         using Kokkos::Experimental::ScatterAtomic;
         using Kokkos::Experimental::ScatterNonAtomic;
 
-        const bool is_serial = Genten::is_serial_space<exec_space>::value;
-        const bool is_cuda = Genten::is_cuda_space<exec_space>::value;
+        typedef SpaceProperties<exec_space> space_prop;
 
         MTTKRP_Method::type method = algParams.mttkrp_method;
 
+        // Compute default MTTKRP method
+        if (method == MTTKRP_Method::Default)
+          method = MTTKRP_Method::computeDefault<exec_space>();
+
+        // Check if Perm is selected, that perm is computed
+        if (method == MTTKRP_Method::Perm && !X.havePerm())
+          Genten::error("Perm MTTKRP method selected, but permutation array not computed!");
+
         // Never use Duplicated or Atomic for Serial, use Single instead
-        if (is_serial && (method == MTTKRP_Method::Duplicated ||
-                          method == MTTKRP_Method::Atomic))
+        if (space_prop::is_serial && (method == MTTKRP_Method::Duplicated ||
+                                      method == MTTKRP_Method::Atomic))
           method = MTTKRP_Method::Single;
 
         // Never use Duplicated for Cuda, use Atomic instead
-        if (is_cuda && method == MTTKRP_Method::Duplicated)
+        if (space_prop::is_cuda && method == MTTKRP_Method::Duplicated)
           method = MTTKRP_Method::Atomic;
 
         GCP_GradTensor<tensor_type,loss_type,FBS,VS> XX(X, M, f);
@@ -535,18 +542,25 @@ namespace Genten {
         using Kokkos::Experimental::ScatterAtomic;
         using Kokkos::Experimental::ScatterNonAtomic;
 
-        const bool is_serial = Genten::is_serial_space<exec_space>::value;
-        const bool is_cuda = Genten::is_cuda_space<exec_space>::value;
+        typedef SpaceProperties<exec_space> space_prop;
 
         MTTKRP_Method::type method = algParams.mttkrp_method;
 
+        // Compute default MTTKRP method
+        if (method == MTTKRP_Method::Default)
+          method = MTTKRP_Method::computeDefault<exec_space>();
+
+        // Check if Perm is selected, that perm is computed
+        if (method == MTTKRP_Method::Perm && !X.havePerm())
+          Genten::error("Perm MTTKRP method selected, but permutation array not computed!");
+
         // Never use Duplicated or Atomic for Serial, use Single instead
-        if (is_serial && (method == MTTKRP_Method::Duplicated ||
+        if (space_prop::is_serial && (method == MTTKRP_Method::Duplicated ||
                           method == MTTKRP_Method::Atomic))
           method = MTTKRP_Method::Single;
 
         // Never use Duplicated for Cuda, use Atomic instead
-        if (is_cuda && method == MTTKRP_Duplicated)
+        if (space_prop::is_cuda && method == MTTKRP_Duplicated)
           method = MTTKRP_Method::Atomic;
 
         GCP_GradTensor<tensor_type,loss_type,FBS,VS> XX(X, M, f);

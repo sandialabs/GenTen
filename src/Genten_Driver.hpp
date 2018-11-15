@@ -73,6 +73,6 @@ namespace Genten {
          const bool debug,
          const bool warmup,
          std::ostream& out,
-         const AlgParams& algParams = AlgParams());
+         AlgParams& algParams);
 
 }

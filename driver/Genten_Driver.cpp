@@ -139,7 +139,7 @@ int main(int argc, char* argv[])
       parse_ttb_bool(argc, argv, "--vtune", false);
     Genten::MTTKRP_Method::type mttkrp_method =
       parse_ttb_enum(argc, argv, "--mttkrp_method",
-                     Genten::MTTKRP_Method::Atomic,
+                     Genten::MTTKRP_Method::default_type,
                      Genten::MTTKRP_Method::num_types,
                      Genten::MTTKRP_Method::types,
                      Genten::MTTKRP_Method::names);

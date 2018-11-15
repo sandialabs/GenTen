@@ -77,7 +77,7 @@ driver(SptensorT<ExecSpace>& x,
        const bool debug,
        const bool warmup,
        std::ostream& out,
-       const AlgParams& algParams)
+       AlgParams& algParams)
 {
   typedef Genten::SptensorT<ExecSpace> Sptensor_type;
   typedef Genten::SptensorT<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
@@ -118,6 +118,10 @@ driver(SptensorT<ExecSpace>& x,
   deep_copy(u, u_init);
 
   if (debug) Genten::print_ktensor(u_host, out, "Initial guess");
+
+  // Compute default MTTKRP method if that is what was chosen
+  if (algParams.mttkrp_method == MTTKRP_Method::Default)
+    algParams.mttkrp_method = MTTKRP_Method::computeDefault<ExecSpace>();
 
   if (warmup)
   {
@@ -206,6 +210,6 @@ driver(SptensorT<ExecSpace>& x,
     const bool debug,                                                   \
     const bool warmup,                                                  \
     std::ostream& os,                                                   \
-    const AlgParams& algParams);
+    AlgParams& algParams);
 
 GENTEN_INST(INST_MACRO)

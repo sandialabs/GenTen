@@ -113,22 +113,48 @@ namespace Genten {
   // MTTKRP algorithm
   struct MTTKRP_Method {
     enum type {
+      Default,     // Use default method based on architecture
       Atomic,      // Use atomics factor matrix update
       Duplicated,  // Duplicate factor matrix then inter-thread reduce
       Single,      // Single-thread algorithm (no atomics or duplication)
       Perm         // Permutation-based algorithm
     };
-    static constexpr unsigned num_types = 4;
+    static constexpr unsigned num_types = 5;
     static constexpr type types[] = {
+      Default,
       Atomic,
       Duplicated,
       Single,
       Perm
     };
     static constexpr const char* names[] = {
-      "atomic", "duplicated", "single", "perm"
+      "default", "atomic", "duplicated", "single", "perm"
     };
-    static constexpr type default_type = Atomic;
+    static constexpr type default_type = Default;
+
+    template <typename ExecSpace>
+    static type computeDefault() {
+      typedef SpaceProperties<ExecSpace> space_prop;
+
+      type method = Atomic;
+
+      // Always use Single if there is only a single thread
+      if (space_prop::concurrency() == 1)
+        method = Single;
+
+      // Use Atomic on Cuda if it supports fast atomics for ttb_real.
+      // This is true with float on all arch's or float/double on Pascal (6.0)
+      // or later
+      else if (space_prop::is_cuda && (space_prop::cuda_arch() >= 600 ||
+                                       sizeof(ttb_real) == 4))
+        method = Atomic;
+
+      // Otherwise use Perm
+      else
+        method = Perm;
+
+      return method;
+    }
   };
 
   // Loss functions supported by GCP
@@ -191,7 +217,7 @@ namespace Genten {
     unsigned mttkrp_duplicated_factor_matrix_tile_size;
 
     AlgParams() :
-      mttkrp_method(MTTKRP_Method::Atomic),
+      mttkrp_method(MTTKRP_Method::default_type),
       mttkrp_duplicated_factor_matrix_tile_size(0)  // Use default choice
       {}
   };

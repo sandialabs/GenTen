@@ -67,7 +67,7 @@ void run_mttkrp(const std::string& inputfilename,
                 const ttb_indx  nMaxNonzeroes,
                 const unsigned long  nRNGseed,
                 const ttb_indx  nIters,
-                const Genten::AlgParams& algParams)
+                Genten::AlgParams& algParams)
 {
   typedef Genten::SptensorT<Space> Sptensor_type;
   typedef Genten::SptensorT<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
@@ -115,6 +115,10 @@ void run_mttkrp(const std::string& inputfilename,
     // data tensor.
     Ktensor_host_type cSol_host;
     Genten::FacTestSetGenerator cTestGen;
+
+    // Compute default MTTKRP method if that is what was chosen
+    if (algParams.mttkrp_method == Genten::MTTKRP_Method::Default)
+      algParams.mttkrp_method = Genten::MTTKRP_Method::computeDefault<Space>();
 
     Genten::SystemTimer gen_timer(1);
     gen_timer.start(0);
@@ -266,7 +270,7 @@ int main(int argc, char* argv[])
       parse_ttb_indx(argc, argv, "--iters", 10, 1, INT_MAX);
     Genten::MTTKRP_Method::type mttkrp_method =
       parse_ttb_enum(argc, argv, "--mttkrp_method",
-                     Genten::MTTKRP_Method::Atomic,
+                     Genten::MTTKRP_Method::default_type,
                      Genten::MTTKRP_Method::num_types,
                      Genten::MTTKRP_Method::types,
                      Genten::MTTKRP_Method::names);

@@ -69,7 +69,7 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
               unsigned long  nRNGseed,
               ttb_indx  nMaxIters,
               ttb_real  dStopTol,
-              const Genten::AlgParams& algParams)
+              Genten::AlgParams& algParams)
 {
   typedef Genten::SptensorT<Space> Sptensor_type;
   typedef Genten::SptensorT<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
@@ -132,6 +132,10 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
   }
   Ktensor_type cInitialGuess = create_mirror_view( Space(), cInitialGuess_host );
   deep_copy( cInitialGuess, cInitialGuess_host );
+
+  // Compute default MTTKRP method if that is what was chosen
+  if (algParams.mttkrp_method == Genten::MTTKRP_Method::Default)
+    algParams.mttkrp_method = Genten::MTTKRP_Method::computeDefault<Space>();
 
   // Do a pass through the mttkrp to warm up and make sure the tensor
   // is copied to the device before generating any timings.  Use
@@ -256,7 +260,7 @@ int main(int argc, char* argv[])
       parse_ttb_real(argc, argv, "--tol", 1.0e-7, 0.0, 1.0);
     Genten::MTTKRP_Method::type mttkrp_method =
       parse_ttb_enum(argc, argv, "--mttkrp_method",
-                     Genten::MTTKRP_Method::Atomic,
+                     Genten::MTTKRP_Method::default_type,
                      Genten::MTTKRP_Method::num_types,
                      Genten::MTTKRP_Method::types,
                      Genten::MTTKRP_Method::names);
