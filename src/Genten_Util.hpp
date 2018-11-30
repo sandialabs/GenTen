@@ -114,21 +114,23 @@ namespace Genten {
   struct MTTKRP_Method {
     enum type {
       Default,     // Use default method based on architecture
+      OrigKokkos,  // Use original Kokkos implementation
       Atomic,      // Use atomics factor matrix update
       Duplicated,  // Duplicate factor matrix then inter-thread reduce
       Single,      // Single-thread algorithm (no atomics or duplication)
       Perm         // Permutation-based algorithm
     };
-    static constexpr unsigned num_types = 5;
+    static constexpr unsigned num_types = 6;
     static constexpr type types[] = {
       Default,
+      OrigKokkos,
       Atomic,
       Duplicated,
       Single,
       Perm
     };
     static constexpr const char* names[] = {
-      "default", "atomic", "duplicated", "single", "perm"
+      "default", "orig-kokkos", "atomic", "duplicated", "single", "perm"
     };
     static constexpr type default_type = Default;
 

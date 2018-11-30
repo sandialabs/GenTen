@@ -442,6 +442,169 @@ struct MTTKRP_Kernel {
   }
 };
 
+template <typename ExecSpace, unsigned FacBlockSize,
+          unsigned TeamSize, unsigned VectorSize>
+struct MTTKRP_OrigKokkosKernelBlock {
+  typedef Kokkos::TeamPolicy <ExecSpace> Policy;
+  typedef typename Policy::member_type TeamMember;
+  typedef Kokkos::View< ttb_real**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+  const Genten::SptensorT<ExecSpace>& X;
+  const Genten::KtensorT<ExecSpace>& u;
+  const unsigned n;
+  const unsigned nd;
+  const Genten::FacMatrixT<ExecSpace>& v;
+  const ttb_indx i;
+
+  const TeamMember& team;
+  const unsigned team_index;
+  TmpScratchSpace tmp;
+
+  const ttb_indx k;
+  const ttb_real x_val;
+  const ttb_real* lambda;
+
+  static inline Policy policy(const ttb_indx nnz_) {
+    const ttb_indx N = (nnz_+TeamSize-1)/TeamSize;
+    Policy policy(N,TeamSize,VectorSize);
+    size_t bytes = TmpScratchSpace::shmem_size(TeamSize,FacBlockSize);
+    return policy.set_scratch_size(0,Kokkos::PerTeam(bytes));
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  MTTKRP_OrigKokkosKernelBlock(const Genten::SptensorT<ExecSpace>& X_,
+                               const Genten::KtensorT<ExecSpace>& u_,
+                               const unsigned n_,
+                               const Genten::FacMatrixT<ExecSpace>& v_,
+                               const ttb_indx i_,
+                               const TeamMember& team_) :
+    X(X_), u(u_), n(n_), nd(u.ndims()), v(v_), i(i_),
+    team(team_), team_index(team.team_rank()),
+    tmp(team.team_scratch(0), TeamSize, FacBlockSize),
+    k(X.subscript(i,n)), x_val(X.value(i)),
+    lambda(&u.weights(0))
+    {}
+
+  template <unsigned Nj>
+  KOKKOS_INLINE_FUNCTION
+  void run(const unsigned j, const unsigned nj_)
+  {
+     // nj.value == Nj_ if Nj_ > 0 and nj_ otherwise
+    Kokkos::Impl::integral_nonzero_constant<unsigned, Nj> nj(nj_);
+
+    const ttb_real *l = &lambda[j];
+    ttb_real *v_kj = &v.entry(k,j);
+
+    // Start tmp equal to the weights.
+    Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,unsigned(nj.value)),
+                         [&] (const unsigned& jj)
+    {
+      tmp(team_index,jj) = x_val * l[jj];
+    });
+
+    for (unsigned m=0; m<nd; ++m) {
+      if (m != n) {
+        // Update tmp array with elementwise product of row i
+        // from the m-th factor matrix.  Length of the row is nc.
+        const ttb_real *row = &(u[m].entry(X.subscript(i,m),j));
+        Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,unsigned(nj.value)),
+                             [&] (const unsigned& jj)
+        {
+          tmp(team_index,jj) *= row[jj];
+        });
+      }
+    }
+
+    // Update output by adding tmp array.
+    Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,unsigned(nj.value)),
+                         [&] (const unsigned& jj)
+    {
+      Kokkos::atomic_add(v_kj+jj, tmp(team_index,jj));
+    });
+  }
+};
+
+template <typename ExecSpace, unsigned FacBlockSize>
+void orig_kokkos_mttkrp_kernel(const Genten::SptensorT<ExecSpace>& X,
+                               const Genten::KtensorT<ExecSpace>& u,
+                               const ttb_indx n,
+                               const Genten::FacMatrixT<ExecSpace>& v)
+{
+  // Compute team and vector sizes, depending on the architecture
+#if defined(KOKKOS_HAVE_CUDA)
+  const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
+#else
+  const bool is_cuda = false;
+#endif
+  const unsigned VectorSize = is_cuda ? (FacBlockSize <= 16 ? FacBlockSize : 16) : 1;
+  const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+
+  const unsigned nc = u.ncomponents();
+  const ttb_indx nnz = X.nnz();
+
+  typedef MTTKRP_OrigKokkosKernelBlock<ExecSpace, FacBlockSize, TeamSize, VectorSize> Kernel;
+  typedef typename Kernel::TeamMember TeamMember;
+
+  Kokkos::parallel_for(Kernel::policy(nnz),
+                       KOKKOS_LAMBDA(TeamMember team)
+  {
+    const ttb_indx i = team.league_rank()*team.team_size()+team.team_rank();
+    if (i >= nnz)
+      return;
+
+    MTTKRP_OrigKokkosKernelBlock<ExecSpace, FacBlockSize, TeamSize, VectorSize> kernel(X, u, n, v, i, team);
+
+    for (unsigned j=0; j<nc; j+=FacBlockSize) {
+      if (j+FacBlockSize <= nc)
+        kernel.template run<FacBlockSize>(j, FacBlockSize);
+      else
+        kernel.template run<0>(j, nc-j);
+    }
+
+  }, "Genten::mttkrp_kernel");
+
+  return;
+}
+
+template <typename ExecSpace>
+void orig_kokkos_mttkrp(const Genten::SptensorT<ExecSpace>& X,
+                        const Genten::KtensorT<ExecSpace>& u,
+                        const ttb_indx n,
+                        const Genten::FacMatrixT<ExecSpace>& v)
+{
+  const ttb_indx nc = u.ncomponents();     // Number of components
+  const ttb_indx nd = u.ndims();           // Number of dimensions
+
+  assert(X.ndims() == nd);
+  assert(u.isConsistent());
+  for (ttb_indx i = 0; i < nd; i++)
+  {
+    if (i != n)
+      assert(u[i].nRows() == X.size(i));
+  }
+
+  // Resize and initialize the output factor matrix to zero.
+  assert( v.nRows() == X.size(n) );
+  assert( v.nCols() == nc );
+  v = ttb_real(0.0);
+
+  // Call kernel with factor block size determined from nc
+  if (nc == 1)
+    orig_kokkos_mttkrp_kernel<ExecSpace,1>(X,u,n,v);
+  else if (nc == 2)
+    orig_kokkos_mttkrp_kernel<ExecSpace,2>(X,u,n,v);
+  else if (nc <= 4)
+    orig_kokkos_mttkrp_kernel<ExecSpace,4>(X,u,n,v);
+  else if (nc <= 8)
+    orig_kokkos_mttkrp_kernel<ExecSpace,8>(X,u,n,v);
+  else if (nc <= 16)
+    orig_kokkos_mttkrp_kernel<ExecSpace,16>(X,u,n,v);
+  else
+    orig_kokkos_mttkrp_kernel<ExecSpace,32>(X,u,n,v);
+
+  return;
+}
+
 }
 }
 
@@ -470,6 +633,11 @@ void Genten::mttkrp(
   assert( v.nRows() == X.size(n) );
   assert( v.nCols() == nc );
 
-  Genten::Impl::MTTKRP_Kernel<SparseTensor> kernel(X,u,n,v,algParams);
-  Genten::Impl::run_row_simd_kernel(kernel, nc);
+  if (algParams.mttkrp_method == MTTKRP_Method::OrigKokkos) {
+    Genten::Impl::orig_kokkos_mttkrp(X,u,n,v);
+  }
+  else {
+    Genten::Impl::MTTKRP_Kernel<SparseTensor> kernel(X,u,n,v,algParams);
+    Genten::Impl::run_row_simd_kernel(kernel, nc);
+  }
 }
