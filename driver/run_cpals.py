@@ -131,8 +131,8 @@ def run_cpals_tensors(options, tensors):
     return its,cpals,mttkrp,fillComplete,total
 
 def parse_args(parser = OptionParser()):
-    parser.add_option('--exe', default='./bin/cpals',
-                      help='CpALS executable')
+    parser.add_option('--exe', default='./bin/genten',
+                      help='Genten executable')
     parser.add_option('--launch', default='',
                       help='Command needed to launch executable')
     parser.add_option('-f', '--force', action="store_true",
@@ -177,11 +177,11 @@ tensors = [ ('lbnl-network.tns', 'LBNL', 1),
             ('delicious-4d.tns', 'Delicious', 1) ]
 
 print '\nKokkos:'
-options.args = args + ' --tensor kokkos'
+options.args = args + ' --mttkrp_method atomic'
 options.output = output + '_kokkos'
 its_k,cpals_k,mttkrp_k,fillComplete_k,tot_k = run_cpals_tensors(options, tensors)
 
 print '\nPerm:'
-options.args = args + ' --tensor perm'
+options.args = args + ' --mttkrp_method perm'
 options.output = output + '_perm'
 its_p,cpals_p,mttkrp_p,fillComplete_p,tot_p = run_cpals_tensors(options, tensors)
