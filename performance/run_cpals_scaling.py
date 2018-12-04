@@ -66,7 +66,7 @@ def get_stats(file_name):
         if m != None:
             mttkrp = float(m.group(2))
 
-        m = re.search('\s+\(fillComplete\(\) took \s*(.*) seconds', line)
+        m = re.search('\s+\(createPermutation\(\) took \s*(.*) seconds', line)
         if m != None:
             fillComplete = float(m.group(1))
 
