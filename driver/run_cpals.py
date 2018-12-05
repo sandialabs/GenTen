@@ -174,7 +174,9 @@ tensors = [ ('lbnl-network.tns', 'LBNL', 1),
             ('vast-2015-mc1-5d.tns', 'VAST', 1),
             ('enron.tns', 'Enron', 1),
             ('nell-2.tns', 'NELL2', 1),
-            ('delicious-4d.tns', 'Delicious', 1) ]
+            ('delicious-4d.tns', 'Delicious', 1),
+            ('delicious-3d.tns', 'Delicious3', 1) ]
+
 
 print '\nKokkos:'
 options.args = args + ' --mttkrp_method atomic'
