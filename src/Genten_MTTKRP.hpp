@@ -268,7 +268,7 @@ mttkrp_kernel(const SparseTensor& X,
       };
 
       for (unsigned j=0; j<nc; j+=FacBlockSize) {
-        if (j+FacBlockSize < nc) {
+        if (j+FacBlockSize <= nc) {
           const unsigned nj = FacBlockSize;
           row_func(j, nj, std::integral_constant<unsigned,nj>());
         }
@@ -371,7 +371,7 @@ mttkrp_kernel_perm(const SparseTensor& X,
     };
 
     for (unsigned j=0; j<nc; j+=FacBlockSize) {
-      if (j+FacBlockSize < nc) {
+      if (j+FacBlockSize <= nc) {
         const unsigned nj = FacBlockSize;
         row_func(j, nj, std::integral_constant<unsigned,nj>());
       }
