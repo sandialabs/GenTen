@@ -38,57 +38,58 @@
 // ************************************************************************
 //@HEADER
 
+#pragma once
 
-#include <iostream>
+#include "Genten_Sptensor.hpp"
+#include "Genten_Ktensor.hpp"
+#include "Genten_Array.hpp"
 
-#include "Genten_Util.hpp"
+namespace Genten {
 
-using namespace std;
-
-// Forward declarations.
-void Genten_Test_Array(int infolevel);
-void Genten_Test_CpAls(int infolevel);
-void Genten_Test_FacMatrix(int infolevel, const string & dirname);
-void Genten_Test_IndxArray(int infolevel);
-void Genten_Test_IO(int infolevel, const string & dirname);
-void Genten_Test_Ktensor(int infolevel);
-void Genten_Test_MixedFormats(int infolevel);
-void Genten_Test_Sptensor(int infolevel);
-#ifdef HAVE_ROL
-void Genten_Test_GCP_Opt(int infolevel);
-#endif
-void Genten_Test_GCP_SGD(int infolevel);
-
-int main(int argc, char * argv[])
+template <typename Tensor, typename LossFunction,
+          unsigned FacBlockSize, unsigned VectorSize>
+class GCP_GradTensor : public Tensor
 {
+public:
 
-  Kokkos::initialize(argc, argv);
+  typedef typename Tensor::exec_space exec_space;
 
-  // Level 0 is minimal output, 1 is more verbose.
-  int infolevel = 0;
-  if (argc == 2)
+  // Create tensor from given data tensor
+  GCP_GradTensor(const Tensor& X_, const KtensorT<exec_space>& M_,
+                 const ArrayT<exec_space>& w_, const LossFunction& f_) :
+    Tensor(X_), M(M_), w(w_), f(f_) {}
+
+  // Default constructor
+  GCP_GradTensor() = default;
+
+  // Copy constructor.
+  KOKKOS_INLINE_FUNCTION
+  GCP_GradTensor(const GCP_GradTensor& arg) = default;
+
+  // Assignment operator.
+  KOKKOS_INLINE_FUNCTION
+  GCP_GradTensor& operator=(const GCP_GradTensor& arg) = default;
+
+  // Destructor.
+  KOKKOS_INLINE_FUNCTION
+  ~GCP_GradTensor() = default;
+
+  // Return reference to i-th nonzero
+  KOKKOS_INLINE_FUNCTION
+  ttb_real value(ttb_indx i) const
   {
-    infolevel = atoi(argv[1]);
-    if (infolevel < 0)
-      infolevel = 0;
+    static const bool is_cuda = Genten::is_cuda_space<exec_space>::value;
+    static const unsigned WarpSize = is_cuda ? VectorSize : 1;
+    const ttb_real m_val =
+      compute_Ktensor_value<exec_space, FacBlockSize, WarpSize>(M, *this, i);
+    return w[i] * f.deriv(Tensor::value(i), m_val);
   }
 
-  Genten_Test_Array(infolevel);
-  Genten_Test_IndxArray(infolevel);
-  Genten_Test_FacMatrix(infolevel, "./data/");
-  Genten_Test_Sptensor(infolevel);
-  Genten_Test_Ktensor(infolevel);
-  Genten_Test_MixedFormats(infolevel);
-  Genten_Test_IO(infolevel, "./data/");
-  Genten_Test_CpAls(infolevel);
-#ifdef HAVE_ROL
-  Genten_Test_GCP_Opt(infolevel);
-#endif
-  Genten_Test_GCP_SGD(infolevel);
+protected:
 
-  cout << "Unit tests complete for " << Genten::getGentenVersion() << endl;
+  KtensorT<exec_space> M;
+  ArrayT<exec_space> w;
+  LossFunction f;
+};
 
-  Kokkos::finalize();
-
-  return( 0 );
 }

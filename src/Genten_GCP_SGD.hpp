@@ -38,56 +38,34 @@
 // ************************************************************************
 //@HEADER
 
+
+/*!
+  @file Genten_CpAls.h
+  @brief CP-ALS algorithm, in template form to allow different data tensor types.
+*/
+
 #pragma once
+
+#include <ostream>
 
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
 
 namespace Genten {
 
-template <typename Tensor, typename LossFunction,
-          unsigned FacBlockSize, unsigned VectorSize>
-class GCP_GradTensor : public Tensor
-{
-public:
 
-  typedef typename Tensor::exec_space exec_space;
-
-  // Create tensor from given data tensor
-  GCP_GradTensor(const Tensor& X_, const KtensorT<exec_space>& M_,
-                 const LossFunction& f_) :
-    Tensor(X_), M(M_), f(f_) {}
-
-  // Default constructor
-  GCP_GradTensor() = default;
-
-  // Copy constructor.
-  KOKKOS_INLINE_FUNCTION
-  GCP_GradTensor(const GCP_GradTensor& arg) = default;
-
-  // Assignment operator.
-  KOKKOS_INLINE_FUNCTION
-  GCP_GradTensor& operator=(const GCP_GradTensor& arg) = default;
-
-  // Destructor.
-  KOKKOS_INLINE_FUNCTION
-  ~GCP_GradTensor() = default;
-
-  // Return reference to i-th nonzero
-  KOKKOS_INLINE_FUNCTION
-  ttb_real value(ttb_indx i) const
-  {
-    static const bool is_cuda = Genten::is_cuda_space<exec_space>::value;
-    static const unsigned WarpSize = is_cuda ? VectorSize : 1;
-    const ttb_real m_val =
-      compute_Ktensor_value<exec_space, FacBlockSize, WarpSize>(M, *this, i);
-    return f.deriv(Tensor::value(i), m_val) / this->nnz();
-  }
-
-protected:
-
-  KtensorT<exec_space> M;
-  LossFunction f;
-};
+  //! Compute the generalized CP decomposition of a tensor using SGD approach
+  template<typename TensorT, typename ExecSpace>
+  void gcp_sgd (const TensorT& x,
+                KtensorT<ExecSpace>& u,
+                const GCP_LossFunction::type loss_type,
+                const ttb_real loss_eps,
+                const ttb_real tol,
+                const ttb_indx maxIters,
+                const ttb_indx printIter,
+                ttb_indx& numIters,
+                ttb_real& resNorm,
+                std::ostream& out,
+                const AlgParams& algParams = AlgParams());
 
 }

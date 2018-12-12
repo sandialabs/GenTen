@@ -110,7 +110,7 @@ public:
     if (Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename ExecSpace::memory_space >::accessible)
       host_data = host_view_type(data.data(), data.extent(0));
     else {
-      host_data = host_view_type("Genten::IndxArray::hsot_data",
+      host_data = host_view_type("Genten::IndxArray::host_data",
                                  data.extent(0));
       deep_copy( host_data, data );
     }
@@ -226,6 +226,14 @@ public:
 
   KOKKOS_INLINE_FUNCTION
   host_view_type host_values() const { return host_data; }
+
+  IndxArrayT clone() const {
+    IndxArrayT v(data.size());
+    deep_copy(v.data, data);
+     if (!Kokkos::Impl::MemorySpaceAccess< typename Kokkos::Impl::ActiveExecutionMemorySpace::memory_space, typename ExecSpace::memory_space >::accessible)
+       deep_copy(v.host_data, host_data);
+     return v;
+  }
 
 private:
 

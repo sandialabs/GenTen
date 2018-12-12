@@ -76,8 +76,8 @@ public:
 
   // Constructor for a given size and number of nonzeros
   SptensorT(const IndxArrayT<ExecSpace>& sz, ttb_indx nz) :
-    siz(sz), nNumDims(sz.size()), values(nz),
-    subs("Genten::Sptensor::subs",nz,sz.size()), perm() {}
+    siz(sz.clone()), nNumDims(sz.size()), values(nz),
+    subs("Genten::Sptensor::subs",nz,sz.size()), perm(), have_perm(false) {}
 
   /* Constructor from complete raw data indexed C-wise in C types.
      All input are deep copied.
@@ -110,12 +110,14 @@ public:
   KOKKOS_INLINE_FUNCTION
   SptensorT(const IndxArrayT<ExecSpace>& d, const vals_view_type& vals,
             const subs_view_type& s,
-            const subs_view_type& p = subs_view_type()) :
-    siz(d), nNumDims(d.size()), values(vals), subs(s), perm(p) {}
+            const subs_view_type& p = subs_view_type(),
+            const bool hp = false) :
+    siz(d), nNumDims(d.size()), values(vals), subs(s), perm(p), have_perm(hp) {}
 
   // Create tensor from supplied dimensions and subscripts, zero values
   SptensorT(const IndxArrayT<ExecSpace>& d, const subs_view_type& s) :
-    siz(d), nNumDims(d.size()), values(s.extent(0),0.0), subs(s), perm() {}
+    siz(d), nNumDims(d.size()), values(s.extent(0),0.0), subs(s), perm(),
+    have_perm(false) {}
 
   // Copy constructor.
   KOKKOS_INLINE_FUNCTION
@@ -255,7 +257,10 @@ public:
 
   // Whether permutation array is computed
   KOKKOS_INLINE_FUNCTION
-  bool havePerm() const { return perm.span() == subs.span(); }
+  bool havePerm() const { return have_perm; }
+
+  // Reset whether permutation is computed
+  void setHavePerm(const bool hp) { have_perm = hp; }
 
 protected:
 
@@ -275,6 +280,9 @@ protected:
   // Permutation array for iterating over subs in non-decreasing fashion
   subs_view_type perm;
 
+  // Whether permutation array has been computed
+  bool have_perm;
+
 };
 
 template <typename ExecSpace>
@@ -285,7 +293,8 @@ create_mirror_view(const SptensorT<ExecSpace>& a)
   return HostMirror( create_mirror_view(a.size()),
                      create_mirror_view(a.getValues()),
                      create_mirror_view(a.getSubscripts()),
-                     create_mirror_view(a.getPerm()) );
+                     create_mirror_view(a.getPerm()),
+                     a.havePerm() );
 }
 
 template <typename Space, typename ExecSpace>
@@ -295,7 +304,8 @@ create_mirror_view(const Space& s, const SptensorT<ExecSpace>& a)
   return SptensorT<Space>( create_mirror_view(s, a.size()),
                            create_mirror_view(s, a.getValues()),
                            create_mirror_view(s, a.getSubscripts()),
-                           create_mirror_view(s, a.getPerm()) );
+                           create_mirror_view(s, a.getPerm()),
+                           a.havePerm() );
 }
 
 template <typename E1, typename E2>
@@ -305,6 +315,7 @@ void deep_copy(SptensorT<E1>& dst, const SptensorT<E2>& src)
   deep_copy( dst.getValues(), src.getValues() );
   deep_copy( dst.getSubscripts(), src.getSubscripts() );
   deep_copy( dst.getPerm(), src.getPerm() );
+  dst.setHavePerm( src.havePerm() );
 }
 
 }

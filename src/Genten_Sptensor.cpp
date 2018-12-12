@@ -84,7 +84,7 @@ SptensorT(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls,
   siz(nd,sz), nNumDims(nd), values(nz,vls,false),
   subs(Kokkos::view_alloc("Genten::Sptensor::subs",
                           Kokkos::WithoutInitializing),nz,nd),
-  perm()
+  perm(), have_perm(false)
 {
   // convert subscripts to ttb_indx with zero indexing and transpose subs array
   // to store each nonzero's subscripts contiguously
@@ -98,7 +98,7 @@ SptensorT(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals,
   siz(nd,dims), nNumDims(nd), values(nz,vals,false),
   subs(Kokkos::view_alloc("Genten::Sptensor::subs",
                           Kokkos::WithoutInitializing),nd,nz),
-  perm()
+  perm(), have_perm(false)
 {
   // Copy subscripts into subs.  Because of polymorphic layout, we can't
   // assume subs and subscripts are ordered in the same way
@@ -114,7 +114,7 @@ SptensorT(const std::vector<ttb_indx>& dims,
   nNumDims(dims.size()),
   values(vals.size(),const_cast<ttb_real*>(vals.data()),false),
   subs("Genten::Sptensor::subs",vals.size(),dims.size()),
-  perm()
+  perm(), have_perm(false)
 {
   for (ttb_indx i = 0; i < vals.size(); i ++)
   {
@@ -229,7 +229,7 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
 {
   const ttb_indx sz = subs.extent(0);
   const ttb_indx nNumDims = subs.extent(1);
-  
+
   // Neither std::sort or the Kokkos sort will work with non-contiguous views,
   // so we need to sort into temporary views
   typedef Kokkos::View<ttb_indx*,typename subs_view_type::array_layout,ExecSpace> ViewType;
@@ -328,16 +328,19 @@ createPermutation()
   cali::Function cali_func("Genten::Sptensor::createPermutation()");
 #endif
 
+  if (have_perm)
+    return;
+
   // Only create permutation array if it hasn't already been created
   const ttb_indx sz = subs.extent(0);
   const ttb_indx nNumDims = subs.extent(1);
   if ((perm.extent(0) != sz) || (perm.extent(1) != nNumDims)) {
-    
     perm = subs_view_type(Kokkos::view_alloc(Kokkos::WithoutInitializing,
                                              "Genten::Sptensor_kokkos::perm"),
                           sz, nNumDims);
-    Genten::Impl::createPermutationImpl<ExecSpace>(perm, subs, siz);
   }
+  Genten::Impl::createPermutationImpl<ExecSpace>(perm, subs, siz);
+  have_perm = true;
 }
 
 #define INST_MACRO(SPACE) template class Genten::SptensorT<SPACE>;

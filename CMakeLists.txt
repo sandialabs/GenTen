@@ -350,6 +350,7 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_portability.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Sptensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Util.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
   )
 
@@ -385,6 +386,7 @@ SET(UNIT_TEST_SRCS
   ${Genten_SOURCE_DIR}/test/Genten_Test_Sptensor.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_UnitTests.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_Utils.cpp
+  ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_SGD.cpp
   )
 IF(ENABLE_ROL)
   SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
