@@ -123,22 +123,9 @@ namespace Genten {
           ind[j] = ttb_indx(rng.genrnd_double() * X_host.size(j));
 
         // Search for index
-        bool found = false;
-        for (ttb_indx idx=0; idx<nnz; ++idx) {
-          bool t = true;
-          for (ttb_indx j=0; j<nd; ++j) {
-            if (ind[j] != X_host.subscript(idx,j)) {
-              t = false;
-              break;
-            }
-          }
-          if (t) {
-            found = true;
-            break;
-          }
-        }
+        const bool found = (X_host.index(ind) < nnz);
 
-        // If not found add it
+        // If not found, add it
         if (!found) {
           const ttb_indx idx = num_samples_nonzeros + i;
           for (ttb_indx j=0; j<nd; ++j)
@@ -154,13 +141,12 @@ namespace Genten {
       deep_copy(Y, Y_host);
       deep_copy(w, w_host);
       if (algParams.mttkrp_method == MTTKRP_Method::Perm) {
-        Y.setHavePerm(false);
         Y.createPermutation();
       }
     }
 
     template<typename TensorT, typename ExecSpace, typename LossFunction>
-    void gcp_sgd_impl(const TensorT& X, KtensorT<ExecSpace>& u,
+    void gcp_sgd_impl(TensorT& X, KtensorT<ExecSpace>& u,
                       const LossFunction& loss_func,
                       const ttb_real tol,
                       const ttb_indx maxEpochs,
@@ -228,8 +214,20 @@ namespace Genten {
 
       // Start timer for total execution time of the algorithm.
       const int timer_sgd = 0;
-      SystemTimer timer(1);
+      const int timer_sort = 1;
+      SystemTimer timer(2);
       timer.start(timer_sgd);
+
+      // Sort tensor if necessary
+      if (!X.isSorted()) {
+        if (printIter > 0)
+          out << "Sorting tensor for faster sampling...";
+        timer.start(timer_sort);
+        X.sort();
+        timer.stop(timer_sort);
+        if (printIter > 0)
+          out << timer.getTotalTime(timer_sort) << " seconds" << std::endl;
+      }
 
       if (printIter > 0) {
         out << "Starting GCP-SGD" << std::endl
@@ -323,7 +321,7 @@ namespace Genten {
 
 
   template<typename TensorT, typename ExecSpace>
-  void gcp_sgd(const TensorT& x, KtensorT<ExecSpace>& u,
+  void gcp_sgd(TensorT& x, KtensorT<ExecSpace>& u,
                const GCP_LossFunction::type loss_function_type,
                const ttb_real loss_eps,
                const ttb_real tol,
@@ -374,7 +372,7 @@ namespace Genten {
 
 #define INST_MACRO(SPACE)                                               \
   template void gcp_sgd<SptensorT<SPACE>,SPACE>(                        \
-    const SptensorT<SPACE>& x,                                          \
+    SptensorT<SPACE>& x,                                                \
     KtensorT<SPACE>& u,                                                 \
     const GCP_LossFunction::type loss_function_type,                    \
     const ttb_real loss_eps,                                            \

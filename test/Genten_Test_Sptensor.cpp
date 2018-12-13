@@ -44,6 +44,7 @@
 #include <time.h>
 #include "Genten_Sptensor.hpp"
 #include "Genten_Test_Utils.hpp"
+#include "Genten_IOtext.hpp"
 
 using namespace Genten::Test;
 
@@ -160,6 +161,67 @@ void Genten_Test_Sptensor(int infolevel)
     tf = false;
   ASSERT(tf, "Deep copy includes values and subscripts");
   */
+
+  // SEARCH
+  dims = Genten::IndxArray(3);
+  dims[0] = 2;  dims[1] = 3;  dims[2] = 4;
+  Genten::Sptensor X(dims,10);
+  X.subscript(0,0) = 1;  X.subscript(0,1) = 0;  X.subscript(0,2) = 0;
+  X.value(0) = 1.0;
+  X.subscript(1,0) = 0;  X.subscript(1,1) = 1;  X.subscript(1,2) = 0;
+  X.value(1) = 1.0;
+  X.subscript(2,0) = 1;  X.subscript(2,1) = 1;  X.subscript(2,2) = 0;
+  X.value(2) = 1.0;
+  X.subscript(3,0) = 0;  X.subscript(3,1) = 2;  X.subscript(3,2) = 0;
+  X.value(3) = 1.0;
+  X.subscript(4,0) = 0;  X.subscript(4,1) = 0;  X.subscript(4,2) = 1;
+  X.value(4) = 1.0;
+  X.subscript(5,0) = 0;  X.subscript(5,1) = 2;  X.subscript(5,2) = 1;
+  X.value(5) = 1.0;
+  X.subscript(6,0) = 0;  X.subscript(6,1) = 0;  X.subscript(6,2) = 3;
+  X.value(6) = 1.0;
+  X.subscript(7,0) = 1;  X.subscript(7,1) = 0;  X.subscript(7,2) = 3;
+  X.value(7) = 1.0;
+  X.subscript(8,0) = 0;  X.subscript(8,1) = 1;  X.subscript(8,2) = 3;
+  X.value(8) = 1.0;
+  X.subscript(9,0) = 1;  X.subscript(9,1) = 1;  X.subscript(9,2) = 3;
+  X.value(9) = 1.0;
+  ASSERT(X.nnz() == 10, "Data tensor has 10 nonzeroes");
+
+  MESSAGE("Testing unsorted tensor search");
+  ASSERT(X.index(std::vector<ttb_indx>{ 1, 0, 0 }) == 0, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 0, 1, 0 }) == 1, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 1, 1, 0 }) == 2, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 0, 2, 0 }) == 3, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 0, 0, 1 }) == 4, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 0, 2, 1 }) == 5, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 0, 0, 3 }) == 6, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 1, 0, 3 }) == 7, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 0, 1, 3 }) == 8, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 1, 1, 3 }) == 9, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 0, 0, 0 }) == 10, "Index not found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 0, 1, 2 }) == 10, "Index not found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 1, 2, 3 }) == 10, "Index not found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 3, 0, 0 }) == 10, "Index not found");
+
+  X.sort();
+  MESSAGE("Testing sorted tensor search");
+  //std::cout << std::endl;
+  //Genten::print_sptensor(X, std::cout, "Sorted X");
+  ASSERT(X.index(std::vector<ttb_indx>{ 0, 0, 1 }) == 0, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 0, 0, 3 }) == 1, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 0, 1, 0 }) == 2, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 0, 1, 3 }) == 3, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 0, 2, 0 }) == 4, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 0, 2, 1 }) == 5, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 1, 0, 0 }) == 6, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 1, 0, 3 }) == 7, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 1, 1, 0 }) == 8, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 1, 1, 3 }) == 9, "Index found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 0, 0, 0 }) == 10, "Index not found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 0, 1, 2 }) == 10, "Index not found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 1, 2, 3 }) == 10, "Index not found");
+  ASSERT(X.index(std::vector<ttb_indx>{ 3, 0, 0 }) == 10, "Index not found");
 
   finalize();
 }

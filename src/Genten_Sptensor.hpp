@@ -72,12 +72,14 @@ public:
   // Empty construtor.
   /* Creates an empty tensor with an empty size. */
   KOKKOS_INLINE_FUNCTION
-  SptensorT() : siz(),nNumDims(0),values(),subs(),perm() {}
+  SptensorT() : siz(),nNumDims(0),values(),subs(),perm(),
+                is_sorted(false) {}
 
   // Constructor for a given size and number of nonzeros
   SptensorT(const IndxArrayT<ExecSpace>& sz, ttb_indx nz) :
     siz(sz.clone()), nNumDims(sz.size()), values(nz),
-    subs("Genten::Sptensor::subs",nz,sz.size()), perm(), have_perm(false) {}
+    subs("Genten::Sptensor::subs",nz,sz.size()), perm(),
+    is_sorted(false) {}
 
   /* Constructor from complete raw data indexed C-wise in C types.
      All input are deep copied.
@@ -111,13 +113,14 @@ public:
   SptensorT(const IndxArrayT<ExecSpace>& d, const vals_view_type& vals,
             const subs_view_type& s,
             const subs_view_type& p = subs_view_type(),
-            const bool hp = false) :
-    siz(d), nNumDims(d.size()), values(vals), subs(s), perm(p), have_perm(hp) {}
+            const bool sorted = false) :
+    siz(d), nNumDims(d.size()), values(vals), subs(s), perm(p),
+    is_sorted(sorted) {}
 
   // Create tensor from supplied dimensions and subscripts, zero values
   SptensorT(const IndxArrayT<ExecSpace>& d, const subs_view_type& s) :
     siz(d), nNumDims(d.size()), values(s.extent(0),ttb_real(0.0)), subs(s),
-    perm(), have_perm(false) {}
+    perm(), is_sorted(false) {}
 
   // Copy constructor.
   KOKKOS_INLINE_FUNCTION
@@ -257,10 +260,21 @@ public:
 
   // Whether permutation array is computed
   KOKKOS_INLINE_FUNCTION
-  bool havePerm() const { return have_perm; }
+  bool havePerm() const { return perm.span() == subs.span(); }
 
-  // Reset whether permutation is computed
-  void setHavePerm(const bool hp) { have_perm = hp; }
+  // Sort tensor lexicographically
+  void sort();
+
+  // Is tensor sorted
+  bool isSorted() const { return is_sorted; }
+
+  // Set sorted flag
+  void setIsSorted(bool sorted) { is_sorted = sorted; }
+
+  // Return index for given subscript array.  Returns nnz() if not found
+  template <typename sub_type>
+  //KOKKOS_INLINE_FUNCTION
+  ttb_indx index(const sub_type& sub) const;
 
 protected:
 
@@ -280,8 +294,8 @@ protected:
   // Permutation array for iterating over subs in non-decreasing fashion
   subs_view_type perm;
 
-  // Whether permutation array has been computed
-  bool have_perm;
+  // Whether tensor has been sorted
+  bool is_sorted;
 
 };
 
@@ -294,7 +308,7 @@ create_mirror_view(const SptensorT<ExecSpace>& a)
                      create_mirror_view(a.getValues()),
                      create_mirror_view(a.getSubscripts()),
                      create_mirror_view(a.getPerm()),
-                     a.havePerm() );
+                     a.isSorted() );
 }
 
 template <typename Space, typename ExecSpace>
@@ -305,7 +319,7 @@ create_mirror_view(const Space& s, const SptensorT<ExecSpace>& a)
                            create_mirror_view(s, a.getValues()),
                            create_mirror_view(s, a.getSubscripts()),
                            create_mirror_view(s, a.getPerm()),
-                           a.havePerm() );
+                           a.isSorted() );
 }
 
 template <typename E1, typename E2>
@@ -315,7 +329,72 @@ void deep_copy(SptensorT<E1>& dst, const SptensorT<E2>& src)
   deep_copy( dst.getValues(), src.getValues() );
   deep_copy( dst.getSubscripts(), src.getSubscripts() );
   deep_copy( dst.getPerm(), src.getPerm() );
-  dst.setHavePerm( src.havePerm() );
+  dst.setIsSorted( src.isSorted() );
+}
+
+template <typename ExecSpace>
+template <typename ind_type>
+//KOKKOS_INLINE_FUNCTION
+ttb_indx SptensorT<ExecSpace>::index(const ind_type& ind) const
+{
+  const ttb_indx nz = subs.extent(0);
+  /*const*/ ttb_indx nd = subs.extent(1);
+
+  // For unsorted, have to do linear search
+  if (!is_sorted) {
+    ttb_indx i = 0;
+    for (; i<nz; ++i) {
+      bool t = true;
+      for (ttb_indx j=0; j<nd; ++j) {
+        t = t && (ind[j] == subs(i,j));
+        if (!t)
+          break;
+      }
+      if (t)
+        break;
+    }
+    return i;
+  }
+
+  // If sorted, do binary search
+  else {
+    // Find index "first" such that subs(first,:) >= ind
+    auto less = [&](const ttb_indx& i, const ind_type& b) {
+      unsigned n = 0;
+      while ((n < nd) && (subs(i,n) == b[n])) ++n;
+      if (n == nd || subs(i,n) >= b[n]) return false;
+      return true;
+    };
+    ttb_indx i = 0;
+    ttb_indx first = 0;
+    ttb_indx last = nz;
+    ttb_indx count = last-first;
+    ttb_indx step = 0;
+    while (count > 0) {
+      i = first;
+      step = count / 2;
+      i += step;
+      if (less(i, ind)) {
+        first = ++i;
+        count -= step + 1;
+      }
+      else
+        count = step;
+    }
+    if (first == last)
+      return nz; // ind > subs(i,:) for all i, so not found
+
+    else {  // subs(first,:) >= ind.  Check if it is equal.
+      unsigned n = 0;
+      while ((n < nd) && (subs(i,n) == ind[n])) ++n;
+      if (n == nd)
+        return first; // ind == subs(first,:)
+      else
+        return nz;    // ind != subs(first,:)
+    }
+  }
+
+  return nz;
 }
 
 }

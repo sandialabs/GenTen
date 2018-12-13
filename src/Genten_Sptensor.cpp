@@ -84,7 +84,7 @@ SptensorT(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls,
   siz(nd,sz), nNumDims(nd), values(nz,vls,false),
   subs(Kokkos::view_alloc("Genten::Sptensor::subs",
                           Kokkos::WithoutInitializing),nz,nd),
-  perm(), have_perm(false)
+  perm(), is_sorted(false)
 {
   // convert subscripts to ttb_indx with zero indexing and transpose subs array
   // to store each nonzero's subscripts contiguously
@@ -98,7 +98,7 @@ SptensorT(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals,
   siz(nd,dims), nNumDims(nd), values(nz,vals,false),
   subs(Kokkos::view_alloc("Genten::Sptensor::subs",
                           Kokkos::WithoutInitializing),nd,nz),
-  perm(), have_perm(false)
+  perm(), is_sorted(false)
 {
   // Copy subscripts into subs.  Because of polymorphic layout, we can't
   // assume subs and subscripts are ordered in the same way
@@ -114,7 +114,7 @@ SptensorT(const std::vector<ttb_indx>& dims,
   nNumDims(dims.size()),
   values(vals.size(),const_cast<ttb_real*>(vals.data()),false),
   subs("Genten::Sptensor::subs",vals.size(),dims.size()),
-  perm(), have_perm(false)
+  perm(), is_sorted(false)
 {
   for (ttb_indx i = 0; i < vals.size(); i ++)
   {
@@ -259,7 +259,7 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
                          KOKKOS_LAMBDA(const ttb_indx i)
     {
       tmp(i) = i;
-    }, "Genten::Sptensor_perm::createPermutationImpl_init_kernel");
+    }, "Genten::Sptensor::createPermutationImpl_init_kernel");
 
 #if defined(KOKKOS_HAVE_CUDA)
     if (std::is_same<ExecSpace, Kokkos::Cuda>::value) {
@@ -317,6 +317,77 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
     }
   }
 }
+
+// Implementation of sort().  Has to be done as a
+// non-member function because lambda capture of *this doesn't work on Cuda.
+template <typename ExecSpace, typename vals_type, typename subs_type>
+void
+sortImpl(vals_type& vals, subs_type& subs)
+{
+  const ttb_indx sz = subs.extent(0);
+  const unsigned nd = subs.extent(1);
+
+  // Neither std::sort or the Kokkos sort will work with non-contiguous views,
+  // so we need to sort into temporary views
+  Kokkos::View<ttb_indx*,typename subs_type::array_layout,ExecSpace>
+    tmp(Kokkos::view_alloc(Kokkos::WithoutInitializing,"tmp_perm"),sz);
+
+  // Sort tmp=[1:sz] using subs as a comparator to compute permutation array
+  // to lexicographically sorted order
+
+  // Initialize tmp to unsorted order
+  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
+  {
+    tmp(i) = i;
+  }, "Genten::Sptensor::sortImpl_init_kernel");
+
+  // Comparison functor for lexicographic sorting
+  auto cmp =
+    KOKKOS_LAMBDA(const ttb_indx& a, const ttb_indx& b)
+    {
+      unsigned n = 0;
+      while ((n < nd) && (subs(a,n) == subs(b,n))) ++n;
+      if (n == nd || subs(a,n) >= subs(b,n)) return false;
+      return true;
+    };
+
+#if defined(KOKKOS_HAVE_CUDA)
+  if (std::is_same<ExecSpace, Kokkos::Cuda>::value) {
+    thrust::stable_sort(thrust::device_ptr<ttb_indx>(tmp.data()),
+                        thrust::device_ptr<ttb_indx>(tmp.data()+sz),
+                        cmp);
+  }
+  else
+#endif
+
+#if defined(KOKKOS_HAVE_OPENMP)
+    if (std::is_same<ExecSpace, Kokkos::OpenMP>::value) {
+      pss::parallel_stable_sort(tmp.data(), tmp.data()+sz, cmp);
+    }
+    else
+#endif
+      std::stable_sort(tmp.data(), tmp.data()+sz, cmp);
+
+
+  // Now copy vals and subs to sorted order
+  typename vals_type::view_type sorted_vals(
+    Kokkos::view_alloc("Genten::Sptensor::vals", Kokkos::WithoutInitializing),
+    sz);
+  subs_type sorted_subs(
+    Kokkos::view_alloc("Genten::Sptensor::subs", Kokkos::WithoutInitializing),
+    sz, nd);
+  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
+  {
+    sorted_vals(i) = vals[tmp(i)];
+    for (unsigned n=0; n<nd; ++n)
+      sorted_subs(i,n) = subs(tmp(i),n);
+  }, "Genten::Sptensor::sortImpl_copy_kernel");
+
+  vals = vals_type(sorted_vals);
+  subs = sorted_subs;
+}
 }
 }
 
@@ -328,9 +399,6 @@ createPermutation()
   cali::Function cali_func("Genten::Sptensor::createPermutation()");
 #endif
 
-  if (have_perm)
-    return;
-
   // Only create permutation array if it hasn't already been created
   const ttb_indx sz = subs.extent(0);
   const ttb_indx nNumDims = subs.extent(1);
@@ -340,7 +408,20 @@ createPermutation()
                           sz, nNumDims);
   }
   Genten::Impl::createPermutationImpl<ExecSpace>(perm, subs, siz);
-  have_perm = true;
+}
+
+template <typename ExecSpace>
+void Genten::SptensorT<ExecSpace>::
+sort()
+{
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::Sptensor::sort()");
+#endif
+
+  if (!is_sorted) {
+    Genten::Impl::sortImpl<ExecSpace>(values, subs);
+    is_sorted = true;
+  }
 }
 
 #define INST_MACRO(SPACE) template class Genten::SptensorT<SPACE>;
