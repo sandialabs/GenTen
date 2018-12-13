@@ -116,8 +116,8 @@ public:
 
   // Create tensor from supplied dimensions and subscripts, zero values
   SptensorT(const IndxArrayT<ExecSpace>& d, const subs_view_type& s) :
-    siz(d), nNumDims(d.size()), values(s.extent(0),0.0), subs(s), perm(),
-    have_perm(false) {}
+    siz(d), nNumDims(d.size()), values(s.extent(0),ttb_real(0.0)), subs(s),
+    perm(), have_perm(false) {}
 
   // Copy constructor.
   KOKKOS_INLINE_FUNCTION
