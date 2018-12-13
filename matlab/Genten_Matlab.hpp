@@ -71,14 +71,14 @@ mxGetSptensor(const mxArray *ptr, const bool print = false) {
   mxArray* size_field = mxGetField(ptr, 0, "size");
   mxArray* perm_field = mxGetField(ptr, 0, "perm");
   ttb_real* vals = mxGetDoubles(vals_field);
-  ttb_real* size = mxGetDoubles(size_field);
-  ttb_indx nd = mxGetNumberOfElements(size_field);
   ttb_indx nz = mxGetNumberOfElements(vals_field);
 
   // Create sparse tensor from Tensor Toolbox sptensor format
   // (subs transposed, 1-based, stored as doubles)
   if (mxIsClass(ptr, "sptensor")) {
     ttb_real* subs = mxGetDoubles(subs_field);
+    ttb_real* size = mxGetDoubles(size_field);
+    ttb_indx nd = mxGetNumberOfElements(size_field);
     X_host = Sptensor_host_type(nd, size, nz, vals, subs);
   }
 
@@ -87,6 +87,8 @@ mxGetSptensor(const mxArray *ptr, const bool print = false) {
   else if (mxIsClass(ptr, "sptensor_gt")) {
     ttb_indx* subs = mxGetUint64s(subs_field);
     ttb_indx* perm = mxGetUint64s(perm_field);
+    ttb_indx* size = mxGetUint64s(size_field);
+    ttb_indx nd = mxGetNumberOfElements(size_field);
     Genten::IndxArrayT<host_exec_space> sz(nd, size);
     subs_type s(subs,nz,nd);
     vals_type v(vals,nz);

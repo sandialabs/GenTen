@@ -14,5 +14,5 @@ function t = sptensor(X)
 % require a license from the United States Government.
 % The full license terms can be found in the file LICENSE.txt
 
-t = sptensor(double(X.subs)'+1, X.vals, X.size);
+t = sptensor(double(X.subs)'+1, X.vals, double(X.size));
 return;

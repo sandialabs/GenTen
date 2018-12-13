@@ -33,13 +33,15 @@ fclose(fid);
 fid = fopen(fname,'r');
 
 % Now read whole file
-data = fscanf(fid,'%f',[n+1,Inf]);
+data = textscan(fid,[repmat('%u64',1,n) '%f']);
+subs = cell2mat(data(1:n));
+vals = data{n+1};
 
 % Compute dimensions
-sz = max(data(1:n,:),[],2);
+sz = max(subs,[],1);
 
 % Create tensor
-A = sptensor_gt(data(1:n,:)',data(n,:)',sz');
+A = sptensor_gt((subs-1)', vals, sz, 0);
 
 % Close file
 fclose(fid);

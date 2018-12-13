@@ -89,7 +89,7 @@ if (nargin == 1)
         case 'sptensor',
             t.subs = uint64(source.subs-1)';
             t.vals = source.vals;
-            t.size = source.size;
+            t.size = uint64(source.size);
             t.perm = [];
             t = class(t, 'sptensor_gt');
             return;
