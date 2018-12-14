@@ -63,7 +63,7 @@ public:
   typedef ExecSpace exec_space;
   typedef Kokkos::View<ttb_indx*,Kokkos::LayoutRight,ExecSpace> view_type;
   typedef Kokkos::View<ttb_indx*,typename view_type::array_layout,DefaultHostExecutionSpace> host_view_type;
-  typedef typename view_type::host_mirror_space host_mirror_space;
+  typedef typename view_type::host_mirror_space::execution_space host_mirror_space;
   typedef IndxArrayT<host_mirror_space> HostMirror;
 
   // ----- CREATE & DESTROY -----

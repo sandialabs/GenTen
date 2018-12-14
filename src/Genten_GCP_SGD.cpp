@@ -113,8 +113,8 @@ namespace Genten {
       }
 
       // Generate num_samples_zeros of zeros
-      //IndxArrayT<host_exec_space> ind(nd);
-      std::vector<ttb_indx> ind(nd);
+      IndxArrayT<host_exec_space> ind(nd);
+      //std::vector<ttb_indx> ind(nd);
       ttb_indx i=0;
       while (i<num_samples_zeros) {
 

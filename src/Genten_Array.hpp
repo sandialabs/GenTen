@@ -74,7 +74,7 @@ namespace Genten {
   public:
     typedef ExecSpace exec_space;
     typedef Kokkos::View<ttb_real*,Kokkos::LayoutRight,exec_space> view_type;
-    typedef typename view_type::host_mirror_space host_mirror_space;
+    typedef typename view_type::host_mirror_space::execution_space host_mirror_space;
     typedef ArrayT<host_mirror_space> HostMirror;
 
     // ----- CREATE & DESTROY -----
