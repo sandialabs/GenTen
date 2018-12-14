@@ -45,7 +45,7 @@
 */
 
 #include "Genten_CpAls.hpp"
-
+#include "Genten_GCP_SGD.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
@@ -148,19 +148,27 @@ driver(SptensorT<ExecSpace>& x,
 
   const bool do_cpals =
     method == "CP-ALS" || method == "cp-als" || method == "cpals";
-  const bool do_gcp =
-    method == "GCP" || method == "gcp" || method == "GCP-OPT" ||
-    method == "gcp_opt" || method == "gcp-opt";
+  const bool do_gcp_sgd =
+    method == "GCP-SGD" || method == "gcp_sgd" || method == "gcp-sgd";
+  const bool do_gcp_opt =
+    method == "GCP-OPT" || method == "gcp_opt" || method == "gcp-opt";
 
   if (do_cpals) {
     // Run CP-ALS
     ttb_indx iter;
     ttb_real resNorm;
-    Genten::cpals_core (x, u, tol, maxiters, -1.0, printitn,
-                        iter, resNorm, 0, NULL, out, algParams);
+    cpals_core(x, u, tol, maxiters, -1.0, printitn,
+                iter, resNorm, 0, NULL, out, algParams);
+  }
+  else if (do_gcp_sgd) {
+    // Run GCP-SGD
+    ttb_indx iter;
+    ttb_real resNorm;
+    gcp_sgd(x, u, loss_function_type, loss_eps, tol, maxiters, printitn,
+                        iter, resNorm, out, algParams);
   }
 #ifdef HAVE_ROL
-  else if (do_gcp) {
+  else if (do_gcp_opt) {
     // Run GCP
     Teuchos::RCP<Teuchos::ParameterList> rol_params;
     if (rolfilename != "")
@@ -183,7 +191,7 @@ driver(SptensorT<ExecSpace>& x,
   if (debug) Genten::print_ktensor(u_host, out, "Solution");
 
 #ifdef HAVE_ROL
-  if (do_gcp)
+  if (do_gcp_opt)
     Teuchos::TimeMonitor::summarize();
 #endif
 
