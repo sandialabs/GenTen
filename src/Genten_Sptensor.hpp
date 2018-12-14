@@ -271,10 +271,21 @@ public:
   // Set sorted flag
   void setIsSorted(bool sorted) { is_sorted = sorted; }
 
-  // Return index for given subscript array.  Returns nnz() if not found
+  // Return index for given subscript array.  Returns nnz() if not found.
   template <typename sub_type>
-  //KOKKOS_INLINE_FUNCTION
+  KOKKOS_INLINE_FUNCTION
   ttb_indx index(const sub_type& sub) const;
+
+  // Return index for given subscripts.  Returns nnz() if not found.
+  // Allows syntax of the form index(i1,i2,...,id) for any ordinal types
+  // i1,...,id.
+  template <typename... P>
+  KOKKOS_INLINE_FUNCTION
+  ttb_indx index(P... args) const
+  {
+    const ttb_indx ind[] = { ttb_indx(args)... };
+    return index(ind);
+  }
 
 protected:
 
@@ -334,7 +345,7 @@ void deep_copy(SptensorT<E1>& dst, const SptensorT<E2>& src)
 
 template <typename ExecSpace>
 template <typename ind_type>
-//KOKKOS_INLINE_FUNCTION
+KOKKOS_INLINE_FUNCTION
 ttb_indx SptensorT<ExecSpace>::index(const ind_type& ind) const
 {
   const ttb_indx nz = subs.extent(0);
@@ -396,5 +407,15 @@ ttb_indx SptensorT<ExecSpace>::index(const ind_type& ind) const
 
   return nz;
 }
+
+// template <typename ExecSpace>
+// template <typename... P>
+// KOKKOS_INLINE_FUNCTION
+// ttb_indx SptensorT<ExecSpace>::index(P... args) const
+// {
+//   const unsigned nargs sizeof...(args);
+//   const ttb_indx ind[nargs] = { args... };
+//   return index(ind);
+// }
 
 }

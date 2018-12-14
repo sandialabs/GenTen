@@ -53,6 +53,8 @@
 #include "Genten_SystemTimer.hpp"
 #include "Genten_RandomMT.hpp"
 
+#include "Kokkos_Random.hpp"
+
 // Whether to compute gradient tensor "Y" explicitly in GCP kernels
 #define COMPUTE_Y 0
 #include "Genten_GCP_Kernels.hpp"
@@ -62,8 +64,6 @@
 #endif
 
 // To do:
-//   * better tensor search in sampling
-//   * parallelize kernels/remove host-device transfers
 //   * pass in algorithmic parameters
 //   * connect to driver
 //   * add ADAM
@@ -81,10 +81,6 @@ namespace Genten {
                                RandomMT& rng,
                                const AlgParams& algParams)
     {
-      typedef typename SptensorT<ExecSpace>::HostMirror Sptensor_host_type;
-      typedef typename Sptensor_host_type::exec_space host_exec_space;
-      typedef typename ArrayT<ExecSpace>::HostMirror Array_host_type;
-
       const ttb_indx nnz = X.nnz();
       const ttb_indx nd = X.ndims();
       const ttb_indx tsz = X.numel();
@@ -96,14 +92,94 @@ namespace Genten {
         w = ArrayT<ExecSpace>(total_samples);
       }
 
+#if 1
+      // Parallel sampling on the device
+      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
+      typedef typename RandomPool::generator_type generator_type;
+      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
+      RandomPool rand_pool(rng.genrnd_int32());
+      //const ttb_indx nloops = 128;
+      const ttb_indx nloops = 1;
+
+      // Generate samples of nonzeros
+      const ttb_indx N_nonzeros = (num_samples_nonzeros+nloops-1)/nloops;
+      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
+                           KOKKOS_LAMBDA(const ttb_indx k)
+      {
+        generator_type gen = rand_pool.get_state();
+        for (ttb_indx l=0; l<nloops; ++l) {
+          const ttb_indx i = k*nloops+l;
+          if (i<num_samples_nonzeros) {
+            const ttb_indx idx = Rand::draw(gen,0,nnz);
+            Y.value(i) = X.value(idx);
+            for (ttb_indx j=0; j<nd; ++j)
+              Y.subscript(i,j) = X.subscript(idx,j);
+            w[i] = ttb_real(nnz) / ttb_real(num_samples_nonzeros);
+          }
+        }
+        rand_pool.free_state(gen);
+      }, "Genten::GCP_SGD::Uniform_Sample_Nonzeros");
+
+      // Generate samples of zeros
+      typedef Kokkos::View< ttb_indx*, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+      typedef Kokkos::TeamPolicy<ExecSpace> Policy;
+      typedef typename Policy::member_type TeamMember;
+      const bool is_cuda = is_cuda_space<ExecSpace>::value;
+      const ttb_indx vector_size = 1;
+      const ttb_indx team_size = is_cuda ? 128/vector_size : 1;
+      const ttb_indx loops_per_team = nloops*team_size;
+      const ttb_indx N_zeros =
+        (num_samples_zeros+loops_per_team-1)/loops_per_team;
+      const size_t bytes = TmpScratchSpace::shmem_size(nd);
+      Policy policy(N_zeros,team_size,vector_size);
+      Kokkos::parallel_for(policy.set_scratch_size(0,Kokkos::PerThread(bytes)),
+                           KOKKOS_LAMBDA(const TeamMember& team)
+      {
+        const ttb_indx k = team.league_rank()*team_size + team.team_rank();
+        TmpScratchSpace ind(team.thread_scratch(0), nd);
+
+        generator_type gen = rand_pool.get_state();
+        for (ttb_indx l=0; l<nloops; ++l) {
+          const ttb_indx i = k*nloops+l;
+          if (i<num_samples_zeros) {
+
+            // Keep generating samples until we get one not in the tensor
+            bool found = true;
+            while (found) {
+              // Generate index
+              for (ttb_indx j=0; j<nd; ++j)
+                ind[j] = Rand::draw(gen,0,X.size(j));
+
+              // Search for index
+              found = (X.index(ind) < nnz);
+
+              // If not found, add it
+              if (!found) {
+                const ttb_indx idx = num_samples_nonzeros + i;
+                for (ttb_indx j=0; j<nd; ++j)
+                  Y.subscript(idx,j) = ind[j];
+                Y.value(idx) = 0.0;
+                w[idx] = ttb_real(tsz-nnz) / ttb_real(num_samples_zeros);
+              }
+            }
+
+          }
+        }
+        rand_pool.free_state(gen);
+      }, "Genten::GCP_SGD::Uniform_Sample_Zeros");
+#else
+      // Serial sampling on the host
+      typedef typename SptensorT<ExecSpace>::HostMirror Sptensor_host_type;
+      typedef typename Sptensor_host_type::exec_space host_exec_space;
+      typedef typename ArrayT<ExecSpace>::HostMirror Array_host_type;
+
       // Copy to host
-      // Todo:  make kernels below run on device so don't need to copy
       Sptensor_host_type X_host = create_mirror_view(host_exec_space(), X);
       Sptensor_host_type Y_host = create_mirror_view(host_exec_space(), Y);
       Array_host_type w_host = create_mirror_view(host_exec_space(), w);
       deep_copy(X_host, X);
 
-      // Geneate num_samples_nonzeros samples in the range [0,nnz)
+      // Geneate samples of nonzeros
       for (ttb_indx i=0; i<num_samples_nonzeros; ++i) {
         const ttb_indx idx = ttb_indx(rng.genrnd_double() * nnz);
         Y_host.value(i) = X_host.value(idx);
@@ -112,9 +188,8 @@ namespace Genten {
         w_host[i] = ttb_real(nnz) / ttb_real(num_samples_nonzeros);
       }
 
-      // Generate num_samples_zeros of zeros
+      // Generate samples of zeros
       IndxArrayT<host_exec_space> ind(nd);
-      //std::vector<ttb_indx> ind(nd);
       ttb_indx i=0;
       while (i<num_samples_zeros) {
 
@@ -140,6 +215,8 @@ namespace Genten {
       // Copy to device
       deep_copy(Y, Y_host);
       deep_copy(w, w_host);
+#endif
+
       if (algParams.mttkrp_method == MTTKRP_Method::Perm) {
         Y.createPermutation();
       }
@@ -189,6 +266,19 @@ namespace Genten {
       ttb_indx total_iters = 0;
       ttb_indx nfails = 0;
 
+      // Timers
+      const int timer_sgd = 0;
+      const int timer_sort = 1;
+      const int timer_sample_f = 2;
+      const int timer_sample_g = 3;
+      const int timer_fest = 4;
+      const int timer_grad = 5;
+      const int timer_step = 6;
+      SystemTimer timer(7);
+
+      // Start timer for total execution time of the algorithm.
+      timer.start(timer_sgd);
+
       // Gradient Ktensor
       KtensorT<ExecSpace> g(nc, nd);
       for (ttb_indx m=0; m<nd; ++m)
@@ -204,19 +294,17 @@ namespace Genten {
       SptensorT<ExecSpace> X_val, X_grad, Y;
       ArrayT<ExecSpace> w_val, w_grad;
       RandomMT rng(seed);
+      timer.start(timer_sample_f);
       Impl::uniform_sample_tensor(
         X, num_samples_nonzeros_value, num_samples_zeros_value,
         X_val, w_val, rng, algParams);
+      timer.stop(timer_sample_f);
 
       // Objective estimates
+      timer.start(timer_fest);
       fest = Impl::gcp_value(X_val, u, w_val, loss_func);
+      timer.stop(timer_fest);
       ttb_real fest_prev = fest;
-
-      // Start timer for total execution time of the algorithm.
-      const int timer_sgd = 0;
-      const int timer_sort = 1;
-      SystemTimer timer(2);
-      timer.start(timer_sgd);
 
       // Sort tensor if necessary
       if (!X.isSorted()) {
@@ -231,7 +319,11 @@ namespace Genten {
 
       if (printIter > 0) {
         out << "Starting GCP-SGD" << std::endl
-            << "Initial f-est = "
+            << "\tNum samples f: " << num_samples_nonzeros_value << " nonzeros, "
+            << num_samples_zeros_value << " zeros" << std::endl
+            << "\tNum samples g: " << num_samples_nonzeros_grad << " nonzeros, "
+            << num_samples_zeros_grad << " zeros" << std::endl
+            << "Initial f-est: "
             << std::setw(13) << std::setprecision(6) << std::scientific
             << fest << std::endl;
       }
@@ -246,12 +338,17 @@ namespace Genten {
           ++total_iters;
 
           // compute gradient
+          timer.start(timer_sample_g);
           Impl::uniform_sample_tensor(
             X, num_samples_nonzeros_grad, num_samples_zeros_grad,
             X_grad, w_grad, rng, algParams);
+          timer.stop(timer_sample_g);
+          timer.start(timer_grad);
           Impl::gcp_gradient(X_grad, Y, u, w_grad, loss_func, g, algParams);
+          timer.stop(timer_grad);
 
           // take step
+          timer.start(timer_step);
           for (ttb_indx m=0; m<nd; ++m) {
             view_type uv = u[m].view();
             view_type gv = g[m].view();
@@ -260,10 +357,13 @@ namespace Genten {
               uv(i,j) -= step*gv(i,j);
             });
           }
+          timer.stop(timer_step);
         }
 
         // compute objective estimate
+        timer.start(timer_fest);
         fest = Impl::gcp_value(X_val, u, w_val, loss_func);
+        timer.stop(timer_fest);
 
         // check convergence
         const bool failed_epoch = fest > fest_prev;
@@ -306,8 +406,14 @@ namespace Genten {
 
       if (printIter > 0) {
          out << "GCP-SGD completed " << total_iters << " iterations in "
-             << timer.getTotalTime(timer_sgd) << " seconds\n";
-         out << "Final f-est = "
+             << timer.getTotalTime(timer_sgd) << " seconds" << std::endl
+             << "\tsort:     " << timer.getTotalTime(timer_sort) << " seconds\n"
+             << "\tsample-f: " << timer.getTotalTime(timer_sample_f) << " seconds\n"
+             << "\tsample-g: " << timer.getTotalTime(timer_sample_g) << " seconds\n"
+             << "\tf-est:    " << timer.getTotalTime(timer_fest) << " seconds\n"
+             << "\tgradient: " << timer.getTotalTime(timer_grad) << " seconds\n"
+             << "\tstep:     " << timer.getTotalTime(timer_step) << " seconds\n"
+             << "Final f-est: "
              << std::setw(13) << std::setprecision(6) << std::scientific
              << fest << std::endl;
       }
