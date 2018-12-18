@@ -50,6 +50,7 @@
 
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
+#include "Genten_AlgParams.hpp"
 
 namespace Genten {
 
@@ -130,31 +131,22 @@ namespace Genten {
   template<typename TensorT, typename ExecSpace>
   void cpals_core (const TensorT& x,
                    KtensorT<ExecSpace>& u,
-                   const ttb_real tol,
-                   const ttb_indx maxIters,
-                   const ttb_real maxSecs,
-                   const ttb_indx printIter,
+                   const AlgParams& algParams,
                    ttb_indx& numIters,
                    ttb_real& resNorm,
                    const ttb_indx perfIter,
                    CpAlsPerfInfo perfInfo[],
-                   std::ostream& out,
-                   const AlgParams& algParams = AlgParams());
+                   std::ostream& out);
 
   template<typename TensorT, typename ExecSpace>
   void cpals_core (const TensorT& x,
                    KtensorT<ExecSpace>& u,
-                   const ttb_real tol,
-                   const ttb_indx maxIters,
-                   const ttb_real maxSecs,
-                   const ttb_indx printIter,
+                   const AlgParams& algParams,
                    ttb_indx& numIters,
                    ttb_real& resNorm,
                    const ttb_indx perfIter,
-                   CpAlsPerfInfo perfInfo[],
-                   const AlgParams& algParams = AlgParams()) {
-    cpals_core(x,u,tol,maxIters,maxSecs,printIter,numIters,resNorm,perfIter,
-               perfInfo,std::cout,algParams);
+                   CpAlsPerfInfo perfInfo[]) {
+    cpals_core(x,u,algParams,numIters,resNorm,perfIter,perfInfo,std::cout);
   }
 
 }

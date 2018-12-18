@@ -210,39 +210,4 @@ namespace Genten {
   // Connect executable to vtune for profiling
   void connect_vtune(const int p_rank = 0);
 
-  // Struct for passing various algorithmic parameters
-  struct AlgParams {
-    // MTTKRP algorithm
-    MTTKRP_Method::type mttkrp_method;
-
-    // Factor matrix tile size for MTTKRP_Duplicated algorithm
-    unsigned mttkrp_duplicated_factor_matrix_tile_size;
-
-    AlgParams() :
-      mttkrp_method(MTTKRP_Method::default_type),
-      mttkrp_duplicated_factor_matrix_tile_size(0)  // Use default choice
-      {}
-  };
-
-  template <typename T>
-  typename T::type parse_enum(const std::string& name) {
-    for (unsigned i=0; i<T::num_types; ++i) {
-      if (name == T::names[i])
-        return T::types[i];
-    }
-
-    // if we got here, name wasn't found
-    std::ostringstream error_string;
-    error_string << "Invalid enum choice " << name
-                 << ",  must be one of the values: ";
-    for (unsigned i=0; i<T::num_types; ++i) {
-      error_string << T::names[i];
-      if (i != T::num_types-1)
-        error_string << ", ";
-    }
-    error_string << "." << std::endl;
-    Genten::error(error_string.str());
-    return T::default_type;
-  }
-
 }

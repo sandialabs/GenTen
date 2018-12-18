@@ -64,8 +64,6 @@
 #endif
 
 // To do:
-//   * pass in algorithmic parameters
-//   * connect to driver
 //   * add ADAM
 
 namespace Genten {
@@ -73,13 +71,13 @@ namespace Genten {
   namespace Impl {
 
     template <typename ExecSpace>
-    void uniform_sample_tensor(const SptensorT<ExecSpace>& X,
-                               const ttb_indx num_samples_nonzeros,
-                               const ttb_indx num_samples_zeros,
-                               SptensorT<ExecSpace>& Y,
-                               ArrayT<ExecSpace>& w,
-                               RandomMT& rng,
-                               const AlgParams& algParams)
+    void stratified_sample_tensor(const SptensorT<ExecSpace>& X,
+                                  const ttb_indx num_samples_nonzeros,
+                                  const ttb_indx num_samples_zeros,
+                                  SptensorT<ExecSpace>& Y,
+                                  ArrayT<ExecSpace>& w,
+                                  RandomMT& rng,
+                                  const AlgParams& algParams)
     {
       const ttb_indx nnz = X.nnz();
       const ttb_indx nd = X.ndims();
@@ -225,13 +223,10 @@ namespace Genten {
     template<typename TensorT, typename ExecSpace, typename LossFunction>
     void gcp_sgd_impl(TensorT& X, KtensorT<ExecSpace>& u,
                       const LossFunction& loss_func,
-                      const ttb_real tol,
-                      const ttb_indx maxEpochs,
-                      const ttb_indx printIter,
+                      const AlgParams& algParams,
                       ttb_indx& numEpochs,
                       ttb_real& fest,
-                      std::ostream& out,
-                      const AlgParams& algParams)
+                      std::ostream& out)
     {
       typedef FacMatrixT<ExecSpace> fac_matrix_type;
       typedef typename fac_matrix_type::view_type view_type;
@@ -239,28 +234,39 @@ namespace Genten {
       const ttb_indx nd = u.ndims();
       const ttb_indx nc = u.ncomponents();
 
-      // Constants for the algorithm that should be passed in eventually
-      const ttb_real decay = 0.1;
-      const ttb_real rate = 1.0e-3;
-      const ttb_indx max_fails = 1;
-      const ttb_indx epoch_iters = 1000;
-      const ttb_indx seed = 12345;
+      // Constants for the algorithm
+      const ttb_real tol = algParams.tol;
+      const ttb_real decay = algParams.decay;
+      const ttb_real rate = algParams.rate;
+      const ttb_indx max_fails = algParams.max_fails;
+      const ttb_indx epoch_iters = algParams.epoch_iters;
+      const ttb_indx seed = algParams.seed;
+      const ttb_indx maxEpochs = algParams.maxiters;
+      const ttb_indx printIter = algParams.printitn;
+      ttb_indx num_samples_nonzeros_value =
+        algParams.num_samples_nonzeros_value;
+      ttb_indx num_samples_zeros_value =
+        algParams.num_samples_zeros_value;
+      ttb_indx num_samples_nonzeros_grad =
+        algParams.num_samples_nonzeros_grad;
+      ttb_indx num_samples_zeros_grad =
+        algParams.num_samples_zeros_grad;
 
-      // Compute number of samples
+      // Compute number of samples if necessary
       const ttb_indx nnz = X.nnz();
       const ttb_indx tsz = X.numel();
       const ttb_indx nz = tsz - nnz;
       const ttb_indx ftmp = std::max((nnz+99)/100,ttb_indx(100000));
-      const ttb_indx num_samples_nonzeros_value =
-        std::min(ftmp, nnz);
-      const ttb_indx num_samples_zeros_value =
-        std::min(num_samples_nonzeros_value, nz);
       const ttb_indx gtmp = std::max((3*nnz+maxEpochs-1)/maxEpochs,
                                      ttb_indx(1000));
-      const ttb_indx num_samples_nonzeros_grad =
-        std::min(gtmp, nnz);
-      const ttb_indx num_samples_zeros_grad =
-        std::min(num_samples_nonzeros_grad, nz);
+      if (num_samples_nonzeros_value == 0)
+        num_samples_nonzeros_value = std::min(ftmp, nnz);
+      if (num_samples_zeros_value == 0)
+        num_samples_zeros_value = std::min(num_samples_nonzeros_value, nz);
+      if (num_samples_nonzeros_grad == 0)
+        num_samples_nonzeros_grad = std::min(gtmp, nnz);
+      if (num_samples_zeros_grad == 0)
+        num_samples_zeros_grad = std::min(num_samples_nonzeros_grad, nz);
 
       ttb_real nuc = 1.0;
       ttb_indx total_iters = 0;
@@ -295,7 +301,7 @@ namespace Genten {
       ArrayT<ExecSpace> w_val, w_grad;
       RandomMT rng(seed);
       timer.start(timer_sample_f);
-      Impl::uniform_sample_tensor(
+      Impl::stratified_sample_tensor(
         X, num_samples_nonzeros_value, num_samples_zeros_value,
         X_val, w_val, rng, algParams);
       timer.stop(timer_sample_f);
@@ -339,7 +345,7 @@ namespace Genten {
 
           // compute gradient
           timer.start(timer_sample_g);
-          Impl::uniform_sample_tensor(
+          Impl::stratified_sample_tensor(
             X, num_samples_nonzeros_grad, num_samples_zeros_grad,
             X_grad, w_grad, rng, algParams);
           timer.stop(timer_sample_g);
@@ -428,15 +434,10 @@ namespace Genten {
 
   template<typename TensorT, typename ExecSpace>
   void gcp_sgd(TensorT& x, KtensorT<ExecSpace>& u,
-               const GCP_LossFunction::type loss_function_type,
-               const ttb_real loss_eps,
-               const ttb_real tol,
-               const ttb_indx maxIters,
-               const ttb_indx printIter,
+               const AlgParams& algParams,
                ttb_indx& numIters,
                ttb_real& resNorm,
-               std::ostream& out,
-               const AlgParams& algParams)
+               std::ostream& out)
   {
 #ifdef HAVE_CALIPER
     cali::Function cali_func("Genten::gcp_sgd");
@@ -454,10 +455,9 @@ namespace Genten {
     }
 
     // Dispatch implementation based on loss function type
-    if (loss_function_type == GCP_LossFunction::Gaussian)
-      Impl::gcp_sgd_impl(x, u, GaussianLossFunction(loss_eps),
-                         tol, maxIters, printIter, numIters, resNorm,
-                         out, algParams);
+    if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
+      Impl::gcp_sgd_impl(x, u, GaussianLossFunction(algParams.loss_eps),
+                         algParams, numIters, resNorm, out);
     // else if (loss_function_type == GCP_LossFunction::Rayleigh)
     //   Impl::gcp_sgd_impl(x, u, RayleighLossFunction(loss_eps), params, stream,
     //                      algParams);
@@ -480,14 +480,9 @@ namespace Genten {
   template void gcp_sgd<SptensorT<SPACE>,SPACE>(                        \
     SptensorT<SPACE>& x,                                                \
     KtensorT<SPACE>& u,                                                 \
-    const GCP_LossFunction::type loss_function_type,                    \
-    const ttb_real loss_eps,                                            \
-    const ttb_real tol,                                                 \
-    const ttb_indx maxIters,                                            \
-    const ttb_indx printIter,                                           \
+    const AlgParams& algParams,                                         \
     ttb_indx& numIters,                                                 \
     ttb_real& resNorm,                                                  \
-    std::ostream& out,                                                  \
-    const AlgParams& algParams);
+    std::ostream& out);
 
 GENTEN_INST(INST_MACRO)

@@ -50,6 +50,7 @@
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_TinyVec.hpp"
+#include "Genten_AlgParams.hpp"
 
 // This is a locally-modified version of Kokkos_ScatterView.hpp which we
 // need until the changes are moved into Kokkos

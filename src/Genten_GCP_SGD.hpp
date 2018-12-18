@@ -50,6 +50,7 @@
 
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
+#include "Genten_AlgParams.hpp"
 
 namespace Genten {
 
@@ -58,14 +59,9 @@ namespace Genten {
   template<typename TensorT, typename ExecSpace>
   void gcp_sgd (TensorT& x,
                 KtensorT<ExecSpace>& u,
-                const GCP_LossFunction::type loss_type,
-                const ttb_real loss_eps,
-                const ttb_real tol,
-                const ttb_indx maxIters,
-                const ttb_indx printIter,
+                const AlgParams& algParams,
                 ttb_indx& numIters,
                 ttb_real& resNorm,
-                std::ostream& out,
-                const AlgParams& algParams = AlgParams());
+                std::ostream& out);
 
 }

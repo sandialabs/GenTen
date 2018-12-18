@@ -274,12 +274,14 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
     create_mirror_view( exec_space(), initialBasis );
   deep_copy( initialBasis_dev, initialBasis );
 
-  Genten::AlgParams algParams;
-  algParams.mttkrp_method = mttkrp_method;
-
   // Factorize.
-  ttb_real  stopTol = 1.0e-6;
-  ttb_indx  maxIters = 100;
+  Genten::AlgParams algParams;
+  algParams.rank = nNumComponents;
+  algParams.tol = 1.0e-6;
+  algParams.maxiters = 100;
+  algParams.maxsecs = -1.0;
+  algParams.printitn = infolevel;
+  algParams.mttkrp_method = mttkrp_method;
   Genten::KtensorT<exec_space> result_dev;
   ttb_indx  itersCompleted;
   ttb_real  resNorm;
@@ -287,13 +289,12 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
   {
     // Request performance information on every 3rd iteration.
     // Allocation adds two more for start and stop states of the algorithm.
-    ttb_indx  nMaxPerfSize = 2 + (maxIters / 3);
+    ttb_indx  nMaxPerfSize = 2 + (algParams.maxiters / 3);
     Genten::CpAlsPerfInfo *  perfInfo = new Genten::CpAlsPerfInfo[nMaxPerfSize];
     result_dev = initialBasis_dev;
-    Genten::cpals_core <Sptensor_type> (X_dev, result_dev,
-                                        stopTol, maxIters, -1.0, infolevel,
+    Genten::cpals_core <Sptensor_type> (X_dev, result_dev, algParams,
                                         itersCompleted, resNorm,
-                                        3, perfInfo, algParams);
+                                        3, perfInfo);
     // Check performance information.
     bool  bIsOK = true;
     for (ttb_indx  i = 0; i < nMaxPerfSize; i++)
@@ -323,7 +324,7 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
   Genten::Ktensor result = initialBasis;
   deep_copy( result, result_dev );
 
-  evaluateResult(infolevel, itersCompleted, stopTol, result);
+  evaluateResult(infolevel, itersCompleted, algParams.tol, result);
 
   // Test factorization from a bad initial guess.
   MESSAGE("Creating a ktensor with initial guess all zero");
@@ -338,8 +339,8 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
   try
   {
     result_dev = initialZero_dev;
-    Genten::cpals_core <Sptensor_type> (X_dev, result_dev,
-                                        stopTol, maxIters, -1.0, 0,
+    algParams.printitn = 0;
+    Genten::cpals_core <Sptensor_type> (X_dev, result_dev, algParams,
                                         itersCompleted, resNorm,
                                         0, NULL);
   }

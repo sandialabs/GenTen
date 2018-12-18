@@ -125,23 +125,22 @@ void Genten_Test_GCP_SGD_Type (int infolevel, const std::string& label,
     create_mirror_view( exec_space(), initialBasis );
   deep_copy( initialBasis_dev, initialBasis );
 
-  Genten::AlgParams algParams;
-  algParams.mttkrp_method = mttkrp_method;
-
   // Factorize.
-  const ttb_real stopTol = 1.0e-6;
-  const ttb_indx maxIters = 100;
-  const ttb_real eps = 1.0e-10;
-  const ttb_indx printIter = (infolevel == 1) ? 1 : 0;
+  Genten::AlgParams algParams;
+  algParams.rate = 7.0e-2;
+  algParams.epoch_iters = 50;
+  algParams.tol = 1.0e-6;
+  algParams.maxiters = 100;
+  algParams.printitn = (infolevel == 1) ? 1 : 0;
+  algParams.mttkrp_method = mttkrp_method;
   ttb_indx numIters;
   ttb_real resNorm;
   Genten::KtensorT<exec_space> result_dev;
   try
   {
     result_dev = initialBasis_dev;
-    Genten::gcp_sgd <Sptensor_type> (X_dev, result_dev, loss_type, eps,
-                                     stopTol, maxIters, printIter,
-                                     numIters, resNorm, std::cout, algParams);
+    Genten::gcp_sgd <Sptensor_type> (X_dev, result_dev, algParams,
+                                     numIters, resNorm, std::cout);
   }
   catch(std::string sExc)
   {

@@ -50,6 +50,7 @@
 
 #include "Genten_Ktensor.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
+#include "Genten_AlgParams.hpp"
 
 #include "Teuchos_ParameterList.hpp"
 
@@ -78,11 +79,9 @@ namespace Genten {
    */
   template<typename TensorT, typename ExecSpace>
   void gcp_opt(const TensorT& x, KtensorT<ExecSpace>& u,
-               const GCP_LossFunction::type loss_type,
+               const AlgParams& algParams,
                Teuchos::ParameterList& rol_params,
-               std::ostream* stream = nullptr,
-               const ttb_real loss_eps = 0.0,
-               const AlgParams& algParams = AlgParams());
+               std::ostream* stream = nullptr);
 
   //! Compute the CP decomposition of a tensor based on a general objective.
   /*!
@@ -111,12 +110,8 @@ namespace Genten {
    */
   template<typename TensorT, typename ExecSpace>
   void gcp_opt(const TensorT& x, KtensorT<ExecSpace>& u,
-               const GCP_LossFunction::type loss_type,
-               const ttb_real tol,
-               const ttb_indx maxIters,
-               std::ostream* stream = nullptr,
-               const ttb_real loss_eps = 0.0,
-               const AlgParams& algParams = AlgParams())
+               const AlgParams& algParams,
+               std::ostream* stream = nullptr)
   {
     // Setup ROL to do optimization algorithm similar to L-BFGS-B
     Teuchos::ParameterList rol_params;
@@ -125,11 +120,11 @@ namespace Genten {
 
     // Set stopping criteria
     Teuchos::ParameterList& status_params = rol_params.sublist("Status Test");
-    status_params.set<double>("Gradient Tolerance", tol);
-    status_params.set<double>("Step Tolerance", tol);
-    status_params.set<int>("Iteration Limit", maxIters);
+    status_params.set<double>("Gradient Tolerance", algParams.tol);
+    status_params.set<double>("Step Tolerance", algParams.tol);
+    status_params.set<int>("Iteration Limit", algParams.maxiters);
 
-    gcp_opt(x, u, loss_type, rol_params, stream, loss_eps, algParams);
+    gcp_opt(x, u, algParams, rol_params, stream);
   }
 
 }

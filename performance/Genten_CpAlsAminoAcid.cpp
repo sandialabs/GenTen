@@ -51,6 +51,7 @@
 #include "Genten_IOtext.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_Sptensor.hpp"
+#include "Genten_AlgParams.hpp"
 
 using namespace std;
 
@@ -174,8 +175,12 @@ int main(int argc, char* argv[])
       create_mirror_view( Genten::DefaultExecutionSpace(), initialGuess_host );
     deep_copy( initialGuess, initialGuess_host );
 
-    ttb_real  stopTol = 1.0e-5;
-    ttb_indx  maxIters = 100;
+    Genten::AlgParams algParams;
+    algParams.rank = nNumComponents;
+    algParams.tol = 1.0e-5;
+    algParams.maxiters = 100;
+    algParams.maxsecs = -1.0;
+    algParams.printitn = 10;
     Genten::KtensorT<Genten::DefaultExecutionSpace> result;
     ttb_indx  itersCompleted;
     ttb_real  resNorm;
@@ -189,15 +194,13 @@ int main(int argc, char* argv[])
     cout << "  " << data.nnz() << " structural nonzero elements\n";
 
     cout << "Calling CpAls to compute " << nNumComponents << " components\n";
-    cout << "  Max iters = " << maxIters << "\n";
-    cout << "  Stop tol  = " << stopTol << "\n";
+    cout << "  Max iters = " << algParams.tol << "\n";
+    cout << "  Stop tol  = " << algParams.maxiters << "\n";
 
     try
     {
       result = initialGuess;
-      Genten::cpals_core (data, result,
-                          stopTol, maxIters, -1.0, 10,
-                          itersCompleted, resNorm,
+      Genten::cpals_core (data, result, algParams, itersCompleted, resNorm,
                           0, NULL);
     }
     catch(std::string sExc)

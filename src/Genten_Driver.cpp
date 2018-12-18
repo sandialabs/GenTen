@@ -64,20 +64,8 @@ template<typename ExecSpace>
 KtensorT<ExecSpace>
 driver(SptensorT<ExecSpace>& x,
        KtensorT<ExecSpace>& u_init,
-       const std::string& method,
-       const ttb_indx rank,
-       const std::string& rolfilename,
-       const GCP_LossFunction::type loss_function_type,
-       const ttb_real loss_eps,
-       const unsigned long seed,
-       const bool prng,
-       const ttb_indx maxiters,
-       const ttb_real tol,
-       const ttb_indx printitn,
-       const bool debug,
-       const bool warmup,
-       std::ostream& out,
-       AlgParams& algParams)
+       AlgParams& algParams,
+       std::ostream& out)
 {
   typedef Genten::SptensorT<ExecSpace> Sptensor_type;
   typedef Genten::SptensorT<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
@@ -89,21 +77,21 @@ driver(SptensorT<ExecSpace>& x,
   out.setf(std::ios_base::scientific);
   out.precision(2);
 
-  Ktensor_type u(rank, x.ndims(), x.size());
+  Ktensor_type u(algParams.rank, x.ndims(), x.size());
   Ktensor_host_type u_host =
     create_mirror_view( Genten::DefaultHostExecutionSpace(), u );
 
   // Generate a random starting point if initial guess is empty
   if (u_init.ncomponents() == 0 && u_init.ndims() == 0) {
-    u_init = Ktensor_type(rank, x.ndims(), x.size());
+    u_init = Ktensor_type(algParams.rank, x.ndims(), x.size());
 
     // Matlab cp_als always sets the weights to one.
     u_init.setWeights(1.0);
-    Genten::RandomMT cRMT(seed);
+    Genten::RandomMT cRMT(algParams.seed);
     timer.start(0);
-    if (prng) {
+    if (algParams.prng) {
       u_init.setMatricesScatter(false, true, cRMT);
-      if (debug) deep_copy( u_host, u_init );
+      if (algParams.debug) deep_copy( u_host, u_init );
     }
     else {
       u_host.setMatricesScatter(false, false, cRMT);
@@ -117,19 +105,19 @@ driver(SptensorT<ExecSpace>& x,
   // Copy initial guess into u
   deep_copy(u, u_init);
 
-  if (debug) Genten::print_ktensor(u_host, out, "Initial guess");
+  if (algParams.debug) Genten::print_ktensor(u_host, out, "Initial guess");
 
   // Compute default MTTKRP method if that is what was chosen
   if (algParams.mttkrp_method == MTTKRP_Method::Default)
     algParams.mttkrp_method = MTTKRP_Method::computeDefault<ExecSpace>();
 
-  if (warmup)
+  if (algParams.warmup)
   {
     // Do a pass through the mttkrp to warm up and make sure the tensor
     // is copied to the device before generating any timings.  Use
     // Sptensor mttkrp and do this before createPermutation() so that
     // createPermutation() timings are not polluted by UVM transfers
-    Ktensor_type tmp (rank,x.ndims(),x.size());
+    Ktensor_type tmp (algParams.rank,x.ndims(),x.size());
     Genten::AlgParams ap = algParams;
     ap.mttkrp_method = Genten::MTTKRP_Method::Atomic;
     for (ttb_indx  n = 0; n < x.ndims(); n++)
@@ -147,48 +135,47 @@ driver(SptensorT<ExecSpace>& x,
   }
 
   const bool do_cpals =
-    method == "CP-ALS" || method == "cp-als" || method == "cpals";
+    algParams.method == "CP-ALS" || algParams.method == "cp-als" ||
+    algParams.method == "cpals";
   const bool do_gcp_sgd =
-    method == "GCP-SGD" || method == "gcp_sgd" || method == "gcp-sgd";
+    algParams.method == "GCP-SGD" || algParams.method == "gcp_sgd" ||
+    algParams.method == "gcp-sgd";
   const bool do_gcp_opt =
-    method == "GCP-OPT" || method == "gcp_opt" || method == "gcp-opt";
+    algParams.method == "GCP-OPT" || algParams.method == "gcp_opt" ||
+    algParams.method == "gcp-opt";
 
   if (do_cpals) {
     // Run CP-ALS
     ttb_indx iter;
     ttb_real resNorm;
-    cpals_core(x, u, tol, maxiters, -1.0, printitn,
-                iter, resNorm, 0, NULL, out, algParams);
+    cpals_core(x, u, algParams, iter, resNorm, 0, NULL, out);
   }
   else if (do_gcp_sgd) {
     // Run GCP-SGD
     ttb_indx iter;
     ttb_real resNorm;
-    gcp_sgd(x, u, loss_function_type, loss_eps, tol, maxiters, printitn,
-                        iter, resNorm, out, algParams);
+    gcp_sgd(x, u, algParams, iter, resNorm, out);
   }
 #ifdef HAVE_ROL
   else if (do_gcp_opt) {
     // Run GCP
     Teuchos::RCP<Teuchos::ParameterList> rol_params;
-    if (rolfilename != "")
-      rol_params = Teuchos::getParametersFromXmlFile(rolfilename);
+    if (algParams.rolfilename != "")
+      rol_params = Teuchos::getParametersFromXmlFile(algParams.rolfilename);
     timer.start(2);
     if (rol_params != Teuchos::null)
-      gcp_opt(x, u, loss_function_type, *rol_params, &out, loss_eps,
-              algParams);
+      gcp_opt(x, u, algParams, *rol_params, &out);
     else
-      gcp_opt(x, u, loss_function_type, tol, maxiters, &out, loss_eps,
-              algParams);
+      gcp_opt(x, u, algParams, &out);
     timer.stop(2);
     out << "GCP took " << timer.getTotalTime(2) << " seconds\n";
   }
 #endif
   else {
-    Genten::error("Unknown decomposition method:  " + method);
+    Genten::error("Unknown decomposition method:  " + algParams.method);
   }
 
-  if (debug) Genten::print_ktensor(u_host, out, "Solution");
+  if (algParams.debug) Genten::print_ktensor(u_host, out, "Solution");
 
 #ifdef HAVE_ROL
   if (do_gcp_opt)
@@ -205,19 +192,7 @@ driver(SptensorT<ExecSpace>& x,
   driver<SPACE>(                                                        \
     SptensorT<SPACE>& x,                                                \
     KtensorT<SPACE>& u_init,                                            \
-    const std::string& method,                                          \
-    const ttb_indx rank,                                                \
-    const std::string& rolfilename,                                     \
-    const GCP_LossFunction::type loss_function_type,                    \
-    const ttb_real loss_eps,                                            \
-    const unsigned long seed,                                           \
-    const bool prng,                                                    \
-    const ttb_indx maxiters,                                            \
-    const ttb_real tol,                                                 \
-    const ttb_indx printitn,                                            \
-    const bool debug,                                                   \
-    const bool warmup,                                                  \
-    std::ostream& os,                                                   \
-    AlgParams& algParams);
+    AlgParams& algParams,                                               \
+    std::ostream& os);
 
 GENTEN_INST(INST_MACRO)

@@ -54,7 +54,7 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_SystemTimer.hpp"
-#include "Genten_Driver_Utils.hpp"
+#include "Genten_AlgParams.hpp"
 
 #include "Genten_MixedFormatOps.hpp"
 
@@ -62,11 +62,7 @@ using namespace std;
 
 template <typename Space>
 int run_cpals(const Genten::IndxArray& cFacDims_host,
-              ttb_indx  nNumComponents,
               ttb_indx  nMaxNonzeroes,
-              unsigned long  nRNGseed,
-              ttb_indx  nMaxIters,
-              ttb_real  dStopTol,
               Genten::AlgParams& algParams)
 {
   typedef Genten::SptensorT<Space> Sptensor_type;
@@ -83,11 +79,11 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
   for (ttb_indx  n = 0; n < cFacDims_host.size(); n++)
     cout << cFacDims_host[n] << ' ';
   cout << "]\n";
-  cout << "  Ncomps = " << nNumComponents << "\n";
+  cout << "  Ncomps = " << algParams.rank << "\n";
   cout << "  Maximum nnz = " << nMaxNonzeroes << "\n";
 
   // Construct a random number generator that matches Matlab.
-  Genten::RandomMT  cRNG (nRNGseed);
+  Genten::RandomMT  cRNG (algParams.seed);
 
   // Generate a random Ktensor, and from it a representative sparse
   // data tensor.
@@ -97,7 +93,7 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
 
   Genten::SystemTimer  timer(2);
   timer.start(0);
-  if (cTestGen.genSpFromRndKtensor (cFacDims_host, nNumComponents,
+  if (cTestGen.genSpFromRndKtensor (cFacDims_host, algParams.rank,
                                     nMaxNonzeroes,
                                     cRNG, cData_host, cSol_host) == false)
   {
@@ -114,13 +110,13 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
   deep_copy( cSol, cSol_host );
 
   // Set a random initial guess, matching the Matlab code.
-  Ktensor_host_type  cInitialGuess_host (nNumComponents, cFacDims.size(),
+  Ktensor_host_type  cInitialGuess_host (algParams.rank, cFacDims.size(),
                                          cFacDims_host);
   cInitialGuess_host.setWeights (1.0);
   cInitialGuess_host.setMatrices (0.0);
   for (ttb_indx  n = 0; n < cFacDims_host.size(); n++)
   {
-    for (ttb_indx  c = 0; c < nNumComponents; c++)
+    for (ttb_indx  c = 0; c < algParams.rank; c++)
     {
       for (ttb_indx  i = 0; i < cFacDims_host[n]; i++)
       {
@@ -139,7 +135,7 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
   // is copied to the device before generating any timings.  Use
   // Sptensor mttkrp and do this before createPermutation() so that
   // createPermutation() timings are not polluted by UVM transfers
-  Ktensor_type  tmp (nNumComponents, cFacDims.size(), cFacDims);
+  Ktensor_type  tmp (algParams.rank, cFacDims.size(), cFacDims);
   Genten::SptensorT<Genten::DefaultExecutionSpace>& cData_tmp = cData;
   Genten::AlgParams ap = algParams;
   ap.mttkrp_method = Genten::MTTKRP_Method::Atomic;
@@ -159,18 +155,16 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
   ttb_real  dResNorm;
 
   cout << "Calling CpAls with random initial guess and parameters:\n";
-  cout << "  Max iters = " << nMaxIters << "\n";
-  cout << "  Stop tol  = " << dStopTol << "\n";
+  cout << "  Max iters = " << algParams.maxiters << "\n";
+  cout << "  Stop tol  = " << algParams.tol << "\n";
 
   // Request performance information on every iteration.
   // Allocation adds two more for start and stop states of the algorithm.
-  ttb_indx  nMaxPerfSize = 2 + nMaxIters;
+  ttb_indx  nMaxPerfSize = 2 + algParams.maxiters;
   Genten::CpAlsPerfInfo *  perfInfo = new Genten::CpAlsPerfInfo[nMaxPerfSize];
   cResult = cInitialGuess;
-  Genten::cpals_core (cData, cResult,
-                      dStopTol, nMaxIters, -1.0, 1,
-                      nItersCompleted, dResNorm,
-                      1, perfInfo, algParams);
+  Genten::cpals_core (cData, cResult, algParams, nItersCompleted, dResNorm,
+                      1, perfInfo);
   printf ("Performance information per iteration:\n");
   for (ttb_indx  i = 0; i <= nItersCompleted; i++)
   {
@@ -184,7 +178,7 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
   printf ("  Weights (lambda):\n");
   auto weights_host = create_mirror_view(cResult.weights());
   deep_copy(weights_host, cResult.weights());
-  for (ttb_indx  c = 0; c < nNumComponents; c++)
+  for (ttb_indx  c = 0; c < algParams.rank; c++)
     printf("    [%d] = %f\n", (int)c, weights_host[c]);
 
   //    print_ktensor(cResult, std::cout, "TBD computed solution");
@@ -239,14 +233,14 @@ int main(int argc, char* argv[])
 
   try {
 
-    ttb_bool help = parse_ttb_bool(argc, argv, "--help", false);
+    ttb_bool help = Genten::parse_ttb_bool(argc, argv, "--help", false);
     if (help) {
       usage(argv);
       Kokkos::finalize();
       return 0;
     }
 
-    ttb_bool vtune = parse_ttb_bool(argc, argv, "--vtune", false);
+    ttb_bool vtune = Genten::parse_ttb_bool(argc, argv, "--vtune", false);
     if (vtune)
       Genten::connect_vtune();
 
@@ -255,33 +249,38 @@ int main(int argc, char* argv[])
     // solves in just a few seconds.
     Genten::IndxArray  cFacDims = { 3000, 4000, 5000 };
     cFacDims =
-      parse_ttb_indx_array(argc, argv, "--dims", cFacDims, 1, INT_MAX);
+      Genten::parse_ttb_indx_array(argc, argv, "--dims", cFacDims, 1, INT_MAX);
     ttb_indx  nNumComponents =
-      parse_ttb_indx(argc, argv, "--nc", 32, 1, INT_MAX);
+      Genten::parse_ttb_indx(argc, argv, "--nc", 32, 1, INT_MAX);
     ttb_indx  nMaxNonzeroes =
-      parse_ttb_indx(argc, argv, "--nnz", 1 * 1000 * 1000, 1, INT_MAX);
+      Genten::parse_ttb_indx(argc, argv, "--nnz", 1 * 1000 * 1000, 1, INT_MAX);
     unsigned long  nRNGseed =
-      parse_ttb_indx(argc, argv, "--seed", 1, 0, INT_MAX);
+      Genten::parse_ttb_indx(argc, argv, "--seed", 1, 0, INT_MAX);
     ttb_indx  nMaxIters =
-      parse_ttb_indx(argc, argv, "--maxiters", 100, 1, INT_MAX);
+      Genten::parse_ttb_indx(argc, argv, "--maxiters", 100, 1, INT_MAX);
     ttb_real  dStopTol =
-      parse_ttb_real(argc, argv, "--tol", 1.0e-7, 0.0, 1.0);
+      Genten::parse_ttb_real(argc, argv, "--tol", 1.0e-7, 0.0, 1.0);
     Genten::MTTKRP_Method::type mttkrp_method =
-      parse_ttb_enum(argc, argv, "--mttkrp_method",
+      Genten::parse_ttb_enum(argc, argv, "--mttkrp_method",
                      Genten::MTTKRP_Method::Default,
                      Genten::MTTKRP_Method::num_types,
                      Genten::MTTKRP_Method::types,
                      Genten::MTTKRP_Method::names);
     ttb_indx mttkrp_tile_size =
-      parse_ttb_indx(argc, argv, "--mttkrp_tile_size", 0, 0, INT_MAX);
+      Genten::parse_ttb_indx(argc, argv, "--mttkrp_tile_size", 0, 0, INT_MAX);
 
     Genten::AlgParams algParams;
+    algParams.rank = nNumComponents;
+    algParams.seed = nRNGseed;
+    algParams.maxiters = nMaxIters;
+    algParams.maxsecs = -1.0;
+    algParams.printitn = 1;
+    algParams.tol = dStopTol;
     algParams.mttkrp_method = mttkrp_method;
     algParams.mttkrp_duplicated_factor_matrix_tile_size = mttkrp_tile_size;
 
     ret = run_cpals< Genten::DefaultExecutionSpace >(
-        cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nMaxIters, dStopTol,
-        algParams);
+        cFacDims, nMaxNonzeroes, algParams);
 
   }
   catch(std::string sExc)

@@ -49,6 +49,7 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_Util.hpp"
+#include "Genten_AlgParams.hpp"
 
 namespace Genten
 {

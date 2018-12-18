@@ -51,7 +51,7 @@
 
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
-#include "Genten_GCP_LossFunctions.hpp"
+#include "Genten_AlgParams.hpp"
 
 namespace Genten {
 
@@ -60,19 +60,7 @@ namespace Genten {
   KtensorT<ExecSpace>
   driver(SptensorT<ExecSpace>& x,
          KtensorT<ExecSpace>& u_init,
-         const std::string& method,
-         const ttb_indx rank,
-         const std::string& rolfilename,
-         const GCP_LossFunction::type loss_function_type,
-         const ttb_real loss_eps,
-         const unsigned long seed,
-         const bool prng,
-         const ttb_indx maxiters,
-         const ttb_real tol,
-         const ttb_indx printitn,
-         const bool debug,
-         const bool warmup,
-         std::ostream& out,
-         AlgParams& algParams);
+         AlgParams& algParams,
+         std::ostream& out);
 
 }

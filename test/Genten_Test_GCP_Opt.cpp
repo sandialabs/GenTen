@@ -125,20 +125,17 @@ void Genten_Test_GCP_Opt_Type (int infolevel, const std::string& label,
     create_mirror_view( exec_space(), initialBasis );
   deep_copy( initialBasis_dev, initialBasis );
 
-  Genten::AlgParams algParams;
-  algParams.mttkrp_method = mttkrp_method;
-
   // Factorize.
-  ttb_real stopTol = 1.0e-6;
-  ttb_indx maxIters = 100;
-  ttb_real eps = 1.0e-10;
+  Genten::AlgParams algParams;
+  algParams.tol = 1.0e-6;
+  algParams.maxiters = 100;
+  algParams.mttkrp_method = mttkrp_method;
   Genten::KtensorT<exec_space> result_dev;
   std::ostream* stream = (infolevel == 1) ? &std::cout : nullptr;
   try
   {
     result_dev = initialBasis_dev;
-    Genten::gcp_opt <Sptensor_type> (X_dev, result_dev, loss_type,
-                                     stopTol, maxIters, stream, eps, algParams);
+    Genten::gcp_opt <Sptensor_type> (X_dev, result_dev, algParams, stream);
   }
   catch(std::string sExc)
   {

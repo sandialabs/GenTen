@@ -104,23 +104,23 @@ namespace Genten {
    *                        or tensor arguments are incompatible.
    */
   template<typename TensorT, typename ExecSpace>
-  void cpals_core (const TensorT             & x,
-                   Genten::KtensorT<ExecSpace>  & u,
-                   const ttb_real        tol,
-                   const ttb_indx        maxIters,
-                   const ttb_real        maxSecs,
-                   const ttb_indx        printIter,
-                   ttb_indx      & numIters,
-                   ttb_real      & resNorm,
-                   const ttb_indx        perfIter,
-                   CpAlsPerfInfo   perfInfo[],
-                   std::ostream& out,
-                   const AlgParams& algParams)
+  void cpals_core (const TensorT& x,
+                   Genten::KtensorT<ExecSpace>& u,
+                   const AlgParams& algParams,
+                   ttb_indx& numIters,
+                   ttb_real& resNorm,
+                   const ttb_indx perfIter,
+                   CpAlsPerfInfo perfInfo[],
+                   std::ostream& out)
   {
-
 #ifdef HAVE_CALIPER
     cali::Function cali_func("Genten::cpals_core");
 #endif
+
+    const ttb_real tol = algParams.tol;
+    const ttb_indx maxIters = algParams.maxiters;
+    const ttb_real maxSecs = algParams.maxsecs;
+    const ttb_indx printIter = algParams.printitn;
 
     // Check size compatibility of the arguments.
     if (u.isConsistent() == false)
@@ -460,15 +460,11 @@ namespace Genten {
   template void cpals_core<SptensorT<SPACE>,SPACE>(                     \
     const SptensorT<SPACE>& x,                                          \
     KtensorT<SPACE>& u,                                                 \
-    const ttb_real tol,                                                 \
-    const ttb_indx maxIters,                                            \
-    const ttb_real maxSecs,                                             \
-    const ttb_indx printIter,                                           \
+    const AlgParams& algParams,                                         \
     ttb_indx& numIters,                                                 \
     ttb_real& resNorm,                                                  \
     const ttb_indx perfIter,                                            \
     CpAlsPerfInfo perfInfo[],                                           \
-    std::ostream& out,                                                  \
-    const AlgParams& algParams);
+    std::ostream& out);
 
 GENTEN_INST(INST_MACRO)

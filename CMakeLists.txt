@@ -338,6 +338,8 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_RandomMT.cpp
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_SystemTimer.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_Util.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_AlgParams.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Array.cpp
   ${Genten_SOURCE_DIR}/src/Genten_CpAls.cpp
   ${Genten_SOURCE_DIR}/src/Genten_FacMatArray.cpp
@@ -349,7 +351,6 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_MathLibs_Wpr.cpp
   ${Genten_SOURCE_DIR}/src/Genten_portability.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Sptensor.cpp
-  ${Genten_SOURCE_DIR}/src/Genten_Util.cpp
   ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
   )

@@ -53,7 +53,7 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_SystemTimer.hpp"
-#include "Genten_Driver_Utils.hpp"
+#include "Genten_AlgParams.hpp"
 #include "Genten_MixedFormatOps.hpp"
 
 template <typename Space>
@@ -327,47 +327,47 @@ int main(int argc, char* argv[])
 
   try {
 
-    ttb_bool help = parse_ttb_bool(argc, argv, "--help", false);
+    ttb_bool help = Genten::parse_ttb_bool(argc, argv, "--help", false);
     if (help) {
       usage(argv);
       Kokkos::finalize();
       return 0;
     }
 
-    ttb_bool vtune = parse_ttb_bool(argc, argv, "--vtune", false);
+    ttb_bool vtune = Genten::parse_ttb_bool(argc, argv, "--vtune", false);
     if (vtune)
       Genten::connect_vtune();
 
     // Choose parameters: ndims, dim sizes, ncomps.
     std::string inputfilename =
-      parse_string(argc,argv,"--input","");
+      Genten::parse_string(argc,argv,"--input","");
     ttb_indx index_base =
-      parse_ttb_indx(argc, argv, "--index_base", 0, 0, INT_MAX);
+      Genten::parse_ttb_indx(argc, argv, "--index_base", 0, 0, INT_MAX);
     ttb_bool gz =
-      parse_ttb_bool(argc, argv, "--gz", false);
+      Genten::parse_ttb_bool(argc, argv, "--gz", false);
     Genten::IndxArray  cFacDims = { 3000, 4000, 5000 };
     cFacDims =
-      parse_ttb_indx_array(argc, argv, "--dims", cFacDims, 1, INT_MAX);
+      Genten::parse_ttb_indx_array(argc, argv, "--dims", cFacDims, 1, INT_MAX);
     ttb_indx  nNumComponents =
-      parse_ttb_indx(argc, argv, "--nc", 32, 1, INT_MAX);
+      Genten::parse_ttb_indx(argc, argv, "--nc", 32, 1, INT_MAX);
     ttb_indx  nMaxNonzeroes =
-      parse_ttb_indx(argc, argv, "--nnz", 1 * 1000 * 1000, 1, INT_MAX);
+      Genten::parse_ttb_indx(argc, argv, "--nnz", 1 * 1000 * 1000, 1, INT_MAX);
     unsigned long  nRNGseed =
-      parse_ttb_indx(argc, argv, "--seed", 1, 0, INT_MAX);
+      Genten::parse_ttb_indx(argc, argv, "--seed", 1, 0, INT_MAX);
     ttb_indx  nIters =
-      parse_ttb_indx(argc, argv, "--iters", 10, 1, INT_MAX);
+      Genten::parse_ttb_indx(argc, argv, "--iters", 10, 1, INT_MAX);
     ttb_indx  check =
-      parse_ttb_indx(argc, argv, "--check", 1, 0, 1);
+      Genten::parse_ttb_indx(argc, argv, "--check", 1, 0, 1);
     ttb_indx  warmup =
-      parse_ttb_indx(argc, argv, "--warmup", 1, 0, 1);
+      Genten::parse_ttb_indx(argc, argv, "--warmup", 1, 0, 1);
     Genten::MTTKRP_Method::type mttkrp_method =
-      parse_ttb_enum(argc, argv, "--mttkrp_method",
+      Genten::parse_ttb_enum(argc, argv, "--mttkrp_method",
                      Genten::MTTKRP_Method::default_type,
                      Genten::MTTKRP_Method::num_types,
                      Genten::MTTKRP_Method::types,
                      Genten::MTTKRP_Method::names);
     ttb_indx mttkrp_tile_size =
-      parse_ttb_indx(argc, argv, "--mttkrp_tile_size", 0, 0, INT_MAX);
+      Genten::parse_ttb_indx(argc, argv, "--mttkrp_tile_size", 0, 0, INT_MAX);
 
     Genten::AlgParams algParams;
     algParams.mttkrp_method = mttkrp_method;

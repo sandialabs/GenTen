@@ -47,7 +47,7 @@
 extern "C" {
 
 DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
-				int nrhs, const mxArray *prhs[])
+                                int nrhs, const mxArray *prhs[])
 {
   typedef Genten::DefaultExecutionSpace ExecSpace;
 
@@ -59,72 +59,56 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
       return;
     }
 
-    // Default values
-    std::string method = "cp-als";
-    std::string rolfilename = "";
-    Genten::GCP_LossFunction::type loss_function =
-      Genten::GCP_LossFunction::Gaussian;
-    ttb_real loss_eps = 1.0e-10;
-    unsigned long rng_seed = 12345;
-    bool use_parallel_rng = false;
-    ttb_indx maxIters = 1000;
-    ttb_real tol = 0.0004;
-    ttb_indx printIter = 1;
-    bool debug = false;
-    bool warmup = false;
+    // Parse inputs
     Genten::AlgParams algParams;
     Genten::KtensorT<ExecSpace> u_init;
-
-    // Parse inputs
-    Genten::SptensorT<ExecSpace> X = mxGetSptensor<ExecSpace>(prhs[0], debug);
+    Genten::SptensorT<ExecSpace> X =
+      mxGetSptensor<ExecSpace>(prhs[0], algParams.debug);
     const ttb_indx rank = mxGetScalar(prhs[1]);
     for (int i=2; i<nrhs; i+=2) {
       std::string option = mxGetStdString(prhs[i]);
       const mxArray *ptr = prhs[i+1];
       if (option == "method")
-        method = mxGetStdString(ptr);
+        algParams.method = mxGetStdString(ptr);
       else if (option == "rol")
-        rolfilename = mxGetStdString(ptr);
+        algParams.rolfilename = mxGetStdString(ptr);
       else if (option == "type")
-        loss_function =
+        algParams.loss_function_type =
           Genten::parse_enum<Genten::GCP_LossFunction>(mxGetStdString(ptr));
       else if (option == "tol")
-        tol = mxGetScalar(ptr);
+        algParams.tol = mxGetScalar(ptr);
       else if (option == "eps")
-        loss_eps = mxGetScalar(ptr);
+        algParams.loss_eps = mxGetScalar(ptr);
       else if (option == "seed")
-        rng_seed = mxGetScalar(ptr);
+        algParams.seed = mxGetScalar(ptr);
       else if (option == "prng")
-        use_parallel_rng = mxGetScalar(ptr);
+        algParams.prng = mxGetScalar(ptr);
       else if (option == "maxiters")
-        maxIters = mxGetScalar(ptr);
+        algParams.maxiters = mxGetScalar(ptr);
       else if (option == "printitn")
-        printIter = mxGetScalar(ptr);
+        algParams.printitn = mxGetScalar(ptr);
       else if (option == "debug")
-        debug = mxGetScalar(ptr);
+        algParams.debug = mxGetScalar(ptr);
       else if (option == "warmup")
-        warmup = mxGetScalar(ptr);
+        algParams.warmup = mxGetScalar(ptr);
       else if (option == "mttkrp_method")
         algParams.mttkrp_method =
           Genten::parse_enum<Genten::MTTKRP_Method>(mxGetStdString(ptr));
       else if (option == "mttkrp_tile_size")
         algParams.mttkrp_duplicated_factor_matrix_tile_size = mxGetScalar(ptr);
       else if (option == "init")
-        u_init = mxGetKtensor<ExecSpace>(ptr, debug);
+        u_init = mxGetKtensor<ExecSpace>(ptr, algParams.debug);
       else
         Genten::error("Invalid input option");
     }
 
     // Call driver
     Genten::KtensorT<ExecSpace> u =
-      Genten::driver(X, u_init, method, rank,
-                     rolfilename, loss_function, loss_eps,
-                     rng_seed, use_parallel_rng, maxIters, tol, printIter,
-                     debug, warmup, std::cout, algParams);
+      Genten::driver(X, u_init, algParams, std::cout);
 
     // Return results
     if (nlhs >= 1)
-      plhs[0] = mxSetKtensor(u, debug);
+      plhs[0] = mxSetKtensor(u, algParams.debug);
     if (nlhs >= 2)
       plhs[1] = mxSetKtensor(u_init);
   }
