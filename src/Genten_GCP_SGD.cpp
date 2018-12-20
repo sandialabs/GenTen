@@ -65,6 +65,11 @@
 
 // To do:
 //   * add ADAM
+//   * fuse sampling and f-est kernel
+//   * fuse sampling and Y-tensor evaluation
+//   * investigate HogWild for parallelism over iterations
+//   * compute true f at end of calculation?
+//   * add fit estimate to output info? (to be consistent with CP-ALS)
 
 namespace Genten {
 
@@ -268,6 +273,18 @@ namespace Genten {
       if (num_samples_zeros_grad == 0)
         num_samples_zeros_grad = std::min(num_samples_nonzeros_grad, nz);
 
+      if (printIter > 0) {
+        out << "Starting GCP-SGD" << std::endl
+            << "\tNum samples f: " << num_samples_nonzeros_value << " nonzeros, "
+            << num_samples_zeros_value << " zeros" << std::endl
+            << "\tNum samples g: " << num_samples_nonzeros_grad << " nonzeros, "
+            << num_samples_zeros_grad << " zeros" << std::endl
+            << "\tf_weight (zeros): " << ttb_real(nnz) / ttb_real(num_samples_nonzeros_value) << std::endl
+            << "\tf_weight (nonzeros): " << ttb_real(tsz-nnz) / ttb_real(num_samples_zeros_value) << std::endl
+            << "\tg_weight (zeros): " << ttb_real(nnz) / ttb_real(num_samples_nonzeros_grad) << std::endl
+            << "\tg_weight (nonzeros): " << ttb_real(tsz-nnz) / ttb_real(num_samples_zeros_grad) << std::endl;
+      }
+
       ttb_real nuc = 1.0;
       ttb_indx total_iters = 0;
       ttb_indx nfails = 0;
@@ -296,6 +313,17 @@ namespace Genten {
         u_prev.set_factor(m, fac_matrix_type(u[m].nRows(), nc));
       deep_copy(u_prev, u);
 
+      // Sort tensor if necessary
+      if (!X.isSorted()) {
+        if (printIter > 0)
+          out << "Sorting tensor for faster sampling...";
+        timer.start(timer_sort);
+        X.sort();
+        timer.stop(timer_sort);
+        if (printIter > 0)
+          out << timer.getTotalTime(timer_sort) << " seconds" << std::endl;
+      }
+
       // Sample X for f-estimate
       SptensorT<ExecSpace> X_val, X_grad, Y;
       ArrayT<ExecSpace> w_val, w_grad;
@@ -312,27 +340,10 @@ namespace Genten {
       timer.stop(timer_fest);
       ttb_real fest_prev = fest;
 
-      // Sort tensor if necessary
-      if (!X.isSorted()) {
-        if (printIter > 0)
-          out << "Sorting tensor for faster sampling...";
-        timer.start(timer_sort);
-        X.sort();
-        timer.stop(timer_sort);
-        if (printIter > 0)
-          out << timer.getTotalTime(timer_sort) << " seconds" << std::endl;
-      }
-
-      if (printIter > 0) {
-        out << "Starting GCP-SGD" << std::endl
-            << "\tNum samples f: " << num_samples_nonzeros_value << " nonzeros, "
-            << num_samples_zeros_value << " zeros" << std::endl
-            << "\tNum samples g: " << num_samples_nonzeros_grad << " nonzeros, "
-            << num_samples_zeros_grad << " zeros" << std::endl
-            << "Initial f-est: "
+      if (printIter > 0)
+        out << "Initial f-est: "
             << std::setw(13) << std::setprecision(6) << std::scientific
             << fest << std::endl;
-      }
 
       // SGD epoch loop
       for (numEpochs=0; numEpochs<maxEpochs; ++numEpochs) {
@@ -387,7 +398,7 @@ namespace Genten {
               << step;
           if (failed_epoch)
             out << ", nfails = " << nfails
-                << "( resetting to solution from last epoch)";
+                << " (resetting to solution from last epoch)";
           out << std::endl;
         }
 
