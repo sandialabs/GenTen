@@ -41,16 +41,20 @@
 #include "Genten_Driver.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_IOtext.hpp"
+#include "Genten_FacTestSetGenerator.hpp"
 
 void usage(char **argv)
 {
   std::cout << "Usage: "<< argv[0]<<" [options]" << std::endl;
   std::cout << "Driver options: " << std::endl;
-  std::cout << "  --input <string>   path to input sptensor data" << std::endl;
+  std::cout << "  --input <string>   path to input sptensor data (leave empty for random tensor)" << std::endl;
+  std::cout << "  --dims <array>     random tensor dimensions" << std::endl;
+  std::cout << "  --nnz <int>        approximate number of random tensor nonzeros" << std::endl;
+  std::cout << "  --input <string>   path to input sptensor data (leave empty for random tensor)" << std::endl;
   std::cout << "  --output <string>  output file name" << std::endl;
   std::cout << "  --index_base <int> starting index for tensor nonzeros" << std::endl;
   std::cout << "  --gz               read tensor in gzip compressed format" << std::endl;
-  std::cout << "  --save             whether to save the output tensor" << std::endl;
+  std::cout << "  --save_tensor <string> filename to save the tensor (leave blank for no save)" << std::endl;
   std::cout << "  --vtune            connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
   std::cout << std::endl;
   Genten::AlgParams::print_help(std::cout);
@@ -72,7 +76,7 @@ int main(int argc, char* argv[])
 
     // Driver options
     std::string inputfilename =
-      Genten::parse_string(argc, argv, "--input", "sptensor.dat");
+      Genten::parse_string(argc, argv, "--input", "");
     std::string outputfilename =
       Genten::parse_string(argc, argv, "--output", "");
     ttb_indx index_base =
@@ -82,13 +86,33 @@ int main(int argc, char* argv[])
     ttb_bool vtune =
       Genten::parse_ttb_bool(argc, argv, "--vtune", false);
 
+    // for random tensor when inputfilename == ""
+    Genten::IndxArray facDims_h = { 3000, 4000, 5000 };
+    facDims_h =
+      Genten::parse_ttb_indx_array(argc, argv, "--dims", facDims_h, 1, INT_MAX);
+    ttb_indx nnz =
+      Genten::parse_ttb_indx(argc, argv, "--nnz", 1 * 1000 * 1000, 1, INT_MAX);
+    std::string tensor_outputfilename =
+      Genten::parse_string(argc, argv, "--save_tensor", "");
+
     // Everything else
     Genten::AlgParams algParams;
     algParams.parse(argc, argv);
 
     if (algParams.debug) {
       std::cout << "Driver options:" << std::endl;
-      std::cout << "  input = " << inputfilename << std::endl;
+      if (inputfilename == "")
+        std::cout << "  input = " << inputfilename << std::endl;
+      else {
+        std::cout << "  dims = [";
+        for (ttb_indx i=0; i<facDims_h.size(); ++i) {
+          std::cout << facDims_h[i];
+          if (i != facDims_h.size()-1)
+            std::cout << ",";
+        }
+        std::cout << "]" << std::endl;
+        std::cout << "  nnz = " << nnz << std::endl;
+      }
       std::cout << "  output = " << outputfilename << std::endl;
       std::cout << "  index_base = " << index_base << std::endl;
       std::cout << "  gz = " << (gz ? "true" : "false") << std::endl;
@@ -108,15 +132,46 @@ int main(int argc, char* argv[])
     Genten::SystemTimer timer(2);
 
     // Read in tensor data
-    std::string fname(inputfilename);
-    timer.start(0);
     Sptensor_host_type x_host;
-    Genten::import_sptensor(fname, x_host, index_base, gz, true);
-    Sptensor_type x = create_mirror_view( Space(), x_host );
-    deep_copy( x, x_host );
-    timer.stop(0);
-    printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
-    if (algParams.debug) Genten::print_sptensor(x_host, std::cout, fname);
+    Sptensor_type x;
+    if (inputfilename != "") {
+      timer.start(0);
+      Genten::import_sptensor(inputfilename, x_host, index_base, gz, true);
+      x = create_mirror_view( Space(), x_host );
+      deep_copy( x, x_host );
+      timer.stop(0);
+      printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
+    }
+    else {
+      Genten::IndxArrayT<Space> facDims =
+        create_mirror_view( Space(), facDims_h );
+      deep_copy( facDims, facDims_h );
+
+      std::cout << "Will construct a random Ktensor/Sptensor pair:\n";
+      std::cout << "  Ndims = " << facDims_h.size() << ",  Size = [ ";
+      for (ttb_indx  n = 0; n < facDims_h.size(); n++)
+        std::cout << facDims_h[n] << ' ';
+      std::cout << "]\n";
+      std::cout << "  Ncomps = " << algParams.rank << "\n";
+      std::cout << "  Maximum nnz = " << nnz << "\n";
+
+      // Generate a random Ktensor, and from it a representative sparse
+      // data tensor.
+      Genten::RandomMT rng (algParams.seed);
+      Ktensor_host_type sol_host;
+      timer.start(0);
+      Genten::FacTestSetGenerator testGen;
+      bool ret = testGen.genSpFromRndKtensor(facDims_h, algParams.rank,
+                                             nnz, rng, x_host, sol_host);
+      if (!ret)
+        Genten::error("*** Call to genSpFromRndKtensor failed.\n");
+      x = create_mirror_view( Space(), x_host );
+      deep_copy( x, x_host );
+      timer.stop(0);
+      printf ("Data generation took %6.3f seconds\n", timer.getTotalTime(0));
+      std::cout << "  Actual nnz  = " << x_host.nnz() << "\n";
+    }
+    if (algParams.debug) Genten::print_sptensor(x_host, std::cout, "tensor");
 
     // Compute decomposition
     Ktensor_type u_init;
@@ -131,7 +186,14 @@ int main(int argc, char* argv[])
       deep_copy( u_host, u );
       Genten::export_ktensor(outputfilename, u_host);
       timer.stop(1);
-      printf("Data export took %6.3f seconds\n", timer.getTotalTime(2));
+      printf("Ktensor export took %6.3f seconds\n", timer.getTotalTime(1));
+    }
+
+    if (tensor_outputfilename != "") {
+      timer.start(1);
+      Genten::export_sptensor(tensor_outputfilename, x_host, index_base == 0);
+      timer.stop(1);
+      printf("Sptensor export took %6.3f seconds\n", timer.getTotalTime(1));
     }
 
   }
