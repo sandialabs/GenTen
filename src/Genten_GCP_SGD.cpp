@@ -68,8 +68,6 @@
 //   * fuse sampling and f-est kernel
 //   * fuse sampling and Y-tensor evaluation
 //   * investigate HogWild for parallelism over iterations
-//   * compute true f at end of calculation?
-//   * add fit estimate to output info? (to be consistent with CP-ALS)
 
 namespace Genten {
 
