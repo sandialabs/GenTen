@@ -46,6 +46,7 @@
 
 #include <iomanip>
 #include <algorithm>
+#include <cmath>
 
 #include "Genten_GCP_SGD.hpp"
 #include "Genten_Sptensor.hpp"
@@ -64,7 +65,6 @@
 #endif
 
 // To do:
-//   * add ADAM
 //   * fuse sampling and f-est kernel
 //   * fuse sampling and Y-tensor evaluation
 //   * investigate HogWild for parallelism over iterations
@@ -101,8 +101,8 @@ namespace Genten {
       typedef typename RandomPool::generator_type generator_type;
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
       RandomPool rand_pool(rng.genrnd_int32());
-      //const ttb_indx nloops = 128;
-      const ttb_indx nloops = 1;
+      const ttb_indx nloops = 128;
+      //const ttb_indx nloops = 1;
 
       // Generate samples of nonzeros
       const ttb_indx N_nonzeros = (num_samples_nonzeros+nloops-1)/nloops;
@@ -235,6 +235,8 @@ namespace Genten {
     {
       typedef FacMatrixT<ExecSpace> fac_matrix_type;
       typedef typename fac_matrix_type::view_type view_type;
+      using std::sqrt;
+      using std::pow;
 
       const ttb_indx nd = u.ndims();
       const ttb_indx nc = u.ncomponents();
@@ -256,6 +258,12 @@ namespace Genten {
         algParams.num_samples_nonzeros_grad;
       ttb_indx num_samples_zeros_grad =
         algParams.num_samples_zeros_grad;
+
+      // ADAM parameters
+      const bool use_adam = algParams.use_adam;
+      const ttb_real beta1 = algParams.adam_beta1;
+      const ttb_real beta2 = algParams.adam_beta2;
+      const ttb_real eps = algParams.adam_eps;
 
       // Compute number of samples if necessary
       const ttb_indx nnz = X.nnz();
@@ -285,10 +293,6 @@ namespace Genten {
             << "\tg_weight (nonzeros): " << ttb_real(tsz-nnz) / ttb_real(num_samples_zeros_grad) << std::endl;
       }
 
-      ttb_real nuc = 1.0;
-      ttb_indx total_iters = 0;
-      ttb_indx nfails = 0;
-
       // Timers
       const int timer_sgd = 0;
       const int timer_sort = 1;
@@ -312,6 +316,21 @@ namespace Genten {
       for (ttb_indx m=0; m<nd; ++m)
         u_prev.set_factor(m, fac_matrix_type(u[m].nRows(), nc));
       deep_copy(u_prev, u);
+
+      // ADAM first (m) and second (v) moment vectors
+      KtensorT<ExecSpace> adam_m, adam_v, adam_m_prev, adam_v_prev;
+      if (use_adam) {
+        adam_m = KtensorT<ExecSpace>(nc, nd);
+        adam_v = KtensorT<ExecSpace>(nc, nd);
+        adam_m_prev = KtensorT<ExecSpace>(nc, nd);
+        adam_v_prev = KtensorT<ExecSpace>(nc, nd);
+        for (ttb_indx m=0; m<nd; ++m) {
+          adam_m.set_factor(m, fac_matrix_type(u[m].nRows(), nc));
+          adam_v.set_factor(m, fac_matrix_type(u[m].nRows(), nc));
+          adam_m_prev.set_factor(m, fac_matrix_type(u[m].nRows(), nc));
+          adam_v_prev.set_factor(m, fac_matrix_type(u[m].nRows(), nc));
+        }
+      }
 
       // Sort tensor if necessary
       if (!X.isSorted()) {
@@ -340,12 +359,22 @@ namespace Genten {
       timer.stop(timer_fest);
       ttb_real fest_prev = fest;
 
+      // Compute tensor norm for estimating fit
+      ttb_real x_norm2 = X.norm(); x_norm2 *= x_norm2;
+
       if (printIter > 0)
         out << "Initial f-est: "
             << std::setw(13) << std::setprecision(6) << std::scientific
-            << fest << std::endl;
+            << fest << ", scaled f-est: "
+            << std::setw(10) << std::setprecision(3) << std::scientific
+            << fest/x_norm2 << std::endl;
 
       // SGD epoch loop
+      ttb_real nuc = 1.0;
+      ttb_indx total_iters = 0;
+      ttb_indx nfails = 0;
+      ttb_real beta1t = 1.0;
+      ttb_real beta2t = 1.0;
       for (numEpochs=0; numEpochs<maxEpochs; ++numEpochs) {
         // Gradient step size
         ttb_real step = nuc*rate;
@@ -353,6 +382,14 @@ namespace Genten {
         // Epoch iterations
         for (ttb_indx iter=0; iter<epoch_iters; ++iter) {
           ++total_iters;
+
+          // ADAM step size
+          ttb_real adam_step = 0.0;
+          if (use_adam) {
+            beta1t = beta1 * beta1t;
+            beta2t = beta2 * beta2t;
+            adam_step = step*sqrt(1.0-beta2t) / (1.0-beta1t);
+          }
 
           // compute gradient
           timer.start(timer_sample_g);
@@ -369,10 +406,22 @@ namespace Genten {
           for (ttb_indx m=0; m<nd; ++m) {
             view_type uv = u[m].view();
             view_type gv = g[m].view();
-            u[m].apply_func(KOKKOS_LAMBDA(const ttb_indx j, const ttb_indx i)
-            {
-              uv(i,j) -= step*gv(i,j);
-            });
+            if (use_adam) {
+              view_type mv = adam_m[m].view();
+              view_type vv = adam_v[m].view();
+              u[m].apply_func(KOKKOS_LAMBDA(const ttb_indx j, const ttb_indx i)
+              {
+                mv(i,j) = beta1*mv(i,j) + (1.0-beta1)*gv(i,j);
+                vv(i,j) = beta2*vv(i,j) + (1.0-beta2)*gv(i,j)*gv(i,j);
+                uv(i,j) -= adam_step*mv(i,j)/sqrt(vv(i,j)+eps);
+              });
+            }
+            else {
+              u[m].apply_func(KOKKOS_LAMBDA(const ttb_indx j, const ttb_indx i)
+              {
+                uv(i,j) -= step*gv(i,j);
+              });
+            }
           }
           timer.stop(timer_step);
         }
@@ -392,8 +441,9 @@ namespace Genten {
         if ((printIter > 0) && (((numEpochs + 1) % printIter) == 0)) {
           out << "Epoch " << std::setw(3) << numEpochs + 1 << ": f-est = "
               << std::setw(13) << std::setprecision(6) << std::scientific
-              << fest
-              << ", step = "
+              << fest << ", scaled f-est = "
+              << std::setw(10) << std::setprecision(3) << std::scientific
+              << fest/x_norm2 << ", step = "
               << std::setw(8) << std::setprecision(1) << std::scientific
               << step;
           if (failed_epoch)
@@ -408,12 +458,22 @@ namespace Genten {
           // restart from last epoch
           deep_copy(u, u_prev);
           fest = fest_prev;
-          total_iters -= epoch_iters;  // Why do this?
+          total_iters -= epoch_iters;
+          if (use_adam) {
+            deep_copy(adam_m, adam_m_prev);
+            deep_copy(adam_v, adam_v_prev);
+            beta1t /= pow(beta1,epoch_iters);
+            beta2t /= pow(beta2,epoch_iters);
+          }
         }
         else {
           // update previous data
           deep_copy(u_prev, u);
           fest_prev = fest;
+          if (use_adam) {
+            deep_copy(adam_m_prev, adam_m);
+            deep_copy(adam_v_prev, adam_v);
+          }
         }
 
         if (nfails > max_fails || fest < tol)
@@ -432,7 +492,9 @@ namespace Genten {
              << "\tstep:     " << timer.getTotalTime(timer_step) << " seconds\n"
              << "Final f-est: "
              << std::setw(13) << std::setprecision(6) << std::scientific
-             << fest << std::endl;
+             << fest << ", scaled f-est: "
+             << std::setw(10) << std::setprecision(3) << std::scientific
+             << fest/x_norm2 << std::endl;
       }
 
       // Normalize Ktensor u

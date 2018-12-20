@@ -67,7 +67,7 @@ int main(int argc, char* argv[])
 
   try {
 
-    ttb_bool help = Genten::parse_ttb_bool(argc, argv, "--help", false);
+    ttb_bool help = Genten::parse_ttb_bool(argc, argv, "--help", "--no-help", false);
     if ((argc < 2) || (help)) {
       usage(argv);
       Kokkos::finalize();
@@ -82,9 +82,9 @@ int main(int argc, char* argv[])
     ttb_indx index_base =
       Genten::parse_ttb_indx(argc, argv, "--index_base", 0, 0, INT_MAX);
     ttb_bool gz =
-      Genten::parse_ttb_bool(argc, argv, "--gz", false);
+      Genten::parse_ttb_bool(argc, argv, "--gz", "--no-gz", false);
     ttb_bool vtune =
-      Genten::parse_ttb_bool(argc, argv, "--vtune", false);
+      Genten::parse_ttb_bool(argc, argv, "--vtune", "--no-vtune", false);
 
     // for random tensor when inputfilename == ""
     Genten::IndxArray facDims_h = { 3000, 4000, 5000 };

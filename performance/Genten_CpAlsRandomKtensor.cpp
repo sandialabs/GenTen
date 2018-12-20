@@ -233,14 +233,14 @@ int main(int argc, char* argv[])
 
   try {
 
-    ttb_bool help = Genten::parse_ttb_bool(argc, argv, "--help", false);
+    ttb_bool help = Genten::parse_ttb_bool(argc, argv, "--help", "--no-help", false);
     if (help) {
       usage(argv);
       Kokkos::finalize();
       return 0;
     }
 
-    ttb_bool vtune = Genten::parse_ttb_bool(argc, argv, "--vtune", false);
+    ttb_bool vtune = Genten::parse_ttb_bool(argc, argv, "--vtune", "--no-vtune", false);
     if (vtune)
       Genten::connect_vtune();
 

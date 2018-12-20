@@ -327,14 +327,14 @@ int main(int argc, char* argv[])
 
   try {
 
-    ttb_bool help = Genten::parse_ttb_bool(argc, argv, "--help", false);
+    ttb_bool help = Genten::parse_ttb_bool(argc, argv, "--help", "--no-help", false);
     if (help) {
       usage(argv);
       Kokkos::finalize();
       return 0;
     }
 
-    ttb_bool vtune = Genten::parse_ttb_bool(argc, argv, "--vtune", false);
+    ttb_bool vtune = Genten::parse_ttb_bool(argc, argv, "--vtune", "--no-vtune", false);
     if (vtune)
       Genten::connect_vtune();
 
@@ -344,7 +344,7 @@ int main(int argc, char* argv[])
     ttb_indx index_base =
       Genten::parse_ttb_indx(argc, argv, "--index_base", 0, 0, INT_MAX);
     ttb_bool gz =
-      Genten::parse_ttb_bool(argc, argv, "--gz", false);
+      Genten::parse_ttb_bool(argc, argv, "--gz", "--no-gz", false);
     Genten::IndxArray  cFacDims = { 3000, 4000, 5000 };
     cFacDims =
       Genten::parse_ttb_indx_array(argc, argv, "--dims", cFacDims, 1, INT_MAX);

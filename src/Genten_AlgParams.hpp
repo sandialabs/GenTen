@@ -83,6 +83,10 @@ namespace Genten {
     ttb_indx num_samples_zeros_value;    // Zero sampels for f-est
     ttb_indx num_samples_nonzeros_grad;  // Nonzero samples for gradient
     ttb_indx num_samples_zeros_grad;     // Zero samples for gradient
+    bool use_adam;                       // Use ADAM step
+    ttb_real adam_beta1;                 // Decay rate of first moment avg.
+    ttb_real adam_beta2;                 // Decay rate of second moment avg.
+    ttb_real adam_eps;                   // Shift in ADAM step
 
     // Constructor initializing values to defaults
     AlgParams();
@@ -99,7 +103,7 @@ namespace Genten {
 
   ttb_real parse_ttb_real(int argc, char** argv, std::string cl_arg, ttb_real default_value, ttb_real min=0.0, ttb_real max=1.0);
   ttb_indx parse_ttb_indx(int argc, char** argv, std::string cl_arg, ttb_indx default_value, ttb_indx min=0, ttb_indx max=100);
-  ttb_bool parse_ttb_bool(int argc, char** argv, std::string cl_arg, ttb_bool default_value);
+  ttb_bool parse_ttb_bool(int argc, char** argv, std::string cl_arg_on, std::string cl_off_off, ttb_bool default_value);
   std::string parse_string(int argc, char** argv, std::string cl_arg, std::string default_value);
   IndxArray parse_ttb_indx_array(int argc, char** argv, std::string cl_arg, const IndxArray& default_value, ttb_indx min=1, ttb_indx max=INT_MAX);
   template <typename T>
