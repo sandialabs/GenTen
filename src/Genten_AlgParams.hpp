@@ -79,10 +79,17 @@ namespace Genten {
     ttb_real decay;                      // Rate step size decreases on fails
     ttb_indx max_fails;                  // Maximum number of fails
     ttb_indx epoch_iters;                // Number of iterations per epoch
+    ttb_indx frozen_iters;               // Number of iterations w/frozen grad
+    ttb_indx rng_iters;                  // Number of loops in RNG
     ttb_indx num_samples_nonzeros_value; // Nonzero samples for f-est
     ttb_indx num_samples_zeros_value;    // Zero sampels for f-est
     ttb_indx num_samples_nonzeros_grad;  // Nonzero samples for gradient
     ttb_indx num_samples_zeros_grad;     // Zero samples for gradient
+    ttb_real w_f_nz;                     // Nonzero sample weight for f
+    ttb_real w_f_z;                      // Zero sample weight for f
+    ttb_real w_g_nz;                     // Nonzero sample weight for grad
+    ttb_real w_g_z;                      // Zero sample weight for grad
+    bool compute_fit;                    // Compute fit metric
     bool use_adam;                       // Use ADAM step
     ttb_real adam_beta1;                 // Decay rate of first moment avg.
     ttb_real adam_beta2;                 // Decay rate of second moment avg.

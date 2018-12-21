@@ -65,9 +65,16 @@
 #endif
 
 // To do:
-//   * fuse sampling and f-est kernel
 //   * fuse sampling and Y-tensor evaluation
 //   * investigate HogWild for parallelism over iterations
+//   * f-est seems wrong on the GPU, even with serial sampling.  Maybe
+//     something is wrong with the sorting?
+//   * Can you avoid createPermutation() in the sampling (e.g., by extracting
+//     existing permutation arrays)?
+//   * The step is not an insignificant cost.  Maybe do something like the
+//     Kokkos implementation of the ROL vector
+//   * Add specialization that uses the correct (non-zero-sampled) gradient for
+//     Gaussian?
 
 namespace Genten {
 
@@ -77,6 +84,8 @@ namespace Genten {
     void stratified_sample_tensor(const SptensorT<ExecSpace>& X,
                                   const ttb_indx num_samples_nonzeros,
                                   const ttb_indx num_samples_zeros,
+                                  const ttb_real weight_nonzeros,
+                                  const ttb_real weight_zeros,
                                   SptensorT<ExecSpace>& Y,
                                   ArrayT<ExecSpace>& w,
                                   RandomMT& rng,
@@ -99,8 +108,7 @@ namespace Genten {
       typedef typename RandomPool::generator_type generator_type;
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
       RandomPool rand_pool(rng.genrnd_int32());
-      const ttb_indx nloops = 128;
-      //const ttb_indx nloops = 1;
+      const ttb_indx nloops = algParams.rng_iters;
 
       // Generate samples of nonzeros
       const ttb_indx N_nonzeros = (num_samples_nonzeros+nloops-1)/nloops;
@@ -115,7 +123,7 @@ namespace Genten {
             Y.value(i) = X.value(idx);
             for (ttb_indx j=0; j<nd; ++j)
               Y.subscript(i,j) = X.subscript(idx,j);
-            w[i] = ttb_real(nnz) / ttb_real(num_samples_nonzeros);
+            w[i] = weight_nonzeros;
           }
         }
         rand_pool.free_state(gen);
@@ -160,7 +168,7 @@ namespace Genten {
                 for (ttb_indx j=0; j<nd; ++j)
                   Y.subscript(idx,j) = ind[j];
                 Y.value(idx) = 0.0;
-                w[idx] = ttb_real(tsz-nnz) / ttb_real(num_samples_zeros);
+                w[idx] = weight_zeros;
               }
             }
 
@@ -186,7 +194,7 @@ namespace Genten {
         Y_host.value(i) = X_host.value(idx);
         for (ttb_indx j=0; j<nd; ++j)
           Y_host.subscript(i,j) = X_host.subscript(idx,j);
-        w_host[i] = ttb_real(nnz) / ttb_real(num_samples_nonzeros);
+        w_host[i] = weight_nonzeros;
       }
 
       // Generate samples of zeros
@@ -207,7 +215,7 @@ namespace Genten {
           for (ttb_indx j=0; j<nd; ++j)
             Y_host.subscript(idx,j) = ind[j];
           Y_host.value(idx) = 0.0;
-          w_host[idx] = ttb_real(tsz-nnz) / ttb_real(num_samples_zeros);
+          w_host[idx] = weight_zeros;
           ++i;
         }
 
@@ -245,9 +253,11 @@ namespace Genten {
       const ttb_real rate = algParams.rate;
       const ttb_indx max_fails = algParams.max_fails;
       const ttb_indx epoch_iters = algParams.epoch_iters;
+      const ttb_indx frozen_iters = algParams.frozen_iters;
       const ttb_indx seed = algParams.seed;
       const ttb_indx maxEpochs = algParams.maxiters;
       const ttb_indx printIter = algParams.printitn;
+      const bool compute_fit = algParams.compute_fit;
       ttb_indx num_samples_nonzeros_value =
         algParams.num_samples_nonzeros_value;
       ttb_indx num_samples_zeros_value =
@@ -256,6 +266,10 @@ namespace Genten {
         algParams.num_samples_nonzeros_grad;
       ttb_indx num_samples_zeros_grad =
         algParams.num_samples_zeros_grad;
+      ttb_real weight_nonzeros_value = algParams.w_f_nz;
+      ttb_real weight_zeros_value = algParams.w_f_z;
+      ttb_real weight_nonzeros_grad = algParams.w_g_nz;
+      ttb_real weight_zeros_grad = algParams.w_g_z;
 
       // ADAM parameters
       const bool use_adam = algParams.use_adam;
@@ -279,16 +293,30 @@ namespace Genten {
       if (num_samples_zeros_grad == 0)
         num_samples_zeros_grad = std::min(num_samples_nonzeros_grad, nz);
 
+      // Compute weights if necessary
+      if (weight_nonzeros_value < 0.0)
+        weight_nonzeros_value =
+          ttb_real(nnz) / ttb_real(num_samples_nonzeros_value);
+      if (weight_zeros_value < 0.0)
+        weight_zeros_value =
+          ttb_real(tsz-nnz) / ttb_real(num_samples_zeros_value);
+      if (weight_nonzeros_grad < 0.0)
+        weight_nonzeros_grad =
+          ttb_real(nnz) / ttb_real(num_samples_nonzeros_grad);
+      if (weight_zeros_grad < 0.0)
+        weight_zeros_grad =
+          ttb_real(tsz-nnz) / ttb_real(num_samples_zeros_grad);
+
       if (printIter > 0) {
         out << "Starting GCP-SGD" << std::endl
-            << "\tNum samples f: " << num_samples_nonzeros_value << " nonzeros, "
+            << "\tNum samples f: " << num_samples_nonzeros_value <<" nonzeros, "
             << num_samples_zeros_value << " zeros" << std::endl
             << "\tNum samples g: " << num_samples_nonzeros_grad << " nonzeros, "
             << num_samples_zeros_grad << " zeros" << std::endl
-            << "\tf_weight (zeros): " << ttb_real(nnz) / ttb_real(num_samples_nonzeros_value) << std::endl
-            << "\tf_weight (nonzeros): " << ttb_real(tsz-nnz) / ttb_real(num_samples_zeros_value) << std::endl
-            << "\tg_weight (zeros): " << ttb_real(nnz) / ttb_real(num_samples_nonzeros_grad) << std::endl
-            << "\tg_weight (nonzeros): " << ttb_real(tsz-nnz) / ttb_real(num_samples_zeros_grad) << std::endl;
+            << "\tWeights f: " << weight_nonzeros_value << " nonzeros, "
+            << weight_zeros_value << " zeros" << std::endl
+            << "\tWeights g: " << weight_nonzeros_grad << " nonzeros, "
+            << weight_zeros_grad << " zeros" << std::endl;
       }
 
       // Timers
@@ -348,24 +376,36 @@ namespace Genten {
       timer.start(timer_sample_f);
       Impl::stratified_sample_tensor(
         X, num_samples_nonzeros_value, num_samples_zeros_value,
+        weight_nonzeros_value, weight_zeros_value,
         X_val, w_val, rng, algParams);
       timer.stop(timer_sample_f);
 
       // Objective estimates
+      ttb_real fit = 0.0;
+      ttb_real x_norm2 = 0.0;
+      ArrayT<ExecSpace> w_fit;
       timer.start(timer_fest);
       fest = Impl::gcp_value(X_val, u, w_val, loss_func);
+      if (compute_fit) {
+        w_fit = ArrayT<ExecSpace>(nnz, 1.0);
+        fit = Impl::gcp_value(X, u, w_fit, loss_func);
+        x_norm2 = X.norm(); x_norm2 *= x_norm2;
+        fit = 1.0 - fit / x_norm2;
+      }
       timer.stop(timer_fest);
       ttb_real fest_prev = fest;
+      ttb_real fit_prev = fit;
 
-      // Compute tensor norm for estimating fit
-      ttb_real x_norm2 = X.norm(); x_norm2 *= x_norm2;
-
-      if (printIter > 0)
+      if (printIter > 0) {
         out << "Initial f-est: "
             << std::setw(13) << std::setprecision(6) << std::scientific
-            << fest << ", scaled f-est: "
-            << std::setw(10) << std::setprecision(3) << std::scientific
-            << fest/x_norm2 << std::endl;
+            << fest;
+        if (compute_fit)
+          out << ", fit: "
+              << std::setw(10) << std::setprecision(3) << std::scientific
+              << fit;
+        out << std::endl;
+      }
 
       // SGD epoch loop
       ttb_real nuc = 1.0;
@@ -379,9 +419,9 @@ namespace Genten {
 
         // Epoch iterations
         for (ttb_indx iter=0; iter<epoch_iters; ++iter) {
-          ++total_iters;
 
           // ADAM step size
+          // Note sure if this should be constant for frozen iters?
           ttb_real adam_step = 0.0;
           if (use_adam) {
             beta1t = beta1 * beta1t;
@@ -389,44 +429,55 @@ namespace Genten {
             adam_step = step*sqrt(1.0-beta2t) / (1.0-beta1t);
           }
 
-          // compute gradient
+          // sample for gradient
           timer.start(timer_sample_g);
           Impl::stratified_sample_tensor(
             X, num_samples_nonzeros_grad, num_samples_zeros_grad,
+            weight_nonzeros_grad, weight_zeros_grad,
             X_grad, w_grad, rng, algParams);
           timer.stop(timer_sample_g);
-          timer.start(timer_grad);
-          Impl::gcp_gradient(X_grad, Y, u, w_grad, loss_func, g, algParams);
-          timer.stop(timer_grad);
 
-          // take step
-          timer.start(timer_step);
-          for (ttb_indx m=0; m<nd; ++m) {
-            view_type uv = u[m].view();
-            view_type gv = g[m].view();
-            if (use_adam) {
-              view_type mv = adam_m[m].view();
-              view_type vv = adam_v[m].view();
-              u[m].apply_func(KOKKOS_LAMBDA(const ttb_indx j, const ttb_indx i)
-              {
-                mv(i,j) = beta1*mv(i,j) + (1.0-beta1)*gv(i,j);
-                vv(i,j) = beta2*vv(i,j) + (1.0-beta2)*gv(i,j)*gv(i,j);
-                uv(i,j) -= adam_step*mv(i,j)/sqrt(vv(i,j)+eps);
-              });
+          for (ttb_indx giter=0; giter<frozen_iters; ++giter) {
+             ++total_iters;
+
+            // compute gradient
+            timer.start(timer_grad);
+            Impl::gcp_gradient(X_grad, Y, u, w_grad, loss_func, g, algParams);
+            timer.stop(timer_grad);
+
+            // take step
+            timer.start(timer_step);
+            for (ttb_indx m=0; m<nd; ++m) {
+              view_type uv = u[m].view();
+              view_type gv = g[m].view();
+              if (use_adam) {
+                view_type mv = adam_m[m].view();
+                view_type vv = adam_v[m].view();
+                u[m].apply_func(KOKKOS_LAMBDA(const ttb_indx j,const ttb_indx i)
+                {
+                  mv(i,j) = beta1*mv(i,j) + (1.0-beta1)*gv(i,j);
+                  vv(i,j) = beta2*vv(i,j) + (1.0-beta2)*gv(i,j)*gv(i,j);
+                  uv(i,j) -= adam_step*mv(i,j)/sqrt(vv(i,j)+eps);
+                });
+              }
+              else {
+                u[m].apply_func(KOKKOS_LAMBDA(const ttb_indx j,const ttb_indx i)
+                {
+                  uv(i,j) -= step*gv(i,j);
+                });
+              }
             }
-            else {
-              u[m].apply_func(KOKKOS_LAMBDA(const ttb_indx j, const ttb_indx i)
-              {
-                uv(i,j) -= step*gv(i,j);
-              });
-            }
+            timer.stop(timer_step);
           }
-          timer.stop(timer_step);
         }
 
         // compute objective estimate
         timer.start(timer_fest);
         fest = Impl::gcp_value(X_val, u, w_val, loss_func);
+        if (compute_fit) {
+          fit = Impl::gcp_value(X, u, w_fit, loss_func);
+          fit = 1.0 - fit / x_norm2;
+        }
         timer.stop(timer_fest);
 
         // check convergence
@@ -439,9 +490,12 @@ namespace Genten {
         if ((printIter > 0) && (((numEpochs + 1) % printIter) == 0)) {
           out << "Epoch " << std::setw(3) << numEpochs + 1 << ": f-est = "
               << std::setw(13) << std::setprecision(6) << std::scientific
-              << fest << ", scaled f-est = "
-              << std::setw(10) << std::setprecision(3) << std::scientific
-              << fest/x_norm2 << ", step = "
+              << fest;
+          if (compute_fit)
+            out << ", fit = "
+                << std::setw(10) << std::setprecision(3) << std::scientific
+                << fit;
+          out << ", step = "
               << std::setw(8) << std::setprecision(1) << std::scientific
               << step;
           if (failed_epoch)
@@ -456,7 +510,7 @@ namespace Genten {
           // restart from last epoch
           deep_copy(u, u_prev);
           fest = fest_prev;
-          total_iters -= epoch_iters;
+          fit = fit_prev;
           if (use_adam) {
             deep_copy(adam_m, adam_m_prev);
             deep_copy(adam_v, adam_v_prev);
@@ -468,6 +522,7 @@ namespace Genten {
           // update previous data
           deep_copy(u_prev, u);
           fest_prev = fest;
+          fit_prev = fit;
           if (use_adam) {
             deep_copy(adam_m_prev, adam_m);
             deep_copy(adam_v_prev, adam_v);
@@ -490,9 +545,12 @@ namespace Genten {
              << "\tstep:     " << timer.getTotalTime(timer_step) << " seconds\n"
              << "Final f-est: "
              << std::setw(13) << std::setprecision(6) << std::scientific
-             << fest << ", scaled f-est: "
-             << std::setw(10) << std::setprecision(3) << std::scientific
-             << fest/x_norm2 << std::endl;
+             << fest;
+         if (compute_fit)
+           out << ", fit: "
+               << std::setw(10) << std::setprecision(3) << std::scientific
+               << fit;
+         out << std::endl;
       }
 
       // Normalize Ktensor u

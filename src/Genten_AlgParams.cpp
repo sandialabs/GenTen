@@ -57,12 +57,19 @@ Genten::AlgParams::AlgParams() :
   rolfilename(""),
   rate(1.0e-3),
   decay(0.1),
-  max_fails(1),
+  max_fails(10),
   epoch_iters(1000),
+  frozen_iters(1),
+  rng_iters(128),
   num_samples_nonzeros_value(0),
   num_samples_zeros_value(0),
   num_samples_nonzeros_grad(0),
   num_samples_zeros_grad(0),
+  w_f_nz(-1.0), // Means to compute the default
+  w_f_z(-1.0),
+  w_g_nz(-1.0),
+  w_g_z(-1.0),
+  compute_fit(false),
   use_adam(true),
   adam_beta1(0.9),    // Defaults taken from ADAM paper
   adam_beta2(0.999),
@@ -109,7 +116,11 @@ void Genten::AlgParams::parse(int argc, char* argv[])
   decay = parse_ttb_real(argc, argv, "--decay", decay, 0.0, 1.0);
   max_fails = parse_ttb_indx(argc, argv, "--fails", max_fails, 0, INT_MAX);
   epoch_iters =
-    parse_ttb_indx(argc, argv, "--epochiters", epoch_iters, 0, INT_MAX);
+    parse_ttb_indx(argc, argv, "--epochiters", epoch_iters, 1, INT_MAX);
+  frozen_iters =
+    parse_ttb_indx(argc, argv, "--frozeniters", frozen_iters, 1, INT_MAX);
+  rng_iters =
+    parse_ttb_indx(argc, argv, "--rngiters", rng_iters, 1, INT_MAX);
   num_samples_nonzeros_value =
     parse_ttb_indx(argc, argv, "--fnzs", num_samples_nonzeros_value, 0, INT_MAX);
   num_samples_zeros_value =
@@ -118,6 +129,11 @@ void Genten::AlgParams::parse(int argc, char* argv[])
     parse_ttb_indx(argc, argv, "--gnzs", num_samples_nonzeros_grad, 0, INT_MAX);
   num_samples_zeros_grad =
     parse_ttb_indx(argc, argv, "--gzs", num_samples_zeros_grad, 0, INT_MAX);
+  w_f_nz = parse_ttb_real(argc, argv, "--fnzw", w_f_nz, -1.0, DOUBLE_MAX);
+  w_f_z = parse_ttb_real(argc, argv, "--fzw", w_f_z, -1.0, DOUBLE_MAX);
+  w_g_nz = parse_ttb_real(argc, argv, "--gnzw", w_g_nz, -1.0, DOUBLE_MAX);
+  w_g_z = parse_ttb_real(argc, argv, "--gzw", w_g_z, -1.0, DOUBLE_MAX);
+  compute_fit = parse_ttb_bool(argc, argv, "--fit", "--no-fit", compute_fit);
   use_adam = parse_ttb_bool(argc, argv, "--adam", "--no-adam", use_adam);
   adam_beta1 = parse_ttb_real(argc, argv, "--adam_beta1", adam_beta1, 0.0, 1.0);
   adam_beta2 = parse_ttb_real(argc, argv, "--adam_beta2", adam_beta2, 0.0, 1.0);
@@ -171,10 +187,17 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --decay <float>    rate step size decreases on fails" << std::endl;
   out << "  --fails <int>      maximum number of fails" << std::endl;
   out << "  --epochiters <int> iterations per epoch" << std::endl;
+  out << "  --frozeniters <int> inner iterations with frozen gradient" << std::endl;
+  out << "  --rngiters <int>   iteration loops in parallel RNG" << std::endl;
   out << "  --fnzs <int>       nonzero samples for f-est" << std::endl;
   out << "  --fzs <int>        zero samples for f-est" << std::endl;
   out << "  --gnzs <int>       nonzero samples for gradient" << std::endl;
   out << "  --gzs <int>        zero samples for gradient" << std::endl;
+  out << "  --fnzw <float>     nonzero sample weight for f-est" << std::endl;
+  out << "  --fzw <float>      zero sample weight for f-est" << std::endl;
+  out << "  --gnzw <float>     nonzero sample weight for gradient" << std::endl;
+  out << "  --gzw <float>      zero sample weight for gradient" << std::endl;
+  out << "  --fit              compute fit metric" << std::endl;
   out << "  --adam             use ADAM step" << std::endl;
   out << "  --adam_beta1       Decay rate for 1st moment avg." << std::endl;
   out << "  --adam_beta2       Decay rate for 2nd moment avg." << std::endl;
@@ -218,10 +241,17 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  decay = " << decay << std::endl;
   out << "  fails = " << max_fails << std::endl;
   out << "  epochiters = " << epoch_iters << std::endl;
+  out << "  frozeniters = " << frozen_iters << std::endl;
+  out << "  rngiters = " << rng_iters << std::endl;
   out << "  fnzs = " << num_samples_nonzeros_value << std::endl;
   out << "  fzs = " << num_samples_zeros_value << std::endl;
   out << "  gnzs = " << num_samples_nonzeros_grad << std::endl;
   out << "  gzs = " << num_samples_zeros_grad << std::endl;
+  out << "  fnzw = " << w_f_nz << std::endl;
+  out << "  fzw = " << w_f_z << std::endl;
+  out << "  gnzw = " << w_g_nz << std::endl;
+  out << "  gzw = " << w_g_z << std::endl;
+  out << "  fit = " << (compute_fit ? "true" : "false") << std::endl;
   out << "  adam = " << (use_adam ? "true" : "false") << std::endl;
   out << "  adam_beta1 = " << adam_beta1 << std::endl;
   out << "  adam_beta2 = " << adam_beta2 << std::endl;
