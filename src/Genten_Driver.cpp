@@ -85,15 +85,15 @@ driver(SptensorT<ExecSpace>& x,
   if (u_init.ncomponents() == 0 && u_init.ndims() == 0) {
     u_init = Ktensor_type(algParams.rank, x.ndims(), x.size());
 
-    // Matlab cp_als always sets the weights to one.
-    u_init.setWeights(1.0);
     Genten::RandomMT cRMT(algParams.seed);
     timer.start(0);
     if (algParams.prng) {
+      u_init.setWeights(1.0); // Matlab cp_als always sets the weights to one.
       u_init.setMatricesScatter(false, true, cRMT);
       if (algParams.debug) deep_copy( u_host, u_init );
     }
     else {
+      u_host.setWeights(1.0); // Matlab cp_als always sets the weights to one.
       u_host.setMatricesScatter(false, false, cRMT);
       deep_copy( u_init, u_host );
     }

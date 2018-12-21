@@ -67,8 +67,6 @@
 // To do:
 //   * fuse sampling and Y-tensor evaluation
 //   * investigate HogWild for parallelism over iterations
-//   * f-est seems wrong on the GPU, even with serial sampling.  Maybe
-//     something is wrong with the sorting?
 //   * Can you avoid createPermutation() in the sampling (e.g., by extracting
 //     existing permutation arrays)?
 //   * The step is not an insignificant cost.  Maybe do something like the
@@ -331,6 +329,9 @@ namespace Genten {
 
       // Start timer for total execution time of the algorithm.
       timer.start(timer_sgd);
+
+      // Distribute the initial guess to have weights of one.
+      u.distribute(0);
 
       // Gradient Ktensor
       KtensorT<ExecSpace> g(nc, nd);
