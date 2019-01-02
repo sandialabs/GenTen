@@ -50,11 +50,11 @@ void usage(char **argv)
   std::cout << "  --input <string>   path to input sptensor data (leave empty for random tensor)" << std::endl;
   std::cout << "  --dims <array>     random tensor dimensions" << std::endl;
   std::cout << "  --nnz <int>        approximate number of random tensor nonzeros" << std::endl;
-  std::cout << "  --input <string>   path to input sptensor data (leave empty for random tensor)" << std::endl;
-  std::cout << "  --output <string>  output file name" << std::endl;
   std::cout << "  --index_base <int> starting index for tensor nonzeros" << std::endl;
   std::cout << "  --gz               read tensor in gzip compressed format" << std::endl;
   std::cout << "  --save_tensor <string> filename to save the tensor (leave blank for no save)" << std::endl;
+  std::cout << "  --init <string>  file name for reading Ktensor initial guess (leave blank for random initial guess)" << std::endl;
+  std::cout << "  --output <string>  output file name for saving Ktensor" << std::endl;
   std::cout << "  --vtune            connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
   std::cout << std::endl;
   Genten::AlgParams::print_help(std::cout);
@@ -79,6 +79,8 @@ int main(int argc, char* argv[])
       Genten::parse_string(argc, argv, "--input", "");
     std::string outputfilename =
       Genten::parse_string(argc, argv, "--output", "");
+    std::string initfilename =
+      Genten::parse_string(argc, argv, "--init", "");
     ttb_indx index_base =
       Genten::parse_ttb_indx(argc, argv, "--index_base", 0, 0, INT_MAX);
     ttb_bool gz =
@@ -113,6 +115,10 @@ int main(int argc, char* argv[])
         std::cout << "]" << std::endl;
         std::cout << "  nnz = " << nnz << std::endl;
       }
+      if (initfilename != "")
+        std::cout << "  init = " << initfilename << std::endl;
+      if (tensor_outputfilename != "")
+        std::cout << "  save_tensor = " << tensor_outputfilename << std::endl;
       std::cout << "  output = " << outputfilename << std::endl;
       std::cout << "  index_base = " << index_base << std::endl;
       std::cout << "  gz = " << (gz ? "true" : "false") << std::endl;
@@ -173,8 +179,16 @@ int main(int argc, char* argv[])
     }
     if (algParams.debug) Genten::print_sptensor(x_host, std::cout, "tensor");
 
-    // Compute decomposition
+    // Read in initial guess if provided
     Ktensor_type u_init;
+    if (initfilename != "") {
+      Ktensor_host_type u_init_host;
+      Genten::import_ktensor(initfilename, u_init_host);
+      u_init = create_mirror_view(Space(), u_init_host);
+      deep_copy(u_init, u_init_host);
+    }
+
+    // Compute decomposition
     Ktensor_type u = Genten::driver(x, u_init, algParams, std::cout);
 
     // Save results to file
