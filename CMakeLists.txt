@@ -351,6 +351,8 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_MathLibs_Wpr.cpp
   ${Genten_SOURCE_DIR}/src/Genten_portability.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Sptensor.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_GCP_SamplingKernels.cpp
   ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
   )
