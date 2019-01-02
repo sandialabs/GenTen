@@ -51,6 +51,7 @@
 #include "Genten_Sptensor.hpp"
 #include "Genten_TinyVec.hpp"
 #include "Genten_AlgParams.hpp"
+#include "Genten_SimdKernel.hpp"
 
 // This is a locally-modified version of Kokkos_ScatterView.hpp which we
 // need until the changes are moved into Kokkos
@@ -59,47 +60,6 @@
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
 #endif
-
-namespace Genten {
-namespace Impl {
-
-template <unsigned VS, typename Func>
-void run_row_simd_kernel_impl(Func& f, const unsigned nc)
-{
-  static const unsigned VS4 = 4*VS;
-  static const unsigned VS3 = 3*VS;
-  static const unsigned VS2 = 2*VS;
-  static const unsigned VS1 = 1*VS;
-
-  if (nc > VS3)
-    f.template run<VS4,VS>();
-  else if (nc > VS2)
-    f.template run<VS3,VS>();
-  else if (nc > VS1)
-    f.template run<VS2,VS>();
-  else
-    f.template run<VS1,VS>();
-}
-
-template <typename Func>
-void run_row_simd_kernel(Func& f, const unsigned nc)
-{
-  if (nc >= 96)
-    run_row_simd_kernel_impl<32>(f, nc);
-  else if (nc >= 48)
-    run_row_simd_kernel_impl<16>(f, nc);
-  else if (nc >= 8)
-    run_row_simd_kernel_impl<8>(f, nc);
-  else if (nc >= 4)
-    run_row_simd_kernel_impl<4>(f, nc);
-  else if (nc >= 2)
-    run_row_simd_kernel_impl<2>(f, nc);
-  else
-    run_row_simd_kernel_impl<1>(f, nc);
-}
-
-}
-}
 
 namespace Kokkos {
 namespace Impl {

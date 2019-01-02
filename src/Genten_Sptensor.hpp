@@ -220,6 +220,14 @@ public:
     }
   }
 
+  // Get subscripts of i-th nonzero
+  KOKKOS_INLINE_FUNCTION
+  auto getSubscripts(ttb_indx i) const
+  {
+    assert(i < values.size());
+    return Kokkos::subview( subs, i, Kokkos::ALL() );
+  }
+
   // Get whole subscripts array
   KOKKOS_INLINE_FUNCTION
   subs_view_type getSubscripts() const { return subs; }

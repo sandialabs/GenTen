@@ -54,9 +54,11 @@
 // when using RolKokkosVector.
 #define COPY_KTENSOR 0
 
-// Whether to compute gradient tensor "Y" explicitly in GCP kernels
+#include "Genten_GCP_ValueKernels.hpp"
+
+// Whether to compute gradient tensor "Y" explicitly in GCP gradient kernels
 #define COMPUTE_Y 0
-#include "Genten_GCP_Kernels.hpp"
+#include "Genten_GCP_GradientKernels.hpp"
 
 namespace Genten {
 

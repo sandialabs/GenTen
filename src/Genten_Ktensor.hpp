@@ -326,6 +326,7 @@ void deep_copy(const KtensorT<E1>& dst, const KtensorT<E2>& src)
 template <typename ExecSpace> class SptensorT;
 
 // Compute Ktensor value using Sptensor subscripts
+// Len and WarpSize are for nested parallelism using TinyVec
 template <typename ExecSpace, unsigned Len, unsigned WarpSize>
 KOKKOS_INLINE_FUNCTION
 ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
@@ -360,6 +361,27 @@ ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
   }
 
   return m_val.sum();
+}
+
+// Compute Ktensor value using supplied subscripts
+// Assumes flat parallelism
+template <typename ExecSpace, typename IndexArray>
+KOKKOS_INLINE_FUNCTION
+ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
+                               const IndexArray& ind) {
+  const unsigned nd = M.ndims();
+  const unsigned nc = M.ncomponents();
+
+  ttb_real m_val = 0.0;
+  for (unsigned j=0; j<nc; ++j) {
+    ttb_real tmp = M.weights(j);
+    for (unsigned m=0; m<nd; ++m) {
+      tmp *= M[m].entry(ind[m],j);
+    }
+    m_val += tmp;
+  }
+
+  return m_val;
 }
 
 }

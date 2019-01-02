@@ -53,37 +53,36 @@
 #include "Genten_GCP_LossFunctions.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_RandomMT.hpp"
+#include "Genten_GCP_ValueKernels.hpp"
+#include "Genten_MixedFormatOps.hpp"
 
 #include "Kokkos_Random.hpp"
-
-// Whether to compute gradient tensor "Y" explicitly in GCP kernels
-#define COMPUTE_Y 0
-#include "Genten_GCP_Kernels.hpp"
 
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
 #endif
 
 // To do:
-//   * fuse sampling and Y-tensor evaluation
+//   * add ETI for sampling, value kernels to improve compile times
+//   * sort out what is going wrong with non-Gaussian
+//      * how do we handle contraints?
 //   * investigate HogWild for parallelism over iterations
-//   * Can you avoid createPermutation() in the sampling (e.g., by extracting
-//     existing permutation arrays)?
 //   * The step is not an insignificant cost.  Maybe do something like the
 //     Kokkos implementation of the ROL vector
-//   * Add specialization that uses the correct (non-zero-sampled) gradient for
-//     Gaussian?
 
 namespace Genten {
 
   namespace Impl {
 
-    template <typename ExecSpace>
+    template <typename ExecSpace, typename LossFunction>
     void stratified_sample_tensor(const SptensorT<ExecSpace>& X,
                                   const ttb_indx num_samples_nonzeros,
                                   const ttb_indx num_samples_zeros,
                                   const ttb_real weight_nonzeros,
                                   const ttb_real weight_zeros,
+                                  const KtensorT<ExecSpace>& u,
+                                  const LossFunction& loss_func,
+                                  const bool compute_gradient,
                                   SptensorT<ExecSpace>& Y,
                                   ArrayT<ExecSpace>& w,
                                   RandomMT& rng,
@@ -118,10 +117,18 @@ namespace Genten {
           const ttb_indx i = k*nloops+l;
           if (i<num_samples_nonzeros) {
             const ttb_indx idx = Rand::draw(gen,0,nnz);
-            Y.value(i) = X.value(idx);
+            const auto& ind = X.getSubscripts(idx);
+            if (compute_gradient) {
+              const ttb_real m_val = compute_Ktensor_value(u, ind);
+              Y.value(i) =
+                weight_nonzeros * loss_func.deriv(X.value(idx), m_val);
+            }
+            else {
+              Y.value(i) = X.value(idx);
+              w[i] = weight_nonzeros;
+            }
             for (ttb_indx j=0; j<nd; ++j)
-              Y.subscript(i,j) = X.subscript(idx,j);
-            w[i] = weight_nonzeros;
+              Y.subscript(i,j) = ind[j];
           }
         }
         rand_pool.free_state(gen);
@@ -165,8 +172,15 @@ namespace Genten {
                 const ttb_indx idx = num_samples_nonzeros + i;
                 for (ttb_indx j=0; j<nd; ++j)
                   Y.subscript(idx,j) = ind[j];
-                Y.value(idx) = 0.0;
-                w[idx] = weight_zeros;
+                if (compute_gradient) {
+                  const ttb_real m_val = compute_Ktensor_value(u, ind);
+                  Y.value(idx) =
+                    weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
+                }
+                else {
+                  Y.value(idx) = 0.0;
+                  w[idx] = weight_zeros;
+                }
               }
             }
 
@@ -179,20 +193,35 @@ namespace Genten {
       typedef typename SptensorT<ExecSpace>::HostMirror Sptensor_host_type;
       typedef typename Sptensor_host_type::exec_space host_exec_space;
       typedef typename ArrayT<ExecSpace>::HostMirror Array_host_type;
+      typedef typename KtensorT<ExecSpace>::HostMirror Ktensor_host_type;
 
       // Copy to host
       Sptensor_host_type X_host = create_mirror_view(host_exec_space(), X);
       Sptensor_host_type Y_host = create_mirror_view(host_exec_space(), Y);
-      Array_host_type w_host = create_mirror_view(host_exec_space(), w);
+      Array_host_type w_host;
+      Ktensor_host_type u_host;
+      if (compute_gradient) {
+        w_host = create_mirror_view(host_exec_space(), w);
+        u_host = create_mirror_view(host_exec_space(), u);
+        deep_copy(u_host, u);
+      }
       deep_copy(X_host, X);
 
       // Geneate samples of nonzeros
       for (ttb_indx i=0; i<num_samples_nonzeros; ++i) {
         const ttb_indx idx = ttb_indx(rng.genrnd_double() * nnz);
-        Y_host.value(i) = X_host.value(idx);
+        const auto& ind = X_host.getSubscripts(idx);
+        if (compute_gradient) {
+          const ttb_real m_val = compute_Ktensor_value(u_host, ind);
+          Y_host.value(i) =
+            weight_nonzeros * loss_func.deriv(X.value(idx), m_val);
+        }
+        else {
+          Y_host.value(i) = X_host.value(idx);
+          w_host[i] = weight_nonzeros;
+        }
         for (ttb_indx j=0; j<nd; ++j)
-          Y_host.subscript(i,j) = X_host.subscript(idx,j);
-        w_host[i] = weight_nonzeros;
+          Y_host.subscript(i,j) = ind[j];
       }
 
       // Generate samples of zeros
@@ -212,8 +241,15 @@ namespace Genten {
           const ttb_indx idx = num_samples_nonzeros + i;
           for (ttb_indx j=0; j<nd; ++j)
             Y_host.subscript(idx,j) = ind[j];
-          Y_host.value(idx) = 0.0;
-          w_host[idx] = weight_zeros;
+          if (compute_gradient) {
+            const ttb_real m_val = compute_Ktensor_value(u_host, ind);
+            Y_host.value(idx) =
+              weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
+          }
+          else {
+            Y_host.value(idx) = 0.0;
+            w_host[idx] = weight_zeros;
+          }
           ++i;
         }
 
@@ -221,7 +257,8 @@ namespace Genten {
 
       // Copy to device
       deep_copy(Y, Y_host);
-      deep_copy(w, w_host);
+      if (!compute_gradient)
+        deep_copy(w, w_host);
 #endif
 
       if (algParams.mttkrp_method == MTTKRP_Method::Perm) {
@@ -378,6 +415,7 @@ namespace Genten {
       Impl::stratified_sample_tensor(
         X, num_samples_nonzeros_value, num_samples_zeros_value,
         weight_nonzeros_value, weight_zeros_value,
+        u, loss_func, false,
         X_val, w_val, rng, algParams);
       timer.stop(timer_sample_f);
 
@@ -435,6 +473,7 @@ namespace Genten {
           Impl::stratified_sample_tensor(
             X, num_samples_nonzeros_grad, num_samples_zeros_grad,
             weight_nonzeros_grad, weight_zeros_grad,
+            u, loss_func, true,
             X_grad, w_grad, rng, algParams);
           timer.stop(timer_sample_g);
 
@@ -443,7 +482,9 @@ namespace Genten {
 
             // compute gradient
             timer.start(timer_grad);
-            Impl::gcp_gradient(X_grad, Y, u, w_grad, loss_func, g, algParams);
+            g.weights() = 1.0;
+            for (unsigned m=0; m<nd; ++m)
+              mttkrp(X_grad, u, m, g[m], algParams);
             timer.stop(timer_grad);
 
             // take step
@@ -588,18 +629,18 @@ namespace Genten {
     if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
       Impl::gcp_sgd_impl(x, u, GaussianLossFunction(algParams.loss_eps),
                          algParams, numIters, resNorm, out);
-    // else if (loss_function_type == GCP_LossFunction::Rayleigh)
-    //   Impl::gcp_sgd_impl(x, u, RayleighLossFunction(loss_eps), params, stream,
-    //                      algParams);
-    // else if (loss_function_type == GCP_LossFunction::Gamma)
-    //   Impl::gcp_sgd_impl(x, u, GammaLossFunction(loss_eps), params, stream,
-    //                      algParams);
-    // else if (loss_function_type == GCP_LossFunction::Bernoulli)
-    //   Impl::gcp_sgd_impl(x, u, BernoulliLossFunction(loss_eps), params, stream,
-    //                      algParams);
-    // else if (loss_function_type == GCP_LossFunction::Poisson)
-    //   Impl::gcp_sgd_impl(x, u, PoissonLossFunction(loss_eps), params, stream,
-    //                      algParams);
+    else if (algParams.loss_function_type == GCP_LossFunction::Rayleigh)
+      Impl::gcp_sgd_impl(x, u, RayleighLossFunction(algParams.loss_eps),
+                         algParams, numIters, resNorm, out);
+    else if (algParams.loss_function_type == GCP_LossFunction::Gamma)
+      Impl::gcp_sgd_impl(x, u, GammaLossFunction(algParams.loss_eps),
+                         algParams, numIters, resNorm, out);
+    else if (algParams.loss_function_type == GCP_LossFunction::Bernoulli)
+      Impl::gcp_sgd_impl(x, u, BernoulliLossFunction(algParams.loss_eps),
+                         algParams, numIters, resNorm, out);
+    else if (algParams.loss_function_type == GCP_LossFunction::Poisson)
+      Impl::gcp_sgd_impl(x, u, PoissonLossFunction(algParams.loss_eps),
+                         algParams, numIters, resNorm, out);
     else
        Genten::error("Genten::gcp_sgd - unknown loss function");
   }
