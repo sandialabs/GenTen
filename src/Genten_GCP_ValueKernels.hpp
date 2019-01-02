@@ -134,14 +134,14 @@ namespace Genten {
         // Compute Ktensor value
         ttb_real m_val = 0.0;
         for (unsigned j=0; j<nc; ++j) {
-          ttb_real tmp = MM.weights(j);
+          ttb_real tmp = M.weights(j);
           for (unsigned m=0; m<nd; ++m)
-            tmp *= MM[m].entry(XX.subscript(i,m),j);
+            tmp *= M[m].entry(X.subscript(i,m),j);
           m_val += tmp;
         }
 
         // Evaluate link function
-        d += w[i] * ff.value(XX.value(i), m_val);
+        d += w[i] * f.value(X.value(i), m_val);
       }, v);
       Kokkos::fence();  // ensure v is updated before using it
       return v;
