@@ -222,15 +222,14 @@ namespace Genten {
 
       // Objective estimates
       ttb_real fit = 0.0;
-      ttb_real x_norm2 = 0.0;
-      ArrayT<ExecSpace> w_fit;
+      ttb_real x_norm = 0.0;
       timer.start(timer_fest);
       fest = Impl::gcp_value(X_val, u, w_val, loss_func);
       if (compute_fit) {
-        w_fit = ArrayT<ExecSpace>(nnz, 1.0);
-        fit = Impl::gcp_value(X, u, w_fit, loss_func);
-        x_norm2 = X.norm(); x_norm2 *= x_norm2;
-        fit = 1.0 - fit / x_norm2;
+        x_norm = X.norm();
+        ttb_real u_norm = u.normFsq();
+        ttb_real dot = innerprod(X, u);
+        fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
       }
       timer.stop(timer_fest);
       ttb_real fest_prev = fest;
@@ -318,8 +317,9 @@ namespace Genten {
         timer.start(timer_fest);
         fest = Impl::gcp_value(X_val, u, w_val, loss_func);
         if (compute_fit) {
-          fit = Impl::gcp_value(X, u, w_fit, loss_func);
-          fit = 1.0 - fit / x_norm2;
+          ttb_real u_norm = u.normFsq();
+          ttb_real dot = innerprod(X, u);
+	  fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
         }
         timer.stop(timer_fest);
 
