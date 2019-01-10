@@ -374,6 +374,19 @@ entry(const Genten::IndxArrayT<ExecSpace> & subs,
 
 template <typename ExecSpace>
 void Genten::KtensorT<ExecSpace>::
+distribute() const
+{
+  using std::pow;
+  const ttb_indx nd = this->ndims();
+  auto lambda_host = create_mirror_view(lambda);
+  deep_copy(lambda_host, lambda);
+  for (ttb_indx i=0; i<nd; ++i)
+    data[i].times(pow(lambda_host[i],1.0/nd));
+  lambda = 1.0;
+}
+
+template <typename ExecSpace>
+void Genten::KtensorT<ExecSpace>::
 distribute(ttb_indx i) const
 {
   data[i].colScale(lambda,false);

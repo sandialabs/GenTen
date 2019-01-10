@@ -270,6 +270,9 @@ public:
   ttb_real entry(const IndxArrayT<ExecSpace> & subs,
                  const ArrayT<ExecSpace> & altLambda) const;
 
+  // Distribute weights uniformly across factor matrices (set lambda to vector of ones)
+  void distribute() const;
+
   // Distribute weights to i-th factor matrix (set lambda to vector of ones)
   void distribute(ttb_indx i) const;
 

@@ -169,7 +169,8 @@ namespace Genten {
       timer.start(timer_sgd);
 
       // Distribute the initial guess to have weights of one.
-      u.distribute(0);
+      u.normalize(Genten::NormTwo);
+      u.distribute();
 
       // Gradient Ktensor
       KtensorT<ExecSpace> g(nc, nd);
