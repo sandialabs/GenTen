@@ -97,6 +97,10 @@ driver(SptensorT<ExecSpace>& x,
       u_host.setMatricesScatter(false, false, cRMT);
       deep_copy( u_init, u_host );
     }
+    // Normalize
+    const ttb_real norm_x = x.norm();
+    const ttb_real norm_u = std::sqrt(u_init.normFsq());
+    u_init.weights().times(norm_x/norm_u);
     timer.stop(0);
     out << "Creating random initial guess took " << timer.getTotalTime(0)
         << " seconds\n";

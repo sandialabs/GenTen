@@ -342,7 +342,13 @@ void Genten::ArrayT<ExecSpace>::
 times(ttb_real a) const
 {
   const ttb_indx sz = data.extent(0);
-  Genten::scal(sz, a, data.data(), 1);
+  //Genten::scal(sz, a, data.data(), 1);
+  view_type d = data;
+  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
+  {
+    d[i] *= a;
+  }, "Genten::Array::scalar_times_kernel");
 }
 
 template <typename ExecSpace>
