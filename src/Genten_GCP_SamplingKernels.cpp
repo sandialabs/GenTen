@@ -175,10 +175,11 @@ namespace Genten {
       Array_host_type w_host;
       Ktensor_host_type u_host;
       if (compute_gradient) {
-        w_host = create_mirror_view(host_exec_space(), w);
         u_host = create_mirror_view(host_exec_space(), u);
         deep_copy(u_host, u);
       }
+      else
+        w_host = create_mirror_view(host_exec_space(), w);
       deep_copy(X_host, X);
 
       // Geneate samples of nonzeros
