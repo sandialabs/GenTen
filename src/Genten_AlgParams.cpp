@@ -38,6 +38,8 @@
 // ************************************************************************
 //@HEADER
 
+#include <vector>
+
 #include "Genten_AlgParams.hpp"
 
 Genten::AlgParams::AlgParams() :
