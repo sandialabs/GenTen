@@ -394,11 +394,13 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 power(ttb_real a) const
 {
+  view_type d = data;
   const ttb_indx sz = data.extent(0);
-  for (ttb_indx i = 0; i < sz; i ++)
+  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
   {
-    data[i] = pow(data[i], a);
-  }
+    d[i] = pow(d[i], a);
+  }, "Genten::Array::power_kernel");
 }
 
 template <typename ExecSpace>
@@ -408,7 +410,7 @@ power(ttb_real a, const Genten::ArrayT<ExecSpace> & y) const
   const ttb_indx sz = data.extent(0);
   if (sz != y.data.extent(0))
   {
-    Genten::error("Genten::ArrayT::dot - Size mismatch");
+    Genten::error("Genten::ArrayT::power - Size mismatch");
   }
   for (ttb_indx i = 0; i < sz; i ++)
   {

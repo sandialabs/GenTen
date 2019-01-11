@@ -376,12 +376,15 @@ template <typename ExecSpace>
 void Genten::KtensorT<ExecSpace>::
 distribute() const
 {
-  using std::pow;
+  // Take nd^th root of each component of lambda
   const ttb_indx nd = this->ndims();
-  auto lambda_host = create_mirror_view(lambda);
-  deep_copy(lambda_host, lambda);
+  lambda.power(1.0/nd);
+
+  // Scale factor matrix columns by rooted lambda
   for (ttb_indx i=0; i<nd; ++i)
-    data[i].times(pow(lambda_host[i],1.0/nd));
+    data[i].colScale(lambda, false);
+
+  // Reset weights to 1
   lambda = 1.0;
 }
 
