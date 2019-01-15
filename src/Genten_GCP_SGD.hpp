@@ -38,12 +38,6 @@
 // ************************************************************************
 //@HEADER
 
-
-/*!
-  @file Genten_CpAls.h
-  @brief CP-ALS algorithm, in template form to allow different data tensor types.
-*/
-
 #pragma once
 
 #include <ostream>

@@ -133,6 +133,7 @@ void Genten_Test_GCP_SGD_Type (int infolevel, const std::string& label,
   algParams.maxiters = 100;
   algParams.printitn = (infolevel == 1) ? 1 : 0;
   algParams.mttkrp_method = mttkrp_method;
+  algParams.loss_function_type = loss_type;
   ttb_indx numIters;
   ttb_real resNorm;
   Genten::KtensorT<exec_space> result_dev;

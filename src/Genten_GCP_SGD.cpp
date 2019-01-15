@@ -56,11 +56,9 @@
 #endif
 
 // To do:
-//   * sort out discrepency in fits between gcp_sgd and cpals
-//   * sort out what is going wrong with non-Gaussian
-//      * how do we handle contraints?
+//   * better method for handling contraints than clipping?
 //   * investigate HogWild for parallelism over iterations
-//   * The step is not an insignificant cost.  Maybe do something like the
+//   * The step/clip is not an insignificant cost.  Maybe do something like the
 //     Kokkos implementation of the ROL vector
 
 namespace Genten {
@@ -163,7 +161,8 @@ namespace Genten {
       const int timer_fest = 4;
       const int timer_grad = 5;
       const int timer_step = 6;
-      SystemTimer timer(7);
+      const int timer_clip = 7;
+      SystemTimer timer(8);
 
       // Start timer for total execution time of the algorithm.
       timer.start(timer_sgd);
@@ -311,6 +310,22 @@ namespace Genten {
               }
             }
             timer.stop(timer_step);
+
+            // clip solution to handle constraints
+            timer.start(timer_clip);
+            if (loss_func.has_lower_bound() || loss_func.has_upper_bound()) {
+              for (ttb_indx m=0; m<nd; ++m) {
+                view_type uv = u[m].view();
+                const ttb_real lb = loss_func.lower_bound();
+                const ttb_real ub = loss_func.upper_bound();
+                u[m].apply_func(KOKKOS_LAMBDA(const ttb_indx j,const ttb_indx i)
+                {
+                  const ttb_real uu = uv(i,j);
+                  uv(i,j) = uu < lb ? lb : (uu > ub ? ub : uu);
+                });
+              }
+            }
+            timer.stop(timer_clip);
           }
         }
 
@@ -320,7 +335,7 @@ namespace Genten {
         if (compute_fit) {
           ttb_real u_norm = u.normFsq();
           ttb_real dot = innerprod(X, u);
-	  fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
+          fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
         }
         timer.stop(timer_fest);
 
@@ -387,6 +402,7 @@ namespace Genten {
              << "\tf-est:    " << timer.getTotalTime(timer_fest) << " seconds\n"
              << "\tgradient: " << timer.getTotalTime(timer_grad) << " seconds\n"
              << "\tstep:     " << timer.getTotalTime(timer_step) << " seconds\n"
+             << "\tclip:     " << timer.getTotalTime(timer_clip) << " seconds\n"
              << "Final f-est: "
              << std::setw(13) << std::setprecision(6) << std::scientific
              << fest;

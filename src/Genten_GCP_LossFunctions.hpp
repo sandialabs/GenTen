@@ -42,6 +42,9 @@
 
 #include "Genten_Util.hpp"
 
+// Use constrained versions of some loss function
+#define USE_CONSTRAINED_LOSS_FUNCTIONS 1
+
 namespace Genten {
 
   class GaussianLossFunction {
@@ -118,6 +121,8 @@ namespace Genten {
     ttb_real eps;
   };
 
+#if USE_CONSTRAINED_LOSS_FUNCTIONS
+
   class BernoulliLossFunction {
   public:
     BernoulliLossFunction(const ttb_real& epsilon) : eps(epsilon) {}
@@ -163,5 +168,55 @@ namespace Genten {
   private:
     ttb_real eps;
   };
+
+#else
+
+  class BernoulliLossFunction {
+  public:
+    BernoulliLossFunction(const ttb_real&) {}
+
+    KOKKOS_INLINE_FUNCTION
+    ttb_real value(const ttb_real& x, const ttb_real& m) const {
+      using std::exp;
+      using std::log;
+      return log(exp(m)+ttb_real(1.0)) - x*m;
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    ttb_real deriv(const ttb_real& x, const ttb_real& m) const {
+      using std::exp;
+      using std::log;
+      return exp(m)/(exp(m)+ttb_real(1.0)) - x;
+    }
+
+    bool has_lower_bound() const { return false; }
+    bool has_upper_bound() const { return false; }
+    ttb_real lower_bound() const { return -DOUBLE_MAX; }
+    ttb_real upper_bound() const { return  DOUBLE_MAX; }
+  };
+
+  class PoissonLossFunction {
+  public:
+    PoissonLossFunction(const ttb_real&) {}
+
+    KOKKOS_INLINE_FUNCTION
+    ttb_real value(const ttb_real& x, const ttb_real& m) const {
+      using std::exp;
+      return exp(m) - x*m;
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    ttb_real deriv(const ttb_real& x, const ttb_real& m) const {
+      using std::exp;
+      return exp(m) - x;
+    }
+
+    bool has_lower_bound() const { return false; }
+    bool has_upper_bound() const { return false; }
+    ttb_real lower_bound() const { return -DOUBLE_MAX; }
+    ttb_real upper_bound() const { return  DOUBLE_MAX; }
+  };
+
+#endif
 
 }
