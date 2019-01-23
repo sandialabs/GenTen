@@ -295,6 +295,19 @@ public:
     return index(ind);
   }
 
+  // Return smallest index i such that subs(i,:) >= sub for given subscript
+  // array sub.  Requires tensor to be sorted.  start is a hint as to where
+  // to start the search.
+  template <typename sub_type>
+  KOKKOS_INLINE_FUNCTION
+  ttb_indx sorted_lower_bound(const sub_type& sub,
+                              const ttb_indx start = 0) const;
+
+  // Return whether subscript at given index is equal to sub
+  template <typename sub_type>
+  KOKKOS_INLINE_FUNCTION
+  bool isSubscriptEqual(const ttb_indx i, const sub_type& sub) const;
+
 protected:
 
   // Size of the tensor
@@ -357,7 +370,7 @@ KOKKOS_INLINE_FUNCTION
 ttb_indx SptensorT<ExecSpace>::index(const ind_type& ind) const
 {
   const ttb_indx nz = subs.extent(0);
-  /*const*/ ttb_indx nd = subs.extent(1);
+  const ttb_indx nd = subs.extent(1);
 
   // For unsorted, have to do linear search
   if (!is_sorted) {
@@ -377,53 +390,76 @@ ttb_indx SptensorT<ExecSpace>::index(const ind_type& ind) const
 
   // If sorted, do binary search
   else {
-    // Find index "first" such that subs(first,:) >= ind
-    auto less = [&](const ttb_indx& i, const ind_type& b) {
-      unsigned n = 0;
-      while ((n < nd) && (subs(i,n) == b[n])) ++n;
-      if (n == nd || subs(i,n) >= b[n]) return false;
-      return true;
-    };
-    ttb_indx i = 0;
-    ttb_indx first = 0;
-    ttb_indx last = nz;
-    ttb_indx count = last-first;
-    ttb_indx step = 0;
-    while (count > 0) {
-      i = first;
-      step = count / 2;
-      i += step;
-      if (less(i, ind)) {
-        first = ++i;
-        count -= step + 1;
-      }
-      else
-        count = step;
-    }
-    if (first == last)
-      return nz; // ind > subs(i,:) for all i, so not found
-
-    else {  // subs(first,:) >= ind.  Check if it is equal.
-      unsigned n = 0;
-      while ((n < nd) && (subs(i,n) == ind[n])) ++n;
-      if (n == nd)
-        return first; // ind == subs(first,:)
-      else
-        return nz;    // ind != subs(first,:)
-    }
+    const ttb_indx idx = sorted_lower_bound(ind);
+    if (isSubscriptEqual(idx,ind))
+      return idx;
+    else
+      return nz;
   }
 
   return nz;
 }
 
-// template <typename ExecSpace>
-// template <typename... P>
-// KOKKOS_INLINE_FUNCTION
-// ttb_indx SptensorT<ExecSpace>::index(P... args) const
-// {
-//   const unsigned nargs sizeof...(args);
-//   const ttb_indx ind[nargs] = { args... };
-//   return index(ind);
-// }
+template <typename ExecSpace>
+template <typename ind_type>
+KOKKOS_INLINE_FUNCTION
+ttb_indx SptensorT<ExecSpace>::sorted_lower_bound(const ind_type& ind,
+                                                  const ttb_indx start) const
+{
+  const ttb_indx nz = subs.extent(0);
+  /*const*/ ttb_indx nd = subs.extent(1);
+
+  if (!is_sorted) {
+    Kokkos::abort("Cannot call sorted_lower_bound() on unsorted tensor");
+    return nz;
+  }
+
+  if (start >= nz)
+    return start;
+
+  // Find index "first" such that subs(first,:) >= ind using binary search
+  auto less = [&](const ttb_indx& i, const ind_type& b)
+  {
+    unsigned n = 0;
+    while ((n < nd) && (subs(i,n) == b[n])) ++n;
+    if (n == nd || subs(i,n) >= b[n]) return false;
+    return true;
+  };
+  ttb_indx i = 0;
+  ttb_indx first = start;
+  ttb_indx last = nz;
+  ttb_indx count = last-first;
+  ttb_indx step = 0;
+  while (count > 0) {
+    i = first;
+    step = count / 2;
+    i += step;
+    if (less(i, ind)) {
+      first = ++i;
+      count -= step + 1;
+    }
+    else
+      count = step;
+  }
+  return first;
+}
+
+template <typename ExecSpace>
+template <typename sub_type>
+KOKKOS_INLINE_FUNCTION
+bool SptensorT<ExecSpace>::isSubscriptEqual(const ttb_indx i,
+                                            const sub_type& sub) const
+{
+  if (i >= subs.extent(0))
+    return false;
+
+  const unsigned nd = subs.extent(1);
+  unsigned n = 0;
+  while ((n < nd) && (subs(i,n) == sub[n])) ++n;
+  if (n == nd)
+    return true;
+
+  return false;
+}
 
 }

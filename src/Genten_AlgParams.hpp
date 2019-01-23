@@ -85,6 +85,8 @@ namespace Genten {
     ttb_indx num_samples_zeros_value;    // Zero sampels for f-est
     ttb_indx num_samples_nonzeros_grad;  // Nonzero samples for gradient
     ttb_indx num_samples_zeros_grad;     // Zero samples for gradient
+    ttb_real oversample_factor;          // Factor for oversampling of zeros
+    ttb_indx bulk_factor;                // Factor for bulk sampling
     ttb_real w_f_nz;                     // Nonzero sample weight for f
     ttb_real w_f_z;                      // Zero sample weight for f
     ttb_real w_g_nz;                     // Nonzero sample weight for grad

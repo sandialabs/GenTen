@@ -67,6 +67,8 @@ Genten::AlgParams::AlgParams() :
   num_samples_zeros_value(0),
   num_samples_nonzeros_grad(0),
   num_samples_zeros_grad(0),
+  oversample_factor(1.1),
+  bulk_factor(10),
   w_f_nz(-1.0), // Means to compute the default
   w_f_z(-1.0),
   w_g_nz(-1.0),
@@ -131,6 +133,10 @@ void Genten::AlgParams::parse(int argc, char* argv[])
     parse_ttb_indx(argc, argv, "--gnzs", num_samples_nonzeros_grad, 0, INT_MAX);
   num_samples_zeros_grad =
     parse_ttb_indx(argc, argv, "--gzs", num_samples_zeros_grad, 0, INT_MAX);
+  oversample_factor = parse_ttb_real(argc, argv, "--oversample",
+                                     oversample_factor, 1.0, DOUBLE_MAX);
+  bulk_factor =
+    parse_ttb_indx(argc, argv, "--bulk", bulk_factor, 1, INT_MAX);
   w_f_nz = parse_ttb_real(argc, argv, "--fnzw", w_f_nz, -1.0, DOUBLE_MAX);
   w_f_z = parse_ttb_real(argc, argv, "--fzw", w_f_z, -1.0, DOUBLE_MAX);
   w_g_nz = parse_ttb_real(argc, argv, "--gnzw", w_g_nz, -1.0, DOUBLE_MAX);
@@ -189,12 +195,17 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --decay <float>    rate step size decreases on fails" << std::endl;
   out << "  --fails <int>      maximum number of fails" << std::endl;
   out << "  --epochiters <int> iterations per epoch" << std::endl;
-  out << "  --frozeniters <int> inner iterations with frozen gradient" << std::endl;
+  out << "  --frozeniters <int> inner iterations with frozen gradient"
+      << std::endl;
   out << "  --rngiters <int>   iteration loops in parallel RNG" << std::endl;
   out << "  --fnzs <int>       nonzero samples for f-est" << std::endl;
   out << "  --fzs <int>        zero samples for f-est" << std::endl;
   out << "  --gnzs <int>       nonzero samples for gradient" << std::endl;
   out << "  --gzs <int>        zero samples for gradient" << std::endl;
+  out << "  --oversample <float> oversample factor for zero sampling"
+      << std::endl;
+  out << "  --bulk <int>       factor for bulk zero sampling"
+      << std::endl;
   out << "  --fnzw <float>     nonzero sample weight for f-est" << std::endl;
   out << "  --fzw <float>      zero sample weight for f-est" << std::endl;
   out << "  --gnzw <float>     nonzero sample weight for gradient" << std::endl;
@@ -249,6 +260,8 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  fzs = " << num_samples_zeros_value << std::endl;
   out << "  gnzs = " << num_samples_nonzeros_grad << std::endl;
   out << "  gzs = " << num_samples_zeros_grad << std::endl;
+  out << "  oversample = " << oversample_factor << std::endl;
+  out << "  bulk = " << bulk_factor << std::endl;
   out << "  fnzw = " << w_f_nz << std::endl;
   out << "  fzw = " << w_f_z << std::endl;
   out << "  gnzw = " << w_g_nz << std::endl;

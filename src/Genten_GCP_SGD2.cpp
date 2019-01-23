@@ -42,7 +42,7 @@
 #include <algorithm>
 #include <cmath>
 
-#include "Genten_GCP_SGD.hpp"
+#include "Genten_GCP_SGD2.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
 #include "Genten_SystemTimer.hpp"
@@ -50,6 +50,8 @@
 #include "Genten_GCP_ValueKernels.hpp"
 #include "Genten_GCP_SamplingKernels.hpp"
 #include "Genten_MixedFormatOps.hpp"
+
+#include "Genten_IOtext.hpp"
 
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
@@ -66,7 +68,7 @@ namespace Genten {
   namespace Impl {
 
     template<typename TensorT, typename ExecSpace, typename LossFunction>
-    void gcp_sgd_impl(TensorT& X, KtensorT<ExecSpace>& u,
+    void gcp_sgd_impl2(TensorT& X, KtensorT<ExecSpace>& u,
                       const LossFunction& loss_func,
                       const AlgParams& algParams,
                       ttb_indx& numEpochs,
@@ -142,7 +144,7 @@ namespace Genten {
           ttb_real(tsz-nnz) / ttb_real(num_samples_zeros_grad);
 
       if (printIter > 0) {
-        out << "Starting GCP-SGD" << std::endl
+        out << "Starting GCP-SGD2" << std::endl
             << "\tNum samples f: " << num_samples_nonzeros_value <<" nonzeros, "
             << num_samples_zeros_value << " zeros" << std::endl
             << "\tNum samples g: " << num_samples_nonzeros_grad << " nonzeros, "
@@ -162,7 +164,11 @@ namespace Genten {
       const int timer_grad = 5;
       const int timer_step = 6;
       const int timer_clip = 7;
-      SystemTimer timer(8);
+      const int timer_sample_g_bulk = 8;
+      const int timer_sample_g_nz = 9;
+      const int timer_sample_g_z = 10;
+      const int timer_sample_g_perm = 11;
+      SystemTimer timer(12);
 
       // Start timer for total execution time of the algorithm.
       timer.start(timer_sgd);
@@ -209,15 +215,32 @@ namespace Genten {
       }
 
       // Sample X for f-estimate
-      SptensorT<ExecSpace> X_val, X_grad;
-      ArrayT<ExecSpace> w_val, w_grad;
+      SptensorT<ExecSpace> X_val,  Z_val;
       RandomMT rng(seed);
       timer.start(timer_sample_f);
-      Impl::stratified_sample_tensor(
+
+      // Sample zeros -- do this first to size X_val properly
+      Impl::sample_tensor_zeros(
         X, num_samples_nonzeros_value, num_samples_zeros_value,
-        weight_nonzeros_value, weight_zeros_value,
+        X_val, Z_val, rng, algParams);
+
+      // Sample nonzeros
+      Impl::sample_tensor_nonzeros(
+        X, 0, num_samples_nonzeros_value,
+        weight_nonzeros_value,
         u, loss_func, false,
-        X_val, w_val, rng, algParams);
+        X_val, rng, algParams);
+
+      // Create weights array
+      ArrayT<ExecSpace> w_val(
+        num_samples_nonzeros_value+num_samples_zeros_value,
+        weight_nonzeros_value);
+      deep_copy(
+        subview(w_val.values(),
+                std::make_pair(num_samples_nonzeros_value,
+                               num_samples_nonzeros_value+num_samples_zeros_value)),
+        weight_zeros_value);
+      
       timer.stop(timer_sample_f);
 
       // Objective estimates
@@ -252,9 +275,19 @@ namespace Genten {
       ttb_indx nfails = 0;
       ttb_real beta1t = 1.0;
       ttb_real beta2t = 1.0;
+      SptensorT<ExecSpace> X_grad, Z_grad, X_z_grad_epoch;
       for (numEpochs=0; numEpochs<maxEpochs; ++numEpochs) {
         // Gradient step size
         ttb_real step = nuc*rate;
+
+        // Sample bulk_factor*num_samples_zeros_grad zeros in bulk
+        timer.start(timer_sample_g);
+        timer.start(timer_sample_g_bulk);
+        Impl::sample_tensor_zeros(
+          X, 0, algParams.bulk_factor*num_samples_zeros_grad,
+          X_z_grad_epoch, Z_grad, rng, algParams);
+        timer.stop(timer_sample_g_bulk);
+        timer.stop(timer_sample_g);
 
         // Epoch iterations
         for (ttb_indx iter=0; iter<epoch_iters; ++iter) {
@@ -270,11 +303,32 @@ namespace Genten {
 
           // sample for gradient
           timer.start(timer_sample_g);
-          Impl::stratified_sample_tensor(
-            X, num_samples_nonzeros_grad, num_samples_zeros_grad,
-            weight_nonzeros_grad, weight_zeros_grad,
+
+          // Sample zeros from X_z_grad_epoch -- do first to size X_grad
+          timer.start(timer_sample_g_z);
+          Impl::sample_tensor_nonzeros(
+            X_z_grad_epoch, num_samples_nonzeros_grad, num_samples_zeros_grad,
+            weight_zeros_grad,
             u, loss_func, true,
-            X_grad, w_grad, rng, algParams);
+            X_grad, rng, algParams);
+          timer.stop(timer_sample_g_z);
+
+          // Sample nonzeros from X
+          timer.start(timer_sample_g_nz);
+          Impl::sample_tensor_nonzeros(
+            X, 0, num_samples_nonzeros_grad,
+            weight_nonzeros_grad,
+            u, loss_func, true,
+            X_grad, rng, algParams);
+          timer.stop(timer_sample_g_nz);
+
+          // Create permutation if necessary
+          timer.start(timer_sample_g_perm);
+          if (algParams.mttkrp_method == MTTKRP_Method::Perm) {
+            X_grad.createPermutation();
+          }
+          timer.stop(timer_sample_g_perm);
+
           timer.stop(timer_sample_g);
 
           for (ttb_indx giter=0; giter<frozen_iters; ++giter) {
@@ -397,8 +451,18 @@ namespace Genten {
          out << "GCP-SGD completed " << total_iters << " iterations in "
              << timer.getTotalTime(timer_sgd) << " seconds" << std::endl
              << "\tsort:     " << timer.getTotalTime(timer_sort) << " seconds\n"
-             << "\tsample-f: " << timer.getTotalTime(timer_sample_f) << " seconds\n"
-             << "\tsample-g: " << timer.getTotalTime(timer_sample_g) << " seconds\n"
+             << "\tsample-f: " << timer.getTotalTime(timer_sample_f)
+             << " seconds\n"
+             << "\tsample-g: " << timer.getTotalTime(timer_sample_g)
+             << " seconds\n"
+             << "\t\tbulk:     " << timer.getTotalTime(timer_sample_g_bulk)
+             << " seconds\n"
+             << "\t\tnonzeros: " << timer.getTotalTime(timer_sample_g_nz)
+             << " seconds\n"
+             << "\t\tzeros:    " << timer.getTotalTime(timer_sample_g_z)
+             << " seconds\n"
+             << "\t\tperm:     " << timer.getTotalTime(timer_sample_g_perm)
+             << " seconds\n"
              << "\tf-est:    " << timer.getTotalTime(timer_fest) << " seconds\n"
              << "\tgradient: " << timer.getTotalTime(timer_grad) << " seconds\n"
              << "\tstep:     " << timer.getTotalTime(timer_step) << " seconds\n"
@@ -422,7 +486,7 @@ namespace Genten {
 
 
   template<typename TensorT, typename ExecSpace>
-  void gcp_sgd(TensorT& x, KtensorT<ExecSpace>& u,
+  void gcp_sgd2(TensorT& x, KtensorT<ExecSpace>& u,
                const AlgParams& algParams,
                ttb_indx& numIters,
                ttb_real& resNorm,
@@ -445,19 +509,19 @@ namespace Genten {
 
     // Dispatch implementation based on loss function type
     if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
-      Impl::gcp_sgd_impl(x, u, GaussianLossFunction(algParams.loss_eps),
+      Impl::gcp_sgd_impl2(x, u, GaussianLossFunction(algParams.loss_eps),
                          algParams, numIters, resNorm, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Rayleigh)
-      Impl::gcp_sgd_impl(x, u, RayleighLossFunction(algParams.loss_eps),
+      Impl::gcp_sgd_impl2(x, u, RayleighLossFunction(algParams.loss_eps),
                          algParams, numIters, resNorm, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Gamma)
-      Impl::gcp_sgd_impl(x, u, GammaLossFunction(algParams.loss_eps),
+      Impl::gcp_sgd_impl2(x, u, GammaLossFunction(algParams.loss_eps),
                          algParams, numIters, resNorm, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Bernoulli)
-      Impl::gcp_sgd_impl(x, u, BernoulliLossFunction(algParams.loss_eps),
+      Impl::gcp_sgd_impl2(x, u, BernoulliLossFunction(algParams.loss_eps),
                          algParams, numIters, resNorm, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Poisson)
-      Impl::gcp_sgd_impl(x, u, PoissonLossFunction(algParams.loss_eps),
+      Impl::gcp_sgd_impl2(x, u, PoissonLossFunction(algParams.loss_eps),
                          algParams, numIters, resNorm, out);
     else
        Genten::error("Genten::gcp_sgd - unknown loss function");
@@ -466,7 +530,7 @@ namespace Genten {
 }
 
 #define INST_MACRO(SPACE)                                               \
-  template void gcp_sgd<SptensorT<SPACE>,SPACE>(                        \
+  template void gcp_sgd2<SptensorT<SPACE>,SPACE>(                        \
     SptensorT<SPACE>& x,                                                \
     KtensorT<SPACE>& u,                                                 \
     const AlgParams& algParams,                                         \

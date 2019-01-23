@@ -40,55 +40,22 @@
 
 #pragma once
 
+#include <ostream>
+
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
-#include "Genten_RandomMT.hpp"
 #include "Genten_AlgParams.hpp"
 
 namespace Genten {
 
-  namespace Impl {
 
-    template <typename ExecSpace, typename LossFunction>
-    void stratified_sample_tensor(const SptensorT<ExecSpace>& X,
-                                  const ttb_indx num_samples_nonzeros,
-                                  const ttb_indx num_samples_zeros,
-                                  const ttb_real weight_nonzeros,
-                                  const ttb_real weight_zeros,
-                                  const KtensorT<ExecSpace>& u,
-                                  const LossFunction& loss_func,
-                                  const bool compute_gradient,
-                                  SptensorT<ExecSpace>& Y,
-                                  ArrayT<ExecSpace>& w,
-                                  RandomMT& rng,
-                                  const AlgParams& algParams);
-
-    template <typename ExecSpace, typename LossFunction>
-    void sample_tensor_nonzeros(const SptensorT<ExecSpace>& X,
-                                const ttb_indx offset,
-                                const ttb_indx num_samples,
-                                const ttb_real weight,
-                                const KtensorT<ExecSpace>& u,
-                                const LossFunction& loss_func,
-                                const bool compute_gradient,
-                                SptensorT<ExecSpace>& Y,
-                                RandomMT& rng,
-                                const AlgParams& algParams);
-
-    template <typename ExecSpace>
-    void sample_tensor_zeros(const SptensorT<ExecSpace>& X,
-                             const ttb_indx offset,
-                             const ttb_indx num_samples,
-                             SptensorT<ExecSpace>& Y,
-                             SptensorT<ExecSpace>& Z,
-                             RandomMT& rng,
-                             const AlgParams& algParams);
-
-    template <typename ExecSpace>
-    void merge_sampled_tensors(const SptensorT<ExecSpace>& X_nz,
-                               const SptensorT<ExecSpace>& X_z,
-                               SptensorT<ExecSpace>& X,
-                               const AlgParams& algParams);
-  }
+  //! Compute the generalized CP decomposition of a tensor using SGD approach
+  template<typename TensorT, typename ExecSpace>
+  void gcp_sgd2(TensorT& x,
+		KtensorT<ExecSpace>& u,
+		const AlgParams& algParams,
+		ttb_indx& numIters,
+		ttb_real& resNorm,
+		std::ostream& out);
 
 }
