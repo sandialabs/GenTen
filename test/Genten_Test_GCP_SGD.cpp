@@ -147,7 +147,7 @@ void Genten_Test_GCP_SGD_Type (int infolevel, const std::string& label,
   try
   {
     result_dev = initialBasis_dev;
-    Genten::gcp_sgd2 <Sptensor_type> (X_dev, result_dev, algParams,
+    Genten::gcp_sgd <Sptensor_type> (X_dev, result_dev, algParams,
                                      numIters, resNorm, std::cout);
   }
   catch(std::string sExc)

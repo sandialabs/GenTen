@@ -244,6 +244,116 @@ namespace Genten {
     }
 
     template <typename ExecSpace, typename LossFunction>
+    void stratified_sample_tensor_hash(
+      const SptensorT<ExecSpace>& X,
+      const Kokkos::UnorderedMap<Array<ttb_indx,HASH_TENSOR_DIM>, ttb_real, ExecSpace>& hash,
+      const ttb_indx num_samples_nonzeros,
+      const ttb_indx num_samples_zeros,
+      const ttb_real weight_nonzeros,
+      const ttb_real weight_zeros,
+      const KtensorT<ExecSpace>& u,
+      const LossFunction& loss_func,
+      const bool compute_gradient,
+      SptensorT<ExecSpace>& Y,
+      ArrayT<ExecSpace>& w,
+      RandomMT& rng,
+      const AlgParams& algParams)
+    {
+      const ttb_indx nnz = X.nnz();
+      const ttb_indx nd = X.ndims();
+
+      if (nd !=  HASH_TENSOR_DIM)
+        Genten::error("Invalid tensor dimension!");
+
+      // Resize Y if necessary
+      const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
+      if (Y.nnz() < total_samples) {
+        Y = SptensorT<ExecSpace>(X.size(), total_samples);
+        w = ArrayT<ExecSpace>(total_samples);
+      }
+
+      // Parallel sampling on the device
+      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
+      typedef typename RandomPool::generator_type generator_type;
+      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
+      RandomPool rand_pool(rng.genrnd_int32());
+      const ttb_indx nloops = algParams.rng_iters;
+
+      // Generate samples of nonzeros
+      const ttb_indx N_nonzeros = (num_samples_nonzeros+nloops-1)/nloops;
+      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
+                           KOKKOS_LAMBDA(const ttb_indx k)
+      {
+        generator_type gen = rand_pool.get_state();
+        for (ttb_indx l=0; l<nloops; ++l) {
+          const ttb_indx i = k*nloops+l;
+          if (i<num_samples_nonzeros) {
+            const ttb_indx idx = Rand::draw(gen,0,nnz);
+            const auto& ind = X.getSubscripts(idx);
+            if (compute_gradient) {
+              const ttb_real m_val = compute_Ktensor_value(u, ind);
+              Y.value(i) =
+                weight_nonzeros * loss_func.deriv(X.value(idx), m_val);
+            }
+            else {
+              Y.value(i) = X.value(idx);
+              w[i] = weight_nonzeros;
+            }
+            for (ttb_indx j=0; j<nd; ++j)
+              Y.subscript(i,j) = ind[j];
+          }
+        }
+        rand_pool.free_state(gen);
+      }, "Genten::GCP_SGD::Uniform_Sample_Nonzeros");
+
+      // Generate samples of zeros
+      const ttb_indx N_zeros = (num_samples_zeros+nloops-1)/nloops;
+      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_zeros),
+                           KOKKOS_LAMBDA(const ttb_indx k)
+      {
+        typedef Array<ttb_indx,5> array_t;
+        array_t ind;
+        generator_type gen = rand_pool.get_state();
+        for (ttb_indx l=0; l<nloops; ++l) {
+          const ttb_indx i = k*nloops+l;
+          if (i<num_samples_zeros) {
+            // Keep generating samples until we get one not in the tensor
+            bool found = true;
+            while (found) {
+              // Generate index
+              for (ttb_indx j=0; j<nd; ++j)
+                ind[j] = Rand::draw(gen,0,X.size(j));
+
+              // Search for index
+              found = hash.exists(ind);
+
+              // If not found, add it
+              if (!found) {
+                const ttb_indx idx = num_samples_nonzeros + i;
+                for (ttb_indx j=0; j<nd; ++j)
+                  Y.subscript(idx,j) = ind[j];
+                if (compute_gradient) {
+                  const ttb_real m_val = compute_Ktensor_value(u, ind);
+                  Y.value(idx) =
+                    weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
+                }
+                else {
+                  Y.value(idx) = 0.0;
+                  w[idx] = weight_zeros;
+                }
+              }
+            }
+          }
+        }
+        rand_pool.free_state(gen);
+      }, "Genten::GCP_SGD::Uniform_Sample_Zeros");
+
+      if (algParams.mttkrp_method == MTTKRP_Method::Perm) {
+        Y.createPermutation();
+      }
+    }
+
+    template <typename ExecSpace, typename LossFunction>
     void sample_tensor_nonzeros(const SptensorT<ExecSpace>& X,
                                 const ttb_indx offset,
                                 const ttb_indx num_samples,
@@ -384,7 +494,7 @@ namespace Genten {
 #elif 0
       // Parallel version using a hash map
       // Determine unique entries in Z
-      Kokkos::UnorderedMap<ttb_indx,void> unique_map(total_samples);
+      Kokkos::UnorderedMap<ttb_indx,void,ExecSpace> unique_map(total_samples);
       Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,total_samples),
                            KOKKOS_LAMBDA(const ttb_indx n)
       {
@@ -405,7 +515,7 @@ namespace Genten {
       }, "Genten::GCP_SGD::sample_tensor_zeros_duplicates");
 
       // Determine which entries in Z are not in X
-      Kokkos::UnorderedMap<ttb_indx,void> map(total_samples);
+      Kokkos::UnorderedMap<ttb_indx,void,ExecSpace> map(total_samples);
       Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_zeros_gen),
                            KOKKOS_LAMBDA(const ttb_indx k)
       {
@@ -543,6 +653,21 @@ namespace Genten {
 #define LOSS_INST_MACRO(SPACE,LOSS)                                     \
   template void Impl::stratified_sample_tensor(                         \
     const SptensorT<SPACE>& X,                                          \
+    const ttb_indx num_samples_nonzeros,                                \
+    const ttb_indx num_samples_zeros,                                   \
+    const ttb_real weight_nonzeros,                                     \
+    const ttb_real weight_zeros,                                        \
+    const KtensorT<SPACE>& u,                                           \
+    const LOSS& loss_func,                                              \
+    const bool compute_gradient,                                        \
+    SptensorT<SPACE>& Y,                                                \
+    ArrayT<SPACE>& w,                                                   \
+    RandomMT& rng,                                                      \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template void Impl::stratified_sample_tensor_hash(                    \
+    const SptensorT<SPACE>& X,                                          \
+    const Kokkos::UnorderedMap<Impl::Array<ttb_indx,HASH_TENSOR_DIM>, ttb_real, SPACE>& hash, \
     const ttb_indx num_samples_nonzeros,                                \
     const ttb_indx num_samples_zeros,                                   \
     const ttb_real weight_nonzeros,                                     \

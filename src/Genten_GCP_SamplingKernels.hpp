@@ -44,6 +44,12 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_RandomMT.hpp"
 #include "Genten_AlgParams.hpp"
+#include "Genten_GCP_Hash.hpp"
+
+#include "Kokkos_UnorderedMap.hpp"
+
+// Hard-coded tensor dimension for hash map
+#define HASH_TENSOR_DIM 5
 
 namespace Genten {
 
@@ -62,6 +68,22 @@ namespace Genten {
                                   ArrayT<ExecSpace>& w,
                                   RandomMT& rng,
                                   const AlgParams& algParams);
+
+    template <typename ExecSpace, typename LossFunction>
+    void stratified_sample_tensor_hash(
+      const SptensorT<ExecSpace>& X,
+      const Kokkos::UnorderedMap<Array<ttb_indx,HASH_TENSOR_DIM>, ttb_real, ExecSpace>& hash,
+      const ttb_indx num_samples_nonzeros,
+      const ttb_indx num_samples_zeros,
+      const ttb_real weight_nonzeros,
+      const ttb_real weight_zeros,
+      const KtensorT<ExecSpace>& u,
+      const LossFunction& loss_func,
+      const bool compute_gradient,
+      SptensorT<ExecSpace>& Y,
+      ArrayT<ExecSpace>& w,
+      RandomMT& rng,
+      const AlgParams& algParams);
 
     template <typename ExecSpace, typename LossFunction>
     void sample_tensor_nonzeros(const SptensorT<ExecSpace>& X,

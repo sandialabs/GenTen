@@ -51,6 +51,12 @@
 #include "Genten_GCP_SamplingKernels.hpp"
 #include "Genten_MixedFormatOps.hpp"
 
+// Use a hash map built from tensor nonzeros for search for nonzeros
+// instead of sorting and binary search.  Only works with the specific
+// tensor dimension determined by HASH_TENSOR_DIM
+#define USE_HASH_MAP 0
+#define PRINT_HASH_HISTOGRAM 0
+
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
 #endif
@@ -197,6 +203,41 @@ namespace Genten {
         }
       }
 
+#if USE_HASH_MAP
+      // Build hash map of tensor
+      if (printIter > 0)
+        out << "Building hash map for faster sampling...";
+      timer.start(timer_sort);
+      typedef Impl::Array<ttb_indx, HASH_TENSOR_DIM> array_t;
+      if (nd !=  HASH_TENSOR_DIM)
+        Genten::error("Invalid tensor dimension!");
+      Kokkos::UnorderedMap<array_t, ttb_real, ExecSpace> hash_map(nnz);
+      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nnz),
+                           KOKKOS_LAMBDA(const ttb_indx i)
+      {
+        array_t a;
+        for (ttb_indx j=0; j<nd; ++j)
+          a[j] = X.subscript(i,j);
+        if (hash_map.insert(a, X.value(i)).failed())
+          Kokkos::abort("Hash map insert failed!");
+      }, "Genten::GCP_SGD::hash_kernel");
+      timer.stop(timer_sort);
+      if (printIter > 0)
+        out << timer.getTotalTime(timer_sort) << " seconds" << std::endl;
+
+#if PRINT_HASH_HISTOGRAM
+      // Print histogram of hash map
+      auto h = hash_map.get_histogram();
+      h.calculate();
+      std::cout << "length:" << std::endl;
+      h.print_length(std::cout);
+      std::cout << "distance:" << std::endl;
+      h.print_distance(std::cout);
+      std::cout << "block distance:" << std::endl;
+      h.print_block_distance(std::cout);
+#endif
+
+#else
       // Sort tensor if necessary
       if (!X.isSorted()) {
         if (printIter > 0)
@@ -207,17 +248,26 @@ namespace Genten {
         if (printIter > 0)
           out << timer.getTotalTime(timer_sort) << " seconds" << std::endl;
       }
+#endif
 
       // Sample X for f-estimate
       SptensorT<ExecSpace> X_val, X_grad;
       ArrayT<ExecSpace> w_val, w_grad;
       RandomMT rng(seed);
       timer.start(timer_sample_f);
+#if USE_HASH_MAP
+      Impl::stratified_sample_tensor_hash(
+        X, hash_map, num_samples_nonzeros_value, num_samples_zeros_value,
+        weight_nonzeros_value, weight_zeros_value,
+        u, loss_func, false,
+        X_val, w_val, rng, algParams);
+#else
       Impl::stratified_sample_tensor(
         X, num_samples_nonzeros_value, num_samples_zeros_value,
         weight_nonzeros_value, weight_zeros_value,
         u, loss_func, false,
         X_val, w_val, rng, algParams);
+#endif
       timer.stop(timer_sample_f);
 
       // Objective estimates
@@ -270,11 +320,19 @@ namespace Genten {
 
           // sample for gradient
           timer.start(timer_sample_g);
+#if USE_HASH_MAP
+          Impl::stratified_sample_tensor_hash(
+            X, hash_map, num_samples_nonzeros_grad, num_samples_zeros_grad,
+            weight_nonzeros_grad, weight_zeros_grad,
+            u, loss_func, true,
+            X_grad, w_grad, rng, algParams);
+#else
           Impl::stratified_sample_tensor(
             X, num_samples_nonzeros_grad, num_samples_zeros_grad,
             weight_nonzeros_grad, weight_zeros_grad,
             u, loss_func, true,
             X_grad, w_grad, rng, algParams);
+#endif
           timer.stop(timer_sample_g);
 
           for (ttb_indx giter=0; giter<frozen_iters; ++giter) {
@@ -396,13 +454,20 @@ namespace Genten {
       if (printIter > 0) {
          out << "GCP-SGD completed " << total_iters << " iterations in "
              << timer.getTotalTime(timer_sgd) << " seconds" << std::endl
-             << "\tsort:     " << timer.getTotalTime(timer_sort) << " seconds\n"
-             << "\tsample-f: " << timer.getTotalTime(timer_sample_f) << " seconds\n"
-             << "\tsample-g: " << timer.getTotalTime(timer_sample_g) << " seconds\n"
-             << "\tf-est:    " << timer.getTotalTime(timer_fest) << " seconds\n"
-             << "\tgradient: " << timer.getTotalTime(timer_grad) << " seconds\n"
-             << "\tstep:     " << timer.getTotalTime(timer_step) << " seconds\n"
-             << "\tclip:     " << timer.getTotalTime(timer_clip) << " seconds\n"
+             << "\tsort/hash: " << timer.getTotalTime(timer_sort)
+             << " seconds\n"
+             << "\tsample-f:  " << timer.getTotalTime(timer_sample_f)
+             << " seconds\n"
+             << "\tsample-g:  " << timer.getTotalTime(timer_sample_g)
+             << " seconds\n"
+             << "\tf-est:     " << timer.getTotalTime(timer_fest)
+             << " seconds\n"
+             << "\tgradient:  " << timer.getTotalTime(timer_grad)
+             << " seconds\n"
+             << "\tstep:      " << timer.getTotalTime(timer_step)
+             << " seconds\n"
+             << "\tclip:      " << timer.getTotalTime(timer_clip)
+             << " seconds\n"
              << "Final f-est: "
              << std::setw(13) << std::setprecision(6) << std::scientific
              << fest;
