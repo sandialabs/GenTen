@@ -75,7 +75,6 @@ namespace Genten {
         w = ArrayT<ExecSpace>(total_samples);
       }
 
-#if 1
       // Parallel sampling on the device
       typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
       typedef typename RandomPool::generator_type generator_type;
@@ -164,83 +163,6 @@ namespace Genten {
         }
         rand_pool.free_state(gen);
       }, "Genten::GCP_SGD::Uniform_Sample_Zeros");
-#else
-      // Serial sampling on the host
-      typedef typename SptensorT<ExecSpace>::HostMirror Sptensor_host_type;
-      typedef typename Sptensor_host_type::exec_space host_exec_space;
-      typedef typename ArrayT<ExecSpace>::HostMirror Array_host_type;
-      typedef typename KtensorT<ExecSpace>::HostMirror Ktensor_host_type;
-
-      // Copy to host
-      Sptensor_host_type X_host = create_mirror_view(host_exec_space(), X);
-      Sptensor_host_type Y_host = create_mirror_view(host_exec_space(), Y);
-      Array_host_type w_host;
-      Ktensor_host_type u_host;
-      if (compute_gradient) {
-        u_host = create_mirror_view(host_exec_space(), u);
-        deep_copy(u_host, u);
-      }
-      else
-        w_host = create_mirror_view(host_exec_space(), w);
-      deep_copy(X_host, X);
-
-      // Geneate samples of nonzeros
-      for (ttb_indx i=0; i<num_samples_nonzeros; ++i) {
-        const ttb_indx idx = ttb_indx(rng.genrnd_double() * nnz);
-        const auto& ind = X_host.getSubscripts(idx);
-        if (compute_gradient) {
-          const ttb_real m_val = compute_Ktensor_value(u_host, ind);
-          Y_host.value(i) =
-            weight_nonzeros * loss_func.deriv(X.value(idx), m_val);
-        }
-        else {
-          Y_host.value(i) = X_host.value(idx);
-          w_host[i] = weight_nonzeros;
-        }
-        for (ttb_indx j=0; j<nd; ++j)
-          Y_host.subscript(i,j) = ind[j];
-      }
-
-      // Generate samples of zeros
-      IndxArrayT<host_exec_space> ind(nd);
-      ttb_indx i=0;
-      while (i<num_samples_zeros) {
-
-        // Generate index
-        for (ttb_indx j=0; j<nd; ++j)
-          ind[j] = ttb_indx(rng.genrnd_double() * X_host.size(j));
-
-        // Search for index
-        const bool found = (X_host.index(ind) < nnz);
-
-        // If not found, add it
-        if (!found) {
-          const ttb_indx idx = num_samples_nonzeros + i;
-          for (ttb_indx j=0; j<nd; ++j)
-            Y_host.subscript(idx,j) = ind[j];
-          if (compute_gradient) {
-            const ttb_real m_val = compute_Ktensor_value(u_host, ind);
-            Y_host.value(idx) =
-              weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
-          }
-          else {
-            Y_host.value(idx) = 0.0;
-            w_host[idx] = weight_zeros;
-          }
-          ++i;
-        }
-
-      }
-
-      // Copy to device
-      deep_copy(Y, Y_host);
-      if (!compute_gradient)
-        deep_copy(w, w_host);
-#endif
-
-      if (algParams.mttkrp_method == MTTKRP_Method::Perm) {
-        Y.createPermutation();
-      }
     }
 
     template <typename ExecSpace, typename LossFunction>
@@ -347,10 +269,6 @@ namespace Genten {
         }
         rand_pool.free_state(gen);
       }, "Genten::GCP_SGD::Uniform_Sample_Zeros");
-
-      if (algParams.mttkrp_method == MTTKRP_Method::Perm) {
-        Y.createPermutation();
-      }
     }
 
     template <typename ExecSpace, typename LossFunction>
@@ -399,6 +317,51 @@ namespace Genten {
             }
             for (ttb_indx j=0; j<nd; ++j)
               Y.subscript(offset+i,j) = ind[j];
+          }
+        }
+        rand_pool.free_state(gen);
+      }, "Genten::GCP_SGD::sample_tensor_nonzeros");
+
+    }
+
+    template <typename ExecSpace, typename LossFunction>
+    void sample_tensor_nonzeros(const SptensorT<ExecSpace>& X,
+                                const ArrayT<ExecSpace>& w,
+                                const ttb_indx num_samples,
+                                const KtensorT<ExecSpace>& u,
+                                const LossFunction& loss_func,
+                                SptensorT<ExecSpace>& Y,
+                                RandomMT& rng,
+                                const AlgParams& algParams)
+    {
+      const ttb_indx nnz = X.nnz();
+      const ttb_indx nd = X.ndims();
+
+      // Resize Y if necessary
+      if (Y.nnz() < num_samples) {
+        Y = SptensorT<ExecSpace>(X.size(), num_samples);
+      }
+
+      // Parallel sampling on the device
+      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
+      typedef typename RandomPool::generator_type generator_type;
+      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
+      RandomPool rand_pool(rng.genrnd_int32());
+      const ttb_indx nloops = algParams.rng_iters;
+      const ttb_indx N_nonzeros = (num_samples+nloops-1)/nloops;
+      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
+                           KOKKOS_LAMBDA(const ttb_indx k)
+      {
+        generator_type gen = rand_pool.get_state();
+        for (ttb_indx l=0; l<nloops; ++l) {
+          const ttb_indx i = k*nloops+l;
+          if (i<num_samples) {
+            const ttb_indx idx = Rand::draw(gen,0,nnz);
+            const auto& ind = X.getSubscripts(idx);
+            const ttb_real m_val = compute_Ktensor_value(u, ind);
+            Y.value(i) = w[idx] * loss_func.deriv(X.value(idx), m_val);
+            for (ttb_indx j=0; j<nd; ++j)
+              Y.subscript(i,j) = ind[j];
           }
         }
         rand_pool.free_state(gen);
@@ -637,11 +600,6 @@ namespace Genten {
           X.subscript(i+xnz,j) = X_z.subscript(i,j);
         X.value(i+xnz) = X_z.value(i);
       }, "Genten::GCP_SGD::merge_sampled_tensors_z");
-
-      if (algParams.mttkrp_method == MTTKRP_Method::Perm) {
-        X.createPermutation();
-      }
-
     }
 
   }
@@ -688,6 +646,16 @@ namespace Genten {
     const KtensorT<SPACE>& u,                                           \
     const LOSS& loss_func,                                              \
     const bool compute_gradient,                                        \
+    SptensorT<SPACE>& Y,                                                \
+    RandomMT& rng,                                                      \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template void Impl::sample_tensor_nonzeros(                           \
+    const SptensorT<SPACE>& X,                                          \
+    const ArrayT<SPACE>& w,                                             \
+    const ttb_indx num_samples,                                         \
+    const KtensorT<SPACE>& u,                                           \
+    const LOSS& loss_func,                                              \
     SptensorT<SPACE>& Y,                                                \
     RandomMT& rng,                                                      \
     const AlgParams& algParams);

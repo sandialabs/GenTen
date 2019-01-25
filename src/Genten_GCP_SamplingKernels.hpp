@@ -97,6 +97,16 @@ namespace Genten {
                                 RandomMT& rng,
                                 const AlgParams& algParams);
 
+    template <typename ExecSpace, typename LossFunction>
+    void sample_tensor_nonzeros(const SptensorT<ExecSpace>& X,
+                                const ArrayT<ExecSpace>& w,
+                                const ttb_indx num_samples,
+                                const KtensorT<ExecSpace>& u,
+                                const LossFunction& loss_func,
+                                SptensorT<ExecSpace>& Y,
+                                RandomMT& rng,
+                                const AlgParams& algParams);
+
     template <typename ExecSpace>
     void sample_tensor_zeros(const SptensorT<ExecSpace>& X,
                              const ttb_indx offset,

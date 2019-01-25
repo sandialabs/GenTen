@@ -48,14 +48,13 @@
 
 namespace Genten {
 
-
   //! Compute the generalized CP decomposition of a tensor using SGD approach
   template<typename TensorT, typename ExecSpace>
   void gcp_sgd2(TensorT& x,
-		KtensorT<ExecSpace>& u,
-		const AlgParams& algParams,
-		ttb_indx& numIters,
-		ttb_real& resNorm,
-		std::ostream& out);
+                KtensorT<ExecSpace>& u,
+                const AlgParams& algParams,
+                ttb_indx& numIters,
+                ttb_real& resNorm,
+                std::ostream& out);
 
 }

@@ -168,7 +168,9 @@ namespace Genten {
       const int timer_grad = 5;
       const int timer_step = 6;
       const int timer_clip = 7;
-      SystemTimer timer(8);
+      const int timer_sample_g_z_nz = 8;
+      const int timer_sample_g_perm = 9;
+      SystemTimer timer(10);
 
       // Start timer for total execution time of the algorithm.
       timer.start(timer_sgd);
@@ -320,6 +322,7 @@ namespace Genten {
 
           // sample for gradient
           timer.start(timer_sample_g);
+          timer.start(timer_sample_g_z_nz);
 #if USE_HASH_MAP
           Impl::stratified_sample_tensor_hash(
             X, hash_map, num_samples_nonzeros_grad, num_samples_zeros_grad,
@@ -333,6 +336,11 @@ namespace Genten {
             u, loss_func, true,
             X_grad, w_grad, rng, algParams);
 #endif
+          timer.stop(timer_sample_g_z_nz);
+          timer.start(timer_sample_g_perm);
+          if (algParams.mttkrp_method == MTTKRP_Method::Perm)
+            X_grad.createPermutation();
+          timer.stop(timer_sample_g_perm);
           timer.stop(timer_sample_g);
 
           for (ttb_indx giter=0; giter<frozen_iters; ++giter) {
@@ -459,6 +467,10 @@ namespace Genten {
              << "\tsample-f:  " << timer.getTotalTime(timer_sample_f)
              << " seconds\n"
              << "\tsample-g:  " << timer.getTotalTime(timer_sample_g)
+             << " seconds\n"
+             << "\t\tzs/nzs:   " << timer.getTotalTime(timer_sample_g_z_nz)
+             << " seconds\n"
+             << "\t\tperm:     " << timer.getTotalTime(timer_sample_g_perm)
              << " seconds\n"
              << "\tf-est:     " << timer.getTotalTime(timer_fest)
              << " seconds\n"
