@@ -42,7 +42,7 @@
 
 #include "Genten_GCP_SGD.hpp"
 #include "Genten_GCP_SGD2.hpp"
-#include "Genten_GCP_SGD3.hpp"
+//#include "Genten_GCP_SGD3.hpp"
 #include "Genten_IndxArray.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_Ktensor.hpp"

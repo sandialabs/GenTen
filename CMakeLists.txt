@@ -356,7 +356,7 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_GCP_Hash.cpp
   ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD.cpp
   ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD2.cpp
-  ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD3.cpp
+  #  ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD3.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
   )
 
