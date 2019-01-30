@@ -148,4 +148,50 @@ namespace Genten {
     }
   };
 
+  // Our own versions of atomic_oper_fetch() suitable for using a lambda
+  // for the operator
+
+  // 32-bit version
+  template < class Oper, typename T >
+  KOKKOS_INLINE_FUNCTION
+  T atomic_oper_fetch(
+    const Oper& op, volatile T * const dest ,
+    typename std::enable_if< sizeof(T) == sizeof(int), const T >::type& val )
+  {
+    union { int i ; T t ; } oldval , assume , newval ;
+
+    oldval.t = *dest ;
+
+    do {
+      assume.i = oldval.i ;
+      newval.t = op(assume.t, val) ;
+      oldval.i =
+        Kokkos::atomic_compare_exchange( (int*)dest , assume.i , newval.i );
+    } while ( assume.i != oldval.i );
+
+    return newval.t ;
+  }
+
+  // 64-bit version
+  template < class Oper, typename T >
+  KOKKOS_INLINE_FUNCTION
+  T atomic_oper_fetch(
+    const Oper& op, volatile T * const dest ,
+    typename Kokkos::Impl::enable_if<
+      sizeof(T) != sizeof(int) && sizeof(T) == sizeof(unsigned long long int) ,
+      const T >::type& val )
+  {
+    union { unsigned long long int i ; T t ; } oldval , assume , newval ;
+
+    oldval.t = *dest ;
+
+    do {
+      assume.i = oldval.i ;
+      newval.t = op(assume.t, val) ;
+      oldval.i = Kokkos::atomic_compare_exchange( (unsigned long long int*)dest , assume.i , newval.i );
+    } while ( assume.i != oldval.i );
+
+    return newval.t ;
+  }
+
 }

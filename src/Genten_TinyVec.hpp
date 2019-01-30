@@ -41,6 +41,9 @@
 
 #pragma once
 
+#include <cmath>
+#include <ostream>
+
 #include "Genten_Kokkos.hpp"
 #if defined(KOKKOS_ENABLE_CUDA)
 #include "Cuda/Kokkos_Cuda_Vectorization.hpp"
@@ -64,6 +67,7 @@ namespace Genten {
 
   }
 
+  // A compile-time sized polymorphic array used in, e.g., MTTKRP
   template <typename ExecSpace, typename Scalar, typename Ordinal,
             unsigned Length, unsigned Size, unsigned WarpDim,
             typename Enabled = void>
@@ -89,18 +93,56 @@ namespace Genten {
       sz(size)
 #endif
     {
+      broadcast(x);
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    TinyVec(const ordinal_type size, const scalar_type* x) :
+#ifdef __CUDA_ARCH__
+      sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
+#else
+      sz(size)
+#endif
+    {
+      load(x);
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    TinyVec(const TinyVec& x) : sz(x.sz.value) {
       for (ordinal_type i=0; i<sz.value; ++i)
-        v[i] = x;
+        v[i] = x.v[i];
     }
 
     KOKKOS_INLINE_FUNCTION
     ~TinyVec() = default;
 
     KOKKOS_INLINE_FUNCTION
-    TinyVec(const TinyVec&) = default;
+    TinyVec& operator=(const TinyVec& x) {
+      for (ordinal_type i=0; i<sz.value; ++i)
+        v[i] = x.v[i];
+      return *this;
+    }
 
     KOKKOS_INLINE_FUNCTION
-    TinyVec& operator=(const TinyVec&) = default;
+    TinyVec& operator=(const scalar_type x) {
+      broadcast(x);
+      return *this;
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    TinyVec& operator=(const scalar_type* x) {
+      load(x);
+      return *this;
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    constexpr ordinal_type size() const { return sz.value; }
+
+    KOKKOS_INLINE_FUNCTION
+    scalar_type operator[](ordinal_type i) const { return v[i]; }
+
+    KOKKOS_INLINE_FUNCTION
+    scalar_type& operator[](ordinal_type i) { return v[i]; }
 
     KOKKOS_INLINE_FUNCTION
     void broadcast(const scalar_type x) {
@@ -142,9 +184,118 @@ namespace Genten {
     }
 
     KOKKOS_INLINE_FUNCTION
+    TinyVec atomic_exchange(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+#ifdef __CUDA_ARCH__
+      for (ordinal_type i=0; i<sz.value; ++i)
+        c.v[i] = Kokkos::atomic_exchange(x+i*WarpDim+threadIdx.x, v[i]);
+#else
+      for (ordinal_type i=0; i<sz.value; ++i)
+        c.v[i] = Kokkos::atomic_exchange(x+i, v[i]);
+#endif
+      return c;
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    TinyVec atomic_fetch_max(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+#ifdef __CUDA_ARCH__
+      for (ordinal_type i=0; i<sz.value; ++i)
+        c.v[i] = Kokkos::atomic_fetch_max(x+i*WarpDim+threadIdx.x, v[i]);
+#else
+      for (ordinal_type i=0; i<sz.value; ++i)
+        c.v[i] = Kokkos::atomic_fetch_max(x+i, v[i]);
+#endif
+      return c;
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    TinyVec atomic_fetch_min(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+#ifdef __CUDA_ARCH__
+      for (ordinal_type i=0; i<sz.value; ++i)
+        c.v[i] = Kokkos::atomic_fetch_min(x+i*WarpDim+threadIdx.x, v[i]);
+#else
+      for (ordinal_type i=0; i<sz.value; ++i)
+        c.v[i] = Kokkos::atomic_fetch_min(x+i, v[i]);
+#endif
+      return c;
+    }
+
+    template <typename Oper>
+    KOKKOS_INLINE_FUNCTION
+    TinyVec atomic_oper_fetch(const Oper& op, volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+#ifdef __CUDA_ARCH__
+      for (ordinal_type i=0; i<sz.value; ++i)
+        c.v[i] = Genten::atomic_oper_fetch(op, x+i*WarpDim+threadIdx.x, v[i]);
+#else
+      for (ordinal_type i=0; i<sz.value; ++i)
+        c.v[i] = Genten::atomic_oper_fetch(op, x+i, v[i]);
+#endif
+      return c;
+    }
+
+    KOKKOS_INLINE_FUNCTION
     TinyVec& operator+=(const TinyVec& x) {
       for (ordinal_type i=0; i<sz.value; ++i)
         v[i] += x.v[i];
+      return *this;
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    TinyVec& operator-=(const TinyVec& x) {
+      for (ordinal_type i=0; i<sz.value; ++i)
+        v[i] -= x.v[i];
+      return *this;
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    TinyVec& operator*=(const TinyVec& x) {
+      for (ordinal_type i=0; i<sz.value; ++i)
+        v[i] *= x.v[i];
+      return *this;
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    TinyVec& operator/=(const TinyVec& x) {
+      for (ordinal_type i=0; i<sz.value; ++i)
+        v[i] /= x.v[i];
+      return *this;
+    }
+
+    template <typename Op>
+    KOKKOS_INLINE_FUNCTION
+    void apply_unary(const Op& op, const TinyVec& x) {
+      for (ordinal_type i=0; i<sz.value; ++i)
+        v[i] = op(x.v[i]);
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    TinyVec& operator+=(const scalar_type x) {
+      for (ordinal_type i=0; i<sz.value; ++i)
+        v[i] += x;
+      return *this;
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    TinyVec& operator-=(const scalar_type x) {
+      for (ordinal_type i=0; i<sz.value; ++i)
+        v[i] -= x;
+      return *this;
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    TinyVec& operator*=(const scalar_type x) {
+      for (ordinal_type i=0; i<sz.value; ++i)
+        v[i] *= x;
+      return *this;
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    TinyVec& operator/=(const scalar_type x) {
+      for (ordinal_type i=0; i<sz.value; ++i)
+        v[i] /= x;
       return *this;
     }
 
@@ -154,6 +305,33 @@ namespace Genten {
       const TinyVec<ExecSpace,Scalar,Ordinal,Length,S,WarpDim,Enabled>& x) {
       for (ordinal_type i=0; i<x.sz.value; ++i)
         v[i] += x.v[i];
+      return *this;
+    }
+
+    template <unsigned S>
+    KOKKOS_INLINE_FUNCTION
+    TinyVec& operator-=(
+      const TinyVec<ExecSpace,Scalar,Ordinal,Length,S,WarpDim,Enabled>& x) {
+      for (ordinal_type i=0; i<x.sz.value; ++i)
+        v[i] -= x.v[i];
+      return *this;
+    }
+
+    template <unsigned S>
+    KOKKOS_INLINE_FUNCTION
+    TinyVec& operator*=(
+      const TinyVec<ExecSpace,Scalar,Ordinal,Length,S,WarpDim,Enabled>& x) {
+      for (ordinal_type i=0; i<x.sz.value; ++i)
+        v[i] *= x.v[i];
+      return *this;
+    }
+
+    template <unsigned S>
+    KOKKOS_INLINE_FUNCTION
+    TinyVec& operator/=(
+      const TinyVec<ExecSpace,Scalar,Ordinal,Length,S,WarpDim,Enabled>& x) {
+      for (ordinal_type i=0; i<x.sz.value; ++i)
+        v[i] /= x.v[i];
       return *this;
     }
 
@@ -170,9 +348,14 @@ namespace Genten {
     }
 
     KOKKOS_INLINE_FUNCTION
-    TinyVec& operator*=(const scalar_type x) {
+    TinyVec& operator-=(const scalar_type* x) {
+#ifdef __CUDA_ARCH__
       for (ordinal_type i=0; i<sz.value; ++i)
-        v[i] *= x;
+        v[i] -= x[i*WarpDim+threadIdx.x];
+#else
+      for (ordinal_type i=0; i<sz.value; ++i)
+        v[i] -= x[i];
+#endif
       return *this;
     }
 
@@ -189,6 +372,18 @@ namespace Genten {
     }
 
     KOKKOS_INLINE_FUNCTION
+    TinyVec& operator/=(const scalar_type* x) {
+#ifdef __CUDA_ARCH__
+      for (ordinal_type i=0; i<sz.value; ++i)
+        v[i] /= x[i*WarpDim+threadIdx.x];
+#else
+      for (ordinal_type i=0; i<sz.value; ++i)
+        v[i] /= x[i];
+#endif
+      return *this;
+    }
+
+    KOKKOS_INLINE_FUNCTION
     scalar_type sum() const {
       scalar_type s = 0.0;
       for (ordinal_type i=0; i<sz.value; ++i)
@@ -197,6 +392,13 @@ namespace Genten {
       s = Impl::warpReduce(s, WarpDim);
 #endif
       return s;
+    }
+
+    void print(std::ostream& os) const {
+      os << "[ ";
+      for (ordinal_type i=0; i<sz.value; ++i)
+        os << v[i] << " ";
+      os << "]";
     }
 
   };
@@ -228,17 +430,44 @@ namespace Genten {
     TinyVec(const ordinal_type size, const scalar_type x)
       : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
     {
-      v0 = x;
+      broadcast(x);
+    }
+
+    __device__ inline
+    TinyVec(const ordinal_type size, const scalar_type* x)
+      : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
+    {
+      load(x);
+    }
+
+    __device__ inline
+    TinyVec(const TinyVec& x) : sz(x.sz.value) {
+      v0 = x.v0;
     }
 
     __device__ inline
     ~TinyVec() = default;
 
     __device__ inline
-    TinyVec(const TinyVec&) = default;
+    TinyVec& operator=(const TinyVec& x) {
+      v0 = x.v0;
+      return *this;
+    }
 
     __device__ inline
-    TinyVec& operator=(const TinyVec&) = default;
+    TinyVec& operator=(const scalar_type x) {
+      broadcast(x);
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator=(const scalar_type* x) {
+      load(x);
+      return *this;
+    }
+
+    __device__ inline
+    constexpr ordinal_type size() const { return sz.value; }
 
     __device__ inline
     void broadcast(const scalar_type x) {
@@ -261,8 +490,85 @@ namespace Genten {
     }
 
     __device__ inline
+    TinyVec atomic_exchange(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_exchange(x+threadIdx.x, v0);
+      return c;
+    }
+
+    __device__ inline
+    TinyVec atomic_fetch_max(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_max(x+threadIdx.x, v0);
+      return c;
+    }
+
+    __device__ inline
+    TinyVec atomic_fetch_min(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_min(x+threadIdx.x, v0);
+      return c;
+    }
+
+    template <typename Oper>
+    __device__ inline
+    TinyVec atomic_oper_fetch(const Oper& op, volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Genten::atomic_oper_fetch(op, x+threadIdx.x, v0);
+      return c;
+    }
+
+    __device__ inline
     TinyVec& operator+=(const TinyVec& x) {
       v0 += x.v0;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator-=(const TinyVec& x) {
+      v0 -= x.v0;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator*=(const TinyVec& x) {
+      v0 *= x.v0;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator/=(const TinyVec& x) {
+      v0 /= x.v0;
+      return *this;
+    }
+
+    template <typename Op>
+    __device__ inline
+    void apply_unary(const Op& op, const TinyVec& x) {
+      v0 = op(x.v0);
+    }
+
+    __device__ inline
+    TinyVec& operator+=(const scalar_type x) {
+      v0 += x;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator-=(const scalar_type x) {
+      v0 -= x;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator*=(const scalar_type x) {
+      v0 *= x;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator/=(const scalar_type x) {
+      v0 /= x;
       return *this;
     }
 
@@ -274,6 +580,30 @@ namespace Genten {
       return *this;
     }
 
+    template <unsigned S>
+    __device__ inline
+    TinyVec& operator-=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      if (x.sz.value > 0) v0 -= x.v0;
+      return *this;
+    }
+
+    template <unsigned S>
+    __device__ inline
+    TinyVec& operator*=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      if (x.sz.value > 0) v0 *= x.v0;
+      return *this;
+    }
+
+    template <unsigned S>
+    __device__ inline
+    TinyVec& operator/=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      if (x.sz.value > 0) v0 /= x.v0;
+      return *this;
+    }
+
     __device__ inline
     TinyVec& operator+=(const scalar_type* x) {
       if (sz.value > 0) v0 += x[threadIdx.x];
@@ -281,14 +611,20 @@ namespace Genten {
     }
 
     __device__ inline
-    TinyVec& operator*=(const scalar_type x) {
-      v0 *= x;
+    TinyVec& operator-=(const scalar_type* x) {
+      if (sz.value > 0) v0 -= x[threadIdx.x];
       return *this;
     }
 
     __device__ inline
     TinyVec& operator*=(const scalar_type* x) {
       if (sz.value > 0) v0 *= x[threadIdx.x];
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator/=(const scalar_type* x) {
+      if (sz.value > 0) v0 /= x[threadIdx.x];
       return *this;
     }
 
@@ -325,20 +661,46 @@ namespace Genten {
 
     __device__ inline
     TinyVec(const ordinal_type size, const scalar_type x)
-
       : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
     {
-      v0 = v1 = x;
+      broadcast(x);
+    }
+
+    __device__ inline
+    TinyVec(const ordinal_type size, const scalar_type* x)
+      : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
+    {
+      load(x);
+    }
+
+    __device__ inline
+    TinyVec(const TinyVec& x) : sz(x.sz.value) {
+      v0 = x.v0; v1 = x.v1;
     }
 
     __device__ inline
     ~TinyVec() = default;
 
     __device__ inline
-    TinyVec(const TinyVec&) = default;
+    TinyVec& operator=(const TinyVec& x) {
+      v0 = x.v0; v1 = x.v1;
+      return *this;
+    }
 
     __device__ inline
-    TinyVec& operator=(const TinyVec&) = default;
+    TinyVec& operator=(const scalar_type x) {
+      broadcast(x);
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator=(const scalar_type* x) {
+      load(x);
+      return *this;
+    }
+
+    __device__ inline
+    constexpr ordinal_type size() const { return sz.value; }
 
     __device__ inline
     void broadcast(const scalar_type x) {
@@ -364,6 +726,47 @@ namespace Genten {
     }
 
     __device__ inline
+    TinyVec atomic_exchange(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0)
+        c.v0 = Kokkos::atomic_exchange(x+threadIdx.x, v0);
+      if (sz.value > 1)
+        c.v1 = Kokkos::atomic_exchange(x+WarpDim+threadIdx.x, v1);
+      return c;
+    }
+
+    __device__ inline
+    TinyVec atomic_fetch_max(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0)
+        c.v0 = Kokkos::atomic_fetch_max(x+threadIdx.x, v0);
+      if (sz.value > 1)
+        c.v1 = Kokkos::atomic_fetch_max(x+WarpDim+threadIdx.x, v1);
+      return c;
+    }
+
+    __device__ inline
+    TinyVec atomic_fetch_min(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0)
+        c.v0 = Kokkos::atomic_fetch_min(x+threadIdx.x, v0);
+      if (sz.value > 1)
+        c.v1 = Kokkos::atomic_fetch_min(x+WarpDim+threadIdx.x, v1);
+      return c;
+    }
+
+    template <typename Oper>
+    __device__ inline
+    TinyVec atomic_oper_fetch(const Oper& op, volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0)
+        c.v0 = Genten::atomic_oper_fetch(op, x+threadIdx.x, v0);
+      if (sz.value > 1)
+        c.v1 = Genten::atomic_oper_fetch(op, x+WarpDim+threadIdx.x, v1);
+      return c;
+    }
+
+    __device__ inline
     TinyVec& operator+=(const TinyVec& x) {
       v0 += x.v0;
       v1 += x.v1;
@@ -371,9 +774,58 @@ namespace Genten {
     }
 
     __device__ inline
-    TinyVec& operator+=(const scalar_type* x) {
-      if (sz.value > 0) v0 += x[threadIdx.x];
-      if (sz.value > 1) v1 += x[WarpDim + threadIdx.x];
+    TinyVec& operator-=(const TinyVec& x) {
+      v0 -= x.v0;
+      v1 -= x.v1;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator*=(const TinyVec& x) {
+      v0 *= x.v0;
+      v1 *= x.v1;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator/=(const TinyVec& x) {
+      v0 /= x.v0;
+      v1 /= x.v1;
+      return *this;
+    }
+
+    template <typename Op>
+    __device__ inline
+    void apply_unary(const Op& op, const TinyVec& x) {
+      v0 = op(x.v0);
+      v1 = op(x.v1);
+    }
+
+    __device__ inline
+    TinyVec& operator+=(const scalar_type x) {
+      v0 += x;
+      v1 += x;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator-=(const scalar_type x) {
+      v0 -= x;
+      v1 -= x;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator*=(const scalar_type x) {
+      v0 *= x;
+      v1 *= x;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator/=(const scalar_type x) {
+      v0 /= x;
+      v1 /= x;
       return *this;
     }
 
@@ -386,17 +838,58 @@ namespace Genten {
       return *this;
     }
 
+    template <unsigned S>
     __device__ inline
-    TinyVec& operator*=(const scalar_type x) {
-      v0 *= x;
-      v1 *= x;
+    TinyVec& operator-=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      if (x.sz.value > 0) v0 -= x.v0;
+      if (x.sz.value > 1) v1 -= x.v1;
+      return *this;
+    }
+
+    template <unsigned S>
+    __device__ inline
+    TinyVec& operator*=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      if (x.sz.value > 0) v0 *= x.v0;
+      if (x.sz.value > 1) v1 *= x.v1;
+      return *this;
+    }
+
+    template <unsigned S>
+    __device__ inline
+    TinyVec& operator/=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      if (x.sz.value > 0) v0 /= x.v0;
+      if (x.sz.value > 1) v1 /= x.v1;
       return *this;
     }
 
     __device__ inline
+    TinyVec& operator+=(const scalar_type* x) {
+      if (sz.value > 0) v0 += x[threadIdx.x];
+      if (sz.value > 1) v1 += x[WarpDim + threadIdx.x];
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator-=(const scalar_type* x) {
+      if (sz.value > 0) v0 -= x[threadIdx.x];
+      if (sz.value > 1) v1 -= x[WarpDim + threadIdx.x];
+      return *this;
+    }
+
+   __device__ inline
     TinyVec& operator*=(const scalar_type* x) {
       if (sz.value > 0) v0 *= x[threadIdx.x];
       if (sz.value > 1) v1 *= x[WarpDim + threadIdx.x];
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator/=(const scalar_type* x) {
+      if (sz.value > 0) v0 /= x[threadIdx.x];
+      if (sz.value > 1) v1 /= x[WarpDim + threadIdx.x];
       return *this;
     }
 
@@ -434,20 +927,46 @@ namespace Genten {
 
     __device__ inline
     TinyVec(const ordinal_type size, const scalar_type x)
-
       : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
     {
-      v0 = v1 = v2 = x;
+      broadcast(x);
+    }
+
+    __device__ inline
+    TinyVec(const ordinal_type size, const scalar_type* x)
+      : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
+    {
+      load(x);
+    }
+
+    __device__ inline
+    TinyVec(const TinyVec& x) : sz(x.sz.value) {
+      v0 = x.v0; v1 = x.v1; v2 = x.v2;
     }
 
     __device__ inline
     ~TinyVec() = default;
 
     __device__ inline
-    TinyVec(const TinyVec&) = default;
+    TinyVec& operator=(const TinyVec& x) {
+      v0 = x.v0; v1 = x.v1; v2 = x.v2;
+      return *this;
+    }
 
     __device__ inline
-    TinyVec& operator=(const TinyVec&) = default;
+    TinyVec& operator=(const scalar_type x) {
+      broadcast(x);
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator=(const scalar_type* x) {
+      load(x);
+      return *this;
+    }
+
+    __device__ inline
+    constexpr ordinal_type size() const { return sz.value; }
 
     __device__ inline
     void broadcast(const scalar_type x) {
@@ -476,10 +995,123 @@ namespace Genten {
     }
 
     __device__ inline
+    TinyVec atomic_exchange(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0)
+        c.v0 = Kokkos::atomic_exchange(x+threadIdx.x, v0);
+      if (sz.value > 1)
+        c.v1 = Kokkos::atomic_exchange(x+WarpDim+threadIdx.x, v1);
+      if (sz.value > 2)
+        c.v2 = Kokkos::atomic_exchange(x+2*WarpDim+threadIdx.x, v2);
+      return c;
+    }
+
+    __device__ inline
+    TinyVec atomic_fetch_max(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0)
+        c.v0 = Kokkos::atomic_fetch_max(x+threadIdx.x, v0);
+      if (sz.value > 1)
+        c.v1 = Kokkos::atomic_fetch_max(x+WarpDim+threadIdx.x, v1);
+      if (sz.value > 2)
+        c.v2 = Kokkos::atomic_fetch_max(x+2*WarpDim+threadIdx.x, v2);
+      return c;
+    }
+
+    __device__ inline
+    TinyVec atomic_fetch_min(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0)
+        c.v0 = Kokkos::atomic_fetch_min(x+threadIdx.x, v0);
+      if (sz.value > 1)
+        c.v1 = Kokkos::atomic_fetch_min(x+WarpDim+threadIdx.x, v1);
+      if (sz.value > 2)
+        c.v2 = Kokkos::atomic_fetch_min(x+2*WarpDim+threadIdx.x, v2);
+      return c;
+    }
+
+    template <typename Oper>
+    __device__ inline
+    TinyVec atomic_oper_fetch(const Oper& op, volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0)
+        c.v0 = Genten::atomic_oper_fetch(op, x+threadIdx.x, v0);
+      if (sz.value > 1)
+        c.v1 = Genten::atomic_oper_fetch(op, x+WarpDim+threadIdx.x, v1);
+      if (sz.value > 2)
+        c.v2 = Genten::atomic_oper_fetch(op, x+2*WarpDim+threadIdx.x, v2);
+      return c;
+    }
+
+    __device__ inline
     TinyVec& operator+=(const TinyVec& x) {
       v0 += x.v0;
       v1 += x.v1;
       v2 += x.v2;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator-=(const TinyVec& x) {
+      v0 -= x.v0;
+      v1 -= x.v1;
+      v2 -= x.v2;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator*=(const TinyVec& x) {
+      v0 *= x.v0;
+      v1 *= x.v1;
+      v2 *= x.v2;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator/=(const TinyVec& x) {
+      v0 /= x.v0;
+      v1 /= x.v1;
+      v2 /= x.v2;
+      return *this;
+    }
+
+    template <typename Op>
+    __device__ inline
+    void apply_unary(const Op& op, const TinyVec& x) {
+      v0 = op(x.v0);
+      v1 = op(x.v1);
+      v2 = op(x.v2);
+    }
+
+    __device__ inline
+    TinyVec& operator+=(const scalar_type x) {
+      v0 += x;
+      v1 += x;
+      v2 += x;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator-=(const scalar_type x) {
+      v0 -= x;
+      v1 -= x;
+      v2 -= x;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator*=(const scalar_type x) {
+      v0 *= x;
+      v1 *= x;
+      v2 *= x;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator/=(const scalar_type x) {
+      v0 /= x;
+      v1 /= x;
+      v2 /= x;
       return *this;
     }
 
@@ -493,6 +1125,36 @@ namespace Genten {
       return *this;
     }
 
+    template <unsigned S>
+    __device__ inline
+    TinyVec& operator-=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      if (x.sz.value > 0) v0 -= x.v0;
+      if (x.sz.value > 1) v1 -= x.v1;
+      if (x.sz.value > 2) v2 -= x.v2;
+      return *this;
+    }
+
+    template <unsigned S>
+    __device__ inline
+    TinyVec& operator*=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      if (x.sz.value > 0) v0 *= x.v0;
+      if (x.sz.value > 1) v1 *= x.v1;
+      if (x.sz.value > 2) v2 *= x.v2;
+      return *this;
+    }
+
+    template <unsigned S>
+    __device__ inline
+    TinyVec& operator/=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      if (x.sz.value > 0) v0 /= x.v0;
+      if (x.sz.value > 1) v1 /= x.v1;
+      if (x.sz.value > 2) v2 /= x.v2;
+      return *this;
+    }
+
     __device__ inline
     TinyVec& operator+=(const scalar_type* x) {
       if (sz.value > 0) v0 += x[threadIdx.x];
@@ -502,10 +1164,10 @@ namespace Genten {
     }
 
     __device__ inline
-    TinyVec& operator*=(const scalar_type x) {
-      v0 *= x;
-      v1 *= x;
-      v2 *= x;
+    TinyVec& operator-=(const scalar_type* x) {
+      if (sz.value > 0) v0 -= x[threadIdx.x];
+      if (sz.value > 1) v1 -= x[WarpDim + threadIdx.x];
+      if (sz.value > 2) v2 -= x[2*WarpDim + threadIdx.x];
       return *this;
     }
 
@@ -514,6 +1176,14 @@ namespace Genten {
       if (sz.value > 0) v0 *= x[threadIdx.x];
       if (sz.value > 1) v1 *= x[WarpDim + threadIdx.x];
       if (sz.value > 2) v2 *= x[2*WarpDim + threadIdx.x];
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator/=(const scalar_type* x) {
+      if (sz.value > 0) v0 /= x[threadIdx.x];
+      if (sz.value > 1) v1 /= x[WarpDim + threadIdx.x];
+      if (sz.value > 2) v2 /= x[2*WarpDim + threadIdx.x];
       return *this;
     }
 
@@ -552,20 +1222,46 @@ namespace Genten {
 
     __device__ inline
     TinyVec(const ordinal_type size, const scalar_type x)
-
       : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
     {
-      v0 = v1 = v2 = v3 = x;
+      broadcast(x);
+    }
+
+    __device__ inline
+    TinyVec(const ordinal_type size, const scalar_type* x)
+      : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
+    {
+      load(x);
+    }
+
+    __device__ inline
+    TinyVec(const TinyVec& x) : sz(x.sz.value) {
+      v0 = x.v0; v1 = x.v1; v2 = x.v2; v3 = x.v3;
     }
 
     __device__ inline
     ~TinyVec() = default;
 
     __device__ inline
-    TinyVec(const TinyVec&) = default;
+    TinyVec& operator=(const TinyVec& x) {
+      v0 = x.v0; v1 = x.v1; v2 = x.v2; v3 = x.v3;
+      return *this;
+    }
 
     __device__ inline
-    TinyVec& operator=(const TinyVec&) = default;
+    TinyVec& operator=(const scalar_type x) {
+      broadcast(x);
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator=(const scalar_type* x) {
+      load(x);
+      return *this;
+    }
+
+    __device__ inline
+    constexpr ordinal_type size() const { return sz.value; }
 
     __device__ inline
     void broadcast(const scalar_type x) {
@@ -597,11 +1293,140 @@ namespace Genten {
     }
 
     __device__ inline
+    TinyVec atomic_exchange(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0)
+        c.v0 = Kokkos::atomic_exchange(x+threadIdx.x, v0);
+      if (sz.value > 1)
+        c.v1 = Kokkos::atomic_exchange(x+WarpDim+threadIdx.x, v1);
+      if (sz.value > 2)
+        c.v2 = Kokkos::atomic_exchange(x+2*WarpDim+threadIdx.x, v2);
+      if (sz.value > 3)
+        c.v3 = Kokkos::atomic_exchange(x+3*WarpDim+threadIdx.x, v3);
+      return c;
+    }
+
+    __device__ inline
+    TinyVec atomic_fetch_max(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0)
+        c.v0 = Kokkos::atomic_fetch_max(x+threadIdx.x, v0);
+      if (sz.value > 1)
+        c.v1 = Kokkos::atomic_fetch_max(x+WarpDim+threadIdx.x, v1);
+      if (sz.value > 2)
+        c.v2 = Kokkos::atomic_fetch_max(x+2*WarpDim+threadIdx.x, v2);
+      if (sz.value > 3)
+        c.v3 = Kokkos::atomic_fetch_max(x+3*WarpDim+threadIdx.x, v3);
+      return c;
+    }
+
+    __device__ inline
+    TinyVec atomic_fetch_min(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0)
+        c.v0 = Kokkos::atomic_fetch_min(x+threadIdx.x, v0);
+      if (sz.value > 1)
+        c.v1 = Kokkos::atomic_fetch_min(x+WarpDim+threadIdx.x, v1);
+      if (sz.value > 2)
+        c.v2 = Kokkos::atomic_fetch_min(x+2*WarpDim+threadIdx.x, v2);
+      if (sz.value > 3)
+        c.v3 = Kokkos::atomic_fetch_min(x+3*WarpDim+threadIdx.x, v3);
+      return c;
+    }
+
+    template <typename Oper>
+    __device__ inline
+    TinyVec atomic_oper_fetch(const Oper& op, volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0)
+        c.v0 = Genten::atomic_oper_fetch(op, x+threadIdx.x, v0);
+      if (sz.value > 1)
+        c.v1 = Genten::atomic_oper_fetch(op, x+WarpDim+threadIdx.x, v1);
+      if (sz.value > 2)
+        c.v2 = Genten::atomic_oper_fetch(op, x+2*WarpDim+threadIdx.x, v2);
+      if (sz.value > 3)
+        c.v3 = Genten::atomic_oper_fetch(op, x+3*WarpDim+threadIdx.x, v3);
+      return c;
+    }
+
+    __device__ inline
     TinyVec& operator+=(const TinyVec& x) {
       v0 += x.v0;
       v1 += x.v1;
       v2 += x.v2;
       v3 += x.v3;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator-=(const TinyVec& x) {
+      v0 -= x.v0;
+      v1 -= x.v1;
+      v2 -= x.v2;
+      v3 -= x.v3;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator*=(const TinyVec& x) {
+      v0 *= x.v0;
+      v1 *= x.v1;
+      v2 *= x.v2;
+      v3 *= x.v3;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator/=(const TinyVec& x) {
+      v0 /= x.v0;
+      v1 /= x.v1;
+      v2 /= x.v2;
+      v3 /= x.v3;
+      return *this;
+    }
+
+    template <typename Op>
+    __device__ inline
+    void apply_unary(const Op& op, const TinyVec& x) {
+      v0 = op(x.v0);
+      v1 = op(x.v1);
+      v2 = op(x.v2);
+      v3 = op(x.v3);
+    }
+
+    __device__ inline
+    TinyVec& operator+=(const scalar_type x) {
+      v0 += x;
+      v1 += x;
+      v2 += x;
+      v3 += x;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator-=(const scalar_type x) {
+      v0 -= x;
+      v1 -= x;
+      v2 -= x;
+      v3 -= x;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator*=(const scalar_type x) {
+      v0 *= x;
+      v1 *= x;
+      v2 *= x;
+      v3 *= x;
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator/=(const scalar_type x) {
+      v0 /= x;
+      v1 /= x;
+      v2 /= x;
+      v3 /= x;
       return *this;
     }
 
@@ -616,6 +1441,39 @@ namespace Genten {
       return *this;
     }
 
+    template <unsigned S>
+    __device__ inline
+    TinyVec& operator-=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      if (x.sz.value > 0) v0 -= x.v0;
+      if (x.sz.value > 1) v1 -= x.v1;
+      if (x.sz.value > 2) v2 -= x.v2;
+      if (x.sz.value > 3) v3 -= x.v3;
+      return *this;
+    }
+
+    template <unsigned S>
+    __device__ inline
+    TinyVec& operator*=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      if (x.sz.value > 0) v0 *= x.v0;
+      if (x.sz.value > 1) v1 *= x.v1;
+      if (x.sz.value > 2) v2 *= x.v2;
+      if (x.sz.value > 3) v3 *= x.v3;
+      return *this;
+    }
+
+    template <unsigned S>
+    __device__ inline
+    TinyVec& operator/=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      if (x.sz.value > 0) v0 /= x.v0;
+      if (x.sz.value > 1) v1 /= x.v1;
+      if (x.sz.value > 2) v2 /= x.v2;
+      if (x.sz.value > 3) v3 /= x.v3;
+      return *this;
+    }
+
     __device__ inline
     TinyVec& operator+=(const scalar_type* x) {
       if (sz.value > 0) v0 += x[threadIdx.x];
@@ -626,11 +1484,11 @@ namespace Genten {
     }
 
     __device__ inline
-    TinyVec& operator*=(const scalar_type x) {
-      v0 *= x;
-      v1 *= x;
-      v2 *= x;
-      v3 *= x;
+    TinyVec& operator-=(const scalar_type* x) {
+      if (sz.value > 0) v0 -= x[threadIdx.x];
+      if (sz.value > 1) v1 -= x[WarpDim + threadIdx.x];
+      if (sz.value > 2) v2 -= x[2*WarpDim + threadIdx.x];
+      if (sz.value > 3) v3 -= x[3*WarpDim + threadIdx.x];
       return *this;
     }
 
@@ -640,6 +1498,15 @@ namespace Genten {
       if (sz.value > 1) v1 *= x[WarpDim + threadIdx.x];
       if (sz.value > 2) v2 *= x[2*WarpDim + threadIdx.x];
       if (sz.value > 3) v3 *= x[3*WarpDim + threadIdx.x];
+      return *this;
+    }
+
+    __device__ inline
+    TinyVec& operator/=(const scalar_type* x) {
+      if (sz.value > 0) v0 /= x[threadIdx.x];
+      if (sz.value > 1) v1 /= x[WarpDim + threadIdx.x];
+      if (sz.value > 2) v2 /= x[2*WarpDim + threadIdx.x];
+      if (sz.value > 3) v3 /= x[3*WarpDim + threadIdx.x];
       return *this;
     }
 
@@ -658,19 +1525,206 @@ namespace Genten {
 
 #endif
 
+  template <typename E, typename Sc, typename O,
+            unsigned L, unsigned S, unsigned W>
+  KOKKOS_INLINE_FUNCTION
+  TinyVec<E,Sc,O,L,S,W>
+  operator+(const TinyVec<E,Sc,O,L,S,W>& a, const TinyVec<E,Sc,O,L,S,W>& b)
+  {
+    TinyVec<E,Sc,O,L,S,W> c(a);
+    c += b;
+    return c;
+  }
+
+  template <typename E, typename Sc, typename O,
+            unsigned L, unsigned S, unsigned W>
+  KOKKOS_INLINE_FUNCTION
+  TinyVec<E,Sc,O,L,S,W>
+  operator+(const Sc& a, const TinyVec<E,Sc,O,L,S,W>& b)
+  {
+    TinyVec<E,Sc,O,L,S,W> c(b.size(), a);
+    c += b;
+    return c;
+  }
+
+  template <typename E, typename Sc, typename O,
+            unsigned L, unsigned S, unsigned W>
+  KOKKOS_INLINE_FUNCTION
+  TinyVec<E,Sc,O,L,S,W>
+  operator+(const TinyVec<E,Sc,O,L,S,W>& a, const Sc& b)
+  {
+    TinyVec<E,Sc,O,L,S,W> c(a);
+    c += b;
+    return c;
+  }
+
+  template <typename E, typename Sc, typename O,
+            unsigned L, unsigned S, unsigned W>
+  KOKKOS_INLINE_FUNCTION
+  TinyVec<E,Sc,O,L,S,W>
+  operator-(const TinyVec<E,Sc,O,L,S,W>& a, const TinyVec<E,Sc,O,L,S,W>& b)
+  {
+    TinyVec<E,Sc,O,L,S,W> c(a);
+    c -= b;
+    return c;
+  }
+
+  template <typename E, typename Sc, typename O,
+            unsigned L, unsigned S, unsigned W>
+  KOKKOS_INLINE_FUNCTION
+  TinyVec<E,Sc,O,L,S,W>
+  operator-(const Sc& a, const TinyVec<E,Sc,O,L,S,W>& b)
+  {
+    TinyVec<E,Sc,O,L,S,W> c(b.size(), a);
+    c -= b;
+    return c;
+  }
+
+  template <typename E, typename Sc, typename O,
+            unsigned L, unsigned S, unsigned W>
+  KOKKOS_INLINE_FUNCTION
+  TinyVec<E,Sc,O,L,S,W>
+  operator-(const TinyVec<E,Sc,O,L,S,W>& a, const Sc& b)
+  {
+    TinyVec<E,Sc,O,L,S,W> c(a);
+    c -= b;
+    return c;
+  }
+
+  template <typename E, typename Sc, typename O,
+            unsigned L, unsigned S, unsigned W>
+  KOKKOS_INLINE_FUNCTION
+  TinyVec<E,Sc,O,L,S,W>
+  operator*(const TinyVec<E,Sc,O,L,S,W>& a, const TinyVec<E,Sc,O,L,S,W>& b)
+  {
+    TinyVec<E,Sc,O,L,S,W> c(a);
+    c *= b;
+    return c;
+  }
+
+  template <typename E, typename Sc, typename O,
+            unsigned L, unsigned S, unsigned W>
+  KOKKOS_INLINE_FUNCTION
+  TinyVec<E,Sc,O,L,S,W>
+  operator*(const Sc& a, const TinyVec<E,Sc,O,L,S,W>& b)
+  {
+    TinyVec<E,Sc,O,L,S,W> c(b.size(), a);
+    c *= b;
+    return c;
+  }
+
+  template <typename E, typename Sc, typename O,
+            unsigned L, unsigned S, unsigned W>
+  KOKKOS_INLINE_FUNCTION
+  TinyVec<E,Sc,O,L,S,W>
+  operator*(const TinyVec<E,Sc,O,L,S,W>& a, const Sc& b)
+  {
+    TinyVec<E,Sc,O,L,S,W> c(a);
+    c *= b;
+    return c;
+  }
+
+  template <typename E, typename Sc, typename O,
+            unsigned L, unsigned S, unsigned W>
+  KOKKOS_INLINE_FUNCTION
+  TinyVec<E,Sc,O,L,S,W>
+  operator/(const TinyVec<E,Sc,O,L,S,W>& a, const TinyVec<E,Sc,O,L,S,W>& b)
+  {
+    TinyVec<E,Sc,O,L,S,W> c(a);
+    c /= b;
+    return c;
+  }
+
+  template <typename E, typename Sc, typename O,
+            unsigned L, unsigned S, unsigned W>
+  KOKKOS_INLINE_FUNCTION
+  TinyVec<E,Sc,O,L,S,W>
+  operator/(const Sc& a, const TinyVec<E,Sc,O,L,S,W>& b)
+  {
+    TinyVec<E,Sc,O,L,S,W> c(b.size(), a);
+    c /= b;
+    return c;
+  }
+
+  template <typename E, typename Sc, typename O,
+            unsigned L, unsigned S, unsigned W>
+  KOKKOS_INLINE_FUNCTION
+  TinyVec<E,Sc,O,L,S,W>
+  operator/(const TinyVec<E,Sc,O,L,S,W>& a, const Sc& b)
+  {
+    TinyVec<E,Sc,O,L,S,W> c(a);
+    c /= b;
+    return c;
+  }
+
+  template <typename E, typename Sc, typename O,
+            unsigned L, unsigned S, unsigned W>
+  KOKKOS_INLINE_FUNCTION
+  TinyVec<E,Sc,O,L,S,W>
+  sqrt(const TinyVec<E,Sc,O,L,S,W>& a)
+  {
+    using std::sqrt;
+    TinyVec<E,Sc,O,L,S,W> c(a);
+    c.apply_unary([&](const Sc& x) { return sqrt(x); }, a);
+    return c;
+  }
+
+  template <typename E, typename Sc, typename O,
+            unsigned L, unsigned S, unsigned W>
+  std::ostream& operator << (std::ostream& os, const TinyVec<E,Sc,O,L,S,W>& a)
+  {
+    a.print(os);
+    return os;
+  }
+
+  template <typename E, typename Sc, typename O,
+            unsigned L, unsigned S, unsigned W,
+            typename Oper>
+  KOKKOS_INLINE_FUNCTION
+  Genten::TinyVec<E,Sc,O,L,S,W>
+  atomic_oper_fetch(const Oper& op, volatile Sc* x,
+                    const Genten::TinyVec<E,Sc,O,L,S,W>& tv)
+  {
+    return tv.atomic_oper_fetch(op, x);
+  }
+
 }
 
 namespace Kokkos {
 
-  template <typename ExecSpace, typename Scalar, typename Ordinal,
-            unsigned Length, unsigned Size, unsigned WarpDim,
-            typename Enabled>
+  template <typename E, typename Sc, typename O,
+            unsigned L, unsigned S, unsigned W>
   KOKKOS_INLINE_FUNCTION
-  void atomic_add(
-    volatile Scalar* x,
-    const Genten::TinyVec<ExecSpace,Scalar,Ordinal,Length,Size,WarpDim,Enabled>& tv)
+  void atomic_add(volatile Sc* x, const Genten::TinyVec<E,Sc,O,L,S,W>& tv)
   {
     tv.atomic_store_plus(x);
+  }
+
+  template <typename E, typename Sc, typename O,
+            unsigned L, unsigned S, unsigned W>
+  KOKKOS_INLINE_FUNCTION
+  Genten::TinyVec<E,Sc,O,L,S,W>
+  atomic_exchange(volatile Sc* x, const Genten::TinyVec<E,Sc,O,L,S,W>& tv)
+  {
+    return tv.atomic_exchange(x);
+  }
+
+  template <typename E, typename Sc, typename O,
+            unsigned L, unsigned S, unsigned W>
+  KOKKOS_INLINE_FUNCTION
+  Genten::TinyVec<E,Sc,O,L,S,W>
+  atomic_fetch_max(volatile Sc* x, const Genten::TinyVec<E,Sc,O,L,S,W>& tv)
+  {
+    return tv.atomic_fetch_max(x);
+  }
+
+  template <typename E, typename Sc, typename O,
+            unsigned L, unsigned S, unsigned W>
+  KOKKOS_INLINE_FUNCTION
+  Genten::TinyVec<E,Sc,O,L,S,W>
+  atomic_fetch_min(volatile Sc* x, const Genten::TinyVec<E,Sc,O,L,S,W>& tv)
+  {
+    return tv.atomic_fetch_min(x);
   }
 
 }
