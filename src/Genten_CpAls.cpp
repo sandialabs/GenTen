@@ -47,6 +47,7 @@
 #include <ostream>
 #include <iomanip>
 #include <sstream>
+#include <cmath>
 
 #include "Genten_Array.hpp"
 #include "Genten_CpAls.hpp"
@@ -116,6 +117,8 @@ namespace Genten {
 #ifdef HAVE_CALIPER
     cali::Function cali_func("Genten::cpals_core");
 #endif
+
+    using std::sqrt;
 
     const ttb_real tol = algParams.tol;
     const ttb_indx maxIters = algParams.maxiters;
@@ -437,6 +440,8 @@ namespace Genten {
                                  const ttb_real  mNorm,
                                  const ttb_real  xDotm)
   {
+    using std::sqrt;
+
     ttb_real  d = (xNorm * xNorm) + (mNorm * mNorm) - (2 * xDotm);
 
     ttb_real  result;
