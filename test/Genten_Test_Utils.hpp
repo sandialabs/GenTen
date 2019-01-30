@@ -74,4 +74,4 @@ namespace Genten
 // For comparing real numbers
 #define MAXABS(a,b) ((fabs(a) > fabs(b)) ? fabs(a) : fabs(b))
 #define RELDIFF(a,b) (fabs(a-b)/MAXABS((ttb_real)1,MAXABS(a,b)))
-#define EQ(a,b) (RELDIFF((ttb_real)a, (ttb_real)b) < MACHINE_EPSILON)
+#define EQ(a,b) (RELDIFF((ttb_real)a, (ttb_real)b) < ttb_real(10.0)*MACHINE_EPSILON)
