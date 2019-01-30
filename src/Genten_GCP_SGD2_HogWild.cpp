@@ -52,8 +52,6 @@
 #include "Genten_GCP_SamplingKernels.hpp"
 #include "Genten_MixedFormatOps.hpp"
 
-#include "Genten_IOtext.hpp"
-
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
 #endif
