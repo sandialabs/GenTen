@@ -328,7 +328,8 @@ namespace Genten
    *  @param[in] fOut  Output stream.
    *  @param[in] name  Optional name for the Ktensor.
    */
-  void print_ktensor (const Genten::Ktensor & X,
+  template <typename ExecSpace>
+  void print_ktensor (const Genten::KtensorT<ExecSpace> & X,
                       std::ostream & fOut,
                       const std::string    name = "");
 

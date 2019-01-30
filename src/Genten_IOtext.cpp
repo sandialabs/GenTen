@@ -809,7 +809,8 @@ void Genten::export_ktensor (      std::ofstream & fOut,
   return;
 }
 
-void Genten::print_ktensor (const Genten::Ktensor & X,
+template <typename ExecSpace>
+void Genten::print_ktensor (const Genten::KtensorT<ExecSpace> & X,
                             std::ostream & fOut,
                             const std::string    name)
 {
@@ -943,3 +944,10 @@ void Genten::splitStr (const string         &  str,
 
   return;
 }
+
+#define INST_MACRO(SPACE)                                               \
+  template void print_ktensor (const Genten::KtensorT<SPACE> & X,       \
+                               std::ostream & fOut,                     \
+                               const std::string    name);
+
+GENTEN_INST(INST_MACRO)
