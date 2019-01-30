@@ -51,17 +51,13 @@
 #include "Genten_GCP_SamplingKernels.hpp"
 #include "Genten_MixedFormatOps.hpp"
 
-#include "Genten_IOtext.hpp"
-
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
 #endif
 
-// To do:
-//   * better method for handling contraints than clipping?
-//   * investigate HogWild for parallelism over iterations
-//   * The step/clip is not an insignificant cost.  Maybe do something like the
-//     Kokkos implementation of the ROL vector
+// Modification of gcp_sgd where we do bulk sampling of tensor zeros/nonzeros
+// each epoch, and subsample within an epoch, allowing for potentially more
+// efficient searching for each epoch, and no searching within in epoch.
 
 namespace Genten {
 

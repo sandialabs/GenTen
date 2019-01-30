@@ -47,7 +47,8 @@
 #include "Genten_CpAls.hpp"
 #include "Genten_GCP_SGD.hpp"
 #include "Genten_GCP_SGD2.hpp"
-//#include "Genten_GCP_SGD3.hpp"
+#include "Genten_GCP_SGD2_HogWild.hpp"
+#include "Genten_GCP_SGD3.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
@@ -149,9 +150,12 @@ driver(SptensorT<ExecSpace>& x,
   const bool do_gcp_sgd2 =
     algParams.method == "GCP-SGD2" || algParams.method == "gcp_sgd2" ||
     algParams.method == "gcp-sgd2";
-  // const bool do_gcp_sgd3 =
-  //   algParams.method == "GCP-SGD3" || algParams.method == "gcp_sgd3" ||
-  //   algParams.method == "gcp-sgd3";
+  const bool do_gcp_sgd2_hw =
+    algParams.method == "GCP-SGD2-HW" || algParams.method == "gcp_sgd2_hw" ||
+    algParams.method == "gcp-sgd2-hw";
+  const bool do_gcp_sgd3 =
+    algParams.method == "GCP-SGD3" || algParams.method == "gcp_sgd3" ||
+    algParams.method == "gcp-sgd3";
   const bool do_gcp_opt =
     algParams.method == "GCP-OPT" || algParams.method == "gcp_opt" ||
     algParams.method == "gcp-opt";
@@ -174,12 +178,18 @@ driver(SptensorT<ExecSpace>& x,
     ttb_real resNorm;
     gcp_sgd2(x, u, algParams, iter, resNorm, out);
   }
-  // else if (do_gcp_sgd3) {
-  //   // Run GCP-SGD
-  //   ttb_indx iter;
-  //   ttb_real resNorm;
-  //   gcp_sgd3(x, u, algParams, iter, resNorm, out);
-  // }
+  else if (do_gcp_sgd2_hw) {
+    // Run GCP-SGD
+    ttb_indx iter;
+    ttb_real resNorm;
+    gcp_sgd2_hw(x, u, algParams, iter, resNorm, out);
+  }
+  else if (do_gcp_sgd3) {
+    // Run GCP-SGD
+    ttb_indx iter;
+    ttb_real resNorm;
+    gcp_sgd3(x, u, algParams, iter, resNorm, out);
+  }
 #ifdef HAVE_ROL
   else if (do_gcp_opt) {
     // Run GCP

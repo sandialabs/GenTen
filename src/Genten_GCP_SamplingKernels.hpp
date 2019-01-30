@@ -108,6 +108,15 @@ namespace Genten {
                                 const AlgParams& algParams);
 
     template <typename ExecSpace>
+    void sample_tensor_nonzeros(const SptensorT<ExecSpace>& X,
+                                const ArrayT<ExecSpace>& w,
+                                const ttb_indx num_samples,
+                                SptensorT<ExecSpace>& Y,
+                                ArrayT<ExecSpace>& z,
+                                RandomMT& rng,
+                                const AlgParams& algParams);
+
+    template <typename ExecSpace>
     void sample_tensor_zeros(const SptensorT<ExecSpace>& X,
                              const ttb_indx offset,
                              const ttb_indx num_samples,

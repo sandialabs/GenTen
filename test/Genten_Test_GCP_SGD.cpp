@@ -42,7 +42,8 @@
 
 #include "Genten_GCP_SGD.hpp"
 #include "Genten_GCP_SGD2.hpp"
-//#include "Genten_GCP_SGD3.hpp"
+#include "Genten_GCP_SGD2_HogWild.hpp"
+#include "Genten_GCP_SGD3.hpp"
 #include "Genten_IndxArray.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_Ktensor.hpp"
@@ -147,7 +148,7 @@ void Genten_Test_GCP_SGD_Type (int infolevel, const std::string& label,
   try
   {
     result_dev = initialBasis_dev;
-    Genten::gcp_sgd <Sptensor_type> (X_dev, result_dev, algParams,
+    Genten::gcp_sgd3<Sptensor_type> (X_dev, result_dev, algParams,
                                      numIters, resNorm, std::cout);
   }
   catch(std::string sExc)
@@ -188,16 +189,17 @@ void Genten_Test_GCP_SGD_Type (int infolevel, const std::string& label,
 
 void Genten_Test_GCP_SGD (int infolevel)
 {
-  // Only test perm currently, to speed up test
+  // Only test atomic currently, to speed up test
 
-  // Genten_Test_GCP_SGD_Type(infolevel,"Atomic, Gaussian",
-  //                          Genten::MTTKRP_Method::Atomic,
-  //                          Genten::GCP_LossFunction::Gaussian);
+  Genten_Test_GCP_SGD_Type(infolevel,"Atomic, Gaussian",
+                           Genten::MTTKRP_Method::Atomic,
+                           Genten::GCP_LossFunction::Gaussian);
+
   // Genten_Test_GCP_SGD_Type(infolevel,"Duplicated, Gaussian",
   //                          Genten::MTTKRP_Method::Duplicated,
   //                          Genten::GCP_LossFunction::Gaussian);
 
-  Genten_Test_GCP_SGD_Type(infolevel,"Perm, Gaussian",
-                           Genten::MTTKRP_Method::Perm,
-                           Genten::GCP_LossFunction::Gaussian);
+  // Genten_Test_GCP_SGD_Type(infolevel,"Perm, Gaussian",
+  //                          Genten::MTTKRP_Method::Perm,
+  //                          Genten::GCP_LossFunction::Gaussian);
 }

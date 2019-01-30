@@ -370,6 +370,50 @@ namespace Genten {
     }
 
     template <typename ExecSpace>
+    void sample_tensor_nonzeros(const SptensorT<ExecSpace>& X,
+                                const ArrayT<ExecSpace>& w,
+                                const ttb_indx num_samples,
+                                SptensorT<ExecSpace>& Y,
+                                ArrayT<ExecSpace>& z,
+                                RandomMT& rng,
+                                const AlgParams& algParams)
+    {
+      const ttb_indx nnz = X.nnz();
+      const ttb_indx nd = X.ndims();
+
+      // Resize Y if necessary
+      if (Y.nnz() < num_samples) {
+        Y = SptensorT<ExecSpace>(X.size(), num_samples);
+        z = ArrayT<ExecSpace>(num_samples);
+      }
+
+      // Parallel sampling on the device
+      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
+      typedef typename RandomPool::generator_type generator_type;
+      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
+      RandomPool rand_pool(rng.genrnd_int32());
+      const ttb_indx nloops = algParams.rng_iters;
+      const ttb_indx N_nonzeros = (num_samples+nloops-1)/nloops;
+      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
+                           KOKKOS_LAMBDA(const ttb_indx k)
+      {
+        generator_type gen = rand_pool.get_state();
+        for (ttb_indx l=0; l<nloops; ++l) {
+          const ttb_indx i = k*nloops+l;
+          if (i<num_samples) {
+            const ttb_indx idx = Rand::draw(gen,0,nnz);
+            Y.value(i) = X.value(idx);
+            for (ttb_indx j=0; j<nd; ++j)
+              Y.subscript(i,j) = X.subscript(idx,j);
+            z[i] = w[idx];
+          }
+        }
+        rand_pool.free_state(gen);
+      }, "Genten::GCP_SGD::sample_tensor_nonzeros");
+
+    }
+
+    template <typename ExecSpace>
     void sample_tensor_zeros(const SptensorT<ExecSpace>& X,
                              const ttb_indx offset,
                              const ttb_indx num_samples,
@@ -666,6 +710,15 @@ namespace Genten {
   LOSS_INST_MACRO(SPACE,GammaLossFunction)                              \
   LOSS_INST_MACRO(SPACE,BernoulliLossFunction)                          \
   LOSS_INST_MACRO(SPACE,PoissonLossFunction)                            \
+                                                                        \
+  template void Impl::sample_tensor_nonzeros(                           \
+    const SptensorT<SPACE>& X,                                          \
+    const ArrayT<SPACE>& w,                                             \
+    const ttb_indx num_samples,                                         \
+    SptensorT<SPACE>& Y,                                                \
+    ArrayT<SPACE>& z,                                                   \
+    RandomMT& rng,                                                      \
+    const AlgParams& algParams);                                        \
                                                                         \
   template void Impl::sample_tensor_zeros(                              \
     const SptensorT<SPACE>& X,                                          \
