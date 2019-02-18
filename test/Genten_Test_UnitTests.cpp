@@ -54,10 +54,12 @@ void Genten_Test_IO(int infolevel, const string & dirname);
 void Genten_Test_Ktensor(int infolevel);
 void Genten_Test_MixedFormats(int infolevel);
 void Genten_Test_Sptensor(int infolevel);
+#ifdef HAVE_GCP
 #ifdef HAVE_ROL
 void Genten_Test_GCP_Opt(int infolevel);
 #endif
 void Genten_Test_GCP_SGD(int infolevel);
+#endif
 
 int main(int argc, char * argv[])
 {
@@ -81,10 +83,12 @@ int main(int argc, char * argv[])
   Genten_Test_MixedFormats(infolevel);
   Genten_Test_IO(infolevel, "./data/");
   Genten_Test_CpAls(infolevel);
+#ifdef HAVE_GCP
 #ifdef HAVE_ROL
   Genten_Test_GCP_Opt(infolevel);
 #endif
   Genten_Test_GCP_SGD(infolevel);
+#endif
 
   cout << "Unit tests complete for " << Genten::getGentenVersion() << endl;
 

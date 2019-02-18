@@ -45,20 +45,22 @@
 */
 
 #include "Genten_CpAls.hpp"
+#include "Genten_SystemTimer.hpp"
+#include "Genten_MixedFormatOps.hpp"
+#include "Genten_IOtext.hpp"
+
+#ifdef HAVE_GCP
+#include "Genten_GCP_LossFunctions.hpp"
 #include "Genten_GCP_SGD.hpp"
 #include "Genten_GCP_SGD2.hpp"
 #include "Genten_GCP_SGD2_HogWild.hpp"
 #include "Genten_GCP_SGD3.hpp"
-#include "Genten_SystemTimer.hpp"
-#include "Genten_MixedFormatOps.hpp"
-#include "Genten_GCP_LossFunctions.hpp"
-#include "Genten_IOtext.hpp"
-
 #ifdef HAVE_ROL
 #include "Genten_GCP_Opt.hpp"
 #include "Teuchos_RCP.hpp"
 #include "Teuchos_XMLParameterListHelpers.hpp"
 #include "Teuchos_TimeMonitor.hpp"
+#endif
 #endif
 
 namespace Genten {
@@ -166,6 +168,7 @@ driver(SptensorT<ExecSpace>& x,
     ttb_real resNorm;
     cpals_core(x, u, algParams, iter, resNorm, 0, NULL, out);
   }
+#ifdef HAVE_GCP
   else if (do_gcp_sgd) {
     // Run GCP-SGD
     ttb_indx iter;
@@ -205,13 +208,14 @@ driver(SptensorT<ExecSpace>& x,
     out << "GCP took " << timer.getTotalTime(2) << " seconds\n";
   }
 #endif
+#endif
   else {
     Genten::error("Unknown decomposition method:  " + algParams.method);
   }
 
   if (algParams.debug) Genten::print_ktensor(u_host, out, "Solution");
 
-#ifdef HAVE_ROL
+#if defined(HAVE_GCP) && defined(HAVE_ROL)
   if (do_gcp_opt)
     Teuchos::TimeMonitor::summarize();
 #endif

@@ -62,10 +62,10 @@ OPTION(ENABLE_CUSOLVER "Flag to enable cuSolver for Kokkos with Cuda" OFF)
 OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files" OFF)
 OPTION(ENABLE_LAPACK "Enable BLAS/LAPACK (if disabled, Genten implementations will be used" ON)
 OPTION(ENABLE_CALIPER "Enable Caliper for application profiling" OFF)
-OPTION(ENABLE_ROL "Enable ROL for optimization" OFF)
 OPTION(ENABLE_MATLAB "Enable MATLAB linkage to Tensor Toolbox" OFF)
 OPTION(FLOAT_TYPE "C++ data type used for floating-point values" OFF)
 OPTION(INDEX_TYPE "C++ data type used for tensor indices" OFF)
+OPTION(ENABLE_GCP "Enable experimental GCP code" OFF)
 
 IF(FLOAT_TYPE)
   SET(GENTEN_FLOAT_TYPE ${FLOAT_TYPE})
@@ -118,25 +118,29 @@ ENDIF()
 
 SET(ROL_LIBRARIES "")
 SET(ROL_TPL_LIBRARIES "")
-IF (ENABLE_ROL)
-  OPTION(ROL_PATH "Path to ROL installation")
-  FIND_PACKAGE(ROL PATHS "${ROL_PATH}" NO_DEFAULT_PATH)
+IF (ENABLE_GCP)
+  SET(HAVE_GCP ${ENABLE_GCP})
+  OPTION(ENABLE_ROL "Enable ROL for GCP optimization" OFF)
+  IF (ENABLE_ROL)
+    OPTION(ROL_PATH "Path to ROL installation")
+    FIND_PACKAGE(ROL PATHS "${ROL_PATH}" NO_DEFAULT_PATH)
 
-  MESSAGE("\nFound ROL: ")
-  MESSAGE("   ROL_DIR = ${ROL_DIR}")
-  MESSAGE("   ROL_PACKAGE_LIST = ${ROL_PACKAGE_LIST}")
-  MESSAGE("   ROL_LIBRARIES = ${ROL_LIBRARIES}")
-  MESSAGE("   ROL_INCLUDE_DIRS = ${ROL_INCLUDE_DIRS}")
-  MESSAGE("   ROL_LIBRARY_DIRS = ${ROL_LIBRARY_DIRS}")
-  MESSAGE("   ROL_TPL_LIST = ${ROL_TPL_LIST}")
-  MESSAGE("   ROL_TPL_INCLUDE_DIRS = ${ROL_TPL_INCLUDE_DIRS}")
-  MESSAGE("   ROL_TPL_LIBRARIES = ${ROL_TPL_LIBRARIES}")
-  MESSAGE("   ROL_TPL_LIBRARY_DIRS = ${ROL_TPL_LIBRARY_DIRS}")
+    MESSAGE("\nFound ROL: ")
+    MESSAGE("   ROL_DIR = ${ROL_DIR}")
+    MESSAGE("   ROL_PACKAGE_LIST = ${ROL_PACKAGE_LIST}")
+    MESSAGE("   ROL_LIBRARIES = ${ROL_LIBRARIES}")
+    MESSAGE("   ROL_INCLUDE_DIRS = ${ROL_INCLUDE_DIRS}")
+    MESSAGE("   ROL_LIBRARY_DIRS = ${ROL_LIBRARY_DIRS}")
+    MESSAGE("   ROL_TPL_LIST = ${ROL_TPL_LIST}")
+    MESSAGE("   ROL_TPL_INCLUDE_DIRS = ${ROL_TPL_INCLUDE_DIRS}")
+    MESSAGE("   ROL_TPL_LIBRARIES = ${ROL_TPL_LIBRARIES}")
+    MESSAGE("   ROL_TPL_LIBRARY_DIRS = ${ROL_TPL_LIBRARY_DIRS}")
 
-  # Use SYSTEM keyword so that output is not littered with ROL warnings
-  INCLUDE_DIRECTORIES(SYSTEM ${ROL_INCLUDE_DIRS} ${ROL_TPL_INCLUDE_DIRS})
-  LINK_DIRECTORIES(${ROL_LIBRARY_DIRS} ${ROL_TPL_LIBRARY_DIRS} )
-  SET(HAVE_ROL ${ENABLE_ROL})
+    # Use SYSTEM keyword so that output is not littered with ROL warnings
+    INCLUDE_DIRECTORIES(SYSTEM ${ROL_INCLUDE_DIRS} ${ROL_TPL_INCLUDE_DIRS})
+    LINK_DIRECTORIES(${ROL_LIBRARY_DIRS} ${ROL_TPL_LIBRARY_DIRS} )
+    SET(HAVE_ROL ${ENABLE_ROL})
+  ENDIF()
 ENDIF()
 
 IF(ENABLE_MATLAB)
@@ -351,22 +355,27 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_MathLibs_Wpr.cpp
   ${Genten_SOURCE_DIR}/src/Genten_portability.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Sptensor.cpp
-  ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels.cpp
-  ${Genten_SOURCE_DIR}/src/Genten_GCP_SamplingKernels.cpp
-  ${Genten_SOURCE_DIR}/src/Genten_GCP_Hash.cpp
-  ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD.cpp
-  ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD2.cpp
-  ${Genten_SOURCE_DIR}/src/Genten_GCP_HogWild.cpp
-  ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD2_HogWild.cpp
-  ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD3.cpp
-  ${Genten_SOURCE_DIR}/src/Genten_GCP_Grad_Atomic.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
   )
 
-IF (ENABLE_ROL)
+IF (ENABLE_GCP)
   SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
-    ${Genten_SOURCE_DIR}/src/rol/Genten_GCP_Opt.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_SamplingKernels.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_Hash.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD2.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_HogWild.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD2_HogWild.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD3.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_Grad_Atomic.cpp
     )
+
+  IF (ENABLE_ROL)
+    SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+      ${Genten_SOURCE_DIR}/src/rol/Genten_GCP_Opt.cpp
+      )
+  ENDIF()
 ENDIF()
 
 #---- Tell CMake to build the library.
@@ -395,12 +404,16 @@ SET(UNIT_TEST_SRCS
   ${Genten_SOURCE_DIR}/test/Genten_Test_Sptensor.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_UnitTests.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_Utils.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_SGD.cpp
   )
-IF(ENABLE_ROL)
-  SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
-    ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_Opt.cpp
-    )
+IF (ENABLE_GCP)
+   SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
+     ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_SGD.cpp
+     )
+  IF(ENABLE_ROL)
+    SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
+      ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_Opt.cpp
+      )
+  ENDIF()
 ENDIF()
 
 ADD_EXECUTABLE (

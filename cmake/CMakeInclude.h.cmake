@@ -79,6 +79,9 @@
 //---- DEFINED IF ROL IS ENABLED.
 #cmakedefine HAVE_ROL
 
+//---- DEFINED IF GCP IS ENABLED.
+#cmakedefine HAVE_GCP
+
 #include <cstddef>
 
 // Floating-point type
