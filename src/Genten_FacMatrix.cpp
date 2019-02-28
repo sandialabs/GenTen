@@ -252,11 +252,11 @@ void gramianImpl(const ViewC& C, const ViewA& A)
   // assumes layout left we compute this as C' = A*A'.
 
   // SYRK seems faster than GEMM on the CPU but slower on KNL using MKL.
-  Genten::gemm('N','T',n,n,m,1.0,A.data(),lda,A.data(),lda,0.0,C.data(),ldc);
-  // Genten::syrk('L','N',n,m,1.0,A.data(),lda,0.0,C.data(),ldc);
-  // for (ttb_indx i=0; i<n; ++i)
-  //   for (ttb_indx j=i+1; j<n; j++)
-  //     C(j,i) = C(i,j);
+  //Genten::gemm('N','T',n,n,m,1.0,A.data(),lda,A.data(),lda,0.0,C.data(),ldc);
+  Genten::syrk('L','N',n,m,1.0,A.data(),lda,0.0,C.data(),ldc);
+  for (ttb_indx i=0; i<n; ++i)
+    for (ttb_indx j=i+1; j<n; j++)
+      C(j,i) = C(i,j);
 }
 
 #else
@@ -1196,6 +1196,33 @@ sum() const
   return sum;
 }
 
+// TODO: This function really should be removed and replaced with a ktensor norm function, because that's kind of how it's used.
+template <typename ExecSpace>
+ttb_real Genten::FacMatrixT<ExecSpace>::
+sym_sum() const
+{
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::FacMatrix::sym_sum");
+#endif
+
+  const ttb_indx nrows = data.extent(0);
+  const ttb_indx ncols = data.extent(1);
+
+  ttb_real sum = 0;
+  view_type d = data;
+  Kokkos::parallel_reduce("Genten::FacMatrix::sym_sum_kernel",
+                          Kokkos::RangePolicy<ExecSpace>(0,nrows),
+                          KOKKOS_LAMBDA(const ttb_indx i, ttb_real& s)
+  {
+    s += d(i,i);
+    for (ttb_indx j=i+1; j<ncols; ++j)
+      s += ttb_real(2.0)*d(i,j);
+  }, sum);
+  Kokkos::fence();
+
+  return sum;
+}
+
 template <typename ExecSpace>
 bool Genten::FacMatrixT<ExecSpace>::
 hasNonFinite(ttb_indx &retval) const
@@ -1334,7 +1361,9 @@ namespace Genten {
 
       // Throws an exception if Atmp is (exactly?) singular.
       //TBD...consider LAPACK sysv instead of gesv since A is sym indef
-      Genten::gesv (ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0());
+      //Genten::gesv (ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0());
+      //Genten::sysv ('U', ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0());
+      Genten::posv ('U', ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0());
     }
 
 #if defined(KOKKOS_HAVE_CUDA) && defined(HAVE_CUSOLVER)

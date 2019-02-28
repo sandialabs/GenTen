@@ -304,7 +304,7 @@ namespace Genten {
       upsilon.times(gamma[nd-1]);
       tmpMat.oprod(lambda);
       upsilon.times(tmpMat);
-      ttb_real pNorm = sqrt(fabs(upsilon.sum()));
+      ttb_real pNorm = sqrt(fabs(upsilon.sym_sum()));
 
       // Compute inner product of input data x with "p" using the identity
       // <x,u> = <un,u[nd-1]> where un = mttkrp(x,u,nd-1)

@@ -217,6 +217,44 @@ void Genten::gesv(ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * 
   }
 }
 
+void Genten::sysv(char uplo, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb)
+{
+#if !defined(LAPACK_FOUND)
+  Genten::error("Genten::sysv - not found, must link with an LAPACK library.");
+#else
+  ttb_blas_int n_ml = (ttb_blas_int) n;
+  ttb_blas_int nrhs_ml = (ttb_blas_int) nrhs;
+  ttb_blas_int lda_ml = (ttb_blas_int) lda;
+  ttb_blas_int ldb_ml = (ttb_blas_int) ldb;
+
+  // Initialize output info and create pivot array
+  ttb_blas_int info_ml = 0;
+  ttb_blas_int * ipiv_ml = new ttb_blas_int[ n ];
+
+  // Workspace query
+  ttb_blas_int lwork = -1;
+  double work_tmp = 0;
+  ::dsysv(&uplo, &n_ml, &nrhs_ml, a, &lda_ml, ipiv_ml, b, &ldb_ml, &work_tmp, &lwork, &info_ml);
+
+  lwork = ttb_blas_int(work_tmp);
+  double * work = new double[lwork];
+  ::dsysv(&uplo, &n_ml, &nrhs_ml, a, &lda_ml, ipiv_ml, b, &ldb_ml, work, &lwork, &info_ml);
+
+  delete[] work;
+  delete[] ipiv_ml;
+
+  // Check output info and free pivot array
+  if (info_ml < 0)
+  {
+    Genten::error("Genten::sysv - argument error in call to dsysv");
+  }
+  if (info_ml > 0)
+  {
+    Genten::error("Genten::sysv - sysv failed because matrix is singular");
+  }
+#endif
+}
+
 void Genten::vmul(const ttb_indx n, double * a, const double * b)
 {
   // Casting, possibly to different type
@@ -227,47 +265,29 @@ void Genten::vmul(const ttb_indx n, double * a, const double * b)
 }
 
 
-void Genten::posv (const ttb_indx          n,
-                   const double * const  A,
-                   double * const  b)
+void Genten::posv (char uplo, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb)
 {
 #if !defined(LAPACK_FOUND)
   Genten::error("Genten::posv - not found, must link with an LAPACK library.");
 #else
 
-  ttb_blas_int  n_ml    = (ttb_blas_int) n;
-  ttb_blas_int  nrhs_ml = 1;
-  ttb_blas_int  info_ml = 0;
-  char          uplo_ml = 'L';
+  ttb_blas_int n_ml = (ttb_blas_int) n;
+  ttb_blas_int nrhs_ml = (ttb_blas_int) nrhs;
+  ttb_blas_int lda_ml = (ttb_blas_int) lda;
+  ttb_blas_int ldb_ml = (ttb_blas_int) ldb;
+  ttb_blas_int info_ml = 0;
 
-  // Copy the lower triangle of A (column major order, row varies fastest).
-  double * copy_A = new double[ n * n ];
-  for (ttb_indx i = 0; i < n; i++)
-  {
-    for (ttb_indx j = i; j < n; j++)
-    {
-      copy_A[i*n + j] = A[i*n + j];
-    }
-  }
+  ::dposv(&uplo, &n_ml, &nrhs_ml, a, &lda_ml, b, &ldb_ml, &info_ml);
 
-  // Call LAPACK.
-  ::dposv (&uplo_ml, &n_ml, &nrhs_ml, copy_A, &n_ml, b, &n_ml, &info_ml);
-  delete[] copy_A;
-
-  // Check for errors.
+  // Check output info and free pivot array
   if (info_ml < 0)
   {
-    Genten::error ("Genten::posv - argument error in call to LAPACK dposv");
+    Genten::error("Genten::posv - argument error in call to dposv");
   }
   if (info_ml > 0)
   {
-    std::cerr << "ERROR Genten::posv"
-              << " - matrix not positive definite in LAPACK dposv"
-              << std::endl;
-    throw std::string("Matrix not positive definite in LAPACK dposv");
+    Genten::error("Genten::posv - dposv failed because matrix is not positive definite");
   }
-
-  return;
 #endif
 }
 
@@ -446,6 +466,44 @@ void Genten::gesv(ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b,
   }
 }
 
+void Genten::sysv(char uplo, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb)
+{
+#if !defined(LAPACK_FOUND)
+  Genten::error("Genten::sysv - not found, must link with an LAPACK library.");
+#else
+  ttb_blas_int n_ml = (ttb_blas_int) n;
+  ttb_blas_int nrhs_ml = (ttb_blas_int) nrhs;
+  ttb_blas_int lda_ml = (ttb_blas_int) lda;
+  ttb_blas_int ldb_ml = (ttb_blas_int) ldb;
+
+  // Initialize output info and create pivot array
+  ttb_blas_int info_ml = 0;
+  ttb_blas_int * ipiv_ml = new ttb_blas_int[ n ];
+
+  // Workspace query
+  ttb_blas_int lwork = -1;
+  float work_tmp = 0;
+  ::ssysv(&uplo, &n_ml, &nrhs_ml, a, &lda_ml, ipiv_ml, b, &ldb_ml, &work_tmp, &lwork, &info_ml);
+
+  lwork = ttb_blas_int(work_tmp);
+  float * work = new float[lwork];
+  ::ssysv(&uplo, &n_ml, &nrhs_ml, a, &lda_ml, ipiv_ml, b, &ldb_ml, work, &lwork, &info_ml);
+
+  delete[] work;
+  delete[] ipiv_ml;
+
+  // Check output info and free pivot array
+  if (info_ml < 0)
+  {
+    Genten::error("Genten::sysv - argument error in call to ssysv");
+  }
+  if (info_ml > 0)
+  {
+    Genten::error("Genten::sysv - sysv failed because matrix is singular");
+  }
+#endif
+}
+
 void Genten::vmul(const ttb_indx n, float * a, const float * b)
 {
   // Casting, possibly to different type
@@ -456,46 +514,28 @@ void Genten::vmul(const ttb_indx n, float * a, const float * b)
 }
 
 
-void Genten::posv (const ttb_indx          n,
-                   const float * const  A,
-                   float * const  b)
+void Genten::posv (char uplo, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb)
 {
 #if !defined(LAPACK_FOUND)
   Genten::error("Genten::posv - not found, must link with an LAPACK library.");
 #else
 
-  ttb_blas_int  n_ml    = (ttb_blas_int) n;
-  ttb_blas_int  nrhs_ml = 1;
-  ttb_blas_int  info_ml = 0;
-  char          uplo_ml = 'L';
+  ttb_blas_int n_ml = (ttb_blas_int) n;
+  ttb_blas_int nrhs_ml = (ttb_blas_int) nrhs;
+  ttb_blas_int lda_ml = (ttb_blas_int) lda;
+  ttb_blas_int ldb_ml = (ttb_blas_int) ldb;
+  ttb_blas_int info_ml = 0;
 
-  // Copy the lower triangle of A (column major order, row varies fastest).
-  float * copy_A = new float[ n * n ];
-  for (ttb_indx i = 0; i < n; i++)
-  {
-    for (ttb_indx j = i; j < n; j++)
-    {
-      copy_A[i*n + j] = A[i*n + j];
-    }
-  }
+  ::sposv(&uplo, &n_ml, &nrhs_ml, a, &lda_ml, b, &ldb_ml, &info_ml);
 
-  // Call LAPACK.
-  ::sposv (&uplo_ml, &n_ml, &nrhs_ml, copy_A, &n_ml, b, &n_ml, &info_ml);
-  delete[] copy_A;
-
-  // Check for errors.
+  // Check output info and free pivot array
   if (info_ml < 0)
   {
-    Genten::error ("Genten::posv - argument error in call to LAPACK dposv");
+    Genten::error("Genten::posv - argument error in call to dposv");
   }
   if (info_ml > 0)
   {
-    std::cerr << "ERROR Genten::posv"
-              << " - matrix not positive definite in LAPACK dposv"
-              << std::endl;
-    throw std::string("Matrix not positive definite in LAPACK dposv");
+    Genten::error("Genten::posv - dposv failed because matrix is not positive definite");
   }
-
-  return;
 #endif
 }

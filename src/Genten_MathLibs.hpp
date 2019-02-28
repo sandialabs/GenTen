@@ -77,8 +77,10 @@ typedef ptrdiff_t ttb_vml_int;
 
      #define dgesv dgesv_
      #define dposv dposv_
+     #define dsysv dsysv_
      #define sgesv sgesv_
      #define sposv sposv_
+     #define ssysv ssysv_
 
   #elif defined (__IBMCPP__)
      #define dasum dasum
@@ -107,8 +109,10 @@ typedef ptrdiff_t ttb_vml_int;
 
      #define dgesv dgesv
      #define dposv dposv
+     #define dsysv dsysv
      #define sgesv sgesv
      #define sposv sposv
+     #define ssysv ssysv
 
   #else
      #define dasum dasum_
@@ -137,8 +141,10 @@ typedef ptrdiff_t ttb_vml_int;
 
      #define dgesv dgesv_
      #define dposv dposv_
+     #define dsysv dsysv_
      #define sgesv sgesv_
      #define sposv sposv_
+     #define ssysv ssysv_
   #endif
 
 #endif
@@ -227,6 +233,18 @@ extern "C"
                 ttb_blas_int * lda,
                 double * b,
                 ttb_blas_int * ldb,
+                ttb_blas_int * info);
+
+    void dsysv (char * uplo,
+                ttb_blas_int * n,
+                ttb_blas_int * nrhs,
+                double * a,
+                ttb_blas_int * lda,
+                ttb_blas_int * ipiv,
+                double * b,
+                ttb_blas_int * ldb,
+                double * work,
+                ttb_blas_int * lwork,
                 ttb_blas_int * info);
 
     double dnrm2 (ttb_blas_int * nptr,
@@ -332,6 +350,18 @@ extern "C"
                 ttb_blas_int * lda,
                 float * b,
                 ttb_blas_int * ldb,
+                ttb_blas_int * info);
+
+    void ssysv (char * uplo,
+                ttb_blas_int * n,
+                ttb_blas_int * nrhs,
+                float * a,
+                ttb_blas_int * lda,
+                ttb_blas_int * ipiv,
+                float * b,
+                ttb_blas_int * ldb,
+                float * work,
+                ttb_blas_int * lwork,
                 ttb_blas_int * info);
 
     float snrm2 (ttb_blas_int * nptr,

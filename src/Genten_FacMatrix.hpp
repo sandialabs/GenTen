@@ -288,6 +288,10 @@ public:
     // TODO: This function really should be removed and replaced with a ktensor norm function, because that's kind of how it's used.
     ttb_real sum() const;
 
+    // Compute the sum of all the entries (no absolute value).
+    // TODO: This function really should be removed and replaced with a ktensor norm function, because that's kind of how it's used.
+    ttb_real sym_sum() const;
+
     // tell location of first nonfinite number (Inf or NaN) where will  be 0 if result is false,
     bool hasNonFinite(ttb_indx &where) const;
 

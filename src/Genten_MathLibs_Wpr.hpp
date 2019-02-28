@@ -154,9 +154,10 @@ namespace Genten
    *
    *   throws string exception if the solve failed
    */
-  void posv (const ttb_indx          n,
-             const double * const  A,
-             double * const  b);
+  void posv (char uplo, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb);
+
+  // SYSV - Compute solution to linear system AX = B for symmetric indefinite A.
+  void sysv(char uplo, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb);
 
   //
   // Single precision
@@ -256,7 +257,8 @@ namespace Genten
    *
    *   throws string exception if the solve failed
    */
-  void posv (const ttb_indx          n,
-             const float * const  A,
-             float * const  b);
+  void posv (char uplo, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb);
+
+  // SYSV - Compute solution to linear system AX = B for symmetric indefinite A.
+  void sysv(char uplo, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb);
 }
