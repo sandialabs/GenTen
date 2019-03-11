@@ -77,7 +77,7 @@ int main(int argc, char * argv[])
 
   Genten_Test_Array(infolevel);
   Genten_Test_IndxArray(infolevel);
-  //Genten_Test_FacMatrix(infolevel, "./data/");
+  Genten_Test_FacMatrix(infolevel, "./data/");
   Genten_Test_Sptensor(infolevel);
   Genten_Test_Ktensor(infolevel);
   Genten_Test_MixedFormats(infolevel);
