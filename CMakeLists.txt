@@ -82,7 +82,7 @@ ENDIF()
 # If we are doing an inline build of Kokkos
 IF(KOKKOS_INLINE_BUILD)
 
-  # We must use UVM and enable Lambda support in Kokkos
+  # We must enable Lambda support in Kokkos
   IF(KOKKOS_ENABLE_CUDA)
     SET(KOKKOS_ENABLE_CUDA_LAMBDA ON CACHE BOOL "Enable lambdas for CUDA.")
   ENDIF()
