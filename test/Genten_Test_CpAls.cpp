@@ -60,7 +60,7 @@ static void  evaluateResult (const int             infolevel,
   std::stringstream  sMsg;
   sMsg << "CpAls finished after " << itersCompleted << " iterations";
   MESSAGE(sMsg.str());
-  ttb_real tol = 2.0e-3;
+  ttb_real tol = 2.5e-3;
 
   if (infolevel == 1)
     print_ktensor(result, std::cout,"Factorization result in ktensor form");

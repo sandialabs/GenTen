@@ -433,7 +433,8 @@ void gramianImpl(const ViewC& C, const ViewA& A)
       std::is_same<typename Kokkos::View<AT,AP...>::non_const_value_type,
                    double>::value )
     >::type
-  gramianImpl(const Kokkos::View<CT,CP...>& C, const Kokkos::View<AT,AP...>& A)
+  gramianImpl(const Kokkos::View<CT,CP...>& C, const Kokkos::View<AT,AP...>& A,
+              const bool full, const UploType uplo)
   {
     const int m = A.extent(0);
     const int n = A.extent(1);
@@ -443,8 +444,9 @@ void gramianImpl(const ViewC& C, const ViewA& A)
     const double beta = 0.0;
     cublasStatus_t status;
 
-    // We compute C = A'*A.  But since A is LayoutRight, and GEMM
-    // assumes layout left we compute this as C = A*A'
+    // We compute C = A'*A.  But since A is LayoutRight, and GEMM/SYRK
+    // assumes layout left we compute this as C = A*A'.  Since SYRK writes
+    // C', uplo == Upper means we call SYRK with 'L', and vice versa.
 
     static cublasHandle_t handle = 0;
     if (handle == 0) {
@@ -458,24 +460,24 @@ void gramianImpl(const ViewC& C, const ViewA& A)
       }
     }
 
-    // GEMM appears to be quite a bit faster than SYRK on the GPU
-    status = cublasDgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, n, n, m,
-                         &alpha, A.data(), lda, A.data(), lda,
-                         &beta, C.data(), ldc);
-    // status = cublasDsyrk(handle, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_N, n, m,
-    //                      &alpha, A.data(), lda, &beta, C.data(), ldc);
+    if (full) {
+      status = cublasDgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, n, n, m,
+                           &alpha, A.data(), lda, A.data(), lda,
+                           &beta, C.data(), ldc);
+    }
+    else {
+      cublasFillMode_t cu_uplo =
+        uplo == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
+      status = cublasDsyrk(handle, cu_uplo, CUBLAS_OP_N, n, m,
+                           &alpha, A.data(), lda, &beta, C.data(), ldc);
+    }
     if (status != CUBLAS_STATUS_SUCCESS) {
       std::stringstream ss;
-      ss << "Error!  cublasDgemm() failed with status "
+      ss << "Error!  cublasDgemm()/cublasDsyrk() failed with status "
          << status;
       std::cerr << ss.str() << std::endl;
       throw ss.str();
     }
-
-    // Copy upper triangle into lower triangle when using SYRK
-    // for (int i=0; i<n; ++i)
-    //   for (int j=i+1; j<n; j++)
-    //     C(j,i) = C(i,j);
   }
 
   // Gramian implementation for CUDA and single precision using cuBLAS
@@ -487,7 +489,8 @@ void gramianImpl(const ViewC& C, const ViewA& A)
       std::is_same<typename Kokkos::View<AT,AP...>::non_const_value_type,
                    float>::value )
     >::type
-  gramianImpl(const Kokkos::View<CT,CP...>& C, const Kokkos::View<AT,AP...>& A)
+  gramianImpl(const Kokkos::View<CT,CP...>& C, const Kokkos::View<AT,AP...>& A,
+              const bool full, const UploType uplo)
   {
     const int m = A.extent(0);
     const int n = A.extent(1);
@@ -497,8 +500,9 @@ void gramianImpl(const ViewC& C, const ViewA& A)
     const float beta = 0.0;
     cublasStatus_t status;
 
-    // We compute C = A'*A.  But since A is LayoutRight, and GEMM
-    // assumes layout left we compute this as C = A*A'
+    // We compute C = A'*A.  But since A is LayoutRight, and GEMM/SYRK
+    // assumes layout left we compute this as C = A*A'.  Since SYRK writes
+    // C', uplo == Upper means we call SYRK with 'L', and vice versa.
 
     static cublasHandle_t handle = 0;
     if (handle == 0) {
@@ -512,24 +516,24 @@ void gramianImpl(const ViewC& C, const ViewA& A)
       }
     }
 
-    // GEMM appears to be quite a bit faster than SYRK on the GPU
-    status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, n, n, m,
-                         &alpha, A.data(), lda, A.data(), lda,
-                         &beta, C.data(), ldc);
-    // status = cublasSsyrk(handle, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_N, n, m,
-    //                      &alpha, A.data(), lda, &beta, C.data(), ldc);
+    if (full) {
+      status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, n, n, m,
+                           &alpha, A.data(), lda, A.data(), lda,
+                           &beta, C.data(), ldc);
+    }
+    else {
+      cublasFillMode_t cu_uplo =
+        uplo == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
+      status = cublasSsyrk(handle, cu_uplo, CUBLAS_OP_N, n, m,
+                           &alpha, A.data(), lda, &beta, C.data(), ldc);
+    }
     if (status != CUBLAS_STATUS_SUCCESS) {
       std::stringstream ss;
-      ss << "Error!  cublasDgemm() failed with status "
+      ss << "Error!  cublasSgemm()/cublasSsyrk() failed with status "
          << status;
       std::cerr << ss.str() << std::endl;
       throw ss.str();
     }
-
-    // Copy upper triangle into lower triangle when using SYRK
-    // for (int i=0; i<n; ++i)
-    //   for (int j=i+1; j<n; j++)
-    //     C(j,i) = C(i,j);
   }
 #endif
 
@@ -1415,7 +1419,7 @@ namespace Genten {
         std::is_same<typename Kokkos::View<BT,BP...>::execution_space,
                      Kokkos::Cuda>::value &&
         std::is_same<typename Kokkos::View<AT,BP...>::non_const_value_type,
-                     double>::value )
+        double>::value ), bool
       >::type
     solveTransposeRHSImpl_SPD(const Kokkos::View<AT,AP...>& A,
                               const Kokkos::View<BT,BP...>& B,
@@ -1424,7 +1428,7 @@ namespace Genten {
       const int n = B.extent(1);
       const int lda = A.stride_0();
       const int ldb = B.stride_0();
-      const cublasFillMode_t uplo = ul == Upper ? CUBLAS_FILL_MODE_UPPER : CUBLAS_FILL_MODE_LOWER;
+      const cublasFillMode_t uplo = ul == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
       cusolverStatus_t status;
 
       assert(A.extent(0) == n);
@@ -1466,12 +1470,14 @@ namespace Genten {
       }
       auto info_host = create_mirror_view(info);
       deep_copy(info_host, info);
-      if (info_host() != 0) {
+      if (info_host() < 0) {
         std::stringstream ss;
         ss << "Error!  cusolverDnDpotrf() info =  " << info_host();
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
+      if (info_host() > 0)
+        return false;  // Matrix is not SPD
 
       status = cusolverDnDpotrs(handle, uplo, n, m, A.data(), lda,
                                 B.data(), ldb, info.data());
@@ -1489,6 +1495,8 @@ namespace Genten {
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
+
+      return true;
     }
 
     template <typename AT, typename ... AP,
@@ -1499,7 +1507,7 @@ namespace Genten {
         std::is_same<typename Kokkos::View<BT,BP...>::execution_space,
                      Kokkos::Cuda>::value &&
         std::is_same<typename Kokkos::View<AT,BP...>::non_const_value_type,
-                     double>::value )
+        double>::value )
       >::type
     solveTransposeRHSImpl(const Kokkos::View<AT,AP...>& A,
                           const Kokkos::View<BT,BP...>& B,
@@ -1583,7 +1591,7 @@ namespace Genten {
         std::is_same<typename Kokkos::View<BT,BP...>::execution_space,
                      Kokkos::Cuda>::value &&
         std::is_same<typename Kokkos::View<AT,BP...>::non_const_value_type,
-                     float>::value )
+        float>::value ), bool
       >::type
     solveTransposeRHSImpl_SPD(const Kokkos::View<AT,AP...>& A,
                               const Kokkos::View<BT,BP...>& B,
@@ -1592,7 +1600,7 @@ namespace Genten {
       const int n = B.extent(1);
       const int lda = A.stride_0();
       const int ldb = B.stride_0();
-      const cublasFillMode_t uplo = ul == Upper ? CUBLAS_FILL_MODE_UPPER : CUBLAS_FILL_MODE_LOWER;
+      const cublasFillMode_t uplo = ul == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
       cusolverStatus_t status;
 
       assert(A.extent(0) == n);
@@ -1621,9 +1629,9 @@ namespace Genten {
         throw ss.str();
       }
 
-      Kokkos::View<double*,Kokkos::LayoutRight,Kokkos::Cuda> work("work",lwork);
+      Kokkos::View<float*,Kokkos::LayoutRight,Kokkos::Cuda> work("work",lwork);
       Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Cuda> info("info");
-      status = cusolverDnDpotrf(handle, uplo, n, A.data(), lda, work.data(),
+      status = cusolverDnSpotrf(handle, uplo, n, A.data(), lda, work.data(),
                                 lwork, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -1634,12 +1642,14 @@ namespace Genten {
       }
       auto info_host = create_mirror_view(info);
       deep_copy(info_host, info);
-      if (info_host() != 0) {
+      if (info_host() < 0) {
         std::stringstream ss;
         ss << "Error!  cusolverDnSpotrf() info =  " << info_host();
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
+      if (info_host() > 0)
+        return false;  // Matrix is not SPD
 
       status = cusolverDnSpotrs(handle, uplo, n, m, A.data(), lda,
                                 B.data(), ldb, info.data());
@@ -1657,6 +1667,8 @@ namespace Genten {
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
+
+      return true;
     }
 
     template <typename AT, typename ... AP,

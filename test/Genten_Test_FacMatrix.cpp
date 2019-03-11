@@ -274,7 +274,8 @@ void Genten_Test_FacMatrix(int infolevel, const std::string & datadir)
   c = Genten::FacMatrix(1,2);
   c.entry(0,0) = 3.0;
   c.entry(0,1) = 2.0;
-  ASSERT(c.isEqual(b,MACHINE_EPSILON), "Solve works for diagonal matrix");
+  // Very slightly loosening of tolerance for GPU
+  ASSERT(c.isEqual(b,MACHINE_EPSILON*10.), "Solve works for diagonal matrix");
 
   // Linear solver, for an indefinite matrix and 3 right-hand sides.
   a = Genten::FacMatrix(2,2);
