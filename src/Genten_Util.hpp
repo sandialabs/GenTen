@@ -110,6 +110,8 @@ namespace Genten {
 
   enum NormType { NormOne, NormTwo, NormInf };
 
+  enum UploType { Upper, Lower };
+
   // MTTKRP algorithm
   struct MTTKRP_Method {
     enum type {

@@ -260,7 +260,9 @@ public:
     void times(const FacMatrixT & v) const;
 
     // Set this matrix to the Gram Matrix of V:  this = V' * V.
-    void gramian(const FacMatrixT & v) const;
+    // If full == false, only compute triangle indicated by uplo
+    void gramian(const FacMatrixT & v, const bool full = true,
+                 const UploType uplo = Upper) const;
 
     // return the index of the first entry, s, such that entry(s,c) > r.
     // assumes/requires the values entry(s,c) are nondecreasing as s increases.
@@ -288,9 +290,9 @@ public:
     // TODO: This function really should be removed and replaced with a ktensor norm function, because that's kind of how it's used.
     ttb_real sum() const;
 
-    // Compute the sum of all the entries (no absolute value).
-    // TODO: This function really should be removed and replaced with a ktensor norm function, because that's kind of how it's used.
-    ttb_real sym_sum() const;
+    // Compute the sum of all the entries for symmetric matrix.
+    // If uplo == Upper/Lower, only upper/lower triangle is accessed.
+    ttb_real sum(const UploType uplo) const;
 
     // tell location of first nonfinite number (Inf or NaN) where will  be 0 if result is false,
     bool hasNonFinite(ttb_indx &where) const;
@@ -322,12 +324,15 @@ public:
      * the solution in this matrix, overwriting the original contents.
      * In Matlab notation, it performs  X = (A \ B')'.
      *
+     * uplo says which triangele of A to access.
+     *
      * Since internal storage of FacMatrix data is row major, the implementation
      * is actually quite simple and avoids both logical transposes.
      *
      * Throws an exception if A is singular.
      */
-    void solveTransposeRHS (const FacMatrixT &  A) const;
+    void solveTransposeRHS (const FacMatrixT & A,
+                            const UploType uplo = Upper) const;
 
     //! Multiply x elementwise by the ith row of the factor matrix, overwriting x.
     /*!

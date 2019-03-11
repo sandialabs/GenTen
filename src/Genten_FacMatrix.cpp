@@ -241,7 +241,8 @@ namespace Impl {
 
 // Gramian implementation using gemm()
 template <typename ExecSpace, typename ViewC, typename ViewA>
-void gramianImpl(const ViewC& C, const ViewA& A)
+void gramianImpl(const ViewC& C, const ViewA& A, const bool full,
+                 const UploType uplo)
 {
   const ttb_indx m = A.extent(0);
   const ttb_indx n = A.extent(1);
@@ -249,14 +250,26 @@ void gramianImpl(const ViewC& C, const ViewA& A)
   const ttb_indx ldc = C.stride_0();
 
   // We compute C = A'*A.  But since A is LayoutRight, and GEMM/SYRK
-  // assumes layout left we compute this as C' = A*A'.
+  // assumes layout left we compute this as C' = A*A'.  Since SYRK writes
+  // C', uplo == Upper means we call SYRK with 'L', and vice versa.
 
-  // SYRK seems faster than GEMM on the CPU but slower on KNL using MKL.
   //Genten::gemm('N','T',n,n,m,1.0,A.data(),lda,A.data(),lda,0.0,C.data(),ldc);
-  Genten::syrk('L','N',n,m,1.0,A.data(),lda,0.0,C.data(),ldc);
-  for (ttb_indx i=0; i<n; ++i)
-    for (ttb_indx j=i+1; j<n; j++)
-      C(j,i) = C(i,j);
+  if (uplo == Upper) {
+    Genten::syrk('L','N',n,m,1.0,A.data(),lda,0.0,C.data(),ldc);
+    if (full) {
+      for (ttb_indx i=0; i<n; ++i)
+        for (ttb_indx j=i+1; j<n; j++)
+          C(j,i) = C(i,j);
+    }
+  }
+  else {
+    Genten::syrk('U','N',n,m,1.0,A.data(),lda,0.0,C.data(),ldc);
+    if (full) {
+      for (ttb_indx i=0; i<n; ++i)
+        for (ttb_indx j=0; j<i; j++)
+          C(j,i) = C(i,j);
+    }
+  }
 }
 
 #else
@@ -525,7 +538,8 @@ void gramianImpl(const ViewC& C, const ViewA& A)
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-gramian(const Genten::FacMatrixT<ExecSpace> & v) const
+gramian(const Genten::FacMatrixT<ExecSpace> & v, const bool full,
+        const UploType uplo) const
 {
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::FacMatrix::gramian");
@@ -537,7 +551,7 @@ gramian(const Genten::FacMatrixT<ExecSpace> & v) const
   assert(data.extent(0) == n);
   assert(data.extent(1) == n);
 
-  Genten::Impl::gramianImpl<ExecSpace>(data,v.data);
+  Genten::Impl::gramianImpl<ExecSpace>(data,v.data,full,uplo);
 }
 
 // return the index of the first entry, s, such that entry(s,c) > r.
@@ -1199,7 +1213,7 @@ sum() const
 // TODO: This function really should be removed and replaced with a ktensor norm function, because that's kind of how it's used.
 template <typename ExecSpace>
 ttb_real Genten::FacMatrixT<ExecSpace>::
-sym_sum() const
+sum(const UploType uplo) const
 {
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::FacMatrix::sym_sum");
@@ -1210,14 +1224,26 @@ sym_sum() const
 
   ttb_real sum = 0;
   view_type d = data;
-  Kokkos::parallel_reduce("Genten::FacMatrix::sym_sum_kernel",
-                          Kokkos::RangePolicy<ExecSpace>(0,nrows),
-                          KOKKOS_LAMBDA(const ttb_indx i, ttb_real& s)
-  {
-    s += d(i,i);
-    for (ttb_indx j=i+1; j<ncols; ++j)
-      s += ttb_real(2.0)*d(i,j);
-  }, sum);
+  if (uplo == Upper) {
+    Kokkos::parallel_reduce("Genten::FacMatrix::sum_kernel",
+                            Kokkos::RangePolicy<ExecSpace>(0,nrows),
+                            KOKKOS_LAMBDA(const ttb_indx i, ttb_real& s)
+    {
+      s += d(i,i);
+      for (ttb_indx j=i+1; j<ncols; ++j)
+        s += ttb_real(2.0)*d(i,j);
+    }, sum);
+  }
+  else {
+    Kokkos::parallel_reduce("Genten::FacMatrix::sum_kernel",
+                            Kokkos::RangePolicy<ExecSpace>(0,nrows),
+                            KOKKOS_LAMBDA(const ttb_indx i, ttb_real& s)
+    {
+      s += d(i,i);
+      for (ttb_indx j=0; j<i; ++j)
+        s += ttb_real(2.0)*d(i,j);
+    }, sum);
+  }
   Kokkos::fence();
 
   return sum;
@@ -1355,15 +1381,28 @@ namespace Genten {
   namespace Impl {
 
     template <typename ViewA, typename ViewB>
-    void solveTransposeRHSImpl(const ViewA& A, const ViewB& B) {
+    bool solveTransposeRHSImpl_SPD(const ViewA& A, const ViewB& B,
+                                   const UploType ul)
+    {
       const ttb_indx nrows = B.extent(0);
       const ttb_indx ncols = B.extent(1);
 
-      // Throws an exception if Atmp is (exactly?) singular.
-      //TBD...consider LAPACK sysv instead of gesv since A is sym indef
-      //Genten::gesv (ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0());
-      //Genten::sysv ('U', ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0());
-      Genten::posv ('U', ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0());
+      // Switch Upper/Lower because we store row-wise and lapack assumes column
+      char uplo = ul == Upper ? 'L' : 'U';
+
+      return Genten::posv(uplo, ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0());
+    }
+
+    template <typename ViewA, typename ViewB>
+    void solveTransposeRHSImpl(const ViewA& A, const ViewB& B,
+                               const UploType ul) {
+      const ttb_indx nrows = B.extent(0);
+      const ttb_indx ncols = B.extent(1);
+
+      // Switch Upper/Lower because we store row-wise and lapack assumes column
+      char uplo = ul == Upper ? 'L' : 'U';
+
+      Genten::sysv(uplo, ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0());
     }
 
 #if defined(KOKKOS_HAVE_CUDA) && defined(HAVE_CUSOLVER)
@@ -1378,8 +1417,93 @@ namespace Genten {
         std::is_same<typename Kokkos::View<AT,BP...>::non_const_value_type,
                      double>::value )
       >::type
+    solveTransposeRHSImpl_SPD(const Kokkos::View<AT,AP...>& A,
+                              const Kokkos::View<BT,BP...>& B,
+                              const UploType ul) {
+      const int m = B.extent(0);
+      const int n = B.extent(1);
+      const int lda = A.stride_0();
+      const int ldb = B.stride_0();
+      const cublasFillMode_t uplo = ul == Upper ? CUBLAS_FILL_MODE_UPPER : CUBLAS_FILL_MODE_LOWER;
+      cusolverStatus_t status;
+
+      assert(A.extent(0) == n);
+      assert(A.extent(1) == n);
+
+      static cusolverDnHandle_t handle = 0;
+      if (handle == 0) {
+        status = cusolverDnCreate(&handle);
+        if (status != CUSOLVER_STATUS_SUCCESS) {
+          std::stringstream ss;
+          ss << "Error!  cusolverDnCreate() failed with status "
+             << status;
+          std::cerr << ss.str() << std::endl;
+          throw ss.str();
+        }
+      }
+
+      // lwork is a host pointer, but info is a device pointer.  Go figure.
+      int lwork = 0;
+      status = cusolverDnDpotrf_bufferSize(handle, uplo, n, A.data(), lda, &lwork);
+      if (status != CUSOLVER_STATUS_SUCCESS) {
+        std::stringstream ss;
+        ss << "Error!  cusolverDnDpotrf_bufferSize() failed with status "
+           << status;
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+
+      Kokkos::View<double*,Kokkos::LayoutRight,Kokkos::Cuda> work("work",lwork);
+      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Cuda> info("info");
+      status = cusolverDnDpotrf(handle, uplo, n, A.data(), lda, work.data(),
+                                lwork, info.data());
+      if (status != CUSOLVER_STATUS_SUCCESS) {
+        std::stringstream ss;
+        ss << "Error!  cusolverDnDpotrf() failed with status "
+           << status;
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+      auto info_host = create_mirror_view(info);
+      deep_copy(info_host, info);
+      if (info_host() != 0) {
+        std::stringstream ss;
+        ss << "Error!  cusolverDnDpotrf() info =  " << info_host();
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+
+      status = cusolverDnDpotrs(handle, uplo, n, m, A.data(), lda,
+                                B.data(), ldb, info.data());
+      if (status != CUSOLVER_STATUS_SUCCESS) {
+        std::stringstream ss;
+        ss << "Error!  cusolverDnDpotrs() failed with status "
+           << status;
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+      deep_copy(info_host, info);
+      if (info_host() != 0) {
+        std::stringstream ss;
+        ss << "Error!  cusolverDnDpotrs() info =  " << info_host();
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+    }
+
+    template <typename AT, typename ... AP,
+              typename BT, typename ... BP>
+    typename std::enable_if<
+      ( std::is_same<typename Kokkos::View<AT,AP...>::execution_space,
+                     Kokkos::Cuda>::value &&
+        std::is_same<typename Kokkos::View<BT,BP...>::execution_space,
+                     Kokkos::Cuda>::value &&
+        std::is_same<typename Kokkos::View<AT,BP...>::non_const_value_type,
+                     double>::value )
+      >::type
     solveTransposeRHSImpl(const Kokkos::View<AT,AP...>& A,
-                          const Kokkos::View<BT,BP...>& B) {
+                          const Kokkos::View<BT,BP...>& B,
+                          const UploType uplo) {
       const int m = B.extent(0);
       const int n = B.extent(1);
       const int lda = A.stride_0();
@@ -1428,7 +1552,7 @@ namespace Genten {
       deep_copy(info_host, info);
       if (info_host() != 0) {
         std::stringstream ss;
-        ss << "Error!  cusolverDngetrf() info =  " << info_host();
+        ss << "Error!  cusolverDnDgetrf() info =  " << info_host();
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
@@ -1445,7 +1569,91 @@ namespace Genten {
       deep_copy(info_host, info);
       if (info_host() != 0) {
         std::stringstream ss;
-        ss << "Error!  cusolverDngetrf() info =  " << info_host();
+        ss << "Error!  cusolverDnDgetrs() info =  " << info_host();
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+    }
+
+    template <typename AT, typename ... AP,
+              typename BT, typename ... BP>
+    typename std::enable_if<
+      ( std::is_same<typename Kokkos::View<AT,AP...>::execution_space,
+                     Kokkos::Cuda>::value &&
+        std::is_same<typename Kokkos::View<BT,BP...>::execution_space,
+                     Kokkos::Cuda>::value &&
+        std::is_same<typename Kokkos::View<AT,BP...>::non_const_value_type,
+                     float>::value )
+      >::type
+    solveTransposeRHSImpl_SPD(const Kokkos::View<AT,AP...>& A,
+                              const Kokkos::View<BT,BP...>& B,
+                              const UploType ul) {
+      const int m = B.extent(0);
+      const int n = B.extent(1);
+      const int lda = A.stride_0();
+      const int ldb = B.stride_0();
+      const cublasFillMode_t uplo = ul == Upper ? CUBLAS_FILL_MODE_UPPER : CUBLAS_FILL_MODE_LOWER;
+      cusolverStatus_t status;
+
+      assert(A.extent(0) == n);
+      assert(A.extent(1) == n);
+
+      static cusolverDnHandle_t handle = 0;
+      if (handle == 0) {
+        status = cusolverDnCreate(&handle);
+        if (status != CUSOLVER_STATUS_SUCCESS) {
+          std::stringstream ss;
+          ss << "Error!  cusolverDnCreate() failed with status "
+             << status;
+          std::cerr << ss.str() << std::endl;
+          throw ss.str();
+        }
+      }
+
+      // lwork is a host pointer, but info is a device pointer.  Go figure.
+      int lwork = 0;
+      status = cusolverDnSpotrf_bufferSize(handle, uplo, n, A.data(), lda, &lwork);
+      if (status != CUSOLVER_STATUS_SUCCESS) {
+        std::stringstream ss;
+        ss << "Error!  cusolverDnSpotrf_bufferSize() failed with status "
+           << status;
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+
+      Kokkos::View<double*,Kokkos::LayoutRight,Kokkos::Cuda> work("work",lwork);
+      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Cuda> info("info");
+      status = cusolverDnDpotrf(handle, uplo, n, A.data(), lda, work.data(),
+                                lwork, info.data());
+      if (status != CUSOLVER_STATUS_SUCCESS) {
+        std::stringstream ss;
+        ss << "Error!  cusolverDnSpotrf() failed with status "
+           << status;
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+      auto info_host = create_mirror_view(info);
+      deep_copy(info_host, info);
+      if (info_host() != 0) {
+        std::stringstream ss;
+        ss << "Error!  cusolverDnSpotrf() info =  " << info_host();
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+
+      status = cusolverDnSpotrs(handle, uplo, n, m, A.data(), lda,
+                                B.data(), ldb, info.data());
+      if (status != CUSOLVER_STATUS_SUCCESS) {
+        std::stringstream ss;
+        ss << "Error!  cusolverDnSpotrs() failed with status "
+           << status;
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+      deep_copy(info_host, info);
+      if (info_host() != 0) {
+        std::stringstream ss;
+        ss << "Error!  cusolverDnSpotrs() info =  " << info_host();
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
@@ -1462,7 +1670,8 @@ namespace Genten {
                      float>::value )
       >::type
     solveTransposeRHSImpl(const Kokkos::View<AT,AP...>& A,
-                          const Kokkos::View<BT,BP...>& B) {
+                          const Kokkos::View<BT,BP...>& B,
+                          const UploType uplo) {
       const int m = B.extent(0);
       const int n = B.extent(1);
       const int lda = A.stride_0();
@@ -1489,7 +1698,7 @@ namespace Genten {
       status = cusolverDnSgetrf_bufferSize(handle, n, n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
-        ss << "Error!  cusolverDnDgetrf_bufferSize() failed with status "
+        ss << "Error!  cusolverDnSgetrf_bufferSize() failed with status "
            << status;
         std::cerr << ss.str() << std::endl;
         throw ss.str();
@@ -1502,7 +1711,7 @@ namespace Genten {
                                 piv.data(), info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
-        ss << "Error!  cusolverDnDgetrf() failed with status "
+        ss << "Error!  cusolverDnSgetrf() failed with status "
            << status;
         std::cerr << ss.str() << std::endl;
         throw ss.str();
@@ -1511,7 +1720,7 @@ namespace Genten {
       deep_copy(info_host, info);
       if (info_host() != 0) {
         std::stringstream ss;
-        ss << "Error!  cusolverDngetrf() info =  " << info_host();
+        ss << "Error!  cusolverDnSgetrf() info =  " << info_host();
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
@@ -1520,7 +1729,7 @@ namespace Genten {
                                 piv.data(), B.data(), ldb, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
-        ss << "Error!  ccusolverDnDgetrs() failed with status "
+        ss << "Error!  ccusolverDnSgetrs() failed with status "
            << status;
         std::cerr << ss.str() << std::endl;
         throw ss.str();
@@ -1528,7 +1737,7 @@ namespace Genten {
       deep_copy(info_host, info);
       if (info_host() != 0) {
         std::stringstream ss;
-        ss << "Error!  cusolverDngetrf() info =  " << info_host();
+        ss << "Error!  cusolverDnSgetrs() info =  " << info_host();
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
@@ -1540,7 +1749,8 @@ namespace Genten {
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-solveTransposeRHS (const Genten::FacMatrixT<ExecSpace> &  A) const
+solveTransposeRHS (const Genten::FacMatrixT<ExecSpace> & A,
+                   const UploType uplo) const
 {
   const ttb_indx nrows = data.extent(0);
   const ttb_indx ncols = data.extent(1);
@@ -1549,14 +1759,17 @@ solveTransposeRHS (const Genten::FacMatrixT<ExecSpace> &  A) const
   assert(nCols() == A.nRows());
 
   // Copy A because LAPACK needs to overwrite the invertible square matrix.
-  // Since the matrix is assumed symmetric, no need to worry about row major
-  // versus column major storage.
   view_type Atmp("Atmp", A.nRows(), A.nCols());
   deep_copy(Atmp, A.data);
 
-  Genten::Impl::solveTransposeRHSImpl(Atmp, data);
+  // First try SPD solver
+  bool is_spd = Genten::Impl::solveTransposeRHSImpl_SPD(Atmp, data, uplo);
 
-  return;
+  // If not SPD, use indefinite solver
+  if (!is_spd) {
+    deep_copy(Atmp, A.data); // Recover original A
+    Genten::Impl::solveTransposeRHSImpl(Atmp, data, uplo);
+  }
 }
 
 template <typename ExecSpace>

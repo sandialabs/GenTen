@@ -543,7 +543,7 @@ normFsq() const
   Genten::FacMatrixT<ExecSpace>  cG(n,n);
   for (ttb_indx  n = 0; n < ndims(); n++)
   {
-    cG.gramian(data[n]);
+    cG.gramian(data[n], false, Upper);
     cH.times(cG);
   }
 

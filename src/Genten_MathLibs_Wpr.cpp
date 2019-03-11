@@ -265,7 +265,7 @@ void Genten::vmul(const ttb_indx n, double * a, const double * b)
 }
 
 
-void Genten::posv (char uplo, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb)
+bool Genten::posv (char uplo, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb)
 {
 #if !defined(LAPACK_FOUND)
   Genten::error("Genten::posv - not found, must link with an LAPACK library.");
@@ -279,15 +279,14 @@ void Genten::posv (char uplo, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx ld
 
   ::dposv(&uplo, &n_ml, &nrhs_ml, a, &lda_ml, b, &ldb_ml, &info_ml);
 
-  // Check output info and free pivot array
+  // Check output info
   if (info_ml < 0)
   {
     Genten::error("Genten::posv - argument error in call to dposv");
   }
   if (info_ml > 0)
-  {
-    Genten::error("Genten::posv - dposv failed because matrix is not positive definite");
-  }
+    return false;
+  return true;
 #endif
 }
 
@@ -514,7 +513,7 @@ void Genten::vmul(const ttb_indx n, float * a, const float * b)
 }
 
 
-void Genten::posv (char uplo, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb)
+bool Genten::posv (char uplo, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb)
 {
 #if !defined(LAPACK_FOUND)
   Genten::error("Genten::posv - not found, must link with an LAPACK library.");
@@ -528,14 +527,13 @@ void Genten::posv (char uplo, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda
 
   ::sposv(&uplo, &n_ml, &nrhs_ml, a, &lda_ml, b, &ldb_ml, &info_ml);
 
-  // Check output info and free pivot array
+  // Check output info
   if (info_ml < 0)
   {
     Genten::error("Genten::posv - argument error in call to dposv");
   }
   if (info_ml > 0)
-  {
-    Genten::error("Genten::posv - dposv failed because matrix is not positive definite");
-  }
+    return false;
+  return true;
 #endif
 }

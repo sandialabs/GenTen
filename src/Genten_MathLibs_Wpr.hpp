@@ -136,27 +136,46 @@ namespace Genten
     columnwise.
     On exit, the n x nrhs solution matrix X stored columnwise.
 
-    throws string exception if the solve failed
+    throws string exception if the solve failed.
   */
   void gesv(ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb);
 
-  // POSV - Solve Ax=b for x assuming A is symmetric positive definite.
+  // POSV - Compute solution to linear system AX = B for SPD A.
   /*
-   * Use LAPACK routine dposv to solve for x using dense Cholesky factorization.
-   * TTBC++ does not have a default dposv, so the use of this routine requires
-   * linking with an LAPACK library.
-   *
-   *   n - Size of n x n matrix A.
-   *   A - Dense n x n matrix A, but only the lower triangle is used
-   *       (assuming column major order, where row index varies fastest).
-   *   b - On entry, the n-vector on the right-hand side.
-   *       On exit, the solution x.
-   *
-   *   throws string exception if the solve failed
-   */
-  void posv (char uplo, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb);
+    Solve AX = B where A is an n x n matrix, B is an n x nrhs matrix,
+    and X is the n x nrhs matrix to be computed. It is assumed that
+    the matrices are stored columnwise so that the (i,j) entry is in
+    position (i + n*j) in the one-dimensional array.
 
-  // SYSV - Compute solution to linear system AX = B for symmetric indefinite A.
+    uplo - On entry, whether upper or lower triangle of A is accessed
+    a    - On entry, the n x n matrix A stored columnwise.
+    On exit, the factors L and U stored in the lower and upper halves
+    of the matrix (the unit diagonal of L is not stored).
+    b    - On entry, the n x nrhs matrix B (of right-hand-sides) stored
+    columnwise.
+    On exit, the n x nrhs solution matrix X stored columnwise.
+
+    Returns false if the solve failed (doesn't throw).
+  */
+  bool posv (char uplo, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb);
+
+  // SYSV - Compute solution to linear system AX = B for symmetric, indefinite A
+  /*
+    Solve AX = B where A is an n x n matrix, B is an n x nrhs matrix,
+    and X is the n x nrhs matrix to be computed. It is assumed that
+    the matrices are stored columnwise so that the (i,j) entry is in
+    position (i + n*j) in the one-dimensional array.
+
+    uplo - On entry, whether upper or lower triangle of A is accessed
+    a    - On entry, the n x n matrix A stored columnwise.
+    On exit, the factors L and U stored in the lower and upper halves
+    of the matrix (the unit diagonal of L is not stored).
+    b    - On entry, the n x nrhs matrix B (of right-hand-sides) stored
+    columnwise.
+    On exit, the n x nrhs solution matrix X stored columnwise.
+
+    throws string exception if the solve failed.
+  */
   void sysv(char uplo, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb);
 
   //
@@ -243,22 +262,41 @@ namespace Genten
   */
   void gesv(ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb);
 
-  // POSV - Solve Ax=b for x assuming A is symmetric positive definite.
+  // POSV - Compute solution to linear system AX = B for SPD A.
   /*
-   * Use LAPACK routine dposv to solve for x using dense Cholesky factorization.
-   * TTBC++ does not have a default dposv, so the use of this routine requires
-   * linking with an LAPACK library.
-   *
-   *   n - Size of n x n matrix A.
-   *   A - Dense n x n matrix A, but only the lower triangle is used
-   *       (assuming column major order, where row index varies fastest).
-   *   b - On entry, the n-vector on the right-hand side.
-   *       On exit, the solution x.
-   *
-   *   throws string exception if the solve failed
-   */
-  void posv (char uplo, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb);
+    Solve AX = B where A is an n x n matrix, B is an n x nrhs matrix,
+    and X is the n x nrhs matrix to be computed. It is assumed that
+    the matrices are stored columnwise so that the (i,j) entry is in
+    position (i + n*j) in the one-dimensional array.
 
-  // SYSV - Compute solution to linear system AX = B for symmetric indefinite A.
+    uplo - On entry, whether upper or lower triangle of A is accessed
+    a    - On entry, the n x n matrix A stored columnwise.
+    On exit, the factors L and U stored in the lower and upper halves
+    of the matrix (the unit diagonal of L is not stored).
+    b    - On entry, the n x nrhs matrix B (of right-hand-sides) stored
+    columnwise.
+    On exit, the n x nrhs solution matrix X stored columnwise.
+
+    Returns false if the solve failed (doesn't throw).
+  */
+  bool posv (char uplo, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb);
+
+  // SYSV - Compute solution to linear system AX = B for symmetric, indefinite A
+  /*
+    Solve AX = B where A is an n x n matrix, B is an n x nrhs matrix,
+    and X is the n x nrhs matrix to be computed. It is assumed that
+    the matrices are stored columnwise so that the (i,j) entry is in
+    position (i + n*j) in the one-dimensional array.
+
+    uplo - On entry, whether upper or lower triangle of A is accessed
+    a    - On entry, the n x n matrix A stored columnwise.
+    On exit, the factors L and U stored in the lower and upper halves
+    of the matrix (the unit diagonal of L is not stored).
+    b    - On entry, the n x nrhs matrix B (of right-hand-sides) stored
+    columnwise.
+    On exit, the n x nrhs solution matrix X stored columnwise.
+
+    throws string exception if the solve failed.
+  */
   void sysv(char uplo, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb);
 }
