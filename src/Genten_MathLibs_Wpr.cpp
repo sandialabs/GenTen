@@ -269,6 +269,7 @@ bool Genten::posv (char uplo, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx ld
 {
 #if !defined(LAPACK_FOUND)
   Genten::error("Genten::posv - not found, must link with an LAPACK library.");
+  return false;
 #else
 
   ttb_blas_int n_ml = (ttb_blas_int) n;
@@ -517,6 +518,7 @@ bool Genten::posv (char uplo, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda
 {
 #if !defined(LAPACK_FOUND)
   Genten::error("Genten::posv - not found, must link with an LAPACK library.");
+  return false;
 #else
 
   ttb_blas_int n_ml = (ttb_blas_int) n;

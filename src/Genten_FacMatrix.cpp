@@ -404,8 +404,10 @@ void gramian_kernel(const ViewC& C, const ViewA& A)
 }
 
 template <typename ExecSpace, typename ViewC, typename ViewA>
-void gramianImpl(const ViewC& C, const ViewA& A)
+void gramianImpl(const ViewC& C, const ViewA& A,
+		 const bool full, const UploType uplo)
 {
+  // Currently ignoring full/uplo since this kernel is just a backup anyway
   const ttb_indx n = A.extent(1);
   if (n < 2)
     gramian_kernel<ExecSpace,1>(C,A);
@@ -1762,6 +1764,7 @@ namespace Genten {
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 solveTransposeRHS (const Genten::FacMatrixT<ExecSpace> & A,
+		   const bool full,
                    const UploType uplo) const
 {
   const ttb_indx nrows = data.extent(0);
@@ -1774,13 +1777,21 @@ solveTransposeRHS (const Genten::FacMatrixT<ExecSpace> & A,
   view_type Atmp("Atmp", A.nRows(), A.nCols());
   deep_copy(Atmp, A.data);
 
-  // First try SPD solver
-  bool is_spd = Genten::Impl::solveTransposeRHSImpl_SPD(Atmp, data, uplo);
-
-  // If not SPD, use indefinite solver
-  if (!is_spd) {
-    deep_copy(Atmp, A.data); // Recover original A
+  // getrf/getrs is generally faster on the GPU than potrf/potrs
+  if (Genten::is_cuda_space<ExecSpace>::value && full) {
     Genten::Impl::solveTransposeRHSImpl(Atmp, data, uplo);
+  }
+  else {
+    // First try SPD solver
+    bool is_spd = Genten::Impl::solveTransposeRHSImpl_SPD(Atmp, data, uplo);
+
+    // If not SPD, use indefinite solver if we can
+    if (!is_spd) {
+      if (!full)
+	Genten::error("Indefinite matrix but full == false!");
+      deep_copy(Atmp, A.data); // Recover original A
+      Genten::Impl::solveTransposeRHSImpl(Atmp, data, uplo);
+    }
   }
 }
 

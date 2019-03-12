@@ -120,6 +120,10 @@ namespace Genten {
 
     using std::sqrt;
 
+    // Store full Gram matrix on GPU, Upper triangle on everything else
+    const bool full = Genten::is_cuda_space<ExecSpace>::value ? true : false;
+    const UploType uplo = Upper;
+
     const ttb_real tol = algParams.tol;
     const ttb_indx maxIters = algParams.maxiters;
     const ttb_real maxSecs = algParams.maxsecs;
@@ -186,7 +190,7 @@ namespace Genten {
     }
     for (ttb_indx n = 1; n < nd; n ++)
     {
-      gamma[n].gramian(u[n], false, Upper);
+      gamma[n].gramian(u[n], full, uplo);
     }
 
     // Define upsilon to store Hadamard products of the gamma matrices.
@@ -264,7 +268,7 @@ namespace Genten {
         // with the result.  Equivalent to the Matlab operation
         //   u[n] = (upsilon \ u[n]')'.
         timer.start(timer_solve);
-        u[n].solveTransposeRHS (upsilon, Upper);
+        u[n].solveTransposeRHS (upsilon, full, uplo);
         Kokkos::fence();
         timer.stop(timer_solve);
 
@@ -294,7 +298,7 @@ namespace Genten {
 
         // Update u[n]'s corresponding Gramian matrix.
         timer.start(timer_gramian);
-        gamma[n].gramian(u[n], false, Upper);
+        gamma[n].gramian(u[n], full, uplo);
         Kokkos::fence();
         timer.stop(timer_gramian);
       }
@@ -304,7 +308,7 @@ namespace Genten {
       upsilon.times(gamma[nd-1]);
       tmpMat.oprod(lambda);
       upsilon.times(tmpMat);
-      ttb_real pNorm = sqrt(fabs(upsilon.sum(Upper)));
+      ttb_real pNorm = sqrt(fabs(upsilon.sum(uplo)));
 
       // Compute inner product of input data x with "p" using the identity
       // <x,u> = <un,u[nd-1]> where un = mttkrp(x,u,nd-1)

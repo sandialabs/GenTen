@@ -324,7 +324,7 @@ public:
      * the solution in this matrix, overwriting the original contents.
      * In Matlab notation, it performs  X = (A \ B')'.
      *
-     * uplo says which triangele of A to access.
+     * uplo says which triangele of A to access if full == false.
      *
      * Since internal storage of FacMatrix data is row major, the implementation
      * is actually quite simple and avoids both logical transposes.
@@ -332,6 +332,7 @@ public:
      * Throws an exception if A is singular.
      */
     void solveTransposeRHS (const FacMatrixT & A,
+			    const bool full = true,
                             const UploType uplo = Upper) const;
 
     //! Multiply x elementwise by the ith row of the factor matrix, overwriting x.

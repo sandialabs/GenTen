@@ -532,6 +532,10 @@ normFsq() const
   cali::Function cali_func("Genten::Ktensor::normFsq");
 #endif
 
+  // Store full Gram matrix on GPU, Upper triangle on everything else
+  const bool full = Genten::is_cuda_space<ExecSpace>::value ? true : false;
+  const UploType uplo = Upper;
+
   ttb_real  dResult = 0.0;
 
   // This technique computes an RxR matrix of dot products between all factor
@@ -543,7 +547,7 @@ normFsq() const
   Genten::FacMatrixT<ExecSpace>  cG(n,n);
   for (ttb_indx  n = 0; n < ndims(); n++)
   {
-    cG.gramian(data[n], false, Upper);
+    cG.gramian(data[n], full, uplo);
     cH.times(cG);
   }
 
