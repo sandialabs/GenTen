@@ -403,7 +403,7 @@ namespace Genten {
 
   };
 
-#if defined(KOKKOS_HAVE_CUDA) && defined(__CUDA_ARCH__)
+#if defined(KOKKOS_ENABLE_CUDA) && defined(__CUDA_ARCH__)
 
   // Specialization for Cuda where Length / WarpDim == 1.  Store the vector
   // components in register space since Cuda may store them in global memory

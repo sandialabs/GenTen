@@ -87,28 +87,28 @@ namespace Genten {
     static typename ExecSpace::size_type eval() { return 0; }
   };
 
-#if defined(KOKKOS_HAVE_SERIAL)
+#if defined(KOKKOS_ENABLE_SERIAL)
   template <>
   struct is_serial_space<Kokkos::Serial> {
     static constexpr bool value = true;
   };
 #endif
 
-#if defined(KOKKOS_HAVE_OPENMP)
+#if defined(KOKKOS_ENABLE_OPENMP)
   template <>
   struct is_openmp_space<Kokkos::OpenMP> {
     static constexpr bool value = true;
   };
 #endif
 
-#if defined(KOKKOS_HAVE_THREADS)
+#if defined(KOKKOS_ENABLE_THREADS)
   template <>
   struct is_threads_space<Kokkos::Threads> {
     static constexpr bool value = true;
   };
 #endif
 
-#if defined(KOKKOS_HAVE_CUDA)
+#if defined(KOKKOS_ENABLE_CUDA)
   template <>
   struct is_cuda_space<Kokkos::Cuda> {
     static constexpr bool value = true;

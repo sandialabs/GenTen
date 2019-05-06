@@ -61,7 +61,7 @@ namespace Genten {
       }
     };
 
-#if defined(KOKKOS_HAVE_CUDA) && defined(__CUDA_ARCH__)
+#if defined(KOKKOS_ENABLE_CUDA) && defined(__CUDA_ARCH__)
     template <typename Rand, unsigned VectorSize>
     struct VectorRng<Kokkos::Cuda,Rand,VectorSize> {
       template <typename Gen>

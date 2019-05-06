@@ -492,7 +492,7 @@ void orig_kokkos_mttkrp_kernel(const Genten::SptensorT<ExecSpace>& X,
                                const Genten::FacMatrixT<ExecSpace>& v)
 {
   // Compute team and vector sizes, depending on the architecture
-#if defined(KOKKOS_HAVE_CUDA)
+#if defined(KOKKOS_ENABLE_CUDA)
   const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
 #else
   const bool is_cuda = false;

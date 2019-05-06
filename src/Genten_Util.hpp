@@ -57,25 +57,25 @@ namespace Genten {
   typedef Kokkos::DefaultExecutionSpace DefaultExecutionSpace;
   typedef Kokkos::DefaultHostExecutionSpace DefaultHostExecutionSpace;
 }
-#ifdef KOKKOS_HAVE_CUDA
+#ifdef KOKKOS_ENABLE_CUDA
 #define GENTEN_INST_CUDA(INSTMACRO) \
   INSTMACRO(Kokkos::Cuda)
 #else
 #define GENTEN_INST_CUDA(INSTMACRO) /* */
 #endif
-#ifdef KOKKOS_HAVE_OPENMP
+#ifdef KOKKOS_ENABLE_OPENMP
 #define GENTEN_INST_OPENMP(INSTMACRO) \
   INSTMACRO(Kokkos::OpenMP)
 #else
 #define GENTEN_INST_OPENMP(INSTMACRO) /* */
 #endif
-#ifdef KOKKOS_HAVE_THREADS
+#ifdef KOKKOS_ENABLE_THREADS
 #define GENTEN_INST_THREADS(INSTMACRO) \
   INSTMACRO(Kokkos::Threads)
 #else
 #define GENTEN_INST_THREADS(INSTMACRO) /* */
 #endif
-#ifdef KOKKOS_HAVE_SERIAL
+#ifdef KOKKOS_ENABLE_SERIAL
 #define GENTEN_INST_SERIAL(INSTMACRO) \
   INSTMACRO(Kokkos::Serial)
 #else
