@@ -42,10 +42,10 @@
 
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
-#include "Genten_RandomMT.hpp"
 #include "Genten_AlgParams.hpp"
 #include "Genten_GCP_Hash.hpp"
 
+#include "Kokkos_Random.hpp"
 #include "Kokkos_UnorderedMap.hpp"
 
 // Hard-coded tensor dimension for hash map
@@ -56,18 +56,19 @@ namespace Genten {
   namespace Impl {
 
     template <typename ExecSpace, typename LossFunction>
-    void stratified_sample_tensor(const SptensorT<ExecSpace>& X,
-                                  const ttb_indx num_samples_nonzeros,
-                                  const ttb_indx num_samples_zeros,
-                                  const ttb_real weight_nonzeros,
-                                  const ttb_real weight_zeros,
-                                  const KtensorT<ExecSpace>& u,
-                                  const LossFunction& loss_func,
-                                  const bool compute_gradient,
-                                  SptensorT<ExecSpace>& Y,
-                                  ArrayT<ExecSpace>& w,
-                                  RandomMT& rng,
-                                  const AlgParams& algParams);
+    void stratified_sample_tensor(
+      const SptensorT<ExecSpace>& X,
+      const ttb_indx num_samples_nonzeros,
+      const ttb_indx num_samples_zeros,
+      const ttb_real weight_nonzeros,
+      const ttb_real weight_zeros,
+      const KtensorT<ExecSpace>& u,
+      const LossFunction& loss_func,
+      const bool compute_gradient,
+      SptensorT<ExecSpace>& Y,
+      ArrayT<ExecSpace>& w,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams);
 
     template <typename ExecSpace, typename LossFunction>
     void stratified_sample_tensor_hash(
@@ -82,48 +83,67 @@ namespace Genten {
       const bool compute_gradient,
       SptensorT<ExecSpace>& Y,
       ArrayT<ExecSpace>& w,
-      RandomMT& rng,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams);
 
     template <typename ExecSpace, typename LossFunction>
-    void sample_tensor_nonzeros(const SptensorT<ExecSpace>& X,
-                                const ttb_indx offset,
-                                const ttb_indx num_samples,
-                                const ttb_real weight,
-                                const KtensorT<ExecSpace>& u,
-                                const LossFunction& loss_func,
-                                const bool compute_gradient,
-                                SptensorT<ExecSpace>& Y,
-                                RandomMT& rng,
-                                const AlgParams& algParams);
+    void semi_stratified_sample_tensor(
+      const SptensorT<ExecSpace>& X,
+      const ttb_indx num_samples_nonzeros,
+      const ttb_indx num_samples_zeros,
+      const ttb_real weight_nonzeros,
+      const ttb_real weight_zeros,
+      const KtensorT<ExecSpace>& u,
+      const LossFunction& loss_func,
+      const bool compute_gradient,
+      SptensorT<ExecSpace>& Y,
+      ArrayT<ExecSpace>& w,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams);
 
     template <typename ExecSpace, typename LossFunction>
-    void sample_tensor_nonzeros(const SptensorT<ExecSpace>& X,
-                                const ArrayT<ExecSpace>& w,
-                                const ttb_indx num_samples,
-                                const KtensorT<ExecSpace>& u,
-                                const LossFunction& loss_func,
-                                SptensorT<ExecSpace>& Y,
-                                RandomMT& rng,
-                                const AlgParams& algParams);
+    void sample_tensor_nonzeros(
+      const SptensorT<ExecSpace>& X,
+      const ttb_indx offset,
+      const ttb_indx num_samples,
+      const ttb_real weight,
+      const KtensorT<ExecSpace>& u,
+      const LossFunction& loss_func,
+      const bool compute_gradient,
+      SptensorT<ExecSpace>& Y,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams);
+
+    template <typename ExecSpace, typename LossFunction>
+    void sample_tensor_nonzeros(
+      const SptensorT<ExecSpace>& X,
+      const ArrayT<ExecSpace>& w,
+      const ttb_indx num_samples,
+      const KtensorT<ExecSpace>& u,
+      const LossFunction& loss_func,
+      SptensorT<ExecSpace>& Y,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams);
 
     template <typename ExecSpace>
-    void sample_tensor_nonzeros(const SptensorT<ExecSpace>& X,
-                                const ArrayT<ExecSpace>& w,
-                                const ttb_indx num_samples,
-                                SptensorT<ExecSpace>& Y,
-                                ArrayT<ExecSpace>& z,
-                                RandomMT& rng,
-                                const AlgParams& algParams);
+    void sample_tensor_nonzeros(
+      const SptensorT<ExecSpace>& X,
+      const ArrayT<ExecSpace>& w,
+      const ttb_indx num_samples,
+      SptensorT<ExecSpace>& Y,
+      ArrayT<ExecSpace>& z,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams);
 
     template <typename ExecSpace>
-    void sample_tensor_zeros(const SptensorT<ExecSpace>& X,
-                             const ttb_indx offset,
-                             const ttb_indx num_samples,
-                             SptensorT<ExecSpace>& Y,
-                             SptensorT<ExecSpace>& Z,
-                             RandomMT& rng,
-                             const AlgParams& algParams);
+    void sample_tensor_zeros(
+      const SptensorT<ExecSpace>& X,
+      const ttb_indx offset,
+      const ttb_indx num_samples,
+      SptensorT<ExecSpace>& Y,
+      SptensorT<ExecSpace>& Z,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams);
 
     template <typename ExecSpace>
     void merge_sampled_tensors(const SptensorT<ExecSpace>& X_nz,

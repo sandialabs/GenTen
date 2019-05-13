@@ -52,18 +52,19 @@ namespace Genten {
   namespace Impl {
 
     template <typename ExecSpace, typename LossFunction>
-    void stratified_sample_tensor(const SptensorT<ExecSpace>& X,
-                                  const ttb_indx num_samples_nonzeros,
-                                  const ttb_indx num_samples_zeros,
-                                  const ttb_real weight_nonzeros,
-                                  const ttb_real weight_zeros,
-                                  const KtensorT<ExecSpace>& u,
-                                  const LossFunction& loss_func,
-                                  const bool compute_gradient,
-                                  SptensorT<ExecSpace>& Y,
-                                  ArrayT<ExecSpace>& w,
-                                  RandomMT& rng,
-                                  const AlgParams& algParams)
+    void stratified_sample_tensor(
+      const SptensorT<ExecSpace>& X,
+      const ttb_indx num_samples_nonzeros,
+      const ttb_indx num_samples_zeros,
+      const ttb_real weight_nonzeros,
+      const ttb_real weight_zeros,
+      const KtensorT<ExecSpace>& u,
+      const LossFunction& loss_func,
+      const bool compute_gradient,
+      SptensorT<ExecSpace>& Y,
+      ArrayT<ExecSpace>& w,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams)
     {
       const ttb_indx nnz = X.nnz();
       const ttb_indx nd = X.ndims();
@@ -79,7 +80,6 @@ namespace Genten {
       typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
       typedef typename RandomPool::generator_type generator_type;
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
-      RandomPool rand_pool(rng.genrnd_int32());
       const ttb_indx nloops = algParams.rng_iters;
 
       // Generate samples of nonzeros
@@ -178,7 +178,7 @@ namespace Genten {
       const bool compute_gradient,
       SptensorT<ExecSpace>& Y,
       ArrayT<ExecSpace>& w,
-      RandomMT& rng,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams)
     {
       const ttb_indx nnz = X.nnz();
@@ -198,7 +198,6 @@ namespace Genten {
       typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
       typedef typename RandomPool::generator_type generator_type;
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
-      RandomPool rand_pool(rng.genrnd_int32());
       const ttb_indx nloops = algParams.rng_iters;
 
       // Generate samples of nonzeros
@@ -272,16 +271,104 @@ namespace Genten {
     }
 
     template <typename ExecSpace, typename LossFunction>
-    void sample_tensor_nonzeros(const SptensorT<ExecSpace>& X,
-                                const ttb_indx offset,
-                                const ttb_indx num_samples,
-                                const ttb_real weight,
-                                const KtensorT<ExecSpace>& u,
-                                const LossFunction& loss_func,
-                                const bool compute_gradient,
-                                SptensorT<ExecSpace>& Y,
-                                RandomMT& rng,
-                                const AlgParams& algParams)
+    void semi_stratified_sample_tensor(
+      const SptensorT<ExecSpace>& X,
+      const ttb_indx num_samples_nonzeros,
+      const ttb_indx num_samples_zeros,
+      const ttb_real weight_nonzeros,
+      const ttb_real weight_zeros,
+      const KtensorT<ExecSpace>& u,
+      const LossFunction& loss_func,
+      const bool compute_gradient,
+      SptensorT<ExecSpace>& Y,
+      ArrayT<ExecSpace>& w,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams)
+    {
+      const ttb_indx nnz = X.nnz();
+      const ttb_indx nd = X.ndims();
+
+      // Resize Y if necessary
+      const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
+      if (Y.nnz() < total_samples) {
+        Y = SptensorT<ExecSpace>(X.size(), total_samples);
+        w = ArrayT<ExecSpace>(total_samples);
+      }
+
+      // Parallel sampling on the device
+      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
+      typedef typename RandomPool::generator_type generator_type;
+      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
+      const ttb_indx nloops = algParams.rng_iters;
+
+      // Generate samples of nonzeros
+      const ttb_indx N_nonzeros = (num_samples_nonzeros+nloops-1)/nloops;
+      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
+                           KOKKOS_LAMBDA(const ttb_indx k)
+      {
+        generator_type gen = rand_pool.get_state();
+        for (ttb_indx l=0; l<nloops; ++l) {
+          const ttb_indx i = k*nloops+l;
+          if (i<num_samples_nonzeros) {
+            const ttb_indx idx = Rand::draw(gen,0,nnz);
+            const auto& ind = X.getSubscripts(idx);
+            if (compute_gradient) {
+              const ttb_real m_val = compute_Ktensor_value(u, ind);
+              Y.value(i) =
+                weight_nonzeros * ( loss_func.deriv(X.value(idx), m_val) -
+                                    loss_func.deriv(ttb_real(0.0), m_val) );
+            }
+            else {
+              Y.value(i) = X.value(idx);
+              w[i] = weight_nonzeros;
+            }
+            for (ttb_indx j=0; j<nd; ++j)
+              Y.subscript(i,j) = ind[j];
+          }
+        }
+        rand_pool.free_state(gen);
+      }, "Genten::GCP_SGD::Uniform_Sample_Nonzeros");
+
+      // Generate samples of zeros
+      const ttb_indx N_zeros = (num_samples_zeros+nloops-1)/nloops;
+      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_zeros),
+                           KOKKOS_LAMBDA(const ttb_indx k)
+      {
+        generator_type gen = rand_pool.get_state();
+        for (ttb_indx l=0; l<nloops; ++l) {
+          const ttb_indx i = k*nloops+l;
+          if (i<num_samples_zeros) {
+            const ttb_indx idx = num_samples_nonzeros + i;
+            for (ttb_indx j=0; j<nd; ++j)
+              Y.subscript(idx,j) = Rand::draw(gen,0,X.size(j));
+            if (compute_gradient) {
+              const auto& ind = Y.getSubscripts(idx);
+              const ttb_real m_val = compute_Ktensor_value(u, ind);
+              Y.value(idx) =
+                weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
+            }
+            else {
+              Y.value(idx) = 0.0;
+              w[idx] = weight_zeros;
+            }
+          }
+        }
+        rand_pool.free_state(gen);
+      }, "Genten::GCP_SGD::Uniform_Sample_Zeros");
+    }
+
+    template <typename ExecSpace, typename LossFunction>
+    void sample_tensor_nonzeros(
+      const SptensorT<ExecSpace>& X,
+      const ttb_indx offset,
+      const ttb_indx num_samples,
+      const ttb_real weight,
+      const KtensorT<ExecSpace>& u,
+      const LossFunction& loss_func,
+      const bool compute_gradient,
+      SptensorT<ExecSpace>& Y,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams)
     {
       const ttb_indx nnz = X.nnz();
       const ttb_indx nd = X.ndims();
@@ -295,7 +382,6 @@ namespace Genten {
       typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
       typedef typename RandomPool::generator_type generator_type;
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
-      RandomPool rand_pool(rng.genrnd_int32());
       const ttb_indx nloops = algParams.rng_iters;
       const ttb_indx N_nonzeros = (num_samples+nloops-1)/nloops;
       Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
@@ -325,14 +411,15 @@ namespace Genten {
     }
 
     template <typename ExecSpace, typename LossFunction>
-    void sample_tensor_nonzeros(const SptensorT<ExecSpace>& X,
-                                const ArrayT<ExecSpace>& w,
-                                const ttb_indx num_samples,
-                                const KtensorT<ExecSpace>& u,
-                                const LossFunction& loss_func,
-                                SptensorT<ExecSpace>& Y,
-                                RandomMT& rng,
-                                const AlgParams& algParams)
+    void sample_tensor_nonzeros(
+      const SptensorT<ExecSpace>& X,
+      const ArrayT<ExecSpace>& w,
+      const ttb_indx num_samples,
+      const KtensorT<ExecSpace>& u,
+      const LossFunction& loss_func,
+      SptensorT<ExecSpace>& Y,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams)
     {
       const ttb_indx nnz = X.nnz();
       const ttb_indx nd = X.ndims();
@@ -346,7 +433,6 @@ namespace Genten {
       typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
       typedef typename RandomPool::generator_type generator_type;
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
-      RandomPool rand_pool(rng.genrnd_int32());
       const ttb_indx nloops = algParams.rng_iters;
       const ttb_indx N_nonzeros = (num_samples+nloops-1)/nloops;
       Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
@@ -370,13 +456,14 @@ namespace Genten {
     }
 
     template <typename ExecSpace>
-    void sample_tensor_nonzeros(const SptensorT<ExecSpace>& X,
-                                const ArrayT<ExecSpace>& w,
-                                const ttb_indx num_samples,
-                                SptensorT<ExecSpace>& Y,
-                                ArrayT<ExecSpace>& z,
-                                RandomMT& rng,
-                                const AlgParams& algParams)
+    void sample_tensor_nonzeros(
+      const SptensorT<ExecSpace>& X,
+      const ArrayT<ExecSpace>& w,
+      const ttb_indx num_samples,
+      SptensorT<ExecSpace>& Y,
+      ArrayT<ExecSpace>& z,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams)
     {
       const ttb_indx nnz = X.nnz();
       const ttb_indx nd = X.ndims();
@@ -391,7 +478,6 @@ namespace Genten {
       typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
       typedef typename RandomPool::generator_type generator_type;
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
-      RandomPool rand_pool(rng.genrnd_int32());
       const ttb_indx nloops = algParams.rng_iters;
       const ttb_indx N_nonzeros = (num_samples+nloops-1)/nloops;
       Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
@@ -414,13 +500,14 @@ namespace Genten {
     }
 
     template <typename ExecSpace>
-    void sample_tensor_zeros(const SptensorT<ExecSpace>& X,
-                             const ttb_indx offset,
-                             const ttb_indx num_samples,
-                             SptensorT<ExecSpace>& Y,
-                             SptensorT<ExecSpace>& Z,
-                             RandomMT& rng,
-                             const AlgParams& algParams)
+    void sample_tensor_zeros(
+      const SptensorT<ExecSpace>& X,
+      const ttb_indx offset,
+      const ttb_indx num_samples,
+      SptensorT<ExecSpace>& Y,
+      SptensorT<ExecSpace>& Z,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams)
     {
       const ttb_indx nnz = X.nnz();
       const ttb_indx nd = X.ndims();
@@ -436,7 +523,6 @@ namespace Genten {
       typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
       typedef typename RandomPool::generator_type generator_type;
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
-      RandomPool rand_pool(rng.genrnd_int32());
       const ttb_indx nloops = algParams.rng_iters;
 
       // First generate oversample_factor*ns samples of potential zeros
@@ -664,7 +750,7 @@ namespace Genten {
     const bool compute_gradient,                                        \
     SptensorT<SPACE>& Y,                                                \
     ArrayT<SPACE>& w,                                                   \
-    RandomMT& rng,                                                      \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
     const AlgParams& algParams);                                        \
                                                                         \
   template void Impl::stratified_sample_tensor_hash(                    \
@@ -679,7 +765,21 @@ namespace Genten {
     const bool compute_gradient,                                        \
     SptensorT<SPACE>& Y,                                                \
     ArrayT<SPACE>& w,                                                   \
-    RandomMT& rng,                                                      \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template void Impl::semi_stratified_sample_tensor(                    \
+    const SptensorT<SPACE>& X,                                          \
+    const ttb_indx num_samples_nonzeros,                                \
+    const ttb_indx num_samples_zeros,                                   \
+    const ttb_real weight_nonzeros,                                     \
+    const ttb_real weight_zeros,                                        \
+    const KtensorT<SPACE>& u,                                           \
+    const LOSS& loss_func,                                              \
+    const bool compute_gradient,                                        \
+    SptensorT<SPACE>& Y,                                                \
+    ArrayT<SPACE>& w,                                                   \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
     const AlgParams& algParams);                                        \
                                                                         \
   template void Impl::sample_tensor_nonzeros(                           \
@@ -691,7 +791,7 @@ namespace Genten {
     const LOSS& loss_func,                                              \
     const bool compute_gradient,                                        \
     SptensorT<SPACE>& Y,                                                \
-    RandomMT& rng,                                                      \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
     const AlgParams& algParams);                                        \
                                                                         \
   template void Impl::sample_tensor_nonzeros(                           \
@@ -701,7 +801,7 @@ namespace Genten {
     const KtensorT<SPACE>& u,                                           \
     const LOSS& loss_func,                                              \
     SptensorT<SPACE>& Y,                                                \
-    RandomMT& rng,                                                      \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
     const AlgParams& algParams);
 
 #define INST_MACRO(SPACE)                                               \
@@ -717,7 +817,7 @@ namespace Genten {
     const ttb_indx num_samples,                                         \
     SptensorT<SPACE>& Y,                                                \
     ArrayT<SPACE>& z,                                                   \
-    RandomMT& rng,                                                      \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
     const AlgParams& algParams);                                        \
                                                                         \
   template void Impl::sample_tensor_zeros(                              \
@@ -726,7 +826,7 @@ namespace Genten {
     const ttb_indx num_samples,                                         \
     SptensorT<SPACE>& Y,                                                \
     SptensorT<SPACE>& Z,                                                \
-    RandomMT& rng,                                                      \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
     const AlgParams& algParams);                                        \
                                                                         \
   template void Impl::merge_sampled_tensors(                            \

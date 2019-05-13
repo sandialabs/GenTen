@@ -366,6 +366,44 @@ ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
   return m_val.sum();
 }
 
+// Compute Ktensor value using Sptensor subscripts
+// Len and WarpSize are for nested parallelism using TinyVec
+template <typename ExecSpace, unsigned Len, unsigned WarpSize,
+          typename IndexArray>
+KOKKOS_INLINE_FUNCTION
+ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
+                               const IndexArray& ind) {
+  typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Len, WarpSize> TV1;
+
+  /*const*/ unsigned nd = M.ndims();
+  /*const*/ unsigned nc = M.ncomponents();
+
+  TV1 m_val(Len,0.0);
+
+  auto row_func = [&](auto j, auto nj, auto Nj) {
+    typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Nj(), WarpSize> TV2;
+    TV2 tmp(nj, 0.0);
+    tmp.load(&(M.weights(j)));
+    for (unsigned m=0; m<nd; ++m) {
+      tmp *= &(M[m].entry(ind[m],j));
+    }
+    m_val += tmp;
+  };
+
+  for (unsigned j=0; j<nc; j+=Len) {
+    if (j+Len < nc) {
+      const unsigned nj = Len;
+      row_func(j, nj, std::integral_constant<unsigned,Len>());
+    }
+    else {
+      const unsigned nj = nc-j;
+      row_func(j, nj, std::integral_constant<unsigned,0>());
+    }
+  }
+
+  return m_val.sum();
+}
+
 // Compute Ktensor value using supplied subscripts
 // Assumes flat parallelism
 template <typename ExecSpace, typename IndexArray>

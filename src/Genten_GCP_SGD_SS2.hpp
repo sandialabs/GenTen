@@ -40,36 +40,21 @@
 
 #pragma once
 
+#include <ostream>
+
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
-#include "Genten_Array.hpp"
 #include "Genten_AlgParams.hpp"
-
-#include "Kokkos_Random.hpp"
 
 namespace Genten {
 
-  namespace Impl {
-
-    template <typename ExecSpace, typename loss_type>
-    void gcp_sgd_hogwild(
-      const SptensorT<ExecSpace>& X,
-      const KtensorT<ExecSpace>& u,
-      const ArrayT<ExecSpace>& w,
-      const loss_type& f,
-      const ttb_indx num_samples,
-      const ttb_real step,
-      const ttb_real beta1,
-      const ttb_real beta2,
-      const ttb_real beta1t,
-      const ttb_real beta2t,
-      const ttb_real eps,
-      const bool use_adam,
-      KtensorT<ExecSpace>& g,
-      KtensorT<ExecSpace>& v,
-      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
-      const AlgParams& algParams);
-
-  }
+  //! Compute the generalized CP decomposition of a tensor using SGD approach
+  template<typename TensorT, typename ExecSpace>
+  void gcp_sgd_ss2 (TensorT& x,
+                    KtensorT<ExecSpace>& u,
+                    const AlgParams& algParams,
+                    ttb_indx& numIters,
+                    ttb_real& resNorm,
+                    std::ostream& out);
 
 }

@@ -255,19 +255,20 @@ namespace Genten {
       SptensorT<ExecSpace> X_val, X_grad;
       ArrayT<ExecSpace> w_val, w_grad;
       RandomMT rng(seed);
+      Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(rng.genrnd_int32());
       timer.start(timer_sample_f);
 #if USE_HASH_MAP
       Impl::stratified_sample_tensor_hash(
         X, hash_map, num_samples_nonzeros_value, num_samples_zeros_value,
         weight_nonzeros_value, weight_zeros_value,
         u, loss_func, false,
-        X_val, w_val, rng, algParams);
+        X_val, w_val, rand_pool, algParams);
 #else
       Impl::stratified_sample_tensor(
         X, num_samples_nonzeros_value, num_samples_zeros_value,
         weight_nonzeros_value, weight_zeros_value,
         u, loss_func, false,
-        X_val, w_val, rng, algParams);
+        X_val, w_val, rand_pool, algParams);
 #endif
       timer.stop(timer_sample_f);
 
@@ -327,13 +328,13 @@ namespace Genten {
             X, hash_map, num_samples_nonzeros_grad, num_samples_zeros_grad,
             weight_nonzeros_grad, weight_zeros_grad,
             u, loss_func, true,
-            X_grad, w_grad, rng, algParams);
+            X_grad, w_grad, rand_pool, algParams);
 #else
           Impl::stratified_sample_tensor(
             X, num_samples_nonzeros_grad, num_samples_zeros_grad,
             weight_nonzeros_grad, weight_zeros_grad,
             u, loss_func, true,
-            X_grad, w_grad, rng, algParams);
+            X_grad, w_grad, rand_pool, algParams);
 #endif
           timer.stop(timer_sample_g_z_nz);
           timer.start(timer_sample_g_perm);

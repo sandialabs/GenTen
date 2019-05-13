@@ -55,6 +55,8 @@
 #include "Genten_GCP_SGD2.hpp"
 #include "Genten_GCP_SGD2_HogWild.hpp"
 #include "Genten_GCP_SGD3.hpp"
+#include "Genten_GCP_SGD_SS.hpp"
+#include "Genten_GCP_SGD_SS2.hpp"
 #ifdef HAVE_ROL
 #include "Genten_GCP_Opt.hpp"
 #include "Teuchos_RCP.hpp"
@@ -158,6 +160,12 @@ driver(SptensorT<ExecSpace>& x,
   const bool do_gcp_sgd3 =
     algParams.method == "GCP-SGD3" || algParams.method == "gcp_sgd3" ||
     algParams.method == "gcp-sgd3";
+  const bool do_gcp_sgd_ss =
+    algParams.method == "GCP-SGD-SS" || algParams.method == "gcp_sgd_ss" ||
+    algParams.method == "gcp-sgd-ss";
+  const bool do_gcp_sgd_ss2 =
+    algParams.method == "GCP-SGD-SS2" || algParams.method == "gcp_sgd_ss2" ||
+    algParams.method == "gcp-sgd-ss2";
   const bool do_gcp_opt =
     algParams.method == "GCP-OPT" || algParams.method == "gcp_opt" ||
     algParams.method == "gcp-opt";
@@ -192,6 +200,18 @@ driver(SptensorT<ExecSpace>& x,
     ttb_indx iter;
     ttb_real resNorm;
     gcp_sgd3(x, u, algParams, iter, resNorm, out);
+  }
+  else if (do_gcp_sgd_ss) {
+    // Run GCP-SGD
+    ttb_indx iter;
+    ttb_real resNorm;
+    gcp_sgd_ss(x, u, algParams, iter, resNorm, out);
+  }
+  else if (do_gcp_sgd_ss2) {
+    // Run GCP-SGD
+    ttb_indx iter;
+    ttb_real resNorm;
+    gcp_sgd_ss2(x, u, algParams, iter, resNorm, out);
   }
 #ifdef HAVE_ROL
   else if (do_gcp_opt) {

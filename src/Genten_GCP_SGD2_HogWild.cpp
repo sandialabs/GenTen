@@ -204,12 +204,13 @@ namespace Genten {
       SptensorT<ExecSpace> X_val, X_bulk;
       ArrayT<ExecSpace> w_val, w_bulk;
       RandomMT rng(seed);
+      Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(rng.genrnd_int32());
       timer.start(timer_sample_f);
       Impl::stratified_sample_tensor(
         X, num_samples_nonzeros_value, num_samples_zeros_value,
         weight_nonzeros_value, weight_zeros_value,
         u, loss_func, false,
-        X_val, w_val, rng, algParams);
+        X_val, w_val, rand_pool, algParams);
       timer.stop(timer_sample_f);
 
       // Objective estimates
@@ -256,7 +257,7 @@ namespace Genten {
           algParams.bulk_factor*num_samples_zeros_grad,
           weight_nonzeros_grad, weight_zeros_grad,
           u, loss_func, false,
-          X_bulk, w_bulk, rng, algParams);
+          X_bulk, w_bulk, rand_pool, algParams);
         timer.stop(timer_sample_g);
 
         // Parallel epoch iterations
@@ -265,7 +266,7 @@ namespace Genten {
           X_bulk, u, w_bulk, loss_func,
           (num_samples_nonzeros_grad+num_samples_zeros_grad)*epoch_iters,
           step, beta1, beta2, beta1t, beta2t, eps, use_adam, adam_m, adam_v,
-          rng, algParams);
+          rand_pool, algParams);
         beta1t *= pow(beta1,epoch_iters);
         beta2t *= pow(beta2,epoch_iters);
         total_iters += epoch_iters;
