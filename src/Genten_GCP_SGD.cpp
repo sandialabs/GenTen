@@ -222,6 +222,8 @@ namespace Genten {
         if (hash_map.insert(a, X.value(i)).failed())
           Kokkos::abort("Hash map insert failed!");
       }, "Genten::GCP_SGD::hash_kernel");
+      if (algParams.fence)
+        Kokkos::fence();
       timer.stop(timer_sort);
       if (printIter > 0)
         out << timer.getTotalTime(timer_sort) << " seconds" << std::endl;
@@ -245,6 +247,8 @@ namespace Genten {
           out << "Sorting tensor for faster sampling...";
         timer.start(timer_sort);
         X.sort();
+        if (algParams.fence)
+          Kokkos::fence();
         timer.stop(timer_sort);
         if (printIter > 0)
           out << timer.getTotalTime(timer_sort) << " seconds" << std::endl;
@@ -270,6 +274,8 @@ namespace Genten {
         u, loss_func, false,
         X_val, w_val, rand_pool, algParams);
 #endif
+      if (algParams.fence)
+        Kokkos::fence();
       timer.stop(timer_sample_f);
 
       // Objective estimates
@@ -336,10 +342,15 @@ namespace Genten {
             u, loss_func, true,
             X_grad, w_grad, rand_pool, algParams);
 #endif
+          if (algParams.fence)
+            Kokkos::fence();
           timer.stop(timer_sample_g_z_nz);
           timer.start(timer_sample_g_perm);
-          if (algParams.mttkrp_method == MTTKRP_Method::Perm)
+          if (algParams.mttkrp_method == MTTKRP_Method::Perm) {
             X_grad.createPermutation();
+            if (algParams.fence)
+              Kokkos::fence();
+          }
           timer.stop(timer_sample_g_perm);
           timer.stop(timer_sample_g);
 
@@ -351,6 +362,8 @@ namespace Genten {
             g.weights() = 1.0;
             for (unsigned m=0; m<nd; ++m)
               mttkrp(X_grad, u, m, g[m], algParams);
+            if (algParams.fence)
+              Kokkos::fence();
             timer.stop(timer_grad);
 
             // take step
@@ -375,6 +388,8 @@ namespace Genten {
                 });
               }
             }
+            if (algParams.fence)
+              Kokkos::fence();
             timer.stop(timer_step);
 
             // clip solution to handle constraints
@@ -390,6 +405,8 @@ namespace Genten {
                   uv(i,j) = uu < lb ? lb : (uu > ub ? ub : uu);
                 });
               }
+              if (algParams.fence)
+                Kokkos::fence();
             }
             timer.stop(timer_clip);
           }
@@ -460,34 +477,36 @@ namespace Genten {
       timer.stop(timer_sgd);
 
       if (printIter > 0) {
-         out << "GCP-SGD completed " << total_iters << " iterations in "
-             << timer.getTotalTime(timer_sgd) << " seconds" << std::endl
-             << "\tsort/hash: " << timer.getTotalTime(timer_sort)
-             << " seconds\n"
-             << "\tsample-f:  " << timer.getTotalTime(timer_sample_f)
-             << " seconds\n"
-             << "\tsample-g:  " << timer.getTotalTime(timer_sample_g)
-             << " seconds\n"
-             << "\t\tzs/nzs:   " << timer.getTotalTime(timer_sample_g_z_nz)
-             << " seconds\n"
-             << "\t\tperm:     " << timer.getTotalTime(timer_sample_g_perm)
-             << " seconds\n"
-             << "\tf-est:     " << timer.getTotalTime(timer_fest)
-             << " seconds\n"
-             << "\tgradient:  " << timer.getTotalTime(timer_grad)
-             << " seconds\n"
-             << "\tstep:      " << timer.getTotalTime(timer_step)
-             << " seconds\n"
-             << "\tclip:      " << timer.getTotalTime(timer_clip)
-             << " seconds\n"
-             << "Final f-est: "
-             << std::setw(13) << std::setprecision(6) << std::scientific
-             << fest;
-         if (compute_fit)
-           out << ", fit: "
-               << std::setw(10) << std::setprecision(3) << std::scientific
-               << fit;
-         out << std::endl;
+        out << "GCP-SGD completed " << total_iters << " iterations in "
+            << timer.getTotalTime(timer_sgd) << " seconds" << std::endl
+            << "\tsort/hash: " << timer.getTotalTime(timer_sort)
+            << " seconds\n"
+            << "\tsample-f:  " << timer.getTotalTime(timer_sample_f)
+            << " seconds\n"
+            << "\tsample-g:  " << timer.getTotalTime(timer_sample_g)
+            << " seconds\n"
+            << "\t\tzs/nzs:   " << timer.getTotalTime(timer_sample_g_z_nz)
+            << " seconds\n"
+            << "\t\tperm:     " << timer.getTotalTime(timer_sample_g_perm)
+            << " seconds\n"
+            << "\tf-est:     " << timer.getTotalTime(timer_fest)
+            << " seconds\n"
+            << "\tgradient:  " << timer.getTotalTime(timer_grad)
+            << " seconds\n"
+            << "\tstep:      " << timer.getTotalTime(timer_step)
+            << " seconds\n"
+            << "\tclip:      " << timer.getTotalTime(timer_clip)
+            << " seconds\n"
+            << "Final f-est: "
+            << std::setw(13) << std::setprecision(6) << std::scientific
+            << fest;
+        if (compute_fit)
+          out << ", fit: "
+              << std::setw(10) << std::setprecision(3) << std::scientific
+              << fit;
+        out << std::endl;
+        if (!algParams.fence)
+          out << "WARNING:  Not fencing at parallel kernels.  Timings may be very inaccruate!  Run with --fence to add fences for accurate timings (but may increase total run time)." << std::endl;
       }
 
       // Normalize Ktensor u

@@ -206,6 +206,8 @@ namespace Genten {
           out << "Sorting tensor for faster sampling...";
         timer.start(timer_sort);
         X.sort();
+        if (algParams.fence)
+          Kokkos::fence();
         timer.stop(timer_sort);
         if (printIter > 0)
           out << timer.getTotalTime(timer_sort) << " seconds" << std::endl;
@@ -222,6 +224,8 @@ namespace Genten {
         weight_nonzeros_value, weight_zeros_value,
         u, loss_func, false,
         X_val, w_val, rand_pool, algParams);
+      if (algParams.fence)
+        Kokkos::fence();
       timer.stop(timer_sample_f);
 
       // Objective estimates
@@ -280,12 +284,16 @@ namespace Genten {
             timer.start(timer_grad_init);
             g.setMatrices(0.0);
             g.weights() = 1.0;
+            if (algParams.fence)
+              Kokkos::fence();
             timer.stop(timer_grad_init);
             gcp_sgd_ss_grad_atomic(
               X, u, loss_func,
               num_samples_nonzeros_grad, num_samples_zeros_grad,
               weight_nonzeros_grad, weight_zeros_grad,
               g, rand_pool, algParams, timer, timer_grad_nzs, timer_grad_zs);
+            if (algParams.fence)
+              Kokkos::fence();
             timer.stop(timer_grad);
 
             // take step
@@ -310,6 +318,8 @@ namespace Genten {
                 });
               }
             }
+            if (algParams.fence)
+              Kokkos::fence();
             timer.stop(timer_step);
 
             // clip solution to handle constraints
@@ -325,6 +335,8 @@ namespace Genten {
                   uv(i,j) = uu < lb ? lb : (uu > ub ? ub : uu);
                 });
               }
+              if (algParams.fence)
+                Kokkos::fence();
             }
             timer.stop(timer_clip);
           }
@@ -423,6 +435,8 @@ namespace Genten {
                << std::setw(10) << std::setprecision(3) << std::scientific
                << fit;
          out << std::endl;
+         if (!algParams.fence)
+          out << "WARNING:  Not fencing at parallel kernels.  Timings may be very inaccruate!  Run with --fence to add fences for accurate timings (but may increase total run time)." << std::endl;
       }
 
       // Normalize Ktensor u

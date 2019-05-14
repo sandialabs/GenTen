@@ -318,6 +318,8 @@ namespace Genten {
         } // i
         rand_pool.free_state(gen);
       }, "gcp_sgd_ss_grad_atomic_nonzero_kernel");
+      if (algParams.fence)
+        Kokkos::fence();
       timer.stop(timer_nzs);
 
       timer.start(timer_zs);
@@ -375,6 +377,8 @@ namespace Genten {
         } // i
         rand_pool.free_state(gen);
       }, "gcp_sgd_ss_grad_atomic_zero_kernel");
+      if (algParams.fence)
+        Kokkos::fence();
       timer.stop(timer_zs);
     }
 

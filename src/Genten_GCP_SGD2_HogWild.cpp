@@ -195,6 +195,8 @@ namespace Genten {
           out << "Sorting tensor for faster sampling...";
         timer.start(timer_sort);
         X.sort();
+        if (algParams.fence)
+          Kokkos::fence();
         timer.stop(timer_sort);
         if (printIter > 0)
           out << timer.getTotalTime(timer_sort) << " seconds" << std::endl;
@@ -211,6 +213,8 @@ namespace Genten {
         weight_nonzeros_value, weight_zeros_value,
         u, loss_func, false,
         X_val, w_val, rand_pool, algParams);
+      if (algParams.fence)
+        Kokkos::fence();
       timer.stop(timer_sample_f);
 
       // Objective estimates
@@ -258,6 +262,8 @@ namespace Genten {
           weight_nonzeros_grad, weight_zeros_grad,
           u, loss_func, false,
           X_bulk, w_bulk, rand_pool, algParams);
+        if (algParams.fence)
+          Kokkos::fence();
         timer.stop(timer_sample_g);
 
         // Parallel epoch iterations
@@ -270,6 +276,8 @@ namespace Genten {
         beta1t *= pow(beta1,epoch_iters);
         beta2t *= pow(beta2,epoch_iters);
         total_iters += epoch_iters;
+        if (algParams.fence)
+          Kokkos::fence();
         timer.stop(timer_grad);
 
         // compute objective estimate
@@ -337,23 +345,25 @@ namespace Genten {
       timer.stop(timer_sgd);
 
       if (printIter > 0) {
-         out << "GCP-SGD completed " << total_iters << " iterations in "
-             << timer.getTotalTime(timer_sgd) << " seconds" << std::endl
-             << "\tsort:     " << timer.getTotalTime(timer_sort) << " seconds\n"
-             << "\tsample-f: " << timer.getTotalTime(timer_sample_f)
-             << " seconds\n"
-             << "\tsample-g: " << timer.getTotalTime(timer_sample_g)
-             << " seconds\n"
-             << "\tf-est:    " << timer.getTotalTime(timer_fest) << " seconds\n"
-             << "\tgradient: " << timer.getTotalTime(timer_grad) << " seconds\n"
-             << "Final f-est: "
-             << std::setw(13) << std::setprecision(6) << std::scientific
-             << fest;
-         if (compute_fit)
-           out << ", fit: "
-               << std::setw(10) << std::setprecision(3) << std::scientific
-               << fit;
-         out << std::endl;
+        out << "GCP-SGD completed " << total_iters << " iterations in "
+            << timer.getTotalTime(timer_sgd) << " seconds" << std::endl
+            << "\tsort:     " << timer.getTotalTime(timer_sort) << " seconds\n"
+            << "\tsample-f: " << timer.getTotalTime(timer_sample_f)
+            << " seconds\n"
+            << "\tsample-g: " << timer.getTotalTime(timer_sample_g)
+            << " seconds\n"
+            << "\tf-est:    " << timer.getTotalTime(timer_fest) << " seconds\n"
+            << "\tgradient: " << timer.getTotalTime(timer_grad) << " seconds\n"
+            << "Final f-est: "
+            << std::setw(13) << std::setprecision(6) << std::scientific
+            << fest;
+        if (compute_fit)
+          out << ", fit: "
+              << std::setw(10) << std::setprecision(3) << std::scientific
+              << fit;
+        out << std::endl;
+        if (!algParams.fence)
+          out << "WARNING:  Not fencing at parallel kernels.  Timings may be very inaccruate!  Run with --fence to add fences for accurate timings (but may increase total run time)." << std::endl;
       }
 
       // Normalize Ktensor u

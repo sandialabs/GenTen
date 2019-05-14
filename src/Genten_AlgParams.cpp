@@ -52,6 +52,7 @@ Genten::AlgParams::AlgParams() :
   tol(0.0004),
   printitn(1),
   debug(false),
+  fence(false),
   mttkrp_method(MTTKRP_Method::default_type),
   mttkrp_duplicated_factor_matrix_tile_size(0),
   loss_function_type(Genten::GCP_LossFunction::default_type),
@@ -94,6 +95,7 @@ void Genten::AlgParams::parse(int argc, char* argv[])
   tol = parse_ttb_real(argc, argv, "--tol", tol, 0.0, 1.0);
   printitn = parse_ttb_indx(argc, argv, "--printitn", printitn, 0, INT_MAX);
   debug = parse_ttb_bool(argc, argv, "--debug", "--no-debug", debug);
+  fence = parse_ttb_bool(argc, argv, "--fence", "--no-fence", fence);
 
   // MTTKRP options
   mttkrp_method = parse_ttb_enum(argc, argv, "--mttkrp_method", mttkrp_method,
@@ -160,6 +162,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --tol <float>      stopping tolerance" << std::endl;
   out << "  --printitn <int>   print every <int>th iteration; 0 for no printing" << std::endl;
   out << "  --debug            turn on debugging output" << std::endl;
+  out << "  --fence            add parallel fences for accurate timings (but may increase total run time)" << std::endl;
 
   out << std::endl;
   out << "MTTKRP options:" << std::endl;
@@ -229,6 +232,7 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  tol = " << tol << std::endl;
   out << "  printitn = " << printitn << std::endl;
   out << "  debug = " << (debug ? "true" : "false") << std::endl;
+  out << "  fence = " << (fence ? "true" : "false") << std::endl;
 
   out << std::endl;
   out << "MTTKRP options:" << std::endl;
