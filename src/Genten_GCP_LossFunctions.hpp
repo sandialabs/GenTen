@@ -63,10 +63,10 @@ namespace Genten {
       return ttb_real(-2.0)*d;
     }
 
-    KOKKOS_INLINE_FUNCTION bool has_lower_bound() const { return false; }
-    KOKKOS_INLINE_FUNCTION bool has_upper_bound() const { return false; }
-    KOKKOS_INLINE_FUNCTION ttb_real lower_bound() const { return -DOUBLE_MAX; }
-    KOKKOS_INLINE_FUNCTION ttb_real upper_bound() const { return  DOUBLE_MAX; }
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_lower_bound() { return false; }
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_upper_bound() { return false; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real lower_bound() { return -DOUBLE_MAX; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real upper_bound() { return  DOUBLE_MAX; }
   };
 
   class RayleighLossFunction {
@@ -86,10 +86,10 @@ namespace Genten {
       return ttb_real(2.0)*(ttb_real(1.0)/me - pi_over_4*(x/me)*(x/(me*me)));
     }
 
-    KOKKOS_INLINE_FUNCTION bool has_lower_bound() const { return true; }
-    KOKKOS_INLINE_FUNCTION bool has_upper_bound() const { return false; }
-    KOKKOS_INLINE_FUNCTION ttb_real lower_bound() const { return 0.0; }
-    KOKKOS_INLINE_FUNCTION ttb_real upper_bound() const { return DOUBLE_MAX; }
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_lower_bound() { return true; }
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_upper_bound() { return false; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real lower_bound() { return 0.0; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real upper_bound() { return DOUBLE_MAX; }
 
   private:
     ttb_real eps;
@@ -112,10 +112,10 @@ namespace Genten {
       return -x/(me*me) + 1.0/me;
     }
 
-    KOKKOS_INLINE_FUNCTION bool has_lower_bound() const { return true; }
-    KOKKOS_INLINE_FUNCTION bool has_upper_bound() const { return false; }
-    KOKKOS_INLINE_FUNCTION ttb_real lower_bound() const { return 0.0; }
-    KOKKOS_INLINE_FUNCTION ttb_real upper_bound() const { return DOUBLE_MAX; }
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_lower_bound() { return true; }
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_upper_bound() { return false; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real lower_bound() { return 0.0; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real upper_bound() { return DOUBLE_MAX; }
 
   private:
     ttb_real eps;
@@ -137,10 +137,10 @@ namespace Genten {
       return ttb_real(1.0)/(m+ttb_real(1.0)) - x/(m+eps);
     }
 
-    KOKKOS_INLINE_FUNCTION bool has_lower_bound() const { return true; }
-    KOKKOS_INLINE_FUNCTION bool has_upper_bound() const { return true; }
-    KOKKOS_INLINE_FUNCTION ttb_real lower_bound() const { return 0.0; }
-    KOKKOS_INLINE_FUNCTION ttb_real upper_bound() const { return 1.0; }
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_lower_bound() { return true; }
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_upper_bound() { return true; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real lower_bound() { return 0.0; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real upper_bound() { return 1.0; }
 
   private:
     ttb_real eps;
@@ -160,10 +160,10 @@ namespace Genten {
       return ttb_real(1.0) - x/(m+eps);
     }
 
-    KOKKOS_INLINE_FUNCTION bool has_lower_bound() const { return true; }
-    KOKKOS_INLINE_FUNCTION bool has_upper_bound() const { return false; }
-    KOKKOS_INLINE_FUNCTION ttb_real lower_bound() const { return 0.0; }
-    KOKKOS_INLINE_FUNCTION ttb_real upper_bound() const { return DOUBLE_MAX; }
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_lower_bound() { return true; }
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_upper_bound() { return false; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real lower_bound() { return 0.0; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real upper_bound() { return DOUBLE_MAX; }
 
   private:
     ttb_real eps;
@@ -189,10 +189,10 @@ namespace Genten {
       return exp(m)/(exp(m)+ttb_real(1.0)) - x;
     }
 
-    KOKKOS_INLINE_FUNCTION bool has_lower_bound() const { return false; }
-    KOKKOS_INLINE_FUNCTION bool has_upper_bound() const { return false; }
-    KOKKOS_INLINE_FUNCTION ttb_real lower_bound() const { return -DOUBLE_MAX; }
-    KOKKOS_INLINE_FUNCTION ttb_real upper_bound() const { return  DOUBLE_MAX; }
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_lower_bound() { return false; }
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_upper_bound() { return false; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real lower_bound() { return -DOUBLE_MAX; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real upper_bound() { return  DOUBLE_MAX; }
   };
 
   class PoissonLossFunction {
@@ -211,10 +211,10 @@ namespace Genten {
       return exp(m) - x;
     }
 
-    KOKKOS_INLINE_FUNCTION bool has_lower_bound() const { return false; }
-    KOKKOS_INLINE_FUNCTION bool has_upper_bound() const { return false; }
-    KOKKOS_INLINE_FUNCTION ttb_real lower_bound() const { return -DOUBLE_MAX; }
-    KOKKOS_INLINE_FUNCTION ttb_real upper_bound() const { return  DOUBLE_MAX; }
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_lower_bound() { return false; }
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_upper_bound() { return false; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real lower_bound() { return -DOUBLE_MAX; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real upper_bound() { return  DOUBLE_MAX; }
   };
 
 #endif

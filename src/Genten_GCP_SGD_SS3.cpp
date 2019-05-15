@@ -140,6 +140,12 @@ namespace Genten {
         weight_zeros_grad =
           ttb_real(tsz) / ttb_real(num_samples_zeros_grad);
 
+      // bounds
+      constexpr bool has_bounds = (LossFunction::has_lower_bound() ||
+                                   LossFunction::has_upper_bound());
+      constexpr ttb_real lb = LossFunction::lower_bound();
+      constexpr ttb_real ub = LossFunction::upper_bound();
+
       if (printIter > 0) {
         out << "Starting GCP-SGD" << std::endl
             << "\tNum samples f: " << num_samples_nonzeros_value <<" nonzeros, "
@@ -162,8 +168,7 @@ namespace Genten {
       const int timer_grad_zs = 6;
       const int timer_grad_init = 7;
       const int timer_step = 8;
-      const int timer_clip = 9;
-      SystemTimer timer(10);
+      SystemTimer timer(9);
 
       // Start timer for total execution time of the algorithm.
       timer.start(timer_sgd);
@@ -294,7 +299,7 @@ namespace Genten {
               Kokkos::fence();
             timer.stop(timer_grad);
 
-            // take step
+            // take step and clip for bounds
             timer.start(timer_step);
             view_type uv = u.getView();
             view_type gv = g.getView();
@@ -305,33 +310,26 @@ namespace Genten {
               {
                 mv(i) = beta1*mv(i) + (1.0-beta1)*gv(i);
                 vv(i) = beta2*vv(i) + (1.0-beta2)*gv(i)*gv(i);
-                uv(i) -= adam_step*mv(i)/sqrt(vv(i)+eps);
+                ttb_real uu = uv(i);
+                uu -= adam_step*mv(i)/sqrt(vv(i)+eps);
+                if (has_bounds)
+                  uu = uu < lb ? lb : (uu > ub ? ub : uu);
+                uv(i) = uu;
               });
             }
             else {
               u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
               {
-                uv(i) -= step*gv(i);
+                ttb_real uu = uv(i);
+                uu -= step*gv(i);
+                if (has_bounds)
+                  uu = uu < lb ? lb : (uu > ub ? ub : uu);
+                uv(i) = uu;
               });
             }
             if (algParams.fence)
               Kokkos::fence();
             timer.stop(timer_step);
-
-            // clip solution to handle constraints
-            timer.start(timer_clip);
-            if (loss_func.has_lower_bound() || loss_func.has_upper_bound()) {
-              const ttb_real lb = loss_func.lower_bound();
-              const ttb_real ub = loss_func.upper_bound();
-              u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
-              {
-                const ttb_real uu = uv(i);
-                uv(i) = uu < lb ? lb : (uu > ub ? ub : uu);
-              });
-              if (algParams.fence)
-                Kokkos::fence();
-            }
-            timer.stop(timer_clip);
           }
         }
 
@@ -416,9 +414,7 @@ namespace Genten {
             << " seconds\n"
              << "\t\tzs:      " << timer.getTotalTime(timer_grad_zs)
             << " seconds\n"
-            << "\tstep:      " << timer.getTotalTime(timer_step)
-            << " seconds\n"
-            << "\tclip:      " << timer.getTotalTime(timer_clip)
+            << "\tstep/clip:  " << timer.getTotalTime(timer_step)
             << " seconds\n"
             << "Final f-est: "
             << std::setw(13) << std::setprecision(6) << std::scientific
