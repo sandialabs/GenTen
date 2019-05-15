@@ -50,37 +50,34 @@
 #include "Genten_RandomMT.hpp"
 #include "Genten_GCP_ValueKernels.hpp"
 #include "Genten_GCP_SamplingKernels.hpp"
+#include "Genten_GCP_KokkosVector.hpp"
 #include "Genten_MixedFormatOps.hpp"
 
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
 #endif
 
-// Version of gcp_sgd_ss optimized for atomics.  This calls a customized
-// gradient routine that samples from the gradient tensor and does the MTTKRP
-// in one fused kernel.  This is faster because all modes are computed for
-// each tensor nonzero, rather than doing a full MTTKRP in each mode
-// sequentially.
+// Version of gcp_sgd_ss that fuses gradient sampling with atomic-MTTKRP
 
 namespace Genten {
 
   namespace Impl {
 
     template<typename TensorT, typename ExecSpace, typename LossFunction>
-    void gcp_sgd_ss2_impl(TensorT& X, KtensorT<ExecSpace>& u,
+    void gcp_sgd_ss2_impl(TensorT& X, KtensorT<ExecSpace>& u0,
                           const LossFunction& loss_func,
                           const AlgParams& algParams,
                           ttb_indx& numEpochs,
                           ttb_real& fest,
                           std::ostream& out)
     {
-      typedef FacMatrixT<ExecSpace> fac_matrix_type;
-      typedef typename fac_matrix_type::view_type view_type;
+      typedef GCP::KokkosVector<ExecSpace> VectorType;
+      typedef typename VectorType::view_type view_type;
       using std::sqrt;
       using std::pow;
 
-      const ttb_indx nd = u.ndims();
-      const ttb_indx nc = u.ncomponents();
+      const ttb_indx nd = u0.ndims();
+      const ttb_indx nc = u0.ncomponents();
 
       // Constants for the algorithm
       const ttb_real tol = algParams.tol;
@@ -142,6 +139,12 @@ namespace Genten {
         weight_zeros_grad =
           ttb_real(tsz) / ttb_real(num_samples_zeros_grad);
 
+      // bounds
+      constexpr bool has_bounds = (LossFunction::has_lower_bound() ||
+                                   LossFunction::has_upper_bound());
+      constexpr ttb_real lb = LossFunction::lower_bound();
+      constexpr ttb_real ub = LossFunction::upper_bound();
+
       if (printIter > 0) {
         out << "Starting GCP-SGD" << std::endl
             << "\tNum samples f: " << num_samples_nonzeros_value <<" nonzeros, "
@@ -164,40 +167,39 @@ namespace Genten {
       const int timer_grad_zs = 6;
       const int timer_grad_init = 7;
       const int timer_step = 8;
-      const int timer_clip = 9;
-      SystemTimer timer(10);
+      SystemTimer timer(9);
 
       // Start timer for total execution time of the algorithm.
       timer.start(timer_sgd);
 
       // Distribute the initial guess to have weights of one.
-      u.normalize(Genten::NormTwo);
-      u.distribute();
+      u0.normalize(Genten::NormTwo);
+      u0.distribute();
+
+      // Ktensor-vector for solution
+      VectorType u(u0);
+      u.copyFromKtensor(u0);
+      KtensorT<ExecSpace> ut = u.getKtensor();
 
       // Gradient Ktensor
-      KtensorT<ExecSpace> g(nc, nd);
-      for (ttb_indx m=0; m<nd; ++m)
-        g.set_factor(m, fac_matrix_type(u[m].nRows(), nc));
+      VectorType g = u.clone();
+      KtensorT<ExecSpace> gt = g.getKtensor();
 
       // Copy Ktensor for restoring previous solution
-      KtensorT<ExecSpace> u_prev(nc, nd);
-      for (ttb_indx m=0; m<nd; ++m)
-        u_prev.set_factor(m, fac_matrix_type(u[m].nRows(), nc));
-      deep_copy(u_prev, u);
+      VectorType u_prev = u.clone();
+      u_prev.set(u);
 
       // ADAM first (m) and second (v) moment vectors
-      KtensorT<ExecSpace> adam_m, adam_v, adam_m_prev, adam_v_prev;
+      VectorType adam_m, adam_v, adam_m_prev, adam_v_prev;
       if (use_adam) {
-        adam_m = KtensorT<ExecSpace>(nc, nd);
-        adam_v = KtensorT<ExecSpace>(nc, nd);
-        adam_m_prev = KtensorT<ExecSpace>(nc, nd);
-        adam_v_prev = KtensorT<ExecSpace>(nc, nd);
-        for (ttb_indx m=0; m<nd; ++m) {
-          adam_m.set_factor(m, fac_matrix_type(u[m].nRows(), nc));
-          adam_v.set_factor(m, fac_matrix_type(u[m].nRows(), nc));
-          adam_m_prev.set_factor(m, fac_matrix_type(u[m].nRows(), nc));
-          adam_v_prev.set_factor(m, fac_matrix_type(u[m].nRows(), nc));
-        }
+        adam_m = u.clone();
+        adam_v = u.clone();
+        adam_m_prev = u.clone();
+        adam_v_prev = u.clone();
+        adam_m.zero();
+        adam_v.zero();
+        adam_m_prev.zero();
+        adam_v_prev.zero();
       }
 
       // Sort tensor if necessary (for f-est sampling)
@@ -222,7 +224,7 @@ namespace Genten {
       Impl::stratified_sample_tensor(
         X, num_samples_nonzeros_value, num_samples_zeros_value,
         weight_nonzeros_value, weight_zeros_value,
-        u, loss_func, false,
+        ut, loss_func, false,
         X_val, w_val, rand_pool, algParams);
       if (algParams.fence)
         Kokkos::fence();
@@ -232,11 +234,11 @@ namespace Genten {
       ttb_real fit = 0.0;
       ttb_real x_norm = 0.0;
       timer.start(timer_fest);
-      fest = Impl::gcp_value(X_val, u, w_val, loss_func);
+      fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
       if (compute_fit) {
         x_norm = X.norm();
         ttb_real u_norm = u.normFsq();
-        ttb_real dot = innerprod(X, u);
+        ttb_real dot = innerprod(X, ut);
         fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
       }
       timer.stop(timer_fest);
@@ -282,72 +284,60 @@ namespace Genten {
             // compute gradient
             timer.start(timer_grad);
             timer.start(timer_grad_init);
-            g.setMatrices(0.0);
-            g.weights() = 1.0;
+            g.zero();
             if (algParams.fence)
               Kokkos::fence();
             timer.stop(timer_grad_init);
             gcp_sgd_ss_grad_atomic(
-              X, u, loss_func,
+              X, ut, loss_func,
               num_samples_nonzeros_grad, num_samples_zeros_grad,
               weight_nonzeros_grad, weight_zeros_grad,
-              g, rand_pool, algParams, timer, timer_grad_nzs, timer_grad_zs);
+              gt, rand_pool, algParams,
+              timer, timer_grad_nzs, timer_grad_zs);
             if (algParams.fence)
               Kokkos::fence();
             timer.stop(timer_grad);
 
-            // take step
+            // take step and clip for bounds
             timer.start(timer_step);
-            for (ttb_indx m=0; m<nd; ++m) {
-              view_type uv = u[m].view();
-              view_type gv = g[m].view();
-              if (use_adam) {
-                view_type mv = adam_m[m].view();
-                view_type vv = adam_v[m].view();
-                u[m].apply_func(KOKKOS_LAMBDA(const ttb_indx j,const ttb_indx i)
-                {
-                  mv(i,j) = beta1*mv(i,j) + (1.0-beta1)*gv(i,j);
-                  vv(i,j) = beta2*vv(i,j) + (1.0-beta2)*gv(i,j)*gv(i,j);
-                  uv(i,j) -= adam_step*mv(i,j)/sqrt(vv(i,j)+eps);
-                });
-              }
-              else {
-                u[m].apply_func(KOKKOS_LAMBDA(const ttb_indx j,const ttb_indx i)
-                {
-                  uv(i,j) -= step*gv(i,j);
-                });
-              }
+            view_type uv = u.getView();
+            view_type gv = g.getView();
+            if (use_adam) {
+              view_type mv = adam_m.getView();
+              view_type vv = adam_v.getView();
+              u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
+              {
+                mv(i) = beta1*mv(i) + (1.0-beta1)*gv(i);
+                vv(i) = beta2*vv(i) + (1.0-beta2)*gv(i)*gv(i);
+                ttb_real uu = uv(i);
+                uu -= adam_step*mv(i)/sqrt(vv(i)+eps);
+                if (has_bounds)
+                  uu = uu < lb ? lb : (uu > ub ? ub : uu);
+                uv(i) = uu;
+              });
+            }
+            else {
+              u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
+              {
+                ttb_real uu = uv(i);
+                uu -= step*gv(i);
+                if (has_bounds)
+                  uu = uu < lb ? lb : (uu > ub ? ub : uu);
+                uv(i) = uu;
+              });
             }
             if (algParams.fence)
               Kokkos::fence();
             timer.stop(timer_step);
-
-            // clip solution to handle constraints
-            timer.start(timer_clip);
-            if (loss_func.has_lower_bound() || loss_func.has_upper_bound()) {
-              for (ttb_indx m=0; m<nd; ++m) {
-                view_type uv = u[m].view();
-                const ttb_real lb = loss_func.lower_bound();
-                const ttb_real ub = loss_func.upper_bound();
-                u[m].apply_func(KOKKOS_LAMBDA(const ttb_indx j,const ttb_indx i)
-                {
-                  const ttb_real uu = uv(i,j);
-                  uv(i,j) = uu < lb ? lb : (uu > ub ? ub : uu);
-                });
-              }
-              if (algParams.fence)
-                Kokkos::fence();
-            }
-            timer.stop(timer_clip);
           }
         }
 
         // compute objective estimate
         timer.start(timer_fest);
-        fest = Impl::gcp_value(X_val, u, w_val, loss_func);
+        fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
         if (compute_fit) {
           ttb_real u_norm = u.normFsq();
-          ttb_real dot = innerprod(X, u);
+          ttb_real dot = innerprod(X, ut);
           fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
         }
         timer.stop(timer_fest);
@@ -380,24 +370,24 @@ namespace Genten {
           nuc *= decay;
 
           // restart from last epoch
-          deep_copy(u, u_prev);
+          u.set(u_prev);
           fest = fest_prev;
           fit = fit_prev;
           if (use_adam) {
-            deep_copy(adam_m, adam_m_prev);
-            deep_copy(adam_v, adam_v_prev);
+            adam_m.set(adam_m_prev);
+            adam_v.set(adam_v_prev);
             beta1t /= pow(beta1,epoch_iters);
             beta2t /= pow(beta2,epoch_iters);
           }
         }
         else {
           // update previous data
-          deep_copy(u_prev, u);
+          u_prev.set(u);
           fest_prev = fest;
           fit_prev = fit;
           if (use_adam) {
-            deep_copy(adam_m_prev, adam_m);
-            deep_copy(adam_v_prev, adam_v);
+            adam_m_prev.set(adam_m);
+            adam_v_prev.set(adam_v);
           }
         }
 
@@ -407,41 +397,41 @@ namespace Genten {
       timer.stop(timer_sgd);
 
       if (printIter > 0) {
-         out << "GCP-SGD completed " << total_iters << " iterations in "
-             << timer.getTotalTime(timer_sgd) << " seconds" << std::endl
-             << "\tsort: " << timer.getTotalTime(timer_sort)
-             << " seconds\n"
-             << "\tsample-f:  " << timer.getTotalTime(timer_sample_f)
-             << " seconds\n"
-             << "\tf-est:     " << timer.getTotalTime(timer_fest)
-             << " seconds\n"
-             << "\tgradient:  " << timer.getTotalTime(timer_grad)
-             << " seconds\n"
-             << "\t\tinit:    " << timer.getTotalTime(timer_grad_init)
-             << " seconds\n"
-             << "\t\tnzs:     " << timer.getTotalTime(timer_grad_nzs)
-             << " seconds\n"
+        out << "GCP-SGD completed " << total_iters << " iterations in "
+            << timer.getTotalTime(timer_sgd) << " seconds" << std::endl
+            << "\tsort: " << timer.getTotalTime(timer_sort)
+            << " seconds\n"
+            << "\tsample-f:  " << timer.getTotalTime(timer_sample_f)
+            << " seconds\n"
+            << "\tf-est:     " << timer.getTotalTime(timer_fest)
+            << " seconds\n"
+            << "\tgradient:  " << timer.getTotalTime(timer_grad)
+            << " seconds\n"
+            << "\t\tinit:    " << timer.getTotalTime(timer_grad_init)
+            << " seconds\n"
+            << "\t\tnzs:     " << timer.getTotalTime(timer_grad_nzs)
+            << " seconds\n"
              << "\t\tzs:      " << timer.getTotalTime(timer_grad_zs)
-             << " seconds\n"
-             << "\tstep:      " << timer.getTotalTime(timer_step)
-             << " seconds\n"
-             << "\tclip:      " << timer.getTotalTime(timer_clip)
-             << " seconds\n"
-             << "Final f-est: "
-             << std::setw(13) << std::setprecision(6) << std::scientific
-             << fest;
-         if (compute_fit)
-           out << ", fit: "
-               << std::setw(10) << std::setprecision(3) << std::scientific
-               << fit;
-         out << std::endl;
-         if (!algParams.fence)
+            << " seconds\n"
+            << "\tstep/clip:  " << timer.getTotalTime(timer_step)
+            << " seconds\n"
+            << "Final f-est: "
+            << std::setw(13) << std::setprecision(6) << std::scientific
+            << fest;
+        if (compute_fit)
+          out << ", fit: "
+              << std::setw(10) << std::setprecision(3) << std::scientific
+              << fit;
+        out << std::endl;
+        if (!algParams.fence)
           out << "WARNING:  Not fencing at parallel kernels.  Timings may be very inaccruate!  Run with --fence to add fences for accurate timings (but may increase total run time)." << std::endl;
       }
 
+      u.copyToKtensor(u0);
+
       // Normalize Ktensor u
-      u.normalize(Genten::NormTwo);
-      u.arrange();
+      u0.normalize(Genten::NormTwo);
+      u0.arrange();
     }
 
   }
