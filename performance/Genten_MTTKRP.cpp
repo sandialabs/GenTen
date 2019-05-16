@@ -294,7 +294,7 @@ void usage(char **argv)
   std::cout << "Usage: "<< argv[0]<<" [options]" << std::endl;
   std::cout << "options: " << std::endl;
   std::cout << "  --input <string>     path to input sptensor data" << std::endl;
-  std::cout << "  --index_base <int>   starting index for tensor nonzeros" << std::endl;
+  std::cout << "  --index-base <int>   starting index for tensor nonzeros" << std::endl;
   std::cout << "  --gz                 read tensor in gzip compressed format" << std::endl;
   std::cout << "  --dims <[n1,n2,...]> random tensor dimensions" << std::endl;
   std::cout << "  --nnz <int>          maximum number of random tensor nonzeros" << std::endl;
@@ -303,14 +303,14 @@ void usage(char **argv)
   std::cout << "  --seed <int>         seed for random number generator used in initial guess" << std::endl;
   std::cout << "  --check <0/1>        check the result for correctness" << std::endl;
   std::cout << "  --warmup <0/1>       do an MTTKRP to warm up first" << std::endl;
-  std::cout << "  --mttkrp_method <method> MTTKRP algorithm: ";
+  std::cout << "  --mttkrp-method <method> MTTKRP algorithm: ";
   for (unsigned i=0; i<Genten::MTTKRP_Method::num_types; ++i) {
     std::cout << Genten::MTTKRP_Method::names[i];
     if (i != Genten::MTTKRP_Method::num_types-1)
       std::cout << ", ";
   }
   std::cout << std::endl;
-  std::cout << "  --mttkrp_tile_size <int> tile size for mttkrp algorithm" << std::endl;
+  std::cout << "  --mttkrp-tile-size <int> tile size for mttkrp algorithm" << std::endl;
   std::cout << "  --vtune              connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
 }
 
@@ -342,7 +342,7 @@ int main(int argc, char* argv[])
     std::string inputfilename =
       Genten::parse_string(argc,argv,"--input","");
     ttb_indx index_base =
-      Genten::parse_ttb_indx(argc, argv, "--index_base", 0, 0, INT_MAX);
+      Genten::parse_ttb_indx(argc, argv, "--index-base", 0, 0, INT_MAX);
     ttb_bool gz =
       Genten::parse_ttb_bool(argc, argv, "--gz", "--no-gz", false);
     Genten::IndxArray  cFacDims = { 3000, 4000, 5000 };
@@ -361,13 +361,13 @@ int main(int argc, char* argv[])
     ttb_indx  warmup =
       Genten::parse_ttb_indx(argc, argv, "--warmup", 1, 0, 1);
     Genten::MTTKRP_Method::type mttkrp_method =
-      Genten::parse_ttb_enum(argc, argv, "--mttkrp_method",
+      Genten::parse_ttb_enum(argc, argv, "--mttkrp-method",
                      Genten::MTTKRP_Method::default_type,
                      Genten::MTTKRP_Method::num_types,
                      Genten::MTTKRP_Method::types,
                      Genten::MTTKRP_Method::names);
     ttb_indx mttkrp_tile_size =
-      Genten::parse_ttb_indx(argc, argv, "--mttkrp_tile_size", 0, 0, INT_MAX);
+      Genten::parse_ttb_indx(argc, argv, "--mttkrp-tile-size", 0, 0, INT_MAX);
 
     Genten::AlgParams algParams;
     algParams.mttkrp_method = mttkrp_method;

@@ -183,17 +183,17 @@ args = options.args
 output = options.output
 
 print '\nKokkos:'
-options.args = args + ' --mttkrp_method atomic'
+options.args = args + ' --mttkrp-method atomic'
 options.output = output + '_kokkos'
 its_k,cpals_k,mttkrp_k,fillComplete_k,tot_k = run_cpals_scaling(options, n, a)
 
 print '\nPerm:'
-options.args = args + ' --mttkrp_method perm'
+options.args = args + ' --mttkrp-method perm'
 options.output = output + '_perm'
 its_p,cpals_p,mttkrp_p,fillComplete_p,tot_p = run_cpals_scaling(options, n, a)
 
 print '\nOrig Kokkos:'
-options.args = args + ' --mttkrp_method orig-kokkos'
+options.args = args + ' --mttkrp-method orig-kokkos'
 options.output = output + '_orig'
 its_o,cpals_o,mttkrp_o,fillComplete_o,tot_o = run_cpals_scaling(options, n, a)
 

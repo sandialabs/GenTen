@@ -198,14 +198,14 @@ void usage(char **argv)
   std::cout << "  --maxiters <int>     maximum iterations to perform" << std::endl;
   std::cout << "  --tol <float>        stopping tolerance" << std::endl;
   std::cout << "  --seed <int>         seed for random number generator used in initial guess" << std::endl;
-  std::cout << "  --mttkrp_method <method> MTTKRP algorithm: ";
+  std::cout << "  --mttkrp-method <method> MTTKRP algorithm: ";
   for (unsigned i=0; i<Genten::MTTKRP_Method::num_types; ++i) {
     std::cout << Genten::MTTKRP_Method::names[i];
     if (i != Genten::MTTKRP_Method::num_types-1)
       std::cout << ", ";
   }
   std::cout << std::endl;
-  std::cout << "  --mttkrp_tile_size <int> tile size for mttkrp algorithm" << std::endl;
+  std::cout << "  --mttkrp-tile-size <int> tile size for mttkrp algorithm" << std::endl;
   std::cout << "  --vtune              connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
 }
 
@@ -261,13 +261,13 @@ int main(int argc, char* argv[])
     ttb_real  dStopTol =
       Genten::parse_ttb_real(argc, argv, "--tol", 1.0e-7, 0.0, 1.0);
     Genten::MTTKRP_Method::type mttkrp_method =
-      Genten::parse_ttb_enum(argc, argv, "--mttkrp_method",
+      Genten::parse_ttb_enum(argc, argv, "--mttkrp-method",
                      Genten::MTTKRP_Method::Default,
                      Genten::MTTKRP_Method::num_types,
                      Genten::MTTKRP_Method::types,
                      Genten::MTTKRP_Method::names);
     ttb_indx mttkrp_tile_size =
-      Genten::parse_ttb_indx(argc, argv, "--mttkrp_tile_size", 0, 0, INT_MAX);
+      Genten::parse_ttb_indx(argc, argv, "--mttkrp-tile-size", 0, 0, INT_MAX);
 
     Genten::AlgParams algParams;
     algParams.rank = nNumComponents;

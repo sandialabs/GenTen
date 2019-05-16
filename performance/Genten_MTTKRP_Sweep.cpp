@@ -200,25 +200,25 @@ void usage(char **argv)
   std::cout << "Usage: "<< argv[0]<<" [options]" << std::endl;
   std::cout << "options: " << std::endl;
   std::cout << "  --input <string>     path to input sptensor data" << std::endl;
-  std::cout << "  --index_base <int>   starting index for tensor nonzeros" << std::endl;
+  std::cout << "  --index-base <int>   starting index for tensor nonzeros" << std::endl;
   std::cout << "  --gz                 read tensor in gzip compressed format" << std::endl;
   std::cout << "  --dims <[n1,n2,...]> random tensor dimensions" << std::endl;
   std::cout << "  --nnz <int>          maximum number of random tensor nonzeros" << std::endl;
-  std::cout << "  --nc_min <int>       minumum number of factor components" << std::endl;
-  std::cout << "  --nc_max <int>       maximum number of factor components" << std::endl;
-  std::cout << "  --nc_step <int>      step size in number of factor components" << std::endl;
+  std::cout << "  --nc-min <int>       minumum number of factor components" << std::endl;
+  std::cout << "  --nc-max <int>       maximum number of factor components" << std::endl;
+  std::cout << "  --nc-step <int>      step size in number of factor components" << std::endl;
   std::cout << "  --iters <int>        number of iterations to perform" << std::endl;
   std::cout << "  --seed <int>         seed for random number generator used in initial guess" << std::endl;
   std::cout << "  --check <0/1>        check the result for correctness" << std::endl;
   std::cout << "  --warmup <0/1>       do an MTTKRP to warm up first" << std::endl;
-  std::cout << "  --mttkrp_method <method> MTTKRP algorithm: ";
+  std::cout << "  --mttkrp-method <method> MTTKRP algorithm: ";
   for (unsigned i=0; i<Genten::MTTKRP_Method::num_types; ++i) {
     std::cout << Genten::MTTKRP_Method::names[i];
     if (i != Genten::MTTKRP_Method::num_types-1)
       std::cout << ", ";
   }
   std::cout << std::endl;
-  std::cout << "  --mttkrp_tile_size <int> tile size for mttkrp algorithm" << std::endl;
+  std::cout << "  --mttkrp-tile-size <int> tile size for mttkrp algorithm" << std::endl;
   std::cout << "  --vtune              connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
 }
 
@@ -257,11 +257,11 @@ int main(int argc, char* argv[])
     cFacDims =
       Genten::parse_ttb_indx_array(argc, argv, "--dims", cFacDims, 1, INT_MAX);
     ttb_indx  nNumComponentsMin =
-      Genten::parse_ttb_indx(argc, argv, "--nc_min", 32, 1, INT_MAX);
+      Genten::parse_ttb_indx(argc, argv, "--nc-min", 32, 1, INT_MAX);
     ttb_indx  nNumComponentsMax =
-      Genten::parse_ttb_indx(argc, argv, "--nc_max", 64, 1, INT_MAX);
+      Genten::parse_ttb_indx(argc, argv, "--nc-max", 64, 1, INT_MAX);
     ttb_indx  nNumComponentsStep =
-      Genten::parse_ttb_indx(argc, argv, "--nc_step", 8, 1, INT_MAX);
+      Genten::parse_ttb_indx(argc, argv, "--nc-step", 8, 1, INT_MAX);
     ttb_indx  nMaxNonzeroes =
       Genten::parse_ttb_indx(argc, argv, "--nnz", 1 * 1000 * 1000, 1, INT_MAX);
     unsigned long  nRNGseed =
@@ -269,13 +269,13 @@ int main(int argc, char* argv[])
     ttb_indx  nIters =
       Genten::parse_ttb_indx(argc, argv, "--iters", 10, 1, INT_MAX);
     Genten::MTTKRP_Method::type mttkrp_method =
-      Genten::parse_ttb_enum(argc, argv, "--mttkrp_method",
+      Genten::parse_ttb_enum(argc, argv, "--mttkrp-method",
                      Genten::MTTKRP_Method::default_type,
                      Genten::MTTKRP_Method::num_types,
                      Genten::MTTKRP_Method::types,
                      Genten::MTTKRP_Method::names);
     ttb_indx mttkrp_tile_size =
-      Genten::parse_ttb_indx(argc, argv, "--mttkrp_tile_size", 0, 0, INT_MAX);
+      Genten::parse_ttb_indx(argc, argv, "--mttkrp-tile-size", 0, 0, INT_MAX);
 
     Genten::AlgParams algParams;
     algParams.mttkrp_method = mttkrp_method;
