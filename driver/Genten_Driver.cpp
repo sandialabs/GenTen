@@ -50,9 +50,9 @@ void usage(char **argv)
   std::cout << "  --input <string>   path to input sptensor data (leave empty for random tensor)" << std::endl;
   std::cout << "  --dims <array>     random tensor dimensions" << std::endl;
   std::cout << "  --nnz <int>        approximate number of random tensor nonzeros" << std::endl;
-  std::cout << "  --index_base <int> starting index for tensor nonzeros" << std::endl;
+  std::cout << "  --index-base <int> starting index for tensor nonzeros" << std::endl;
   std::cout << "  --gz               read tensor in gzip compressed format" << std::endl;
-  std::cout << "  --save_tensor <string> filename to save the tensor (leave blank for no save)" << std::endl;
+  std::cout << "  --save-tensor <string> filename to save the tensor (leave blank for no save)" << std::endl;
   std::cout << "  --init <string>  file name for reading Ktensor initial guess (leave blank for random initial guess)" << std::endl;
   std::cout << "  --output <string>  output file name for saving Ktensor" << std::endl;
   std::cout << "  --vtune            connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
@@ -82,7 +82,7 @@ int main(int argc, char* argv[])
     std::string initfilename =
       Genten::parse_string(argc, argv, "--init", "");
     ttb_indx index_base =
-      Genten::parse_ttb_indx(argc, argv, "--index_base", 0, 0, INT_MAX);
+      Genten::parse_ttb_indx(argc, argv, "--index-base", 0, 0, INT_MAX);
     ttb_bool gz =
       Genten::parse_ttb_bool(argc, argv, "--gz", "--no-gz", false);
     ttb_bool vtune =
@@ -95,7 +95,7 @@ int main(int argc, char* argv[])
     ttb_indx nnz =
       Genten::parse_ttb_indx(argc, argv, "--nnz", 1 * 1000 * 1000, 1, INT_MAX);
     std::string tensor_outputfilename =
-      Genten::parse_string(argc, argv, "--save_tensor", "");
+      Genten::parse_string(argc, argv, "--save-tensor", "");
 
     // Everything else
     Genten::AlgParams algParams;
