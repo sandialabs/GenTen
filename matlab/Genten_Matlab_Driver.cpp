@@ -91,10 +91,10 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
         algParams.debug = mxGetScalar(ptr);
       else if (option == "warmup")
         algParams.warmup = mxGetScalar(ptr);
-      else if (option == "mttkrp_method")
+      else if (option == "mttkrp-method")
         algParams.mttkrp_method =
           Genten::parse_enum<Genten::MTTKRP_Method>(mxGetStdString(ptr));
-      else if (option == "mttkrp_tile_size")
+      else if (option == "mttkrp-tile-size")
         algParams.mttkrp_duplicated_factor_matrix_tile_size = mxGetScalar(ptr);
       else if (option == "init")
         u_init = mxGetKtensor<ExecSpace>(ptr, algParams.debug);
