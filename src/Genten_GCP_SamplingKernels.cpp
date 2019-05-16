@@ -49,6 +49,37 @@
 
 namespace Genten {
 
+  namespace {
+
+    // Helper class for generating a single random number and broadcasting
+    // across a Cuda warp
+    template <typename ExecSpace, typename Rand, unsigned VectorSize>
+    struct VectorRng {
+      template <typename Gen>
+      KOKKOS_INLINE_FUNCTION
+      static ttb_indx eval(Gen& gen, const ttb_indx nnz) {
+        return Rand::draw(gen,0,nnz);
+      }
+    };
+
+#if defined(KOKKOS_ENABLE_CUDA) && defined(__CUDA_ARCH__)
+    template <typename Rand, unsigned VectorSize>
+    struct VectorRng<Kokkos::Cuda,Rand,VectorSize> {
+      template <typename Gen>
+      __device__
+      static ttb_indx eval(Gen& gen, const ttb_indx nnz) {
+        ttb_indx i = 0;
+        if (threadIdx.x == 0)
+          i = Rand::draw(gen,0,nnz);
+        if (VectorSize > 1)
+          i = __shfl_sync(0xffffffff, i, 0, VectorSize);
+        return i;
+      }
+    };
+#endif
+
+  }
+
   namespace Impl {
 
     template <typename ExecSpace, typename LossFunction>
@@ -66,8 +97,27 @@ namespace Genten {
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams)
     {
-      const ttb_indx nnz = X.nnz();
-      const ttb_indx nd = X.ndims();
+      typedef Kokkos::TeamPolicy<ExecSpace> Policy;
+      typedef typename Policy::member_type TeamMember;
+      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
+      typedef typename RandomPool::generator_type generator_type;
+      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
+      typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+      static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+      static const unsigned RowBlockSize = 1;
+      static const unsigned FacBlockSize = 16; // FIXME
+      static const unsigned VectorSize = is_cuda ? 16 : 1; //FIXME
+      static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+      static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
+
+      /*const*/ ttb_indx nnz = X.nnz();
+      /*const*/ unsigned nd = u.ndims();
+      /*const*/ ttb_indx ns_nz = num_samples_nonzeros;
+      /*const*/ ttb_indx ns_z = num_samples_zeros;
+      const ttb_indx N_nz = (ns_nz+RowsPerTeam-1)/RowsPerTeam;
+      const ttb_indx N_z = (ns_z+RowsPerTeam-1)/RowsPerTeam;
+      const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
 
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
@@ -76,89 +126,90 @@ namespace Genten {
         w = ArrayT<ExecSpace>(total_samples);
       }
 
-      // Parallel sampling on the device
-      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
-      typedef typename RandomPool::generator_type generator_type;
-      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
-      const ttb_indx nloops = algParams.rng_iters;
-
       // Generate samples of nonzeros
-      const ttb_indx N_nonzeros = (num_samples_nonzeros+nloops-1)/nloops;
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
-                           KOKKOS_LAMBDA(const ttb_indx k)
+      Policy policy_nz(N_nz, TeamSize, VectorSize);
+      Kokkos::parallel_for(
+        policy_nz.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+        KOKKOS_LAMBDA(const TeamMember& team)
       {
         generator_type gen = rand_pool.get_state();
-        for (ttb_indx l=0; l<nloops; ++l) {
-          const ttb_indx i = k*nloops+l;
-          if (i<num_samples_nonzeros) {
-            const ttb_indx idx = Rand::draw(gen,0,nnz);
-            const auto& ind = X.getSubscripts(idx);
-            if (compute_gradient) {
-              const ttb_real m_val = compute_Ktensor_value(u, ind);
-              Y.value(i) =
-                weight_nonzeros * loss_func.deriv(X.value(idx), m_val);
-            }
-            else {
-              Y.value(i) = X.value(idx);
-              w[i] = weight_nonzeros;
-            }
-            for (ttb_indx j=0; j<nd; ++j)
-              Y.subscript(i,j) = ind[j];
+        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
+        ttb_indx *ind = &(team_ind(team.team_rank(),0));
+
+        const ttb_indx offset =
+          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+          const ttb_indx idx = offset + ii;
+          if (idx >= ns_nz)
+            continue;
+
+          // Generate random tensor index
+          /*const*/ ttb_indx i =
+            VectorRng<ExecSpace,Rand,VectorSize>::eval(gen,nnz);
+          for (ttb_indx m=0; m<nd; ++m)
+            ind[m] = X.subscript(i,m);
+          for (ttb_indx m=0; m<nd; ++m)
+            Y.subscript(idx,m) = ind[m];
+
+          if (compute_gradient) {
+            const ttb_real m_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+            Y.value(idx) =
+              weight_nonzeros * ( loss_func.deriv(X.value(i), m_val) -
+                                  loss_func.deriv(ttb_real(0.0), m_val) );
+          }
+          else {
+            Y.value(idx) = X.value(i);
+            w[idx] = weight_nonzeros;
           }
         }
         rand_pool.free_state(gen);
       }, "Genten::GCP_SGD::Uniform_Sample_Nonzeros");
 
       // Generate samples of zeros
-      typedef Kokkos::View< ttb_indx*, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
-      typedef Kokkos::TeamPolicy<ExecSpace> Policy;
-      typedef typename Policy::member_type TeamMember;
-      const bool is_cuda = is_cuda_space<ExecSpace>::value;
-      const ttb_indx vector_size = 1;
-      const ttb_indx team_size = is_cuda ? 128/vector_size : 1;
-      const ttb_indx loops_per_team = nloops*team_size;
-      const ttb_indx N_zeros =
-        (num_samples_zeros+loops_per_team-1)/loops_per_team;
-      const size_t bytes = TmpScratchSpace::shmem_size(nd);
-      Policy policy(N_zeros,team_size,vector_size);
-      Kokkos::parallel_for(policy.set_scratch_size(0,Kokkos::PerThread(bytes)),
-                           KOKKOS_LAMBDA(const TeamMember& team)
+      Policy policy_z(N_z, TeamSize, VectorSize);
+      Kokkos::parallel_for(
+        policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+        KOKKOS_LAMBDA(const TeamMember& team)
       {
-        const ttb_indx k = team.league_rank()*team_size + team.team_rank();
-        TmpScratchSpace ind(team.thread_scratch(0), nd);
-
         generator_type gen = rand_pool.get_state();
-        for (ttb_indx l=0; l<nloops; ++l) {
-          const ttb_indx i = k*nloops+l;
-          if (i<num_samples_zeros) {
+        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
+        ttb_indx *ind = &(team_ind(team.team_rank(),0));
 
-            // Keep generating samples until we get one not in the tensor
-            bool found = true;
-            while (found) {
-              // Generate index
-              for (ttb_indx j=0; j<nd; ++j)
-                ind[j] = Rand::draw(gen,0,X.size(j));
+        const ttb_indx offset =
+          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+          const ttb_indx idx = offset + ii;
+          if (idx >= ns_z)
+            continue;
 
-              // Search for index
-              found = (X.index(ind) < nnz);
+          // Keep generating samples until we get one not in the tensor
+          bool found = true;
+          while (found) {
+            // Generate index
+            for (ttb_indx m=0; m<nd; ++m)
+              ind[m] =
+                VectorRng<ExecSpace,Rand,VectorSize>::eval(gen,X.size(m));
 
-              // If not found, add it
-              if (!found) {
-                const ttb_indx idx = num_samples_nonzeros + i;
-                for (ttb_indx j=0; j<nd; ++j)
-                  Y.subscript(idx,j) = ind[j];
-                if (compute_gradient) {
-                  const ttb_real m_val = compute_Ktensor_value(u, ind);
-                  Y.value(idx) =
-                    weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
-                }
-                else {
-                  Y.value(idx) = 0.0;
-                  w[idx] = weight_zeros;
-                }
+            // Search for index
+            found = (X.index(ind) < nnz);
+
+            // If not found, add it
+            if (!found) {
+              const ttb_indx row = num_samples_nonzeros + idx;
+              for (ttb_indx m=0; m<nd; ++m)
+                Y.subscript(row,m) = ind[m];
+              if (compute_gradient) {
+                const ttb_real m_val =
+                  compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+                Y.value(row) =
+                  weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
+              }
+              else {
+                Y.value(row) = 0.0;
+                w[row] = weight_zeros;
               }
             }
-
           }
         }
         rand_pool.free_state(gen);
@@ -181,8 +232,27 @@ namespace Genten {
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams)
     {
-      const ttb_indx nnz = X.nnz();
-      const ttb_indx nd = X.ndims();
+      typedef Kokkos::TeamPolicy<ExecSpace> Policy;
+      typedef typename Policy::member_type TeamMember;
+      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
+      typedef typename RandomPool::generator_type generator_type;
+      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
+      typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+      static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+      static const unsigned RowBlockSize = 1;
+      static const unsigned FacBlockSize = 16; // FIXME
+      static const unsigned VectorSize = is_cuda ? 16 : 1; //FIXME
+      static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+      static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
+
+      /*const*/ ttb_indx nnz = X.nnz();
+      /*const*/ unsigned nd = u.ndims();
+      /*const*/ ttb_indx ns_nz = num_samples_nonzeros;
+      /*const*/ ttb_indx ns_z = num_samples_zeros;
+      const ttb_indx N_nz = (ns_nz+RowsPerTeam-1)/RowsPerTeam;
+      const ttb_indx N_z = (ns_z+RowsPerTeam-1)/RowsPerTeam;
+      const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
 
       if (nd != HASH_MAX_TENSOR_DIM)
         Genten::error("Tensor dimension for too large!");
@@ -194,74 +264,90 @@ namespace Genten {
         w = ArrayT<ExecSpace>(total_samples);
       }
 
-      // Parallel sampling on the device
-      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
-      typedef typename RandomPool::generator_type generator_type;
-      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
-      const ttb_indx nloops = algParams.rng_iters;
-
       // Generate samples of nonzeros
-      const ttb_indx N_nonzeros = (num_samples_nonzeros+nloops-1)/nloops;
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
-                           KOKKOS_LAMBDA(const ttb_indx k)
+      Policy policy_nz(N_nz, TeamSize, VectorSize);
+      Kokkos::parallel_for(
+        policy_nz.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+        KOKKOS_LAMBDA(const TeamMember& team)
       {
         generator_type gen = rand_pool.get_state();
-        for (ttb_indx l=0; l<nloops; ++l) {
-          const ttb_indx i = k*nloops+l;
-          if (i<num_samples_nonzeros) {
-            const ttb_indx idx = Rand::draw(gen,0,nnz);
-            const auto& ind = X.getSubscripts(idx);
-            if (compute_gradient) {
-              const ttb_real m_val = compute_Ktensor_value(u, ind);
-              Y.value(i) =
-                weight_nonzeros * loss_func.deriv(X.value(idx), m_val);
-            }
-            else {
-              Y.value(i) = X.value(idx);
-              w[i] = weight_nonzeros;
-            }
-            for (ttb_indx j=0; j<nd; ++j)
-              Y.subscript(i,j) = ind[j];
+        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
+        ttb_indx *ind = &(team_ind(team.team_rank(),0));
+
+        const ttb_indx offset =
+          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+          const ttb_indx idx = offset + ii;
+          if (idx >= ns_nz)
+            continue;
+
+          // Generate random tensor index
+          /*const*/ ttb_indx i =
+            VectorRng<ExecSpace,Rand,VectorSize>::eval(gen,nnz);
+          for (ttb_indx m=0; m<nd; ++m)
+            ind[m] = X.subscript(i,m);
+          for (ttb_indx m=0; m<nd; ++m)
+            Y.subscript(idx,m) = ind[m];
+
+          if (compute_gradient) {
+            const ttb_real m_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+            Y.value(idx) =
+              weight_nonzeros * ( loss_func.deriv(X.value(i), m_val) -
+                                  loss_func.deriv(ttb_real(0.0), m_val) );
+          }
+          else {
+            Y.value(idx) = X.value(i);
+            w[idx] = weight_nonzeros;
           }
         }
         rand_pool.free_state(gen);
       }, "Genten::GCP_SGD::Uniform_Sample_Nonzeros");
 
       // Generate samples of zeros
-      const ttb_indx N_zeros = (num_samples_zeros+nloops-1)/nloops;
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_zeros),
-                           KOKKOS_LAMBDA(const ttb_indx k)
+      Policy policy_z(N_z, TeamSize, VectorSize);
+      Kokkos::parallel_for(
+        policy_z /*.set_scratch_size(0,Kokkos::PerTeam(bytes))*/,
+        KOKKOS_LAMBDA(const TeamMember& team)
       {
+        generator_type gen = rand_pool.get_state();
+        // TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
+        // ttb_indx *ind = &(team_ind(team.team_rank(),0));
         typedef Array<ttb_indx,HASH_MAX_TENSOR_DIM> array_t;
         array_t ind;
-        generator_type gen = rand_pool.get_state();
-        for (ttb_indx l=0; l<nloops; ++l) {
-          const ttb_indx i = k*nloops+l;
-          if (i<num_samples_zeros) {
-            // Keep generating samples until we get one not in the tensor
-            bool found = true;
-            while (found) {
-              // Generate index
-              for (ttb_indx j=0; j<nd; ++j)
-                ind[j] = Rand::draw(gen,0,X.size(j));
+
+        const ttb_indx offset =
+          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+          const ttb_indx idx = offset + ii;
+          if (idx >= ns_z)
+            continue;
+
+          // Keep generating samples until we get one not in the tensor
+          bool found = true;
+          while (found) {
+            // Generate index
+            for (ttb_indx m=0; m<nd; ++m)
+              ind[m] =
+                VectorRng<ExecSpace,Rand,VectorSize>::eval(gen,X.size(m));
 
               // Search for index
               found = hash.exists(ind);
 
               // If not found, add it
-              if (!found) {
-                const ttb_indx idx = num_samples_nonzeros + i;
-                for (ttb_indx j=0; j<nd; ++j)
-                  Y.subscript(idx,j) = ind[j];
-                if (compute_gradient) {
-                  const ttb_real m_val = compute_Ktensor_value(u, ind);
-                  Y.value(idx) =
-                    weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
-                }
-                else {
-                  Y.value(idx) = 0.0;
-                  w[idx] = weight_zeros;
-                }
+            if (!found) {
+              const ttb_indx row = num_samples_nonzeros + idx;
+              for (ttb_indx m=0; m<nd; ++m)
+                Y.subscript(row,m) = ind[m];
+              if (compute_gradient) {
+                const ttb_real m_val =
+                  compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+                Y.value(row) =
+                  weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
+              }
+              else {
+                Y.value(row) = 0.0;
+                w[row] = weight_zeros;
               }
             }
           }
@@ -285,8 +371,27 @@ namespace Genten {
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams)
     {
-      const ttb_indx nnz = X.nnz();
-      const ttb_indx nd = X.ndims();
+      typedef Kokkos::TeamPolicy<ExecSpace> Policy;
+      typedef typename Policy::member_type TeamMember;
+      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
+      typedef typename RandomPool::generator_type generator_type;
+      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
+      typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+      static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+      static const unsigned RowBlockSize = 1;
+      static const unsigned FacBlockSize = 16; // FIXME
+      static const unsigned VectorSize = is_cuda ? 16 : 1; //FIXME
+      static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+      static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
+
+      /*const*/ ttb_indx nnz = X.nnz();
+      /*const*/ unsigned nd = u.ndims();
+      /*const*/ ttb_indx ns_nz = num_samples_nonzeros;
+      /*const*/ ttb_indx ns_z = num_samples_zeros;
+      const ttb_indx N_nz = (ns_nz+RowsPerTeam-1)/RowsPerTeam;
+      const ttb_indx N_z = (ns_z+RowsPerTeam-1)/RowsPerTeam;
+      const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
 
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
@@ -295,62 +400,79 @@ namespace Genten {
         w = ArrayT<ExecSpace>(total_samples);
       }
 
-      // Parallel sampling on the device
-      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
-      typedef typename RandomPool::generator_type generator_type;
-      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
-      const ttb_indx nloops = algParams.rng_iters;
-
       // Generate samples of nonzeros
-      const ttb_indx N_nonzeros = (num_samples_nonzeros+nloops-1)/nloops;
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
-                           KOKKOS_LAMBDA(const ttb_indx k)
+      Policy policy_nz(N_nz, TeamSize, VectorSize);
+      Kokkos::parallel_for(
+        policy_nz.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+        KOKKOS_LAMBDA(const TeamMember& team)
       {
         generator_type gen = rand_pool.get_state();
-        for (ttb_indx l=0; l<nloops; ++l) {
-          const ttb_indx i = k*nloops+l;
-          if (i<num_samples_nonzeros) {
-            const ttb_indx idx = Rand::draw(gen,0,nnz);
-            const auto& ind = X.getSubscripts(idx);
-            if (compute_gradient) {
-              const ttb_real m_val = compute_Ktensor_value(u, ind);
-              Y.value(i) =
-                weight_nonzeros * ( loss_func.deriv(X.value(idx), m_val) -
-                                    loss_func.deriv(ttb_real(0.0), m_val) );
-            }
-            else {
-              Y.value(i) = X.value(idx);
-              w[i] = weight_nonzeros;
-            }
-            for (ttb_indx j=0; j<nd; ++j)
-              Y.subscript(i,j) = ind[j];
+        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
+        ttb_indx *ind = &(team_ind(team.team_rank(),0));
+
+        const ttb_indx offset =
+          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+          const ttb_indx idx = offset + ii;
+          if (idx >= ns_nz)
+            continue;
+
+          // Generate random tensor index
+          /*const*/ ttb_indx i =
+            VectorRng<ExecSpace,Rand,VectorSize>::eval(gen,nnz);
+          for (ttb_indx m=0; m<nd; ++m)
+            ind[m] = X.subscript(i,m);
+          for (ttb_indx m=0; m<nd; ++m)
+            Y.subscript(idx,m) = ind[m];
+
+          if (compute_gradient) {
+            const ttb_real m_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+            Y.value(idx) =
+              weight_nonzeros * ( loss_func.deriv(X.value(i), m_val) -
+                                  loss_func.deriv(ttb_real(0.0), m_val) );
+          }
+          else {
+            Y.value(idx) = X.value(i);
+            w[idx] = weight_nonzeros;
           }
         }
         rand_pool.free_state(gen);
       }, "Genten::GCP_SGD::Uniform_Sample_Nonzeros");
 
       // Generate samples of zeros
-      const ttb_indx N_zeros = (num_samples_zeros+nloops-1)/nloops;
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_zeros),
-                           KOKKOS_LAMBDA(const ttb_indx k)
+      Policy policy_z(N_z, TeamSize, VectorSize);
+      Kokkos::parallel_for(
+        policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+        KOKKOS_LAMBDA(const TeamMember& team)
       {
         generator_type gen = rand_pool.get_state();
-        for (ttb_indx l=0; l<nloops; ++l) {
-          const ttb_indx i = k*nloops+l;
-          if (i<num_samples_zeros) {
-            const ttb_indx idx = num_samples_nonzeros + i;
-            for (ttb_indx j=0; j<nd; ++j)
-              Y.subscript(idx,j) = Rand::draw(gen,0,X.size(j));
-            if (compute_gradient) {
-              const auto& ind = Y.getSubscripts(idx);
-              const ttb_real m_val = compute_Ktensor_value(u, ind);
-              Y.value(idx) =
-                weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
-            }
-            else {
-              Y.value(idx) = 0.0;
-              w[idx] = weight_zeros;
-            }
+        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
+        ttb_indx *ind = &(team_ind(team.team_rank(),0));
+
+        const ttb_indx offset =
+          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+          const ttb_indx idx = offset + ii;
+          if (idx >= ns_z)
+            continue;
+
+          // Generate index
+          for (ttb_indx m=0; m<nd; ++m)
+            ind[m] = VectorRng<ExecSpace,Rand,VectorSize>::eval(gen,X.size(m));
+          const ttb_indx row = idx+num_samples_nonzeros;
+          for (ttb_indx m=0; m<nd; ++m)
+            Y.subscript(row,m) = ind[m];
+
+          if (compute_gradient) {
+            const ttb_real m_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+            Y.value(row) =
+              weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
+          }
+          else {
+            Y.value(row) = 0.0;
+            w[row] = weight_zeros;
           }
         }
         rand_pool.free_state(gen);
