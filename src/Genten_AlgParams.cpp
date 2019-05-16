@@ -58,6 +58,7 @@ Genten::AlgParams::AlgParams() :
   loss_function_type(Genten::GCP_LossFunction::default_type),
   loss_eps(1.0e-10),
   rolfilename(""),
+  sampling_type(Genten::GCP_Sampling::default_type),
   rate(1.0e-3),
   decay(0.1),
   max_fails(10),
@@ -74,6 +75,8 @@ Genten::AlgParams::AlgParams() :
   w_f_z(-1.0),
   w_g_nz(-1.0),
   w_g_z(-1.0),
+  hash(false),
+  fuse(false),
   compute_fit(false),
   use_adam(true),
   adam_beta1(0.9),    // Defaults taken from ADAM paper
@@ -98,12 +101,12 @@ void Genten::AlgParams::parse(int argc, char* argv[])
   fence = parse_ttb_bool(argc, argv, "--fence", "--no-fence", fence);
 
   // MTTKRP options
-  mttkrp_method = parse_ttb_enum(argc, argv, "--mttkrp_method", mttkrp_method,
+  mttkrp_method = parse_ttb_enum(argc, argv, "--mttkrp-method", mttkrp_method,
                                  Genten::MTTKRP_Method::num_types,
                                  Genten::MTTKRP_Method::types,
                                  Genten::MTTKRP_Method::names);
   mttkrp_duplicated_factor_matrix_tile_size =
-    parse_ttb_indx(argc, argv, "--mttkrp_tile_size",
+    parse_ttb_indx(argc, argv, "--mttkrp-tile-size",
                    mttkrp_duplicated_factor_matrix_tile_size, 0, INT_MAX);
   warmup = parse_ttb_bool(argc, argv, "--warmup", "--no-warmup", warmup);
 
@@ -118,6 +121,11 @@ void Genten::AlgParams::parse(int argc, char* argv[])
   rolfilename = parse_string(argc, argv, "--rol", rolfilename.c_str());
 
   // GCP-SGD options
+  sampling_type = parse_ttb_enum(argc, argv, "--sampling",
+                                 sampling_type,
+                                 Genten::GCP_Sampling::num_types,
+                                 Genten::GCP_Sampling::types,
+                                 Genten::GCP_Sampling::names);
   rate = parse_ttb_real(argc, argv, "--rate", rate, 0.0, DOUBLE_MAX);
   decay = parse_ttb_real(argc, argv, "--decay", decay, 0.0, 1.0);
   max_fails = parse_ttb_indx(argc, argv, "--fails", max_fails, 0, INT_MAX);
@@ -138,11 +146,13 @@ void Genten::AlgParams::parse(int argc, char* argv[])
   oversample_factor = parse_ttb_real(argc, argv, "--oversample",
                                      oversample_factor, 1.0, DOUBLE_MAX);
   bulk_factor =
-    parse_ttb_indx(argc, argv, "--bulk", bulk_factor, 1, INT_MAX);
+    parse_ttb_indx(argc, argv, "--bulk-factor", bulk_factor, 1, INT_MAX);
   w_f_nz = parse_ttb_real(argc, argv, "--fnzw", w_f_nz, -1.0, DOUBLE_MAX);
   w_f_z = parse_ttb_real(argc, argv, "--fzw", w_f_z, -1.0, DOUBLE_MAX);
   w_g_nz = parse_ttb_real(argc, argv, "--gnzw", w_g_nz, -1.0, DOUBLE_MAX);
   w_g_z = parse_ttb_real(argc, argv, "--gzw", w_g_z, -1.0, DOUBLE_MAX);
+  hash = parse_ttb_bool(argc, argv, "--hash", "--no-hash", hash);
+  fuse = parse_ttb_bool(argc, argv, "--fuse", "--no-fuse", fuse);
   compute_fit = parse_ttb_bool(argc, argv, "--fit", "--no-fit", compute_fit);
   use_adam = parse_ttb_bool(argc, argv, "--adam", "--no-adam", use_adam);
   adam_beta1 = parse_ttb_real(argc, argv, "--adam_beta1", adam_beta1, 0.0, 1.0);
@@ -166,14 +176,14 @@ void Genten::AlgParams::print_help(std::ostream& out)
 
   out << std::endl;
   out << "MTTKRP options:" << std::endl;
-  out << "  --mttkrp_method <method> MTTKRP algorithm: ";
+  out << "  --mttkrp-method <method> MTTKRP algorithm: ";
   for (unsigned i=0; i<Genten::MTTKRP_Method::num_types; ++i) {
     out << Genten::MTTKRP_Method::names[i];
     if (i != Genten::MTTKRP_Method::num_types-1)
       out << ", ";
   }
   out << std::endl;
-  out << "  --mttkrp_tile_size <int> tile size for mttkrp algorithm"
+  out << "  --mttkrp-tile-size <int> tile size for mttkrp algorithm"
       << std::endl;
   out << "  --warmup           do an iteration of mttkrp to warmup (useful for generating accurate timing information)" << std::endl;
 
@@ -194,6 +204,12 @@ void Genten::AlgParams::print_help(std::ostream& out)
 
   out << std::endl;
   out << "GCP-SGD options:" << std::endl;
+  out << "  --sampling <type> sampling method for GCP-SGD: ";
+  for (unsigned i=0; i<Genten::GCP_Sampling::num_types; ++i) {
+    out << Genten::GCP_Sampling::names[i];
+    if (i != Genten::GCP_Sampling::num_types-1)
+      out << ", ";
+  }
   out << "  --rate <float>     initial step size" << std::endl;
   out << "  --decay <float>    rate step size decreases on fails" << std::endl;
   out << "  --fails <int>      maximum number of fails" << std::endl;
@@ -207,12 +223,13 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --gzs <int>        zero samples for gradient" << std::endl;
   out << "  --oversample <float> oversample factor for zero sampling"
       << std::endl;
-  out << "  --bulk <int>       factor for bulk zero sampling"
-      << std::endl;
   out << "  --fnzw <float>     nonzero sample weight for f-est" << std::endl;
   out << "  --fzw <float>      zero sample weight for f-est" << std::endl;
   out << "  --gnzw <float>     nonzero sample weight for gradient" << std::endl;
   out << "  --gzw <float>      zero sample weight for gradient" << std::endl;
+  out << "  --hash             compute hash map for zero sampling" << std::endl;
+  out << "  --bulk-factor <int> factor for bulk zero sampling" << std::endl;
+  out << "  --fuse             fuse gradient sampling and MTTKRP" << std::endl;
   out << "  --fit              compute fit metric" << std::endl;
   out << "  --adam             use ADAM step" << std::endl;
   out << "  --adam_beta1       Decay rate for 1st moment avg." << std::endl;
@@ -254,6 +271,8 @@ void Genten::AlgParams::print(std::ostream& out)
 
    out << std::endl;
   out << "GCP-SGD options:" << std::endl;
+  out << "  sampling = " << Genten::GCP_Sampling::names[sampling_type]
+      << std::endl;
   out << "  rate = " << rate << std::endl;
   out << "  decay = " << decay << std::endl;
   out << "  fails = " << max_fails << std::endl;
@@ -265,11 +284,13 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  gnzs = " << num_samples_nonzeros_grad << std::endl;
   out << "  gzs = " << num_samples_zeros_grad << std::endl;
   out << "  oversample = " << oversample_factor << std::endl;
-  out << "  bulk = " << bulk_factor << std::endl;
   out << "  fnzw = " << w_f_nz << std::endl;
   out << "  fzw = " << w_f_z << std::endl;
   out << "  gnzw = " << w_g_nz << std::endl;
   out << "  gzw = " << w_g_z << std::endl;
+  out << "  bulk-factor = " << bulk_factor << std::endl;
+  out << "  hash = " << (hash ? "true" : "false") << std::endl;
+  out << "  fuse = " << (fuse ? "true" : "false") << std::endl;
   out << "  fit = " << (compute_fit ? "true" : "false") << std::endl;
   out << "  adam = " << (use_adam ? "true" : "false") << std::endl;
   out << "  adam_beta1 = " << adam_beta1 << std::endl;

@@ -365,12 +365,9 @@ IF (ENABLE_GCP)
     ${Genten_SOURCE_DIR}/src/Genten_GCP_Hash.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD2.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_HogWild.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD2_HogWild.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD3.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD_SS.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD_SS2.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_Grad_Atomic.cpp
+    #${Genten_SOURCE_DIR}/src/Genten_GCP_HogWild.cpp
+    #${Genten_SOURCE_DIR}/src/Genten_GCP_SGD2_HogWild.cpp
     )
 
   IF (ENABLE_ROL)

@@ -168,7 +168,7 @@ namespace Genten {
     template <typename ExecSpace, typename LossFunction>
     void stratified_sample_tensor_hash(
       const SptensorT<ExecSpace>& X,
-      const Kokkos::UnorderedMap<Array<ttb_indx,HASH_TENSOR_DIM>, ttb_real, ExecSpace>& hash,
+      const Kokkos::UnorderedMap<Array<ttb_indx,HASH_MAX_TENSOR_DIM>, ttb_real, ExecSpace>& hash,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
@@ -184,8 +184,8 @@ namespace Genten {
       const ttb_indx nnz = X.nnz();
       const ttb_indx nd = X.ndims();
 
-      if (nd !=  HASH_TENSOR_DIM)
-        Genten::error("Invalid tensor dimension!");
+      if (nd != HASH_MAX_TENSOR_DIM)
+        Genten::error("Tensor dimension for too large!");
 
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
@@ -232,7 +232,7 @@ namespace Genten {
       Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_zeros),
                            KOKKOS_LAMBDA(const ttb_indx k)
       {
-        typedef Array<ttb_indx,5> array_t;
+        typedef Array<ttb_indx,HASH_MAX_TENSOR_DIM> array_t;
         array_t ind;
         generator_type gen = rand_pool.get_state();
         for (ttb_indx l=0; l<nloops; ++l) {
@@ -755,7 +755,7 @@ namespace Genten {
                                                                         \
   template void Impl::stratified_sample_tensor_hash(                    \
     const SptensorT<SPACE>& X,                                          \
-    const Kokkos::UnorderedMap<Impl::Array<ttb_indx,HASH_TENSOR_DIM>, ttb_real, SPACE>& hash, \
+    const Kokkos::UnorderedMap<Impl::Array<ttb_indx,HASH_MAX_TENSOR_DIM>, ttb_real, SPACE>& hash, \
     const ttb_indx num_samples_nonzeros,                                \
     const ttb_indx num_samples_zeros,                                   \
     const ttb_real weight_nonzeros,                                     \

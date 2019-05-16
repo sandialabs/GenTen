@@ -76,6 +76,7 @@ namespace Genten {
     std::string rolfilename; // Filename for ROL solver options
 
     // GCP-SGD options
+    GCP_Sampling::type sampling_type;    // Sampling type
     ttb_real rate;                       // Initial step size
     ttb_real decay;                      // Rate step size decreases on fails
     ttb_indx max_fails;                  // Maximum number of fails
@@ -92,6 +93,8 @@ namespace Genten {
     ttb_real w_f_z;                      // Zero sample weight for f
     ttb_real w_g_nz;                     // Nonzero sample weight for grad
     ttb_real w_g_z;                      // Zero sample weight for grad
+    bool hash;                           // Hash tensor instead of sorting
+    bool fuse;                           // Fuse sampling and gradient kernels
     bool compute_fit;                    // Compute fit metric
     bool use_adam;                       // Use ADAM step
     ttb_real adam_beta1;                 // Decay rate of first moment avg.

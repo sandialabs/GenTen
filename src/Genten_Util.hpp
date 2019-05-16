@@ -177,6 +177,22 @@ namespace Genten {
     };
     static constexpr type default_type = Gaussian;
   };
+
+  // Sampling functions supported by GCP
+  struct GCP_Sampling {
+    enum type {
+      Stratified,
+      SemiStratified
+    };
+    static constexpr unsigned num_types = 2;
+    static constexpr type types[] = {
+      Stratified, SemiStratified
+    };
+    static constexpr const char* names[] = {
+      "stratified", "semi-stratified"
+    };
+    static constexpr type default_type = Stratified;
+  };
 }
 
 /* ----- Utility Functions ----- */

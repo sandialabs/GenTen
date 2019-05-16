@@ -104,3 +104,6 @@ const char*const Genten::MTTKRP_Method::names[];
 
 const Genten::GCP_LossFunction::type Genten::GCP_LossFunction::types[];
 const char*const Genten::GCP_LossFunction::names[];
+
+const Genten::GCP_Sampling::type Genten::GCP_Sampling::types[];
+const char*const Genten::GCP_Sampling::names[];
