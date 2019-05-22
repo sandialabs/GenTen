@@ -49,37 +49,6 @@
 
 namespace Genten {
 
-  namespace {
-
-    // Helper class for generating a single random number and broadcasting
-    // across a Cuda warp
-    template <typename ExecSpace, typename Rand, unsigned VectorSize>
-    struct VectorRng {
-      template <typename Gen>
-      KOKKOS_INLINE_FUNCTION
-      static ttb_indx eval(Gen& gen, const ttb_indx nnz) {
-        return Rand::draw(gen,0,nnz);
-      }
-    };
-
-#if defined(KOKKOS_ENABLE_CUDA) && defined(__CUDA_ARCH__)
-    template <typename Rand, unsigned VectorSize>
-    struct VectorRng<Kokkos::Cuda,Rand,VectorSize> {
-      template <typename Gen>
-      __device__
-      static ttb_indx eval(Gen& gen, const ttb_indx nnz) {
-        ttb_indx i = 0;
-        if (threadIdx.x == 0)
-          i = Rand::draw(gen,0,nnz);
-        if (VectorSize > 1)
-          i = __shfl_sync(0xffffffff, i, 0, VectorSize);
-        return i;
-      }
-    };
-#endif
-
-  }
-
   namespace Impl {
 
     template <typename ExecSpace, typename LossFunction>
@@ -144,27 +113,39 @@ namespace Genten {
             continue;
 
           // Generate random tensor index
-          /*const*/ ttb_indx i =
-            VectorRng<ExecSpace,Rand,VectorSize>::eval(gen,nnz);
-          for (ttb_indx m=0; m<nd; ++m)
-            ind[m] = X.subscript(i,m);
-          for (ttb_indx m=0; m<nd; ++m)
-            Y.subscript(idx,m) = ind[m];
+          ttb_real x_val = 0.0;
+          Kokkos::single( Kokkos::PerThread( team ), [&] (ttb_real& xv)
+          {
+            const ttb_indx i = Rand::draw(gen,0,nnz);
+            for (ttb_indx m=0; m<nd; ++m)
+              ind[m] = X.subscript(i,m);
+            xv = X.value(i);
+          }, x_val);
 
-          if (compute_gradient) {
-            const ttb_real m_val =
+          // Compute Ktensor value
+          ttb_real m_val = 0.0;
+          if (compute_gradient)
+            m_val =
               compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
-            Y.value(idx) =
-              weight_nonzeros * ( loss_func.deriv(X.value(i), m_val) -
-                                  loss_func.deriv(ttb_real(0.0), m_val) );
-          }
-          else {
-            Y.value(idx) = X.value(i);
-            w[idx] = weight_nonzeros;
-          }
+
+          // Add new nonzero
+          Kokkos::single( Kokkos::PerThread( team ), [&] ()
+          {
+            for (ttb_indx m=0; m<nd; ++m)
+              Y.subscript(idx,m) = ind[m];
+            if (compute_gradient) {
+              Y.value(idx) =
+                weight_nonzeros * loss_func.deriv(x_val, m_val);
+            }
+            else {
+              Y.value(idx) = x_val;
+              w[idx] = weight_nonzeros;
+            }
+          });
         }
         rand_pool.free_state(gen);
       }, "Genten::GCP_SGD::Uniform_Sample_Nonzeros");
+
 
       // Generate samples of zeros
       Policy policy_z(N_z, TeamSize, VectorSize);
@@ -184,33 +165,40 @@ namespace Genten {
             continue;
 
           // Keep generating samples until we get one not in the tensor
-          bool found = true;
+          int found = 1;
           while (found) {
-            // Generate index
-            for (ttb_indx m=0; m<nd; ++m)
-              ind[m] =
-                VectorRng<ExecSpace,Rand,VectorSize>::eval(gen,X.size(m));
-
-            // Search for index
-            found = (X.index(ind) < nnz);
-
-            // If not found, add it
-            if (!found) {
-              const ttb_indx row = num_samples_nonzeros + idx;
+            Kokkos::single( Kokkos::PerThread( team ), [&] (int& f)
+            {
+              // Generate index
               for (ttb_indx m=0; m<nd; ++m)
-                Y.subscript(row,m) = ind[m];
-              if (compute_gradient) {
-                const ttb_real m_val =
-                  compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
-                Y.value(row) =
-                  weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
-              }
-              else {
-                Y.value(row) = 0.0;
-                w[row] = weight_zeros;
-              }
-            }
+                ind[m] = Rand::draw(gen,0,X.size(m));
+
+              // Search for index
+              f = (X.index(ind) < nnz);
+            }, found);
           }
+
+          // Compute Ktensor value
+          ttb_real m_val;
+          if (compute_gradient)
+            m_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+
+          // Add new nonzero
+          const ttb_indx row = num_samples_nonzeros + idx;
+          Kokkos::single( Kokkos::PerThread( team ), [&] ()
+          {
+            for (ttb_indx m=0; m<nd; ++m)
+              Y.subscript(row,m) = ind[m];
+            if (compute_gradient) {
+              Y.value(row) =
+                weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
+            }
+            else {
+              Y.value(row) = 0.0;
+              w[row] = weight_zeros;
+            }
+          });
         }
         rand_pool.free_state(gen);
       }, "Genten::GCP_SGD::Uniform_Sample_Zeros");
@@ -282,24 +270,35 @@ namespace Genten {
             continue;
 
           // Generate random tensor index
-          /*const*/ ttb_indx i =
-            VectorRng<ExecSpace,Rand,VectorSize>::eval(gen,nnz);
-          for (ttb_indx m=0; m<nd; ++m)
-            ind[m] = X.subscript(i,m);
-          for (ttb_indx m=0; m<nd; ++m)
-            Y.subscript(idx,m) = ind[m];
+          ttb_real x_val = 0.0;
+          Kokkos::single( Kokkos::PerThread( team ), [&] (ttb_real& xv)
+          {
+            const ttb_indx i = Rand::draw(gen,0,nnz);
+            for (ttb_indx m=0; m<nd; ++m)
+              ind[m] = X.subscript(i,m);
+            xv = X.value(i);
+          }, x_val);
 
-          if (compute_gradient) {
-            const ttb_real m_val =
+          // Compute Ktensor value
+          ttb_real m_val = 0.0;
+          if (compute_gradient)
+            m_val =
               compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
-            Y.value(idx) =
-              weight_nonzeros * ( loss_func.deriv(X.value(i), m_val) -
-                                  loss_func.deriv(ttb_real(0.0), m_val) );
-          }
-          else {
-            Y.value(idx) = X.value(i);
-            w[idx] = weight_nonzeros;
-          }
+
+          // Add new nonzero
+          Kokkos::single( Kokkos::PerThread( team ), [&] ()
+          {
+            for (ttb_indx m=0; m<nd; ++m)
+              Y.subscript(idx,m) = ind[m];
+            if (compute_gradient) {
+              Y.value(idx) =
+                weight_nonzeros * loss_func.deriv(x_val, m_val);
+            }
+            else {
+              Y.value(idx) = x_val;
+              w[idx] = weight_nonzeros;
+            }
+          });
         }
         rand_pool.free_state(gen);
       }, "Genten::GCP_SGD::Uniform_Sample_Nonzeros");
@@ -324,33 +323,40 @@ namespace Genten {
             continue;
 
           // Keep generating samples until we get one not in the tensor
-          bool found = true;
+          int found = 1;
           while (found) {
-            // Generate index
-            for (ttb_indx m=0; m<nd; ++m)
-              ind[m] =
-                VectorRng<ExecSpace,Rand,VectorSize>::eval(gen,X.size(m));
+            Kokkos::single( Kokkos::PerThread( team ), [&] (int& f)
+            {
+              // Generate index
+              for (ttb_indx m=0; m<nd; ++m)
+                ind[m] = Rand::draw(gen,0,X.size(m));
 
               // Search for index
-              found = hash.exists(ind);
-
-              // If not found, add it
-            if (!found) {
-              const ttb_indx row = num_samples_nonzeros + idx;
-              for (ttb_indx m=0; m<nd; ++m)
-                Y.subscript(row,m) = ind[m];
-              if (compute_gradient) {
-                const ttb_real m_val =
-                  compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
-                Y.value(row) =
-                  weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
-              }
-              else {
-                Y.value(row) = 0.0;
-                w[row] = weight_zeros;
-              }
-            }
+              f = hash.exists(ind);
+            }, found);
           }
+
+          // Compute Ktensor value
+          ttb_real m_val;
+          if (compute_gradient)
+            m_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+
+          // Add new nonzero
+          const ttb_indx row = num_samples_nonzeros + idx;
+          Kokkos::single( Kokkos::PerThread( team ), [&] ()
+          {
+            for (ttb_indx m=0; m<nd; ++m)
+              Y.subscript(row,m) = ind[m];
+            if (compute_gradient) {
+              Y.value(row) =
+                weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
+            }
+            else {
+              Y.value(row) = 0.0;
+              w[row] = weight_zeros;
+            }
+          });
         }
         rand_pool.free_state(gen);
       }, "Genten::GCP_SGD::Uniform_Sample_Zeros");
@@ -418,24 +424,36 @@ namespace Genten {
             continue;
 
           // Generate random tensor index
-          /*const*/ ttb_indx i =
-            VectorRng<ExecSpace,Rand,VectorSize>::eval(gen,nnz);
-          for (ttb_indx m=0; m<nd; ++m)
-            ind[m] = X.subscript(i,m);
-          for (ttb_indx m=0; m<nd; ++m)
-            Y.subscript(idx,m) = ind[m];
+          ttb_real x_val = 0.0;
+          Kokkos::single( Kokkos::PerThread( team ), [&] (ttb_real& xv)
+          {
+            const ttb_indx i = Rand::draw(gen,0,nnz);
+            for (ttb_indx m=0; m<nd; ++m)
+              ind[m] = X.subscript(i,m);
+            xv = X.value(i);
+          }, x_val);
 
-          if (compute_gradient) {
-            const ttb_real m_val =
+          // Compute Ktensor value
+          ttb_real m_val = 0.0;
+          if (compute_gradient)
+            m_val =
               compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
-            Y.value(idx) =
-              weight_nonzeros * ( loss_func.deriv(X.value(i), m_val) -
-                                  loss_func.deriv(ttb_real(0.0), m_val) );
-          }
-          else {
-            Y.value(idx) = X.value(i);
-            w[idx] = weight_nonzeros;
-          }
+
+          // Add new nonzero
+          Kokkos::single( Kokkos::PerThread( team ), [&] ()
+          {
+            for (ttb_indx m=0; m<nd; ++m)
+              Y.subscript(idx,m) = ind[m];
+            if (compute_gradient) {
+              Y.value(idx) =
+                weight_nonzeros * ( loss_func.deriv(x_val, m_val) -
+                                    loss_func.deriv(ttb_real(0.0), m_val) );
+            }
+            else {
+              Y.value(idx) = x_val;
+              w[idx] = weight_nonzeros;
+            }
+          });
         }
         rand_pool.free_state(gen);
       }, "Genten::GCP_SGD::Uniform_Sample_Nonzeros");
@@ -457,23 +475,37 @@ namespace Genten {
           if (idx >= ns_z)
             continue;
 
-          // Generate index
-          for (ttb_indx m=0; m<nd; ++m)
-            ind[m] = VectorRng<ExecSpace,Rand,VectorSize>::eval(gen,X.size(m));
-          const ttb_indx row = idx+num_samples_nonzeros;
-          for (ttb_indx m=0; m<nd; ++m)
-            Y.subscript(row,m) = ind[m];
+          // Generate index -- use broadcast form to force warp sync
+          // so that ind is updated before used by other threads
+          int sync = 0;
+          Kokkos::single( Kokkos::PerThread( team ), [&] (int& s)
+          {
+            for (ttb_indx m=0; m<nd; ++m)
+              ind[m] = Rand::draw(gen,0,X.size(m));
+            s = 1;
+          }, sync);
 
-          if (compute_gradient) {
-            const ttb_real m_val =
+          // Compute Ktensor value
+          ttb_real m_val = 0.0;
+          if (compute_gradient)
+            m_val =
               compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
-            Y.value(row) =
-              weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
-          }
-          else {
-            Y.value(row) = 0.0;
-            w[row] = weight_zeros;
-          }
+
+          // Add new nonzero
+          const ttb_indx row = num_samples_nonzeros + idx;
+          Kokkos::single( Kokkos::PerThread( team ), [&] ()
+          {
+            for (ttb_indx m=0; m<nd; ++m)
+              Y.subscript(row,m) = ind[m];
+            if (compute_gradient) {
+              Y.value(row) =
+                weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
+            }
+            else {
+              Y.value(row) = 0.0;
+              w[row] = weight_zeros;
+            }
+          });
         }
         rand_pool.free_state(gen);
       }, "Genten::GCP_SGD::Uniform_Sample_Zeros");

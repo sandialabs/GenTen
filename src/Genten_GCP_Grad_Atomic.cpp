@@ -45,37 +45,6 @@
 
 namespace Genten {
 
-  namespace {
-
-    // Helper class for generating a single random number and broadcasting
-    // across a Cuda warp
-    template <typename ExecSpace, typename Rand, unsigned VectorSize>
-    struct VectorRng {
-      template <typename Gen>
-      KOKKOS_INLINE_FUNCTION
-      static ttb_indx eval(Gen& gen, const ttb_indx nnz) {
-        return Rand::draw(gen,0,nnz);
-      }
-    };
-
-#if defined(KOKKOS_ENABLE_CUDA) && defined(__CUDA_ARCH__)
-    template <typename Rand, unsigned VectorSize>
-    struct VectorRng<Kokkos::Cuda,Rand,VectorSize> {
-      template <typename Gen>
-      __device__
-      static ttb_indx eval(Gen& gen, const ttb_indx nnz) {
-        ttb_indx i = 0;
-        if (threadIdx.x == 0)
-          i = Rand::draw(gen,0,nnz);
-        if (VectorSize > 1)
-          i = __shfl_sync(0xffffffff, i, 0, VectorSize);
-        return i;
-      }
-    };
-#endif
-
-  }
-
   namespace Impl {
 
     // Gradient kernel for gcp_sgd3 that combines sampling and mttkrp for
@@ -99,9 +68,10 @@ namespace Genten {
       typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
       typedef typename RandomPool::generator_type generator_type;
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
+      typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
       static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
-      static const unsigned RowBlockSize = 128;
+      static const unsigned RowBlockSize = 1;
       static const unsigned FacBlockSize = FBS;
       static const unsigned VectorSize = is_cuda ? VS : 1;
       static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
@@ -112,11 +82,16 @@ namespace Genten {
       /*const*/ ttb_indx ns = num_samples;
       /*const*/ ttb_indx nnz = X.nnz();
       const ttb_indx N = (ns+RowsPerTeam-1)/RowsPerTeam;
+      const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
 
       Policy policy(N, TeamSize, VectorSize);
-      Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+      Kokkos::parallel_for(
+        policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+        KOKKOS_LAMBDA(const TeamMember& team)
       {
         generator_type gen = rand_pool.get_state();
+        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
+        ttb_indx *ind = &(team_ind(team.team_rank(),0));
 
         const ttb_indx offset =
           (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
@@ -126,13 +101,17 @@ namespace Genten {
             continue;
 
           // Generate random tensor index
-          /*const*/ ttb_indx i =
-            VectorRng<ExecSpace,Rand,VectorSize>::eval(gen,nnz);
+          ttb_indx i = 0;
+          Kokkos::single( Kokkos::PerThread( team ), [&] (ttb_indx& j)
+          {
+            j = Rand::draw(gen,0,nnz);
+            for (ttb_indx m=0; m<nd; ++m)
+              ind[m] = X.subscript(j,m);
+          }, i);
 
           // Compute Ktensor value
           const ttb_real m_val =
-            compute_Ktensor_value<ExecSpace, FacBlockSize, VectorSize>(
-              M, X, i);
+            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(M, ind);
 
           // Compute Y value
           const ttb_real y_val = w[i] * f.deriv(X.value(i), m_val);
@@ -143,13 +122,13 @@ namespace Genten {
             TV tmp(nj, y_val);
             for (unsigned m=0; m<nd; ++m) {
               if (m != n)
-                tmp *= &(M[m].entry(X.subscript(i,m),j));
+                tmp *= &(M[m].entry(ind[m],j));
             }
             Kokkos::atomic_add(&(G[n].entry(k,j)), tmp);
           };
 
           for (unsigned n=0; n<nd; ++n) {
-            const ttb_indx k = X.subscript(i,n);
+            const ttb_indx k = ind[n];
             for (unsigned j=0; j<nc; j+=FacBlockSize) {
               if (j+FacBlockSize <= nc) {
                 const unsigned nj = FacBlockSize;
@@ -276,19 +255,22 @@ namespace Genten {
             continue;
 
           // Generate random tensor index
-          /*const*/ ttb_indx i =
-            VectorRng<ExecSpace,Rand,VectorSize>::eval(gen,nnz);
-          for (ttb_indx m=0; m<nd; ++m)
-            ind[m] = X.subscript(i,m);
+          ttb_real x_val = 0.0;
+          Kokkos::single( Kokkos::PerThread( team ), [&] (ttb_real& xv)
+          {
+            const ttb_indx i = Rand::draw(gen,0,nnz);
+            for (ttb_indx m=0; m<nd; ++m)
+              ind[m] = X.subscript(i,m);
+            xv = X.value(i);
+          }, x_val);
 
           // Compute Ktensor value
           const ttb_real m_val =
-            compute_Ktensor_value<ExecSpace, FacBlockSize, VectorSize>(
-              M, ind);
+            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(M, ind);
 
           // Compute Y value
           const ttb_real y_val =
-            weight_nonzeros * ( f.deriv(X.value(i), m_val) -
+            weight_nonzeros * ( f.deriv(x_val, m_val) -
                                 f.deriv(ttb_real(0.0), m_val) );
 
           auto row_func = [&](auto j, auto nj, auto Nj, auto k, auto n) {
@@ -318,8 +300,6 @@ namespace Genten {
         } // i
         rand_pool.free_state(gen);
       }, "gcp_sgd_ss_grad_atomic_nonzero_kernel");
-      if (algParams.fence)
-        Kokkos::fence();
       timer.stop(timer_nzs);
 
       timer.start(timer_zs);
@@ -339,9 +319,15 @@ namespace Genten {
           if (idx >= ns_z)
             continue;
 
-          // Generate index
-          for (ttb_indx m=0; m<nd; ++m)
-            ind[m] = VectorRng<ExecSpace,Rand,VectorSize>::eval(gen,X.size(m));
+          // Generate index -- use broadcast form to force warp sync
+          // so that ind is updated before used by other threads
+          int sync = 0;
+          Kokkos::single( Kokkos::PerThread( team ), [&] (int& s)
+          {
+            for (ttb_indx m=0; m<nd; ++m)
+              ind[m] = Rand::draw(gen,0,X.size(m));
+            s = 1;
+          }, sync);
 
           // Compute Ktensor value
           const ttb_real m_val =
@@ -377,8 +363,6 @@ namespace Genten {
         } // i
         rand_pool.free_state(gen);
       }, "gcp_sgd_ss_grad_atomic_zero_kernel");
-      if (algParams.fence)
-        Kokkos::fence();
       timer.stop(timer_zs);
     }
 
