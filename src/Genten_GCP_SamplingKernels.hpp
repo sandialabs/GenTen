@@ -46,10 +46,6 @@
 #include "Genten_GCP_Hash.hpp"
 
 #include "Kokkos_Random.hpp"
-#include "Kokkos_UnorderedMap.hpp"
-
-// Hard-coded max tensor dimension for hash map
-#define HASH_MAX_TENSOR_DIM 4
 
 namespace Genten {
 
@@ -73,7 +69,7 @@ namespace Genten {
     template <typename ExecSpace, typename LossFunction>
     void stratified_sample_tensor_hash(
       const SptensorT<ExecSpace>& X,
-      const Kokkos::UnorderedMap<Array<ttb_indx,HASH_MAX_TENSOR_DIM>, ttb_real, ExecSpace>& hash,
+      const TensorHashMap<ExecSpace>& hash,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,

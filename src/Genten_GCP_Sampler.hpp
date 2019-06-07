@@ -46,9 +46,9 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_GCP_SamplingKernels.hpp"
+#include "Genten_GCP_Hash.hpp"
 
 #include "Kokkos_Random.hpp"
-#include "Kokkos_UnorderedMap.hpp"
 
 namespace Genten {
 
@@ -57,8 +57,7 @@ namespace Genten {
   public:
 
     typedef Kokkos::Random_XorShift64_Pool<ExecSpace> pool_type;
-    typedef Impl::Array<ttb_indx, HASH_MAX_TENSOR_DIM> hash_key_type;
-    typedef Kokkos::UnorderedMap<hash_key_type, ttb_real, ExecSpace> map_type;
+    typedef TensorHashMap<ExecSpace> map_type;
 
     Sampler() {}
 
@@ -87,29 +86,17 @@ namespace Genten {
     {
       const ttb_indx nnz = X.nnz();
       const ttb_indx nd = X.ndims();
-      if (nd != HASH_MAX_TENSOR_DIM)
-        Genten::error("Invalid tensor dimension for hash!");
-      map_type hash_map(nnz);
+      map_type hash_map(nd, nnz);
       Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nnz),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
-        hash_key_type key;
-        for (ttb_indx j=0; j<nd; ++j)
-          key[j] = X.subscript(i,j);
-        if (hash_map.insert(key, X.value(i)).failed())
-          Kokkos::abort("Hash map insert failed!");
+        auto key = X.getSubscripts(i);
+        hash_map.insert(key, X.value(i));
       }, "Genten::GCP_SGD::hash_kernel");
 
       const bool print_histogram = false;
       if (print_histogram) {
-        auto h = hash_map.get_histogram();
-        h.calculate();
-        out << "length:" << std::endl;
-        h.print_length(out);
-        out << "distance:" << std::endl;
-        h.print_distance(out);
-        out << "block distance:" << std::endl;
-        h.print_block_distance(out);
+        hash_map.print_histogram(out);
       }
 
       return hash_map;

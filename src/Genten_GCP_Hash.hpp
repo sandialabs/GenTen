@@ -40,9 +40,12 @@
 
 #pragma once
 
+#include "Genten_Util.hpp"
+
 #include "Kokkos_UnorderedMap.hpp"
 
 namespace Genten {
+
   namespace Impl {
 
     // Statically sized array for storing tensor indices as keys in UnorderedMap
@@ -72,45 +75,99 @@ namespace Genten {
 
     };
 
-    // 128-bit version of MurmurHash3 -- see http://github.com/aappleby/smhasher
-    // MurmurHash3 was written by Austin Appleby, and is placed in the public
-    // domain. The author hereby disclaims copyright to this source code.
-    void MurmurHash3_x86_128 ( const void * key, int len, uint32_t seed, void * out );
-
   }
-}
 
-/*
-namespace Kokkos {
+  // A container for storing hash maps with various side Array<T,N> keys
+  template <typename ExecSpace>
+  class TensorHashMap {
+  public:
 
-  // Specialization of pod_hash for Array<T,N> using 128-bit hash.  Doesn't
-  // really work because __uint128_t doesn't work with Kokkos.
-  // Note the default implementation uses 32-bit MurmurHash3
-  template <typename TT, unsigned N>
-  struct pod_hash< Genten::Impl::Array<TT,N> >
-  {
-    typedef Genten::Impl::Array<TT,N> T;
-    typedef T argument_type;
-    typedef T first_argument_type;
-    typedef __uint128_t second_argument_type;
-    typedef __uint128_t result_type;
+    TensorHashMap() = default;
 
-    KOKKOS_FORCEINLINE_FUNCTION
-    __uint128_t operator()(T const & t) const
-    {
-      __uint128_t out;
-      Genten::Impl::MurmurHash3_x86_128( &t, sizeof(T), 0, &out);
-      return out;
+    TensorHashMap(ttb_indx ndim_, ttb_indx nnz) : ndim(ndim_) {
+      if (ndim == 3) map_3 = map_type_3(nnz);
+      else if (ndim == 4) map_4 = map_type_4(nnz);
+      else if (ndim == 5) map_5 = map_type_5(nnz);
+      else if (ndim == 6) map_6 = map_type_6(nnz);
+      else Genten::error("Invalid tensor dimension for hash map!");
     }
 
-    KOKKOS_FORCEINLINE_FUNCTION
-    __uint128_t operator()(T const & t, uint32_t seed) const
-    {
-      __uint128_t out;
-      return Genten::Impl::MurmurHash3_x86_128( &t, sizeof(T), seed);
-      return out;
+    template <typename ind_t>
+    KOKKOS_INLINE_FUNCTION
+    void insert(const ind_t& ind, const ttb_real val) const {
+      if (ndim == 3) insert_map(ind, val, map_3);
+      else if (ndim == 4) insert_map(ind, val, map_4);
+      else if (ndim == 5) insert_map(ind, val, map_5);
+      else if (ndim == 6) insert_map(ind, val, map_6);
+      return;
+    }
+
+    template <typename ind_t>
+    KOKKOS_INLINE_FUNCTION
+    bool exists(const ind_t& ind) const {
+      if (ndim == 3) return exists_map(ind, map_3);
+      else if (ndim == 4) return exists_map(ind, map_4);
+      else if (ndim == 5) return exists_map(ind, map_5);
+      else if (ndim == 6) return exists_map(ind, map_6);
+      return false;
+    }
+
+    void print_histogram(std::ostream& out) {
+      if (ndim == 3) print_histogram_map(out, map_3);
+      else if (ndim == 4) print_histogram_map(out, map_4);
+      else if (ndim == 5) print_histogram_map(out, map_5);
+      else if (ndim == 6) print_histogram_map(out, map_6);
+      return;
+    }
+
+  private:
+
+    typedef Impl::Array<ttb_indx, 3> key_type_3;
+    typedef Impl::Array<ttb_indx, 4> key_type_4;
+    typedef Impl::Array<ttb_indx, 5> key_type_5;
+    typedef Impl::Array<ttb_indx, 6> key_type_6;
+
+    typedef Kokkos::UnorderedMap<key_type_3, ttb_real, ExecSpace> map_type_3;
+    typedef Kokkos::UnorderedMap<key_type_4, ttb_real, ExecSpace> map_type_4;
+    typedef Kokkos::UnorderedMap<key_type_5, ttb_real, ExecSpace> map_type_5;
+    typedef Kokkos::UnorderedMap<key_type_6, ttb_real, ExecSpace> map_type_6;
+
+    ttb_indx ndim;
+    map_type_3 map_3;
+    map_type_4 map_4;
+    map_type_5 map_5;
+    map_type_6 map_6;
+
+    template <typename ind_t, typename map_type>
+    KOKKOS_INLINE_FUNCTION
+    void insert_map(const ind_t& ind, const ttb_real val, map_type& map) const {
+      typename map_type::key_type key;
+      for (ttb_indx i=0; i<ndim; ++i)
+        key[i] = ind[i];
+      if (map.insert(key,val).failed())
+        Kokkos::abort("Hash map insert failed!");
+    }
+
+    template <typename ind_t, typename map_type>
+    KOKKOS_INLINE_FUNCTION
+    bool exists_map(const ind_t& ind, map_type& map) const {
+      typename map_type::key_type key;
+      for (ttb_indx i=0; i<ndim; ++i)
+        key[i] = ind[i];
+      return map.exists(key);
+    }
+
+    template <typename map_type>
+    void print_histogram_map(std::ostream& out, map_type& map) const {
+      auto h = map.get_histogram();
+      h.calculate();
+      out << "length:" << std::endl;
+      h.print_length(out);
+      out << "distance:" << std::endl;
+      h.print_distance(out);
+      out << "block distance:" << std::endl;
+      h.print_block_distance(out);
     }
   };
 
 }
-*/

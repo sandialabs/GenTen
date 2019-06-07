@@ -207,7 +207,7 @@ namespace Genten {
     template <typename ExecSpace, typename LossFunction>
     void stratified_sample_tensor_hash(
       const SptensorT<ExecSpace>& X,
-      const Kokkos::UnorderedMap<Array<ttb_indx,HASH_MAX_TENSOR_DIM>, ttb_real, ExecSpace>& hash,
+      const TensorHashMap<ExecSpace>& hash,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
@@ -241,9 +241,6 @@ namespace Genten {
       const ttb_indx N_nz = (ns_nz+RowsPerTeam-1)/RowsPerTeam;
       const ttb_indx N_z = (ns_z+RowsPerTeam-1)/RowsPerTeam;
       const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
-
-      if (nd != HASH_MAX_TENSOR_DIM)
-        Genten::error("Tensor dimension for too large!");
 
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
@@ -306,14 +303,12 @@ namespace Genten {
       // Generate samples of zeros
       Policy policy_z(N_z, TeamSize, VectorSize);
       Kokkos::parallel_for(
-        policy_z /*.set_scratch_size(0,Kokkos::PerTeam(bytes))*/,
+        policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
         generator_type gen = rand_pool.get_state();
-        // TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
-        // ttb_indx *ind = &(team_ind(team.team_rank(),0));
-        typedef Array<ttb_indx,HASH_MAX_TENSOR_DIM> array_t;
-        array_t ind;
+        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
+        ttb_indx *ind = &(team_ind(team.team_rank(),0));
 
         const ttb_indx offset =
           (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
@@ -909,7 +904,7 @@ namespace Genten {
                                                                         \
   template void Impl::stratified_sample_tensor_hash(                    \
     const SptensorT<SPACE>& X,                                          \
-    const Kokkos::UnorderedMap<Impl::Array<ttb_indx,HASH_MAX_TENSOR_DIM>, ttb_real, SPACE>& hash, \
+    const TensorHashMap<SPACE>& hash, \
     const ttb_indx num_samples_nonzeros,                                \
     const ttb_indx num_samples_zeros,                                   \
     const ttb_real weight_nonzeros,                                     \
