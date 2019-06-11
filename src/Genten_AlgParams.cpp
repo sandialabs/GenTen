@@ -303,6 +303,11 @@ Genten::parse_ttb_real(std::vector<std::string>& args,
 {
   ttb_real tmp = default_value;
   auto it = std::find(args.begin(), args.end(), cl_arg);
+  // If not found, try removing the '--'
+  if ((it == args.end()) && (cl_arg.size() > 2) &&
+      (cl_arg[0] == '-') && (cl_arg[1] == '-')) {
+    it = std::find(args.begin(), args.end(), cl_arg.substr(2));
+  }
   if (it != args.end()) {
     auto arg_it = it;
     // get next cl_arg
@@ -344,6 +349,11 @@ Genten::parse_ttb_indx(std::vector<std::string>& args,
 {
   ttb_indx tmp = default_value;
   auto it = std::find(args.begin(), args.end(), cl_arg);
+  // If not found, try removing the '--'
+  if ((it == args.end()) && (cl_arg.size() > 2) &&
+      (cl_arg[0] == '-') && (cl_arg[1] == '-')) {
+    it = std::find(args.begin(), args.end(), cl_arg.substr(2));
+  }
   if (it != args.end()) {
     auto arg_it = it;
     // get next cl_arg
@@ -386,6 +396,11 @@ Genten::parse_ttb_bool(std::vector<std::string>& args,
 {
   // return true if arg_on is found
   auto it = std::find(args.begin(), args.end(), cl_arg_on);
+  // If not found, try removing the '--'
+  if ((it == args.end()) && (cl_arg_on.size() > 2) &&
+      (cl_arg_on[0] == '-') && (cl_arg_on[1] == '-')) {
+    it = std::find(args.begin(), args.end(), cl_arg_on.substr(2));
+  }
   if (it != args.end()) {
     args.erase(it);
     return true;
@@ -393,6 +408,11 @@ Genten::parse_ttb_bool(std::vector<std::string>& args,
 
   // return false if arg_off is found
   it = std::find(args.begin(), args.end(), cl_arg_off);
+  // If not found, try removing the '--'
+  if ((it == args.end()) && (cl_arg_off.size() > 2) &&
+      (cl_arg_off[0] == '-') && (cl_arg_off[1] == '-')) {
+    it = std::find(args.begin(), args.end(), cl_arg_off.substr(2));
+  }
   if (it != args.end()) {
     args.erase(it);
     return false;
@@ -408,6 +428,11 @@ Genten::parse_string(std::vector<std::string>& args, const std::string& cl_arg,
 {
   std::string tmp = default_value;
   auto it = std::find(args.begin(), args.end(), cl_arg);
+  // If not found, try removing the '--'
+  if ((it == args.end()) && (cl_arg.size() > 2) &&
+      (cl_arg[0] == '-') && (cl_arg[1] == '-')) {
+    it = std::find(args.begin(), args.end(), cl_arg.substr(2));
+  }
   if (it != args.end()) {
     auto arg_it = it;
     // get next cl_arg
@@ -434,6 +459,11 @@ Genten::parse_ttb_indx_array(std::vector<std::string>& args,
   ttb_indx tmp;
   std::vector<ttb_indx> vals;
   auto it = std::find(args.begin(), args.end(), cl_arg);
+  // If not found, try removing the '--'
+  if ((it == args.end()) && (cl_arg.size() > 2) &&
+      (cl_arg[0] == '-') && (cl_arg[1] == '-')) {
+    it = std::find(args.begin(), args.end(), cl_arg.substr(2));
+  }
   if (it != args.end()) {
     auto arg_it = it;
     // get next cl_arg

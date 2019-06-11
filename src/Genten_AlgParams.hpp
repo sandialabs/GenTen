@@ -126,6 +126,11 @@ namespace Genten {
                    const char*const* names)
   {
     auto it = std::find(args.begin(), args.end(), cl_arg);
+    // If not found, try removing the '--'
+    if ((it == args.end()) && (cl_arg.size() > 2) &&
+        (cl_arg[0] == '-') && (cl_arg[1] == '-')) {
+      it = std::find(args.begin(), args.end(), cl_arg.substr(2));
+    }
     if (it != args.end()) {
       auto arg_it = it;
       // get next cl_arg
