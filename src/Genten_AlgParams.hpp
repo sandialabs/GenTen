@@ -62,7 +62,7 @@ namespace Genten {
     ttb_real tol;        // Decomposition tolerance
     ttb_indx printitn;   // Print iterations
     bool debug;          // Print debugging info
-    bool fence;          // Fence on kernels for accurate timings
+    bool timings;        // Print accurate kernel timing info (requires fences)
 
     // MTTKRP options
     MTTKRP_Method::type mttkrp_method; // MTTKRP algorithm

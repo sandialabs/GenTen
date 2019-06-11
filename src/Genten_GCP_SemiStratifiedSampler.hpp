@@ -115,7 +115,7 @@ namespace Genten {
         else
           out << "Sorting tensor for faster sampling...";
       }
-      SystemTimer timer(1, algParams.fence);
+      SystemTimer timer(1, algParams.timings);
       timer.start(0);
       if (algParams.hash)
         hash_map = this->buildHashMap(X,out);

@@ -118,7 +118,8 @@ namespace Genten {
         sampler->print(out);
       }
 
-      // Timers
+      // Timers -- turn on fences when timing info is requested so we get
+      // accurate kernel times
       int num_timers = 0;
       const int timer_sgd = num_timers++;
       const int timer_sort = num_timers++;
@@ -132,7 +133,7 @@ namespace Genten {
       const int timer_step = num_timers++;
       const int timer_sample_g_z_nz = num_timers++;
       const int timer_sample_g_perm = num_timers++;
-      SystemTimer timer(num_timers, algParams.fence);
+      SystemTimer timer(num_timers, algParams.timings);
 
       // Start timer for total execution time of the algorithm.
       timer.start(timer_sgd);
@@ -358,46 +359,47 @@ namespace Genten {
       timer.stop(timer_sgd);
 
       if (printIter > 0) {
-        out << "GCP-SGD completed " << total_iters << " iterations in "
-            << timer.getTotalTime(timer_sgd) << " seconds" << std::endl
-            << "\tsort/hash: " << timer.getTotalTime(timer_sort)
-            << " seconds\n"
-            << "\tsample-f:  " << timer.getTotalTime(timer_sample_f)
-            << " seconds\n";
-        if (!algParams.fuse) {
-          out << "\tsample-g:  " << timer.getTotalTime(timer_sample_g)
-              << " seconds\n"
-              << "\t\tzs/nzs:   " << timer.getTotalTime(timer_sample_g_z_nz)
-              << " seconds\n";
-          if (algParams.mttkrp_method == MTTKRP_Method::Perm) {
-            out << "\t\tperm:     " << timer.getTotalTime(timer_sample_g_perm)
-                << " seconds\n";
-          }
-        }
-        out << "\tf-est:     " << timer.getTotalTime(timer_fest)
-            << " seconds\n"
-            << "\tgradient:  " << timer.getTotalTime(timer_grad)
-            << " seconds\n";
-        if (algParams.fuse) {
-          out << "\t\tinit:    " << timer.getTotalTime(timer_grad_init)
-              << " seconds\n"
-              << "\t\tnzs:     " << timer.getTotalTime(timer_grad_nzs)
-              << " seconds\n"
-              << "\t\tzs:      " << timer.getTotalTime(timer_grad_zs)
-              << " seconds\n";
-        }
-        out << "\tstep/clip: " << timer.getTotalTime(timer_step)
-            << " seconds\n"
-            << "Final f-est: "
+        out << "Final f-est: "
             << std::setw(13) << std::setprecision(6) << std::scientific
             << fest;
         if (compute_fit)
           out << ", fit: "
               << std::setw(10) << std::setprecision(3) << std::scientific
               << fit;
-        out << std::endl;
-        if (!algParams.fence)
-          out << "WARNING:  Not fencing at parallel kernels.  Timings may be very inaccruate!  Run with --fence to add fences for accurate timings (but may increase total run time)." << std::endl;
+        out << std::endl
+            << "GCP-SGD completed " << total_iters << " iterations in "
+            << std::setw(8) << std::setprecision(2) << std::scientific
+            << timer.getTotalTime(timer_sgd) << " seconds" << std::endl;
+        if (algParams.timings) {
+          out << "\tsort/hash: " << timer.getTotalTime(timer_sort)
+              << " seconds\n"
+              << "\tsample-f:  " << timer.getTotalTime(timer_sample_f)
+              << " seconds\n";
+          if (!algParams.fuse) {
+            out << "\tsample-g:  " << timer.getTotalTime(timer_sample_g)
+                << " seconds\n"
+                << "\t\tzs/nzs:   " << timer.getTotalTime(timer_sample_g_z_nz)
+                << " seconds\n";
+            if (algParams.mttkrp_method == MTTKRP_Method::Perm) {
+              out << "\t\tperm:     " << timer.getTotalTime(timer_sample_g_perm)
+                  << " seconds\n";
+            }
+          }
+          out << "\tf-est:     " << timer.getTotalTime(timer_fest)
+              << " seconds\n"
+              << "\tgradient:  " << timer.getTotalTime(timer_grad)
+              << " seconds\n";
+          if (algParams.fuse) {
+            out << "\t\tinit:    " << timer.getTotalTime(timer_grad_init)
+                << " seconds\n"
+                << "\t\tnzs:     " << timer.getTotalTime(timer_grad_nzs)
+                << " seconds\n"
+                << "\t\tzs:      " << timer.getTotalTime(timer_grad_zs)
+                << " seconds\n";
+          }
+          out << "\tstep/clip: " << timer.getTotalTime(timer_step)
+              << " seconds\n";
+        }
       }
 
       u.copyToKtensor(u0);
