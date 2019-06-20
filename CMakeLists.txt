@@ -365,6 +365,8 @@ IF (ENABLE_GCP)
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD2.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_Grad_Atomic.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD_SA.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_Grad_SA.cpp
     #${Genten_SOURCE_DIR}/src/Genten_GCP_HogWild.cpp
     #${Genten_SOURCE_DIR}/src/Genten_GCP_SGD2_HogWild.cpp
     )
@@ -504,6 +506,16 @@ ADD_EXECUTABLE (
 TARGET_LINK_LIBRARIES (genten ${GENTEN_LINK_LIBS})
 INSTALL (
   TARGETS genten
+  DESTINATION drivers
+  )
+
+ADD_EXECUTABLE (
+  key_scan_test
+  ${Genten_SOURCE_DIR}/driver/key_scan_test.cpp
+  )
+TARGET_LINK_LIBRARIES (key_scan_test ${GENTEN_LINK_LIBS})
+INSTALL (
+  TARGETS key_scan_test
   DESTINATION drivers
   )
 

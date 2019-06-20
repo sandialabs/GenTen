@@ -162,6 +162,17 @@ namespace Genten {
     }
 
     KOKKOS_INLINE_FUNCTION
+    void store(scalar_type* x) const {
+#ifdef __CUDA_ARCH__
+      for (ordinal_type i=0; i<sz.value; ++i)
+        x[i*WarpDim+threadIdx.x] = v[i];
+#else
+      for (ordinal_type i=0; i<sz.value; ++i)
+        x[i] = v[i];
+#endif
+    }
+
+    KOKKOS_INLINE_FUNCTION
     void store_plus(scalar_type* x) const {
 #ifdef __CUDA_ARCH__
       for (ordinal_type i=0; i<sz.value; ++i)
@@ -480,6 +491,11 @@ namespace Genten {
     }
 
     __device__ inline
+    void store(scalar_type* x) const {
+      if (sz.value > 0) x[threadIdx.x] = v0;
+    }
+
+    __device__ inline
     void store_plus(scalar_type* x) const {
       if (sz.value > 0) x[threadIdx.x] += v0;
     }
@@ -711,6 +727,12 @@ namespace Genten {
     void load(const scalar_type* x) {
       if (sz.value > 0) v0 = x[threadIdx.x];
       if (sz.value > 1) v1 = x[WarpDim + threadIdx.x];
+    }
+
+    __device__ inline
+    void store(scalar_type* x) const {
+      if (sz.value > 0) x[threadIdx.x] = v0;
+      if (sz.value > 1) x[WarpDim + threadIdx.x] = v1;
     }
 
     __device__ inline
@@ -978,6 +1000,13 @@ namespace Genten {
       if (sz.value > 0) v0 = x[threadIdx.x];
       if (sz.value > 1) v1 = x[WarpDim + threadIdx.x];
       if (sz.value > 2) v2 = x[2*WarpDim + threadIdx.x];
+    }
+
+    __device__ inline
+    void store(scalar_type* x) const {
+      if (sz.value > 0) x[threadIdx.x] = v0;
+      if (sz.value > 1) x[WarpDim + threadIdx.x] = v1;
+      if (sz.value > 2) x[2*WarpDim + threadIdx.x] = v2;
     }
 
     __device__ inline
@@ -1274,6 +1303,14 @@ namespace Genten {
       if (sz.value > 1) v1 = x[WarpDim + threadIdx.x];
       if (sz.value > 2) v2 = x[2*WarpDim + threadIdx.x];
       if (sz.value > 3) v3 = x[3*WarpDim + threadIdx.x];
+    }
+
+    __device__ inline
+    void store(scalar_type* x) const {
+      if (sz.value > 0) x[threadIdx.x] = v0;
+      if (sz.value > 1) x[WarpDim + threadIdx.x] = v1;
+      if (sz.value > 2) x[2*WarpDim + threadIdx.x] = v2;
+      if (sz.value > 3) x[3*WarpDim + threadIdx.x] = v3;
     }
 
     __device__ inline
