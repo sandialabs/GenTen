@@ -293,6 +293,7 @@ namespace Genten {
       const ttb_real weight_zeros,
       const GCP::KokkosVector<ExecSpace>& G,
       const Kokkos::View<ttb_indx**,Kokkos::LayoutRight,ExecSpace>& Gind,
+      const Kokkos::View<ttb_indx*,ExecSpace>& perm,
       const bool use_adam,
       const GCP::KokkosVector<ExecSpace>& adam_m,
       const GCP::KokkosVector<ExecSpace>& adam_v,
@@ -307,7 +308,10 @@ namespace Genten {
       const AlgParams& algParams,
       SystemTimer& timer,
       const int timer_nzs,
-      const int timer_zs)
+      const int timer_zs,
+      const int timer_sort,
+      const int timer_scan,
+      const int timer_step)
     {
       // Compute sparse gradient
       KtensorT<ExecSpace> Mt = M.getKtensor();
@@ -322,18 +326,22 @@ namespace Genten {
       const ttb_indx ns = Gind.extent(1);
       KtensorT<ExecSpace> mt = adam_m.getKtensor();
       KtensorT<ExecSpace> vt = adam_v.getKtensor();
-      Kokkos::View<ttb_indx*,ExecSpace> perm("perm", ns); // FIXME
       for (ttb_indx n=0; n<nd; ++n) {
         // Keys for dimension n
         auto Gind_n = Kokkos::subview(Gind, n, Kokkos::ALL);
 
         // Sort keys
+        timer.start(timer_sort);
         Genten::perm_sort(perm, Gind_n);
+        timer.stop(timer_sort);
 
         // Segmented reduction based on sorted Gind key
+        timer.start(timer_scan);
         Genten::key_scan(Gt[n].view(), Gind_n, perm);
+        timer.stop(timer_scan);
 
         // Step
+        timer.start(timer_step);
         typedef Genten::SpaceProperties<ExecSpace> Prop;
         const unsigned R = Mt.ncomponents();
         const unsigned vector_size = Prop::is_cuda ? R : 1;
@@ -361,7 +369,7 @@ namespace Genten {
                 ttb_real& v = vt[n].entry(row,j);
                 m = beta1*m + (1.0-beta1)*g;
                 v = beta2*v + (1.0-beta2)*g*g;
-                u -= step*v/(sqrt(v+eps));
+                u -= step*m/(sqrt(v+eps));
                 if (has_bounds)
                   u = u < lb ? lb : (u > ub ? ub : u);
               });
@@ -379,6 +387,7 @@ namespace Genten {
             }
           }
         });
+        timer.stop(timer_step);
       }
     }
 
@@ -397,6 +406,7 @@ namespace Genten {
     const ttb_real weight_zeros,                                        \
     const GCP::KokkosVector<SPACE>& G,                                  \
     const Kokkos::View<ttb_indx**,Kokkos::LayoutRight,SPACE>& Gind,     \
+    const Kokkos::View<ttb_indx*,SPACE>& perm,                          \
     const bool use_adam,                                                \
     const GCP::KokkosVector<SPACE>& adam_m,                             \
     const GCP::KokkosVector<SPACE>& adam_v,                             \
@@ -411,7 +421,10 @@ namespace Genten {
     const AlgParams& algParams,                                         \
     SystemTimer& timer,                                                 \
     const int timer_nzs,                                                \
-    const int timer_zs);
+    const int timer_zs,                                                 \
+    const int timer_sort,                                               \
+    const int timer_scan,                                               \
+    const int timer_step);
 
 
 // #define INST_MACRO(SPACE)                                               \

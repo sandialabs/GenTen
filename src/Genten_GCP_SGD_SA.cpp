@@ -127,6 +127,8 @@ namespace Genten {
       const int timer_grad_nzs = num_timers++;
       const int timer_grad_zs = num_timers++;
       const int timer_grad_init = num_timers++;
+      const int timer_grad_sort = num_timers++;
+      const int timer_grad_scan = num_timers++;
       const int timer_step = num_timers++;
       const int timer_sample_g_z_nz = num_timers++;
       const int timer_sample_g_perm = num_timers++;
@@ -149,6 +151,7 @@ namespace Genten {
       VectorType g(nc, nd, gsz);
       KtensorT<ExecSpace> gt = g.getKtensor();
       Kokkos::View<ttb_indx**,Kokkos::LayoutRight,ExecSpace> gind("Gradient index", nd, tot_num_grad_samples);
+      Kokkos::View<ttb_indx*,ExecSpace> perm("perm", tot_num_grad_samples);
 
       // Copy Ktensor for restoring previous solution
       VectorType u_prev = u.clone();
@@ -238,11 +241,12 @@ namespace Genten {
             g.zero(); // algorithm does not use weights
             timer.stop(timer_grad_init);
             sampler.fusedGradientAndStep(
-              u, loss_func, g, gind,
+              u, loss_func, g, gind, perm,
               use_adam, adam_m, adam_v, beta1, beta2, eps,
               use_adam ? adam_step : step,
               has_bounds, lb, ub,
-              timer, timer_grad_nzs, timer_grad_zs);
+              timer, timer_grad_nzs, timer_grad_zs,
+              timer_grad_sort, timer_grad_scan, timer_step);
             timer.stop(timer_grad);
           }
         }
@@ -337,6 +341,12 @@ namespace Genten {
               << "\t\tnzs:     " << timer.getTotalTime(timer_grad_nzs)
               << " seconds\n"
               << "\t\tzs:      " << timer.getTotalTime(timer_grad_zs)
+              << " seconds\n"
+              << "\t\tsort     " << timer.getTotalTime(timer_grad_sort)
+              << " seconds\n"
+              << "\t\tscan:    " << timer.getTotalTime(timer_grad_scan)
+              << " seconds\n"
+              << "\tstep/clip: " << timer.getTotalTime(timer_step)
               << " seconds\n";
         }
       }

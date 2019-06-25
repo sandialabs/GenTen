@@ -194,6 +194,7 @@ namespace Genten {
                               const LossFunction& loss_func,
                               const GCP::KokkosVector<ExecSpace>& g,
                               const Kokkos::View<ttb_indx**,Kokkos::LayoutRight,ExecSpace>& gind,
+                              const Kokkos::View<ttb_indx*,ExecSpace>& perm,
                               const bool use_adam,
                               const GCP::KokkosVector<ExecSpace>& adam_m,
                               const GCP::KokkosVector<ExecSpace>& adam_v,
@@ -206,16 +207,19 @@ namespace Genten {
                               const ttb_real ub,
                               SystemTimer& timer,
                               const int timer_nzs,
-                              const int timer_zs)
+                              const int timer_zs,
+                              const int timer_sort,
+                              const int timer_scan,
+                              const int timer_step)
     {
       Impl::gcp_sgd_ss_grad_sa(
         X, u, loss_func,
         num_samples_nonzeros_grad, num_samples_zeros_grad,
         weight_nonzeros_grad, weight_zeros_grad,
-        g, gind, use_adam, adam_m, adam_v, beta1, beta2, eps, step,
+        g, gind, perm, use_adam, adam_m, adam_v, beta1, beta2, eps, step,
         has_bounds, lb, ub,
         rand_pool, algParams,
-        timer, timer_nzs, timer_zs);
+        timer, timer_nzs, timer_zs, timer_sort, timer_scan, timer_step);
     }
 
   protected:

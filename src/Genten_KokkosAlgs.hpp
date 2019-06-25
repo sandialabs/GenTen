@@ -128,6 +128,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
   typedef Kokkos::View<val_type*, Kokkos::LayoutRight, typename exec_space::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
   typedef Genten::SpaceProperties<exec_space> Prop;
 
+  // FIXME -- Tune these numbers
   const size_type n = vals.extent(0);
   const size_type r = vals.extent(1);
   size_type block_size, num_blocks, block_threshold, league_size, team_size,
@@ -399,6 +400,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
   typedef Kokkos::View<val_type*, Kokkos::LayoutRight, typename exec_space::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
   typedef Genten::SpaceProperties<exec_space> Prop;
 
+  // FIXME -- Tune these numbers
   const size_type n = vals.extent(0);
   const size_type r = vals.extent(1);
   size_type block_size, num_blocks, block_threshold, league_size, team_size,
@@ -428,7 +430,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
       block_size = n;
     }
     league_size = num_blocks;
-    block_threshold = 8;
+    block_threshold = 1;
   }
   const size_t bytes = TmpScratchSpace::shmem_size(r);
 

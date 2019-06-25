@@ -64,6 +64,7 @@ namespace Genten {
       const ttb_real weight_zeros,
       const GCP::KokkosVector<ExecSpace>& G,
       const Kokkos::View<ttb_indx**,Kokkos::LayoutRight,ExecSpace>& Gind,
+      const Kokkos::View<ttb_indx*,ExecSpace>& perm,
       const bool use_adam,
       const GCP::KokkosVector<ExecSpace>& adam_m,
       const GCP::KokkosVector<ExecSpace>& adam_v,
@@ -78,7 +79,10 @@ namespace Genten {
       const AlgParams& algParams,
       SystemTimer& timer,
       const int timer_nzs,
-      const int timer_zs);
+      const int timer_zs,
+      const int timer_sort,
+      const int timer_scan,
+      const int timer_step);
 
   }
 
