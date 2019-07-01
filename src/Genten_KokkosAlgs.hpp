@@ -57,6 +57,10 @@
 #include <thrust/device_ptr.h>
 #endif
 
+#ifdef HAVE_CALIPER
+#include <caliper/cali.h>
+#endif
+
 // Various utility algorithms using Kokkos
 
 namespace Genten {
@@ -70,6 +74,10 @@ namespace Genten {
 template <typename PermType, typename Op>
 void perm_sort_op(const PermType& perm, const Op& op)
 {
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::perm_sort_op");
+#endif
+
   typedef typename PermType::execution_space exec_space;
   typedef typename PermType::size_type size_type;
   typedef typename PermType::non_const_value_type perm_val_type;
@@ -222,7 +230,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
         {
           block_vals(block,j) = s[j];
         });
-      });
+      }, "Genten::key_scan::parallel_scan");
 
     // Scan the block results that are in the same segment
     key_scan(block_vals, block_keys, check);
@@ -252,7 +260,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
           });
           ++i;
         }
-      });
+      }, "Genten::key_scan::block_scan");
   }
   else {
     // Serial scan
@@ -290,7 +298,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
             vals(i,j) = s[j];
           });
         }
-      });
+      }, "Genten::key_scan::serial_scan");
   }
 
   if (check) {
@@ -391,6 +399,10 @@ template <typename ValViewType, typename KeyViewType, typename PermViewType>
 void key_scan(const ValViewType& vals, const KeyViewType& keys,
               const PermViewType& perm, const bool check = false)
 {
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::key_scan_perm");
+#endif
+
   typedef typename ValViewType::non_const_value_type val_type;
   typedef typename KeyViewType::non_const_value_type key_type;
   typedef typename PermViewType::non_const_value_type perm_type;
@@ -496,7 +508,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
         {
           block_vals(block,j) = s[j];
         });
-      });
+      }, "Genten::key_scan_perm::parallel_scan");
 
     // Scan the block results that are in the same segment (does not use
     // permutation)
@@ -529,7 +541,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
           ++i;
           p = perm(i);
         }
-      });
+      }, "Genten::key_scan_perm::block_scan");
   }
   else {
     // Serial scan
@@ -569,7 +581,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
             vals(p,j) = s[j];
           });
         }
-      });
+      }, "Genten::key_scan_perm::serial_scan");
   }
 
   if (check) {

@@ -65,7 +65,7 @@ namespace Genten {
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
       const KtensorT<ExecSpace>& G,
-      const Kokkos::View<ttb_indx**,Kokkos::LayoutRight,ExecSpace>& Gind,
+      const Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,ExecSpace>& Gind,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams,
       SystemTimer& timer,
@@ -145,7 +145,7 @@ namespace Genten {
           for (unsigned n=0; n<nd; ++n) {
             Kokkos::single( Kokkos::PerThread( team ), [&] ()
             {
-              Gind(n,idx) = ind[n];
+              Gind(idx,n) = ind[n];
             });
             for (unsigned j=0; j<nc; j+=FacBlockSize) {
               if (j+FacBlockSize <= nc) {
@@ -211,7 +211,7 @@ namespace Genten {
           for (unsigned n=0; n<nd; ++n) {
             Kokkos::single( Kokkos::PerThread( team ), [&] ()
             {
-                Gind(n,idx+ns_nz) = ind[n];
+              Gind(idx+ns_nz,n) = ind[n];
             });
             for (unsigned j=0; j<nc; j+=FacBlockSize) {
               if (j+FacBlockSize <= nc) {
@@ -235,7 +235,7 @@ namespace Genten {
       typedef ExecSpace exec_space;
       typedef SptensorT<exec_space> tensor_type;
       typedef KtensorT<exec_space> Ktensor_type;
-      typedef Kokkos::View<ttb_indx**,Kokkos::LayoutRight,ExecSpace> grad_index_type;
+      typedef Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,ExecSpace> grad_index_type;
 
       const tensor_type X;
       const Ktensor_type M;
@@ -292,7 +292,7 @@ namespace Genten {
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
       const GCP::KokkosVector<ExecSpace>& G,
-      const Kokkos::View<ttb_indx**,Kokkos::LayoutRight,ExecSpace>& Gind,
+      const Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,ExecSpace>& Gind,
       const Kokkos::View<ttb_indx*,ExecSpace>& perm,
       const bool use_adam,
       const GCP::KokkosVector<ExecSpace>& adam_m,
@@ -322,13 +322,14 @@ namespace Genten {
         timer,timer_nzs,timer_zs);
       run_row_simd_kernel(kernel, Mt.ncomponents());
 
-      const ttb_indx nd = Gind.extent(0);
-      const ttb_indx ns = Gind.extent(1);
+      const ttb_indx ns = Gind.extent(0);
+      const ttb_indx nd = Gind.extent(1);
       KtensorT<ExecSpace> mt = adam_m.getKtensor();
       KtensorT<ExecSpace> vt = adam_v.getKtensor();
       for (ttb_indx n=0; n<nd; ++n) {
         // Keys for dimension n
-        auto Gind_n = Kokkos::subview(Gind, n, Kokkos::ALL);
+        Kokkos::View<ttb_indx*,Kokkos::LayoutLeft,ExecSpace> Gind_n =
+          Kokkos::subview(Gind, Kokkos::ALL, n);
 
         // Sort keys
         timer.start(timer_sort);
@@ -386,7 +387,7 @@ namespace Genten {
               });
             }
           }
-        });
+        }, "Genten::Impl::gcp_sgd_ss_grad_sa::step_clip");
         timer.stop(timer_step);
       }
     }
@@ -405,7 +406,7 @@ namespace Genten {
     const ttb_real weight_nonzeros,                                     \
     const ttb_real weight_zeros,                                        \
     const GCP::KokkosVector<SPACE>& G,                                  \
-    const Kokkos::View<ttb_indx**,Kokkos::LayoutRight,SPACE>& Gind,     \
+    const Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,SPACE>& Gind,      \
     const Kokkos::View<ttb_indx*,SPACE>& perm,                          \
     const bool use_adam,                                                \
     const GCP::KokkosVector<SPACE>& adam_m,                             \

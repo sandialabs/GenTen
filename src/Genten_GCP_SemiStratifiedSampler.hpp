@@ -193,7 +193,7 @@ namespace Genten {
     void fusedGradientAndStep(const GCP::KokkosVector<ExecSpace>& u,
                               const LossFunction& loss_func,
                               const GCP::KokkosVector<ExecSpace>& g,
-                              const Kokkos::View<ttb_indx**,Kokkos::LayoutRight,ExecSpace>& gind,
+                              const Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,ExecSpace>& gind,
                               const Kokkos::View<ttb_indx*,ExecSpace>& perm,
                               const bool use_adam,
                               const GCP::KokkosVector<ExecSpace>& adam_m,

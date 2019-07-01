@@ -120,7 +120,7 @@ namespace GCP {
       apply_func(KOKKOS_LAMBDA(const ttb_indx i)
       {
         my_v(i) += xv(i);
-      });
+      }, "Genten::KokkosVector::plus");
     }
 
     void scale(const ttb_real alpha)
@@ -129,7 +129,7 @@ namespace GCP {
       apply_func(KOKKOS_LAMBDA(const ttb_indx i)
       {
         my_v(i) *= alpha;
-      });
+      }, "Genten::KokkosVector::scale");
     }
 
     ttb_real dot(const KokkosVector& x) const
@@ -140,7 +140,7 @@ namespace GCP {
       reduce_func(KOKKOS_LAMBDA(const ttb_indx i, ttb_real& d)
       {
         d += my_v(i)*xv(i);
-      }, result);
+      }, result, "Genten::KokkosVector::dot");
       return result;
     }
 
@@ -161,7 +161,7 @@ namespace GCP {
       apply_func(KOKKOS_LAMBDA(const ttb_indx i)
       {
         my_v(i) += alpha*xv(i);
-      });
+      }, "Genten::KokkosVector::axpy");
     }
 
     void zero()
@@ -170,7 +170,7 @@ namespace GCP {
       apply_func(KOKKOS_LAMBDA(const ttb_indx i)
       {
         my_v(i) = 0.0;
-      });
+      }, "Genten::KokkosVector::zero");
     }
 
     int dimension() const
@@ -185,7 +185,7 @@ namespace GCP {
       apply_func(KOKKOS_LAMBDA(const ttb_indx i)
       {
         my_v(i) = xv(i);
-      });
+      }, "Genten::KokkosVector::set");
     }
 
     void print(std::ostream& outStream) const
@@ -204,7 +204,7 @@ namespace GCP {
       apply_func(KOKKOS_LAMBDA(const ttb_indx i)
       {
         my_v(i) = C;
-      });
+      }, "Genten::KokkosVector::setScalar");
     }
 
     void randomize(const ttb_real l = 0.0, const ttb_real u = 1.0)
@@ -215,19 +215,19 @@ namespace GCP {
     }
 
     template <typename Func>
-    void apply_func(const Func& f) const
+    void apply_func(const Func& f, const std::string& name = "") const
     {
       const ttb_indx n = v.extent(0);
       Kokkos::RangePolicy<exec_space> policy(0,n);
-      Kokkos::parallel_for(policy, f);
+      Kokkos::parallel_for(policy, f, name);
     }
 
     template <typename Func>
-    void reduce_func(const Func& f, ttb_real& d) const
+    void reduce_func(const Func& f, ttb_real& d, const std::string& name = "") const
     {
       const ttb_indx n = v.extent(0);
       Kokkos::RangePolicy<exec_space> policy(0,n);
-      Kokkos::parallel_reduce(policy, f, d);
+      Kokkos::parallel_reduce(name, policy, f, d);
     }
 
   protected:

@@ -63,7 +63,7 @@ namespace Genten {
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
       const GCP::KokkosVector<ExecSpace>& G,
-      const Kokkos::View<ttb_indx**,Kokkos::LayoutRight,ExecSpace>& Gind,
+      const Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,ExecSpace>& Gind,
       const Kokkos::View<ttb_indx*,ExecSpace>& perm,
       const bool use_adam,
       const GCP::KokkosVector<ExecSpace>& adam_m,

@@ -150,7 +150,7 @@ namespace Genten {
       IndxArrayT<ExecSpace> gsz(nd, tot_num_grad_samples);
       VectorType g(nc, nd, gsz);
       KtensorT<ExecSpace> gt = g.getKtensor();
-      Kokkos::View<ttb_indx**,Kokkos::LayoutRight,ExecSpace> gind("Gradient index", nd, tot_num_grad_samples);
+      Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,ExecSpace> gind("Gradient index", tot_num_grad_samples, nd);
       Kokkos::View<ttb_indx*,ExecSpace> perm("perm", tot_num_grad_samples);
 
       // Copy Ktensor for restoring previous solution
