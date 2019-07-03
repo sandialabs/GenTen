@@ -115,7 +115,14 @@ template <typename PermType, typename ViewType>
 void perm_sort(const PermType& perm, const ViewType& v)
 {
   typedef typename ViewType::size_type size_type;
+  // We see a massive slowdown on the CPU if this lambda does capture-by-value,
+  // which is what KOKKOS_LAMBDA always does.  It seems that the view is
+  // copied each time the op is executed!
+#if defined(KOKKOS_ENABLE_CUDA)
   perm_sort_op(perm, KOKKOS_LAMBDA(const size_type& a, const size_type& b)
+#else
+  perm_sort_op(perm, [&](const size_type& a, const size_type& b)
+#endif
   {
     return v(a) < v(b);
   });
