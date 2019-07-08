@@ -96,6 +96,7 @@ namespace Genten {
     ttb_real w_g_z;                      // Zero sample weight for grad
     bool hash;                           // Hash tensor instead of sorting
     bool fuse;                           // Fuse sampling and gradient kernels
+    bool fuse_sa;                        // Fused with sparse array gradient
     bool compute_fit;                    // Compute fit metric
     bool use_adam;                       // Use ADAM step
     ttb_real adam_beta1;                 // Decay rate of first moment avg.

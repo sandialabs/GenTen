@@ -75,6 +75,7 @@ Genten::AlgParams::AlgParams() :
   w_g_z(-1.0),
   hash(false),
   fuse(false),
+  fuse_sa(false),
   compute_fit(false),
   use_adam(true),
   adam_beta1(0.9),    // Defaults taken from ADAM paper
@@ -151,6 +152,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   w_g_z = parse_ttb_real(args, "--gzw", w_g_z, -1.0, DOUBLE_MAX);
   hash = parse_ttb_bool(args, "--hash", "--no-hash", hash);
   fuse = parse_ttb_bool(args, "--fuse", "--no-fuse", fuse);
+  fuse_sa = parse_ttb_bool(args, "--fuse-sa", "--no-fuse-sa", fuse_sa);
   compute_fit = parse_ttb_bool(args, "--fit", "--no-fit", compute_fit);
   use_adam = parse_ttb_bool(args, "--adam", "--no-adam", use_adam);
   adam_beta1 = parse_ttb_real(args, "--adam_beta1", adam_beta1, 0.0, 1.0);
@@ -228,6 +230,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --hash             compute hash map for zero sampling" << std::endl;
   out << "  --bulk-factor <int> factor for bulk zero sampling" << std::endl;
   out << "  --fuse             fuse gradient sampling and MTTKRP" << std::endl;
+  out << "  --fuse-sa          fuse with sparse array graident" << std::endl;
   out << "  --fit              compute fit metric" << std::endl;
   out << "  --adam             use ADAM step" << std::endl;
   out << "  --adam_beta1       Decay rate for 1st moment avg." << std::endl;
@@ -289,6 +292,7 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  bulk-factor = " << bulk_factor << std::endl;
   out << "  hash = " << (hash ? "true" : "false") << std::endl;
   out << "  fuse = " << (fuse ? "true" : "false") << std::endl;
+  out << "  fuse-sa = " << (fuse_sa ? "true" : "false") << std::endl;
   out << "  fit = " << (compute_fit ? "true" : "false") << std::endl;
   out << "  adam = " << (use_adam ? "true" : "false") << std::endl;
   out << "  adam_beta1 = " << adam_beta1 << std::endl;

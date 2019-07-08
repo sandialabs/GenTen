@@ -151,9 +151,6 @@ driver(SptensorT<ExecSpace>& x,
   const bool do_gcp_sgd2 =
     algParams.method == "GCP-SGD2" || algParams.method == "gcp_sgd2" ||
     algParams.method == "gcp-sgd2";
-  const bool do_gcp_sgd_sa =
-    algParams.method == "GCP-SGD-SA" || algParams.method == "gcp_sgd_sa" ||
-    algParams.method == "gcp-sgd-sa";
   const bool do_gcp_opt =
     algParams.method == "GCP-OPT" || algParams.method == "gcp_opt" ||
     algParams.method == "gcp-opt";
@@ -165,7 +162,7 @@ driver(SptensorT<ExecSpace>& x,
     cpals_core(x, u, algParams, iter, resNorm, 0, NULL, out);
   }
 #ifdef HAVE_GCP
-  else if (do_gcp_sgd) {
+  else if (do_gcp_sgd && !algParams.fuse_sa) {
     // Run GCP-SGD
     ttb_indx iter;
     ttb_real resNorm;
@@ -177,7 +174,7 @@ driver(SptensorT<ExecSpace>& x,
     ttb_real resNorm;
     gcp_sgd2(x, u, algParams, iter, resNorm, out);
   }
-  else if (do_gcp_sgd_sa) {
+  else if (do_gcp_sgd && algParams.fuse_sa) {
     // Run GCP-SGD
     ttb_indx iter;
     ttb_real resNorm;
