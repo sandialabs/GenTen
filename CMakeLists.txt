@@ -509,16 +509,6 @@ INSTALL (
   DESTINATION drivers
   )
 
-ADD_EXECUTABLE (
-  key_scan_test
-  ${Genten_SOURCE_DIR}/driver/key_scan_test.cpp
-  )
-TARGET_LINK_LIBRARIES (key_scan_test ${GENTEN_LINK_LIBS})
-INSTALL (
-  TARGETS key_scan_test
-  DESTINATION drivers
-  )
-
 #------------------------------------------------------------
 #---- Matlab
 #------------------------------------------------------------
