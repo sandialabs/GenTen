@@ -46,7 +46,7 @@
 
 #include "Genten_Kokkos.hpp"
 #if defined(KOKKOS_ENABLE_CUDA)
-#include "Cuda/Kokkos_Cuda_Vectorization.hpp"
+#include "Cuda/Kokkos_Cuda_Team.hpp"
 #endif
 
 namespace Genten {
@@ -57,10 +57,7 @@ namespace Genten {
     // Reduce y across the warp and broadcast to all lanes
     template <typename T, typename Ordinal>
      __device__ inline T warpReduce(T y, const Ordinal warp_size) {
-      for (Ordinal i=1; i<warp_size; i*=2) {
-        y += Kokkos::shfl_down(y, i, warp_size);
-      }
-      y = Kokkos::shfl(y, 0, warp_size);
+      Kokkos::Impl::CudaTeamMember::vector_reduce(Kokkos::Sum<T>(y));
       return y;
     }
 #endif
