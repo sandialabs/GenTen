@@ -46,7 +46,7 @@
 
 #include "Genten_Kokkos.hpp"
 #if defined(KOKKOS_ENABLE_CUDA)
-#include "Cuda/Kokkos_Cuda_Vectorization.hpp"
+#include "Cuda/Kokkos_Cuda_Team.hpp"
 #endif
 
 namespace Genten {
@@ -57,10 +57,7 @@ namespace Genten {
     // Reduce y across the warp and broadcast to all lanes
     template <typename T, typename Ordinal>
      __device__ inline T warpReduce(T y, const Ordinal warp_size) {
-      for (Ordinal i=1; i<warp_size; i*=2) {
-        y += Kokkos::shfl_down(y, i, warp_size);
-      }
-      y = Kokkos::shfl(y, 0, warp_size);
+      Kokkos::Impl::CudaTeamMember::vector_reduce(Kokkos::Sum<T>(y));
       return y;
     }
 #endif
@@ -158,6 +155,17 @@ namespace Genten {
 #else
       for (ordinal_type i=0; i<sz.value; ++i)
         v[i] = x[i];
+#endif
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    void store(scalar_type* x) const {
+#ifdef __CUDA_ARCH__
+      for (ordinal_type i=0; i<sz.value; ++i)
+        x[i*WarpDim+threadIdx.x] = v[i];
+#else
+      for (ordinal_type i=0; i<sz.value; ++i)
+        x[i] = v[i];
 #endif
     }
 
@@ -403,7 +411,7 @@ namespace Genten {
 
   };
 
-#if defined(KOKKOS_HAVE_CUDA) && defined(__CUDA_ARCH__)
+#if defined(KOKKOS_ENABLE_CUDA) && defined(__CUDA_ARCH__)
 
   // Specialization for Cuda where Length / WarpDim == 1.  Store the vector
   // components in register space since Cuda may store them in global memory
@@ -477,6 +485,11 @@ namespace Genten {
     __device__ inline
     void load(const scalar_type* x) {
       if (sz.value > 0) v0 = x[threadIdx.x];
+    }
+
+    __device__ inline
+    void store(scalar_type* x) const {
+      if (sz.value > 0) x[threadIdx.x] = v0;
     }
 
     __device__ inline
@@ -711,6 +724,12 @@ namespace Genten {
     void load(const scalar_type* x) {
       if (sz.value > 0) v0 = x[threadIdx.x];
       if (sz.value > 1) v1 = x[WarpDim + threadIdx.x];
+    }
+
+    __device__ inline
+    void store(scalar_type* x) const {
+      if (sz.value > 0) x[threadIdx.x] = v0;
+      if (sz.value > 1) x[WarpDim + threadIdx.x] = v1;
     }
 
     __device__ inline
@@ -978,6 +997,13 @@ namespace Genten {
       if (sz.value > 0) v0 = x[threadIdx.x];
       if (sz.value > 1) v1 = x[WarpDim + threadIdx.x];
       if (sz.value > 2) v2 = x[2*WarpDim + threadIdx.x];
+    }
+
+    __device__ inline
+    void store(scalar_type* x) const {
+      if (sz.value > 0) x[threadIdx.x] = v0;
+      if (sz.value > 1) x[WarpDim + threadIdx.x] = v1;
+      if (sz.value > 2) x[2*WarpDim + threadIdx.x] = v2;
     }
 
     __device__ inline
@@ -1274,6 +1300,14 @@ namespace Genten {
       if (sz.value > 1) v1 = x[WarpDim + threadIdx.x];
       if (sz.value > 2) v2 = x[2*WarpDim + threadIdx.x];
       if (sz.value > 3) v3 = x[3*WarpDim + threadIdx.x];
+    }
+
+    __device__ inline
+    void store(scalar_type* x) const {
+      if (sz.value > 0) x[threadIdx.x] = v0;
+      if (sz.value > 1) x[WarpDim + threadIdx.x] = v1;
+      if (sz.value > 2) x[2*WarpDim + threadIdx.x] = v2;
+      if (sz.value > 3) x[3*WarpDim + threadIdx.x] = v3;
     }
 
     __device__ inline

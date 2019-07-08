@@ -42,7 +42,6 @@
 #include "Genten_GCP_LossFunctions.hpp"
 #include "Genten_SimdKernel.hpp"
 #include "Genten_Util.hpp"
-#include "Genten_RandomMT.hpp"
 
 #include "Kokkos_Random.hpp"
 
@@ -61,7 +60,7 @@ namespace Genten {
       }
     };
 
-#if defined(KOKKOS_HAVE_CUDA) && defined(__CUDA_ARCH__)
+#if defined(KOKKOS_ENABLE_CUDA) && defined(__CUDA_ARCH__)
     template <typename Rand, unsigned VectorSize>
     struct VectorRng<Kokkos::Cuda,Rand,VectorSize> {
       template <typename Gen>
@@ -87,22 +86,23 @@ namespace Genten {
     // manner with multiple threads updating the same row.
     template <unsigned FBS, unsigned VS,
               typename ExecSpace, typename loss_type>
-    void gcp_sgd_hogwild_kernel(const SptensorT<ExecSpace>& X,
-                                const KtensorT<ExecSpace>& u,
-                                const ArrayT<ExecSpace>& w,
-                                const loss_type& f,
-                                const ttb_indx num_samples,
-                                const ttb_real step,
-                                const ttb_real beta1,
-                                const ttb_real beta2,
-                                const ttb_real beta1t,
-                                const ttb_real beta2t,
-                                const ttb_real eps,
-                                const bool use_adam,
-                                KtensorT<ExecSpace>& g,
-                                KtensorT<ExecSpace>& v,
-                                RandomMT& rng,
-                                const AlgParams& algParams)
+    void gcp_sgd_hogwild_kernel(
+      const SptensorT<ExecSpace>& X,
+      const KtensorT<ExecSpace>& u,
+      const ArrayT<ExecSpace>& w,
+      const loss_type& f,
+      const ttb_indx num_samples,
+      const ttb_real step,
+      const ttb_real beta1,
+      const ttb_real beta2,
+      const ttb_real beta1t,
+      const ttb_real beta2t,
+      const ttb_real eps,
+      const bool use_adam,
+      KtensorT<ExecSpace>& g,
+      KtensorT<ExecSpace>& v,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams)
     {
       if (use_adam) {
         g.setMatrices(0.0);
@@ -125,7 +125,6 @@ namespace Genten {
       typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
       typedef typename RandomPool::generator_type generator_type;
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
-      RandomPool rand_pool(rng.genrnd_int32());
 
       typedef Kokkos::TeamPolicy<ExecSpace> Policy;
       typedef typename Policy::member_type TeamMember;
@@ -240,7 +239,7 @@ namespace Genten {
       const bool use_adam;
       Ktensor_type& g;
       Ktensor_type& v;
-      RandomMT& rng;
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool;
       const AlgParams& algParams;
 
       GCP_Grad_HogWild(const tensor_type& X_,
@@ -257,19 +256,19 @@ namespace Genten {
                        const bool use_adam_,
                        KtensorT<ExecSpace>& g_,
                        KtensorT<ExecSpace>& v_,
-                       RandomMT& rng_,
+                       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool_,
                        const AlgParams& algParams_) :
         X(X_), u(u_), w(w_), f(f_), num_samples(num_samples_), step(step_),
         beta1(beta1_), beta2(beta2_), beta1t(beta1_), beta2t(beta2t_),
         eps(eps_), use_adam(use_adam_),
-        g(g_), v(v_), rng(rng_), algParams(algParams_)
+        g(g_), v(v_), rand_pool(rand_pool_), algParams(algParams_)
         {}
 
       template <unsigned FBS, unsigned VS>
       void run() const {
         gcp_sgd_hogwild_kernel<FBS,VS>(
           X,u,w,f,num_samples,step,beta1,beta2,beta1t,beta2t,eps,use_adam,g,v,
-          rng,algParams);
+          rand_pool,algParams);
       }
     };
 
@@ -288,13 +287,13 @@ namespace Genten {
                          const bool use_adam,
                          KtensorT<ExecSpace>& g,
                          KtensorT<ExecSpace>& v,
-                         RandomMT& rng,
+                         Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
                          const AlgParams& algParams)
     {
       const ttb_indx nd = u.ndims();
       GCP_Grad_HogWild<ExecSpace,loss_type> kernel(
         X,u,w,f,num_samples,step,beta1,beta2,beta1t,beta2t,eps,use_adam,g,v,
-        rng,algParams);
+        rand_pool,algParams);
       run_row_simd_kernel(kernel, u.ncomponents());
     }
 
@@ -318,7 +317,7 @@ namespace Genten {
     const bool use_adam,                                                \
     KtensorT<SPACE>& g,                                                 \
     KtensorT<SPACE>& v,                                                 \
-    RandomMT& rng,                                                      \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
     const AlgParams& algParams);
 
 // #define INST_MACRO(SPACE)                                               \

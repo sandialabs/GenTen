@@ -43,6 +43,7 @@
 #define DLL_EXPORT_SYM __attribute__ ((visibility("default")))
 
 #include <string>
+#include <vector>
 
 #include "Genten_Kokkos.hpp"
 #include "Genten_Sptensor.hpp"
@@ -207,6 +208,9 @@ mxGetKtensor(const mxArray* ptr, const bool print = false) {
 }
 
 std::string mxGetStdString(const mxArray* ptr);
+
+std::vector<std::string>
+mxBuildArgList(int nargs, int offset, const mxArray* margs[]);
 
 void GentenInitialize();
 

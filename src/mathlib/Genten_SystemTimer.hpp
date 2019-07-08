@@ -78,8 +78,10 @@ namespace Genten
     //! Constructor.
     /*!
      *  @param[in] nNumTimers  Number of timers to allocate.
+     *  @param[in] fence       Call Kokkos::fence() when stopping timer
      */
-    SystemTimer (const int  nNumTimers);
+    SystemTimer (const int  nNumTimers,
+                 const bool fence = false);
 
     //! Destructor.
     ~SystemTimer (void);
@@ -161,6 +163,7 @@ namespace Genten
     _systemTimerRealType *  _taStartTimes;
 
     int       _nNumTimers;
+    bool      _fence;
     bool *    _baIsStarted;
     double *  _daCumTimes;
     int *     _naNumCalls;

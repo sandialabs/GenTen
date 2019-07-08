@@ -45,27 +45,30 @@
 #include "Genten_Array.hpp"
 #include "Genten_AlgParams.hpp"
 
+#include "Kokkos_Random.hpp"
+
 namespace Genten {
 
   namespace Impl {
 
     template <typename ExecSpace, typename loss_type>
-    void gcp_sgd_hogwild(const SptensorT<ExecSpace>& X,
-                         const KtensorT<ExecSpace>& u,
-                         const ArrayT<ExecSpace>& w,
-                         const loss_type& f,
-                         const ttb_indx num_samples,
-                         const ttb_real step,
-                         const ttb_real beta1,
-                         const ttb_real beta2,
-                         const ttb_real beta1t,
-                         const ttb_real beta2t,
-                         const ttb_real eps,
-                         const bool use_adam,
-                         KtensorT<ExecSpace>& g,
-                         KtensorT<ExecSpace>& v,
-                         RandomMT& rng,
-                         const AlgParams& algParams);
+    void gcp_sgd_hogwild(
+      const SptensorT<ExecSpace>& X,
+      const KtensorT<ExecSpace>& u,
+      const ArrayT<ExecSpace>& w,
+      const loss_type& f,
+      const ttb_indx num_samples,
+      const ttb_real step,
+      const ttb_real beta1,
+      const ttb_real beta2,
+      const ttb_real beta1t,
+      const ttb_real beta2t,
+      const ttb_real eps,
+      const bool use_adam,
+      KtensorT<ExecSpace>& g,
+      KtensorT<ExecSpace>& v,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams);
 
   }
 

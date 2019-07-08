@@ -38,11 +38,12 @@
 // ************************************************************************
 //@HEADER
 
+#include <sstream>
+
 #include "Genten_Matlab.hpp"
 
-
-
-std::string mxGetStdString(const mxArray* ptr) {
+std::string
+mxGetStdString(const mxArray* ptr) {
   const mwSize str_len = mxGetNumberOfElements(ptr);
   char *c_str = new char[str_len+1];
   int ret = mxGetString(ptr, c_str, str_len+1);
@@ -51,6 +52,24 @@ std::string mxGetStdString(const mxArray* ptr) {
   std::string str(c_str);
   delete [] c_str;
   return str;
+}
+
+std::vector<std::string>
+mxBuildArgList(int nargs, int offset, const mxArray* margs[]) {
+  std::vector<std::string> args(nargs-offset);
+  for (int i=0; i<nargs-offset; ++i) {
+    const mxArray *arg = margs[i+offset];
+    if (mxIsScalar(arg))
+      args[i] = std::to_string(mxGetScalar(arg));
+    else if (mxIsChar(arg))
+      args[i] = mxGetStdString(arg);
+    else {
+      std::stringstream ss;
+      ss << "Unknown argument type for argument " << i+offset;
+      Genten::error(ss.str());
+    }
+  }
+  return args;
 }
 
 void GentenInitialize() {

@@ -38,8 +38,6 @@
 // ************************************************************************
 //@HEADER
 
-#include <vector>
-
 #include "Genten_AlgParams.hpp"
 
 Genten::AlgParams::AlgParams() :
@@ -52,11 +50,13 @@ Genten::AlgParams::AlgParams() :
   tol(0.0004),
   printitn(1),
   debug(false),
+  timings(false),
   mttkrp_method(MTTKRP_Method::default_type),
   mttkrp_duplicated_factor_matrix_tile_size(0),
   loss_function_type(Genten::GCP_LossFunction::default_type),
   loss_eps(1.0e-10),
   rolfilename(""),
+  sampling_type(Genten::GCP_Sampling::default_type),
   rate(1.0e-3),
   decay(0.1),
   max_fails(10),
@@ -73,6 +73,9 @@ Genten::AlgParams::AlgParams() :
   w_f_z(-1.0),
   w_g_nz(-1.0),
   w_g_z(-1.0),
+  hash(false),
+  fuse(false),
+  fuse_sa(false),
   compute_fit(false),
   use_adam(true),
   adam_beta1(0.9),    // Defaults taken from ADAM paper
@@ -80,72 +83,81 @@ Genten::AlgParams::AlgParams() :
   adam_eps(1.0e-8)
 {}
 
-void Genten::AlgParams::parse(int argc, char* argv[])
+void Genten::AlgParams::parse(std::vector<std::string>& args)
 {
   // Parse options from command-line, using default values set above as defaults
 
   // Generic options
-  method = parse_string(argc, argv, "--method", method.c_str());
-  rank = parse_ttb_indx(argc, argv, "--rank", rank, 1, INT_MAX);
-  seed = parse_ttb_indx(argc, argv, "--seed", seed, 0, INT_MAX);
-  prng = parse_ttb_bool(argc, argv, "--prng", "--no-prng", prng);
-  maxiters = parse_ttb_indx(argc, argv, "--maxiters", maxiters, 1, INT_MAX);
-  maxsecs = parse_ttb_real(argc, argv, "--maxsecs", maxsecs, -1.0, DOUBLE_MAX);
-  tol = parse_ttb_real(argc, argv, "--tol", tol, 0.0, 1.0);
-  printitn = parse_ttb_indx(argc, argv, "--printitn", printitn, 0, INT_MAX);
-  debug = parse_ttb_bool(argc, argv, "--debug", "--no-debug", debug);
+  method = parse_string(args, "--method", method.c_str());
+  rank = parse_ttb_indx(args, "--rank", rank, 1, INT_MAX);
+  seed = parse_ttb_indx(args, "--seed", seed, 0, INT_MAX);
+  prng = parse_ttb_bool(args, "--prng", "--no-prng", prng);
+  maxiters = parse_ttb_indx(args, "--maxiters", maxiters, 1, INT_MAX);
+  maxsecs = parse_ttb_real(args, "--maxsecs", maxsecs, -1.0, DOUBLE_MAX);
+  tol = parse_ttb_real(args, "--tol", tol, 0.0, DOUBLE_MAX);
+  printitn = parse_ttb_indx(args, "--printitn", printitn, 0, INT_MAX);
+  debug = parse_ttb_bool(args, "--debug", "--no-debug", debug);
+  timings = parse_ttb_bool(args, "--timings", "--no-timings", timings);
 
   // MTTKRP options
-  mttkrp_method = parse_ttb_enum(argc, argv, "--mttkrp_method", mttkrp_method,
+  mttkrp_method = parse_ttb_enum(args, "--mttkrp-method", mttkrp_method,
                                  Genten::MTTKRP_Method::num_types,
                                  Genten::MTTKRP_Method::types,
                                  Genten::MTTKRP_Method::names);
   mttkrp_duplicated_factor_matrix_tile_size =
-    parse_ttb_indx(argc, argv, "--mttkrp_tile_size",
+    parse_ttb_indx(args, "--mttkrp-tile-size",
                    mttkrp_duplicated_factor_matrix_tile_size, 0, INT_MAX);
-  warmup = parse_ttb_bool(argc, argv, "--warmup", "--no-warmup", warmup);
+  warmup = parse_ttb_bool(args, "--warmup", "--no-warmup", warmup);
 
   // GCP options
-  loss_function_type = parse_ttb_enum(argc, argv, "--type", loss_function_type,
+  loss_function_type = parse_ttb_enum(args, "--type", loss_function_type,
                                       Genten::GCP_LossFunction::num_types,
                                       Genten::GCP_LossFunction::types,
                                       Genten::GCP_LossFunction::names);
-  loss_eps = parse_ttb_real(argc, argv, "--eps", loss_eps, 0.0, 1.0);
+  loss_eps = parse_ttb_real(args, "--eps", loss_eps, 0.0, 1.0);
 
   // GCP-Opt options
-  rolfilename = parse_string(argc, argv, "--rol", rolfilename.c_str());
+  rolfilename = parse_string(args, "--rol", rolfilename.c_str());
 
   // GCP-SGD options
-  rate = parse_ttb_real(argc, argv, "--rate", rate, 0.0, DOUBLE_MAX);
-  decay = parse_ttb_real(argc, argv, "--decay", decay, 0.0, 1.0);
-  max_fails = parse_ttb_indx(argc, argv, "--fails", max_fails, 0, INT_MAX);
+  sampling_type = parse_ttb_enum(args, "--sampling",
+                                 sampling_type,
+                                 Genten::GCP_Sampling::num_types,
+                                 Genten::GCP_Sampling::types,
+                                 Genten::GCP_Sampling::names);
+  rate = parse_ttb_real(args, "--rate", rate, 0.0, DOUBLE_MAX);
+  decay = parse_ttb_real(args, "--decay", decay, 0.0, 1.0);
+  max_fails = parse_ttb_indx(args, "--fails", max_fails, 0, INT_MAX);
   epoch_iters =
-    parse_ttb_indx(argc, argv, "--epochiters", epoch_iters, 1, INT_MAX);
+    parse_ttb_indx(args, "--epochiters", epoch_iters, 1, INT_MAX);
   frozen_iters =
-    parse_ttb_indx(argc, argv, "--frozeniters", frozen_iters, 1, INT_MAX);
+    parse_ttb_indx(args, "--frozeniters", frozen_iters, 1, INT_MAX);
   rng_iters =
-    parse_ttb_indx(argc, argv, "--rngiters", rng_iters, 1, INT_MAX);
+    parse_ttb_indx(args, "--rngiters", rng_iters, 1, INT_MAX);
   num_samples_nonzeros_value =
-    parse_ttb_indx(argc, argv, "--fnzs", num_samples_nonzeros_value, 0, INT_MAX);
+    parse_ttb_indx(args, "--fnzs", num_samples_nonzeros_value, 0, INT_MAX);
   num_samples_zeros_value =
-    parse_ttb_indx(argc, argv, "--fzs", num_samples_zeros_value, 0, INT_MAX);
+    parse_ttb_indx(args, "--fzs", num_samples_zeros_value, 0, INT_MAX);
   num_samples_nonzeros_grad =
-    parse_ttb_indx(argc, argv, "--gnzs", num_samples_nonzeros_grad, 0, INT_MAX);
+    parse_ttb_indx(args, "--gnzs", num_samples_nonzeros_grad, 0, INT_MAX);
   num_samples_zeros_grad =
-    parse_ttb_indx(argc, argv, "--gzs", num_samples_zeros_grad, 0, INT_MAX);
-  oversample_factor = parse_ttb_real(argc, argv, "--oversample",
+    parse_ttb_indx(args, "--gzs", num_samples_zeros_grad, 0, INT_MAX);
+  oversample_factor = parse_ttb_real(args, "--oversample",
                                      oversample_factor, 1.0, DOUBLE_MAX);
   bulk_factor =
-    parse_ttb_indx(argc, argv, "--bulk", bulk_factor, 1, INT_MAX);
-  w_f_nz = parse_ttb_real(argc, argv, "--fnzw", w_f_nz, -1.0, DOUBLE_MAX);
-  w_f_z = parse_ttb_real(argc, argv, "--fzw", w_f_z, -1.0, DOUBLE_MAX);
-  w_g_nz = parse_ttb_real(argc, argv, "--gnzw", w_g_nz, -1.0, DOUBLE_MAX);
-  w_g_z = parse_ttb_real(argc, argv, "--gzw", w_g_z, -1.0, DOUBLE_MAX);
-  compute_fit = parse_ttb_bool(argc, argv, "--fit", "--no-fit", compute_fit);
-  use_adam = parse_ttb_bool(argc, argv, "--adam", "--no-adam", use_adam);
-  adam_beta1 = parse_ttb_real(argc, argv, "--adam_beta1", adam_beta1, 0.0, 1.0);
-  adam_beta2 = parse_ttb_real(argc, argv, "--adam_beta2", adam_beta2, 0.0, 1.0);
-  adam_eps = parse_ttb_real(argc, argv, "--adam_eps", adam_eps, 0.0, 1.0);
+    parse_ttb_indx(args, "--bulk-factor", bulk_factor, 1, INT_MAX);
+  w_f_nz = parse_ttb_real(args, "--fnzw", w_f_nz, -1.0, DOUBLE_MAX);
+  w_f_z = parse_ttb_real(args, "--fzw", w_f_z, -1.0, DOUBLE_MAX);
+  w_g_nz = parse_ttb_real(args, "--gnzw", w_g_nz, -1.0, DOUBLE_MAX);
+  w_g_z = parse_ttb_real(args, "--gzw", w_g_z, -1.0, DOUBLE_MAX);
+  hash = parse_ttb_bool(args, "--hash", "--no-hash", hash);
+  fuse = parse_ttb_bool(args, "--fuse", "--no-fuse", fuse);
+  fuse_sa = parse_ttb_bool(args, "--fuse-sa", "--no-fuse-sa", fuse_sa);
+  compute_fit = parse_ttb_bool(args, "--fit", "--no-fit", compute_fit);
+  use_adam = parse_ttb_bool(args, "--adam", "--no-adam", use_adam);
+  adam_beta1 = parse_ttb_real(args, "--adam_beta1", adam_beta1, 0.0, 1.0);
+  adam_beta2 = parse_ttb_real(args, "--adam_beta2", adam_beta2, 0.0, 1.0);
+  adam_eps = parse_ttb_real(args, "--adam_eps", adam_eps, 0.0, 1.0);
 }
 
 void Genten::AlgParams::print_help(std::ostream& out)
@@ -160,17 +172,18 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --tol <float>      stopping tolerance" << std::endl;
   out << "  --printitn <int>   print every <int>th iteration; 0 for no printing" << std::endl;
   out << "  --debug            turn on debugging output" << std::endl;
+  out << "  --timings          print accurate kernel timing info (but may increase total run time by adding fences)" << std::endl;
 
   out << std::endl;
   out << "MTTKRP options:" << std::endl;
-  out << "  --mttkrp_method <method> MTTKRP algorithm: ";
+  out << "  --mttkrp-method <method> MTTKRP algorithm: ";
   for (unsigned i=0; i<Genten::MTTKRP_Method::num_types; ++i) {
     out << Genten::MTTKRP_Method::names[i];
     if (i != Genten::MTTKRP_Method::num_types-1)
       out << ", ";
   }
   out << std::endl;
-  out << "  --mttkrp_tile_size <int> tile size for mttkrp algorithm"
+  out << "  --mttkrp-tile-size <int> tile size for mttkrp algorithm"
       << std::endl;
   out << "  --warmup           do an iteration of mttkrp to warmup (useful for generating accurate timing information)" << std::endl;
 
@@ -191,6 +204,12 @@ void Genten::AlgParams::print_help(std::ostream& out)
 
   out << std::endl;
   out << "GCP-SGD options:" << std::endl;
+  out << "  --sampling <type> sampling method for GCP-SGD: ";
+  for (unsigned i=0; i<Genten::GCP_Sampling::num_types; ++i) {
+    out << Genten::GCP_Sampling::names[i];
+    if (i != Genten::GCP_Sampling::num_types-1)
+      out << ", ";
+  }
   out << "  --rate <float>     initial step size" << std::endl;
   out << "  --decay <float>    rate step size decreases on fails" << std::endl;
   out << "  --fails <int>      maximum number of fails" << std::endl;
@@ -204,12 +223,14 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --gzs <int>        zero samples for gradient" << std::endl;
   out << "  --oversample <float> oversample factor for zero sampling"
       << std::endl;
-  out << "  --bulk <int>       factor for bulk zero sampling"
-      << std::endl;
   out << "  --fnzw <float>     nonzero sample weight for f-est" << std::endl;
   out << "  --fzw <float>      zero sample weight for f-est" << std::endl;
   out << "  --gnzw <float>     nonzero sample weight for gradient" << std::endl;
   out << "  --gzw <float>      zero sample weight for gradient" << std::endl;
+  out << "  --hash             compute hash map for zero sampling" << std::endl;
+  out << "  --bulk-factor <int> factor for bulk zero sampling" << std::endl;
+  out << "  --fuse             fuse gradient sampling and MTTKRP" << std::endl;
+  out << "  --fuse-sa          fuse with sparse array graident" << std::endl;
   out << "  --fit              compute fit metric" << std::endl;
   out << "  --adam             use ADAM step" << std::endl;
   out << "  --adam_beta1       Decay rate for 1st moment avg." << std::endl;
@@ -229,6 +250,7 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  tol = " << tol << std::endl;
   out << "  printitn = " << printitn << std::endl;
   out << "  debug = " << (debug ? "true" : "false") << std::endl;
+  out << "  timings = " << (timings ? "true" : "false") << std::endl;
 
   out << std::endl;
   out << "MTTKRP options:" << std::endl;
@@ -250,6 +272,8 @@ void Genten::AlgParams::print(std::ostream& out)
 
    out << std::endl;
   out << "GCP-SGD options:" << std::endl;
+  out << "  sampling = " << Genten::GCP_Sampling::names[sampling_type]
+      << std::endl;
   out << "  rate = " << rate << std::endl;
   out << "  decay = " << decay << std::endl;
   out << "  fails = " << max_fails << std::endl;
@@ -261,11 +285,14 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  gnzs = " << num_samples_nonzeros_grad << std::endl;
   out << "  gzs = " << num_samples_zeros_grad << std::endl;
   out << "  oversample = " << oversample_factor << std::endl;
-  out << "  bulk = " << bulk_factor << std::endl;
   out << "  fnzw = " << w_f_nz << std::endl;
   out << "  fzw = " << w_f_z << std::endl;
   out << "  gnzw = " << w_g_nz << std::endl;
   out << "  gzw = " << w_g_z << std::endl;
+  out << "  bulk-factor = " << bulk_factor << std::endl;
+  out << "  hash = " << (hash ? "true" : "false") << std::endl;
+  out << "  fuse = " << (fuse ? "true" : "false") << std::endl;
+  out << "  fuse-sa = " << (fuse_sa ? "true" : "false") << std::endl;
   out << "  fit = " << (compute_fit ? "true" : "false") << std::endl;
   out << "  adam = " << (use_adam ? "true" : "false") << std::endl;
   out << "  adam_beta1 = " << adam_beta1 << std::endl;
@@ -274,183 +301,243 @@ void Genten::AlgParams::print(std::ostream& out)
 }
 
 ttb_real
-Genten::parse_ttb_real(int argc, char** argv, std::string cl_arg,
+Genten::parse_ttb_real(std::vector<std::string>& args,
+                       const std::string& cl_arg,
                        ttb_real default_value, ttb_real min, ttb_real max)
 {
-  int arg=1;
-  char *cend = 0;
-  ttb_real tmp;
-  while (arg < argc) {
-    if (cl_arg == std::string(argv[arg])) {
-      // get next cl_arg
-      arg++;
-      if (arg >= argc)
-        return default_value;
-      // convert to ttb_real
-      tmp = std::strtod(argv[arg],&cend);
-      // check if cl_arg is actuall a ttb_real
-      if (argv[arg] == cend) {
-        std::ostringstream error_string;
-        error_string << "Unparseable input: " << cl_arg << " " << argv[arg]
-                     << ", must be a double" << std::endl;
-        Genten::error(error_string.str());
-        exit(1);
-        // check if ttb_real is within bounds
-      }
-      if (tmp < min || tmp > max) {
-        std::ostringstream error_string;
-        error_string << "Bad input: " << cl_arg << " " << argv[arg]
-                     << ",  must be in the range (" << min << ", " << max
-                     << ")" << std::endl;
-        Genten::error(error_string.str());
-        exit(1);
-      }
-      // return ttb_real if everything is OK
+  ttb_real tmp = default_value;
+  auto it = std::find(args.begin(), args.end(), cl_arg);
+  // If not found, try removing the '--'
+  if ((it == args.end()) && (cl_arg.size() > 2) &&
+      (cl_arg[0] == '-') && (cl_arg[1] == '-')) {
+    it = std::find(args.begin(), args.end(), cl_arg.substr(2));
+  }
+  if (it != args.end()) {
+    auto arg_it = it;
+    // get next cl_arg
+    ++it;
+    if (it == args.end()) {
+      args.erase(arg_it);
       return tmp;
     }
-    arg++;
+    // convert to ttb_real
+    char *cend = 0;
+    tmp = std::strtod(it->c_str(),&cend);
+    // check if cl_arg is actually a ttb_real
+    if (it->c_str() == cend) {
+      std::ostringstream error_string;
+      error_string << "Unparseable input: " << cl_arg << " " << *it
+                   << ", must be a double" << std::endl;
+      Genten::error(error_string.str());
+      exit(1);
+    }
+    // Remove argument from list
+    args.erase(arg_it, ++it);
   }
-  // return default value if not specified on command line
-  return default_value;
+  // check if ttb_real is within bounds
+  if (tmp < min || tmp > max) {
+    std::ostringstream error_string;
+    error_string << "Bad input: " << cl_arg << " " << tmp
+                 << ",  must be in the range (" << min << ", " << max
+                 << ")" << std::endl;
+    Genten::error(error_string.str());
+    exit(1);
+  }
+  return tmp;
 }
 
 ttb_indx
-Genten::parse_ttb_indx(int argc, char** argv, std::string cl_arg,
+Genten::parse_ttb_indx(std::vector<std::string>& args,
+                       const std::string& cl_arg,
                        ttb_indx default_value, ttb_indx min, ttb_indx max)
 {
-  int arg=1;
-  char *cend = 0;
-  ttb_indx tmp;
-  while (arg < argc) {
-    if (cl_arg == std::string(argv[arg])) {
-      // get next cl_arg
-      arg++;
-      if (arg >= argc)
-        return default_value;
-      // convert to ttb_real
-      tmp = std::strtol(argv[arg],&cend,10);
-      // check if cl_arg is actuall a ttb_real
-      if (argv[arg] == cend) {
-        std::ostringstream error_string;
-        error_string << "Unparseable input: " << cl_arg << " " << argv[arg]
-                     << ", must be an unsigned integer" << std::endl;
-        Genten::error(error_string.str());
-        exit(1);
-        // check if ttb_real is within bounds
-      }
-      if (tmp < min || tmp > max) {
-        std::ostringstream error_string;
-        error_string << "Bad input: " << cl_arg << " " << argv[arg]
-                     << ",  must be in the range (" << min << ", " << max
-                     << ")" << std::endl;
-        Genten::error(error_string.str());
-        exit(1);
-      }
-      // return ttb_real if everything is OK
+  ttb_indx tmp = default_value;
+  auto it = std::find(args.begin(), args.end(), cl_arg);
+  // If not found, try removing the '--'
+  if ((it == args.end()) && (cl_arg.size() > 2) &&
+      (cl_arg[0] == '-') && (cl_arg[1] == '-')) {
+    it = std::find(args.begin(), args.end(), cl_arg.substr(2));
+  }
+  if (it != args.end()) {
+    auto arg_it = it;
+    // get next cl_arg
+    ++it;
+    if (it == args.end()) {
+      args.erase(arg_it);
       return tmp;
     }
-    arg++;
+    // convert to ttb_indx
+    char *cend = 0;
+    tmp = std::strtol(it->c_str(),&cend,10);
+    // check if cl_arg is actually a ttb_indx
+    if (it->c_str() == cend) {
+      std::ostringstream error_string;
+      error_string << "Unparseable input: " << cl_arg << " " << *it
+                   << ", must be an integer" << std::endl;
+      Genten::error(error_string.str());
+      exit(1);
+    }
+    // Remove argument from list
+    args.erase(arg_it, ++it);
   }
-  // return default value if not specified on command line
-  return default_value;
+  // check if ttb_real is within bounds
+  if (tmp < min || tmp > max) {
+    std::ostringstream error_string;
+    error_string << "Bad input: " << cl_arg << " " << tmp
+                 << ",  must be in the range (" << min << ", " << max
+                 << ")" << std::endl;
+    Genten::error(error_string.str());
+    exit(1);
+  }
+  return tmp;
 }
 
 ttb_bool
-Genten::parse_ttb_bool(int argc, char** argv, std::string cl_arg_on,
-                       std::string cl_arg_off, ttb_bool default_value)
+Genten::parse_ttb_bool(std::vector<std::string>& args,
+                       const std::string& cl_arg_on,
+                       const std::string& cl_arg_off,
+                       ttb_bool default_value)
 {
-  int arg=1;
-  while (arg < argc) {
-    if (cl_arg_on == std::string(argv[arg])) {
-      // return true if arg_on is found
-      return true;
-    }
-    if (cl_arg_off == std::string(argv[arg])) {
-      // return false if arg_off is found
-      return false;
-    }
-    arg++;
+  // return true if arg_on is found
+  auto it = std::find(args.begin(), args.end(), cl_arg_on);
+  // If not found, try removing the '--'
+  if ((it == args.end()) && (cl_arg_on.size() > 2) &&
+      (cl_arg_on[0] == '-') && (cl_arg_on[1] == '-')) {
+    it = std::find(args.begin(), args.end(), cl_arg_on.substr(2));
   }
+  if (it != args.end()) {
+    args.erase(it);
+    return true;
+  }
+
+  // return false if arg_off is found
+  it = std::find(args.begin(), args.end(), cl_arg_off);
+  // If not found, try removing the '--'
+  if ((it == args.end()) && (cl_arg_off.size() > 2) &&
+      (cl_arg_off[0] == '-') && (cl_arg_off[1] == '-')) {
+    it = std::find(args.begin(), args.end(), cl_arg_off.substr(2));
+  }
+  if (it != args.end()) {
+    args.erase(it);
+    return false;
+  }
+
   // return default value if not specified on command line
   return default_value;
 }
 
 std::string
-Genten::parse_string(int argc, char** argv, std::string cl_arg,
-                     std::string default_value)
+Genten::parse_string(std::vector<std::string>& args, const std::string& cl_arg,
+                     const std::string& default_value)
 {
-  int arg=1;
-  std::string tmp;
-  while (arg < argc) {
-    if (cl_arg == std::string(argv[arg])) {
-      // get next cl_arg
-      arg++;
-      if (arg >= argc)
-        return "";
-      // convert to string
-      tmp = std::string(argv[arg]);
-      // return ttb_real if everything is OK
+  std::string tmp = default_value;
+  auto it = std::find(args.begin(), args.end(), cl_arg);
+  // If not found, try removing the '--'
+  if ((it == args.end()) && (cl_arg.size() > 2) &&
+      (cl_arg[0] == '-') && (cl_arg[1] == '-')) {
+    it = std::find(args.begin(), args.end(), cl_arg.substr(2));
+  }
+  if (it != args.end()) {
+    auto arg_it = it;
+    // get next cl_arg
+    ++it;
+    if (it == args.end()) {
+      args.erase(arg_it);
       return tmp;
     }
-    arg++;
+    // get argument
+    tmp = *it;
+    // Remove argument from list
+    args.erase(arg_it, ++it);
   }
-  // return default value if not specified on command line
-  return default_value;
-
+  return tmp;
 }
 
 Genten::IndxArray
-Genten::parse_ttb_indx_array(int argc, char** argv, std::string cl_arg,
+Genten::parse_ttb_indx_array(std::vector<std::string>& args,
+                             const std::string& cl_arg,
                              const Genten::IndxArray& default_value,
                              ttb_indx min, ttb_indx max)
 {
-  int arg=1;
   char *cend = 0;
   ttb_indx tmp;
   std::vector<ttb_indx> vals;
-  while (arg < argc) {
-    if (cl_arg == std::string(argv[arg])) {
-      // get next cl_arg
-      arg++;
-      if (arg >= argc)
-        return default_value;
-      char *arg_val = argv[arg];
-      if (arg_val[0] != '[') {
+  auto it = std::find(args.begin(), args.end(), cl_arg);
+  // If not found, try removing the '--'
+  if ((it == args.end()) && (cl_arg.size() > 2) &&
+      (cl_arg[0] == '-') && (cl_arg[1] == '-')) {
+    it = std::find(args.begin(), args.end(), cl_arg.substr(2));
+  }
+  if (it != args.end()) {
+    auto arg_it = it;
+    // get next cl_arg
+    ++it;
+    if (it == args.end()) {
+      args.erase(arg_it);
+      return default_value;
+    }
+    const char *arg_val = it->c_str();
+    if (arg_val[0] != '[') {
+      std::ostringstream error_string;
+      error_string << "Unparseable input: " << cl_arg << " " << arg_val
+                   << ", must be of the form [int,...,int] with no spaces"
+                   << std::endl;
+      Genten::error(error_string.str());
+      exit(1);
+    }
+    while (strlen(arg_val) > 0 && arg_val[0] != ']') {
+      ++arg_val; // Move past ,
+      // convert to ttb_indx
+      tmp = std::strtol(arg_val,&cend,10);
+      // check if cl_arg is actually a ttb_indx
+      if (arg_val == cend) {
         std::ostringstream error_string;
         error_string << "Unparseable input: " << cl_arg << " " << arg_val
-                     << ", must be of the form { int, ... }" << std::endl;
+                     << ", must be of the form [int,...,int] with no spaces"
+                     << std::endl;
         Genten::error(error_string.str());
         exit(1);
       }
-      while (strlen(arg_val) > 0 && arg_val[0] != ']') {
-        ++arg_val; // Move past ,
-        // convert to ttb_real
-        tmp = std::strtol(arg_val,&cend,10);
-        // check if cl_arg is actuall a ttb_real
-        if (arg_val == cend) {
-          std::ostringstream error_string;
-          error_string << "Unparseable input: " << cl_arg << " " << arg_val
-                       << ", must be of the form { int, ... }" << std::endl;
-          Genten::error(error_string.str());
-          exit(1);
-        }
-        // check if ttb_indx is within bounds
-        if (tmp < min || tmp > max) {
-          std::ostringstream error_string;
-          error_string << "Bad input: " << cl_arg << " " << arg_val
-                       << ",  must be in the range (" << min << ", " << max
-                       << ")" << std::endl;
-          Genten::error(error_string.str());
-          exit(1);
-        }
-        vals.push_back(tmp);
-        arg_val = cend;
+      // check if ttb_indx is within bounds
+      if (tmp < min || tmp > max) {
+        std::ostringstream error_string;
+        error_string << "Bad input: " << cl_arg << " " << arg_val
+                     << ",  must be in the range (" << min << ", " << max
+                     << ")" << std::endl;
+        Genten::error(error_string.str());
+        exit(1);
       }
-      // return index array if everything is OK
-      return Genten::IndxArray(vals.size(), vals.data());
+      vals.push_back(tmp);
+      arg_val = cend;
     }
-    arg++;
+    // Remove argument from list
+    args.erase(arg_it, ++it);
+    // return index array if everything is OK
+    return Genten::IndxArray(vals.size(), vals.data());
   }
   // return default value if not specified on command line
   return default_value;
+}
+
+std::vector<std::string>
+Genten::build_arg_list(int argc, char** argv)
+{
+  std::vector<std::string> arg_list(argc-1);
+  for (int i=1; i<argc; ++i)
+    arg_list[i-1] = argv[i];
+  return arg_list;
+}
+
+bool
+Genten::check_and_print_unused_args(const std::vector<std::string>& args,
+                                    std::ostream& out)
+{
+  if (args.size() == 0)
+    return false;
+
+  out << std::endl << "Error!  Unknown command line arguments: ";
+  for (auto arg : args)
+    out << arg << " ";
+  out << std::endl << std::endl;
+  return true;
 }

@@ -64,42 +64,12 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
     Genten::KtensorT<ExecSpace> u_init;
     Genten::SptensorT<ExecSpace> X =
       mxGetSptensor<ExecSpace>(prhs[0], algParams.debug);
-    const ttb_indx rank = mxGetScalar(prhs[1]);
-    for (int i=2; i<nrhs; i+=2) {
-      std::string option = mxGetStdString(prhs[i]);
-      const mxArray *ptr = prhs[i+1];
-      if (option == "method")
-        algParams.method = mxGetStdString(ptr);
-      else if (option == "rol")
-        algParams.rolfilename = mxGetStdString(ptr);
-      else if (option == "type")
-        algParams.loss_function_type =
-          Genten::parse_enum<Genten::GCP_LossFunction>(mxGetStdString(ptr));
-      else if (option == "tol")
-        algParams.tol = mxGetScalar(ptr);
-      else if (option == "eps")
-        algParams.loss_eps = mxGetScalar(ptr);
-      else if (option == "seed")
-        algParams.seed = mxGetScalar(ptr);
-      else if (option == "prng")
-        algParams.prng = mxGetScalar(ptr);
-      else if (option == "maxiters")
-        algParams.maxiters = mxGetScalar(ptr);
-      else if (option == "printitn")
-        algParams.printitn = mxGetScalar(ptr);
-      else if (option == "debug")
-        algParams.debug = mxGetScalar(ptr);
-      else if (option == "warmup")
-        algParams.warmup = mxGetScalar(ptr);
-      else if (option == "mttkrp_method")
-        algParams.mttkrp_method =
-          Genten::parse_enum<Genten::MTTKRP_Method>(mxGetStdString(ptr));
-      else if (option == "mttkrp_tile_size")
-        algParams.mttkrp_duplicated_factor_matrix_tile_size = mxGetScalar(ptr);
-      else if (option == "init")
-        u_init = mxGetKtensor<ExecSpace>(ptr, algParams.debug);
-      else
-        Genten::error("Invalid input option");
+    algParams.rank = mxGetScalar(prhs[1]);
+    auto args = mxBuildArgList(nrhs, 2, prhs);
+    algParams.parse(args);
+    if (Genten::check_and_print_unused_args(args, std::cout)) {
+      algParams.print_help(std::cout);
+      throw std::string("Invalid command line arguments.");
     }
 
     // Call driver

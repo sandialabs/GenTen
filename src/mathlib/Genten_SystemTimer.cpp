@@ -56,6 +56,7 @@
 #include <iomanip>
 #include <sstream>
 #include "Genten_SystemTimer.hpp"
+#include "Genten_Kokkos.hpp"
 
 
 //---- THIS IS WHERE HAVE_REALTIME_CLOCK WILL BE DEFINED (OR NOT).
@@ -86,7 +87,8 @@ namespace Genten
 //----------------------------------------------------------------------
 //  Constructor
 //----------------------------------------------------------------------
-  SystemTimer::SystemTimer (const int  nNumTimers)
+  SystemTimer::SystemTimer (const int  nNumTimers,
+                            const bool fence)
   {
 #if defined(HAVE_REALTIME_CLOCK)
     if (nNumTimers <= 0)
@@ -95,6 +97,7 @@ namespace Genten
       return;
     }
     _nNumTimers = nNumTimers;
+    _fence = fence;
 
     _baIsStarted = new bool[_nNumTimers];
     _daCumTimes = new double[_nNumTimers];
@@ -263,6 +266,9 @@ namespace Genten
 
     if (_baIsStarted[nTimerID] == false)
       return( false );
+
+    if (_fence)
+      Kokkos::fence();
 
     //---- ADD ELAPSED TIME SINCE THE LAST CALL TO start().
     _daCumTimes[nTimerID] += getTimeSinceLastStart_ (nTimerID);

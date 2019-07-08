@@ -44,20 +44,40 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_Array.hpp"
 #include "Genten_AlgParams.hpp"
+#include "Genten_SystemTimer.hpp"
+
+#include "Kokkos_Random.hpp"
 
 namespace Genten {
 
   namespace Impl {
 
     template <typename ExecSpace, typename loss_type>
-    void gcp_sgd_grad_atomic(const SptensorT<ExecSpace>& X,
-                             const KtensorT<ExecSpace>& M,
-                             const ArrayT<ExecSpace>& w,
-                             const loss_type& f,
-                             const ttb_indx num_samples,
-                             const KtensorT<ExecSpace>& G,
-                             RandomMT& rng,
-                             const AlgParams& algParams);
+    void gcp_sgd_grad_atomic(
+      const SptensorT<ExecSpace>& X,
+      const KtensorT<ExecSpace>& M,
+      const ArrayT<ExecSpace>& w,
+      const loss_type& f,
+      const ttb_indx num_samples,
+      const KtensorT<ExecSpace>& G,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams);
+
+    template <typename ExecSpace, typename loss_type>
+    void gcp_sgd_ss_grad_atomic(
+      const SptensorT<ExecSpace>& X,
+      const KtensorT<ExecSpace>& M,
+      const loss_type& f,
+      const ttb_indx num_samples_nonzeros,
+      const ttb_indx num_samples_zeros,
+      const ttb_real weight_nonzeros,
+      const ttb_real weight_zeros,
+      const KtensorT<ExecSpace>& G,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams,
+      SystemTimer& timer,
+      const int timer_nzs,
+      const int timer_zs);
 
   }
 

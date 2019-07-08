@@ -40,21 +40,67 @@
 
 #pragma once
 
-#include <ostream>
+#include <iostream>
 
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
-#include "Genten_AlgParams.hpp"
+#include "Genten_SystemTimer.hpp"
+#include "Genten_GCP_SamplingKernels.hpp"
+#include "Genten_GCP_Hash.hpp"
+
+#include "Kokkos_Random.hpp"
 
 namespace Genten {
 
-  //! Compute the generalized CP decomposition of a tensor using SGD approach
-  template<typename TensorT, typename ExecSpace>
-  void gcp_sgd3(TensorT& x,
-                KtensorT<ExecSpace>& u,
-                const AlgParams& algParams,
-                ttb_indx& numIters,
-                ttb_real& resNorm,
-                std::ostream& out);
+  template <typename ExecSpace, typename LossFunction>
+  class Sampler {
+  public:
+
+    typedef Kokkos::Random_XorShift64_Pool<ExecSpace> pool_type;
+    typedef TensorHashMap<ExecSpace> map_type;
+
+    Sampler() {}
+
+    virtual ~Sampler() {}
+
+    virtual void initialize(const pool_type& rand_pool,
+                            std::ostream& out) = 0;
+
+    virtual void print(std::ostream& out) = 0;
+
+    virtual void sampleTensor(const bool gradient,
+                              const KtensorT<ExecSpace>& u,
+                              const LossFunction& loss_func,
+                              SptensorT<ExecSpace>& Xs,
+                              ArrayT<ExecSpace>& w) = 0;
+
+    virtual void fusedGradient(const KtensorT<ExecSpace>& u,
+                               const LossFunction& loss_func,
+                               const KtensorT<ExecSpace>& g,
+                               SystemTimer& timer,
+                               const int timer_nzs,
+                               const int timer_zs) = 0;
+
+    static map_type buildHashMap(const SptensorT<ExecSpace>& X,
+                                 std::ostream& out)
+    {
+      const ttb_indx nnz = X.nnz();
+      const ttb_indx nd = X.ndims();
+      map_type hash_map(nd, nnz);
+      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nnz),
+                           KOKKOS_LAMBDA(const ttb_indx i)
+      {
+        auto key = X.getSubscripts(i);
+        hash_map.insert(key, X.value(i));
+      }, "Genten::GCP_SGD::hash_kernel");
+
+      const bool print_histogram = false;
+      if (print_histogram) {
+        hash_map.print_histogram(out);
+      }
+
+      return hash_map;
+    }
+  };
 
 }

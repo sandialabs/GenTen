@@ -57,25 +57,25 @@ namespace Genten {
   typedef Kokkos::DefaultExecutionSpace DefaultExecutionSpace;
   typedef Kokkos::DefaultHostExecutionSpace DefaultHostExecutionSpace;
 }
-#ifdef KOKKOS_HAVE_CUDA
+#ifdef KOKKOS_ENABLE_CUDA
 #define GENTEN_INST_CUDA(INSTMACRO) \
   INSTMACRO(Kokkos::Cuda)
 #else
 #define GENTEN_INST_CUDA(INSTMACRO) /* */
 #endif
-#ifdef KOKKOS_HAVE_OPENMP
+#ifdef KOKKOS_ENABLE_OPENMP
 #define GENTEN_INST_OPENMP(INSTMACRO) \
   INSTMACRO(Kokkos::OpenMP)
 #else
 #define GENTEN_INST_OPENMP(INSTMACRO) /* */
 #endif
-#ifdef KOKKOS_HAVE_THREADS
+#ifdef KOKKOS_ENABLE_THREADS
 #define GENTEN_INST_THREADS(INSTMACRO) \
   INSTMACRO(Kokkos::Threads)
 #else
 #define GENTEN_INST_THREADS(INSTMACRO) /* */
 #endif
-#ifdef KOKKOS_HAVE_SERIAL
+#ifdef KOKKOS_ENABLE_SERIAL
 #define GENTEN_INST_SERIAL(INSTMACRO) \
   INSTMACRO(Kokkos::Serial)
 #else
@@ -178,6 +178,22 @@ namespace Genten {
       "gaussian", "rayleigh", "gamma", "bernoulli", "poisson"
     };
     static constexpr type default_type = Gaussian;
+  };
+
+  // Sampling functions supported by GCP
+  struct GCP_Sampling {
+    enum type {
+      Stratified,
+      SemiStratified
+    };
+    static constexpr unsigned num_types = 2;
+    static constexpr type types[] = {
+      Stratified, SemiStratified
+    };
+    static constexpr const char* names[] = {
+      "stratified", "semi-stratified"
+    };
+    static constexpr type default_type = Stratified;
   };
 }
 

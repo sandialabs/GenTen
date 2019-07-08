@@ -50,9 +50,9 @@ void usage(char **argv)
   std::cout << "  --input <string>   path to input sptensor data (leave empty for random tensor)" << std::endl;
   std::cout << "  --dims <array>     random tensor dimensions" << std::endl;
   std::cout << "  --nnz <int>        approximate number of random tensor nonzeros" << std::endl;
-  std::cout << "  --index_base <int> starting index for tensor nonzeros" << std::endl;
+  std::cout << "  --index-base <int> starting index for tensor nonzeros" << std::endl;
   std::cout << "  --gz               read tensor in gzip compressed format" << std::endl;
-  std::cout << "  --save_tensor <string> filename to save the tensor (leave blank for no save)" << std::endl;
+  std::cout << "  --save-tensor <string> filename to save the tensor (leave blank for no save)" << std::endl;
   std::cout << "  --init <string>  file name for reading Ktensor initial guess (leave blank for random initial guess)" << std::endl;
   std::cout << "  --output <string>  output file name for saving Ktensor" << std::endl;
   std::cout << "  --vtune            connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
@@ -67,7 +67,11 @@ int main(int argc, char* argv[])
 
   try {
 
-    ttb_bool help = Genten::parse_ttb_bool(argc, argv, "--help", "--no-help", false);
+    // Convert argc,argv to list of arguments
+    auto args = Genten::build_arg_list(argc,argv);
+
+    ttb_bool help =
+      Genten::parse_ttb_bool(args, "--help", "--no-help", false);
     if ((argc < 2) || (help)) {
       usage(argv);
       Kokkos::finalize();
@@ -76,30 +80,37 @@ int main(int argc, char* argv[])
 
     // Driver options
     std::string inputfilename =
-      Genten::parse_string(argc, argv, "--input", "");
+      Genten::parse_string(args, "--input", "");
     std::string outputfilename =
-      Genten::parse_string(argc, argv, "--output", "");
+      Genten::parse_string(args, "--output", "");
     std::string initfilename =
-      Genten::parse_string(argc, argv, "--init", "");
+      Genten::parse_string(args, "--init", "");
     ttb_indx index_base =
-      Genten::parse_ttb_indx(argc, argv, "--index_base", 0, 0, INT_MAX);
+      Genten::parse_ttb_indx(args, "--index-base", 0, 0, INT_MAX);
     ttb_bool gz =
-      Genten::parse_ttb_bool(argc, argv, "--gz", "--no-gz", false);
+      Genten::parse_ttb_bool(args, "--gz", "--no-gz", false);
     ttb_bool vtune =
-      Genten::parse_ttb_bool(argc, argv, "--vtune", "--no-vtune", false);
+      Genten::parse_ttb_bool(args, "--vtune", "--no-vtune", false);
 
     // for random tensor when inputfilename == ""
     Genten::IndxArray facDims_h = { 3000, 4000, 5000 };
     facDims_h =
-      Genten::parse_ttb_indx_array(argc, argv, "--dims", facDims_h, 1, INT_MAX);
+      Genten::parse_ttb_indx_array(args, "--dims", facDims_h, 1, INT_MAX);
     ttb_indx nnz =
-      Genten::parse_ttb_indx(argc, argv, "--nnz", 1 * 1000 * 1000, 1, INT_MAX);
+      Genten::parse_ttb_indx(args, "--nnz", 1 * 1000 * 1000, 1, INT_MAX);
     std::string tensor_outputfilename =
-      Genten::parse_string(argc, argv, "--save_tensor", "");
+      Genten::parse_string(args, "--save-tensor", "");
 
     // Everything else
     Genten::AlgParams algParams;
-    algParams.parse(argc, argv);
+    algParams.parse(args);
+
+    // Check for unrecognized arguments
+    if (Genten::check_and_print_unused_args(args, std::cout)) {
+      usage(argv);
+      // Use throw instead of exit for proper Kokkos shutdown
+      throw std::string("Invalid command line arguments.");
+    }
 
     if (algParams.debug) {
       std::cout << "Driver options:" << std::endl;

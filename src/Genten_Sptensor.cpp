@@ -42,11 +42,11 @@
 
 #include "Kokkos_Sort.hpp"
 
-#ifdef KOKKOS_HAVE_OPENMP
+#ifdef KOKKOS_ENABLE_OPENMP
 #include "parallel_stable_sort.hpp"
 #endif
 
-#ifdef KOKKOS_HAVE_CUDA
+#ifdef KOKKOS_ENABLE_CUDA
 #include <thrust/sort.h>
 #include <thrust/device_ptr.h>
 #endif
@@ -261,7 +261,7 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
       tmp(i) = i;
     }, "Genten::Sptensor::createPermutationImpl_init_kernel");
 
-#if defined(KOKKOS_HAVE_CUDA)
+#if defined(KOKKOS_ENABLE_CUDA)
     if (std::is_same<ExecSpace, Kokkos::Cuda>::value) {
       thrust::stable_sort(thrust::device_ptr<ttb_indx>(tmp.data()),
                           thrust::device_ptr<ttb_indx>(tmp.data()+sz),
@@ -273,7 +273,7 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
     else
 #endif
 
-#if defined(KOKKOS_HAVE_OPENMP)
+#if defined(KOKKOS_ENABLE_OPENMP)
     if (std::is_same<ExecSpace, Kokkos::OpenMP>::value) {
       pss::parallel_stable_sort(tmp.data(), tmp.data()+sz,
                                 [&](const ttb_indx& a, const ttb_indx& b)
@@ -352,7 +352,7 @@ sortImpl(vals_type& vals, subs_type& subs)
       return true;
     };
 
-#if defined(KOKKOS_HAVE_CUDA)
+#if defined(KOKKOS_ENABLE_CUDA)
   if (std::is_same<ExecSpace, Kokkos::Cuda>::value) {
     thrust::stable_sort(thrust::device_ptr<ttb_indx>(tmp.data()),
                         thrust::device_ptr<ttb_indx>(tmp.data()+sz),
@@ -361,7 +361,7 @@ sortImpl(vals_type& vals, subs_type& subs)
   else
 #endif
 
-#if defined(KOKKOS_HAVE_OPENMP)
+#if defined(KOKKOS_ENABLE_OPENMP)
     if (std::is_same<ExecSpace, Kokkos::OpenMP>::value) {
       pss::parallel_stable_sort(tmp.data(), tmp.data()+sz, cmp);
     }

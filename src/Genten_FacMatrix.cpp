@@ -53,10 +53,10 @@
 #include <assert.h>
 #include <cstring>
 
-#if defined(KOKKOS_HAVE_CUDA) && defined(HAVE_CUSOLVER)
+#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUSOLVER)
 #include "cusolverDn.h"
 #endif
-#if defined(KOKKOS_HAVE_CUDA) && defined(HAVE_CUBLAS)
+#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
 #include "cublas_v2.h"
 #endif
 
@@ -425,7 +425,7 @@ void gramianImpl(const ViewC& C, const ViewA& A,
 
 #endif
 
-#if defined(KOKKOS_HAVE_CUDA) && defined(HAVE_CUBLAS)
+#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
   // Gramian implementation for CUDA and double precision using cuBLAS
   template <typename ExecSpace,
             typename CT, typename ... CP,
@@ -1411,7 +1411,7 @@ namespace Genten {
       Genten::sysv(uplo, ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0());
     }
 
-#if defined(KOKKOS_HAVE_CUDA) && defined(HAVE_CUSOLVER)
+#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUSOLVER)
 
     template <typename AT, typename ... AP,
               typename BT, typename ... BP>

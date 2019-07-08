@@ -362,13 +362,13 @@ IF (ENABLE_GCP)
   SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
     ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SamplingKernels.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_Hash.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD2.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_HogWild.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD2_HogWild.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD3.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_Grad_Atomic.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD_SA.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_Grad_SA.cpp
+    #${Genten_SOURCE_DIR}/src/Genten_GCP_HogWild.cpp
+    #${Genten_SOURCE_DIR}/src/Genten_GCP_SGD2_HogWild.cpp
     )
 
   IF (ENABLE_ROL)
@@ -591,9 +591,9 @@ add_test(Genten_Unit_Tests ${Genten_BINARY_DIR}/bin/unit_tests)
 SET_TESTS_PROPERTIES(Genten_Unit_Tests PROPERTIES FAIL_REGULAR_EXPRESSION "Error")
 
 # mttkrp -- returns nonzero on failure
-add_test(Genten_MTTKRP_random_atomic ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000 --mttkrp_method atomic)
-add_test(Genten_MTTKRP_random_dupl ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000 --mttkrp_method duplicated)
-add_test(Genten_MTTKRP_random_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000 --mttkrp_method perm)
-add_test(Genten_MTTKRP_aminoacid_atomic ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp_method atomic)
-add_test(Genten_MTTKRP_aminoacid_dupl ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp_method duplicated)
-add_test(Genten_MTTKRP_aminoacid_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp_method perm)
+add_test(Genten_MTTKRP_random_atomic ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method atomic)
+add_test(Genten_MTTKRP_random_dupl ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method duplicated)
+add_test(Genten_MTTKRP_random_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method perm)
+add_test(Genten_MTTKRP_aminoacid_atomic ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method atomic)
+add_test(Genten_MTTKRP_aminoacid_dupl ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method duplicated)
+add_test(Genten_MTTKRP_aminoacid_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method perm)

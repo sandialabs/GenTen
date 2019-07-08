@@ -74,7 +74,7 @@ def run_cpals(options):
         if options.gz:
             input_filename = input_filename + '.gz'
         cmd = cmd + ' --input ' + input_filename
-        cmd = cmd + ' --index_base ' + str(options.index)
+        cmd = cmd + ' --index-base ' + str(options.index)
         cmd = cmd + ' --printitn 1'
         if options.gz:
             cmd = cmd + ' --gz'

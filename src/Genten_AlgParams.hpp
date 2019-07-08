@@ -42,6 +42,7 @@
 
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "Genten_Util.hpp"
 #include "Genten_IndxArray.hpp"
@@ -61,6 +62,7 @@ namespace Genten {
     ttb_real tol;        // Decomposition tolerance
     ttb_indx printitn;   // Print iterations
     bool debug;          // Print debugging info
+    bool timings;        // Print accurate kernel timing info (requires fences)
 
     // MTTKRP options
     MTTKRP_Method::type mttkrp_method; // MTTKRP algorithm
@@ -75,6 +77,7 @@ namespace Genten {
     std::string rolfilename; // Filename for ROL solver options
 
     // GCP-SGD options
+    GCP_Sampling::type sampling_type;    // Sampling type
     ttb_real rate;                       // Initial step size
     ttb_real decay;                      // Rate step size decreases on fails
     ttb_indx max_fails;                  // Maximum number of fails
@@ -91,6 +94,9 @@ namespace Genten {
     ttb_real w_f_z;                      // Zero sample weight for f
     ttb_real w_g_nz;                     // Nonzero sample weight for grad
     ttb_real w_g_z;                      // Zero sample weight for grad
+    bool hash;                           // Hash tensor instead of sorting
+    bool fuse;                           // Fuse sampling and gradient kernels
+    bool fuse_sa;                        // Fused with sparse array gradient
     bool compute_fit;                    // Compute fit metric
     bool use_adam;                       // Use ADAM step
     ttb_real adam_beta1;                 // Decay rate of first moment avg.
@@ -101,7 +107,7 @@ namespace Genten {
     AlgParams();
 
     // Parse options
-    void parse(int argc, char* argv[]);
+    void parse(std::vector<std::string>& args);
 
     // Print help string
     static void print_help(std::ostream& out);
@@ -110,47 +116,55 @@ namespace Genten {
     void print(std::ostream& out);
   };
 
-  ttb_real parse_ttb_real(int argc, char** argv, std::string cl_arg, ttb_real default_value, ttb_real min=0.0, ttb_real max=1.0);
-  ttb_indx parse_ttb_indx(int argc, char** argv, std::string cl_arg, ttb_indx default_value, ttb_indx min=0, ttb_indx max=100);
-  ttb_bool parse_ttb_bool(int argc, char** argv, std::string cl_arg_on, std::string cl_off_off, ttb_bool default_value);
-  std::string parse_string(int argc, char** argv, std::string cl_arg, std::string default_value);
-  IndxArray parse_ttb_indx_array(int argc, char** argv, std::string cl_arg, const IndxArray& default_value, ttb_indx min=1, ttb_indx max=INT_MAX);
+  ttb_real parse_ttb_real(std::vector<std::string>& args, const std::string& cl_arg, ttb_real default_value, ttb_real min=0.0, ttb_real max=1.0);
+  ttb_indx parse_ttb_indx(std::vector<std::string>& args, const std::string& cl_arg, ttb_indx default_value, ttb_indx min=0, ttb_indx max=100);
+  ttb_bool parse_ttb_bool(std::vector<std::string>& args, const std::string& cl_arg_on, const std::string& cl_off_off, ttb_bool default_value);
+  std::string parse_string(std::vector<std::string>& args, const std::string& cl_arg, const std::string& default_value);
+  IndxArray parse_ttb_indx_array(std::vector<std::string>& args, const std::string& cl_arg, const IndxArray& default_value, ttb_indx min=1, ttb_indx max=INT_MAX);
   template <typename T>
-  T parse_ttb_enum(int argc, char** argv, std::string cl_arg, T default_value,
-                   unsigned num_values, const T* values,
+  T parse_ttb_enum(std::vector<std::string>& args, const std::string& cl_arg,
+                   T default_value, unsigned num_values, const T* values,
                    const char*const* names)
   {
-    int arg=1;
-    while (arg < argc) {
-      if (cl_arg == std::string(argv[arg])) {
-        // get next cl_arg
-        arg++;
-        if (arg >= argc)
-          return default_value;
-        // convert to string
-        std::string arg_val = std::string(argv[arg]);
-        // find name in list of names
-        for (unsigned i=0; i<num_values; ++i) {
-          if (arg_val == names[i])
-            return values[i];
-        }
-        // if we got here, name wasn't found
-        std::ostringstream error_string;
-        error_string << "Bad input: " << cl_arg << " " << arg_val << ",  must be one of the values: ";
-        for (unsigned i=0; i<num_values; ++i) {
-          error_string << names[i];
-          if (i != num_values-1)
-            error_string << ", ";
-        }
-        error_string << "." << std::endl;
-        Genten::error(error_string.str());
-        exit(1);
+    auto it = std::find(args.begin(), args.end(), cl_arg);
+    // If not found, try removing the '--'
+    if ((it == args.end()) && (cl_arg.size() > 2) &&
+        (cl_arg[0] == '-') && (cl_arg[1] == '-')) {
+      it = std::find(args.begin(), args.end(), cl_arg.substr(2));
+    }
+    if (it != args.end()) {
+      auto arg_it = it;
+      // get next cl_arg
+      ++it;
+      if (it == args.end()) {
+        args.erase(arg_it);
+        return default_value;
       }
-      arg++;
+      // convert to string
+      std::string arg_val = *it;
+      // Remove argument from list
+      args.erase(arg_it, ++it);
+      // find name in list of names
+      for (unsigned i=0; i<num_values; ++i) {
+        if (arg_val == names[i])
+          return values[i];
+      }
+      // if we got here, name wasn't found
+      std::ostringstream error_string;
+      error_string << "Bad input: " << cl_arg << " " << arg_val << ",  must be one of the values: ";
+      for (unsigned i=0; i<num_values; ++i) {
+        error_string << names[i];
+        if (i != num_values-1)
+          error_string << ", ";
+      }
+      error_string << "." << std::endl;
+      Genten::error(error_string.str());
+      exit(1);
     }
     // return default value if not specified on command line
     return default_value;
   }
+
   template <typename T>
   typename T::type parse_enum(const std::string& name) {
     for (unsigned i=0; i<T::num_types; ++i) {
@@ -171,5 +185,13 @@ namespace Genten {
     Genten::error(error_string.str());
     return T::default_type;
   }
+
+  // Convert (argc,argv) to list of strings
+  std::vector<std::string> build_arg_list(int argc, char** argv);
+
+  // Print out unrecognized command line arguments.  Returns true if there
+  // are any, false otherwise
+  bool check_and_print_unused_args(const std::vector<std::string>& args,
+                                   std::ostream& out);
 
 }

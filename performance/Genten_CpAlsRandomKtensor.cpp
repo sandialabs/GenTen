@@ -198,14 +198,14 @@ void usage(char **argv)
   std::cout << "  --maxiters <int>     maximum iterations to perform" << std::endl;
   std::cout << "  --tol <float>        stopping tolerance" << std::endl;
   std::cout << "  --seed <int>         seed for random number generator used in initial guess" << std::endl;
-  std::cout << "  --mttkrp_method <method> MTTKRP algorithm: ";
+  std::cout << "  --mttkrp-method <method> MTTKRP algorithm: ";
   for (unsigned i=0; i<Genten::MTTKRP_Method::num_types; ++i) {
     std::cout << Genten::MTTKRP_Method::names[i];
     if (i != Genten::MTTKRP_Method::num_types-1)
       std::cout << ", ";
   }
   std::cout << std::endl;
-  std::cout << "  --mttkrp_tile_size <int> tile size for mttkrp algorithm" << std::endl;
+  std::cout << "  --mttkrp-tile-size <int> tile size for mttkrp algorithm" << std::endl;
   std::cout << "  --vtune              connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
 }
 
@@ -233,14 +233,18 @@ int main(int argc, char* argv[])
 
   try {
 
-    ttb_bool help = Genten::parse_ttb_bool(argc, argv, "--help", "--no-help", false);
+    // Convert argc,argv to list of arguments
+    auto args = Genten::build_arg_list(argc,argv);
+
+    ttb_bool help = Genten::parse_ttb_bool(args, "--help", "--no-help", false);
     if (help) {
       usage(argv);
       Kokkos::finalize();
       return 0;
     }
 
-    ttb_bool vtune = Genten::parse_ttb_bool(argc, argv, "--vtune", "--no-vtune", false);
+    ttb_bool vtune =
+      Genten::parse_ttb_bool(args, "--vtune", "--no-vtune", false);
     if (vtune)
       Genten::connect_vtune();
 
@@ -249,25 +253,32 @@ int main(int argc, char* argv[])
     // solves in just a few seconds.
     Genten::IndxArray  cFacDims = { 3000, 4000, 5000 };
     cFacDims =
-      Genten::parse_ttb_indx_array(argc, argv, "--dims", cFacDims, 1, INT_MAX);
+      Genten::parse_ttb_indx_array(args, "--dims", cFacDims, 1, INT_MAX);
     ttb_indx  nNumComponents =
-      Genten::parse_ttb_indx(argc, argv, "--nc", 32, 1, INT_MAX);
+      Genten::parse_ttb_indx(args, "--nc", 32, 1, INT_MAX);
     ttb_indx  nMaxNonzeroes =
-      Genten::parse_ttb_indx(argc, argv, "--nnz", 1 * 1000 * 1000, 1, INT_MAX);
+      Genten::parse_ttb_indx(args, "--nnz", 1 * 1000 * 1000, 1, INT_MAX);
     unsigned long  nRNGseed =
-      Genten::parse_ttb_indx(argc, argv, "--seed", 1, 0, INT_MAX);
+      Genten::parse_ttb_indx(args, "--seed", 1, 0, INT_MAX);
     ttb_indx  nMaxIters =
-      Genten::parse_ttb_indx(argc, argv, "--maxiters", 100, 1, INT_MAX);
+      Genten::parse_ttb_indx(args, "--maxiters", 100, 1, INT_MAX);
     ttb_real  dStopTol =
-      Genten::parse_ttb_real(argc, argv, "--tol", 1.0e-7, 0.0, 1.0);
+      Genten::parse_ttb_real(args, "--tol", 1.0e-7, 0.0, 1.0);
     Genten::MTTKRP_Method::type mttkrp_method =
-      Genten::parse_ttb_enum(argc, argv, "--mttkrp_method",
+      Genten::parse_ttb_enum(args, "--mttkrp-method",
                      Genten::MTTKRP_Method::Default,
                      Genten::MTTKRP_Method::num_types,
                      Genten::MTTKRP_Method::types,
                      Genten::MTTKRP_Method::names);
     ttb_indx mttkrp_tile_size =
-      Genten::parse_ttb_indx(argc, argv, "--mttkrp_tile_size", 0, 0, INT_MAX);
+      Genten::parse_ttb_indx(args, "--mttkrp-tile-size", 0, 0, INT_MAX);
+
+    // Check for unrecognized arguments
+    if (Genten::check_and_print_unused_args(args, std::cout)) {
+      usage(argv);
+      // Use throw instead of exit for proper Kokkos shutdown
+      throw std::string("Invalid command line arguments.");
+    }
 
     Genten::AlgParams algParams;
     algParams.rank = nNumComponents;

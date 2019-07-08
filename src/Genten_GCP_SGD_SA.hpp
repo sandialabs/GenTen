@@ -38,72 +38,23 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_Util.hpp"
+#pragma once
 
-// For vtune
-#include <sstream>
-#include <sys/types.h>
-#include <unistd.h>
+#include <ostream>
 
+#include "Genten_Sptensor.hpp"
+#include "Genten_Ktensor.hpp"
+#include "Genten_AlgParams.hpp"
 
-void Genten::error(std::string s)
-{
-  std::cerr << "FATAL ERROR: " << s << std::endl;
-  throw s;
+namespace Genten {
+
+  //! Compute the generalized CP decomposition of a tensor using SGD approach
+  template<typename TensorT, typename ExecSpace>
+  void gcp_sgd_sa (TensorT& x,
+                   KtensorT<ExecSpace>& u,
+                   const AlgParams& algParams,
+                   ttb_indx& numIters,
+                   ttb_real& resNorm,
+                   std::ostream& out);
+
 }
-
-bool  Genten::isEqualToTol(ttb_real  d1,
-                           ttb_real  d2,
-                           ttb_real  dTol)
-{
-  // Numerator = fabs(d1 - d2).
-  ttb_real  dDiff = fabs(d1 - d2);
-
-  // Denominator  = max(1, fabs(d1), fabs(d2).
-  ttb_real  dAbs1 = fabs(d1);
-  ttb_real  dAbs2 = fabs(d2);
-  ttb_real  dD = 1.0;
-  if ((dAbs1 > 1.0) || (dAbs2 > 1.0))
-  {
-    if (dAbs1 > dAbs2)
-      dD = dAbs1;
-    else
-      dD = dAbs2;
-  }
-
-  // Relative difference.
-  ttb_real  dRelDiff = dDiff / dD;
-
-  // Compare the relative difference to the tolerance.
-  return( dRelDiff < dTol );
-}
-
-char *  Genten::getGentenVersion(void)
-{
-  return( (char *)("Genten Tensor Toolbox 0.0.0") );
-}
-
-// Connect executable to vtune for profiling
-void Genten::connect_vtune(const int p_rank) {
-  std::stringstream cmd;
-  pid_t my_os_pid=getpid();
-  const std::string vtune_loc =
-    "amplxe-cl";
-  const std::string output_dir = "./vtune/vtune.";
-  cmd << vtune_loc
-      << " -collect hotspots -result-dir " << output_dir << p_rank
-      << " -target-pid " << my_os_pid << " &";
-  if (p_rank == 0)
-    std::cout << cmd.str() << std::endl;
-  system(cmd.str().c_str());
-  system("sleep 10");
-}
-
-const Genten::MTTKRP_Method::type Genten::MTTKRP_Method::types[];
-const char*const Genten::MTTKRP_Method::names[];
-
-const Genten::GCP_LossFunction::type Genten::GCP_LossFunction::types[];
-const char*const Genten::GCP_LossFunction::names[];
-
-const Genten::GCP_Sampling::type Genten::GCP_Sampling::types[];
-const char*const Genten::GCP_Sampling::names[];
