@@ -405,7 +405,7 @@ void gramian_kernel(const ViewC& C, const ViewA& A)
 
 template <typename ExecSpace, typename ViewC, typename ViewA>
 void gramianImpl(const ViewC& C, const ViewA& A,
-		 const bool full, const UploType uplo)
+                 const bool full, const UploType uplo)
 {
   // Currently ignoring full/uplo since this kernel is just a backup anyway
   const ttb_indx n = A.extent(1);
@@ -1764,7 +1764,7 @@ namespace Genten {
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 solveTransposeRHS (const Genten::FacMatrixT<ExecSpace> & A,
-		   const bool full,
+                   const bool full,
                    const UploType uplo) const
 {
   const ttb_indx nrows = data.extent(0);
@@ -1788,7 +1788,7 @@ solveTransposeRHS (const Genten::FacMatrixT<ExecSpace> & A,
     // If not SPD, use indefinite solver if we can
     if (!is_spd) {
       if (!full)
-	Genten::error("Indefinite matrix but full == false!");
+        Genten::error("Indefinite matrix but full == false!");
       deep_copy(Atmp, A.data); // Recover original A
       Genten::Impl::solveTransposeRHSImpl(Atmp, data, uplo);
     }

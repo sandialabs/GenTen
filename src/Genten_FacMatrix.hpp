@@ -332,7 +332,7 @@ public:
      * Throws an exception if A is singular.
      */
     void solveTransposeRHS (const FacMatrixT & A,
-			    const bool full = true,
+                            const bool full = true,
                             const UploType uplo = Upper) const;
 
     //! Multiply x elementwise by the ith row of the factor matrix, overwriting x.
