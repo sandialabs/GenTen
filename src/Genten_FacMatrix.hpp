@@ -84,6 +84,11 @@ public:
     typedef typename view_type::host_mirror_space::execution_space host_mirror_space;
     typedef FacMatrixT<host_mirror_space> HostMirror;
 
+    // Default for whether to use full or symmetric Gram matrix.  Currently
+    // use full only on GPU, symmetric everywhere else.  Todo:  check KNL
+    static constexpr bool full_gram_default =
+      Genten::is_cuda_space<ExecSpace>::value;
+
     /** ----------------------------------------------------------------
      *  @name Constructors and Destructors
      *  @{
@@ -261,7 +266,7 @@ public:
 
     // Set this matrix to the Gram Matrix of V:  this = V' * V.
     // If full == false, only compute triangle indicated by uplo
-    void gramian(const FacMatrixT & v, const bool full = true,
+    void gramian(const FacMatrixT & v, const bool full = full_gram_default,
                  const UploType uplo = Upper) const;
 
     // return the index of the first entry, s, such that entry(s,c) > r.
@@ -332,7 +337,7 @@ public:
      * Throws an exception if A is singular.
      */
     void solveTransposeRHS (const FacMatrixT & A,
-                            const bool full = true,
+                            const bool full = full_gram_default,
                             const UploType uplo = Upper) const;
 
     //! Multiply x elementwise by the ith row of the factor matrix, overwriting x.

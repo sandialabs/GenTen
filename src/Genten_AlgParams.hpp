@@ -63,6 +63,7 @@ namespace Genten {
     ttb_indx printitn;   // Print iterations
     bool debug;          // Print debugging info
     bool timings;        // Print accurate kernel timing info (requires fences)
+    bool full_gram;      // Use full Gram matrix formulation
 
     // MTTKRP options
     MTTKRP_Method::type mttkrp_method; // MTTKRP algorithm

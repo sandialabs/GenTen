@@ -1777,21 +1777,12 @@ solveTransposeRHS (const Genten::FacMatrixT<ExecSpace> & A,
   view_type Atmp("Atmp", A.nRows(), A.nCols());
   deep_copy(Atmp, A.data);
 
-  // getrf/getrs is generally faster on the GPU than potrf/potrs
-  if (Genten::is_cuda_space<ExecSpace>::value && full) {
+  if (full)
     Genten::Impl::solveTransposeRHSImpl(Atmp, data, uplo);
-  }
   else {
-    // First try SPD solver
     bool is_spd = Genten::Impl::solveTransposeRHSImpl_SPD(Atmp, data, uplo);
-
-    // If not SPD, use indefinite solver if we can
-    if (!is_spd) {
-      if (!full)
-        Genten::error("Indefinite matrix but full == false!");
-      deep_copy(Atmp, A.data); // Recover original A
-      Genten::Impl::solveTransposeRHSImpl(Atmp, data, uplo);
-    }
+    if (!is_spd)
+      Genten::error("Must use full solver if matrix is indefinite!");
   }
 }
 

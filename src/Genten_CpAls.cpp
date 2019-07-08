@@ -120,8 +120,8 @@ namespace Genten {
 
     using std::sqrt;
 
-    // Store full Gram matrix on GPU, Upper triangle on everything else
-    const bool full = Genten::is_cuda_space<ExecSpace>::value ? true : false;
+    // Whether to use full or symmetric Gram matrix
+    const bool full = algParams.full_gram;
     const UploType uplo = Upper;
 
     const ttb_real tol = algParams.tol;

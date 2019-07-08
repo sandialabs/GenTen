@@ -131,7 +131,7 @@ void Genten_Test_FacMatrix(int infolevel, const std::string & datadir)
   Genten::FacMatrixT<exec_space> b_dev = create_mirror_view( exec_space(), b );
   Genten::FacMatrixT<exec_space> e_dev = create_mirror_view( exec_space(), e );
   deep_copy( b_dev, b );
-  e_dev.gramian(b_dev);
+  e_dev.gramian(b_dev, true);
   deep_copy( e, e_dev );
   ASSERT(e.nCols() == d.nCols(), "Gramian works");
   ASSERT(e.nRows() == d.nRows(), "Gramian works");
@@ -294,7 +294,7 @@ void Genten_Test_FacMatrix(int infolevel, const std::string & datadir)
   b_dev = create_mirror_view( exec_space(), b );
   deep_copy( a_dev, a );
   deep_copy( b_dev, b );
-  b_dev.solveTransposeRHS (a_dev);
+  b_dev.solveTransposeRHS (a_dev, true);
   deep_copy( b, b_dev );
   c = Genten::FacMatrix(3,2);
   c.entry(0,0) = -1.0 / 3.0;

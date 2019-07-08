@@ -39,6 +39,7 @@
 //@HEADER
 
 #include "Genten_AlgParams.hpp"
+#include "Genten_FacMatrix.hpp"
 
 Genten::AlgParams::AlgParams() :
   method("cp-als"),
@@ -51,6 +52,7 @@ Genten::AlgParams::AlgParams() :
   printitn(1),
   debug(false),
   timings(false),
+  full_gram(FacMatrixT<DefaultExecutionSpace>::full_gram_default),
   mttkrp_method(MTTKRP_Method::default_type),
   mttkrp_duplicated_factor_matrix_tile_size(0),
   loss_function_type(Genten::GCP_LossFunction::default_type),
@@ -98,6 +100,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   printitn = parse_ttb_indx(args, "--printitn", printitn, 0, INT_MAX);
   debug = parse_ttb_bool(args, "--debug", "--no-debug", debug);
   timings = parse_ttb_bool(args, "--timings", "--no-timings", timings);
+  full_gram = parse_ttb_bool(args, "--full-gram", "--sym-gram", full_gram);
 
   // MTTKRP options
   mttkrp_method = parse_ttb_enum(args, "--mttkrp-method", mttkrp_method,
@@ -173,6 +176,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --printitn <int>   print every <int>th iteration; 0 for no printing" << std::endl;
   out << "  --debug            turn on debugging output" << std::endl;
   out << "  --timings          print accurate kernel timing info (but may increase total run time by adding fences)" << std::endl;
+  out << "  --full-gram        use full Gram matrix formulation (which may be faster than the symmetric formulation on some architectures)" << std::endl;
 
   out << std::endl;
   out << "MTTKRP options:" << std::endl;
@@ -251,6 +255,7 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  printitn = " << printitn << std::endl;
   out << "  debug = " << (debug ? "true" : "false") << std::endl;
   out << "  timings = " << (timings ? "true" : "false") << std::endl;
+  out << "  full-gram = " << (full_gram ? "true" : "false") << std::endl;
 
   out << std::endl;
   out << "MTTKRP options:" << std::endl;
