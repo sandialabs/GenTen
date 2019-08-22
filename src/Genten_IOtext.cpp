@@ -48,12 +48,11 @@
 #include <sstream>
 #include <string>
 
-using namespace std;
-
 #include "Genten_FacMatrix.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_Sptensor.hpp"
+#include "Genten_Tensor.hpp"
 #include "Genten_Util.hpp"
 
 #include "CMakeInclude.h"
@@ -82,16 +81,16 @@ using namespace std;
  *                            false if indices start with one.
  *  @throws string  If file read error or unknown format.
  */
-static void  get_import_type (istream  & fIn,
-                              string   & sType,
+static void  get_import_type (std::istream  & fIn,
+                              std::string   & sType,
                               bool     & bStartAtZero)
 {
-  string  s;
+  std::string  s;
   if (Genten::getLineContent(fIn,s) == 0)
   {
     Genten::error("Genten::get_import_type - cannot read from file.");
   }
-  vector<string>  tokens;
+  std::vector<std::string>  tokens;
   Genten::splitStr(s, tokens);
   if (tokens.size() > 2)
   {
@@ -107,7 +106,7 @@ static void  get_import_type (istream  & fIn,
       bStartAtZero = false;
     else
     {
-      ostringstream  sErrMsg;
+      std::ostringstream  sErrMsg;
       sErrMsg << "Genten::get_import_type - 2nd word on first line"
               << " must be 'indices-start-at-zero' or 'indices-start-at-one'";
       Genten::error(sErrMsg.str());
@@ -128,32 +127,32 @@ static void  get_import_type (istream  & fIn,
  *                        expected number of integers.
  *  @throws string  If file read error.
  */
-static void  read_positive_ints (      istream        & fIn,
+static void  read_positive_ints (      std::istream        & fIn,
                                        Genten::IndxArray & naResult,
                                        const char * const     sMsgPrefix)
 {
-  string s;
+  std::string s;
   if (Genten::getLineContent(fIn,s) == 0)
   {
-    ostringstream  sErrMsg;
+    std::ostringstream  sErrMsg;
     sErrMsg << sMsgPrefix << " - cannot read line from file.";
     Genten::error(sErrMsg.str());
   }
 
-  istringstream ss(s);
+  std::istringstream ss(s);
 
   for (ttb_indx  i = 0; i < naResult.size(); i++)
   {
     if (!(ss >> naResult[i]))
     {
-      ostringstream  sErrMsg;
+      std::ostringstream  sErrMsg;
       sErrMsg << sMsgPrefix << " - line does not contain enough integers"
               << ", expecting " << naResult.size();
       Genten::error(sErrMsg.str());
     }
     if (naResult[i] <= 0)
     {
-      ostringstream  sErrMsg;
+      std::ostringstream  sErrMsg;
       sErrMsg << sMsgPrefix << " - line must contain positive integers"
               << ", [" << i << "] is not";
       Genten::error(sErrMsg.str());
@@ -161,7 +160,7 @@ static void  read_positive_ints (      istream        & fIn,
   }
   if (ss.eof() == false)
   {
-    ostringstream  sErrMsg;
+    std::ostringstream  sErrMsg;
     sErrMsg << sMsgPrefix << " - line contains too many integers"
             << " (or extra characters)"
             << ", expecting " << naResult.size();
@@ -176,16 +175,185 @@ static void  read_positive_ints (      istream        & fIn,
  *  @param[in] fIn  File stream to check.
  *  @throws string  If stream is not at its end.
  */
-static void  verifyEOF (      istream &     fIn,
+static void  verifyEOF (      std::istream &     fIn,
                               const char * const  sMsgPrefix)
 {
-  string  s;
+  std::string  s;
   if (Genten::getLineContent(fIn,s) > 0)
   {
-    ostringstream  sErrMsg;
+    std::ostringstream  sErrMsg;
     sErrMsg << sMsgPrefix << " - extra lines found after last element";
     Genten::error(sErrMsg.str());
   }
+  return;
+}
+
+//----------------------------------------------------------------------
+//  METHODS FOR Tensor (type "tensor")
+//----------------------------------------------------------------------
+
+void Genten::import_tensor (const std::string& fName,
+                            Genten::Tensor& X)
+{
+  std::ifstream fIn(fName.c_str());
+  if (!fIn.is_open())
+  {
+    Genten::error("Genten::import_tensor - cannot open input file.");
+  }
+
+  std::string  sType;
+  bool    bStartAtZero;
+  get_import_type(fIn, sType, bStartAtZero);
+  if (sType != "tensor")
+  {
+    Genten::error("Genten::import_tensor - data type header is not 'tensor'.");
+  }
+  //TBD support bStartAtZero
+
+  Genten::IndxArray  naModes(1);
+  read_positive_ints (fIn, naModes, "Genten::import_tensor, line 2");
+  Genten::IndxArray  naSizes(naModes[0]);
+  read_positive_ints (fIn, naSizes, "Genten::import_tensor, line 3");
+
+  X = Tensor(naSizes);
+
+  // Read the element values.
+  std::string s;
+  for (ttb_indx  i = 0; i < naSizes.prod(); i++)
+  {
+    if (getLineContent(fIn,s) == 0)
+    {
+      std::ostringstream  sErrMsg;
+      sErrMsg << "Genten::import_tensor - error reading element " << i;
+      Genten::error(sErrMsg.str());
+    }
+    std::istringstream ss(s);
+    if (!(ss >> X[i]))
+    {
+      std::ostringstream  sErrMsg;
+      sErrMsg << "Genten::import_tensor - error parsing element " << i;
+      Genten::error(sErrMsg.str());
+    }
+    if (ss.eof() == false)
+    {
+      std::ostringstream  sErrMsg;
+      sErrMsg << "Genten::import_tensor - too many values"
+              << " (or extra characters) in element " << i;
+      Genten::error(sErrMsg.str());
+    }
+  }
+
+  verifyEOF(fIn, "Genten::import_tensor");
+  fIn.close();
+  return;
+}
+
+void Genten::export_tensor (const std::string& fName,
+                            const Genten::Tensor& X)
+{
+  export_tensor (fName, X, true, 15);
+  return;
+}
+
+void Genten::export_tensor (const std::string& fName,
+                            const Genten::Tensor& X,
+                            const bool bUseScientific,
+                            const int nDecimalDigits)
+{
+  std::ofstream fOut(fName.c_str());
+  if (fOut.is_open() == false)
+  {
+    Genten::error("Genten::export_tensor - cannot create output file.");
+  }
+
+  export_tensor(fOut, X, bUseScientific, nDecimalDigits);
+  fOut.close();
+  return;
+}
+
+void Genten::export_tensor (std::ofstream & fOut,
+                            const Genten::Tensor& X,
+                            const bool bUseScientific,
+                            const int nDecimalDigits)
+{
+  if (fOut.is_open() == false)
+  {
+    Genten::error("Genten::export_tensor - cannot create output file.");
+  }
+
+  // Write the data type header.
+  fOut << "tensor" << std::endl;
+
+  // Write the header lines containing sizes.
+  fOut << X.ndims() << std::endl;
+  for (ttb_indx  i = 0; i < X.ndims(); i++)
+  {
+    if (i > 0)
+      fOut << " ";
+    fOut << X.size(i);
+  }
+  fOut << std::endl;
+
+  // Apply formatting rules for elements.
+  if (bUseScientific)
+    fOut << std::setiosflags(std::ios::scientific);
+  else
+    fOut << std::fixed;
+  fOut << std::setprecision(nDecimalDigits);
+
+  // Write the elements, one per line.
+  for (ttb_indx  i = 0; i < X.numel(); i++)
+  {
+    fOut << X[i] << std::endl;
+  }
+
+  return;
+}
+
+template <typename ExecSpace>
+void Genten::print_tensor (const Genten::TensorT<ExecSpace>& X,
+                           std::ostream& fOut,
+                           const std::string& name)
+{
+  fOut << "-----------------------------------" << std::endl;
+  if (name.empty())
+    fOut << "tensor" << std::endl;
+  else
+    fOut << name << std::endl;
+  fOut << "-----------------------------------" << std::endl;
+
+  ttb_indx  nDims = X.ndims();
+
+  fOut << "Ndims = " << nDims << std::endl;
+  fOut << "Size = [ ";
+  for (ttb_indx  i = 0; i < nDims; i++)
+  {
+    fOut << X.size(i) << " ";
+  }
+  fOut << "]" << std::endl;
+
+  // Write out each element, varying indices according to ind2sub.
+  Genten::IndxArray idx(nDims);
+  for (ttb_indx  i = 0; i < (X.size()).prod(); i++)
+  {
+    X.ind2sub(idx,i);
+    fOut << "X(";
+    for (ttb_indx  j = 0; j < nDims; j++)
+    {
+      fOut << idx[j];
+      if (j == (nDims - 1))
+      {
+        fOut << ") = ";
+      }
+      else
+      {
+        fOut << ",";
+      }
+    }
+    fOut << X[i] << std::endl;
+  }
+
+  fOut << "-----------------------------------" << std::endl;
   return;
 }
 
@@ -244,7 +412,7 @@ void Genten::import_sptensor (std::istream& fIn,
         offset = 1;
       else
       {
-        ostringstream  sErrMsg;
+        std::ostringstream  sErrMsg;
         sErrMsg << "Genten::get_import_type - 2nd word on first line"
                 << " must be 'indices-start-at-zero' or 'indices-start-at-one'";
         Genten::error(sErrMsg.str());
@@ -327,7 +495,7 @@ void Genten::import_sptensor (const std::string& fName,
   if (bCompressed)
   {
 #ifdef HAVE_BOOST
-    std::ifstream fIn(fName.c_str(), ios_base::in | ios_base::binary);
+    std::ifstream fIn(fName.c_str(), std::ios_base::in | std::ios_base::binary);
     if (!fIn.is_open())
     {
       Genten::error("Genten::import_sptensor - cannot open input file.");
@@ -367,7 +535,7 @@ void Genten::export_sptensor (const std::string   & fName,
                               const int           & nDecimalDigits,
                               const bool            bStartAtZero)
 {
-  ofstream fOut(fName.c_str());
+  std::ofstream fOut(fName.c_str());
   if (fOut.is_open() == false)
   {
     Genten::error("Genten::export_sptensor - cannot create output file.");
@@ -391,27 +559,27 @@ void Genten::export_sptensor (      std::ofstream & fOut,
 
   // Write the data type header.
   if (bStartAtZero)
-    fOut << "sptensor" << endl;
+    fOut << "sptensor" << std::endl;
   else
-    fOut << "sptensor indices-start-at-one" << endl;
+    fOut << "sptensor indices-start-at-one" << std::endl;
 
   // Write the header lines containing sizes.
-  fOut << X.ndims() << endl;
+  fOut << X.ndims() << std::endl;
   for (ttb_indx  i = 0; i < X.ndims(); i++)
   {
     if (i > 0)
       fOut << " ";
     fOut << X.size(i);
   }
-  fOut << endl;
-  fOut << X.nnz() << endl;
+  fOut << std::endl;
+  fOut << X.nnz() << std::endl;
 
   // Apply formatting rules for elements.
   if (bUseScientific)
-    fOut << setiosflags(ios::scientific);
+    fOut << std::setiosflags(std::ios::scientific);
   else
-    fOut << fixed;
-  fOut << setprecision(nDecimalDigits);
+    fOut << std::fixed;
+  fOut << std::setprecision(nDecimalDigits);
 
   // Write the nonzero elements, one per line.
   for (ttb_indx  i = 0; i < X.nnz(); i++)
@@ -423,34 +591,35 @@ void Genten::export_sptensor (      std::ofstream & fOut,
       else
         fOut << X.subscript(i,j) + 1 << " ";
     }
-    fOut << X.value(i) << endl;
+    fOut << X.value(i) << std::endl;
   }
 
   return;
 }
 
-void Genten::print_sptensor (const Genten::Sptensor & X,
-                             ostream       & fOut,
-                             const string          name)
+template <typename ExecSpace>
+void Genten::print_sptensor (const Genten::SptensorT<ExecSpace>& X,
+                             std::ostream& fOut,
+                             const std::string& name)
 {
-  fOut << "-----------------------------------" << endl;
+  fOut << "-----------------------------------" << std::endl;
   if (name.empty())
-    fOut << "sptensor" << endl;
+    fOut << "sptensor" << std::endl;
   else
-    fOut << name << endl;
-  fOut << "-----------------------------------" << endl;
+    fOut << name << std::endl;
+  fOut << "-----------------------------------" << std::endl;
 
   ttb_indx  nDims = X.ndims();
 
-  fOut << "Ndims = " << nDims << endl;
+  fOut << "Ndims = " << nDims << std::endl;
   fOut << "Size = [ ";
   for (ttb_indx  i = 0; i < nDims; i++)
   {
     fOut << X.size(i) << " ";
   }
-  fOut << "]" << endl;
+  fOut << "]" << std::endl;
 
-  fOut << "NNZ = " << X.nnz() << endl;
+  fOut << "NNZ = " << X.nnz() << std::endl;
 
   // Write out each element.
   for (ttb_indx  i = 0; i < X.nnz(); i++)
@@ -468,10 +637,10 @@ void Genten::print_sptensor (const Genten::Sptensor & X,
         fOut << ",";
       }
     }
-    fOut << X.value(i) << endl;
+    fOut << X.value(i) << std::endl;
   }
 
-  fOut << "-----------------------------------" << endl;
+  fOut << "-----------------------------------" << std::endl;
   return;
 }
 
@@ -480,10 +649,10 @@ void Genten::print_sptensor (const Genten::Sptensor & X,
 //  METHODS FOR FacMatrix (type "matrix")
 //----------------------------------------------------------------------
 
-void Genten::import_matrix (const string         & fName,
+void Genten::import_matrix (const std::string         & fName,
                             Genten::FacMatrix & X)
 {
-  ifstream fIn(fName.c_str());
+  std::ifstream fIn(fName.c_str());
   import_matrix(fIn, X);
 
   verifyEOF(fIn, "Genten::import_matrix");
@@ -491,7 +660,7 @@ void Genten::import_matrix (const string         & fName,
   return;
 }
 
-void Genten::import_matrix (ifstream       & fIn,
+void Genten::import_matrix (std::ifstream       & fIn,
                             Genten::FacMatrix & X)
 {
   if (fIn.is_open() == false)
@@ -499,7 +668,7 @@ void Genten::import_matrix (ifstream       & fIn,
     Genten::error("Genten::import_matrix - cannot open input file.");
   }
 
-  string  sType;
+  std::string  sType;
   bool    bStartAtZero;
   get_import_type(fIn, sType, bStartAtZero);
   if ((sType != "facmatrix") && (sType != "matrix"))
@@ -524,22 +693,22 @@ void Genten::import_matrix (ifstream       & fIn,
 
   // Read the remaining lines, expecting one row of values per line.
   // Extra lines are ignored (allowing for multiple matrices in one file).
-  string s;
+  std::string s;
   for (ttb_indx  i = 0; i < nRows; i++)
   {
     if (getLineContent(fIn,s) == 0)
     {
-      ostringstream  sErrMsg;
+      std::ostringstream  sErrMsg;
       sErrMsg << "Genten::import_matrix - error reading row " << i
               << " of " << nRows;
       Genten::error(sErrMsg.str());
     }
-    istringstream ss(s);
+    std::istringstream ss(s);
     for (ttb_indx  j = 0; j < nCols; j++)
     {
       if (!(ss >> X.entry(i,j)))
       {
-        ostringstream  sErrMsg;
+        std::ostringstream  sErrMsg;
         sErrMsg << "Genten::import_matrix - error reading column " << j
                 << " of row " << i << " (out of " << nRows << " rows)";
         Genten::error(sErrMsg.str());
@@ -547,7 +716,7 @@ void Genten::import_matrix (ifstream       & fIn,
     }
     if (ss.eof() == false)
     {
-      ostringstream  sErrMsg;
+      std::ostringstream  sErrMsg;
       sErrMsg << "Genten::import_matrix - too many values"
               << " (or extra characters) in row " << i;
       Genten::error(sErrMsg.str());
@@ -569,7 +738,7 @@ void Genten::export_matrix (const std::string    & fName,
                             const bool           & bUseScientific,
                             const int            & nDecimalDigits)
 {
-  ofstream fOut(fName.c_str());
+  std::ofstream fOut(fName.c_str());
   if (fOut.is_open() == false)
   {
     Genten::error("Genten::export_matrix - cannot create output file.");
@@ -591,19 +760,19 @@ void Genten::export_matrix (      std::ofstream  & fOut,
   }
 
   // Write the data type header.
-  fOut << "matrix" << endl;
+  fOut << "matrix" << std::endl;
 
   // Write the number of modes and size of each mode,
   // consistent with Matlab Genten.
-  fOut << "2" << endl;
-  fOut << X.nRows() << " " << X.nCols() << endl;
+  fOut << "2" << std::endl;
+  fOut << X.nRows() << " " << X.nCols() << std::endl;
 
   // Apply formatting rules for elements.
   if (bUseScientific)
-    fOut << setiosflags(ios::scientific);
+    fOut << std::setiosflags(std::ios::scientific);
   else
-    fOut << fixed;
-  fOut << setprecision(nDecimalDigits);
+    fOut << std::fixed;
+  fOut << std::setprecision(nDecimalDigits);
 
   // Write elements for each row on one line.
   for (ttb_indx  i = 0; i < X.nRows(); i++)
@@ -614,34 +783,35 @@ void Genten::export_matrix (      std::ofstream  & fOut,
         fOut << " ";
       fOut << X.entry(i,j);
     }
-    fOut << endl;
+    fOut << std::endl;
   }
 
   return;
 }
 
-void Genten::print_matrix (const Genten::FacMatrix & X,
-                           ostream        & fOut,
-                           const string           name)
+template <typename ExecSpace>
+void Genten::print_matrix (const Genten::FacMatrixT<ExecSpace> & X,
+                           std::ostream& fOut,
+                           const std::string& name)
 {
-  fOut << "-----------------------------------" << endl;
+  fOut << "-----------------------------------" << std::endl;
   if (name.empty())
-    fOut << "matrix" << endl;
+    fOut << "matrix" << std::endl;
   else
-    fOut << name << endl;
-  fOut << "-----------------------------------" << endl;
+    fOut << name << std::endl;
+  fOut << "-----------------------------------" << std::endl;
 
-  fOut << "Size = [ " << X.nRows() << " " << X.nCols() << " ]" << endl;
+  fOut << "Size = [ " << X.nRows() << " " << X.nCols() << " ]" << std::endl;
 
   for (ttb_indx  j = 0; j < X.nCols(); j++)
   {
     for (ttb_indx  i = 0; i < X.nRows(); i++)
     {
-      fOut << "X(" << i << "," << j << ") = " << X.entry(i,j) << endl;
+      fOut << "X(" << i << "," << j << ") = " << X.entry(i,j) << std::endl;
     }
   }
 
-  fOut << "-----------------------------------" << endl;
+  fOut << "-----------------------------------" << std::endl;
   return;
 }
 
@@ -653,7 +823,7 @@ void Genten::print_matrix (const Genten::FacMatrix & X,
 void Genten::import_ktensor (const std::string  & fName,
                              Genten::Ktensor & X)
 {
-  ifstream fIn(fName.c_str());
+  std::ifstream fIn(fName.c_str());
   import_ktensor (fIn, X);
 
   verifyEOF(fIn, "Genten::import_ktensor");
@@ -669,7 +839,7 @@ void Genten::import_ktensor (std::ifstream & fIn,
     Genten::error("Genten::import_ktensor - cannot open input file.");
   }
 
-  string  sType;
+  std::string  sType;
   bool    bStartAtZero;
   get_import_type(fIn, sType, bStartAtZero);
   if (sType != "ktensor")
@@ -688,18 +858,18 @@ void Genten::import_ktensor (std::ifstream & fIn,
   X = Genten::Ktensor(naComps[0], naModes[0]);
 
   // Read the factor weights.
-  string  s;
+  std::string  s;
   if (getLineContent(fIn,s) == 0)
   {
     Genten::error("Genten::import_ktensor - cannot read line with weights");
   }
   Genten::Array  daWeights(naComps[0]);
-  istringstream ss(s);
+  std::istringstream ss(s);
   for (ttb_indx  i = 0; i < naComps[0]; i++)
   {
     if (!(ss >> daWeights[i]))
     {
-      ostringstream  sErrMsg;
+      std::ostringstream  sErrMsg;
       sErrMsg << "Genten::import_ktensor - error reading weight " << i;
       Genten::error(sErrMsg.str());
     }
@@ -710,7 +880,7 @@ void Genten::import_ktensor (std::ifstream & fIn,
   }
   if (ss.eof() == false)
   {
-    ostringstream  sErrMsg;
+    std::ostringstream  sErrMsg;
     sErrMsg << "Genten::import_ktensor - too many values"
             << " (or extra characters) in weights vector";
     Genten::error(sErrMsg.str());
@@ -725,7 +895,7 @@ void Genten::import_ktensor (std::ifstream & fIn,
     if (   (nextFactor.nRows() != naSizes[i])
            || (nextFactor.nCols() != naComps[0]) )
     {
-      ostringstream  sErrMsg;
+      std::ostringstream  sErrMsg;
       sErrMsg << "Genten::import_ktensor - factor matrix " << i
               << " is not the correct size"
               << ", expecting " << naSizes[i] << " by " << naComps[0];
@@ -749,7 +919,7 @@ void Genten::export_ktensor (const std::string  & fName,
                              const bool         & bUseScientific,
                              const int          & nDecimalDigits)
 {
-  ofstream fOut(fName.c_str());
+  std::ofstream fOut(fName.c_str());
   if (fOut.is_open() == false)
   {
     Genten::error("Genten::export_ktensor - cannot create output file.");
@@ -771,25 +941,25 @@ void Genten::export_ktensor (      std::ofstream & fOut,
   }
 
   // Write the data type header.
-  fOut << "ktensor" << endl;
+  fOut << "ktensor" << std::endl;
 
   // Write the header lines containing sizes.
-  fOut << X.ndims() << endl;
+  fOut << X.ndims() << std::endl;
   for (ttb_indx  i = 0; i < X.ndims(); i++)
   {
     if (i > 0)
       fOut << " ";
     fOut << X[i].nRows();
   }
-  fOut << endl;
-  fOut << X.ncomponents() << endl;
+  fOut << std::endl;
+  fOut << X.ncomponents() << std::endl;
 
   // Apply formatting rules for elements.
   if (bUseScientific)
-    fOut << setiosflags(ios::scientific);
+    fOut << std::setiosflags(std::ios::scientific);
   else
-    fOut << fixed;
-  fOut << setprecision(nDecimalDigits);
+    fOut << std::fixed;
+  fOut << std::setprecision(nDecimalDigits);
 
   // Write the weights on one line.
   for (ttb_indx  i = 0; i < X.ncomponents(); i++)
@@ -798,7 +968,7 @@ void Genten::export_ktensor (      std::ofstream & fOut,
       fOut << " ";
     fOut << X.weights(i);
   }
-  fOut << endl;
+  fOut << std::endl;
 
   // Write the factor matrices.
   for (ttb_indx  i = 0; i < X.ndims(); i++)
@@ -810,49 +980,49 @@ void Genten::export_ktensor (      std::ofstream & fOut,
 }
 
 template <typename ExecSpace>
-void Genten::print_ktensor (const Genten::KtensorT<ExecSpace> & X,
-                            std::ostream & fOut,
-                            const std::string    name)
+void Genten::print_ktensor (const Genten::KtensorT<ExecSpace>& X,
+                            std::ostream& fOut,
+                            const std::string& name)
 {
-  fOut << "-----------------------------------" << endl;
+  fOut << "-----------------------------------" << std::endl;
   if (name.empty())
-    fOut << "ktensor" << endl;
+    fOut << "ktensor" << std::endl;
   else
-    fOut << name << endl;
-  fOut << "-----------------------------------" << endl;
+    fOut << name << std::endl;
+  fOut << "-----------------------------------" << std::endl;
 
   ttb_indx nd = X.ndims();
   ttb_indx nc = X.ncomponents();
-  fOut << "Ndims = " << nd <<"    Ncomps = " << nc << endl;
+  fOut << "Ndims = " << nd <<"    Ncomps = " << nc << std::endl;
 
   fOut << "Size = [ ";
   for (ttb_indx  k = 0; k < nd; k++)
   {
     fOut << X[k].nRows() << ' ';
   }
-  fOut << "]" << endl;
+  fOut << "]" << std::endl;
 
   fOut << "Weights = [ ";
   for (ttb_indx  k = 0; k < nc; k++)
   {
     fOut << X.weights(k) << ' ';
   }
-  fOut << "]" << endl;
+  fOut << "]" << std::endl;
 
   for (ttb_indx  k = 0; k < nd; k++)
   {
-    fOut << "Factor " << k << endl;
+    fOut << "Factor " << k << std::endl;
     for (ttb_indx  j = 0; j < X[k].nCols(); j++)
     {
       for (ttb_indx  i = 0; i < X[k].nRows(); i++)
       {
         fOut << "f" << k << "(" << i << "," << j << ") = "
-             << X[k].entry(i,j) << endl;
+             << X[k].entry(i,j) << std::endl;
       }
     }
   }
 
-  fOut << "-----------------------------------" << endl;
+  fOut << "-----------------------------------" << std::endl;
   return;
 }
 
@@ -876,8 +1046,8 @@ void Genten::print_ktensor (const Genten::KtensorT<ExecSpace> & X,
  *  @return          number of lines read, including the content line,
  *                   or zero if EOF reacehd.
  */
-int Genten::getLineContent (istream  & fIn,
-                            string   & str)
+int Genten::getLineContent (std::istream  & fIn,
+                            std::string   & str)
 {
   int  nNumLines = 0;
   while (true)
@@ -911,9 +1081,9 @@ int Genten::getLineContent (istream  & fIn,
  *  @param[in] sDelims  String of single-character delimiters,
  *                      defaults to blank and tab.
  */
-void Genten::splitStr (const string         &  str,
-                       vector<string> &  tokens,
-                       const string         &  sDelims)
+void Genten::splitStr (const std::string         &  str,
+                       std::vector<std::string> &  tokens,
+                       const std::string         &  sDelims)
 {
   size_t  nStart;
   size_t  nEnd = 0;
@@ -922,7 +1092,7 @@ void Genten::splitStr (const string         &  str,
     nStart = nEnd;
     // Skip past any initial delimiter characters.
     while (   (nStart < str.size())
-              && (sDelims.find(str[nStart]) != string::npos))
+              && (sDelims.find(str[nStart]) != std::string::npos))
     {
       nStart++;
     }
@@ -930,7 +1100,7 @@ void Genten::splitStr (const string         &  str,
 
     // Find the end of the token.
     while (   (nEnd < str.size())
-              && (sDelims.find(str[nEnd]) == string::npos))
+              && (sDelims.find(str[nEnd]) == std::string::npos))
     {
       nEnd++;
     }
@@ -938,7 +1108,7 @@ void Genten::splitStr (const string         &  str,
     // Save the token if nonempty.
     if (nEnd - nStart != 0)
     {
-      tokens.push_back (string(str, nStart, nEnd - nStart));
+      tokens.push_back (std::string(str, nStart, nEnd - nStart));
     }
   }
 
@@ -946,8 +1116,17 @@ void Genten::splitStr (const string         &  str,
 }
 
 #define INST_MACRO(SPACE)                                               \
-  template void print_ktensor (const Genten::KtensorT<SPACE> & X,       \
-                               std::ostream & fOut,                     \
-                               const std::string    name);
+  template void print_tensor (const Genten::TensorT<SPACE>& X,          \
+                              std::ostream& fOut,                       \
+                              const std::string& name);                 \
+  template void print_sptensor (const Genten::SptensorT<SPACE>& X,      \
+                                std::ostream& fOut,                     \
+                                const std::string& name);               \
+  template void print_ktensor (const Genten::KtensorT<SPACE>& X,        \
+                               std::ostream& fOut,                      \
+                               const std::string& name);                \
+  template void print_matrix (const Genten::FacMatrixT<SPACE>& X,       \
+                              std::ostream& fOut,                       \
+                              const std::string& name);
 
 GENTEN_INST(INST_MACRO)

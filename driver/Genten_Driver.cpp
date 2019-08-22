@@ -52,6 +52,7 @@ void usage(char **argv)
   std::cout << "  --nnz <int>        approximate number of random tensor nonzeros" << std::endl;
   std::cout << "  --index-base <int> starting index for tensor nonzeros" << std::endl;
   std::cout << "  --gz               read tensor in gzip compressed format" << std::endl;
+  std::cout << "  --sparse           whether tensor is sparse or dense" << std::endl;
   std::cout << "  --save-tensor <string> filename to save the tensor (leave blank for no save)" << std::endl;
   std::cout << "  --init <string>  file name for reading Ktensor initial guess (leave blank for random initial guess)" << std::endl;
   std::cout << "  --output <string>  output file name for saving Ktensor" << std::endl;
@@ -83,6 +84,8 @@ int main(int argc, char* argv[])
       Genten::parse_string(args, "--input", "");
     std::string outputfilename =
       Genten::parse_string(args, "--output", "");
+    ttb_bool sparse =
+      Genten::parse_ttb_bool(args, "--sparse", "--dense", true);
     std::string initfilename =
       Genten::parse_string(args, "--init", "");
     ttb_indx index_base =
@@ -131,6 +134,7 @@ int main(int argc, char* argv[])
       if (tensor_outputfilename != "")
         std::cout << "  save_tensor = " << tensor_outputfilename << std::endl;
       std::cout << "  output = " << outputfilename << std::endl;
+      std::cout << "  sparse = " << (sparse ? "true" : "false") << std::endl;
       std::cout << "  index_base = " << index_base << std::endl;
       std::cout << "  gz = " << (gz ? "true" : "false") << std::endl;
       std::cout << "  vtune = " << (vtune ? "true" : "false") << std::endl;
@@ -140,55 +144,15 @@ int main(int argc, char* argv[])
     if (vtune)
       Genten::connect_vtune();
 
+    Genten::SystemTimer timer(2);
+
     typedef Genten::DefaultExecutionSpace Space;
     typedef Genten::SptensorT<Space> Sptensor_type;
     typedef Genten::SptensorT<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
+    typedef Genten::TensorT<Space> Tensor_type;
+    typedef Genten::TensorT<Genten::DefaultHostExecutionSpace> Tensor_host_type;
     typedef Genten::KtensorT<Space> Ktensor_type;
     typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
-
-    Genten::SystemTimer timer(2);
-
-    // Read in tensor data
-    Sptensor_host_type x_host;
-    Sptensor_type x;
-    if (inputfilename != "") {
-      timer.start(0);
-      Genten::import_sptensor(inputfilename, x_host, index_base, gz, true);
-      x = create_mirror_view( Space(), x_host );
-      deep_copy( x, x_host );
-      timer.stop(0);
-      printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
-    }
-    else {
-      Genten::IndxArrayT<Space> facDims =
-        create_mirror_view( Space(), facDims_h );
-      deep_copy( facDims, facDims_h );
-
-      std::cout << "Will construct a random Ktensor/Sptensor pair:\n";
-      std::cout << "  Ndims = " << facDims_h.size() << ",  Size = [ ";
-      for (ttb_indx  n = 0; n < facDims_h.size(); n++)
-        std::cout << facDims_h[n] << ' ';
-      std::cout << "]\n";
-      std::cout << "  Ncomps = " << algParams.rank << "\n";
-      std::cout << "  Maximum nnz = " << nnz << "\n";
-
-      // Generate a random Ktensor, and from it a representative sparse
-      // data tensor.
-      Genten::RandomMT rng (algParams.seed);
-      Ktensor_host_type sol_host;
-      timer.start(0);
-      Genten::FacTestSetGenerator testGen;
-      bool ret = testGen.genSpFromRndKtensor(facDims_h, algParams.rank,
-                                             nnz, rng, x_host, sol_host);
-      if (!ret)
-        Genten::error("*** Call to genSpFromRndKtensor failed.\n");
-      x = create_mirror_view( Space(), x_host );
-      deep_copy( x, x_host );
-      timer.stop(0);
-      printf ("Data generation took %6.3f seconds\n", timer.getTotalTime(0));
-      std::cout << "  Actual nnz  = " << x_host.nnz() << "\n";
-    }
-    if (algParams.debug) Genten::print_sptensor(x_host, std::cout, "tensor");
 
     // Read in initial guess if provided
     Ktensor_type u_init;
@@ -199,8 +163,89 @@ int main(int argc, char* argv[])
       deep_copy(u_init, u_init_host);
     }
 
-    // Compute decomposition
-    Ktensor_type u = Genten::driver(x, u_init, algParams, std::cout);
+    Ktensor_type u;
+    if (sparse) {
+
+      // Read in tensor data
+      Sptensor_host_type x_host;
+      Sptensor_type x;
+      if (inputfilename != "") {
+        timer.start(0);
+        Genten::import_sptensor(inputfilename, x_host, index_base, gz, true);
+        x = create_mirror_view( Space(), x_host );
+        deep_copy( x, x_host );
+        timer.stop(0);
+        printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
+      }
+      else {
+        Genten::IndxArrayT<Space> facDims =
+          create_mirror_view( Space(), facDims_h );
+        deep_copy( facDims, facDims_h );
+
+        std::cout << "Will construct a random Ktensor/Sptensor pair:\n";
+        std::cout << "  Ndims = " << facDims_h.size() << ",  Size = [ ";
+        for (ttb_indx  n = 0; n < facDims_h.size(); n++)
+          std::cout << facDims_h[n] << ' ';
+        std::cout << "]\n";
+        std::cout << "  Ncomps = " << algParams.rank << "\n";
+        std::cout << "  Maximum nnz = " << nnz << "\n";
+
+        // Generate a random Ktensor, and from it a representative sparse
+        // data tensor.
+        Genten::RandomMT rng (algParams.seed);
+        Ktensor_host_type sol_host;
+        timer.start(0);
+        Genten::FacTestSetGenerator testGen;
+        bool ret = testGen.genSpFromRndKtensor(facDims_h, algParams.rank,
+                                               nnz, rng, x_host, sol_host);
+        if (!ret)
+          Genten::error("*** Call to genSpFromRndKtensor failed.\n");
+        x = create_mirror_view( Space(), x_host );
+        deep_copy( x, x_host );
+        timer.stop(0);
+        printf ("Data generation took %6.3f seconds\n", timer.getTotalTime(0));
+        std::cout << "  Actual nnz  = " << x_host.nnz() << "\n";
+      }
+      if (algParams.debug) Genten::print_sptensor(x_host, std::cout, "tensor");
+
+      // Compute decomposition
+      u = Genten::driver(x, u_init, algParams, std::cout);
+
+      if (tensor_outputfilename != "") {
+        timer.start(1);
+        Genten::export_sptensor(tensor_outputfilename, x_host, index_base == 0);
+        timer.stop(1);
+        printf("Sptensor export took %6.3f seconds\n", timer.getTotalTime(1));
+      }
+    }
+    else {
+      // Read in tensor data
+      Tensor_host_type x_host;
+      Tensor_type x;
+      if (inputfilename != "") {
+        timer.start(0);
+        Genten::import_tensor(inputfilename, x_host);
+        x = create_mirror_view( Space(), x_host );
+        deep_copy( x, x_host );
+        timer.stop(0);
+        printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
+      }
+      else {
+        Genten::error("Can't generate random dense tensor yet!");
+      }
+
+      if (algParams.debug) Genten::print_tensor(x_host, std::cout, "tensor");
+
+      // Compute decomposition
+      u = Genten::driver(x, u_init, algParams, std::cout);
+
+      if (tensor_outputfilename != "") {
+        timer.start(1);
+        Genten::export_tensor(tensor_outputfilename, x_host);
+        timer.stop(1);
+        printf("Tensor export took %6.3f seconds\n", timer.getTotalTime(1));
+      }
+    }
 
     // Save results to file
     if (outputfilename != "")
@@ -212,13 +257,6 @@ int main(int argc, char* argv[])
       Genten::export_ktensor(outputfilename, u_host);
       timer.stop(1);
       printf("Ktensor export took %6.3f seconds\n", timer.getTotalTime(1));
-    }
-
-    if (tensor_outputfilename != "") {
-      timer.start(1);
-      Genten::export_sptensor(tensor_outputfilename, x_host, index_base == 0);
-      timer.stop(1);
-      printf("Sptensor export took %6.3f seconds\n", timer.getTotalTime(1));
     }
 
   }

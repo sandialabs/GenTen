@@ -355,6 +355,7 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_MathLibs_Wpr.cpp
   ${Genten_SOURCE_DIR}/src/Genten_portability.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Sptensor.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_Tensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
   )
 
@@ -402,6 +403,7 @@ SET(UNIT_TEST_SRCS
   ${Genten_SOURCE_DIR}/test/Genten_Test_Ktensor.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_MixedFormats.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_Sptensor.cpp
+  ${Genten_SOURCE_DIR}/test/Genten_Test_Tensor.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_UnitTests.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_Utils.cpp
   )
@@ -597,3 +599,4 @@ add_test(Genten_MTTKRP_random_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 
 add_test(Genten_MTTKRP_aminoacid_atomic ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method atomic)
 add_test(Genten_MTTKRP_aminoacid_dupl ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method duplicated)
 add_test(Genten_MTTKRP_aminoacid_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method perm)
+add_test(Genten_MTTKRP_random_dense ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [30,40,50] --dense)

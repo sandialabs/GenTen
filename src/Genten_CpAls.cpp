@@ -55,6 +55,7 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_Sptensor.hpp"
+#include "Genten_Tensor.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_Util.hpp"
 
@@ -468,6 +469,16 @@ namespace Genten {
 #define INST_MACRO(SPACE)                                               \
   template void cpals_core<SptensorT<SPACE>,SPACE>(                     \
     const SptensorT<SPACE>& x,                                          \
+    KtensorT<SPACE>& u,                                                 \
+    const AlgParams& algParams,                                         \
+    ttb_indx& numIters,                                                 \
+    ttb_real& resNorm,                                                  \
+    const ttb_indx perfIter,                                            \
+    CpAlsPerfInfo perfInfo[],                                           \
+    std::ostream& out);                                                 \
+                                                                        \
+  template void cpals_core<TensorT<SPACE>,SPACE>(                       \
+    const TensorT<SPACE>& x,                                            \
     KtensorT<SPACE>& u,                                                 \
     const AlgParams& algParams,                                         \
     ttb_indx& numIters,                                                 \

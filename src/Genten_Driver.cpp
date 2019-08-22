@@ -210,12 +210,106 @@ driver(SptensorT<ExecSpace>& x,
   return u;
 }
 
+template<typename ExecSpace>
+KtensorT<ExecSpace>
+driver(TensorT<ExecSpace>& x,
+       KtensorT<ExecSpace>& u_init,
+       AlgParams& algParams,
+       std::ostream& out)
+{
+  typedef Genten::TensorT<ExecSpace> Tensor_type;
+  typedef Genten::TensorT<Genten::DefaultHostExecutionSpace> Tensor_host_type;
+  typedef Genten::KtensorT<ExecSpace> Ktensor_type;
+  typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
+
+  Genten::SystemTimer timer(3);
+
+  out.setf(std::ios_base::scientific);
+  out.precision(2);
+
+  Ktensor_type u(algParams.rank, x.ndims(), x.size());
+  Ktensor_host_type u_host =
+    create_mirror_view( Genten::DefaultHostExecutionSpace(), u );
+
+  // Generate a random starting point if initial guess is empty
+  if (u_init.ncomponents() == 0 && u_init.ndims() == 0) {
+    u_init = Ktensor_type(algParams.rank, x.ndims(), x.size());
+
+    Genten::RandomMT cRMT(algParams.seed);
+    timer.start(0);
+    if (algParams.prng) {
+      u_init.setWeights(1.0); // Matlab cp_als always sets the weights to one.
+      u_init.setMatricesScatter(false, true, cRMT);
+      if (algParams.debug) deep_copy( u_host, u_init );
+    }
+    else {
+      u_host.setWeights(1.0); // Matlab cp_als always sets the weights to one.
+      u_host.setMatricesScatter(false, false, cRMT);
+      deep_copy( u_init, u_host );
+    }
+    // Normalize
+    const ttb_real norm_x = x.norm();
+    const ttb_real norm_u = std::sqrt(u_init.normFsq());
+    u_init.weights().times(norm_x/norm_u);
+    timer.stop(0);
+    out << "Creating random initial guess took " << timer.getTotalTime(0)
+        << " seconds\n";
+  }
+
+  // Copy initial guess into u
+  deep_copy(u, u_init);
+
+  if (algParams.debug) Genten::print_ktensor(u_host, out, "Initial guess");
+
+  // Compute default MTTKRP method if that is what was chosen
+  if (algParams.mttkrp_method == MTTKRP_Method::Default)
+    algParams.mttkrp_method = MTTKRP_Method::computeDefault<ExecSpace>();
+
+  if (algParams.warmup)
+  {
+    // Do a pass through the mttkrp to warm up and make sure the tensor
+    // is copied to the device before generating any timings.  Use
+    // Tensor mttkrp and do this before createPermutation() so that
+    // createPermutation() timings are not polluted by UVM transfers
+    Ktensor_type tmp (algParams.rank,x.ndims(),x.size());
+    Genten::AlgParams ap = algParams;
+    ap.mttkrp_method = Genten::MTTKRP_Method::Atomic;
+    for (ttb_indx  n = 0; n < x.ndims(); n++)
+      Genten::mttkrp(x, u, n, tmp[n], ap);
+  }
+
+  const bool do_cpals =
+    algParams.method == "CP-ALS" || algParams.method == "cp-als" ||
+    algParams.method == "cpals";
+
+  if (do_cpals) {
+    // Run CP-ALS
+    ttb_indx iter;
+    ttb_real resNorm;
+    cpals_core(x, u, algParams, iter, resNorm, 0, NULL, out);
+  }
+  else {
+    Genten::error("Unknown decomposition method:  " + algParams.method);
+  }
+
+  if (algParams.debug) Genten::print_ktensor(u_host, out, "Solution");
+
+  return u;
+}
+
 }
 
 #define INST_MACRO(SPACE)                                               \
   template KtensorT<SPACE>                                              \
   driver<SPACE>(                                                        \
     SptensorT<SPACE>& x,                                                \
+    KtensorT<SPACE>& u_init,                                            \
+    AlgParams& algParams,                                               \
+    std::ostream& os);                                                  \
+                                                                        \
+  template KtensorT<SPACE>                                              \
+  driver<SPACE>(                                                        \
+    TensorT<SPACE>& x,                                                  \
     KtensorT<SPACE>& u_init,                                            \
     AlgParams& algParams,                                               \
     std::ostream& os);

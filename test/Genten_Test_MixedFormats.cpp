@@ -45,6 +45,7 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_Sptensor.hpp"
+#include "Genten_Tensor.hpp"
 #include "Genten_Test_Utils.hpp"
 #include "Genten_Util.hpp"
 
@@ -61,6 +62,10 @@ void Genten_Test_MixedFormats_Type(Genten::MTTKRP_Method::type mttkrp_method,
   typedef Genten::DefaultHostExecutionSpace host_exec_space;
   typedef Genten::SptensorT<exec_space> Sptensor_type;
   typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
+  typedef Genten::KtensorT<exec_space> Ktensor_type;
+  typedef Genten::KtensorT<host_exec_space> Ktensor_host_type;
+  typedef Genten::TensorT<exec_space> Tensor_type;
+  typedef Genten::TensorT<host_exec_space> Tensor_host_type;
 
   initialize("Tests involving mixed format tensors ("+label+")",
              infolevel);
@@ -83,11 +88,16 @@ void Genten_Test_MixedFormats_Type(Genten::MTTKRP_Method::type mttkrp_method,
   a.value(2) = 3.0;
   a.subscript(3,0) = 0;  a.subscript(3,1) = 1;  a.subscript(3,2) = 2;
   a.value(3) = 4.0;
+  Sptensor_type a_dev = create_mirror_view( exec_space(), a );
+  deep_copy( a_dev, a );
+
+  MESSAGE("Creating a (dense) Tensor for innerprod test");
+  Tensor_type t_dev(a_dev);
 
   MESSAGE("Creating a Ktensor of matching shape");
   dims = Genten::IndxArray(3); dims[0] = 4; dims[1] = 2; dims[2] = 3;
   ttb_indx  nc = 2;
-  Genten::Ktensor  oKtens(nc, 3, dims);
+  Ktensor_host_type  oKtens(nc, 3, dims);
 
   // The sparse tensor has 4 nonzeroes.  Populate the Ktensor so that two
   // of its nonzeroes match, testing different weights.
@@ -106,16 +116,14 @@ void Genten_Test_MixedFormats_Type(Genten::MTTKRP_Method::type mttkrp_method,
   oKtens[1].entry(0,1) = 0.3;
   oKtens[2].entry(2,1) = 0.3;
 
-  // Copy a and oKtens to device
-  Sptensor_type a_dev = create_mirror_view( exec_space(), a );
-  deep_copy( a_dev, a );
-  Genten::KtensorT<exec_space> oKtens_dev =
-    create_mirror_view( exec_space(), oKtens );
+  Ktensor_type oKtens_dev = create_mirror_view( exec_space(), oKtens );
   deep_copy( oKtens_dev, oKtens );
 
   ttb_real d;
   d = innerprod (a_dev, oKtens_dev);
   ASSERT( EQ(d, 1.162), "Inner product between sptensor and ktensor");
+  d = innerprod (t_dev, oKtens_dev);
+  ASSERT( EQ(d, 1.162), "Inner product between tensor and ktensor");
 
   Genten::Array  altLambda(2);
   altLambda[0] = 3.0;
@@ -124,6 +132,8 @@ void Genten_Test_MixedFormats_Type(Genten::MTTKRP_Method::type mttkrp_method,
     create_mirror_view( exec_space(), altLambda );
   deep_copy( altLambda_dev, altLambda );
   d = innerprod(a_dev, oKtens_dev, altLambda_dev);
+  ASSERT( EQ(d, 3.081), "Inner product with alternate lambda is correct");
+  d = innerprod(t_dev, oKtens_dev, altLambda_dev);
   ASSERT( EQ(d, 3.081), "Inner product with alternate lambda is correct");
 
 
@@ -307,6 +317,113 @@ void Genten_Test_MixedFormats_Type(Genten::MTTKRP_Method::type mttkrp_method,
   oFM_dev = create_mirror_view( exec_space(), oFM );
   deep_copy( oFM_dev, oFM );
   mttkrp (a_dev, oKtens_dev, 2, oFM_dev, algParams);
+  deep_copy( oFM, oFM_dev );
+  ASSERT( EQ(oFM.entry(0,0), 120.0) && EQ(oFM.entry(3,0), 154.0),
+          "mttkrp result values correct for index [0], 2 sparse nnz");
+
+  //----------------------------------------------------------------------
+  // Test mttkrp() between Tensor and Ktensor.
+  //
+  // Corresponding Matlab code for the tests:
+  //   Adense = tenzeros([2 3 4]);
+  //   Adense(1,1,1) = 1.0
+  //   Afac = [10 ; 11];  Bfac = [12 ; 13 ; 14];  Cfac = [15 ; 16 ; 17 ; 18];
+  //   K = ktensor({Afac,Bfac,Cfac})
+  //   mttkrp(Adense,K.U,1)     % Matricizes on 1st index
+  //   mttkrp(Adense,K.U,2)     % Matricizes on 2nd index
+  //   mttkrp(Adense,K.U,3)     % Matricizes on 3rd index
+  //   Adense(2,3,4) = 1.0
+  //   mttkrp(Adense,K.U,1)     % Matricizes on 1st index
+  //   mttkrp(Adense,K.U,2)     % Matricizes on 2nd index
+  //   mttkrp(Adense,K.U,3)     % Matricizes on 3rd index
+  //----------------------------------------------------------------------
+
+  MESSAGE("Resizing Tensor for mttkrp test");
+  dims = Genten::IndxArray(3); dims[0] = 2; dims[1] = 3; dims[2] = 4;
+  Tensor_host_type t2(dims, 0.0);
+  t2(0,0,0) = 1.0;
+  Tensor_type t2_dev = create_mirror_view( exec_space(), t2);
+  deep_copy(t2_dev, t2);
+
+  MESSAGE("Resizing Ktensor of matching shape");
+  nc = 1;
+  oKtens = Ktensor_host_type(nc, 3, dims);
+  oKtens.setWeights (1.0);
+  ASSERT(oKtens.isConsistent(), "Ktensor resized consistently");
+
+  // Set elements in the factors to unique values.
+  oKtens[0](0,0) = 10.0;
+  oKtens[0](1,0) = 11.0;
+  oKtens[1](0,0) = 12.0;
+  oKtens[1](1,0) = 13.0;
+  oKtens[1](2,0) = 14.0;
+  oKtens[2](0,0) = 15.0;
+  oKtens[2](1,0) = 16.0;
+  oKtens[2](2,0) = 17.0;
+  oKtens[2](3,0) = 18.0;
+  oKtens_dev = create_mirror_view( exec_space(), oKtens );
+  deep_copy( oKtens_dev, oKtens );
+
+  // Matricizing on index 0 has result 12*15 = 180.
+  oFM = Genten::FacMatrix(a.size(0), oKtens.ncomponents());
+  oFM_dev = create_mirror_view( exec_space(), oFM );
+  deep_copy( oFM_dev, oFM );
+  mttkrp (t2_dev, oKtens_dev, 0, oFM_dev);
+  deep_copy( oFM, oFM_dev );
+  ASSERT((oFM.nRows() == 2) && (oFM.nCols() == 1),
+         "mttkrp result shape correct for index [0]");
+  ASSERT( EQ(oFM.entry(0,0), 180.0) && EQ(oFM.entry(1,0), 0.0),
+          "mttkrp result values correct for index [0]");
+
+  /* Uncomment to manually check what the answer should be.
+     Genten::print_tensor(t2, std::cout, "Tensor for mttkrp test");
+     Genten::print_ktensor(oKtens, std::cout, "Ktensor for mttkrp test");
+     Genten::print_matrix(oFM, std::cout, "Matrix result from mttkrp");
+  */
+
+  // Matricizing on index 1 has result 10*15 = 150.
+  oFM = Genten::FacMatrix(a.size(1), oKtens.ncomponents());
+  oFM_dev = create_mirror_view( exec_space(), oFM );
+  deep_copy( oFM_dev, oFM );
+  mttkrp (t2_dev, oKtens_dev, 1, oFM_dev);
+  deep_copy( oFM, oFM_dev );
+  ASSERT((oFM.nRows() == 3) && (oFM.nCols() == 1),
+         "mttkrp result shape correct for index [1]");
+  ASSERT( EQ(oFM.entry(0,0), 150.0) && EQ(oFM.entry(1,0), 0.0),
+          "mttkrp result values correct for index [1]");
+
+  // Matricizing on index 2 has result 10*12 = 120.
+  oFM = Genten::FacMatrix(a.size(2), oKtens.ncomponents());
+  oFM_dev = create_mirror_view( exec_space(), oFM );
+  deep_copy( oFM_dev, oFM );
+  mttkrp (t2_dev, oKtens_dev, 2, oFM_dev);
+  deep_copy( oFM, oFM_dev );
+  ASSERT((oFM.nRows() == 4) && (oFM.nCols() == 1),
+         "mttkrp result shape correct for index [2]");
+  ASSERT( EQ(oFM.entry(0,0), 120.0) && EQ(oFM.entry(1,0), 0.0),
+          "mttkrp result values correct for index [2]");
+
+  // Add another nonzero and repeat the three tests.
+  t2(1,2,3) = 1.0;
+  deep_copy(t2_dev, t2);
+  oFM = Genten::FacMatrix(a.size(0), oKtens.ncomponents());
+  oFM_dev = create_mirror_view( exec_space(), oFM );
+  deep_copy( oFM_dev, oFM );
+  mttkrp (t2_dev, oKtens_dev, 0, oFM_dev);
+  deep_copy( oFM, oFM_dev );
+  ASSERT( EQ(oFM.entry(0,0), 180.0) && EQ(oFM.entry(1,0), 252.0),
+          "mttkrp result values correct for index [0], 2 sparse nnz");
+  oFM = Genten::FacMatrix(a.size(1), oKtens.ncomponents());
+  oFM_dev = create_mirror_view( exec_space(), oFM );
+  deep_copy( oFM_dev, oFM );
+  mttkrp (t2_dev, oKtens_dev, 1, oFM_dev);
+  deep_copy( oFM, oFM_dev );
+  ASSERT( EQ(oFM.entry(0,0), 150.0) && EQ(oFM.entry(2,0), 198.0),
+          "mttkrp result values correct for index [0], 2 sparse nnz");
+  oFM = Genten::FacMatrix(a.size(2), oKtens.ncomponents());
+  oFM_dev = create_mirror_view( exec_space(), oFM );
+  deep_copy( oFM_dev, oFM );
+  mttkrp (t2_dev, oKtens_dev, 2, oFM_dev);
   deep_copy( oFM, oFM_dev );
   ASSERT( EQ(oFM.entry(0,0), 120.0) && EQ(oFM.entry(3,0), 154.0),
           "mttkrp result values correct for index [0], 2 sparse nnz");

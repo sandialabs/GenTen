@@ -52,6 +52,7 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_RandomMT.hpp"
 #include "Genten_Sptensor.hpp"
+#include "Genten_Tensor.hpp"
 
 namespace Genten
 {
@@ -182,6 +183,25 @@ namespace Genten
                                       RandomMT  &  cRNG,
                                       Sptensor  &  cDataTensor,
                                       Ktensor   &  cExpectedFactors) const;
+
+    //! Generate dense tensor data from a random Ktensor factorization.
+    /*!
+     *  Expected factors are created by populating elements with [0,1]
+     *  random variables and the tensor is created by multiplying out all
+     *  of the factors.
+     *
+     *  @param[in] cDims              Array providing shape of tensors.
+     *  @param[in] nNumComps          Number of components in Ktensor factors.
+     *  @param[in] cRNG               Random number generator.
+     *  @param[out] cDataTensor       Dense data tensor.
+     *  @param[out] cExpectedFactors  Factorization from which cDataTensor
+     *                                was derived.
+     */
+    void  genDnFromRndKtensor (const IndxArray &  cDims,
+                               const ttb_indx     nNumComps,
+                               RandomMT  &  cRNG,
+                               Tensor    &  cDataTensor,
+                               Ktensor   &  cExpectedFactors) const;
 
 
   private:

@@ -47,6 +47,7 @@
 #include "Genten_RandomMT.hpp"
 #include "Genten_Util.hpp"
 #include "Genten_TinyVec.hpp"
+#include "Genten_SimdKernel.hpp"
 
 namespace Genten
 {

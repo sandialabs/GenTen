@@ -48,6 +48,7 @@
 #include "Genten_FacMatrix.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_Sptensor.hpp"
+#include "Genten_Tensor.hpp"
 #include "Genten_Util.hpp"
 #include "Genten_AlgParams.hpp"
 
@@ -59,8 +60,8 @@ namespace Genten
   /* Compute the element-wise dot product of all elements.
    */
   template <typename ExecSpace>
-  ttb_real innerprod(const Genten::SptensorT<ExecSpace>& s,
-                     const Genten::KtensorT<ExecSpace>& u)
+  ttb_real innerprod(const SptensorT<ExecSpace>& s,
+                     const KtensorT<ExecSpace>& u)
   {
     return innerprod(s, u, u.weights());
   }
@@ -71,9 +72,29 @@ namespace Genten
    * separates the weights from the Ktensor while iterating.
    */
   template <typename ExecSpace>
-  ttb_real innerprod(const Genten::SptensorT<ExecSpace>& s,
-                     const Genten::KtensorT<ExecSpace>& u,
-                     const Genten::ArrayT<ExecSpace>& lambda);
+  ttb_real innerprod(const SptensorT<ExecSpace>& s,
+                     const KtensorT<ExecSpace>& u,
+                     const ArrayT<ExecSpace>& lambda);
+
+  // Inner product between a sparse tensor and a Ktensor.
+  /* Compute the element-wise dot product of all elements.
+   */
+  template <typename ExecSpace>
+  ttb_real innerprod(const TensorT<ExecSpace>& s,
+                     const KtensorT<ExecSpace>& u)
+  {
+    return innerprod(s, u, u.weights());
+  }
+
+  // Inner product between a sparse tensor and a Ktensor with weights.
+  /* Compute the element-wise dot product of all elements, using an
+   * alternate weight vector for the Ktensor.  Used by CpAls, which
+   * separates the weights from the Ktensor while iterating.
+   */
+  template <typename ExecSpace>
+  ttb_real innerprod(const TensorT<ExecSpace>& s,
+                     const KtensorT<ExecSpace>& u,
+                     const ArrayT<ExecSpace>& lambda);
 
 
   //---- Methods for mttkrp.
@@ -82,11 +103,11 @@ namespace Genten
   /* Same as below except that rather than overwrite u[n],
      the answer is put into v.
   */
-  template <typename SparseTensor, typename ExecSpace>
-  void mttkrp(const SparseTensor& X,
-              const Genten::KtensorT<ExecSpace>& u,
+  template <typename ExecSpace>
+  void mttkrp(const SptensorT<ExecSpace>& X,
+              const KtensorT<ExecSpace>& u,
               const ttb_indx n,
-              const Genten::FacMatrixT<ExecSpace>& v,
+              const FacMatrixT<ExecSpace>& v,
               const AlgParams& algParams = AlgParams());
 
   // Matricized sparse tensor times Khatri-Rao product.
@@ -100,9 +121,41 @@ namespace Genten
      mode n matricization of X, and W_n is the cumulative Khatri-Rao product
      of all factor matrices in u except the nth.
   */
-  template <typename SparseTensor>
-  void mttkrp(const SparseTensor& X,
-              const Genten::KtensorT<typename SparseTensor::exec_space>& u,
+  template <typename ExecSpace>
+  void mttkrp(const SptensorT<ExecSpace>& X,
+              const KtensorT<ExecSpace>& u,
+              const ttb_indx n,
+              const AlgParams& algParams = AlgParams())
+  {
+    mttkrp (X, u, n, u[n], algParams);
+    return;
+  }
+
+  // Matricized sparse tensor times Khatri-Rao product.
+  /* Same as below except that rather than overwrite u[n],
+     the answer is put into v.
+  */
+  template <typename ExecSpace>
+  void mttkrp(const TensorT<ExecSpace>& X,
+              const KtensorT<ExecSpace>& u,
+              const ttb_indx n,
+              const FacMatrixT<ExecSpace>& v,
+              const AlgParams& algParams = AlgParams());
+
+  // Matricized sparse tensor times Khatri-Rao product.
+  /* Matricizes the Sptensor X along mode n, and computes the product
+     of this with the factor matrices of Ktensor u, excluding mode n.
+     Modes are indexed starting with 0.
+     The result is scaled by the lambda weights and placed into u[n];
+     hence, u[n] is not normalized.
+
+     More specifically, the operation forms X_n * W_n, where X_n is the
+     mode n matricization of X, and W_n is the cumulative Khatri-Rao product
+     of all factor matrices in u except the nth.
+  */
+  template <typename ExecSpace>
+  void mttkrp(const TensorT<ExecSpace>& X,
+              const KtensorT<ExecSpace>& u,
               const ttb_indx n,
               const AlgParams& algParams = AlgParams())
   {

@@ -47,15 +47,91 @@
 
 #include <string>
 #include <vector>
+#include <ostream>
 
 #include "Genten_FacMatrix.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_Sptensor.hpp"
-
+#include "Genten_Tensor.hpp"
 
 //! Namespace for the Genten C++ project.
 namespace Genten
 {
+
+  /** ----------------------------------------------------------------
+     *  @name I/O Methods for Tensor (dense tensor)
+     *  @{
+     *  ---------------------------------------------------------------- */
+
+  //! Read a Tensor from a text file, matching export_tensor().
+  /*!
+   *  <pre>
+   *  The file should have three header lines followed by the entries.
+   *    1st line must be the keyword 'tensor'.
+   *    2nd line must provide the number of modes.
+   *    3rd line must provide the sizes of all modes.
+   *  </pre>
+   *  Each subsequent line provides values for one element, with order
+   *  determined by the storage sequence of the Tensor class.
+   *  No index values are given, and rows are assumed to be dense.
+   *
+   *  @param[in] fName  Input filename.
+   *  @param[in,out] X  Tensor resized and filled with data.
+   *  @throws string    for any error.
+   */
+  void import_tensor (const std::string& fName,
+                      Genten::Tensor& X);
+
+  //! Write a Tensor to a text file, matching import_tensor().
+  /*!
+   *  Elements are output with the default format "%0.15e".
+   *
+   *  @param[in] fName  Output filename.
+   *  @param[in] X      Tensor to be exported.
+   *  @throws string    for any error.
+   */
+  void export_tensor (const std::string& fName,
+                      const Genten::Tensor& X);
+
+  //! Write a Tensor to a text file, matching import_tensor().
+  /*!
+   *  @param[in] fName           Output filename.
+   *  @param[in] X               Tensor to export.
+   *  @param[in] bUseScientific  True means use "%e" format, false means "%f".
+   *  @param[in] nDecimalDigits  Number of digits after the decimal point.
+   *  @throws string             for any error.
+   */
+  void export_tensor (const std::string& fName,
+                      const Genten::Tensor& X,
+                      const bool bUseScientific,
+                      const int nDecimalDigits);
+
+  //! Write a Tensor to an opened file stream, matching import_tensor().
+  /*!
+   *  See previous method for details.
+   *
+   *  @param[in] fOut            File stream for output.
+   *                             The file is not closed by this method.
+   *  @param[in] X               Tensor to export.
+   *  @param[in] bUseScientific  True means use "%e" format, false means "%f".
+   *  @param[in] nDecimalDigits  Number of digits after the decimal point.
+   *  @throws string             for any error.
+   */
+  void export_tensor (std::ofstream& fOut,
+                      const Genten::Tensor& X,
+                      const bool bUseScientific,
+                      const int nDecimalDigits);
+
+  //! Pretty-print a tensor to an output stream.
+  /*!
+   *  @param[in] X     Tensor to print.
+   *  @param[in] fOut  Output stream.
+   *  @param[in] name  Optional name for the Tensor.
+   */
+  template <typename ExecSpace>
+  void print_tensor (const Genten::TensorT<ExecSpace>& X,
+                     std::ostream& fOut,
+                     const std::string& name = "");
 
   /** ----------------------------------------------------------------
    *  @name I/O Methods for Sptensor (sparse tensor)
@@ -144,9 +220,10 @@ namespace Genten
    *  @param[in] fOut  Output stream.
    *  @param[in] name  Optional name for the Sptensor.
    */
-  void print_sptensor (const Genten::Sptensor & X,
-                       std::ostream  & fOut,
-                       const std::string     name = "");
+  template <typename ExecSpace>
+  void print_sptensor (const Genten::SptensorT<ExecSpace>& X,
+                       std::ostream& fOut,
+                       const std::string& name = "");
 
   /** @} */
 
@@ -236,9 +313,10 @@ namespace Genten
    *  @param[in] fOut  Output stream.
    *  @param[in] name  Optional name for the matrix.
    */
-  void print_matrix (const Genten::FacMatrix & X,
-                     std::ostream   & fOut,
-                     const std::string      name = "");
+  template <typename ExecSpace>
+  void print_matrix (const Genten::FacMatrixT<ExecSpace>& X,
+                     std::ostream& fOut,
+                     const std::string& name = "");
 
   /** @} */
 
@@ -329,9 +407,9 @@ namespace Genten
    *  @param[in] name  Optional name for the Ktensor.
    */
   template <typename ExecSpace>
-  void print_ktensor (const Genten::KtensorT<ExecSpace> & X,
-                      std::ostream & fOut,
-                      const std::string    name = "");
+  void print_ktensor (const Genten::KtensorT<ExecSpace>& X,
+                      std::ostream& fOut,
+                      const std::string& name = "");
 
   /** @} */
 
@@ -371,5 +449,40 @@ namespace Genten
                  const std::string              &  sDelims = " \t");
 
   /** @} */
+
+  /** ----------------------------------------------------------------
+   *  @name I/O Utilities
+   *  @{
+   *  ---------------------------------------------------------------- */
+
+  //! Print Sptensor
+  template <typename E>
+  std::ostream& operator << (std::ostream& os, const SptensorT<E>& X) {
+    print_sptensor(X, os);
+    return os;
+  }
+
+  //! Print Tensor
+  template <typename E>
+  std::ostream& operator << (std::ostream& os, const TensorT<E>& X) {
+    print_tensor(X, os);
+    return os;
+  }
+
+  //! Print Ktensor
+  template <typename E>
+  std::ostream& operator << (std::ostream& os, const KtensorT<E>& X) {
+    print_ktensor(X, os);
+    return os;
+  }
+
+  //! Print FacMatrix
+  template <typename E>
+  std::ostream& operator << (std::ostream& os, const FacMatrixT<E>& X) {
+    print_matrix(X, os);
+    return os;
+  }
+
+   /** @} */
 
 }

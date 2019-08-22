@@ -569,9 +569,9 @@ void orig_kokkos_mttkrp(const Genten::SptensorT<ExecSpace>& X,
 }
 }
 
-template <typename SparseTensor, typename ExecSpace>
+template <typename ExecSpace>
 void Genten::mttkrp(
-  const SparseTensor& X,
+  const Genten::SptensorT<ExecSpace>& X,
   const Genten::KtensorT<ExecSpace>& u,
   const ttb_indx n,
   const Genten::FacMatrixT<ExecSpace>& v,
@@ -598,6 +598,7 @@ void Genten::mttkrp(
     Genten::Impl::orig_kokkos_mttkrp(X,u,n,v);
   }
   else {
+    typedef Genten::SptensorT<ExecSpace> SparseTensor;
     Genten::Impl::MTTKRP_Kernel<SparseTensor> kernel(X,u,n,v,algParams);
     Genten::Impl::run_row_simd_kernel(kernel, nc);
   }

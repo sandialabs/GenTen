@@ -214,6 +214,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
     if (i != Genten::GCP_Sampling::num_types-1)
       out << ", ";
   }
+  out << std::endl;
   out << "  --rate <float>     initial step size" << std::endl;
   out << "  --decay <float>    rate step size decreases on fails" << std::endl;
   out << "  --fails <int>      maximum number of fails" << std::endl;
@@ -234,7 +235,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --hash             compute hash map for zero sampling" << std::endl;
   out << "  --bulk-factor <int> factor for bulk zero sampling" << std::endl;
   out << "  --fuse             fuse gradient sampling and MTTKRP" << std::endl;
-  out << "  --fuse-sa          fuse with sparse array graident" << std::endl;
+  out << "  --fuse-sa          fuse with sparse array gradient" << std::endl;
   out << "  --fit              compute fit metric" << std::endl;
   out << "  --adam             use ADAM step" << std::endl;
   out << "  --adam_beta1       Decay rate for 1st moment avg." << std::endl;

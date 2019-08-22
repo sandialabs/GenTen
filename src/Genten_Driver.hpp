@@ -50,15 +50,22 @@
 #include <ostream>
 
 #include "Genten_Sptensor.hpp"
+#include "Genten_Tensor.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_AlgParams.hpp"
 
 namespace Genten {
 
-  //! Version of cpals_core that computes initial guess
   template<typename ExecSpace>
   KtensorT<ExecSpace>
   driver(SptensorT<ExecSpace>& x,
+         KtensorT<ExecSpace>& u_init,
+         AlgParams& algParams,
+         std::ostream& out);
+
+  template<typename ExecSpace>
+  KtensorT<ExecSpace>
+  driver(TensorT<ExecSpace>& x,
          KtensorT<ExecSpace>& u_init,
          AlgParams& algParams,
          std::ostream& out);

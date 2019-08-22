@@ -54,6 +54,7 @@ void Genten_Test_IO(int infolevel, const string & dirname);
 void Genten_Test_Ktensor(int infolevel);
 void Genten_Test_MixedFormats(int infolevel);
 void Genten_Test_Sptensor(int infolevel);
+void Genten_Test_Tensor(int infolevel);
 #ifdef HAVE_GCP
 #ifdef HAVE_ROL
 void Genten_Test_GCP_Opt(int infolevel);
@@ -79,6 +80,7 @@ int main(int argc, char * argv[])
   Genten_Test_IndxArray(infolevel);
   Genten_Test_FacMatrix(infolevel, "./data/");
   Genten_Test_Sptensor(infolevel);
+  Genten_Test_Tensor(infolevel);
   Genten_Test_Ktensor(infolevel);
   Genten_Test_MixedFormats(infolevel);
   Genten_Test_IO(infolevel, "./data/");

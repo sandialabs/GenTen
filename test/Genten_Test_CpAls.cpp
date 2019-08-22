@@ -47,6 +47,7 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_Sptensor.hpp"
+#include "Genten_Tensor.hpp"
 #include "Genten_Test_Utils.hpp"
 
 using namespace Genten::Test;
@@ -202,6 +203,8 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
   typedef Genten::DefaultHostExecutionSpace host_exec_space;
   typedef Genten::SptensorT<exec_space> Sptensor_type;
   typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
+  typedef Genten::TensorT<exec_space> Tensor_type;
+  typedef Genten::TensorT<host_exec_space> Tensor_host_type;
 
   SETUP_DISABLE_CERR;
 
@@ -282,7 +285,9 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
   algParams.maxsecs = -1.0;
   algParams.printitn = infolevel;
   algParams.mttkrp_method = mttkrp_method;
-  Genten::KtensorT<exec_space> result_dev;
+  Genten::Ktensor result(nNumComponents, dims.size(), dims);
+  Genten::KtensorT<exec_space> result_dev =
+    create_mirror_view( exec_space(), result );
   ttb_indx  itersCompleted;
   ttb_real  resNorm;
   try
@@ -291,10 +296,9 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
     // Allocation adds two more for start and stop states of the algorithm.
     ttb_indx  nMaxPerfSize = 2 + (algParams.maxiters / 3);
     Genten::CpAlsPerfInfo *  perfInfo = new Genten::CpAlsPerfInfo[nMaxPerfSize];
-    result_dev = initialBasis_dev;
-    Genten::cpals_core <Sptensor_type> (X_dev, result_dev, algParams,
-                                        itersCompleted, resNorm,
-                                        3, perfInfo);
+    deep_copy(result_dev, initialBasis_dev);
+    Genten::cpals_core(X_dev, result_dev, algParams, itersCompleted, resNorm,
+                       3, perfInfo);
     // Check performance information.
     bool  bIsOK = true;
     for (ttb_indx  i = 0; i < nMaxPerfSize; i++)
@@ -321,8 +325,7 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
   }
 
   // Copy result to host
-  Genten::Ktensor result = initialBasis;
-  deep_copy( result, result_dev );
+  deep_copy(result, result_dev);
 
   evaluateResult(infolevel, itersCompleted, algParams.tol, result);
 
@@ -338,11 +341,10 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
   DISABLE_CERR;
   try
   {
-    result_dev = initialZero_dev;
+    deep_copy(result_dev, initialZero_dev);
     algParams.printitn = 0;
-    Genten::cpals_core <Sptensor_type> (X_dev, result_dev, algParams,
-                                        itersCompleted, resNorm,
-                                        0, NULL);
+    Genten::cpals_core(X_dev, result_dev, algParams, itersCompleted, resNorm,
+                       0, NULL);
   }
   catch(std::string sExc)
   {
@@ -352,6 +354,30 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
     ASSERT( true, sMsg.str() );
   }
   REENABLE_CERR;
+
+  // Repeat the tests using the same data, but in a dense Tensor.
+
+  MESSAGE("Creating a dense tensor with data to model");
+  Tensor_type Xd_dev(X_dev);
+
+  // Factorize.
+  try
+  {
+    algParams.printitn = infolevel;
+    deep_copy(result_dev, initialBasis_dev);
+    Genten::cpals_core(Xd_dev, result_dev, algParams, itersCompleted, resNorm,
+                       0, nullptr);
+  }
+  catch(std::string sExc)
+  {
+    // Should not happen.
+    MESSAGE(sExc);
+    ASSERT( true, "Call to cpals_core threw an exception." );
+    return;
+  }
+
+  deep_copy(result, result_dev);
+  evaluateResult(infolevel, itersCompleted, algParams.tol, result);
 
   finalize();
   return;

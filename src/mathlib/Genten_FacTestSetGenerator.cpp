@@ -261,6 +261,31 @@ bool  Genten::FacTestSetGenerator::genSpFromRndKtensor(
                               cDataTensor) );
 }
 
+//-----------------------------------------------------------------------------
+//  Public method
+//-----------------------------------------------------------------------------
+void  Genten::FacTestSetGenerator::genDnFromRndKtensor(
+  const IndxArray &  cDims,
+  const ttb_indx     nNumComps,
+  RandomMT  &  cRNG,
+  Tensor    &  cDataTensor,
+  Ktensor   &  cExpectedFactors) const
+{
+  // Check the arguments.
+  if (nNumComps <= 0)
+  {
+    Genten::error("*** Value for nNumComps must be positive\n");
+  }
+
+  // Set the expected factors to random stochastic values, using
+  // the same random samples as Matlab.
+  cExpectedFactors = Genten::Ktensor (nNumComps, cDims.size(), cDims);
+  cExpectedFactors.setRandomUniform (true, cRNG);
+
+  // Generate the data tensor.
+  cDataTensor = Tensor(cExpectedFactors);
+}
+
 
 //-----------------------------------------------------------------------------
 //  Public method
