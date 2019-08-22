@@ -41,6 +41,7 @@
 #pragma once
 
 #include <assert.h>
+#include <ostream>
 #include <initializer_list>
 
 #include "Genten_Util.hpp"
@@ -266,6 +267,17 @@ void deep_copy(const IndxArrayT<E1>& dst, const IndxArrayT<E2>& src)
   deep_copy(dst.values(), src.values());
   if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename E1::memory_space >::accessible)
     deep_copy(dst.host_values(), src.host_values());
+}
+
+// Allow printing of IndxArray to screen
+template <typename E>
+std::ostream& operator << (std::ostream& os, const IndxArrayT<E>& a)
+{
+  os << "[ ";
+  for (ttb_indx i=0; i<a.size(); ++i)
+    os << a[i] << " ";
+  os << "]";
+  return os;
 }
 
 }
