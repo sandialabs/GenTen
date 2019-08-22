@@ -219,6 +219,19 @@ public:
       return data(i,j);
     }
 
+    //! Return a read-only entry (i,j).
+    /*!
+     *  @param[in] i  Row index.
+     *  @param[in] j  Column index.
+     */
+    template <typename IType, typename JType>
+    KOKKOS_INLINE_FUNCTION
+    ttb_real & operator()(IType i, JType j) const
+    {
+      assert((i < data.extent(0)) && (j < data.extent(1)));
+      return data(i,j);
+    }
+
     //! Number of of ttb_real elements stored in this object.
     KOKKOS_INLINE_FUNCTION
     ttb_indx reals() const
