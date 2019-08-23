@@ -96,7 +96,11 @@ int main(int argc, char* argv[])
       Genten::parse_ttb_bool(args, "--vtune", "--no-vtune", false);
 
     // for random tensor when inputfilename == ""
-    Genten::IndxArray facDims_h = { 3000, 4000, 5000 };
+    Genten::IndxArray facDims_h;
+    if (sparse)
+     facDims_h = { 3000, 4000, 5000 };
+    else
+      facDims_h = { 30, 40, 50 };
     facDims_h =
       Genten::parse_ttb_indx_array(args, "--dims", facDims_h, 1, INT_MAX);
     ttb_indx nnz =
@@ -165,7 +169,6 @@ int main(int argc, char* argv[])
 
     Ktensor_type u;
     if (sparse) {
-
       // Read in tensor data
       Sptensor_host_type x_host;
       Sptensor_type x;
@@ -219,9 +222,9 @@ int main(int argc, char* argv[])
       }
     }
     else {
-      // Read in tensor data
       Tensor_host_type x_host;
       Tensor_type x;
+      // Read in tensor data
       if (inputfilename != "") {
         timer.start(0);
         Genten::import_tensor(inputfilename, x_host);
@@ -231,7 +234,16 @@ int main(int argc, char* argv[])
         printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
       }
       else {
-        Genten::error("Can't generate random dense tensor yet!");
+        timer.start(0);
+        Genten::RandomMT rng (algParams.seed);
+        Ktensor_host_type sol_host;
+        Genten::FacTestSetGenerator testGen;
+        testGen.genDnFromRndKtensor(facDims_h, algParams.rank,
+                                    rng, x_host, sol_host);
+        x = create_mirror_view( Space(), x_host );
+        deep_copy( x, x_host );
+        timer.stop(0);
+        printf ("Data generation took %6.3f seconds\n", timer.getTotalTime(0));
       }
 
       if (algParams.debug) Genten::print_tensor(x_host, std::cout, "tensor");
