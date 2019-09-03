@@ -144,6 +144,7 @@ args = options.args
 output = options.output
 
 tensors = [ ('lbnl-network.tns', 'LBNL', 1),
+            ('chicago-crime-comm.tns', 'Chicago', 1),
             ('uber.tns', 'Uber', 1),
             ('vast-2015-mc1-5d.tns', 'VAST', 1),
             ('enron.tns', 'Enron', 1),
@@ -163,16 +164,16 @@ options.output = output + '_hash'
 tot_hash = run_sgd_tensors(options, tensors)
 
 print '\nSemi-Stratified:'
-options.args = args + '  --sampling semi-stratified --hash'
+options.args = args + '  --sampling semi-stratified'
 options.output = output + '_semi'
 tot_semi = run_sgd_tensors(options, tensors)
 
 print '\nSemi-Stratified Fused:'
-options.args = args + '  --sampling semi-stratified --hash --fuse'
+options.args = args + '  --sampling semi-stratified --fuse'
 options.output = output + '_fuse'
 tot_fuse = run_sgd_tensors(options, tensors)
 
 print '\nSemi-Stratified Fused-SA:'
-options.args = args + '  --sampling semi-stratified --hash --fuse-sa'
+options.args = args + '  --sampling semi-stratified --fuse-sa'
 options.output = output + '_fuse_sa'
 tot_fuse_sa = run_sgd_tensors(options, tensors)
