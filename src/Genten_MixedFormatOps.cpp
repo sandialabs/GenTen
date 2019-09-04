@@ -567,5 +567,11 @@ void Genten::mttkrp(const Genten::TensorT<ExecSpace>& X,
                 const Genten::KtensorT<SPACE>& u,                       \
                 const ttb_indx n,                                       \
                 const Genten::FacMatrixT<SPACE>& v,                     \
-                const AlgParams& algParams);
+                const AlgParams& algParams);                            \
+                                                                        \
+  template                                                              \
+  void mttkrp_all<>(const Genten::SptensorT<SPACE>& X,                  \
+                    const Genten::KtensorT<SPACE>& u,                   \
+                    const Genten::KtensorT<SPACE>& v,                   \
+                    const AlgParams& algParams);
 GENTEN_INST(INST_MACRO)

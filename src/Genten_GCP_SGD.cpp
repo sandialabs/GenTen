@@ -257,8 +257,9 @@ namespace Genten {
             }
             else {
               gt.weights() = 1.0; // gt is zeroed in mttkrp
-              for (unsigned m=0; m<nd; ++m)
-                mttkrp(X_grad, ut, m, gt[m], algParams);
+              // for (unsigned m=0; m<nd; ++m)
+              //   mttkrp(X_grad, ut, m, gt[m], algParams);
+              mttkrp_all(X_grad, ut, gt, algParams);
             }
             timer.stop(timer_grad);
 

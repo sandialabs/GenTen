@@ -54,6 +54,7 @@ Genten::AlgParams::AlgParams() :
   timings(false),
   full_gram(FacMatrixT<DefaultExecutionSpace>::full_gram_default),
   mttkrp_method(MTTKRP_Method::default_type),
+  mttkrp_all_method(MTTKRP_All_Method::default_type),
   mttkrp_duplicated_factor_matrix_tile_size(0),
   loss_function_type(Genten::GCP_LossFunction::default_type),
   loss_eps(1.0e-10),
@@ -107,6 +108,11 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                                  Genten::MTTKRP_Method::num_types,
                                  Genten::MTTKRP_Method::types,
                                  Genten::MTTKRP_Method::names);
+  mttkrp_all_method = parse_ttb_enum(args, "--mttkrp-all-method",
+                                     mttkrp_all_method,
+                                     Genten::MTTKRP_All_Method::num_types,
+                                     Genten::MTTKRP_All_Method::types,
+                                     Genten::MTTKRP_All_Method::names);
   mttkrp_duplicated_factor_matrix_tile_size =
     parse_ttb_indx(args, "--mttkrp-tile-size",
                    mttkrp_duplicated_factor_matrix_tile_size, 0, INT_MAX);
@@ -187,6 +193,13 @@ void Genten::AlgParams::print_help(std::ostream& out)
       out << ", ";
   }
   out << std::endl;
+  out << "  --mttkrp-all-method <method> MTTKRP algorithm for all modes simultaneously: ";
+  for (unsigned i=0; i<Genten::MTTKRP_All_Method::num_types; ++i) {
+    out << Genten::MTTKRP_All_Method::names[i];
+    if (i != Genten::MTTKRP_All_Method::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
   out << "  --mttkrp-tile-size <int> tile size for mttkrp algorithm"
       << std::endl;
   out << "  --warmup           do an iteration of mttkrp to warmup (useful for generating accurate timing information)" << std::endl;
@@ -260,9 +273,11 @@ void Genten::AlgParams::print(std::ostream& out)
 
   out << std::endl;
   out << "MTTKRP options:" << std::endl;
-  out << "  mttkrp_method = " << Genten::MTTKRP_Method::types[mttkrp_method]
+  out << "  mttkrp-method = " << Genten::MTTKRP_Method::types[mttkrp_method]
       << std::endl;
-  out << "  mttkrp_tile_size = " << mttkrp_duplicated_factor_matrix_tile_size
+   out << "  mttkrp-all-method = " << Genten::MTTKRP_All_Method::types[mttkrp_all_method]
+      << std::endl;
+  out << "  mttkrp-tile-size = " << mttkrp_duplicated_factor_matrix_tile_size
       << std::endl;
   out << "  warmup = " << (warmup ? "true" : "false") << std::endl;
 

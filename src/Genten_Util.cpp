@@ -102,6 +102,9 @@ void Genten::connect_vtune(const int p_rank) {
 const Genten::MTTKRP_Method::type Genten::MTTKRP_Method::types[];
 const char*const Genten::MTTKRP_Method::names[];
 
+const Genten::MTTKRP_All_Method::type Genten::MTTKRP_All_Method::types[];
+const char*const Genten::MTTKRP_All_Method::names[];
+
 const Genten::GCP_LossFunction::type Genten::GCP_LossFunction::types[];
 const char*const Genten::GCP_LossFunction::names[];
 

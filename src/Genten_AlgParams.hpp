@@ -67,6 +67,7 @@ namespace Genten {
 
     // MTTKRP options
     MTTKRP_Method::type mttkrp_method; // MTTKRP algorithm
+    MTTKRP_All_Method::type mttkrp_all_method; // MTTKRP algorithm for all dims
     unsigned mttkrp_duplicated_factor_matrix_tile_size; // Tile size for MTTKRP
     bool warmup; // Warmup by calling MTTKRP before decompsition
 

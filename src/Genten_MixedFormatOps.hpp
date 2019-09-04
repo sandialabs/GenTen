@@ -163,4 +163,17 @@ namespace Genten
     return;
   }
 
+  // Matricized sparse tensor times Khatri-Rao product.
+  /*
+   * Computes MTTKRP along all modes for direct optimization methods such
+   * as SGD.  Depending on the choice of algParams.mttkrp_all_method, this
+   * may just iterate over the modes sequentially or may compute them all
+   * simultaneously.
+   */
+  template <typename ExecSpace>
+  void mttkrp_all(const Genten::SptensorT<ExecSpace>& X,
+                  const Genten::KtensorT<ExecSpace>& u,
+                  const Genten::KtensorT<ExecSpace>& v,
+                  const AlgParams& algParams);
+
 }     //-- namespace Genten
