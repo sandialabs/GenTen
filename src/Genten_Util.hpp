@@ -169,7 +169,7 @@ namespace Genten {
       Duplicated,  // Duplicate factor matrix then inter-thread reduce
       Single       // Single-thread algorithm (no atomics or duplication)
     };
-    static constexpr unsigned num_types = 5;
+    static constexpr unsigned num_types = 4;
     static constexpr type types[] = {
       Iterated,
       Atomic,

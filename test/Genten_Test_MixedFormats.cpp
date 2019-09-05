@@ -376,6 +376,7 @@ void Genten_Test_MTTKRP_Type(Genten::MTTKRP_Method::type mttkrp_method,
 
   Genten::AlgParams algParams;
   algParams.mttkrp_method = mttkrp_method;
+  algParams.mttkrp_duplicated_threshold = 1.0e6; // Ensure duplicated is used
 
   // Matricizing on index 0 has result 12*15 = 180.
   oFM = Genten::FacMatrix(a.size(0), oKtens.ncomponents());

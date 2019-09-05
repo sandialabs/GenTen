@@ -55,7 +55,9 @@ Genten::AlgParams::AlgParams() :
   full_gram(FacMatrixT<DefaultExecutionSpace>::full_gram_default),
   mttkrp_method(MTTKRP_Method::default_type),
   mttkrp_all_method(MTTKRP_All_Method::default_type),
+  mttkrp_nnz_tile_size(128),
   mttkrp_duplicated_factor_matrix_tile_size(0),
+  mttkrp_duplicated_threshold(0.2),
   loss_function_type(Genten::GCP_LossFunction::default_type),
   loss_eps(1.0e-10),
   rolfilename(""),
@@ -113,9 +115,15 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                                      Genten::MTTKRP_All_Method::num_types,
                                      Genten::MTTKRP_All_Method::types,
                                      Genten::MTTKRP_All_Method::names);
+  mttkrp_nnz_tile_size =
+    parse_ttb_indx(args, "--mttkrp-nnz-tile-size",
+                   mttkrp_nnz_tile_size, 1, INT_MAX);
   mttkrp_duplicated_factor_matrix_tile_size =
-    parse_ttb_indx(args, "--mttkrp-tile-size",
+    parse_ttb_indx(args, "--mttkrp-duplicated-tile-size",
                    mttkrp_duplicated_factor_matrix_tile_size, 0, INT_MAX);
+   mttkrp_duplicated_threshold =
+    parse_ttb_real(args, "--mttkrp-duplicated-threshold",
+                   mttkrp_duplicated_factor_matrix_tile_size, 0, DOUBLE_MAX);
   warmup = parse_ttb_bool(args, "--warmup", "--no-warmup", warmup);
 
   // GCP options
@@ -200,8 +208,10 @@ void Genten::AlgParams::print_help(std::ostream& out)
       out << ", ";
   }
   out << std::endl;
-  out << "  --mttkrp-tile-size <int> tile size for mttkrp algorithm"
+  out << "  --mttkrp-nnz-tile-size <int> Nonzero tile size for mttkrp algorithm"
       << std::endl;
+  out << "  --mttkrp-duplicated-tile-size <int> Factor matrix tile size for duplicated mttkrp algorithm" << std::endl;
+  out << "  --mttkrp-duplicated-threshold <float> Theshold for determining when to not use duplicated mttkrp algorithm" << std::endl;
   out << "  --warmup           do an iteration of mttkrp to warmup (useful for generating accurate timing information)" << std::endl;
 
   out << std::endl;
@@ -275,10 +285,11 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "MTTKRP options:" << std::endl;
   out << "  mttkrp-method = " << Genten::MTTKRP_Method::types[mttkrp_method]
       << std::endl;
-   out << "  mttkrp-all-method = " << Genten::MTTKRP_All_Method::types[mttkrp_all_method]
+  out << "  mttkrp-all-method = " << Genten::MTTKRP_All_Method::types[mttkrp_all_method]
       << std::endl;
-  out << "  mttkrp-tile-size = " << mttkrp_duplicated_factor_matrix_tile_size
-      << std::endl;
+  out << "  mttkrp-nnz-tile-size = " << mttkrp_nnz_tile_size << std::endl;
+  out << "  mttkrp-duplicated-tile-size = " << mttkrp_duplicated_factor_matrix_tile_size << std::endl;
+  out << "  mttkrp-duplicated-threshold = " << mttkrp_duplicated_threshold << std::endl;
   out << "  warmup = " << (warmup ? "true" : "false") << std::endl;
 
   out << std::endl;

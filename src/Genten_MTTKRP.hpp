@@ -159,11 +159,11 @@ mttkrp_kernel(const SptensorT<ExecSpace>& X,
   using Kokkos::Experimental::ScatterSum;
 
   static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
-  static const unsigned RowBlockSize = 128;
   static const unsigned FacBlockSize = FBS;
   static const unsigned VectorSize = is_cuda ? VS : 1;
   static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
-  static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
+  /*const*/ unsigned RowBlockSize = algParams.mttkrp_nnz_tile_size;
+  const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
   /*const*/ unsigned nd = u.ndims();
   /*const*/ unsigned nc_total = u.ncomponents();
@@ -259,11 +259,11 @@ mttkrp_all_kernel(const SptensorT<ExecSpace>& X,
   using Kokkos::Experimental::ScatterSum;
 
   static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
-  static const unsigned RowBlockSize = 128;
   static const unsigned FacBlockSize = FBS;
   static const unsigned VectorSize = is_cuda ? VS : 1;
   static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
-  static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
+  /*const*/ unsigned RowBlockSize = algParams.mttkrp_nnz_tile_size;
+  const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
   static_assert(!is_cuda, "Cannot call mttkrp_all_kernel for Cuda space!");
 
@@ -368,11 +368,11 @@ mttkrp_kernel_perm(const SptensorT<ExecSpace>& X,
   v = ttb_real(0.0);
 
   static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
-  static const unsigned RowBlockSize = 128;
   static const unsigned FacBlockSize = FBS;
   static const unsigned VectorSize = is_cuda ? VS : 1;
   static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
-  static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
+  /*const*/ unsigned RowBlockSize = algParams.mttkrp_nnz_tile_size;
+  const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
   /*const*/ unsigned nd = u.ndims();
   /*const*/ unsigned nc = u.ncomponents();
@@ -505,9 +505,23 @@ struct MTTKRP_Kernel {
     else if (method == MTTKRP_Method::Atomic)
       mttkrp_kernel<ScatterNonDuplicated,ScatterAtomic,FBS,VS>(
         X,u,n,v,algParams);
-    else if (method == MTTKRP_Method::Duplicated)
-      mttkrp_kernel<ScatterDuplicated,ScatterNonAtomic,FBS,VS>(
-        X,u,n,v,algParams);
+    else if (method == MTTKRP_Method::Duplicated) {
+      // Only use "Duplicated" if the mode length * concurrency is sufficiently
+      // small.  Taken from "Sparse Tensor Factorization on Many-Core Processors
+      // with High-Bandwidth Memory" by Smith, Park and Karypis.  It's not
+      // clear this is really the right choice.  Seems like it should also take
+      // into account R = u.ncomponents() and last-level cache size.
+      const ttb_indx P = SpaceProperties<ExecSpace>::concurrency();
+      const ttb_indx nnz = X.nnz();
+      const ttb_indx N = X.size(n);
+      const ttb_real gamma = algParams.mttkrp_duplicated_threshold;
+      if (static_cast<ttb_real>(N*P) <= gamma*nnz)
+        mttkrp_kernel<ScatterDuplicated,ScatterNonAtomic,FBS,VS>(
+          X,u,n,v,algParams);
+      else
+        mttkrp_kernel<ScatterNonDuplicated,ScatterAtomic,FBS,VS>(
+          X,u,n,v,algParams);
+    }
     else if (method == MTTKRP_Method::Perm)
       mttkrp_kernel_perm<FBS,VS>(X,u,n,v,algParams);
   }
@@ -568,12 +582,13 @@ struct MTTKRP_All_Kernel<Kokkos::Cuda> {
   const SptensorT<ExecSpace> XX;
   const KtensorT<ExecSpace> uu;
   const KtensorT<ExecSpace> vv;
+  const AlgParams algParams;
 
   MTTKRP_All_Kernel(const SptensorT<ExecSpace>& X_,
                     const KtensorT<ExecSpace>& u_,
                     const KtensorT<ExecSpace>& v_,
-                    const AlgParams& algParams) :
-    XX(X_), uu(u_), vv(v_) {}
+                    const AlgParams& algParams_) :
+    XX(X_), uu(u_), vv(v_), algParams(algParams_) {}
 
   template <unsigned FBS, unsigned VS>
   void run() const {
@@ -583,11 +598,11 @@ struct MTTKRP_All_Kernel<Kokkos::Cuda> {
 
     v.setMatrices(0.0);
 
-    static const unsigned RowBlockSize = 128;
     static const unsigned FacBlockSize = FBS;
     static const unsigned VectorSize = VS;
     static const unsigned TeamSize = 128/VectorSize;
-    static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
+    /*const*/ unsigned RowBlockSize = algParams.mttkrp_nnz_tile_size;
+    const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
     /*const*/ unsigned nd = u.ndims();
     /*const*/ unsigned nc = u.ncomponents();
