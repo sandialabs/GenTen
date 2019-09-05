@@ -537,10 +537,6 @@ struct MTTKRP_All_Kernel {
 
     MTTKRP_All_Method::type method = algParams.mttkrp_all_method;
 
-    // Compute default MTTKRP method
-    if (method == MTTKRP_All_Method::Default)
-      method = MTTKRP_All_Method::computeDefault<ExecSpace>();
-
     // Never use Duplicated or Atomic for Serial, use Single instead
     if (space_prop::is_serial && (method == MTTKRP_All_Method::Duplicated ||
                                   method == MTTKRP_All_Method::Atomic))

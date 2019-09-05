@@ -164,7 +164,6 @@ namespace Genten {
   // MTTKRP algorithm
   struct MTTKRP_All_Method {
     enum type {
-      Default,     // Use default method based on architecture
       Iterated,    // Compute MTTKRP sequentially for each dimension
       Atomic,      // Use atomics factor matrix update
       Duplicated,  // Duplicate factor matrix then inter-thread reduce
@@ -172,43 +171,15 @@ namespace Genten {
     };
     static constexpr unsigned num_types = 5;
     static constexpr type types[] = {
-      Default,
       Iterated,
       Atomic,
       Duplicated,
       Single
     };
     static constexpr const char* names[] = {
-      "default", "iterated", "atomic", "duplicated", "single"
+      "iterated", "atomic", "duplicated", "single"
     };
-    static constexpr type default_type = Default;
-
-    template <typename ExecSpace>
-    static type computeDefault() {
-      typedef SpaceProperties<ExecSpace> space_prop;
-
-      type method = Atomic;
-
-      // Always use Single if there is only a single thread
-      if (space_prop::concurrency() == 1)
-        method = Single;
-
-      // Use Atomic on Cuda if it supports fast atomics for ttb_real.
-      // This is true with float on all arch's or float/double on Pascal (6.0)
-      // or later
-      else if (space_prop::is_cuda) {
-        if (space_prop::cuda_arch() >= 600 || sizeof(ttb_real) == 4)
-          method = Atomic;
-        else
-          method = Iterated;
-      }
-
-      // Otherwise use Duplicated
-      else
-        method = Duplicated;
-
-      return method;
-    }
+    static constexpr type default_type = Iterated;
   };
 
   // Loss functions supported by GCP
