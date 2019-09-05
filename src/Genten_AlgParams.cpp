@@ -57,7 +57,7 @@ Genten::AlgParams::AlgParams() :
   mttkrp_all_method(MTTKRP_All_Method::default_type),
   mttkrp_nnz_tile_size(128),
   mttkrp_duplicated_factor_matrix_tile_size(0),
-  mttkrp_duplicated_threshold(0.2),
+  mttkrp_duplicated_threshold(-1.0),
   loss_function_type(Genten::GCP_LossFunction::default_type),
   loss_eps(1.0e-10),
   rolfilename(""),
@@ -123,7 +123,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                    mttkrp_duplicated_factor_matrix_tile_size, 0, INT_MAX);
    mttkrp_duplicated_threshold =
     parse_ttb_real(args, "--mttkrp-duplicated-threshold",
-                   mttkrp_duplicated_factor_matrix_tile_size, 0, DOUBLE_MAX);
+                   mttkrp_duplicated_factor_matrix_tile_size, -1.0, DOUBLE_MAX);
   warmup = parse_ttb_bool(args, "--warmup", "--no-warmup", warmup);
 
   // GCP options
@@ -211,7 +211,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --mttkrp-nnz-tile-size <int> Nonzero tile size for mttkrp algorithm"
       << std::endl;
   out << "  --mttkrp-duplicated-tile-size <int> Factor matrix tile size for duplicated mttkrp algorithm" << std::endl;
-  out << "  --mttkrp-duplicated-threshold <float> Theshold for determining when to not use duplicated mttkrp algorithm" << std::endl;
+  out << "  --mttkrp-duplicated-threshold <float> Theshold for determining when to not use duplicated mttkrp algorithm (set to -1.0 to always use duplicated)" << std::endl;
   out << "  --warmup           do an iteration of mttkrp to warmup (useful for generating accurate timing information)" << std::endl;
 
   out << std::endl;

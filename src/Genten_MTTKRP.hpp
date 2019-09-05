@@ -515,7 +515,7 @@ struct MTTKRP_Kernel {
       const ttb_indx nnz = X.nnz();
       const ttb_indx N = X.size(n);
       const ttb_real gamma = algParams.mttkrp_duplicated_threshold;
-      if (static_cast<ttb_real>(N*P) <= gamma*nnz)
+      if (gamma < 0.0 || (static_cast<ttb_real>(N*P) <= gamma*nnz))
         mttkrp_kernel<ScatterDuplicated,ScatterNonAtomic,FBS,VS>(
           X,u,n,v,algParams);
       else
