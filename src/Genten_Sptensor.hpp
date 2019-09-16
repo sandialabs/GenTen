@@ -162,6 +162,14 @@ public:
     return siz.prod();
   }
 
+  // Return the total number of (zero and nonzero) elements in the tensor as
+  // a float (to avoid overflow for large tensors)
+  KOKKOS_INLINE_FUNCTION
+  ttb_real numel_float() const
+  {
+    return siz.prod_float();
+  }
+
   // Return the number of structural nonzeros.
   KOKKOS_INLINE_FUNCTION
   ttb_indx nnz() const

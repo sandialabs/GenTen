@@ -70,8 +70,8 @@ namespace Genten {
 
       // Compute number of samples if necessary
       const ttb_indx nnz = X.nnz();
-      const ttb_indx tsz = X.numel();
-      const ttb_indx nz = tsz - nnz;
+      const ttb_real tsz = X.numel_float();
+      const ttb_real nz = tsz - nnz;
       const ttb_indx maxEpochs = algParams.maxiters;
       const ttb_indx ftmp = std::max((nnz+99)/100,ttb_indx(100000));
       const ttb_indx gtmp = std::max((3*nnz+maxEpochs-1)/maxEpochs,
@@ -79,11 +79,13 @@ namespace Genten {
       if (num_samples_nonzeros_value == 0)
         num_samples_nonzeros_value = std::min(ftmp, nnz);
       if (num_samples_zeros_value == 0)
-        num_samples_zeros_value = std::min(num_samples_nonzeros_value, nz);
+        num_samples_zeros_value = std::min(num_samples_nonzeros_value,
+                                           ttb_indx(nz));
       if (num_samples_nonzeros_grad == 0)
         num_samples_nonzeros_grad = std::min(gtmp, nnz);
       if (num_samples_zeros_grad == 0)
-        num_samples_zeros_grad = std::min(num_samples_nonzeros_grad, nz);
+        num_samples_zeros_grad = std::min(num_samples_nonzeros_grad,
+                                          ttb_indx(nz));
 
       // Compute weights if necessary
       if (weight_nonzeros_value < 0.0)

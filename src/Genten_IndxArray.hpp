@@ -207,6 +207,25 @@ public:
     return p;
   }
 
+  // Returns product of all the entries (total size).
+  /* Returns dflt for an emtpy array. */
+  KOKKOS_INLINE_FUNCTION
+  ttb_real prod_float(ttb_real dflt = 0) const
+  {
+    const ttb_indx sz = host_data.extent(0);
+    if (sz == 0)
+    {
+      return dflt;
+    }
+
+    ttb_real p = 1;
+    for (ttb_indx i = 0; i < sz; i ++)
+    {
+      p = p * host_data[i];
+    }
+    return p;
+  }
+
   // Compute the product of entries i through j-1.
   /* Returns dflt if j <= i. */
   ttb_indx prod(ttb_indx i, ttb_indx j, ttb_indx dflt = 0) const;

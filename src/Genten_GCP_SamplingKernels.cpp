@@ -660,8 +660,8 @@ namespace Genten {
     {
       const ttb_indx nnz = X.nnz();
       const ttb_indx nd = X.ndims();
-      const ttb_indx ne = X.numel();
-      const ttb_indx ns = std::min(num_samples, ne-nnz);
+      const ttb_real ne = X.numel_float();
+      const ttb_indx ns = std::min(num_samples, ttb_indx(ne-nnz));
 
       // Resize Y if necessary
       if (Y.nnz() < offset+ns) {
