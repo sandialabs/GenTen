@@ -528,18 +528,30 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
     ${Matlab_MX_LIBRARY})
   SET(GENTEN_MATLAB_LINK_LIBS gt_matlab ${GENTEN_LINK_LIBS})
 
+  # Newer versions of CMake have an API version argument to MATLAB_ADD_MEX
+  # which needs to be set to the right value since it defaults to an incorrect
+  # value
+  SET(GENTEN_MATLAB_API_VERSION "")
+  IF(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.14.0")
+    SET(GENTEN_MATLAB_API_VERSION "R2018a")
+  ENDIF()
+
   MATLAB_ADD_MEX(
     NAME gt_cp_driver
-    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Driver.cpp)
+    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Driver.cpp
+    ${GENTEN_MATLAB_API_VERSION})
   MATLAB_ADD_MEX(
     NAME gt_initialize
-    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Initialize.cpp)
+    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Initialize.cpp
+    ${GENTEN_MATLAB_API_VERSION})
   MATLAB_ADD_MEX(
     NAME gt_finalize
-    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Finalize.cpp)
+    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Finalize.cpp
+    ${GENTEN_MATLAB_API_VERSION})
   MATLAB_ADD_MEX(
     NAME gt_compute_perm_driver
-    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_ComputePermutation.cpp)
+    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_ComputePermutation.cpp
+    ${GENTEN_MATLAB_API_VERSION})
   TARGET_LINK_LIBRARIES (gt_cp_driver ${GENTEN_MATLAB_LINK_LIBS})
   TARGET_LINK_LIBRARIES (gt_initialize ${GENTEN_MATLAB_LINK_LIBS})
   TARGET_LINK_LIBRARIES (gt_finalize ${GENTEN_MATLAB_LINK_LIBS})
