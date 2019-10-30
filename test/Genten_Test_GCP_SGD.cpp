@@ -133,7 +133,7 @@ void Genten_Test_GCP_SGD_Type (int infolevel, const std::string& label,
   Genten::AlgParams algParams;
   algParams.rate = 7.0e-2;
   algParams.epoch_iters = 50;
-  algParams.tol = 1.0e-6;
+  algParams.gcp_tol = 1.0e-6;
   algParams.maxiters = 100;
   algParams.printitn = (infolevel == 1) ? 1 : 0;
   algParams.mttkrp_method = mttkrp_method;

@@ -86,7 +86,7 @@ namespace Genten {
       const ttb_indx nc = u0.ncomponents();
 
       // Constants for the algorithm
-      const ttb_real tol = algParams.tol;
+      const ttb_real tol = algParams.gcp_tol;
       const ttb_real decay = algParams.decay;
       const ttb_real rate = algParams.rate;
       const ttb_indx max_fails = algParams.max_fails;

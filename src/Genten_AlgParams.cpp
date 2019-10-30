@@ -60,6 +60,7 @@ Genten::AlgParams::AlgParams() :
   mttkrp_duplicated_threshold(-1.0),
   loss_function_type(Genten::GCP_LossFunction::default_type),
   loss_eps(1.0e-10),
+  gcp_tol(-DOUBLE_MAX),
   rolfilename(""),
   sampling_type(Genten::GCP_Sampling::default_type),
   rate(1.0e-3),
@@ -132,6 +133,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                                       Genten::GCP_LossFunction::types,
                                       Genten::GCP_LossFunction::names);
   loss_eps = parse_ttb_real(args, "--eps", loss_eps, 0.0, 1.0);
+  gcp_tol = parse_ttb_real(args, "--gcp-tol", gcp_tol, -DOUBLE_MAX, DOUBLE_MAX);
 
   // GCP-Opt options
   rolfilename = parse_string(args, "--rol", rolfilename.c_str());
@@ -224,6 +226,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
   }
   out << std::endl;
   out << "  --eps <float>      perturbation of loss functions for entries near 0" << std::endl;
+  out << "  --gcp-tol <float> GCP solver tolerance" << std::endl;
 
   out << std::endl;
   out << "GCP-Opt options:" << std::endl;
@@ -297,6 +300,7 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  type = " << Genten::GCP_LossFunction::names[loss_function_type]
       << std::endl;
   out <<   "eps = " << loss_eps << std::endl;
+  out <<   "gcp-tol = " << gcp_tol << std::endl;
 
   out << std::endl;
   out << "GCP-Opt options:" << std::endl;
