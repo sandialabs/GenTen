@@ -226,7 +226,7 @@ namespace Genten {
           } // n
         } // i
         rand_pool.free_state(gen);
-      }, "gcp_sgd_ss_grad_atomic_zero_kernel");
+      }, "gcp_sgd_ss_grad_sa_zero_kernel");
       timer.stop(timer_zs);
     }
 

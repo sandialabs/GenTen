@@ -43,6 +43,10 @@
 #include "Genten_SimdKernel.hpp"
 #include "Genten_Util.hpp"
 
+// This is a locally-modified version of Kokkos_ScatterView.hpp which we
+// need until the changes are moved into Kokkos
+#include "Genten_Kokkos_ScatterView.hpp"
+
 namespace Genten {
 
   namespace Impl {
@@ -191,6 +195,202 @@ namespace Genten {
       GCP_Grad_Atomic<ExecSpace,loss_type> kernel(
         X,M,w,f,num_samples,G,rand_pool,algParams);
       run_row_simd_kernel(kernel, M.ncomponents());
+    }
+
+    // Gradient kernel for gcp_sgd3 that combines sampling and mttkrp for
+    // computing the gradient.  It also does each mode in the MTTKRP for each
+    // nonzero, rather than doing a full MTTKRP for each mode.  This speeds it
+    // up significantly.  Uses scatter view.  Because of problems with scatter
+    // view, doesn't work on GPU.
+    template <int Dupl, int Cont, unsigned FBS, unsigned VS,
+              typename ExecSpace, typename loss_type>
+    void gcp_sgd_ss_grad_sv_kernel(
+      const SptensorT<ExecSpace>& X,
+      const KtensorT<ExecSpace>& M,
+      const loss_type& f,
+      const ttb_indx num_samples_nonzeros,
+      const ttb_indx num_samples_zeros,
+      const ttb_real weight_nonzeros,
+      const ttb_real weight_zeros,
+      const KtensorT<ExecSpace>& G,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams,
+      SystemTimer& timer,
+      const int timer_nzs,
+      const int timer_zs)
+    {
+      using Kokkos::Experimental::create_scatter_view;
+      using Kokkos::Experimental::ScatterView;
+      using Kokkos::Experimental::ScatterSum;
+
+      typedef Kokkos::TeamPolicy<ExecSpace> Policy;
+      typedef typename Policy::member_type TeamMember;
+      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
+      typedef typename RandomPool::generator_type generator_type;
+      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
+      typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+      static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+      static const unsigned RowBlockSize = 1;
+      static const unsigned FacBlockSize = FBS;
+      static const unsigned VectorSize = is_cuda ? VS : 1;
+      static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+      static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
+
+      static_assert(!is_cuda,
+                    "Cannot call gcp_sgd_ss_grad_sv_kernel for Cuda space!");
+
+      /*const*/ unsigned nd = M.ndims();
+      /*const*/ unsigned nc = M.ncomponents();
+      /*const*/ ttb_indx ns_nz = num_samples_nonzeros;
+      /*const*/ ttb_indx ns_z = num_samples_zeros;
+      /*const*/ ttb_indx nnz = X.nnz();
+      const ttb_indx N_nz = (ns_nz+RowsPerTeam-1)/RowsPerTeam;
+      const ttb_indx N_z = (ns_z+RowsPerTeam-1)/RowsPerTeam;
+      const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
+
+      typedef ScatterView<ttb_real**,Kokkos::LayoutRight,ExecSpace,ScatterSum,Dupl,Cont> ScatterViewType;
+      ScatterViewType *sa = new ScatterViewType[nd];
+      for (unsigned n=0; n<nd; ++n)
+        sa[n] = ScatterViewType(G[n].view());
+
+      timer.start(timer_nzs);
+      Policy policy_nz(N_nz, TeamSize, VectorSize);
+      Kokkos::parallel_for(
+        policy_nz.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+        KOKKOS_LAMBDA(const TeamMember& team)
+      {
+        generator_type gen = rand_pool.get_state();
+        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
+        ttb_indx *ind = &(team_ind(team.team_rank(),0));
+
+        const ttb_indx offset =
+          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+          const ttb_indx idx = offset + ii;
+          if (idx >= ns_nz)
+            continue;
+
+          // Generate random tensor index
+          ttb_real x_val = 0.0;
+          Kokkos::single( Kokkos::PerThread( team ), [&] (ttb_real& xv)
+          {
+            const ttb_indx i = Rand::draw(gen,0,nnz);
+            for (ttb_indx m=0; m<nd; ++m)
+              ind[m] = X.subscript(i,m);
+            xv = X.value(i);
+          }, x_val);
+
+          // Compute Ktensor value
+          const ttb_real m_val =
+            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(M, ind);
+
+          // Compute Y value
+          const ttb_real y_val =
+            weight_nonzeros * ( f.deriv(x_val, m_val) -
+                                f.deriv(ttb_real(0.0), m_val) );
+
+          auto row_func = [&](auto j, auto nj, auto Nj, auto k, auto n, auto& ga)
+          {
+            typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+
+            TV tmp(nj, y_val);
+            for (unsigned m=0; m<nd; ++m) {
+              if (m != n)
+                tmp *= &(M[m].entry(ind[m],j));
+            }
+            //Kokkos::atomic_add(&(G[n].entry(k,j)), tmp);
+            ga(k,j) += tmp;
+          };
+
+          for (unsigned n=0; n<nd; ++n) {
+            auto ga = sa[n].access();
+            const ttb_indx k = ind[n];
+            for (unsigned j=0; j<nc; j+=FacBlockSize) {
+              if (j+FacBlockSize <= nc) {
+                const unsigned nj = FacBlockSize;
+                row_func(j, nj, std::integral_constant<unsigned,nj>(), k, n, ga);
+              }
+              else {
+                const unsigned nj = nc-j;
+                row_func(j, nj, std::integral_constant<unsigned,0>(), k, n, ga);
+              }
+            } // j
+          } // n
+        } // i
+        rand_pool.free_state(gen);
+      }, "gcp_sgd_ss_grad_sv_nonzero_kernel");
+      timer.stop(timer_nzs);
+
+      timer.start(timer_zs);
+      Policy policy_z(N_z, TeamSize, VectorSize);
+      Kokkos::parallel_for(
+        policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+        KOKKOS_LAMBDA(const TeamMember& team)
+      {
+        generator_type gen = rand_pool.get_state();
+        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
+        ttb_indx *ind = &(team_ind(team.team_rank(),0));
+
+        const ttb_indx offset =
+          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+          const ttb_indx idx = offset + ii;
+          if (idx >= ns_z)
+            continue;
+
+          // Generate index -- use broadcast form to force warp sync
+          // so that ind is updated before used by other threads
+          int sync = 0;
+          Kokkos::single( Kokkos::PerThread( team ), [&] (int& s)
+          {
+            for (ttb_indx m=0; m<nd; ++m)
+              ind[m] = Rand::draw(gen,0,X.size(m));
+            s = 1;
+          }, sync);
+
+          // Compute Ktensor value
+          const ttb_real m_val =
+            compute_Ktensor_value<ExecSpace, FacBlockSize, VectorSize>(M, ind);
+
+          // Compute Y value
+          const ttb_real y_val = weight_zeros * f.deriv(ttb_real(0.0), m_val);
+
+          auto row_func = [&](auto j, auto nj, auto Nj, auto k, auto n, auto& ga)
+          {
+            typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+
+            TV tmp(nj, y_val);
+            for (unsigned m=0; m<nd; ++m) {
+              if (m != n)
+                tmp *= &(M[m].entry(ind[m],j));
+            }
+            //Kokkos::atomic_add(&(G[n].entry(k,j)), tmp);
+            ga(k,j) += tmp;
+          };
+
+          for (unsigned n=0; n<nd; ++n) {
+            auto ga = sa[n].access();
+            const ttb_indx k = ind[n];
+            for (unsigned j=0; j<nc; j+=FacBlockSize) {
+              if (j+FacBlockSize <= nc) {
+                const unsigned nj = FacBlockSize;
+                row_func(j, nj, std::integral_constant<unsigned,nj>(), k, n, ga);
+              }
+              else {
+                const unsigned nj = nc-j;
+                row_func(j, nj, std::integral_constant<unsigned,0>(), k, n, ga);
+              }
+            } // j
+          } // n
+        } // i
+        rand_pool.free_state(gen);
+      }, "gcp_sgd_ss_grad_sv_zero_kernel");
+      timer.stop(timer_zs);
+
+      for (unsigned n=0; n<nd; ++n)
+        sa[n].contribute_into(G[n].view());
+      delete [] sa;
     }
 
     // Gradient kernel for gcp_sgd3 that combines sampling and mttkrp for
@@ -367,7 +567,7 @@ namespace Genten {
     }
 
     template <typename ExecSpace, typename loss_type>
-    struct GCP_SS_Grad_Atomic {
+    struct GCP_SS_Grad {
       typedef ExecSpace exec_space;
       typedef SptensorT<exec_space> tensor_type;
       typedef KtensorT<exec_space> Ktensor_type;
@@ -386,18 +586,99 @@ namespace Genten {
       const int timer_nzs;
       const int timer_zs;
 
-      GCP_SS_Grad_Atomic(const tensor_type& X_, const Ktensor_type& M_,
-                         const loss_type& f_,
-                         const ttb_indx num_samples_nonzeros_,
-                         const ttb_indx num_samples_zeros_,
-                         const ttb_real weight_nonzeros_,
-                         const ttb_real weight_zeros_,
-                         const Ktensor_type& G_,
-                         Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool_,
-                         const AlgParams& algParams_,
-                         SystemTimer& timer_,
-                         const int timer_nzs_,
-                         const int timer_zs_) :
+      GCP_SS_Grad(const tensor_type& X_, const Ktensor_type& M_,
+                  const loss_type& f_,
+                  const ttb_indx num_samples_nonzeros_,
+                  const ttb_indx num_samples_zeros_,
+                  const ttb_real weight_nonzeros_,
+                  const ttb_real weight_zeros_,
+                  const Ktensor_type& G_,
+                  Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool_,
+                  const AlgParams& algParams_,
+                  SystemTimer& timer_,
+                  const int timer_nzs_,
+                  const int timer_zs_) :
+        X(X_), M(M_), f(f_),
+        num_samples_nonzeros(num_samples_nonzeros_),
+        num_samples_zeros(num_samples_zeros_),
+        weight_nonzeros(weight_nonzeros_),
+        weight_zeros(weight_zeros_),
+        G(G_), rand_pool(rand_pool_), algParams(algParams_),
+        timer(timer_), timer_nzs(timer_nzs_), timer_zs(timer_zs_) {}
+
+      template <unsigned FBS, unsigned VS>
+      void run() const {
+        using Kokkos::Experimental::ScatterDuplicated;
+        using Kokkos::Experimental::ScatterNonDuplicated;
+        using Kokkos::Experimental::ScatterAtomic;
+        using Kokkos::Experimental::ScatterNonAtomic;
+
+        typedef SpaceProperties<ExecSpace> space_prop;
+
+        MTTKRP_All_Method::type method = algParams.mttkrp_all_method;
+
+        // Never use Duplicated or Atomic for Serial, use Single instead
+        if (space_prop::is_serial && (method == MTTKRP_All_Method::Duplicated ||
+                                      method == MTTKRP_All_Method::Atomic))
+          method = MTTKRP_All_Method::Single;
+
+        // Never use Duplicated for Cuda, use Atomic instead
+        if (space_prop::is_cuda && method == MTTKRP_All_Method::Duplicated)
+          method = MTTKRP_All_Method::Atomic;
+
+        if (method == MTTKRP_All_Method::Single)
+          gcp_sgd_ss_grad_sv_kernel<ScatterNonDuplicated,ScatterNonAtomic,FBS,VS>(
+            X,M,f,num_samples_nonzeros,num_samples_zeros,
+            weight_nonzeros,weight_zeros,G,rand_pool,algParams,
+            timer,timer_nzs,timer_zs);
+        else if (method == MTTKRP_All_Method::Atomic)
+          gcp_sgd_ss_grad_sv_kernel<ScatterNonDuplicated,ScatterAtomic,FBS,VS>(
+            X,M,f,num_samples_nonzeros,num_samples_zeros,
+            weight_nonzeros,weight_zeros,G,rand_pool,algParams,
+            timer,timer_nzs,timer_zs);
+        else if (method == MTTKRP_All_Method::Duplicated)
+          gcp_sgd_ss_grad_sv_kernel<ScatterDuplicated,ScatterNonAtomic,FBS,VS>(
+            X,M,f,num_samples_nonzeros,num_samples_zeros,
+            weight_nonzeros,weight_zeros,G,rand_pool,algParams,
+            timer,timer_nzs,timer_zs);
+      }
+    };
+
+#ifdef KOKKOS_ENABLE_CUDA
+    // Specialization for Cuda that always uses atomics and doesn't call
+    // gcp_sgd_ss_grad_sv_kernel, which won't run on the GPU
+    template <typename loss_type>
+    struct GCP_SS_Grad<Kokkos::Cuda,loss_type> {
+      typedef Kokkos::Cuda exec_space;
+      typedef SptensorT<exec_space> tensor_type;
+      typedef KtensorT<exec_space> Ktensor_type;
+
+      const tensor_type X;
+      const Ktensor_type M;
+      const loss_type f;
+      const ttb_indx num_samples_nonzeros;
+      const ttb_indx num_samples_zeros;
+      const ttb_real weight_nonzeros;
+      const ttb_real weight_zeros;
+      const Ktensor_type G;
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool;
+      const AlgParams algParams;
+      SystemTimer& timer;
+      const int timer_nzs;
+      const int timer_zs;
+
+      GCP_SS_Grad(const tensor_type& X_, const Ktensor_type& M_,
+                  const loss_type& f_,
+                  const ttb_indx num_samples_nonzeros_,
+                  const ttb_indx num_samples_zeros_,
+                  const ttb_real weight_nonzeros_,
+                  const ttb_real weight_zeros_,
+                  const Ktensor_type& G_,
+                  Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool_,
+                  const AlgParams& algParams_,
+                  SystemTimer& timer_,
+                  const int timer_nzs_,
+                  const int timer_zs_) :
         X(X_), M(M_), f(f_),
         num_samples_nonzeros(num_samples_nonzeros_),
         num_samples_zeros(num_samples_zeros_),
@@ -414,9 +695,10 @@ namespace Genten {
           timer,timer_nzs,timer_zs);
       }
     };
+#endif
 
     template <typename ExecSpace, typename loss_type>
-    void gcp_sgd_ss_grad_atomic(
+    void gcp_sgd_ss_grad(
       const SptensorT<ExecSpace>& X,
       const KtensorT<ExecSpace>& M,
       const loss_type& f,
@@ -431,7 +713,7 @@ namespace Genten {
       const int timer_nzs,
       const int timer_zs)
     {
-      GCP_SS_Grad_Atomic<ExecSpace,loss_type> kernel(
+      GCP_SS_Grad<ExecSpace,loss_type> kernel(
         X,M,f,num_samples_nonzeros,num_samples_zeros,
         weight_nonzeros,weight_zeros,G,rand_pool,algParams,
         timer,timer_nzs,timer_zs);
@@ -453,7 +735,7 @@ namespace Genten {
     Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
     const AlgParams& algParams);                                        \
                                                                         \
-  template void Impl::gcp_sgd_ss_grad_atomic(                           \
+  template void Impl::gcp_sgd_ss_grad(                                  \
     const SptensorT<SPACE>& X,                                          \
     const KtensorT<SPACE>& M,                                           \
     const LOSS& f,                                                      \

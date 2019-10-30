@@ -180,7 +180,7 @@ namespace Genten {
                                const int timer_nzs,
                                const int timer_zs) override
     {
-      Impl::gcp_sgd_ss_grad_atomic(
+      Impl::gcp_sgd_ss_grad(
         X, u, loss_func,
         num_samples_nonzeros_grad, num_samples_zeros_grad,
         weight_nonzeros_grad, weight_zeros_grad,

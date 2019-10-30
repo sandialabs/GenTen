@@ -64,7 +64,7 @@ namespace Genten {
       const AlgParams& algParams);
 
     template <typename ExecSpace, typename loss_type>
-    void gcp_sgd_ss_grad_atomic(
+    void gcp_sgd_ss_grad(
       const SptensorT<ExecSpace>& X,
       const KtensorT<ExecSpace>& M,
       const loss_type& f,
