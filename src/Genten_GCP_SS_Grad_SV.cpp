@@ -515,7 +515,7 @@ namespace Genten {
       const ttb_real weight_nonzeros;
       const ttb_real weight_zeros;
       const Ktensor_type G;
-      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool;
+      Kokkos::Random_XorShift64_Pool<exec_space>& rand_pool;
       const AlgParams algParams;
       SystemTimer& timer;
       const int timer_nzs;
@@ -528,7 +528,7 @@ namespace Genten {
                   const ttb_real weight_nonzeros_,
                   const ttb_real weight_zeros_,
                   const Ktensor_type& G_,
-                  Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool_,
+                  Kokkos::Random_XorShift64_Pool<exec_space>& rand_pool_,
                   const AlgParams& algParams_,
                   SystemTimer& timer_,
                   const int timer_nzs_,
