@@ -53,17 +53,6 @@ namespace Genten {
   namespace Impl {
 
     template <typename ExecSpace, typename loss_type>
-    void gcp_sgd_grad_atomic(
-      const SptensorT<ExecSpace>& X,
-      const KtensorT<ExecSpace>& M,
-      const ArrayT<ExecSpace>& w,
-      const loss_type& f,
-      const ttb_indx num_samples,
-      const KtensorT<ExecSpace>& G,
-      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
-      const AlgParams& algParams);
-
-    template <typename ExecSpace, typename loss_type>
     void gcp_sgd_ss_grad(
       const SptensorT<ExecSpace>& X,
       const KtensorT<ExecSpace>& M,
