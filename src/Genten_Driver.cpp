@@ -52,7 +52,6 @@
 #ifdef HAVE_GCP
 #include "Genten_GCP_LossFunctions.hpp"
 #include "Genten_GCP_SGD.hpp"
-#include "Genten_GCP_SGD2.hpp"
 #include "Genten_GCP_SGD_SA.hpp"
 #ifdef HAVE_ROL
 #include "Genten_GCP_Opt.hpp"
@@ -148,9 +147,6 @@ driver(SptensorT<ExecSpace>& x,
   const bool do_gcp_sgd =
     algParams.method == "GCP-SGD" || algParams.method == "gcp_sgd" ||
     algParams.method == "gcp-sgd";
-  const bool do_gcp_sgd2 =
-    algParams.method == "GCP-SGD2" || algParams.method == "gcp_sgd2" ||
-    algParams.method == "gcp-sgd2";
   const bool do_gcp_opt =
     algParams.method == "GCP-OPT" || algParams.method == "gcp_opt" ||
     algParams.method == "gcp-opt";
@@ -167,12 +163,6 @@ driver(SptensorT<ExecSpace>& x,
     ttb_indx iter;
     ttb_real resNorm;
     gcp_sgd(x, u, algParams, iter, resNorm, out);
-  }
-  else if (do_gcp_sgd2) {
-    // Run GCP-SGD
-    ttb_indx iter;
-    ttb_real resNorm;
-    gcp_sgd2(x, u, algParams, iter, resNorm, out);
   }
   else if (do_gcp_sgd && algParams.fuse_sa) {
     // Run GCP-SGD

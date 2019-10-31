@@ -364,7 +364,6 @@ IF (ENABLE_GCP)
     ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SamplingKernels.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD2.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_Grad_Atomic.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD_SA.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_Grad_SA.cpp
