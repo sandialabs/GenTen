@@ -44,8 +44,8 @@
 #include "Genten_AlgParams.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_GCP_SamplingKernels.hpp"
-#include "Genten_GCP_Grad_Atomic.hpp"
-#include "Genten_GCP_Grad_SA.hpp"
+#include "Genten_GCP_SS_Grad_SV.hpp"
+#include "Genten_GCP_SS_Grad_SA.hpp"
 #include "Genten_GCP_KokkosVector.hpp"
 
 namespace Genten {
