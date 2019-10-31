@@ -365,7 +365,7 @@ IF (ENABLE_GCP)
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SamplingKernels.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD_SA.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SV.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA.cpp
     #${Genten_SOURCE_DIR}/src/Genten_GCP_HogWild.cpp
     #${Genten_SOURCE_DIR}/src/Genten_GCP_SGD2_HogWild.cpp

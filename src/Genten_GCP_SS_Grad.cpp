@@ -38,7 +38,7 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_GCP_SS_Grad_SV.hpp"
+#include "Genten_GCP_SS_Grad.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
 #include "Genten_SimdKernel.hpp"
 #include "Genten_Util.hpp"
