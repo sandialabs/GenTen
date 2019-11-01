@@ -41,6 +41,7 @@
 #include <sstream>
 
 #include "Genten_GCP_SGD.hpp"
+#include "Genten_GCP_SGD_SA.hpp"
 #include "Genten_IndxArray.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_Ktensor.hpp"
@@ -63,9 +64,14 @@ using namespace Genten::Test;
  *  solution, just check that when you multiply the factors together, you
  *  get the original tensor.
  */
-void Genten_Test_GCP_SGD_Type (int infolevel, const std::string& label,
-                               Genten::MTTKRP_Method::type mttkrp_method,
-                               const Genten::GCP_LossFunction::type loss_type)
+void Genten_Test_GCP_SGD_Type(int infolevel,
+                              const std::string& label,
+                              Genten::GCP_Sampling::type sampling_type,
+                              Genten::MTTKRP_All_Method::type mttkrp_all_method,
+                              Genten::MTTKRP_Method::type mttkrp_method,
+                              const bool fuse,
+                              const bool fuse_sa,
+                              const Genten::GCP_LossFunction::type loss_type)
 {
   typedef Genten::DefaultExecutionSpace exec_space;
   typedef Genten::DefaultHostExecutionSpace host_exec_space;
@@ -135,7 +141,10 @@ void Genten_Test_GCP_SGD_Type (int infolevel, const std::string& label,
   algParams.gcp_tol = 1.0e-6;
   algParams.maxiters = 100;
   algParams.printitn = (infolevel == 1) ? 1 : 0;
+  algParams.sampling_type = sampling_type;
   algParams.mttkrp_method = mttkrp_method;
+  algParams.mttkrp_all_method = mttkrp_all_method;
+  algParams.fuse = fuse;
   algParams.loss_function_type = loss_type;
   algParams.oversample_factor = 5;
 
@@ -145,8 +154,12 @@ void Genten_Test_GCP_SGD_Type (int infolevel, const std::string& label,
   try
   {
     result_dev = initialBasis_dev;
-    Genten::gcp_sgd<Sptensor_type> (X_dev, result_dev, algParams,
-                                    numIters, resNorm, std::cout);
+    if (!fuse_sa)
+      Genten::gcp_sgd<Sptensor_type>(X_dev, result_dev, algParams,
+                                     numIters, resNorm, std::cout);
+    else
+      Genten::gcp_sgd_sa<Sptensor_type>(X_dev, result_dev, algParams,
+                                        numIters, resNorm, std::cout);
   }
   catch(std::string sExc)
   {
@@ -186,17 +199,52 @@ void Genten_Test_GCP_SGD_Type (int infolevel, const std::string& label,
 
 void Genten_Test_GCP_SGD (int infolevel)
 {
-  // Only test atomic currently, to speed up test
 
-  Genten_Test_GCP_SGD_Type(infolevel,"Atomic, Gaussian",
+  // Stratified sampling with different MTTKRP variants
+
+  Genten_Test_GCP_SGD_Type(infolevel,
+                           "Stratified, Atomic (iterated), Gaussian",
+                           Genten::GCP_Sampling::Stratified,
+                           Genten::MTTKRP_All_Method::Iterated,
                            Genten::MTTKRP_Method::Atomic,
+                           false, false,
+                           Genten::GCP_LossFunction::Gaussian);
+  Genten_Test_GCP_SGD_Type(infolevel,
+                           "Stratified, Atomic (all), Gaussian",
+                           Genten::GCP_Sampling::Stratified,
+                           Genten::MTTKRP_All_Method::Atomic,
+                           Genten::MTTKRP_Method::Atomic,
+                           false, false,
+                           Genten::GCP_LossFunction::Gaussian);
+  Genten_Test_GCP_SGD_Type(infolevel,
+                           "Stratified, Duplicated (all), Gaussian",
+                           Genten::GCP_Sampling::Stratified,
+                           Genten::MTTKRP_All_Method::Duplicated,
+                           Genten::MTTKRP_Method::Duplicated,
+                           false, false,
                            Genten::GCP_LossFunction::Gaussian);
 
-  // Genten_Test_GCP_SGD_Type(infolevel,"Duplicated, Gaussian",
-  //                          Genten::MTTKRP_Method::Duplicated,
-  //                          Genten::GCP_LossFunction::Gaussian);
+  // Semi-stratified with fused gradients
 
-  // Genten_Test_GCP_SGD_Type(infolevel,"Perm, Gaussian",
-  //                          Genten::MTTKRP_Method::Perm,
+  // Genten_Test_GCP_SGD_Type(infolevel,
+  //                          "Semi-Stratified, Fused (atomic), Gaussian",
+  //                          Genten::GCP_Sampling::SemiStratified,
+  //                          Genten::MTTKRP_All_Method::Atomic,
+  //                          Genten::MTTKRP_Method::Atomic,
+  //                          true, false,
+  //                          Genten::GCP_LossFunction::Gaussian);
+  // Genten_Test_GCP_SGD_Type(infolevel,
+  //                          "Semi-Stratified, Fused (duplicated), Gaussian",
+  //                          Genten::GCP_Sampling::SemiStratified,
+  //                          Genten::MTTKRP_All_Method::Duplicated,
+  //                          Genten::MTTKRP_Method::Duplicated,
+  //                          true, false,
+  //                          Genten::GCP_LossFunction::Gaussian);
+  // Genten_Test_GCP_SGD_Type(infolevel,
+  //                          "Semi-Stratified, Fused (SA), Gaussian",
+  //                          Genten::GCP_Sampling::SemiStratified,
+  //                          Genten::MTTKRP_All_Method::Atomic,
+  //                          Genten::MTTKRP_Method::Atomic,
+  //                          false, true,
   //                          Genten::GCP_LossFunction::Gaussian);
 }
