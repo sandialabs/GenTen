@@ -365,8 +365,16 @@ IF (ENABLE_GCP)
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SamplingKernels.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD_SA.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_Gaussian.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_Poisson.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_Rayleigh.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_Gamma.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_Bernoulli.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Gaussian.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Poisson.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Rayleigh.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Gamma.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Bernoulli.cpp
     #${Genten_SOURCE_DIR}/src/Genten_GCP_HogWild.cpp
     #${Genten_SOURCE_DIR}/src/Genten_GCP_SGD2_HogWild.cpp
     )

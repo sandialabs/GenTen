@@ -38,22 +38,24 @@
 // ************************************************************************
 //@HEADER
 
+#pragma once
+
 #include <algorithm>
 
 #include "Genten_GCP_SS_Grad_SA.hpp"
-#include "Genten_GCP_LossFunctions.hpp"
 #include "Genten_SimdKernel.hpp"
-#include "Genten_Util.hpp"
 #include "Genten_KokkosAlgs.hpp"
 
 namespace Genten {
 
   namespace Impl {
 
-    // Gradient kernel for gcp_sgd3 that combines sampling and mttkrp for
+    // Gradient kernel for gcp_sgd that combines sampling and mttkrp for
     // computing the gradient.  It also does each mode in the MTTKRP for each
     // nonzero, rather than doing a full MTTKRP for each mode.  This speeds it
-    // up significantly.  Obviously it only works with atomic writes.
+    // up significantly.  This is based on a sparse array approach combining
+    // sampling, MTTKRP, step, and project in one kernel that doesn't rely on
+    // atomics.
     template <unsigned FBS, unsigned VS,
               typename ExecSpace, typename loss_type>
     void gcp_sgd_ss_grad_sa_kernel(
@@ -426,18 +428,3 @@ namespace Genten {
     const int timer_sort,                                               \
     const int timer_scan,                                               \
     const int timer_step);
-
-
-// #define INST_MACRO(SPACE)                                               \
-//   LOSS_INST_MACRO(SPACE,GaussianLossFunction)                           \
-//   LOSS_INST_MACRO(SPACE,RayleighLossFunction)                           \
-//   LOSS_INST_MACRO(SPACE,GammaLossFunction)                              \
-//   LOSS_INST_MACRO(SPACE,BernoulliLossFunction)                          \
-//   LOSS_INST_MACRO(SPACE,PoissonLossFunction)
-
-
-#define INST_MACRO(SPACE)                                               \
-  LOSS_INST_MACRO(SPACE,GaussianLossFunction)                           \
-  LOSS_INST_MACRO(SPACE,PoissonLossFunction)
-
-GENTEN_INST(INST_MACRO)

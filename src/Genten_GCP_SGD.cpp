@@ -441,15 +441,15 @@ namespace Genten {
     if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
       Impl::gcp_sgd_impl(x, u, GaussianLossFunction(algParams.loss_eps),
                          algParams, numIters, resNorm, out);
-    // else if (algParams.loss_function_type == GCP_LossFunction::Rayleigh)
-    //   Impl::gcp_sgd_impl(x, u, RayleighLossFunction(algParams.loss_eps),
-    //                      algParams, numIters, resNorm, out);
-    // else if (algParams.loss_function_type == GCP_LossFunction::Gamma)
-    //   Impl::gcp_sgd_impl(x, u, GammaLossFunction(algParams.loss_eps),
-    //                      algParams, numIters, resNorm, out);
-    // else if (algParams.loss_function_type == GCP_LossFunction::Bernoulli)
-    //   Impl::gcp_sgd_impl(x, u, BernoulliLossFunction(algParams.loss_eps),
-    //                      algParams, numIters, resNorm, out);
+    else if (algParams.loss_function_type == GCP_LossFunction::Rayleigh)
+      Impl::gcp_sgd_impl(x, u, RayleighLossFunction(algParams.loss_eps),
+                         algParams, numIters, resNorm, out);
+    else if (algParams.loss_function_type == GCP_LossFunction::Gamma)
+      Impl::gcp_sgd_impl(x, u, GammaLossFunction(algParams.loss_eps),
+                         algParams, numIters, resNorm, out);
+    else if (algParams.loss_function_type == GCP_LossFunction::Bernoulli)
+      Impl::gcp_sgd_impl(x, u, BernoulliLossFunction(algParams.loss_eps),
+                         algParams, numIters, resNorm, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Poisson)
       Impl::gcp_sgd_impl(x, u, PoissonLossFunction(algParams.loss_eps),
                          algParams, numIters, resNorm, out);

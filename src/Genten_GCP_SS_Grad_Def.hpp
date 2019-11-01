@@ -38,10 +38,10 @@
 // ************************************************************************
 //@HEADER
 
+#pragma once
+
 #include "Genten_GCP_SS_Grad.hpp"
-#include "Genten_GCP_LossFunctions.hpp"
 #include "Genten_SimdKernel.hpp"
-#include "Genten_Util.hpp"
 
 // This is a locally-modified version of Kokkos_ScatterView.hpp which we
 // need until the changes are moved into Kokkos
@@ -593,18 +593,3 @@ namespace Genten {
     SystemTimer& timer,                                                 \
     const int timer_nzs,                                                \
     const int timer_zs);
-
-
-// #define INST_MACRO(SPACE)                                               \
-//   LOSS_INST_MACRO(SPACE,GaussianLossFunction)                           \
-//   LOSS_INST_MACRO(SPACE,RayleighLossFunction)                           \
-//   LOSS_INST_MACRO(SPACE,GammaLossFunction)                              \
-//   LOSS_INST_MACRO(SPACE,BernoulliLossFunction)                          \
-//   LOSS_INST_MACRO(SPACE,PoissonLossFunction)
-
-
-#define INST_MACRO(SPACE)                                               \
-  LOSS_INST_MACRO(SPACE,GaussianLossFunction)                           \
-  LOSS_INST_MACRO(SPACE,PoissonLossFunction)
-
-GENTEN_INST(INST_MACRO)
