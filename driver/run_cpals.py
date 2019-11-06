@@ -60,7 +60,7 @@ def get_stats(file_name):
         if m != None:
             mttkrp = float(m.group(1))
 
-        m = re.search('createPermutation\(\) took \s*(.*) seconds', line)
+        m = re.search('Creating permutation arrays for perm MTTKRP method took \s*(.*) seconds', line)
         if m != None:
             fillComplete = float(m.group(1))
 
@@ -179,11 +179,11 @@ tensors = [ ('lbnl-network.tns', 'LBNL', 1),
 
 
 print '\nKokkos:'
-options.args = args + ' --mttkrp_method atomic'
+options.args = args + ' --mttkrp-method atomic'
 options.output = output + '_kokkos'
 its_k,cpals_k,mttkrp_k,fillComplete_k,tot_k = run_cpals_tensors(options, tensors)
 
 print '\nPerm:'
-options.args = args + ' --mttkrp_method perm'
+options.args = args + ' --mttkrp-method perm'
 options.output = output + '_perm'
 its_p,cpals_p,mttkrp_p,fillComplete_p,tot_p = run_cpals_tensors(options, tensors)
