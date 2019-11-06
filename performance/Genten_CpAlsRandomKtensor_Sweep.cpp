@@ -130,9 +130,8 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
   Ktensor_type cInitialGuess = create_mirror_view( Space(), cInitialGuess_host );
   deep_copy( cInitialGuess, cInitialGuess_host );
 
-  // Compute default MTTKRP method if that is what was chosen
-  if (algParams.mttkrp_method == Genten::MTTKRP_Method::Default)
-    algParams.mttkrp_method = Genten::MTTKRP_Method::computeDefault<Space>();
+  // Fixup algorithmic choices
+  algParams.fixup<Space>(cout);
 
   // Do a pass through the mttkrp to warm up and make sure the tensor
   // is copied to the device before generating any timings.  Use

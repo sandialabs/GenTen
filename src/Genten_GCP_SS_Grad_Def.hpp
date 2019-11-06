@@ -467,18 +467,7 @@ namespace Genten {
         using Kokkos::Experimental::ScatterAtomic;
         using Kokkos::Experimental::ScatterNonAtomic;
 
-        typedef SpaceProperties<ExecSpace> space_prop;
-
         MTTKRP_All_Method::type method = algParams.mttkrp_all_method;
-
-        // Never use Duplicated or Atomic for Serial, use Single instead
-        if (space_prop::is_serial && (method == MTTKRP_All_Method::Duplicated ||
-                                      method == MTTKRP_All_Method::Atomic))
-          method = MTTKRP_All_Method::Single;
-
-        // Never use Duplicated for Cuda, use Atomic instead
-        if (space_prop::is_cuda && method == MTTKRP_All_Method::Duplicated)
-          method = MTTKRP_All_Method::Atomic;
 
         if (method == MTTKRP_All_Method::Single)
           gcp_sgd_ss_grad_sv_kernel<ScatterNonDuplicated,ScatterNonAtomic,FBS,VS>(
@@ -495,6 +484,8 @@ namespace Genten {
             X,M,f,num_samples_nonzeros,num_samples_zeros,
             weight_nonzeros,weight_zeros,G,rand_pool,algParams,
             timer,timer_nzs,timer_zs);
+        else if (method == MTTKRP_All_Method::Iterated)
+          Genten::error("Cannot use iterated MTTKRP method in fused stratified-sampling/MTTKRP kernel!");
       }
     };
 
@@ -543,6 +534,9 @@ namespace Genten {
 
       template <unsigned FBS, unsigned VS>
       void run() const {
+        if (algParams.mttkrp_all_method != MTTKRP_All_Method::Atomic)
+          Genten::error("MTTKRP-All method must be atomic on Cuda!");
+
         gcp_sgd_ss_grad_atomic_kernel<FBS,VS>(
           X,M,f,num_samples_nonzeros,num_samples_zeros,
           weight_nonzeros,weight_zeros,G,rand_pool,algParams,

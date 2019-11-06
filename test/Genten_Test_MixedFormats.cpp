@@ -567,12 +567,16 @@ void Genten_Test_MTTKRP_All_Type(Genten::MTTKRP_All_Method::type mttkrp_method,
 
 void Genten_Test_MixedFormats(int infolevel)
 {
+  typedef Genten::DefaultExecutionSpace exec_space;
+  typedef Genten::SpaceProperties<exec_space> space_prop;
+
   Genten_Test_MixedFormats_Impl(infolevel);
 
   Genten_Test_MTTKRP_Type(Genten::MTTKRP_Method::Atomic, infolevel,
                           "Atomic");
-  Genten_Test_MTTKRP_Type(Genten::MTTKRP_Method::Duplicated, infolevel,
-                          "Duplicated");
+  if (!space_prop::is_cuda)
+    Genten_Test_MTTKRP_Type(Genten::MTTKRP_Method::Duplicated, infolevel,
+                            "Duplicated");
   Genten_Test_MTTKRP_Type(Genten::MTTKRP_Method::Perm, infolevel,
                           "Perm");
 
@@ -580,6 +584,7 @@ void Genten_Test_MixedFormats(int infolevel)
                               "Iterated");
   Genten_Test_MTTKRP_All_Type(Genten::MTTKRP_All_Method::Atomic, infolevel,
                               "Atomic");
-  Genten_Test_MTTKRP_All_Type(Genten::MTTKRP_All_Method::Duplicated, infolevel,
-                              "Duplicated");
+  if (!space_prop::is_cuda)
+    Genten_Test_MTTKRP_All_Type(Genten::MTTKRP_All_Method::Duplicated,
+                                infolevel, "Duplicated");
 }

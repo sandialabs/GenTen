@@ -42,7 +42,7 @@
 #include "Genten_FacMatrix.hpp"
 
 Genten::AlgParams::AlgParams() :
-  method("cp-als"),
+  method(Solver_Method::default_type),
   rank(16),
   seed(12345),
   prng(false),
@@ -94,7 +94,10 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   // Parse options from command-line, using default values set above as defaults
 
   // Generic options
-  method = parse_string(args, "--method", method.c_str());
+  method = parse_ttb_enum(args, "--method", method,
+                          Genten::Solver_Method::num_types,
+                          Genten::Solver_Method::types,
+                          Genten::Solver_Method::names);
   rank = parse_ttb_indx(args, "--rank", rank, 1, INT_MAX);
   seed = parse_ttb_indx(args, "--seed", seed, 0, INT_MAX);
   prng = parse_ttb_bool(args, "--prng", "--no-prng", prng);
@@ -174,15 +177,21 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   fuse_sa = parse_ttb_bool(args, "--fuse-sa", "--no-fuse-sa", fuse_sa);
   compute_fit = parse_ttb_bool(args, "--fit", "--no-fit", compute_fit);
   use_adam = parse_ttb_bool(args, "--adam", "--no-adam", use_adam);
-  adam_beta1 = parse_ttb_real(args, "--adam_beta1", adam_beta1, 0.0, 1.0);
-  adam_beta2 = parse_ttb_real(args, "--adam_beta2", adam_beta2, 0.0, 1.0);
-  adam_eps = parse_ttb_real(args, "--adam_eps", adam_eps, 0.0, 1.0);
+  adam_beta1 = parse_ttb_real(args, "--adam-beta1", adam_beta1, 0.0, 1.0);
+  adam_beta2 = parse_ttb_real(args, "--adam-beta2", adam_beta2, 0.0, 1.0);
+  adam_eps = parse_ttb_real(args, "--adam-eps", adam_eps, 0.0, 1.0);
 }
 
 void Genten::AlgParams::print_help(std::ostream& out)
 {
   out << "Generic options: " << std::endl;
-  out << "  --method <string>  decomposition method" << std::endl;
+  out << "  --method <method>  decomposition method: ";
+  for (unsigned i=0; i<Genten::Solver_Method::num_types; ++i) {
+    out << Genten::Solver_Method::names[i];
+    if (i != Genten::Solver_Method::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
   out << "  --rank <int>       rank of factorization to compute" << std::endl;
   out << "  --seed <int>       seed for random number generator used in initial guess" << std::endl;
   out << "  --prng             use parallel random number generator (not consistent with Matlab)" << std::endl;
@@ -264,15 +273,15 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --fuse-sa          fuse with sparse array gradient" << std::endl;
   out << "  --fit              compute fit metric" << std::endl;
   out << "  --adam             use ADAM step" << std::endl;
-  out << "  --adam_beta1       Decay rate for 1st moment avg." << std::endl;
-  out << "  --adam_beta2       Decay rate for 2nd moment avg." << std::endl;
-  out << "  --adam_eps         Shift in ADAM step." << std::endl;
+  out << "  --adam-beta1       Decay rate for 1st moment avg." << std::endl;
+  out << "  --adam-beta2       Decay rate for 2nd moment avg." << std::endl;
+  out << "  --adam-eps         Shift in ADAM step." << std::endl;
 }
 
 void Genten::AlgParams::print(std::ostream& out)
 {
   out << "Generic options: " << std::endl;
-  out << "  method = " << method << std::endl;
+  out << "  method = " << Genten::Solver_Method::names[method] << std::endl;
   out << "  rank = " << rank << std::endl;
   out << "  seed = " << seed << std::endl;
   out << "  prng = " << (prng ? "true" : "false") << std::endl;
@@ -286,9 +295,9 @@ void Genten::AlgParams::print(std::ostream& out)
 
   out << std::endl;
   out << "MTTKRP options:" << std::endl;
-  out << "  mttkrp-method = " << Genten::MTTKRP_Method::types[mttkrp_method]
+  out << "  mttkrp-method = " << Genten::MTTKRP_Method::names[mttkrp_method]
       << std::endl;
-  out << "  mttkrp-all-method = " << Genten::MTTKRP_All_Method::types[mttkrp_all_method]
+  out << "  mttkrp-all-method = " << Genten::MTTKRP_All_Method::names[mttkrp_all_method]
       << std::endl;
   out << "  mttkrp-nnz-tile-size = " << mttkrp_nnz_tile_size << std::endl;
   out << "  mttkrp-duplicated-tile-size = " << mttkrp_duplicated_factor_matrix_tile_size << std::endl;
@@ -331,9 +340,9 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  fuse-sa = " << (fuse_sa ? "true" : "false") << std::endl;
   out << "  fit = " << (compute_fit ? "true" : "false") << std::endl;
   out << "  adam = " << (use_adam ? "true" : "false") << std::endl;
-  out << "  adam_beta1 = " << adam_beta1 << std::endl;
-  out << "  adam_beta2 = " << adam_beta2 << std::endl;
-  out << "  adam_eps = " << adam_eps << std::endl;
+  out << "  adam-beta1 = " << adam_beta1 << std::endl;
+  out << "  adam-beta2 = " << adam_beta2 << std::endl;
+  out << "  adam-eps = " << adam_eps << std::endl;
 }
 
 ttb_real

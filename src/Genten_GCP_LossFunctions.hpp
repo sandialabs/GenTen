@@ -40,6 +40,8 @@
 
 #pragma once
 
+#include <string>
+
 #include "Genten_Util.hpp"
 
 // Use constrained versions of some loss function
@@ -50,6 +52,8 @@ namespace Genten {
   class GaussianLossFunction {
   public:
     GaussianLossFunction(const ttb_real&) {}
+
+    std::string name() const { return "Gaussian (normal)"; }
 
     KOKKOS_INLINE_FUNCTION
     ttb_real value(const ttb_real& x, const ttb_real& m) const {
@@ -73,6 +77,8 @@ namespace Genten {
   public:
     RayleighLossFunction(const ttb_real& epsilon) :
       eps(epsilon), pi_over_4(std::atan(ttb_real(1.0))) {}
+
+    std::string name() const { return "Rayleigh"; }
 
     KOKKOS_INLINE_FUNCTION
     ttb_real value(const ttb_real& x, const ttb_real& m) const {
@@ -99,6 +105,8 @@ namespace Genten {
   class GammaLossFunction {
   public:
     GammaLossFunction(const ttb_real& epsilon) : eps(epsilon) {}
+
+    std::string name() const { return "Gamma"; }
 
     KOKKOS_INLINE_FUNCTION
     ttb_real value(const ttb_real& x, const ttb_real& m) const {
@@ -127,6 +135,8 @@ namespace Genten {
   public:
     BernoulliLossFunction(const ttb_real& epsilon) : eps(epsilon) {}
 
+    std::string name() const { return "Bernoulli (binary)"; }
+
     KOKKOS_INLINE_FUNCTION
     ttb_real value(const ttb_real& x, const ttb_real& m) const {
       return std::log(m + ttb_real(1.0)) - x*std::log(m+eps);
@@ -149,6 +159,8 @@ namespace Genten {
   class PoissonLossFunction {
   public:
     PoissonLossFunction(const ttb_real& epsilon) : eps(epsilon) {}
+
+    std::string name() const { return "Poisson (count)"; }
 
     KOKKOS_INLINE_FUNCTION
     ttb_real value(const ttb_real& x, const ttb_real& m) const {
@@ -175,6 +187,8 @@ namespace Genten {
   public:
     BernoulliLossFunction(const ttb_real&) {}
 
+    std::string name() const { return "Bernoulli (binary)"; }
+
     KOKKOS_INLINE_FUNCTION
     ttb_real value(const ttb_real& x, const ttb_real& m) const {
       using std::exp;
@@ -198,6 +212,8 @@ namespace Genten {
   class PoissonLossFunction {
   public:
     PoissonLossFunction(const ttb_real&) {}
+
+    std::string name() const { return "Poisson (count)"; }
 
     KOKKOS_INLINE_FUNCTION
     ttb_real value(const ttb_real& x, const ttb_real& m) const {

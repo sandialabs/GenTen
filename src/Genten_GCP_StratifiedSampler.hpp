@@ -129,15 +129,21 @@ namespace Genten {
 
     virtual void print(std::ostream& out) override
     {
-      out << "Using stratified sampler" << std::endl
-          << "\tNum samples f: " << num_samples_nonzeros_value <<" nonzeros, "
-          << num_samples_zeros_value << " zeros" << std::endl
-          << "\tNum samples g: " << num_samples_nonzeros_grad << " nonzeros, "
-          << num_samples_zeros_grad << " zeros" << std::endl
-          << "\tWeights f: " << weight_nonzeros_value << " nonzeros, "
-          << weight_zeros_value << " zeros" << std::endl
-          << "\tWeights g: " << weight_nonzeros_grad << " nonzeros, "
-          << weight_zeros_grad << " zeros" << std::endl;
+      // out << "Using stratified sampler" << std::endl
+      //     << "\tNum samples f: " << num_samples_nonzeros_value <<" nonzeros, "
+      //     << num_samples_zeros_value << " zeros" << std::endl
+      //     << "\tNum samples g: " << num_samples_nonzeros_grad << " nonzeros, "
+      //     << num_samples_zeros_grad << " zeros" << std::endl
+      //     << "\tWeights f: " << weight_nonzeros_value << " nonzeros, "
+      //     << weight_zeros_value << " zeros" << std::endl
+      //     << "\tWeights g: " << weight_nonzeros_grad << " nonzeros, "
+      //     << weight_zeros_grad << " zeros" << std::endl;
+
+      out << "Function sampler:  stratified with " << num_samples_nonzeros_value
+          << " nonzero and " << num_samples_zeros_value << " zero samples\n"
+          << "Gradient sampler:  stratified with " << num_samples_nonzeros_grad
+          << " nonzero and " << num_samples_zeros_grad << " zero samples"
+          << std::endl;
     }
 
     virtual void sampleTensor(const bool gradient,

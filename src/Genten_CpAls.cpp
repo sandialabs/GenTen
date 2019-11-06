@@ -150,9 +150,20 @@ namespace Genten {
     const int timer_scale = 5;
     const int timer_norm = 6;
     const int timer_arrange = 7;
-    Genten::SystemTimer  timer(8);
+    Genten::SystemTimer timer(8, algParams.timings);
 
     timer.start(timer_cpals);
+
+    if (printIter > 0) {
+      out << "\nCP-ALS ("
+          << Genten::MTTKRP_Method::names[algParams.mttkrp_method]
+          << " MTTKRP method, ";
+      if (algParams.full_gram)
+        out << "full-gram";
+      else
+        out << "symmetric-gram";
+      out << " formulation):" << std::endl;
+    }
 
     // Initialize CpAlsPerfInfo.
     if ((perfIter > 0) && (perfInfo == NULL))
@@ -356,6 +367,9 @@ namespace Genten {
         break;
       }
     }
+    if (printIter > 0)
+      out << "Final fit = " << std::setw(13) << std::setprecision(6)
+          << std::scientific << fit << std::endl;
 
     // Increment so the count starts from one.
     numIters++;
@@ -395,7 +409,7 @@ namespace Genten {
       perfInfo[nNextPerf].dmttkrp_gflops = mttkrp_tput;
     }
 
-    if (printIter > 0)
+    if (printIter > 0 && algParams.timings)
     {
       out.setf(std::ios_base::scientific);
       out.precision(2);

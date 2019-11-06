@@ -111,8 +111,32 @@ namespace Genten {
       constexpr ttb_real ub = LossFunction::upper_bound();
 
       if (printIter > 0) {
-        out << "Starting GCP-SGD-SA" << std::endl;
+        const ttb_indx nnz = X.nnz();
+        const ttb_real tsz = X.numel_float();
+        const ttb_real nz = tsz - nnz;
+        out << "\nGCP-SGD (Generalized CP Tensor Decomposition)\n\n"
+            << "Tensor size: ";
+        for (ttb_indx i=0; i<nd; ++i) {
+          out << X.size(i) << " ";
+          if (i<nd-1)
+            out << "x ";
+        }
+        out << "(" << tsz << " total entries)\n"
+            << "Sparse tensor: " << nnz << " ("
+            << std::setprecision(1) << std::fixed << 100.0*(nnz/tsz)
+            << "%) Nonzeros" << " and ("
+            << std::setprecision(1) << std::fixed << 100.0*(nz/tsz)
+            << "%) Zeros\n"
+            << "Generalized function type: " << loss_func.name() << std::endl
+            << "Optimization method: " << (use_adam ? "adam\n" : "sgd\n")
+            << "Max iterations (epochs): " << maxEpochs << std::endl
+            << "Iterations per epoch: " << epoch_iters << std::endl
+            << "Learning rate / decay / maxfails: "
+            << std::setprecision(1) << std::scientific
+            << rate << " " << decay << " " << max_fails << std::endl;
         sampler.print(out);
+        out << "Gradient method: Fused sampling and sparse array MTTKRP\n";
+        out << std::endl;
       }
 
       // Timers -- turn on fences when timing info is requested so we get
@@ -200,7 +224,8 @@ namespace Genten {
       ttb_real fit_prev = fit;
 
       if (printIter > 0) {
-        out << "Initial f-est: "
+        out << "Begin main loop\n"
+            << "Initial f-est: "
             << std::setw(13) << std::setprecision(6) << std::scientific
             << fest;
         if (compute_fit)
@@ -316,7 +341,8 @@ namespace Genten {
       timer.stop(timer_sgd);
 
       if (printIter > 0) {
-        out << "Final f-est: "
+        out << "End main loop\n"
+            << "Final f-est: "
             << std::setw(13) << std::setprecision(6) << std::scientific
             << fest;
         if (compute_fit)

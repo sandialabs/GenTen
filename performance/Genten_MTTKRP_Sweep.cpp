@@ -116,9 +116,8 @@ void run_mttkrp(const std::string& inputfilename,
     Ktensor_host_type cSol_host;
     Genten::FacTestSetGenerator cTestGen;
 
-    // Compute default MTTKRP method if that is what was chosen
-    if (algParams.mttkrp_method == Genten::MTTKRP_Method::Default)
-      algParams.mttkrp_method = Genten::MTTKRP_Method::computeDefault<Space>();
+    // Fixup algorithmic choices
+    algParams.fixup<Space>(std::cout);
 
     Genten::SystemTimer gen_timer(1);
     gen_timer.start(0);

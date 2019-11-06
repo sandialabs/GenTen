@@ -199,6 +199,8 @@ void Genten_Test_GCP_SGD_Type(int infolevel,
 
 void Genten_Test_GCP_SGD (int infolevel)
 {
+  typedef Genten::DefaultExecutionSpace exec_space;
+  typedef Genten::SpaceProperties<exec_space> space_prop;
 
   // Stratified sampling with different MTTKRP variants
 
@@ -216,15 +218,19 @@ void Genten_Test_GCP_SGD (int infolevel)
                            Genten::MTTKRP_Method::Atomic,
                            false, false,
                            Genten::GCP_LossFunction::Gaussian);
-  Genten_Test_GCP_SGD_Type(infolevel,
-                           "Stratified, Duplicated (all), Gaussian",
-                           Genten::GCP_Sampling::Stratified,
-                           Genten::MTTKRP_All_Method::Duplicated,
-                           Genten::MTTKRP_Method::Duplicated,
-                           false, false,
-                           Genten::GCP_LossFunction::Gaussian);
+  if (!space_prop::is_cuda)
+    Genten_Test_GCP_SGD_Type(infolevel,
+                             "Stratified, Duplicated (all), Gaussian",
+                             Genten::GCP_Sampling::Stratified,
+                             Genten::MTTKRP_All_Method::Duplicated,
+                             Genten::MTTKRP_Method::Duplicated,
+                             false, false,
+                             Genten::GCP_LossFunction::Gaussian);
 
-  // Semi-stratified with fused gradients
+  // Semi-stratified with fused gradients.
+
+  // The factorization doesn't converge, so not currently running it.
+  // Need to figure out why it doesn't converge and create one that does.
 
   // Genten_Test_GCP_SGD_Type(infolevel,
   //                          "Semi-Stratified, Fused (atomic), Gaussian",

@@ -43,6 +43,7 @@
 #include "Genten_Matlab.hpp"
 #include "Genten_Driver.hpp"
 #include "Genten_Util.hpp"
+#include "Genten_SystemTimer.hpp"
 
 extern "C" {
 
@@ -54,23 +55,48 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
   GentenInitialize();
 
   try {
-    if (nrhs < 2) {
-      std::cout << "Expected at least 2 command line arguments" << std::endl;
+    if (nrhs < 3) {
+      std::cout << "Expected at least 3 command line arguments" << std::endl;
       return;
     }
 
     // Parse inputs
+    auto args = mxBuildArgList(nrhs, 3, prhs);
     Genten::AlgParams algParams;
-    Genten::KtensorT<ExecSpace> u_init;
-    Genten::SptensorT<ExecSpace> X =
-      mxGetSptensor<ExecSpace>(prhs[0], algParams.debug);
-    algParams.rank = mxGetScalar(prhs[1]);
-    auto args = mxBuildArgList(nrhs, 2, prhs);
     algParams.parse(args);
     if (Genten::check_and_print_unused_args(args, std::cout)) {
       algParams.print_help(std::cout);
       throw std::string("Invalid command line arguments.");
     }
+
+    // Get tensor
+    Genten::SystemTimer timer(1, algParams.timings);
+    timer.start(0);
+    Genten::SptensorT<ExecSpace> X =
+      mxGetSptensor<ExecSpace>(prhs[0], algParams.debug);
+    timer.stop(1);
+    if (algParams.timings)
+      std::cout << "Parsing tensor took " << timer.getTotalTime(0)
+                << " seconds" << std::endl;
+
+    // Get rank
+    algParams.rank = mxGetScalar(prhs[1]);
+
+    // Get initial guess
+    Genten::KtensorT<ExecSpace> u_init;
+    const mxArray *arg = prhs[2];
+    if (mxIsStruct(arg))
+      u_init = mxGetKtensor<ExecSpace>(arg, algParams.debug);
+    else if (mxIsChar(arg)) {
+      std::string str = mxGetStdString(arg);
+      // Just check string is a proper value since an empty u_init means a
+      // random one in Genten::driver() below
+      if (str != "random" && str != "random_gt")
+        throw std::string("Invalid random initial guess specification:  ") +
+          str;
+    }
+    else
+      throw std::string("Invalid type for initial guess specification.");
 
     // Call driver
     Genten::KtensorT<ExecSpace> u =

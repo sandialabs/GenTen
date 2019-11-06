@@ -114,8 +114,42 @@ namespace Genten {
       constexpr ttb_real ub = LossFunction::upper_bound();
 
       if (printIter > 0) {
-        out << "Starting GCP-SGD" << std::endl;
+        const ttb_indx nnz = X.nnz();
+        const ttb_real tsz = X.numel_float();
+        const ttb_real nz = tsz - nnz;
+        out << "\nGCP-SGD (Generalized CP Tensor Decomposition)\n\n"
+            << "Tensor size: ";
+        for (ttb_indx i=0; i<nd; ++i) {
+          out << X.size(i) << " ";
+          if (i<nd-1)
+            out << "x ";
+        }
+        out << "(" << tsz << " total entries)\n"
+            << "Sparse tensor: " << nnz << " ("
+            << std::setprecision(1) << std::fixed << 100.0*(nnz/tsz)
+            << "%) Nonzeros" << " and ("
+            << std::setprecision(1) << std::fixed << 100.0*(nz/tsz)
+            << "%) Zeros\n"
+            << "Generalized function type: " << loss_func.name() << std::endl
+            << "Optimization method: " << (use_adam ? "adam\n" : "sgd\n")
+            << "Max iterations (epochs): " << maxEpochs << std::endl
+            << "Iterations per epoch: " << epoch_iters << std::endl
+            << "Learning rate / decay / maxfails: "
+            << std::setprecision(1) << std::scientific
+            << rate << " " << decay << " " << max_fails << std::endl;
         sampler->print(out);
+        out << "Gradient method: ";
+        if (algParams.fuse)
+          out << "Fused sampling and "
+              << MTTKRP_All_Method::names[algParams.mttkrp_all_method]
+              << " MTTKRP\n";
+        else {
+          out << MTTKRP_All_Method::names[algParams.mttkrp_all_method];
+          if (algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated)
+            out << " (" << MTTKRP_Method::names[algParams.mttkrp_method] << ")";
+          out << " MTTKRP\n";
+        }
+        out << std::endl;
       }
 
       // Timers -- turn on fences when timing info is requested so we get
@@ -198,7 +232,8 @@ namespace Genten {
       ttb_real fit_prev = fit;
 
       if (printIter > 0) {
-        out << "Initial f-est: "
+        out << "Begin main loop\n"
+            << "Initial f-est: "
             << std::setw(13) << std::setprecision(6) << std::scientific
             << fest;
         if (compute_fit)
@@ -237,7 +272,8 @@ namespace Genten {
             sampler->sampleTensor(true, ut, loss_func,  X_grad, w_grad);
             timer.stop(timer_sample_g_z_nz);
             timer.start(timer_sample_g_perm);
-            if (algParams.mttkrp_method == MTTKRP_Method::Perm)
+            if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
+                algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated)
               X_grad.createPermutation();
             timer.stop(timer_sample_g_perm);
             timer.stop(timer_sample_g);
@@ -360,7 +396,8 @@ namespace Genten {
       timer.stop(timer_sgd);
 
       if (printIter > 0) {
-        out << "Final f-est: "
+        out << "End main loop\n"
+            << "Final f-est: "
             << std::setw(13) << std::setprecision(6) << std::scientific
             << fest;
         if (compute_fit)
@@ -381,7 +418,8 @@ namespace Genten {
                 << " seconds\n"
                 << "\t\tzs/nzs:   " << timer.getTotalTime(timer_sample_g_z_nz)
                 << " seconds\n";
-            if (algParams.mttkrp_method == MTTKRP_Method::Perm) {
+            if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
+                algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated) {
               out << "\t\tperm:     " << timer.getTotalTime(timer_sample_g_perm)
                   << " seconds\n";
             }

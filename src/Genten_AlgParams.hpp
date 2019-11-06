@@ -53,7 +53,7 @@ namespace Genten {
   struct AlgParams {
 
     // Generic options
-    std::string method;  // Solver method ("cp-als", "gcp-opt", "gcp-sgd", ...)
+    Solver_Method::type method; // Solver method ("cp-als", "gcp-sgd", ...)
     ttb_indx rank;       // Rank of decomposition
     unsigned long seed;  // Random number seed
     bool prng;           // Use parallel random number generator
@@ -119,6 +119,10 @@ namespace Genten {
 
     // Print parmeters
     void print(std::ostream& out);
+
+    // Fixup alg params to correct values
+    template <typename ExecSpace>
+    void fixup(std::ostream& out);
   };
 
   ttb_real parse_ttb_real(std::vector<std::string>& args, const std::string& cl_arg, ttb_real default_value, ttb_real min=0.0, ttb_real max=1.0);
@@ -198,5 +202,105 @@ namespace Genten {
   // are any, false otherwise
   bool check_and_print_unused_args(const std::vector<std::string>& args,
                                    std::ostream& out);
+
+  template <typename ExecSpace>
+  void AlgParams::fixup(std::ostream& out) {
+    typedef SpaceProperties<ExecSpace> space_prop;
+
+    // Compute default MTTKRP method
+    if (mttkrp_method == MTTKRP_Method::Default) {
+
+      // Always use Single if there is only a single thread
+      if (space_prop::concurrency() == 1)
+        mttkrp_method = MTTKRP_Method::Single;
+
+      // Use Atomic on Cuda if it supports fast atomics for ttb_real.
+      // This is true with float on all arch's or float/double on Pascal (6.0)
+      // or later
+      else if (space_prop::is_cuda && (space_prop::cuda_arch() >= 600 ||
+                                       sizeof(ttb_real) == 4))
+        mttkrp_method = MTTKRP_Method::Atomic;
+
+      else if (space_prop::is_cuda)
+        mttkrp_method = MTTKRP_Method::Perm;
+
+      // Otherwise use Perm or Duplicated on CPU depending on the method
+      else {
+        if (method == Solver_Method::GCP_SGD)
+          mttkrp_method = MTTKRP_Method::Duplicated;
+        else
+          mttkrp_method = MTTKRP_Method::Perm;
+      }
+    }
+
+    // Compute default MTTKRP-All method
+    if (mttkrp_all_method == MTTKRP_All_Method::Default) {
+
+      // Always use Single if there is only a single thread
+      if (space_prop::concurrency() == 1)
+        mttkrp_all_method = MTTKRP_All_Method::Single;
+
+      // Always use atomic on Cuda if fused
+      if (space_prop::is_cuda &&
+          method == Solver_Method::GCP_SGD &&
+          sampling_type == GCP_Sampling::SemiStratified && fuse)
+        mttkrp_all_method = MTTKRP_All_Method::Atomic;
+
+      // Use Atomic on Cuda if it supports fast atomics for ttb_real.
+      // This is true with float on all arch's or float/double on Pascal (6.0)
+      // or later
+      else if (space_prop::is_cuda && (space_prop::cuda_arch() >= 600 ||
+                                       sizeof(ttb_real) == 4))
+        mttkrp_all_method = MTTKRP_All_Method::Atomic;
+
+      else if (space_prop::is_cuda)
+        mttkrp_all_method = MTTKRP_All_Method::Iterated;
+
+      // Otherwise use Iterated or Duplicated depending on the method
+      else {
+        if (method == Solver_Method::GCP_SGD)
+          mttkrp_all_method = MTTKRP_All_Method::Duplicated;
+        else
+          mttkrp_all_method = MTTKRP_All_Method::Iterated;
+      }
+    }
+
+    // Fix invalid choices from the user:
+    //   * Single and Duplicated are not valid on Cuda
+    //   * Atomic is required for fused GCP-SGD with Semi-Stratified sampling on
+    //     Cuda
+    if (space_prop::is_cuda) {
+      if (mttkrp_method == MTTKRP_Method::Single ||
+          mttkrp_method == MTTKRP_Method::Duplicated) {
+        out << "MTTKRP method " << MTTKRP_Method::names[mttkrp_method]
+            << " is invalid for Cuda, changing to ";
+        if (space_prop::cuda_arch() >= 600 || sizeof(ttb_real) == 4)
+          mttkrp_method = MTTKRP_Method::Atomic;
+        else
+          mttkrp_method = MTTKRP_Method::Perm;
+        out << MTTKRP_Method::names[mttkrp_method] << "." << std::endl;
+      }
+      if (mttkrp_all_method == MTTKRP_All_Method::Single ||
+          mttkrp_all_method == MTTKRP_All_Method::Duplicated) {
+        out << "MTTKRP-All method "
+            << MTTKRP_All_Method::names[mttkrp_all_method]
+            << " is invalid for Cuda, changing to ";
+        if (space_prop::cuda_arch() >= 600 || sizeof(ttb_real) == 4 ||
+            (method == Solver_Method::GCP_SGD &&
+             sampling_type == GCP_Sampling::SemiStratified && fuse))
+          mttkrp_all_method = MTTKRP_All_Method::Atomic;
+        else
+          mttkrp_all_method = MTTKRP_All_Method::Iterated;
+        out << MTTKRP_All_Method::names[mttkrp_all_method] << "." << std::endl;
+      }
+      if (method == Solver_Method::GCP_SGD &&
+          sampling_type == GCP_Sampling::SemiStratified &&
+          fuse && mttkrp_all_method != MTTKRP_All_Method::Atomic) {
+        mttkrp_all_method = MTTKRP_All_Method::Atomic;
+        out << "Fused semi-stratified sampling/MTTKRP method requires atomic"
+            << " on Cuda.  Changing MTTKRP-All method to atomic." << std::endl;
+      }
+    }
+  }
 
 }

@@ -385,10 +385,14 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
 
 void Genten_Test_CpAls (int infolevel)
 {
+  typedef Genten::DefaultExecutionSpace exec_space;
+  typedef Genten::SpaceProperties<exec_space> space_prop;
+
   Genten_Test_CpAls_Type(Genten::MTTKRP_Method::Atomic,infolevel,
                          "Atomic");
-  Genten_Test_CpAls_Type(Genten::MTTKRP_Method::Duplicated,infolevel,
-                         "Duplicated");
+  if (!space_prop::is_cuda)
+    Genten_Test_CpAls_Type(Genten::MTTKRP_Method::Duplicated,infolevel,
+                           "Duplicated");
   Genten_Test_CpAls_Type(Genten::MTTKRP_Method::Perm,infolevel,
                          "Perm");
 }

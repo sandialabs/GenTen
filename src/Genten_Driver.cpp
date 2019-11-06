@@ -75,7 +75,7 @@ driver(SptensorT<ExecSpace>& x,
   typedef Genten::KtensorT<ExecSpace> Ktensor_type;
   typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
 
-  Genten::SystemTimer timer(3);
+  Genten::SystemTimer timer(3, algParams.timings);
 
   out.setf(std::ios_base::scientific);
   out.precision(2);
@@ -105,8 +105,9 @@ driver(SptensorT<ExecSpace>& x,
     const ttb_real norm_u = std::sqrt(u_init.normFsq());
     u_init.weights().times(norm_x/norm_u);
     timer.stop(0);
-    out << "Creating random initial guess took " << timer.getTotalTime(0)
-        << " seconds\n";
+    if (algParams.timings)
+      out << "Creating random initial guess took " << timer.getTotalTime(0)
+          << " seconds\n";
   }
 
   // Copy initial guess into u
@@ -114,9 +115,8 @@ driver(SptensorT<ExecSpace>& x,
 
   if (algParams.debug) Genten::print_ktensor(u_host, out, "Initial guess");
 
-  // Compute default MTTKRP method if that is what was chosen
-  if (algParams.mttkrp_method == MTTKRP_Method::Default)
-    algParams.mttkrp_method = MTTKRP_Method::computeDefault<ExecSpace>();
+  // Fixup algorithmic choices
+  algParams.fixup<ExecSpace>(out);
 
   if (algParams.warmup)
   {
@@ -133,45 +133,40 @@ driver(SptensorT<ExecSpace>& x,
 
   // Perform any post-processing (e.g., permutation and row ptr generation)
   if (algParams.mttkrp_method == Genten::MTTKRP_Method::Perm &&
+      (algParams.method == Genten::Solver_Method::CP_ALS ||
+       algParams.mttkrp_all_method == Genten::MTTKRP_All_Method::Iterated) &&
       !x.havePerm()) {
     timer.start(1);
     x.createPermutation();
     timer.stop(1);
-    out << "createPermutation() took " << timer.getTotalTime(1)
-        << " seconds\n";
+    if (algParams.timings)
+      out << "Creating permutation arrays for perm MTTKRP method took " << timer.getTotalTime(1)
+          << " seconds\n";
   }
 
-  const bool do_cpals =
-    algParams.method == "CP-ALS" || algParams.method == "cp-als" ||
-    algParams.method == "cpals";
-  const bool do_gcp_sgd =
-    algParams.method == "GCP-SGD" || algParams.method == "gcp_sgd" ||
-    algParams.method == "gcp-sgd";
-  const bool do_gcp_opt =
-    algParams.method == "GCP-OPT" || algParams.method == "gcp_opt" ||
-    algParams.method == "gcp-opt";
-
-  if (do_cpals) {
+  if (algParams.method == Genten::Solver_Method::CP_ALS) {
     // Run CP-ALS
     ttb_indx iter;
     ttb_real resNorm;
     cpals_core(x, u, algParams, iter, resNorm, 0, NULL, out);
   }
 #ifdef HAVE_GCP
-  else if (do_gcp_sgd && !algParams.fuse_sa) {
+  else if (algParams.method == Genten::Solver_Method::GCP_SGD &&
+           !algParams.fuse_sa) {
     // Run GCP-SGD
     ttb_indx iter;
     ttb_real resNorm;
     gcp_sgd(x, u, algParams, iter, resNorm, out);
   }
-  else if (do_gcp_sgd && algParams.fuse_sa) {
+  else if (algParams.method == Genten::Solver_Method::GCP_SGD &&
+           algParams.fuse_sa) {
     // Run GCP-SGD
     ttb_indx iter;
     ttb_real resNorm;
     gcp_sgd_sa(x, u, algParams, iter, resNorm, out);
   }
 #ifdef HAVE_ROL
-  else if (do_gcp_opt) {
+  else if (algParams.method == Genten::Solver_Method::GCP_OPT) {
     // Run GCP
     Teuchos::RCP<Teuchos::ParameterList> rol_params;
     if (algParams.rolfilename != "")
@@ -187,7 +182,8 @@ driver(SptensorT<ExecSpace>& x,
 #endif
 #endif
   else {
-    Genten::error("Unknown decomposition method:  " + algParams.method);
+    Genten::error(std::string("Unknown decomposition method:  ") +
+                  Genten::Solver_Method::names[algParams.method]);
   }
 
   if (algParams.debug) Genten::print_ktensor(u_host, out, "Solution");
@@ -251,9 +247,8 @@ driver(TensorT<ExecSpace>& x,
 
   if (algParams.debug) Genten::print_ktensor(u_host, out, "Initial guess");
 
-  // Compute default MTTKRP method if that is what was chosen
-  if (algParams.mttkrp_method == MTTKRP_Method::Default)
-    algParams.mttkrp_method = MTTKRP_Method::computeDefault<ExecSpace>();
+  // Fixup algorithmic choices
+  algParams.fixup<ExecSpace>(out);
 
   if (algParams.warmup)
   {
@@ -268,18 +263,15 @@ driver(TensorT<ExecSpace>& x,
       Genten::mttkrp(x, u, n, tmp[n], ap);
   }
 
-  const bool do_cpals =
-    algParams.method == "CP-ALS" || algParams.method == "cp-als" ||
-    algParams.method == "cpals";
-
-  if (do_cpals) {
+  if (algParams.method == Genten::Solver_Method::CP_ALS) {
     // Run CP-ALS
     ttb_indx iter;
     ttb_real resNorm;
     cpals_core(x, u, algParams, iter, resNorm, 0, NULL, out);
   }
   else {
-    Genten::error("Unknown decomposition method:  " + algParams.method);
+    Genten::error(std::string("Unknown decomposition method:  ") +
+                  Genten::Solver_Method::names[algParams.method]);
   }
 
   if (algParams.debug) Genten::print_ktensor(u_host, out, "Solution");
