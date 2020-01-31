@@ -80,7 +80,20 @@ namespace Genten {
   // A container for storing hash maps with various side Array<T,N> keys
   template <typename ExecSpace>
   class TensorHashMap {
+  private:
+    typedef Impl::Array<ttb_indx, 3> key_type_3;
+    typedef Impl::Array<ttb_indx, 4> key_type_4;
+    typedef Impl::Array<ttb_indx, 5> key_type_5;
+    typedef Impl::Array<ttb_indx, 6> key_type_6;
+
+    typedef Kokkos::UnorderedMap<key_type_3, ttb_real, ExecSpace> map_type_3;
+    typedef Kokkos::UnorderedMap<key_type_4, ttb_real, ExecSpace> map_type_4;
+    typedef Kokkos::UnorderedMap<key_type_5, ttb_real, ExecSpace> map_type_5;
+    typedef Kokkos::UnorderedMap<key_type_6, ttb_real, ExecSpace> map_type_6;
+
   public:
+
+    typedef typename map_type_3::size_type size_type;
 
     TensorHashMap() = default;
 
@@ -112,6 +125,34 @@ namespace Genten {
       return false;
     }
 
+    template <typename ind_t>
+    KOKKOS_INLINE_FUNCTION
+    size_type find(const ind_t& ind) const {
+      if (ndim == 3) return find_map(ind, map_3);
+      else if (ndim == 4) return find_map(ind, map_4);
+      else if (ndim == 5) return find_map(ind, map_5);
+      else if (ndim == 6) return find_map(ind, map_6);
+      return 0;
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    bool valid_at(size_type i) const {
+      if (ndim == 3) return map_3.valid_at(i);
+      else if (ndim == 4) return map_4.valid_at(i);
+      else if (ndim == 5) return map_5.valid_at(i);
+      else if (ndim == 6) return map_6.valid_at(i);
+      return false;
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    ttb_indx value_at(size_type i) const {
+      if (ndim == 3) return map_3.value_at(i);
+      else if (ndim == 4) return map_4.value_at(i);
+      else if (ndim == 5) return map_5.value_at(i);
+      else if (ndim == 6) return map_6.value_at(i);
+      return 0;
+    }
+
     void print_histogram(std::ostream& out) {
       if (ndim == 3) print_histogram_map(out, map_3);
       else if (ndim == 4) print_histogram_map(out, map_4);
@@ -121,16 +162,6 @@ namespace Genten {
     }
 
   private:
-
-    typedef Impl::Array<ttb_indx, 3> key_type_3;
-    typedef Impl::Array<ttb_indx, 4> key_type_4;
-    typedef Impl::Array<ttb_indx, 5> key_type_5;
-    typedef Impl::Array<ttb_indx, 6> key_type_6;
-
-    typedef Kokkos::UnorderedMap<key_type_3, ttb_real, ExecSpace> map_type_3;
-    typedef Kokkos::UnorderedMap<key_type_4, ttb_real, ExecSpace> map_type_4;
-    typedef Kokkos::UnorderedMap<key_type_5, ttb_real, ExecSpace> map_type_5;
-    typedef Kokkos::UnorderedMap<key_type_6, ttb_real, ExecSpace> map_type_6;
 
     ttb_indx ndim;
     map_type_3 map_3;
@@ -155,6 +186,15 @@ namespace Genten {
       for (ttb_indx i=0; i<ndim; ++i)
         key[i] = ind[i];
       return map.exists(key);
+    }
+
+    template <typename ind_t, typename map_type>
+    KOKKOS_INLINE_FUNCTION
+    size_type find_map(const ind_t& ind, map_type& map) const {
+      typename map_type::key_type key;
+      for (ttb_indx i=0; i<ndim; ++i)
+        key[i] = ind[i];
+      return map.find(key);
     }
 
     template <typename map_type>

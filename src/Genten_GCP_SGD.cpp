@@ -43,6 +43,7 @@
 #include <cmath>
 
 #include "Genten_GCP_SGD.hpp"
+#include "Genten_GCP_UniformSampler.hpp"
 #include "Genten_GCP_StratifiedSampler.hpp"
 #include "Genten_GCP_SemiStratifiedSampler.hpp"
 #include "Genten_GCP_ValueKernels.hpp"
@@ -98,7 +99,10 @@ namespace Genten {
 
       // Create sampler
       Sampler<ExecSpace,LossFunction> *sampler = nullptr;
-      if (algParams.sampling_type == GCP_Sampling::Stratified)
+      if (algParams.sampling_type == GCP_Sampling::Uniform)
+        sampler = new Genten::UniformSampler<ExecSpace,LossFunction>(
+          X, algParams);
+      else if (algParams.sampling_type == GCP_Sampling::Stratified)
         sampler = new Genten::StratifiedSampler<ExecSpace,LossFunction>(
           X, algParams);
       else if (algParams.sampling_type == GCP_Sampling::SemiStratified)

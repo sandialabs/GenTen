@@ -52,6 +52,33 @@ namespace Genten {
   namespace Impl {
 
     template <typename ExecSpace, typename LossFunction>
+    void uniform_sample_tensor(
+      const SptensorT<ExecSpace>& X,
+      const ttb_indx num_samples,
+      const ttb_real weight,
+      const KtensorT<ExecSpace>& u,
+      const LossFunction& loss_func,
+      const bool compute_gradient,
+      SptensorT<ExecSpace>& Y,
+      ArrayT<ExecSpace>& w,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams);
+
+    template <typename ExecSpace, typename LossFunction>
+    void uniform_sample_tensor_hash(
+      const SptensorT<ExecSpace>& X,
+      const TensorHashMap<ExecSpace>& hash,
+      const ttb_indx num_samples,
+      const ttb_real weight,
+      const KtensorT<ExecSpace>& u,
+      const LossFunction& loss_func,
+      const bool compute_gradient,
+      SptensorT<ExecSpace>& Y,
+      ArrayT<ExecSpace>& w,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams);
+
+    template <typename ExecSpace, typename LossFunction>
     void stratified_sample_tensor(
       const SptensorT<ExecSpace>& X,
       const ttb_indx num_samples_nonzeros,

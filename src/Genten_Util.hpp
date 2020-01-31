@@ -200,15 +200,16 @@ namespace Genten {
   // Sampling functions supported by GCP
   struct GCP_Sampling {
     enum type {
+      Uniform,
       Stratified,
       SemiStratified
     };
-    static constexpr unsigned num_types = 2;
+    static constexpr unsigned num_types = 3;
     static constexpr type types[] = {
-      Stratified, SemiStratified
+      Uniform, Stratified, SemiStratified
     };
     static constexpr const char* names[] = {
-      "stratified", "semi-stratified"
+      "uniform", "stratified", "semi-stratified"
     };
     static constexpr type default_type = Stratified;
   };
