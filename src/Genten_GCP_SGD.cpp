@@ -359,6 +359,9 @@ namespace Genten {
           out << ", step = "
               << std::setw(8) << std::setprecision(1) << std::scientific
               << step;
+          out << ", time = "
+              << std::setw(8) << std::setprecision(2) << std::scientific
+              << timer.getTotalTime(timer_sgd) << " sec";
           if (failed_epoch)
             out << ", nfails = " << nfails
                 << " (resetting to solution from last epoch)";
