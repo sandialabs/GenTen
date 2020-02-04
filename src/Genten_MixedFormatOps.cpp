@@ -407,7 +407,7 @@ template <typename ExecSpace>
 struct MTTKRP_Dense_Kernel {
   const TensorT<ExecSpace> XX;
   const KtensorT<ExecSpace> uu;
-  const ttb_indx n;
+  const ttb_indx nn;
   const FacMatrixT<ExecSpace> vv;
   const AlgParams algParams;
 
@@ -416,13 +416,14 @@ struct MTTKRP_Dense_Kernel {
                       const ttb_indx n_,
                       const FacMatrixT<ExecSpace>& v_,
                       const AlgParams& algParams_) :
-    XX(X_), uu(u_), n(n_), vv(v_), algParams(algParams_) {}
+    XX(X_), uu(u_), nn(n_), vv(v_), algParams(algParams_) {}
 
   template <unsigned FBS, unsigned VS>
   void run() const
   {
     const TensorT<ExecSpace> X = XX;
     const KtensorT<ExecSpace> u = uu;
+    const ttb_indx n = nn;
     const FacMatrixT<ExecSpace> v = vv;
 
     typedef Kokkos::TeamPolicy<ExecSpace> Policy;
@@ -436,8 +437,8 @@ struct MTTKRP_Dense_Kernel {
 
     /*const*/ unsigned nd = u.ndims();
     /*const*/ unsigned nc = u.ncomponents();
-    /*const*/ ttb_indx nn = X.size(n);
-    const ttb_indx N = (nn+TeamSize-1)/TeamSize;
+    /*const*/ ttb_indx ns = X.size(n);
+    const ttb_indx N = (ns+TeamSize-1)/TeamSize;
 
     const size_t bytes = TmpScratchSpace::shmem_size(TeamSize, nd);
     Policy policy(N, TeamSize, VectorSize);
@@ -448,7 +449,7 @@ struct MTTKRP_Dense_Kernel {
       const unsigned team_rank = team.team_rank();
       const unsigned team_size = team.team_size();
       /*const*/ ttb_indx i = team.league_rank()*team_size + team_rank;
-      if (i >= nn)
+      if (i >= ns)
         return;
 
       // Scratch space for storing tensor subscripts
@@ -459,17 +460,12 @@ struct MTTKRP_Dense_Kernel {
       auto row_func = [&](auto j, auto nj, auto Nj) {
         typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
 
-        // Work around internal-compiler errors in recent Intel compilers
-        unsigned nd_ = nd;
-        unsigned n_ = n;
-        TensorT<ExecSpace> X_ = X;
-
         // Initialize our subscript array for row i of mode n
         Kokkos::single(Kokkos::PerThread(team), [&]()
         {
-          for (unsigned l=0; l<nd_; ++l)
+          for (unsigned l=0; l<nd; ++l)
             sub[l] = 0;
-          sub[n_] = i;
+          sub[n] = i;
         });
 
         TV val(nj, 0.0);
@@ -487,7 +483,7 @@ struct MTTKRP_Dense_Kernel {
 
           Kokkos::single(Kokkos::PerThread(team), [&](int& dn)
           {
-            dn = !X_.increment_sub(sub,n_);
+            dn = !X.increment_sub(sub,n);
           }, done);
         };
         val.store_plus(&v.entry(i,j));
