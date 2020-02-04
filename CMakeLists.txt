@@ -83,8 +83,8 @@ ENDIF()
 IF(KOKKOS_INLINE_BUILD)
 
   # We must enable Lambda support in Kokkos
-  IF(KOKKOS_ENABLE_CUDA)
-    SET(KOKKOS_ENABLE_CUDA_LAMBDA ON CACHE BOOL "Enable lambdas for CUDA.")
+  IF(Kokkos_ENABLE_CUDA)
+    SET(Kokkos_ENABLE_CUDA_LAMBDA ON CACHE BOOL "Enable lambdas for CUDA.")
   ENDIF()
 
   # Configure kokkos
@@ -203,7 +203,7 @@ IF (ENABLE_CUSOLVER)
 ENDIF()
 
 # Add useful CXX flags when building with Cuda
-IF(KOKKOS_ENABLE_CUDA)
+IF(Kokkos_ENABLE_CUDA)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --expt-relaxed-constexpr -Xcudafe --diag_suppress=code_is_unreachable")
 ENDIF()
 
