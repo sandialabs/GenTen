@@ -130,6 +130,8 @@ def parse_args(parser = OptionParser()):
                       help='Read compressed tensor')
     parser.add_option('--index', default=1,
                       help='Index base')
+    parser.add_option('--cuda', action="store_true", default=False,
+                      help='Whether we are running on cuda')
     (options, args) = parser.parse_args()
     return options
 
@@ -148,32 +150,36 @@ tensors = [ ('lbnl-network.tns', 'LBNL', 1),
             ('uber.tns', 'Uber', 1),
             ('vast-2015-mc1-5d.tns', 'VAST', 1),
             ('enron.tns', 'Enron', 1),
-            ('nell-2.tns', 'NELL2', 1),
-            ('delicious-4d.tns', 'Delicious', 1),
-            ('delicious-3d.tns', 'Delicious3', 1) ]
+            ('nell-2.tns', 'NELL2', 1) ]
+#            ('delicious-4d.tns', 'Delicious', 1),
+#            ('delicious-3d.tns', 'Delicious3', 1) ]
 
 
-print '\nStratified Sort:'
-options.args = args + ' --sampling stratified';
-options.output = output + '_sort'
-tot_sort = run_sgd_tensors(options, tensors)
+#print '\nStratified Sort:'
+#options.args = args + ' --sampling stratified';
+#options.output = output + '_sort'
+#tot_sort = run_sgd_tensors(options, tensors)
 
-print '\nStratified Hash:'
-options.args = args + '  --sampling stratified --hash'
-options.output = output + '_hash'
-tot_hash = run_sgd_tensors(options, tensors)
+#print '\nStratified Hash:'
+#options.args = args + '  --sampling stratified --hash'
+#options.output = output + '_hash'
+#tot_hash = run_sgd_tensors(options, tensors)
 
 print '\nSemi-Stratified:'
-options.args = args + '  --sampling semi-stratified'
+options.args = args + '  --sampling semi-stratified --hash'
+if options.cuda:
+  options.args = options.args + ' --mttkrp-all-method atomic'
+else:
+  options.args = options.args + ' --mttkrp-all-method iterated --mttkrp-method perm'
 options.output = output + '_semi'
 tot_semi = run_sgd_tensors(options, tensors)
 
-print '\nSemi-Stratified Fused:'
-options.args = args + '  --sampling semi-stratified --fuse'
+print '\nSemi-Stratified Fused Atomic:'
+options.args = args + '  --sampling semi-stratified --hash --fuse --mttkrp-all-method atomic'
 options.output = output + '_fuse'
-tot_fuse = run_sgd_tensors(options, tensors)
+tot_fuse_atomic = run_sgd_tensors(options, tensors)
 
 print '\nSemi-Stratified Fused-SA:'
-options.args = args + '  --sampling semi-stratified --fuse-sa'
+options.args = args + '  --sampling semi-stratified --hash --fuse-sa'
 options.output = output + '_fuse_sa'
 tot_fuse_sa = run_sgd_tensors(options, tensors)
