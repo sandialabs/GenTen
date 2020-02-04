@@ -403,102 +403,12 @@ ttb_real Genten::innerprod(const Genten::TensorT<ExecSpace>& x,
 namespace Genten {
 namespace Impl {
 
-template <unsigned FBS, unsigned VS, typename ExecSpace>
-void
-mttkrp_dense_kernel(const TensorT<ExecSpace>& X,
-                    const Genten::KtensorT<ExecSpace>& u,
-                    const unsigned n,
-                    const Genten::FacMatrixT<ExecSpace>& v,
-                    const AlgParams& algParams)
-{
-  typedef Kokkos::TeamPolicy<ExecSpace> Policy;
-  typedef typename Policy::member_type TeamMember;
-  typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
-
-  static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
-  static const unsigned FacBlockSize = FBS;
-  static const unsigned VectorSize = is_cuda ? VS : 1;
-  static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
-
-  /*const*/ unsigned nd = u.ndims();
-  /*const*/ unsigned nc = u.ncomponents();
-  /*const*/ ttb_indx nn = X.size(n);
-  const ttb_indx N = (nn+TeamSize-1)/TeamSize;
-
-  const size_t bytes = TmpScratchSpace::shmem_size(TeamSize, nd);
-  Policy policy(N, TeamSize, VectorSize);
-  Kokkos::parallel_for(policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
-                       KOKKOS_LAMBDA(const TeamMember& team)
-  {
-    // Row of v we write to
-    const unsigned team_rank = team.team_rank();
-    const unsigned team_size = team.team_size();
-    /*const*/ ttb_indx i = team.league_rank()*team_size + team_rank;
-    if (i >= nn)
-      return;
-
-    // Scratch space for storing tensor subscripts
-    TmpScratchSpace scratch(team.team_scratch(0), team_size, nd);
-    ttb_indx *sub = &scratch(team_rank, 0);
-
-    // lambda function for MTTKRP for block of size nj
-    auto row_func = [&](auto j, auto nj, auto Nj) {
-      typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
-
-      // Work around internal-compiler errors in recent Intel compilers
-      unsigned nd_ = nd;
-      unsigned n_ = n;
-      TensorT<ExecSpace> X_ = X;
-
-      // Initialize our subscript array for row i of mode n
-      Kokkos::single(Kokkos::PerThread(team), [&]()
-      {
-        for (unsigned l=0; l<nd_; ++l)
-          sub[l] = 0;
-        sub[n_] = i;
-      });
-
-      TV val(nj, 0.0);
-      int done = 0;
-      while (!done) {  // Would like to get some parallelism in this loop
-        const ttb_indx k = X.sub2ind(sub);
-        const ttb_real x_val = X[k];
-        TV tmp(nj, x_val);
-        tmp *= &(u.weights(j));
-        for (unsigned m=0; m<nd; ++m) {
-          if (m != n)
-            tmp *= &(u[m].entry(sub[m],j));
-        }
-        val += tmp;
-
-        Kokkos::single(Kokkos::PerThread(team), [&](int& dn)
-        {
-          dn = !X_.increment_sub(sub,n_);
-        }, done);
-      };
-      val.store_plus(&v.entry(i,j));
-    };
-
-    // Do MTTKRP in blocks of size FacBlockSize
-    for (unsigned j=0; j<nc; j+=FacBlockSize) {
-      if (j+FacBlockSize <= nc) {
-        const unsigned nj = FacBlockSize;
-        row_func(j, nj, std::integral_constant<unsigned,nj>());
-      }
-      else {
-        const unsigned nj = nc-j;
-        row_func(j, nj, std::integral_constant<unsigned,0>());
-      }
-    }
-  }, "mttkrp_kernel");
-}
-
 template <typename ExecSpace>
 struct MTTKRP_Dense_Kernel {
-  const TensorT<ExecSpace> X;
-  const KtensorT<ExecSpace> u;
+  const TensorT<ExecSpace> XX;
+  const KtensorT<ExecSpace> uu;
   const ttb_indx n;
-  const FacMatrixT<ExecSpace> v;
+  const FacMatrixT<ExecSpace> vv;
   const AlgParams algParams;
 
   MTTKRP_Dense_Kernel(const TensorT<ExecSpace>& X_,
@@ -506,12 +416,95 @@ struct MTTKRP_Dense_Kernel {
                       const ttb_indx n_,
                       const FacMatrixT<ExecSpace>& v_,
                       const AlgParams& algParams_) :
-    X(X_), u(u_), n(n_), v(v_), algParams(algParams_) {}
+    XX(X_), uu(u_), n(n_), vv(v_), algParams(algParams_) {}
 
   template <unsigned FBS, unsigned VS>
   void run() const
   {
-    mttkrp_dense_kernel<FBS,VS>(X,u,n,v,algParams);
+    const TensorT<ExecSpace> X = XX;
+    const KtensorT<ExecSpace> u = uu;
+    const FacMatrixT<ExecSpace> v = vv;
+
+    typedef Kokkos::TeamPolicy<ExecSpace> Policy;
+    typedef typename Policy::member_type TeamMember;
+    typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+    static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+    static const unsigned FacBlockSize = FBS;
+    static const unsigned VectorSize = is_cuda ? VS : 1;
+    static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+
+    /*const*/ unsigned nd = u.ndims();
+    /*const*/ unsigned nc = u.ncomponents();
+    /*const*/ ttb_indx nn = X.size(n);
+    const ttb_indx N = (nn+TeamSize-1)/TeamSize;
+
+    const size_t bytes = TmpScratchSpace::shmem_size(TeamSize, nd);
+    Policy policy(N, TeamSize, VectorSize);
+    Kokkos::parallel_for(policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+                         KOKKOS_LAMBDA(const TeamMember& team)
+    {
+      // Row of v we write to
+      const unsigned team_rank = team.team_rank();
+      const unsigned team_size = team.team_size();
+      /*const*/ ttb_indx i = team.league_rank()*team_size + team_rank;
+      if (i >= nn)
+        return;
+
+      // Scratch space for storing tensor subscripts
+      TmpScratchSpace scratch(team.team_scratch(0), team_size, nd);
+      ttb_indx *sub = &scratch(team_rank, 0);
+
+      // lambda function for MTTKRP for block of size nj
+      auto row_func = [&](auto j, auto nj, auto Nj) {
+        typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+
+        // Work around internal-compiler errors in recent Intel compilers
+        unsigned nd_ = nd;
+        unsigned n_ = n;
+        TensorT<ExecSpace> X_ = X;
+
+        // Initialize our subscript array for row i of mode n
+        Kokkos::single(Kokkos::PerThread(team), [&]()
+        {
+          for (unsigned l=0; l<nd_; ++l)
+            sub[l] = 0;
+          sub[n_] = i;
+        });
+
+        TV val(nj, 0.0);
+        int done = 0;
+        while (!done) {  // Would like to get some parallelism in this loop
+          const ttb_indx k = X.sub2ind(sub);
+          const ttb_real x_val = X[k];
+          TV tmp(nj, x_val);
+          tmp *= &(u.weights(j));
+          for (unsigned m=0; m<nd; ++m) {
+            if (m != n)
+              tmp *= &(u[m].entry(sub[m],j));
+          }
+          val += tmp;
+
+          Kokkos::single(Kokkos::PerThread(team), [&](int& dn)
+          {
+            dn = !X_.increment_sub(sub,n_);
+          }, done);
+        };
+        val.store_plus(&v.entry(i,j));
+      };
+
+      // Do MTTKRP in blocks of size FacBlockSize
+      for (unsigned j=0; j<nc; j+=FacBlockSize) {
+        if (j+FacBlockSize <= nc) {
+          const unsigned nj = FacBlockSize;
+          row_func(j, nj, std::integral_constant<unsigned,nj>());
+        }
+        else {
+          const unsigned nj = nc-j;
+          row_func(j, nj, std::integral_constant<unsigned,0>());
+        }
+      }
+    }, "mttkrp_kernel");
   }
 
 };
