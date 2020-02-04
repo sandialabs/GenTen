@@ -460,12 +460,17 @@ struct MTTKRP_Dense_Kernel {
       auto row_func = [&](auto j, auto nj, auto Nj) {
         typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
 
+        // Work around internal-compiler errors in recent Intel compilers
+        unsigned nd_ = nd;
+        unsigned n_ = n;
+        TensorT<ExecSpace> X_ = X;
+
         // Initialize our subscript array for row i of mode n
         Kokkos::single(Kokkos::PerThread(team), [&]()
         {
-          for (unsigned l=0; l<nd; ++l)
+          for (unsigned l=0; l<nd_; ++l)
             sub[l] = 0;
-          sub[n] = i;
+          sub[n_] = i;
         });
 
         TV val(nj, 0.0);
@@ -475,7 +480,7 @@ struct MTTKRP_Dense_Kernel {
           const ttb_real x_val = X[k];
           TV tmp(nj, x_val);
           tmp *= &(u.weights(j));
-          for (unsigned m=0; m<nd; ++m) {
+          for (unsigned m=0; m<nd_; ++m) {
             if (m != n)
               tmp *= &(u[m].entry(sub[m],j));
           }
@@ -483,7 +488,7 @@ struct MTTKRP_Dense_Kernel {
 
           Kokkos::single(Kokkos::PerThread(team), [&](int& dn)
           {
-            dn = !X.increment_sub(sub,n);
+            dn = !X_.increment_sub(sub,n_);
           }, done);
         };
         val.store_plus(&v.entry(i,j));
