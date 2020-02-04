@@ -86,7 +86,7 @@ namespace Genten {
     {
       const ttb_indx nnz = X.nnz();
       const ttb_indx nd = X.ndims();
-      map_type hash_map(nd, nnz);
+      map_type hash_map(nd, ttb_indx(1.1*nnz));
       Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nnz),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
