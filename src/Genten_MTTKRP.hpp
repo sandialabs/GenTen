@@ -460,7 +460,7 @@ struct MTTKRP_All_Kernel {
 // Specialization for Cuda that always uses atomics and doesn't call
 // mttkrp_all_kernel, which won't run on the GPU
 template <int Dupl, int Cont>
-struct MTTKRP_All_Kernel<Kokkos::Cuda> {
+struct MTTKRP_All_Kernel<Dupl,Cont,Kokkos::Cuda> {
   typedef Kokkos::Cuda ExecSpace;
 
   const SptensorT<ExecSpace> XX;
