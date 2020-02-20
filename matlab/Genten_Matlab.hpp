@@ -207,6 +207,30 @@ mxGetKtensor(const mxArray* ptr, const bool print = false) {
   return u;
 }
 
+template <typename ExecSpace>
+mxArray* mxSetFacMatrix(const Genten::FacMatrixT<ExecSpace>& u,
+                        const bool print = false) {
+  typedef Genten::FacMatrixT<ExecSpace> FacMatrix_type;
+  typedef Genten::FacMatrix FacMatrix_host_type;
+  typedef typename FacMatrix_host_type::exec_space host_exec_space;
+
+  // Copy u to host
+  FacMatrix_host_type u_host = create_mirror_view(host_exec_space(), u);
+  deep_copy(u_host, u);
+
+  if (print)
+    Genten::print_matrix(u_host, std::cout, "Factor matrix");
+
+  // Create matlab factor matrix
+  const ttb_indx m = u_host.nRows();
+  const ttb_indx n = u_host.nCols();
+  mxArray *mat_ptr = mxCreateDoubleMatrix( (mwSize) m, (mwSize) n,  mxREAL );
+  ttb_real *mat = mxGetDoubles(mat_ptr);
+  u_host.convertToCol(m,n,mat);
+
+  return mat_ptr;
+}
+
 std::string mxGetStdString(const mxArray* ptr);
 
 std::vector<std::string>
