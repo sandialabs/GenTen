@@ -9,4 +9,5 @@ function v = mttkrp(X,u,n,varargin)
 %
 %  See also SPTENSOR_GT, SPTENSOR/MTTKRP, KTENSOR
 
-v = gt_mttkrp_driver(X,u,n,varargin{:});
+args = { X.alg_params{:}, varargin{:} };
+v = gt_mttkrp_driver(X,u,n,args{:});

@@ -6,7 +6,7 @@ function t = subsasgn(t,s,rhs)
 %   Case 1: X(R1,R2,...,RN) = Y, in which case we replace the
 %   rectangular subtensor (or single element) specified by the ranges
 %   R1,...,RN with Y. The right-hand-side can be a scalar or an
-%   sptensor. 
+%   sptensor.
 %
 %   Case 2: X(S) = V, where S is a p x n array of subscripts and V is
 %   a scalar value or a vector containing p values.
@@ -49,8 +49,18 @@ function t = subsasgn(t,s,rhs)
 
 switch s.type
 
+    % we all changing the alg_params field directly
     case '.'
-        error(['Cannot change field ', s.subs, ' directly.']);
+      switch s(1).subs
+        case {'alg_params','params'}
+          if length(s) == 1
+            t.alg_params = rhs;
+          else
+            t.alg_params(s(2:end)) = rhs;
+          end
+        otherwise
+          error(['Cannot change field ', s.subs, ' directly.']);
+        end
 
     case '()'
 
@@ -61,7 +71,7 @@ switch s.type
 
         % Figure out if we are doing a subtensor or a list of subscripts...
         type = tt_assignment_type(t,s.subs,rhs);
-  
+
         %% Case I: Replace a sub-tensor
         if isequal(type,'subtensor')
 
@@ -96,7 +106,7 @@ switch s.type
                         end
                         m = m + 1;
                     end
-                end                             
+                end
                 t.size = newsz;
 
                 % Expand subs array if there are new modes, i.e., if the order
@@ -104,7 +114,7 @@ switch s.type
                 if ~isempty(t.subs) && (size(t.size,2) > size(t.subs,1))
                     t.subs(end+1:size(t.size,2),:) = 0;
                 end
-                
+
                 % Delete what currently occupies the specified range
                 rmloc = subdims(s.subs,t);
                 kploc = setdiff(1:nnz(t),rmloc);
@@ -121,7 +131,7 @@ switch s.type
 
             %% Case I(b): RHS is zero or scalar
 
-            % First, Resize the tensor. 
+            % First, Resize the tensor.
             % Determine new size of existing modes
             for n = 1:ndims(t)
                 if ischar(s.subs{n}) && (s.subs{n} == ':')
@@ -137,7 +147,7 @@ switch s.type
             t.size = newsz;
 
             % Expand subs array if there are new modes, i.e., if the order
-            % has increased. 
+            % has increased.
             if ~isempty(t.subs) && (size(t.size,2) > size(t.subs,1))
                 t.subs(end+1:size(t.size,2),:) = 0;
             end
@@ -152,7 +162,7 @@ switch s.type
                 t.vals = t.vals(kploc);
                 return;
             end
-            
+
             % Case I(b)ii: Scalar right-hand-side
             if numel(rhs) == 1
 
@@ -194,13 +204,13 @@ switch s.type
                 end
                 t.subs = [t.subs addsubs'-1];
                 t.vals = [t.vals; rhs*ones(size(addsubs,1),1)];
-                return;                
+                return;
             end
-            
+
             error('Invalid RHS')
 
         end
-        
+
         % Case II: Subscripts
         if isequal(type,'subscripts')
 
@@ -213,7 +223,7 @@ switch s.type
             if size(newsubs,2) < ndims(t)
                 error('Invalid subscripts');
             end
-            
+
             % Check for expanding the order
             if size(newsubs,2) > ndims(t)
                 t.size(end+1:size(newsubs,2)) = 1;
@@ -303,7 +313,7 @@ switch s.type
             return;
 
         end
-        
+
         error('Invalid call to sptensor/subsasgn');
 
     case '{}'

@@ -65,6 +65,7 @@ if (nargin == 0) || ((nargin == 1) && isempty(varargin{1}))
     t.vals = [];
     t.size = [];
     t.perm = [];
+    t.alg_params = {};
     t = class(t,'sptensor_gt');
     return;
 end
@@ -82,6 +83,7 @@ if (nargin == 1)
             t.vals = source.vals;
             t.size = source.size;
             t.perm = source.perm;
+            t.alg_params = source.alg_params;
             t = class(t, 'sptensor_gt');
             return;
 
@@ -91,6 +93,7 @@ if (nargin == 1)
             t.vals = source.vals;
             t.size = uint64(source.size);
             t.perm = [];
+            t.alg_params = {};
             t = class(t, 'sptensor_gt');
             return;
 
@@ -112,6 +115,7 @@ if (nargin == 4) && (isnumeric(varargin{4})) && (varargin{4} == 0)
     t.vals = varargin{2};
     t.size = varargin{3};
     t.perm = [];
+    t.alg_params = {};
 
     % Create the tensor
     t = class(t, 'sptensor_gt');
