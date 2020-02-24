@@ -46,6 +46,13 @@ function [U,varargout] = cp_als_gt(X,R,varargin)
 args = varargin;
 N = ndims(X);
 
+% Check for argument struct instead of list
+if length(args) == 1 && isa(args{1}, 'struct')
+  arg_names = fieldnames(args{1});
+  arg_vals = struct2cell(args{1});
+  args = reshape({arg_names{:}; arg_vals{:}}, [2*length(arg_names),1]);
+end
+
 % Initial guess
 Uinit = 'random';
 n = length(args);

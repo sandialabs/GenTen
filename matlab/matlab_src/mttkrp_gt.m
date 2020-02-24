@@ -1,9 +1,9 @@
-function v = gt_mttkrp(X,u,n,varargin)
+function v = mttkrp_gt(X,u,n,varargin)
 % GT_MTTKRP Compute an MTTKRP using Genten
 %
 %  Usage:
 %
-%  V = GT_MTTKRP(X,U,N) computes an MTTKRP for a tensor X, ktensor U,
+%  V = MTTKRP_GT(X,U,N) computes an MTTKRP for a tensor X, ktensor U,
 %  dimension N, and resulting factor matrix V.  Currently X must be a
 %  sparse tensor in sptensor or sptensor_gt format.
 %
