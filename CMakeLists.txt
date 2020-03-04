@@ -563,33 +563,36 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
     NAME gt_mttkrp_driver
     SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_MTTKRP.cpp
     ${GENTEN_MATLAB_API_VERSION})
+  MATLAB_ADD_MEX(
+    NAME gt_innerprod_driver
+    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Innerprod.cpp
+    ${GENTEN_MATLAB_API_VERSION})
   TARGET_LINK_LIBRARIES (gt_cp_driver ${GENTEN_MATLAB_LINK_LIBS})
   TARGET_LINK_LIBRARIES (gt_initialize ${GENTEN_MATLAB_LINK_LIBS})
   TARGET_LINK_LIBRARIES (gt_finalize ${GENTEN_MATLAB_LINK_LIBS})
   TARGET_LINK_LIBRARIES (gt_compute_perm_driver ${GENTEN_MATLAB_LINK_LIBS})
   TARGET_LINK_LIBRARIES (gt_mttkrp_driver ${GENTEN_MATLAB_LINK_LIBS})
+  TARGET_LINK_LIBRARIES (gt_innerprod_driver ${GENTEN_MATLAB_LINK_LIBS})
   INSTALL(
     TARGETS gt_matlab gt_cp_driver gt_initialize gt_finalize gt_mttkrp_driver
+      gt_innerprod_driver
     DESTINATION matlab)
   INSTALL(
     TARGETS gt_compute_perm_driver
     DESTINATION matlab/@sptensor_gt/private)
   SET_PROPERTY(
     TARGET gt_matlab gt_cp_driver gt_initialize gt_finalize gt_mttkrp_driver
+      gt_innerprod_driver
     PROPERTY LIBRARY_OUTPUT_DIRECTORY ${Genten_BINARY_DIR}/matlab)
   SET_PROPERTY(
     TARGET gt_compute_perm_driver
     PROPERTY LIBRARY_OUTPUT_DIRECTORY ${Genten_BINARY_DIR}/matlab/@sptensor_gt/private)
 
-  SET_PROPERTY(
-    TARGET gt_matlab gt_cp_driver gt_initialize gt_finalize gt_mttkrp_driver
-    PROPERTY LIBRARY_OUTPUT_DIRECTORY ${Genten_BINARY_DIR}/matlab)
-
   # Remove -DDLL_EXPORT_SYMBOL=... since it causes problems with nvcc_wrapper
   # Instead we define this inside the source
   SET_PROPERTY(
     TARGET gt_matlab gt_cp_driver gt_initialize gt_finalize
-      gt_compute_perm_driver gt_mttkrp_driver
+      gt_compute_perm_driver gt_mttkrp_driver gt_innerprod_driver
     PROPERTY DEFINE_SYMBOL "")
 
   # Targets to install matlab source files
