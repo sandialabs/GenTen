@@ -103,8 +103,9 @@ public:
   // Copy Constructor (converts from double).
   /* Creates a size array of length n, copying and converting the entries of v.
      This is needed for MATLAB MEX compatibility because it passes some integer
-     arrays as doubles. */
-  IndxArrayT(ttb_indx n, const ttb_real * v);
+     arrays as doubles. If subtract_one == true, subtract 1 from each value
+     to convert from MATLAB to C indexing*/
+  IndxArrayT(ttb_indx n, const ttb_real * v, const bool subtract_one = false);
 
   //! @brief Create array from supplied view
   IndxArrayT(const view_type& v) : data(v) {
@@ -142,6 +143,7 @@ public:
   KOKKOS_INLINE_FUNCTION
   IndxArrayT& operator=(const IndxType& indx)
   { data = indx;
+    // Should we deep copy to the host here?
     return *this;
   }
 
@@ -177,6 +179,16 @@ public:
       return data[i];
     else
       return host_data[i];
+  }
+
+  void sync_to_host() const {
+    if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename ExecSpace::memory_space >::accessible)
+      deep_copy( host_data, data );
+  }
+
+  void sync_to_device() const {
+    if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename ExecSpace::memory_space >::accessible)
+      deep_copy( data, host_data );
   }
 
   // Return reference to value at position i (out-of-bounds check).

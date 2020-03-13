@@ -76,16 +76,17 @@ IndxArrayT(ttb_indx n, ttb_indx * v) :
 
 template <typename ExecSpace>
 Genten::IndxArrayT<ExecSpace>::
-IndxArrayT(ttb_indx n, const ttb_real * v) :
+IndxArrayT(ttb_indx n, const ttb_real * v, const bool subtract_one) :
   IndxArrayT(n)
 {
+  const ttb_real offset = subtract_one ? 1.0 : 0.0;
   // This is a horribly slow loop. We know that the doubles are really storing positive integers, so it would be mightly nice if we could just pull out the mantissa or something elegant like that.
   for (ttb_indx i = 0; i < n; i ++)
   {
-    data[i] = (ttb_indx) v[i];
+    host_data[i] = (ttb_indx) (v[i]-offset);
   }
   if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename ExecSpace::memory_space >::accessible)
-    deep_copy( host_data, data );
+    deep_copy( data, host_data );
 }
 
 template <typename ExecSpace>
