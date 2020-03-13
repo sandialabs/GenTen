@@ -15,9 +15,9 @@ cmake \
  -D CMAKE_CXX_FLAGS="-g -restrict" \
  -D CMAKE_C_FLAGS="-g -restrict" \
  -D KOKKOS_INLINE_BUILD=ON \
- -D KOKKOS_ENABLE_OPENMP=ON \
- -D KOKKOS_ARCH="KNL" \
- -D KOKKOS_ENABLE_AGGRESSIVE_VECTORIZATION=ON \
+ -D Kokkos_ENABLE_OPENMP=ON \
+ -D Kokkos_ARCH_KNL=ON \
+ -D Kokkos_ENABLE_AGGRESSIVE_VECTORIZATION=ON \
  -D LAPACK_LIBS=$MKLROOT/lib/intel64/libmkl_rt.so \
  -D LAPACK_ADD_LIBS="-liomp5;-lpthread;-lm;-ldl" \
  -D ENABLE_BOOST=ON \

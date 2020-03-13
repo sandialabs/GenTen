@@ -16,9 +16,10 @@ cmake \
  -D CMAKE_CXX_FLAGS="-g  -lineinfo" \
  -D CMAKE_C_FLAGS="-g" \
  -D KOKKOS_INLINE_BUILD=ON \
- -D KOKKOS_ENABLE_OPENMP=ON \
- -D KOKKOS_ENABLE_CUDA=ON \
- -D KOKKOS_ARCH="Power8;Pascal60" \
+ -D Kokkos_ENABLE_OPENMP=ON \
+ -D Kokkos_ENABLE_CUDA=ON \
+ -D Kokkos_ARCH_Power8=ON \
+ -D Kokkos_ARCH_Pascal60=ON \
  -D ENABLE_CUBLAS=ON \
  -D ENABLE_CUSOLVER=ON \
  -D ENABLE_BOOST=ON \
