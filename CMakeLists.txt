@@ -65,7 +65,7 @@ OPTION(ENABLE_CALIPER "Enable Caliper for application profiling" OFF)
 OPTION(ENABLE_MATLAB "Enable MATLAB linkage to Tensor Toolbox" OFF)
 OPTION(FLOAT_TYPE "C++ data type used for floating-point values" OFF)
 OPTION(INDEX_TYPE "C++ data type used for tensor indices" OFF)
-OPTION(ENABLE_GCP "Enable experimental GCP code" OFF)
+OPTION(ENABLE_GCP "Enable experimental GCP code" ON)
 
 IF(FLOAT_TYPE)
   SET(GENTEN_FLOAT_TYPE ${FLOAT_TYPE})
