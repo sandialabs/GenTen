@@ -61,11 +61,14 @@ namespace Genten {
     void gcp_sgd_ss_grad_sv_kernel(
       const SptensorT<ExecSpace>& X,
       const KtensorT<ExecSpace>& M,
+      const KtensorT<ExecSpace>& Mt,
+      const KtensorT<ExecSpace>& Mprev,
       const loss_type& f,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
+      const IndxArrayT<ExecSpace>& modes,
       const KtensorT<ExecSpace>& G,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams,
@@ -94,6 +97,11 @@ namespace Genten {
       static_assert(!is_cuda,
                     "Cannot call gcp_sgd_ss_grad_sv_kernel for Cuda space!");
 
+      const bool have_Mprev = (Mprev.ndims() > 0 && Mprev.ncomponents() > 0);
+
+      // Note, G is length d
+
+      /*const*/ unsigned d = modes.size();
       /*const*/ unsigned nd = M.ndims();
       /*const*/ unsigned nc = M.ncomponents();
       /*const*/ ttb_indx ns_nz = num_samples_nonzeros;
@@ -104,8 +112,8 @@ namespace Genten {
       const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
 
       typedef ScatterView<ttb_real**,Kokkos::LayoutRight,ExecSpace,ScatterSum,Dupl,Cont> ScatterViewType;
-      ScatterViewType *sa = new ScatterViewType[nd];
-      for (unsigned n=0; n<nd; ++n)
+      ScatterViewType *sa = new ScatterViewType[d];
+      for (unsigned n=0; n<d; ++n)
         sa[n] = ScatterViewType(G[n].view());
 
       timer.start(timer_nzs);
@@ -144,6 +152,16 @@ namespace Genten {
             weight_nonzeros * ( f.deriv(x_val, m_val) -
                                 f.deriv(ttb_real(0.0), m_val) );
 
+          // Compute Yt value
+          ttb_real yt_val = 0.0;
+          if (have_Mprev) {
+            const ttb_real mt_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(Mt, ind);
+            const ttb_real mp_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(Mprev, ind);
+            yt_val = weight_nonzeros * ( f.deriv(mp_val, mt_val) );
+          }
+
           auto row_func = [&](auto j, auto nj, auto Nj, auto k, auto n, auto& ga)
           {
             typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
@@ -155,19 +173,30 @@ namespace Genten {
             }
             //Kokkos::atomic_add(&(G[n].entry(k,j)), tmp);
             ga(k,j) += tmp;
+
+            if (have_Mprev) {
+              tmp.broadcast(yt_val);
+              for (unsigned m=0; m<nd; ++m) {
+                if (m != n)
+                  tmp *= &(Mt[m].entry(ind[m],j));
+              }
+              //Kokkos::atomic_add(&(G[n].entry(k,j)), tmp2);
+              ga(k,j) += tmp;
+            }
           };
 
-          for (unsigned n=0; n<nd; ++n) {
+          for (unsigned n=0; n<d; ++n) {
             auto ga = sa[n].access();
-            const ttb_indx k = ind[n];
+            const unsigned nn = modes[n];
+            const ttb_indx k = ind[nn];
             for (unsigned j=0; j<nc; j+=FacBlockSize) {
               if (j+FacBlockSize <= nc) {
                 const unsigned nj = FacBlockSize;
-                row_func(j, nj, std::integral_constant<unsigned,nj>(), k, n, ga);
+                row_func(j, nj, std::integral_constant<unsigned,nj>(), k, nn, ga);
               }
               else {
                 const unsigned nj = nc-j;
-                row_func(j, nj, std::integral_constant<unsigned,0>(), k, n, ga);
+                row_func(j, nj, std::integral_constant<unsigned,0>(), k, nn, ga);
               }
             } // j
           } // n
@@ -210,6 +239,16 @@ namespace Genten {
           // Compute Y value
           const ttb_real y_val = weight_zeros * f.deriv(ttb_real(0.0), m_val);
 
+          // Compute Yt value
+          ttb_real yt_val = 0.0;
+          if (have_Mprev) {
+            const ttb_real mt_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(Mt, ind);
+            const ttb_real mp_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(Mprev, ind);
+            yt_val = weight_zeros * ( f.deriv(mp_val, mt_val) );
+          }
+
           auto row_func = [&](auto j, auto nj, auto Nj, auto k, auto n, auto& ga)
           {
             typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
@@ -221,19 +260,30 @@ namespace Genten {
             }
             //Kokkos::atomic_add(&(G[n].entry(k,j)), tmp);
             ga(k,j) += tmp;
+
+            if (have_Mprev) {
+              tmp.broadcast(yt_val);
+              for (unsigned m=0; m<nd; ++m) {
+                if (m != n)
+                  tmp *= &(Mt[m].entry(ind[m],j));
+              }
+              //Kokkos::atomic_add(&(G[n].entry(k,j)), tmp2);
+              ga(k,j) += tmp;
+            }
           };
 
-          for (unsigned n=0; n<nd; ++n) {
+          for (unsigned n=0; n<d; ++n) {
             auto ga = sa[n].access();
-            const ttb_indx k = ind[n];
+            const unsigned nn = modes[n];
+            const ttb_indx k = ind[nn];
             for (unsigned j=0; j<nc; j+=FacBlockSize) {
               if (j+FacBlockSize <= nc) {
                 const unsigned nj = FacBlockSize;
-                row_func(j, nj, std::integral_constant<unsigned,nj>(), k, n, ga);
+                row_func(j, nj, std::integral_constant<unsigned,nj>(), k, nn, ga);
               }
               else {
                 const unsigned nj = nc-j;
-                row_func(j, nj, std::integral_constant<unsigned,0>(), k, n, ga);
+                row_func(j, nj, std::integral_constant<unsigned,0>(), k, nn, ga);
               }
             } // j
           } // n
@@ -242,7 +292,7 @@ namespace Genten {
       }, "gcp_sgd_ss_grad_sv_zero_kernel");
       timer.stop(timer_zs);
 
-      for (unsigned n=0; n<nd; ++n)
+      for (unsigned n=0; n<d; ++n)
         sa[n].contribute_into(G[n].view());
       delete [] sa;
     }
@@ -256,11 +306,14 @@ namespace Genten {
     void gcp_sgd_ss_grad_atomic_kernel(
       const SptensorT<ExecSpace>& X,
       const KtensorT<ExecSpace>& M,
+      const KtensorT<ExecSpace>& Mt,
+      const KtensorT<ExecSpace>& Mprev,
       const loss_type& f,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
+      const IndxArrayT<ExecSpace>& modes,
       const KtensorT<ExecSpace>& G,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams,
@@ -282,6 +335,11 @@ namespace Genten {
       static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
+      const bool have_Mprev = (Mprev.ndims() > 0 && Mprev.ncomponents() > 0);
+
+      // Note, G is length d
+
+      /*const*/ unsigned d = modes.size();
       /*const*/ unsigned nd = M.ndims();
       /*const*/ unsigned nc = M.ncomponents();
       /*const*/ ttb_indx ns_nz = num_samples_nonzeros;
@@ -327,6 +385,17 @@ namespace Genten {
             weight_nonzeros * ( f.deriv(x_val, m_val) -
                                 f.deriv(ttb_real(0.0), m_val) );
 
+          // Compute Yt value
+          ttb_real yt_val = 0.0;
+          if (have_Mprev) {
+            const ttb_real mt_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(Mt, ind);
+            const ttb_real mp_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(Mprev, ind);
+            yt_val =
+              weight_nonzeros * ( f.deriv(mp_val, mt_val) );
+          }
+
           auto row_func = [&](auto j, auto nj, auto Nj, auto k, auto n) {
             typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
 
@@ -336,18 +405,28 @@ namespace Genten {
                 tmp *= &(M[m].entry(ind[m],j));
             }
             Kokkos::atomic_add(&(G[n].entry(k,j)), tmp);
+
+            if (have_Mprev) {
+              tmp.broadcast(yt_val);
+              for (unsigned m=0; m<nd; ++m) {
+                if (m != n)
+                  tmp *= &(M[m].entry(ind[m],j));
+              }
+              Kokkos::atomic_add(&(G[n].entry(k,j)), tmp);
+            }
           };
 
-          for (unsigned n=0; n<nd; ++n) {
-            const ttb_indx k = ind[n];
+          for (unsigned n=0; n<d; ++n) {
+            const unsigned nn = modes[n];
+            const ttb_indx k = ind[nn];
             for (unsigned j=0; j<nc; j+=FacBlockSize) {
               if (j+FacBlockSize <= nc) {
                 const unsigned nj = FacBlockSize;
-                row_func(j, nj, std::integral_constant<unsigned,nj>(), k, n);
+                row_func(j, nj, std::integral_constant<unsigned,nj>(), k, nn);
               }
               else {
                 const unsigned nj = nc-j;
-                row_func(j, nj, std::integral_constant<unsigned,0>(), k, n);
+                row_func(j, nj, std::integral_constant<unsigned,0>(), k, nn);
               }
             } // j
           } // n
@@ -390,27 +469,47 @@ namespace Genten {
           // Compute Y value
           const ttb_real y_val = weight_zeros * f.deriv(ttb_real(0.0), m_val);
 
+          // Compute Yt value
+          ttb_real yt_val = 0.0;
+          if (have_Mprev) {
+            const ttb_real mt_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(Mt, ind);
+            const ttb_real mp_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(Mprev, ind);
+            yt_val = weight_zeros * ( f.deriv(mp_val, mt_val) );
+          }
+
           auto row_func = [&](auto j, auto nj, auto Nj, auto k, auto n) {
             typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
 
             TV tmp(nj, y_val);
-            for (unsigned m=0; m<nd; ++m) {
+            for (unsigned m=0; m<d; ++m) {
               if (m != n)
                 tmp *= &(M[m].entry(ind[m],j));
             }
             Kokkos::atomic_add(&(G[n].entry(k,j)), tmp);
+
+            if (have_Mprev) {
+              tmp.broadcast(yt_val);
+              for (unsigned m=0; m<nd; ++m) {
+                if (m != n)
+                  tmp *= &(M[m].entry(ind[m],j));
+              }
+              Kokkos::atomic_add(&(G[n].entry(k,j)), tmp);
+            }
           };
 
           for (unsigned n=0; n<nd; ++n) {
-            const ttb_indx k = ind[n];
+            const unsigned nn = modes[n];
+            const ttb_indx k = ind[nn];
             for (unsigned j=0; j<nc; j+=FacBlockSize) {
               if (j+FacBlockSize <= nc) {
                 const unsigned nj = FacBlockSize;
-                row_func(j, nj, std::integral_constant<unsigned,nj>(), k, n);
+                row_func(j, nj, std::integral_constant<unsigned,nj>(), k, nn);
               }
               else {
                 const unsigned nj = nc-j;
-                row_func(j, nj, std::integral_constant<unsigned,0>(), k, n);
+                row_func(j, nj, std::integral_constant<unsigned,0>(), k, nn);
               }
             } // j
           } // n
@@ -421,18 +520,22 @@ namespace Genten {
     }
 
     template <typename ExecSpace, typename loss_type>
-    struct GCP_SS_Grad {
+    struct GCP_SS_Grad_Str {
       typedef ExecSpace exec_space;
       typedef SptensorT<exec_space> tensor_type;
       typedef KtensorT<exec_space> Ktensor_type;
+      typedef IndxArrayT<exec_space> Array_type;
 
       const tensor_type X;
       const Ktensor_type M;
+      const Ktensor_type Mt;
+      const Ktensor_type Mprev;
       const loss_type f;
       const ttb_indx num_samples_nonzeros;
       const ttb_indx num_samples_zeros;
       const ttb_real weight_nonzeros;
       const ttb_real weight_zeros;
+      const Array_type modes;
       const Ktensor_type G;
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool;
       const AlgParams algParams;
@@ -440,23 +543,28 @@ namespace Genten {
       const int timer_nzs;
       const int timer_zs;
 
-      GCP_SS_Grad(const tensor_type& X_, const Ktensor_type& M_,
-                  const loss_type& f_,
-                  const ttb_indx num_samples_nonzeros_,
-                  const ttb_indx num_samples_zeros_,
-                  const ttb_real weight_nonzeros_,
-                  const ttb_real weight_zeros_,
-                  const Ktensor_type& G_,
-                  Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool_,
-                  const AlgParams& algParams_,
-                  SystemTimer& timer_,
-                  const int timer_nzs_,
-                  const int timer_zs_) :
-        X(X_), M(M_), f(f_),
+      GCP_SS_Grad_Str(const tensor_type& X_,
+                      const Ktensor_type& M_,
+                      const Ktensor_type& Mt_,
+                      const Ktensor_type& Mprev_,
+                      const loss_type& f_,
+                      const ttb_indx num_samples_nonzeros_,
+                      const ttb_indx num_samples_zeros_,
+                      const ttb_real weight_nonzeros_,
+                      const ttb_real weight_zeros_,
+                      const Array_type& modes_,
+                      const Ktensor_type& G_,
+                      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool_,
+                      const AlgParams& algParams_,
+                      SystemTimer& timer_,
+                      const int timer_nzs_,
+                      const int timer_zs_) :
+        X(X_), M(M_), Mt(Mt_), Mprev(Mprev_), f(f_),
         num_samples_nonzeros(num_samples_nonzeros_),
         num_samples_zeros(num_samples_zeros_),
         weight_nonzeros(weight_nonzeros_),
         weight_zeros(weight_zeros_),
+        modes(modes_),
         G(G_), rand_pool(rand_pool_), algParams(algParams_),
         timer(timer_), timer_nzs(timer_nzs_), timer_zs(timer_zs_) {}
 
@@ -471,18 +579,18 @@ namespace Genten {
 
         if (method == MTTKRP_All_Method::Single)
           gcp_sgd_ss_grad_sv_kernel<ScatterNonDuplicated,ScatterNonAtomic,FBS,VS>(
-            X,M,f,num_samples_nonzeros,num_samples_zeros,
-            weight_nonzeros,weight_zeros,G,rand_pool,algParams,
+            X,M,Mt,Mprev,f,num_samples_nonzeros,num_samples_zeros,
+            weight_nonzeros,weight_zeros,modes,G,rand_pool,algParams,
             timer,timer_nzs,timer_zs);
         else if (method == MTTKRP_All_Method::Atomic)
           gcp_sgd_ss_grad_sv_kernel<ScatterNonDuplicated,ScatterAtomic,FBS,VS>(
-            X,M,f,num_samples_nonzeros,num_samples_zeros,
-            weight_nonzeros,weight_zeros,G,rand_pool,algParams,
+            X,M,Mt,Mprev,f,num_samples_nonzeros,num_samples_zeros,
+            weight_nonzeros,weight_zeros,modes,G,rand_pool,algParams,
             timer,timer_nzs,timer_zs);
         else if (method == MTTKRP_All_Method::Duplicated)
           gcp_sgd_ss_grad_sv_kernel<ScatterDuplicated,ScatterNonAtomic,FBS,VS>(
-            X,M,f,num_samples_nonzeros,num_samples_zeros,
-            weight_nonzeros,weight_zeros,G,rand_pool,algParams,
+            X,M,Mt,Mprev,f,num_samples_nonzeros,num_samples_zeros,
+            weight_nonzeros,weight_zeros,modes,G,rand_pool,algParams,
             timer,timer_nzs,timer_zs);
         else if (method == MTTKRP_All_Method::Iterated)
           Genten::error("Cannot use iterated MTTKRP method in fused stratified-sampling/MTTKRP kernel!");
@@ -493,18 +601,22 @@ namespace Genten {
     // Specialization for Cuda that always uses atomics and doesn't call
     // gcp_sgd_ss_grad_sv_kernel, which won't run on the GPU
     template <typename loss_type>
-    struct GCP_SS_Grad<Kokkos::Cuda,loss_type> {
+    struct GCP_SS_Grad_Str<Kokkos::Cuda,loss_type> {
       typedef Kokkos::Cuda exec_space;
       typedef SptensorT<exec_space> tensor_type;
       typedef KtensorT<exec_space> Ktensor_type;
+      typedef IndxArrayT<exec_space> Array_type;
 
       const tensor_type X;
       const Ktensor_type M;
+      const Ktensor_type Mt;
+      const Ktensor_type Mprev;
       const loss_type f;
       const ttb_indx num_samples_nonzeros;
       const ttb_indx num_samples_zeros;
       const ttb_real weight_nonzeros;
       const ttb_real weight_zeros;
+      const Array_type modes;
       const Ktensor_type G;
       Kokkos::Random_XorShift64_Pool<exec_space>& rand_pool;
       const AlgParams algParams;
@@ -512,23 +624,28 @@ namespace Genten {
       const int timer_nzs;
       const int timer_zs;
 
-      GCP_SS_Grad(const tensor_type& X_, const Ktensor_type& M_,
-                  const loss_type& f_,
-                  const ttb_indx num_samples_nonzeros_,
-                  const ttb_indx num_samples_zeros_,
-                  const ttb_real weight_nonzeros_,
-                  const ttb_real weight_zeros_,
-                  const Ktensor_type& G_,
-                  Kokkos::Random_XorShift64_Pool<exec_space>& rand_pool_,
-                  const AlgParams& algParams_,
-                  SystemTimer& timer_,
-                  const int timer_nzs_,
-                  const int timer_zs_) :
-        X(X_), M(M_), f(f_),
+      GCP_SS_Grad_Str(const tensor_type& X_,
+                      const Ktensor_type& M_,
+                      const Ktensor_type& Mt_,
+                      const Ktensor_type& Mprev_,
+                      const loss_type& f_,
+                      const ttb_indx num_samples_nonzeros_,
+                      const ttb_indx num_samples_zeros_,
+                      const ttb_real weight_nonzeros_,
+                      const ttb_real weight_zeros_,
+                      const Array_type& modes_,
+                      const Ktensor_type& G_,
+                      Kokkos::Random_XorShift64_Pool<exec_space>& rand_pool_,
+                      const AlgParams& algParams_,
+                      SystemTimer& timer_,
+                      const int timer_nzs_,
+                      const int timer_zs_) :
+        X(X_), M(M_), Mt(Mt_), Mprev(Mprev_), f(f_),
         num_samples_nonzeros(num_samples_nonzeros_),
         num_samples_zeros(num_samples_zeros_),
         weight_nonzeros(weight_nonzeros_),
         weight_zeros(weight_zeros_),
+        modes(modes_),
         G(G_), rand_pool(rand_pool_), algParams(algParams_),
         timer(timer_), timer_nzs(timer_nzs_), timer_zs(timer_zs_) {}
 
@@ -538,8 +655,8 @@ namespace Genten {
           Genten::error("MTTKRP-All method must be atomic on Cuda!");
 
         gcp_sgd_ss_grad_atomic_kernel<FBS,VS>(
-          X,M,f,num_samples_nonzeros,num_samples_zeros,
-          weight_nonzeros,weight_zeros,G,rand_pool,algParams,
+          X,M,Mt,Mprev,f,num_samples_nonzeros,num_samples_zeros,
+          weight_nonzeros,weight_zeros,modes,G,rand_pool,algParams,
           timer,timer_nzs,timer_zs);
       }
     };
@@ -549,11 +666,14 @@ namespace Genten {
     void gcp_sgd_ss_grad(
       const SptensorT<ExecSpace>& X,
       const KtensorT<ExecSpace>& M,
+      const KtensorT<ExecSpace>& Mt,
+      const KtensorT<ExecSpace>& Mprev,
       const loss_type& f,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
+      const IndxArrayT<ExecSpace>& modes,
       const KtensorT<ExecSpace>& G,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams,
@@ -561,9 +681,9 @@ namespace Genten {
       const int timer_nzs,
       const int timer_zs)
     {
-      GCP_SS_Grad<ExecSpace,loss_type> kernel(
-        X,M,f,num_samples_nonzeros,num_samples_zeros,
-        weight_nonzeros,weight_zeros,G,rand_pool,algParams,
+      GCP_SS_Grad_Str<ExecSpace,loss_type> kernel(
+        X,M,Mt,Mprev,f,num_samples_nonzeros,num_samples_zeros,
+        weight_nonzeros,weight_zeros,modes,G,rand_pool,algParams,
         timer,timer_nzs,timer_zs);
       run_row_simd_kernel(kernel, M.ncomponents());
     }
@@ -571,39 +691,3 @@ namespace Genten {
   }
 
 }
-
-#include "Genten_GCP_SS_Grad_Streaming_Def.hpp"
-
-#define LOSS_INST_MACRO(SPACE,LOSS)                                     \
-  template void Impl::gcp_sgd_ss_grad(                                  \
-    const SptensorT<SPACE>& X,                                          \
-    const KtensorT<SPACE>& M,                                           \
-    const LOSS& f,                                                      \
-    const ttb_indx num_samples_nonzeros,                                \
-    const ttb_indx num_samples_zeros,                                   \
-    const ttb_real weight_nonzeros,                                     \
-    const ttb_real weight_zeros,                                        \
-    const KtensorT<SPACE>& G,                                           \
-    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
-    const AlgParams& algParams,                                         \
-    SystemTimer& timer,                                                 \
-    const int timer_nzs,                                                \
-    const int timer_zs);                                                \
-                                                                        \
-  template void Impl::gcp_sgd_ss_grad(                                  \
-    const SptensorT<SPACE>& X,                                          \
-    const KtensorT<SPACE>& M,                                           \
-    const KtensorT<SPACE>& Mt,                                          \
-    const KtensorT<SPACE>& Mprev,                                       \
-    const LOSS& f,                                                      \
-    const ttb_indx num_samples_nonzeros,                                \
-    const ttb_indx num_samples_zeros,                                   \
-    const ttb_real weight_nonzeros,                                     \
-    const ttb_real weight_zeros,                                        \
-    const IndxArrayT<SPACE>& modes,                                     \
-    const KtensorT<SPACE>& G,                                           \
-    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
-    const AlgParams& algParams,                                         \
-    SystemTimer& timer,                                                 \
-    const int timer_nzs,                                                \
-    const int timer_zs);
