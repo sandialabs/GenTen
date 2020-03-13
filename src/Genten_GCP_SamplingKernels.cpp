@@ -304,7 +304,7 @@ namespace Genten {
         const ttb_indx offset =
           (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
         for (unsigned ii=0; ii<RowBlockSize; ++ii) {
-          const ttb_indx idx = offset + ii;
+          /*const*/ ttb_indx idx = offset + ii;
           if (idx >= ns_nz)
             continue;
 
@@ -1108,7 +1108,6 @@ namespace Genten {
       /*const*/ ttb_indx nnz = X.nnz();
       /*const*/ unsigned nd = X.ndims();
       /*const*/ ttb_indx ns_nz = num_samples_nonzeros;
-      /*const*/ ttb_indx ns_z = num_samples_zeros;
       /*const*/ ttb_indx total_samples =
         num_samples_nonzeros + num_samples_zeros;
       const ttb_indx N = (total_samples+RowsPerTeam-1)/RowsPerTeam;

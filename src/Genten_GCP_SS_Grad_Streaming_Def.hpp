@@ -97,7 +97,7 @@ namespace Genten {
       static_assert(!is_cuda,
                     "Cannot call gcp_sgd_ss_grad_sv_kernel for Cuda space!");
 
-      const bool have_Mprev = (Mprev.ndims() > 0 && Mprev.ncomponents() > 0);
+      /*const*/ bool have_Mprev = (Mprev.ndims() > 0 && Mprev.ncomponents() > 0);
 
       // Note, G is length d
 
@@ -335,7 +335,7 @@ namespace Genten {
       static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
-      const bool have_Mprev = (Mprev.ndims() > 0 && Mprev.ncomponents() > 0);
+      /*const*/ bool have_Mprev = (Mprev.ndims() > 0 && Mprev.ncomponents() > 0);
 
       // Note, G is length d
 
