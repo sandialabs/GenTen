@@ -56,13 +56,13 @@ switch s(1).type
     case '.'
         switch s(1).subs
             case {'subs','indices'}
-                a = tt_subsubsref(t.subs'+1, s);
+                a = tt_subsubsref(double(t.subs'+1), s);
             case {'vals','values'}
                 a = tt_subsubsref(t.vals, s);
             case 'size'
-                a = tt_subsubsref(t.size, s);
+                a = tt_subsubsref(double(t.size), s);
             case {'perm','perms'}
-                a = tt_subsubsref(t.perm'+1, s);
+                a = tt_subsubsref(double(t.perm'+1), s);
             case {'alg_params','params'}
                 a = tt_subsubsref(t.alg_params, s);
             otherwise

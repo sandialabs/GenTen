@@ -21,7 +21,7 @@ function m = size(t,idx)
 
 
 if exist('idx','var')
-    m = t.size(idx);
+    m = double(t.size(idx));
 else
-    m = t.size;
+    m = double(t.size);
 end
