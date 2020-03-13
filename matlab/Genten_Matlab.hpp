@@ -111,6 +111,64 @@ mxGetSptensor(const mxArray *ptr, const bool print = false) {
 }
 
 template <typename ExecSpace>
+mxArray* mxSetSptensor(const Genten::SptensorT<ExecSpace>& X,
+                       const bool print = false) {
+  typedef Genten::SptensorT<ExecSpace> Sptensor_type;
+  typedef Genten::Sptensor Sptensor_host_type;
+  typedef typename Sptensor_host_type::exec_space host_exec_space;
+  typedef typename Sptensor_host_type::subs_view_type subs_view_type;
+  typedef typename Sptensor_host_type::vals_view_type vals_view_type;
+  typedef Genten::IndxArray Index_host_type;
+  typedef typename Index_host_type::view_type size_view_type;
+
+  // Copy u to host
+  Sptensor_host_type X_host = create_mirror_view(host_exec_space(), X);
+  deep_copy(X_host, X);
+
+  if (print)
+    Genten::print_sptensor(X_host, std::cout, "X");
+
+  const ttb_indx nnz = X.nnz();
+  const ttb_indx nd = X.ndims();
+
+  // Copy subs array
+  subs_view_type subs = X_host.getSubscripts();
+  mxArray *mx_subs_ptr = mxCreateNumericMatrix( (mwSize) nd, (mwSize) nnz,
+                                                mxUINT64_CLASS, mxREAL );
+  ttb_indx* subs_ptr = mxGetUint64s(mx_subs_ptr);
+  subs_view_type mx_subs(subs_ptr, nnz, nd);
+  deep_copy(mx_subs, subs);
+
+  // Copy vals array
+  vals_view_type vals = X_host.getValues();
+  mxArray *mx_vals_ptr = mxCreateDoubleMatrix( (mwSize) nnz, (mwSize) 1,
+                                                mxREAL );
+  ttb_real* vals_ptr = mxGetDoubles(mx_vals_ptr);
+  vals_view_type mx_vals(vals_ptr, nnz);
+  deep_copy(mx_vals, vals);
+
+  // Copy size array
+  size_view_type size = X_host.size().values();
+  mxArray *mx_size_ptr = mxCreateNumericMatrix( 1, (mwSize) nd,
+                                                mxUINT64_CLASS, mxREAL );
+  ttb_indx* size_ptr = mxGetUint64s(mx_size_ptr);
+  size_view_type mx_size(size_ptr, nd);
+  deep_copy(mx_size, size);
+
+  mxArray *mx_arg4_ptr = mxCreateDoubleMatrix( (mwSize) 1, (mwSize) 1,
+                                                mxREAL );
+  ttb_real* arg4_ptr = mxGetDoubles(mx_arg4_ptr);
+  *arg4_ptr = 0;
+
+  // Create Sptensor_gt class by calling Spttensor_gt constructor
+  mxArray *lhs[1];
+  mxArray *rhs[4] = { mx_subs_ptr, mx_vals_ptr, mx_size_ptr, mx_arg4_ptr };
+  mexCallMATLAB(1, lhs, 4, rhs, "sptensor_gt");
+
+  return lhs[0];
+}
+
+template <typename ExecSpace>
 mxArray* mxSetKtensor(const Genten::KtensorT<ExecSpace>& u,
                       const bool print = false) {
   typedef Genten::KtensorT<ExecSpace> Ktensor_type;
@@ -166,6 +224,10 @@ mxGetKtensor(const mxArray* ptr, const bool print = false) {
   typedef Genten::KtensorT<ExecSpace> Ktensor_type;
   typedef Genten::Ktensor Ktensor_host_type;
   typedef typename Ktensor_host_type::exec_space host_exec_space;
+
+  // Check for empty arg
+  if (mxIsEmpty(ptr))
+    return Ktensor_type();
 
   if (!mxIsStruct(ptr))
     Genten::error("Arg is not a struct!");
@@ -229,6 +291,66 @@ mxArray* mxSetFacMatrix(const Genten::FacMatrixT<ExecSpace>& u,
   u_host.convertToCol(m,n,mat);
 
   return mat_ptr;
+}
+
+template <typename ExecSpace>
+Genten::ArrayT<ExecSpace>
+mxGetArray(const mxArray* ptr) {
+  typedef Genten::ArrayT<ExecSpace> array_type;
+  typedef Genten::Array array_host_type;
+  typedef typename array_host_type::exec_space host_exec_space;
+
+  // Get matlab array data
+  ttb_real* mx_w = mxGetDoubles(ptr);
+  ttb_indx n = mxGetNumberOfElements(ptr);
+
+  // Create array
+  array_type w(n);
+  array_host_type w_host = create_mirror_view(host_exec_space(), w);
+
+  // Copy data
+  w_host.copyFrom(n, mx_w);
+
+  // Copy from host to device
+  deep_copy(w, w_host);
+
+  return w;
+}
+
+template <typename ExecSpace>
+mxArray* mxSetArray(const Genten::ArrayT<ExecSpace>& w) {
+  typedef Genten::ArrayT<ExecSpace> array_type;
+  typedef Genten::Array array_host_type;
+  typedef typename array_host_type::exec_space host_exec_space;
+
+  // Copy w to host
+  array_host_type w_host = create_mirror_view(host_exec_space(), w);
+  deep_copy(w_host, w);
+
+  // Create matlab array
+  const ttb_indx m = w_host.size();
+  mxArray *mx_w_ptr = mxCreateDoubleMatrix( (mwSize) m, (mwSize) 1,  mxREAL );
+  ttb_real *mx_w = mxGetDoubles(mx_w_ptr);
+  w_host.copyTo(m,mx_w);
+
+  return mx_w_ptr;
+}
+
+template <typename ExecSpace>
+Genten::IndxArrayT<ExecSpace>
+mxGetIndxArray(const mxArray* ptr, const bool subtract_one = false) {
+  typedef Genten::IndxArrayT<ExecSpace> array_type;
+  typedef Genten::IndxArray array_host_type;
+  typedef typename array_host_type::exec_space host_exec_space;
+
+  // Get matlab array data
+  ttb_real* mx_w = mxGetDoubles(ptr);
+  ttb_indx n = mxGetNumberOfElements(ptr);
+
+  // Create array
+  array_type w(n, mx_w, subtract_one); // converts from ttb_real to ttb_indx
+
+  return w;
 }
 
 std::string mxGetStdString(const mxArray* ptr);
