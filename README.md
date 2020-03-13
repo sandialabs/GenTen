@@ -66,7 +66,7 @@ cmake \
  -D CMAKE_C_COMPILER=gcc \
  -D KOKKOS_INLINE_BUILD=ON \
  -D Kokkos_ENABLE_OPENMP=ON \
- -D KOKKOS_ARCH_SNB=ON \
+ -D Kokkos_ARCH_SNB=ON \
  -D debug=OFF \
  ${EXTRA_ARGS} \
  ../../genten
