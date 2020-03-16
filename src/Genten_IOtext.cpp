@@ -164,7 +164,9 @@ static void  read_positive_ints (      std::istream        & fIn,
     sErrMsg << sMsgPrefix << " - line contains too many integers"
             << " (or extra characters)"
             << ", expecting " << naResult.size();
-    Genten::error(sErrMsg.str());
+    // Print a warning instead of an error
+    std::cout << "Warning!  " << sErrMsg.str() << std::endl;
+    //Genten::error(sErrMsg.str());
   }
 
   return;
