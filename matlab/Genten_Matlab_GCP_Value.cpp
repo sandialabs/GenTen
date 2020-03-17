@@ -86,13 +86,13 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
     else if (loss_type == "rayleigh")
       fest = Genten::Impl::gcp_value(
         X, u, w, Genten::RayleighLossFunction(algParams.loss_eps));
-    if (loss_type == "gamma")
+    else if (loss_type == "gamma")
       fest = Genten::Impl::gcp_value(
         X, u, w, Genten::GammaLossFunction(algParams.loss_eps));
-    if (loss_type == "bernoulli" || loss_type == "binary")
+    else if (loss_type == "bernoulli" || loss_type == "binary")
       fest = Genten::Impl::gcp_value(
         X, u, w, Genten::BernoulliLossFunction(algParams.loss_eps));
-    if (loss_type == "poisson" || loss_type == "count")
+    else if (loss_type == "poisson" || loss_type == "count")
       fest = Genten::Impl::gcp_value(
         X, u, w, Genten::PoissonLossFunction(algParams.loss_eps));
     else {
