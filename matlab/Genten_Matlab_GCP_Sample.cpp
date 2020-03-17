@@ -46,22 +46,6 @@
 
 #include "Kokkos_Random.hpp"
 
-template <typename ExecSpace>
-void gcp_sample_driver(
-  const std::string& method,
-  const Genten::SptensorT<ExecSpace>& X,
-  const ttb_indx num_samples_nonzeros,
-  const ttb_indx num_samples_zeros,
-  const ttb_real weight_nonzeros,
-  const ttb_real weight_zeros,
-  Genten::SptensorT<ExecSpace>& Y,
-  Genten::ArrayT<ExecSpace>& w,
-  Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
-  const Genten::AlgParams& algParams)
-{
-  
-}
-
 extern "C" {
 
 DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
