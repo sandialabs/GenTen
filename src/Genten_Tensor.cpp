@@ -93,9 +93,11 @@ void copyFromKtensor(const TensorT<ExecSpace>& x,
 
 template <typename ExecSpace>
 TensorT<ExecSpace>::
-TensorT(const SptensorT<ExecSpace>& src) :
-  siz(src.size()), values(siz.prod(), 0.0)
+TensorT(const SptensorT<ExecSpace>& src) : siz(src.size())
 {
+  siz_host = create_mirror_view(siz);
+  deep_copy(siz_host, siz);
+  values = ArrayT<ExecSpace>(siz_host.prod(), 0.0);
   Impl::copyFromSptensor(*this, src);
 }
 
@@ -103,11 +105,12 @@ template <typename ExecSpace>
 TensorT<ExecSpace>::
 TensorT(const KtensorT<ExecSpace>& src) : siz(src.ndims())
 {
-  const ttb_indx nd = siz.size();
+  siz_host = create_mirror_view(siz);
+  const ttb_indx nd = siz_host.size();
   for (ttb_indx i=0; i<nd; ++i)
-    siz[i] = src[i].nRows();
-  deep_copy(siz.values(), siz.host_values());
-  values = ArrayT<ExecSpace>(siz.prod());
+    siz_host[i] = src[i].nRows();
+  deep_copy(siz, siz_host);
+  values = ArrayT<ExecSpace>(siz_host.prod());
   Impl::copyFromKtensor(*this, src);
 }
 

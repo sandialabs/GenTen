@@ -117,12 +117,18 @@ public:
 
   // Construct tensor of given size initialized to val.
   TensorT(const IndxArrayT<ExecSpace>& sz, ttb_real val = 0.0) :
-    siz(sz.clone()), values(sz.prod(), val) {}
+    siz(sz.clone()) {
+    siz_host = create_mirror_view(siz);
+    deep_copy(siz_host, siz);
+    values = ArrayT<ExecSpace>(siz_host.prod(), val);
+  }
 
   // Construct tensor with given size and values
-  KOKKOS_INLINE_FUNCTION
   TensorT(const IndxArrayT<ExecSpace>& sz,
-          const ArrayT<ExecSpace>& vals) : siz(sz), values(vals) {}
+          const ArrayT<ExecSpace>& vals) : siz(sz), values(vals) {
+    siz_host = create_mirror_view(siz);
+    deep_copy(siz_host, siz);
+  }
 
   // Construct tensor for Sptensor
   TensorT(const SptensorT<ExecSpace>& src);
@@ -143,11 +149,19 @@ public:
 
   // Return size of dimension i.
   KOKKOS_INLINE_FUNCTION
-  ttb_indx size(ttb_indx i) const { return siz[i]; }
+  ttb_indx size(ttb_indx i) const {
+    if (Kokkos::Impl::MemorySpaceAccess< typename Kokkos::Impl::ActiveExecutionMemorySpace::memory_space, typename ExecSpace::memory_space >::accessible)
+      return siz[i];
+    else
+      return siz_host[i];
+  }
 
   // Return the entire size array.
   KOKKOS_INLINE_FUNCTION
   const IndxArrayT<ExecSpace>& size() const { return siz; }
+
+  // Return the entire size array.
+  const IndxArrayT<host_mirror_space>& size_host() const { return siz_host; }
 
   // Return the total number of elements in the tensor.
   KOKKOS_INLINE_FUNCTION
@@ -229,6 +243,7 @@ private:
 
   // Size of the tensor
   IndxArrayT<ExecSpace> siz;
+  IndxArrayT<host_mirror_space> siz_host;
 
   // Entries of the tensor
   // TBD describe storage order via ind2sub and sub2ind
@@ -257,6 +272,7 @@ template <typename E1, typename E2>
 void deep_copy(TensorT<E1>& dst, const TensorT<E2>& src)
 {
   deep_copy( dst.size(), src.size() );
+  deep_copy( dst.size_host(), src.size_host() );
   deep_copy( dst.getValues(), src.getValues() );
 }
 

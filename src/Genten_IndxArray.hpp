@@ -89,10 +89,8 @@ public:
     ttb_indx i = 0;
     for (const T& x : v)
     {
-      host_data[i++] = (ttb_indx) x;
+      data[i++] = (ttb_indx) x;
     }
-    if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename ExecSpace::memory_space >::accessible)
-      deep_copy( data, host_data );
   }
 
   // Copy Constructor.
@@ -108,15 +106,7 @@ public:
   IndxArrayT(ttb_indx n, const ttb_real * v, const bool subtract_one = false);
 
   //! @brief Create array from supplied view
-  IndxArrayT(const view_type& v) : data(v) {
-    if (Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename ExecSpace::memory_space >::accessible)
-      host_data = host_view_type(data.data(), data.extent(0));
-    else {
-      host_data = host_view_type("Genten::IndxArray::host_data",
-                                 data.extent(0));
-      deep_copy( host_data, data );
-    }
-  }
+  IndxArrayT(const view_type& v) : data(v) {}
 
   // Copy Constructor.
   /* Does a (deep) copy of the data in src. The reserved size (rsz)
@@ -142,8 +132,8 @@ public:
   template <typename IndxType>
   KOKKOS_INLINE_FUNCTION
   IndxArrayT& operator=(const IndxType& indx)
-  { data = indx;
-    // Should we deep copy to the host here?
+  {
+    data = indx;
     return *this;
   }
 
@@ -168,27 +158,14 @@ public:
 
   // ----- ELEMENT ACCESS -----
 
-  // Return reference to value at position i (no out-of-bounds check).
-  // ETP 10/26/17:  This is very dangerous with the simulatneous host-
-  // device data and should be fixed.
+  // Return value at position i (no out-of-bounds check).
   KOKKOS_INLINE_FUNCTION
-  ttb_indx & operator[](ttb_indx i) const
+  ttb_indx& operator[](ttb_indx i) const
   {
     assert(i < data.extent(0));
-    if (Kokkos::Impl::MemorySpaceAccess< typename Kokkos::Impl::ActiveExecutionMemorySpace::memory_space, typename ExecSpace::memory_space >::accessible)
-      return data[i];
-    else
-      return host_data[i];
-  }
-
-  void sync_to_host() const {
-    if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename ExecSpace::memory_space >::accessible)
-      deep_copy( host_data, data );
-  }
-
-  void sync_to_device() const {
-    if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename ExecSpace::memory_space >::accessible)
-      deep_copy( data, host_data );
+    if (!Kokkos::Impl::MemorySpaceAccess< typename Kokkos::Impl::ActiveExecutionMemorySpace::memory_space, typename ExecSpace::memory_space >::accessible)
+      Kokkos::abort("Attempt to access IndxArray[] from inaccessible memory space!");
+    return data[i];
   }
 
   // Return reference to value at position i (out-of-bounds check).
@@ -205,7 +182,7 @@ public:
   KOKKOS_INLINE_FUNCTION
   ttb_indx prod(ttb_indx dflt = 0) const
   {
-    const ttb_indx sz = host_data.extent(0);
+    const ttb_indx sz = data.extent(0);
     if (sz == 0)
     {
       return dflt;
@@ -214,7 +191,7 @@ public:
     ttb_indx p = 1;
     for (ttb_indx i = 0; i < sz; i ++)
     {
-      p = p * host_data[i];
+      p = p * data[i];
     }
     return p;
   }
@@ -224,7 +201,7 @@ public:
   KOKKOS_INLINE_FUNCTION
   ttb_real prod_float(ttb_real dflt = 0) const
   {
-    const ttb_indx sz = host_data.extent(0);
+    const ttb_indx sz = data.extent(0);
     if (sz == 0)
     {
       return dflt;
@@ -233,7 +210,7 @@ public:
     ttb_real p = 1;
     for (ttb_indx i = 0; i < sz; i ++)
     {
-      p = p * host_data[i];
+      p = p * data[i];
     }
     return p;
   }
@@ -256,15 +233,10 @@ public:
   KOKKOS_INLINE_FUNCTION
   view_type values() const { return data; }
 
-  KOKKOS_INLINE_FUNCTION
-  host_view_type host_values() const { return host_data; }
-
   IndxArrayT clone() const {
     IndxArrayT v(data.size());
     deep_copy(v.data, data);
-     if (!Kokkos::Impl::MemorySpaceAccess< typename Kokkos::Impl::ActiveExecutionMemorySpace::memory_space, typename ExecSpace::memory_space >::accessible)
-       deep_copy(v.host_data, host_data);
-     return v;
+    return v;
   }
 
 private:
@@ -274,7 +246,6 @@ private:
 
   // Pointer to the actual data. managed with new/delete[]
   view_type data;
-  host_view_type host_data;
 };
 
 template <typename ExecSpace>
@@ -296,8 +267,6 @@ template <typename E1, typename E2>
 void deep_copy(const IndxArrayT<E1>& dst, const IndxArrayT<E2>& src)
 {
   deep_copy(dst.values(), src.values());
-  if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename E1::memory_space >::accessible)
-    deep_copy(dst.host_values(), src.host_values());
 }
 
 // Allow printing of IndxArray to screen

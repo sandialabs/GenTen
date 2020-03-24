@@ -69,10 +69,12 @@ namespace GCP {
       initialize();
     }
 
+    template <typename Space>
     KokkosVector(const unsigned nc_, const unsigned nd_,
-                 const IndxArrayT<ExecSpace> & sz_) :
-      nc(nc_), nd(nd_), sz(sz_)
+                 const IndxArrayT<Space> & sz_) :
+      nc(nc_), nd(nd_), sz(sz_.size())
     {
+      deep_copy(sz, sz_);
       initialize();
     }
 
@@ -246,7 +248,7 @@ namespace GCP {
 
     unsigned nc;
     unsigned nd;
-    IndxArrayT<exec_space> sz;
+    IndxArray sz;
     view_type v;
 
   };

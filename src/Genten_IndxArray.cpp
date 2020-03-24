@@ -47,10 +47,6 @@ Genten::IndxArrayT<ExecSpace>::
 IndxArrayT(ttb_indx n) :
   data("Genten::IndxArray::data", n)
 {
-  if (Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename ExecSpace::memory_space >::accessible)
-    host_data = host_view_type(data.data(), n);
-  else
-    host_data = host_view_type("Genten::IndxArray::hsot_data",n);
 }
 
 template <typename ExecSpace>
@@ -59,8 +55,6 @@ IndxArrayT(ttb_indx n, ttb_indx val) :
   IndxArrayT(n)
 {
   deep_copy( data, val );
-  if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename ExecSpace::memory_space >::accessible)
-    deep_copy( host_data, val );
 }
 
 template <typename ExecSpace>
@@ -70,8 +64,6 @@ IndxArrayT(ttb_indx n, ttb_indx * v) :
 {
   unmanaged_const_view_type v_view(v,n);
   deep_copy(data, v_view);
-  if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename ExecSpace::memory_space >::accessible)
-    deep_copy( host_data, v_view );
 }
 
 template <typename ExecSpace>
@@ -80,13 +72,10 @@ IndxArrayT(ttb_indx n, const ttb_real * v, const bool subtract_one) :
   IndxArrayT(n)
 {
   const ttb_real offset = subtract_one ? 1.0 : 0.0;
-  // This is a horribly slow loop. We know that the doubles are really storing positive integers, so it would be mightly nice if we could just pull out the mantissa or something elegant like that.
   for (ttb_indx i = 0; i < n; i ++)
   {
-    host_data[i] = (ttb_indx) (v[i]-offset);
+    data[i] = (ttb_indx) (v[i]-offset);
   }
-  if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename ExecSpace::memory_space >::accessible)
-    deep_copy( data, host_data );
 }
 
 template <typename ExecSpace>
@@ -99,23 +88,21 @@ IndxArrayT(const IndxArrayT<ExecSpace> & src, ttb_indx n):
              Kokkos::subview( src.data, std::make_pair(ttb_indx(0),n) ) );
   deep_copy( Kokkos::subview( data,     std::make_pair(n,sz) ),
              Kokkos::subview( src.data, std::make_pair(n+1,sz+1) ) );
-  if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename ExecSpace::memory_space >::accessible)
-    deep_copy( host_data, data );
 }
 
 template <typename ExecSpace>
 ttb_bool Genten::IndxArrayT<ExecSpace>::
 operator==(const Genten::IndxArrayT<ExecSpace> & a) const
 {
-  const ttb_indx sz = host_data.extent(0);
-  if (sz != a.host_data.extent(0))
+  const ttb_indx sz = data.extent(0);
+  if (sz != a.data.extent(0))
   {
     return false;
   }
 
   for (ttb_indx i = 0; i < sz; i ++)
   {
-    if (host_data[i] != a.host_data[i])
+    if (data[i] != a.data[i])
     {
       return false;
     }
@@ -128,15 +115,15 @@ template <typename ExecSpace>
 ttb_bool Genten::IndxArrayT<ExecSpace>::
 operator<=(const Genten::IndxArrayT<ExecSpace> & a) const
 {
-  const ttb_indx sz = host_data.extent(0);
-  if (sz != a.host_data.extent(0))
+  const ttb_indx sz = data.extent(0);
+  if (sz != a.data.extent(0))
     Genten::error("Genten::IndxArray::operator<= not comparable (different sizes).");
 
   for (ttb_indx i = 0; i < sz; i ++)
   {
-    if (host_data[i] < a.host_data[i])
+    if (data[i] < a.data[i])
       return true;
-    if (host_data[i] > a.host_data[i])
+    if (data[i] > a.data[i])
       return false;
   }
 
@@ -148,11 +135,11 @@ template <typename ExecSpace>
 ttb_indx & Genten::IndxArrayT<ExecSpace>::
 at(ttb_indx i) const
 {
-  if (i < host_data.extent(0)) {
-    return(host_data[i]);
+  if (i < data.extent(0)) {
+    return(data[i]);
   }
   Genten::error("Genten::IndxArray::at ref - input i >= array size.");
-  return host_data[0]; // notreached
+  return data[0]; // notreached
 }
 
 template <typename ExecSpace>
@@ -167,7 +154,7 @@ prod(ttb_indx i, ttb_indx j, ttb_indx dflt) const
   ttb_indx p = 1;
   for (ttb_indx k = i; k < j; k ++)
   {
-    p = p * host_data[k];
+    p = p * data[k];
   }
   return(p);
 }
@@ -176,15 +163,14 @@ template <typename ExecSpace>
 void Genten::IndxArrayT<ExecSpace>::
 cumprod(const Genten::IndxArrayT<ExecSpace> & src)
 {
-  const ttb_indx sz = host_data.extent(0);
-  if (sz != src.host_data.extent(0)+1)
+  const ttb_indx sz = data.extent(0);
+  if (sz != src.data.extent(0)+1)
     Genten::error("Genten::IndxArray::cumprod not comparable (different sizes).");
-  host_data[0] = 1;
+  data[0] = 1;
   for (ttb_indx i = 0; i < sz-1; i++)
   {
-    host_data[i+1] = host_data[i] * src.host_data[i];
+    data[i+1] = data[i] * src.data[i];
   }
-  deep_copy( data, host_data );
 }
 
 template <typename ExecSpace>
@@ -198,21 +184,21 @@ template <typename ExecSpace>
 ttb_bool Genten::IndxArrayT<ExecSpace>::
 isPermutation() const
 {
-  const ttb_indx sz = host_data.extent(0);
+  const ttb_indx sz = data.extent(0);
   const ttb_indx invalid = ttb_indx(-1);
   Genten::IndxArrayT<ExecSpace> chk(sz);
   chk.zero();
   for (ttb_indx i = 0; i < sz; i ++)
   {
-    if ((host_data[i] == invalid) || host_data[i] > (sz-1))
+    if ((data[i] == invalid) || data[i] > (sz-1))
     {
       return(false);
     }
-    chk.host_data[host_data[i]] += 1;
+    chk.data[data[i]] += 1;
   }
   for (ttb_indx i = 0; i < sz; i ++)
   {
-    if (chk.host_data[i] != 1)
+    if (chk.data[i] != 1)
     {
       return(false);
     }
@@ -224,24 +210,22 @@ template <typename ExecSpace>
 void Genten::IndxArrayT<ExecSpace>::
 increment(const Genten::IndxArrayT<ExecSpace> & dims)
 {
-  const ttb_indx sz = host_data.extent(0);
-  if (sz != dims.host_data.extent(0))
+  const ttb_indx sz = data.extent(0);
+  if (sz != dims.data.extent(0))
     Genten::error("Genten::IndxArray::increment different sizes");
 
   ttb_indx nd = dims.size();
 
   // increment least significant index in lex order (rightmost)
-  host_data[nd-1]++;
+  data[nd-1]++;
 
   // handle carries if necessary
   for (ttb_indx i = nd-1; i > 0 && data[i] == dims.data[i]; i--)
   {
-    host_data[i] = 0;
-    host_data[i-1]++;
+    data[i] = 0;
+    data[i-1]++;
   }
   // most significant index will not be limited by dims[0]
-
-  deep_copy( data, host_data );
 }
 
 #define INST_MACRO(SPACE) template class Genten::IndxArrayT<SPACE>;

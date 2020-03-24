@@ -100,8 +100,10 @@ public:
   FacMatArrayT(ttb_indx n, const IndxArrayT<ExecSpace> & nrow,
                ttb_indx ncol) : FacMatArrayT(n)
   {
+    auto nrow_host = create_mirror_view(nrow);
+    deep_copy(nrow_host, nrow);
     for (ttb_indx i=0; i<n; ++i)
-      set_factor( i, FacMatrixT<ExecSpace>(nrow[i],ncol) );
+      set_factor( i, FacMatrixT<ExecSpace>(nrow_host[i],ncol) );
   }
 
   // Create array from supplied view
