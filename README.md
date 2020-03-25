@@ -208,7 +208,7 @@ compiler.  If this is not correct, the compiler can be changed by
 setting the NVCC_WRAPPER_DEFAULT_COMPILER environment variable, e.g.,
 
 ```
-export NVCC_WRAPPER_DEFAULT_COMPILER=/home/software/gcc/4.9.2/bin/g++-4.9
+export NVCC_WRAPPER_DEFAULT_COMPILER=/path/to/my/gnu/compiler/g++
 ```
 
 Note that instead of LAPACK, cuSolver and cuBLAS are used instead,
