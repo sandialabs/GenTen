@@ -113,6 +113,19 @@ LAPACK_ADD_LIBS CMake variables, e.g., for Intel MKL:
  -D LAPACK_ADD_LIBS="-liomp5;-lpthread;-lm;-ldl" \
 ```
 
+#### MATLAB
+
+Genten includes as a limited MATLAB interface designed to be integrated with 
+the [Tensor Toolbox](https://www.tensortoolbox.org/).  To enable it, simply
+add the configure options:
+```
+ -D ENABLE_MATLAB=ON \
+ -D MATLAB_PATH=/path/to/MATLAB/R2018b \
+```
+where `/path/to/MATLAB/R2018b` is the path to your toplevel MATLAB installation
+(R2018b in this case).
+
+
 ### Advanced architectures
 
 Through the use of Kokkos, Genten can be compiled and run on a variety
