@@ -12,6 +12,8 @@ Government retains certain rights in this software.
 
 # Build Instructions
 
+*Note:  Genten requires a C++14 standard-compliant compiler.*
+
 Genten requires [Kokkos](github.com/kokkos/kokkos) for on-node thread/GPU
 parallelism, and is available from github via
 
@@ -29,7 +31,7 @@ itself uses Kokkos.
 
 The instructions below assume a directory structure similar to the following.
 To build Kokkos inline with Genten, the top-level Kokkos source directory must
-be placed inside the top-level Genten source directory.  For concreteness, 
+be placed inside the top-level Genten source directory.  For concreteness,
 assume we will building an optimized version of the code using GNU compilers
 and OpenMP parallelism.
 
@@ -233,7 +235,7 @@ architecture is specified in the Kokkos configure script as Pascal60.
 ## External build with Kokkos
 
 For an external build of Kokkos, you must configure, build and install Kokkos
-first using their Makefiles.  Similar to the inline build above, the
+first using their CMake files.  Similar to the inline build above, the
 instructions below assume the following directory structure:
 
 ```
@@ -252,22 +254,29 @@ top-level
 
 ### Build Kokkos
 
-There are many options for building Kokkos for each architecture, please see
-their documentation.  Here is a simple script for building Kokkos using OpenMP
-on a SandyBridge CPU architecture, assuming the Kokkos source is
-placed in top-level/kokkos/kokkos:
+The CMake script for building Kokkos is similar to the inline build
+scripts shown above, just with all of the Genten-specific options
+removed.  You must also specify an install directory.  Furthemore,
+since Genten requires use of C++14 constructs, the C++ standard
+enabled within Kokkos must be set to 14.  For example,
+here is a simple script for building Kokkos using OpenMP on a
+SandyBridge CPU architecture, assuming the Kokkos source is placed in
+top-level/kokkos/kokkos:
 
 ```
-#!/bin/bash
+rm -f CMakeCache.txt;
+rm -rf CMakeFiles
 
 KOKKOS=../../kokkos
 INSTALL=`pwd`/../../install/opt_gnu_openmp
-${KOKKOS}/generate_makefile.bash \
-  --kokkos-path=${KOKKOS} \
-  --prefix=${INSTALL} \
-  --with-openmp \
-  --arch=SNB \
-  --compiler=g++
+
+cmake \
+  -D CMAKE_INSTALL_PREFIX=${INSTALL} \
+  -D CMAKE_CXX_COMPILER=g++ \
+  -D Kokkos_CXX_STANDARD=14 \
+  -D Kokkos_ENABLE_OPENMP=ON \
+  -D Kokkos_ARCH_SNB=ON \
+  ${KOKKOS}
 ```
 
 which goes in the top-level/kokkos/build/opt_gnu_openmp directory above.
@@ -297,100 +306,38 @@ cmake \
  ../../genten
 ```
 
-### Advanced architectures
+#### Nvidia GPU architectures
 
-For building on various advanced architectures, options must usually be
-supplied in both the Kokkos and Genten configure scripts.  Examples for each
-architecture are summarized below.
-
-#### Intel CPU architectures
-
-For Intel CPU architectures, the Intel compilers should be used, along
-with Intel MKL.  The configure scripts are similar to the ones above.
-For example, a Kokkos configure script for Haswell is
-
-```
-#!/bin/bash
-
-KOKKOS=../../kokkos
-INSTALL=`pwd`/../../install/opt_intel_openmp
-${KOKKOS}/generate_makefile.bash \
-  --kokkos-path=${KOKKOS} \
-  --prefix=${INSTALL} \
-  --with-openmp \
-  --arch=HSW \
-  --compiler=icpc
-```
-
-A corresponding Genten configure script is
+Since Kokkos now uses CMake for their standalone build, the configure
+scripts for advanced architectures for an external build are similar
+to the inline build as shown above.  However for Nvidia GPU
+architectures, there are some caveats.  As with the inline build,
+nvcc_wrapper must be used as the compiler when compiling Kokkos.
+Furthermore you must enable lambda support through the option `-D
+Kokkos_ENABLE_CUDA_LAMBDA=ON \`, since Genten makes heavy use of
+lambdas.  For example, a Kokkos configure script suitable for Nvida
+K80 GPUs is then
 
 ```
-#!/bin/bash
-
 rm -f CMakeCache.txt;
 rm -rf CMakeFiles
 
-EXTRA_ARGS=$@
-KOKKOS=`pwd`/../../../kokkos/install/opt_intel_openmp
+KOKKOS=`pwd`/../../kokkos
+INSTALL=`pwd`/../../install/opt_gnu_cuda
 
 cmake \
- -D CMAKE_CXX_COMPILER=icpc \
- -D CMAKE_C_COMPILER=icc \
- -D CMAKE_CXX_FLAGS="-g -restrict" \
- -D CMAKE_C_FLAGS="-g -restrict" \
- -D KOKKOS_PATH=${KOKKOS} \
- -D LAPACK_LIBS=$MKLROOT/lib/intel64/libmkl_rt.so \
- -D LAPACK_ADD_LIBS="-liomp5;-lpthread;-lm;-ldl" \
- -D ENABLE_BOOST=ON \
- -D BOOST_PATH=${BOOST_ROOT} \
- -D debug=OFF \
- ${EXTRA_ARGS} \
- ../../genten
+  -D CMAKE_INSTALL_PREFIX=${INSTALL} \
+  -D CMAKE_CXX_COMPILER=${KOKKOS}/bin/nvcc_wrapper \
+  -D Kokkos_CXX_STANDARD=14 \
+  -D Kokkos_ENABLE_CUDA=ON \
+  -D Kokkos_ENABLE_CUDA_UVM=OFF \
+  -D Kokkos_ENABLE_CUDA_LAMBDA=ON \
+  -D Kokkos_ARCH_SNB=ON \
+  -D Kokkos_ARCH_KEPLER37=ON \
+  ${KOKKOS}
 ```
 
-#### Intel KNL architecture
-
-The configure for Intel KNL is quite similar to CPU architectures
-above.  The only changes are to the Kokkos configure script:
-
-```
-#!/bin/bash
-
-KOKKOS=../../kokkos
-INSTALL=`pwd`/../../install/opt_intel_openmp
-${KOKKOS}/generate_makefile.bash \
-  --kokkos-path=${KOKKOS} \
-  --prefix=${INSTALL} \
-  --with-openmp \
-  --arch=KNL \
-  --compiler=icpc \
-  --with-options=aggressive_vectorization
-```
-
-#### Nvidia GPU architectures
-
-As with the inline build above, nvcc_wrapper must be used as the compiler for
-Nvidia GPU architectures.  A Kokkos configure script suitable for Nvida K80
-GPUs is then
-
-```
-#!/bin/bash
-
-KOKKOS=../../kokkos
-KOKKOS=$(cd $KOKKOS; pwd) # for relative path bug in specifying compiler
-INSTALL=`pwd`/../../install/opt_gnu_cuda
-${KOKKOS}/generate_makefile.bash \
-  --kokkos-path=${KOKKOS} \
-  --prefix=${INSTALL} \
-  --with-openmp \
-  --with-cuda \
-  --with-cuda-options=enable_lambda \
-  --arch=HSW,Kepler37 \
-  --compiler=${KOKKOS}/bin/nvcc_wrapper
-```
-
-Similarly, for the Genten configure script we have
-
+This script additionally turns UVM off, which is optional.  Similarly, for the Genten configure script we have
 
 ```
 #!/bin/bash
@@ -415,16 +362,3 @@ cmake \
  ${EXTRA_ARGS} \
  ../../genten
 ```
-
-Genten does not require the use of Cuda-UVM as all necessary data transfers
-between the host and device are implemented through Kokkos.  However one can
-enable UVM by adding `force_uvm` to the Cuda options when configuring
-Kokkos, in which case one should also set the environment variables
-
-```
-export CUDA_LAUNCH_BLOCKING=1
-export CUDA_VISIBLE_DEVICES=0
-```
-
-For the Nvidia Pascal P100 GPUs, the configure is the same, except the
-architecture is specified in the Kokkos configure script as Pascal60.
