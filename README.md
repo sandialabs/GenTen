@@ -115,7 +115,7 @@ LAPACK_ADD_LIBS CMake variables, e.g., for Intel MKL:
 
 #### MATLAB
 
-Genten includes as a limited MATLAB interface designed to be integrated with 
+Genten includes a limited MATLAB interface designed to be integrated with 
 the [Tensor Toolbox](https://www.tensortoolbox.org/).  To enable it, simply
 add the configure options:
 ```
@@ -375,3 +375,52 @@ cmake \
  ${EXTRA_ARGS} \
  ../../genten
 ```
+
+# Testing Genten
+
+Once Genten has been compiled, it can be tested by executing `ctest`.
+
+# Using Genten
+
+The primary executable for Genten is `bin/genten` in your build tree, which is
+a driver for reading in a (sparse) tensor and performing a CP or GCP 
+decomposition of it.  The driver accepts numerous command line options
+controlling various aspects of the computation.  Run `genten --help` for a full
+listing.  For example
+```
+./bin/genten --input data/aminoacid_data.txt --rank 16 --output aa.ktns
+```
+will perform a rank 16 CP decomposition of the amino-acid tensor data set 
+included with Genten in the data directory, and save the resulting factors in 
+`aa.ktns`.  One should see output similar to:
+```
+./bin/genten --input data/aminoacid_data.txt --rank 16 --output aa.ktns
+Read tensor with 61305 nonzeros, dimensions [ 5 201 61 ], and starting index 0
+Data import took  0.033 seconds
+
+CP-ALS (perm MTTKRP method, symmetric-gram formulation):
+Iter   1: fit =  9.710805e-01 fitdelta =  9.7e-01
+Iter   2: fit =  9.865534e-01 fitdelta =  1.5e-02
+Iter   3: fit =  9.876203e-01 fitdelta =  1.1e-03
+Iter   4: fit =  9.880996e-01 fitdelta =  4.8e-04
+Iter   5: fit =  9.883227e-01 fitdelta =  2.2e-04
+Final fit =  9.883227e-01
+Ktensor export took  0.005 seconds
+```
+
+For larger tensor datasets, consider those available from the 
+[FROSTT](https://frost.io) collection.  Note that Genten *does not* require
+a header at the top of the sparse tensor file indicating the number of modes,
+their dimensions, and the number of nonzeros.  Any textfile consisting of a list
+of nonzeros in coordinate format (i.e., nonzero indices and value) can be
+read.  If configured with Boost support, compressed tensors can be read directly
+without first decompressing them.
+
+# More information and how to cite
+
+For more information on the algorithms used in Genten with Kokkos, or to cite
+Genten, please see
+* Eric T. Phipps and Tamara G. Kolda, *Software for Sparse Tensor Decomposition
+  on Emerging Computing Architectures*, SIAM Journal on Scientific Computing
+  2019 41:3, C269-C290
+  (available [here](https://epubs.siam.org/doi/ref/10.1137/18M1210691)).
