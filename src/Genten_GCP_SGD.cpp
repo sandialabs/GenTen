@@ -63,13 +63,9 @@ namespace Genten {
 
   namespace Impl {
 
-    template <typename TensorT, typename ExecSpace, typename LossFunction>
+    template <typename ExecSpace>
     struct GCP_SGD_Iter {
       typedef GCP::KokkosVector<ExecSpace> VectorType;
-
-      Sampler<ExecSpace,LossFunction> *sampler;
-      Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool;
-
       VectorType u;
       VectorType g;
       KtensorT<ExecSpace> ut;
@@ -96,9 +92,11 @@ namespace Genten {
       ttb_real beta1t;
       ttb_real beta2t;
 
+      template <typename TensorT, typename LossFunction>
       void run(TensorT& X,
                const LossFunction& loss_func,
-               const AlgParams& algParams)
+               const AlgParams& algParams,
+               Sampler<ExecSpace,LossFunction>& sampler)
       {
         using std::sqrt;
 
@@ -127,7 +125,7 @@ namespace Genten {
           if (!algParams.fuse) {
             timer.start(timer_sample_g);
             timer.start(timer_sample_g_z_nz);
-            sampler->sampleTensor(true, ut, loss_func,  X_grad, w_grad);
+            sampler.sampleTensor(true, ut, loss_func,  X_grad, w_grad);
             timer.stop(timer_sample_g_z_nz);
             timer.start(timer_sample_g_perm);
             if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
@@ -146,7 +144,7 @@ namespace Genten {
               timer.start(timer_grad_init);
               g.zero(); // algorithm does not use weights
               timer.stop(timer_grad_init);
-              sampler->fusedGradient(ut, loss_func, gt, timer, timer_grad_nzs,
+              sampler.fusedGradient(ut, loss_func, gt, timer, timer_grad_nzs,
                                      timer_grad_zs);
             }
             else {
@@ -205,7 +203,7 @@ namespace Genten {
       using std::sqrt;
       using std::pow;
 
-      GCP_SGD_Iter<TensorT,ExecSpace,LossFunction> it;
+      GCP_SGD_Iter<ExecSpace> it;
 
       const ttb_indx nd = u0.ndims();
       const ttb_indx nc = u0.ncomponents();
@@ -227,14 +225,15 @@ namespace Genten {
       const ttb_real beta2 = algParams.adam_beta2;
 
       // Create sampler
+      Sampler<ExecSpace,LossFunction> *sampler = nullptr;
       if (algParams.sampling_type == GCP_Sampling::Uniform)
-        it.sampler = new Genten::UniformSampler<ExecSpace,LossFunction>(
+        sampler = new Genten::UniformSampler<ExecSpace,LossFunction>(
           X, algParams);
       else if (algParams.sampling_type == GCP_Sampling::Stratified)
-        it.sampler = new Genten::StratifiedSampler<ExecSpace,LossFunction>(
+        sampler = new Genten::StratifiedSampler<ExecSpace,LossFunction>(
           X, algParams);
       else if (algParams.sampling_type == GCP_Sampling::SemiStratified)
-        it.sampler = new Genten::SemiStratifiedSampler<ExecSpace,LossFunction>(
+        sampler = new Genten::SemiStratifiedSampler<ExecSpace,LossFunction>(
           X, algParams);
       else
         Genten::error("Genten::gcp_sgd - unknown sampling type");
@@ -264,7 +263,7 @@ namespace Genten {
             << "Learning rate / decay / maxfails: "
             << std::setprecision(1) << std::scientific
             << rate << " " << decay << " " << max_fails << std::endl;
-        it.sampler->print(out);
+        sampler->print(out);
         out << "Gradient method: ";
         if (algParams.fuse)
           out << "Fused sampling and "
@@ -332,16 +331,15 @@ namespace Genten {
       // Initialize sampler (sorting, hashing, ...)
       it.timer.start(timer_sort);
       RandomMT rng(seed);
-      it.rand_pool =
-        Kokkos::Random_XorShift64_Pool<ExecSpace>(rng.genrnd_int32());
-      it.sampler->initialize(it.rand_pool, out);
+      Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(rng.genrnd_int32());
+      sampler->initialize(rand_pool, out);
       it.timer.stop(timer_sort);
 
       // Sample X for f-estimate
       SptensorT<ExecSpace> X_val;
       ArrayT<ExecSpace> w_val;
       it.timer.start(timer_sample_f);
-      it.sampler->sampleTensor(false, it.ut, loss_func, X_val, w_val);
+      sampler->sampleTensor(false, it.ut, loss_func, X_val, w_val);
       it.timer.stop(timer_sample_f);
 
       // Objective estimates
@@ -382,7 +380,7 @@ namespace Genten {
         it.step = nuc*rate;
 
         // Epoch iterations
-        it.run(X, loss_func, algParams);
+        it.run(X, loss_func, algParams, *sampler);
 
         // compute objective estimate
         it.timer.start(timer_fest);
@@ -506,7 +504,7 @@ namespace Genten {
       u0.normalize(Genten::NormTwo);
       u0.arrange();
 
-      delete it.sampler;
+      delete sampler;
     }
 
   }
