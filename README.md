@@ -416,6 +416,58 @@ of nonzeros in coordinate format (i.e., nonzero indices and value) can be
 read.  If configured with Boost support, compressed tensors can be read directly
 without first decompressing them.
 
+## Using the MATLAB interface
+
+To use Genten within MATLAB, you must first add the Tensor Toolbox and the path
+to the `matlab` directory in your Genten build tree to your MATLAB path.
+Genten provides a MATLAB class `sptensor_gt` that works similarly to the
+Tensor Toolbox sparse tensor class `sptensor` that can be passed to various
+MATLAB functions provided by Genten for manipulating the tensor.  A given
+tensor `X` in `sptensor` format can be converted to `sptensor_gt` format
+by calling the constructor:
+```
+>> X = sptenrand([10 20 30],100);
+>> X_gt = sptensor_gt(X);
+```
+Genten then provides overloads of several functions in the Tensor Toolbox
+that call the corresponding implementation in Genten when passed a tensor
+in `sptensor_gt` format, e.g.,
+```
+>> U = cp_als(X_gt,16,'maxiters',5);
+
+CP-ALS (perm MTTKRP method, symmetric-gram formulation):
+Iter   1: fit =  1.265589e-01 fitdelta =  1.3e-01
+Iter   2: fit =  1.909217e-01 fitdelta =  6.4e-02
+Iter   3: fit =  2.195554e-01 fitdelta =  2.9e-02
+Iter   4: fit =  2.465984e-01 fitdelta =  2.7e-02
+Iter   5: fit =  2.692030e-01 fitdelta =  2.3e-02
+Final fit =  2.692030e-01
+```
+Note that in addition to the normal options accepted by `cp_als`,
+all options accepted by the `genten` command-line driver (without the 
+leading '--') are also accepted, e.g.,
+```
+>> U = cp_als(X_gt,16,'maxiters',5,'mttkrp-method','duplicated','timings');
+Parsing tensor took 3.740000e-04 seconds
+
+CP-ALS (duplicated MTTKRP method, symmetric-gram formulation):
+Iter   1: fit =  1.250860e-01 fitdelta =  1.3e-01
+Iter   2: fit =  2.081054e-01 fitdelta =  8.3e-02
+Iter   3: fit =  2.570137e-01 fitdelta =  4.9e-02
+Iter   4: fit =  2.900351e-01 fitdelta =  3.3e-02
+Iter   5: fit =  3.106995e-01 fitdelta =  2.1e-02
+Final fit =  3.106995e-01
+CpAls completed 6 iterations in 1.03e-02 seconds
+	MTTKRP total time = 9.27e-04 seconds, average time = 6.18e-05 seconds
+	MTTKRP throughput = 9.64e-02 GFLOP/s, bandwidth factor = 1.48e-01
+	Inner product total time = 7.60e-05 seconds, average time = 1.52e-05 seconds
+	Gramian total time = 1.22e-04 seconds, average time = 8.13e-06 seconds
+	Solve total time = 4.93e-04 seconds, average time = 3.29e-05 seconds
+	Scale total time = 6.54e-03 seconds, average time = 4.36e-04 seconds
+	Norm total time = 3.53e-04 seconds, average time = 2.35e-05 seconds
+	Arrange total time = 3.47e-04 seconds, average time = 3.47e-04 seconds
+```
+
 # More information and how to cite
 
 For more information on the algorithms used in Genten with Kokkos, or to cite
