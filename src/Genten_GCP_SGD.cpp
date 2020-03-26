@@ -63,6 +63,183 @@ namespace Genten {
 
   namespace Impl {
 
+    template <typename ExecSpace, typename LossFunction>
+    class GCP_SGD_Step {
+    public:
+      typedef GCP::KokkosVector<ExecSpace> VectorType;
+
+      GCP_SGD_Step() = default;
+
+      virtual ~GCP_SGD_Step() {}
+
+      virtual void setStep(const ttb_real step) = 0;
+
+      virtual ttb_real getStep() const = 0;
+
+      virtual void update() = 0;
+
+      virtual void reset() = 0;
+
+      virtual void setPassed() = 0;
+
+      virtual void setFailed() = 0;
+
+      virtual void eval(const VectorType& g, VectorType& u) const = 0;
+
+    };
+
+    template <typename ExecSpace, typename LossFunction>
+    class SGDStep : public GCP_SGD_Step<ExecSpace,LossFunction> {
+    public:
+      typedef GCP_SGD_Step<ExecSpace,LossFunction> BaseType;
+      typedef typename BaseType::VectorType VectorType;
+
+      SGDStep() {}
+
+      virtual ~SGDStep() {}
+
+      virtual void setStep(const ttb_real s) { step = s; }
+
+      virtual ttb_real getStep() const { return step; }
+
+      virtual void update() {}
+
+      virtual void reset() {}
+
+      virtual void setPassed() {}
+
+      virtual void setFailed() {}
+
+      virtual void eval(const VectorType& g, VectorType& u) const
+      {
+        constexpr bool has_bounds = (LossFunction::has_lower_bound() ||
+                                     LossFunction::has_upper_bound());
+        constexpr ttb_real lb = LossFunction::lower_bound();
+        constexpr ttb_real ub = LossFunction::upper_bound();
+        const ttb_real sgd_step = step;
+        auto uv = u.getView();
+        auto gv = g.getView();
+        u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
+        {
+          ttb_real uu = uv(i);
+          uu -= sgd_step*gv(i);
+          if (has_bounds)
+            uu = uu < lb ? lb : (uu > ub ? ub : uu);
+          uv(i) = uu;
+        });
+      }
+
+    protected:
+      ttb_real step;
+
+    };
+
+    template <typename ExecSpace, typename LossFunction>
+    class AdamStep : public GCP_SGD_Step<ExecSpace,LossFunction> {
+    public:
+      typedef GCP_SGD_Step<ExecSpace,LossFunction> BaseType;
+      typedef typename BaseType::VectorType VectorType;
+
+      AdamStep(const AlgParams& algParams, const VectorType& u) :
+        epoch_iters(algParams.epoch_iters),
+        step(0.0),
+        beta1(algParams.adam_beta1),
+        beta2(algParams.adam_beta2),
+        eps(algParams.adam_eps),
+        beta1t(1.0),
+        beta2t(1.0),
+        adam_step(0.0),
+        m(u.clone()),
+        v(u.clone()),
+        m_prev(u.clone()),
+        v_prev(u.clone())
+      {
+        m.zero();
+        v.zero();
+        m_prev.zero();
+        v_prev.zero();
+      }
+
+      virtual ~AdamStep() {}
+
+      virtual void setStep(const ttb_real s) { step = s; }
+
+      virtual ttb_real getStep() const { return step; }
+
+      virtual void update()
+      {
+        beta1t = beta1 * beta1t;
+        beta2t = beta2 * beta2t;
+        adam_step = step*std::sqrt(1.0-beta2t) / (1.0-beta1t);
+      }
+
+      virtual void reset()
+      {
+        beta1t = 1.0;
+        beta2t = 1.0;
+        m.zero();
+        v.zero();
+        m_prev.zero();
+        v_prev.zero();
+      }
+
+      virtual void setPassed()
+      {
+        m_prev.set(m);
+        v_prev.set(v);
+      }
+
+      virtual void setFailed()
+      {
+        m.set(m_prev);
+        v.set(v_prev);
+        beta1t /= std::pow(beta1, epoch_iters);
+        beta2t /= std::pow(beta2, epoch_iters);
+      }
+
+      virtual void eval(const VectorType& g, VectorType& u) const
+      {
+        using std::sqrt;
+        constexpr bool has_bounds = (LossFunction::has_lower_bound() ||
+                                     LossFunction::has_upper_bound());
+        constexpr ttb_real lb = LossFunction::lower_bound();
+        constexpr ttb_real ub = LossFunction::upper_bound();
+        const ttb_real adam_step_ = adam_step;
+        const ttb_real eps_ = eps;
+        const ttb_real beta1_ = beta1;
+        const ttb_real beta2_ = beta2;
+        auto uv = u.getView();
+        auto gv = g.getView();
+        auto mv = m.getView();
+        auto vv = v.getView();
+        u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
+        {
+          mv(i) = beta1_*mv(i) + (1.0-beta1_)*gv(i);
+          vv(i) = beta2_*vv(i) + (1.0-beta2_)*gv(i)*gv(i);
+          ttb_real uu = uv(i);
+          uu -= adam_step_*mv(i)/sqrt(vv(i)+eps_);
+          if (has_bounds)
+            uu = uu < lb ? lb : (uu > ub ? ub : uu);
+          uv(i) = uu;
+        });
+      }
+
+    protected:
+      ttb_indx epoch_iters;
+      ttb_real step;
+      ttb_real beta1;
+      ttb_real beta2;
+      ttb_real eps;
+      ttb_real beta1t;
+      ttb_real beta2t;
+      ttb_real adam_step;
+
+      VectorType m;
+      VectorType v;
+      VectorType m_prev;
+      VectorType v_prev;
+    };
+
     template <typename ExecSpace>
     struct GCP_SGD_Iter {
       typedef GCP::KokkosVector<ExecSpace> VectorType;
@@ -86,40 +263,17 @@ namespace Genten {
       int timer_sample_g_perm;
       SystemTimer timer;
 
-      ttb_real step;
-      VectorType adam_m;
-      VectorType adam_v;
-      ttb_real beta1t;
-      ttb_real beta2t;
-
       template <typename TensorT, typename LossFunction>
       void run(TensorT& X,
                const LossFunction& loss_func,
                const AlgParams& algParams,
-               Sampler<ExecSpace,LossFunction>& sampler)
+               Sampler<ExecSpace,LossFunction>& sampler,
+               GCP_SGD_Step<ExecSpace,LossFunction>& stepper)
       {
-        using std::sqrt;
-
-        // bounds
-        constexpr bool has_bounds = (LossFunction::has_lower_bound() ||
-                                     LossFunction::has_upper_bound());
-        constexpr ttb_real lb = LossFunction::lower_bound();
-        constexpr ttb_real ub = LossFunction::upper_bound();
-
-        const ttb_real beta1 = algParams.adam_beta1;
-        const ttb_real beta2 = algParams.adam_beta2;
-        const ttb_real eps = algParams.adam_eps;
-
         for (ttb_indx iter=0; iter<algParams.epoch_iters; ++iter) {
 
-          // ADAM step size
-          // Note sure if this should be constant for frozen iters?
-          ttb_real adam_step = 0.0;
-          if (algParams.use_adam) {
-            beta1t = beta1 * beta1t;
-            beta2t = beta2 * beta2t;
-            adam_step = step*sqrt(1.0-beta2t) / (1.0-beta1t);
-          }
+          // Update stepper for next iteration
+          stepper.update();
 
           // sample for gradient
           if (!algParams.fuse) {
@@ -149,41 +303,13 @@ namespace Genten {
             }
             else {
               gt.weights() = 1.0; // gt is zeroed in mttkrp
-              // for (unsigned m=0; m<nd; ++m)
-              //   mttkrp(X_grad, ut, m, gt[m], algParams);
               mttkrp_all(X_grad, ut, gt, algParams);
             }
             timer.stop(timer_grad);
 
             // take step and clip for bounds
             timer.start(timer_step);
-            auto uv = u.getView();
-            auto gv = g.getView();
-            if (algParams.use_adam) {
-              auto mv = adam_m.getView();
-              auto vv = adam_v.getView();
-              u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
-              {
-                mv(i) = beta1*mv(i) + (1.0-beta1)*gv(i);
-                vv(i) = beta2*vv(i) + (1.0-beta2)*gv(i)*gv(i);
-                ttb_real uu = uv(i);
-                uu -= adam_step*mv(i)/sqrt(vv(i)+eps);
-                if (has_bounds)
-                  uu = uu < lb ? lb : (uu > ub ? ub : uu);
-                uv(i) = uu;
-              });
-            }
-            else {
-              const ttb_real sgd_step = step;
-              u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
-              {
-                ttb_real uu = uv(i);
-                uu -= sgd_step*gv(i);
-                if (has_bounds)
-                  uu = uu < lb ? lb : (uu > ub ? ub : uu);
-                uv(i) = uu;
-              });
-            }
+            stepper.eval(g, u);
             timer.stop(timer_step);
           }
         }
@@ -221,8 +347,6 @@ namespace Genten {
 
       // ADAM parameters
       const bool use_adam = algParams.use_adam;
-      const ttb_real beta1 = algParams.adam_beta1;
-      const ttb_real beta2 = algParams.adam_beta2;
 
       // Create sampler
       Sampler<ExecSpace,LossFunction> *sampler = nullptr;
@@ -315,18 +439,12 @@ namespace Genten {
       VectorType u_prev = it.u.clone();
       u_prev.set(it.u);
 
-      // ADAM first (m) and second (v) moment vectors
-      VectorType adam_m_prev, adam_v_prev;
-      if (use_adam) {
-        it.adam_m = it.u.clone();
-        it.adam_v = it.u.clone();
-        it.adam_m.zero();
-        it.adam_v.zero();
-        adam_m_prev = it.u.clone();
-        adam_v_prev = it.u.clone();
-        adam_m_prev.zero();
-        adam_v_prev.zero();
-      }
+      // Create stepper
+      GCP_SGD_Step<ExecSpace,LossFunction> *stepper = nullptr;
+      if (use_adam)
+        stepper = new AdamStep<ExecSpace,LossFunction>(algParams, it.u);
+      else
+        stepper = new SGDStep<ExecSpace,LossFunction>();
 
       // Initialize sampler (sorting, hashing, ...)
       it.timer.start(timer_sort);
@@ -373,14 +491,12 @@ namespace Genten {
       ttb_real nuc = 1.0;
       ttb_indx nfails = 0;
       it.total_iters = 0;
-      it.beta1t = 1.0;
-      it.beta2t = 1.0;
       for (numEpochs=0; numEpochs<maxEpochs; ++numEpochs) {
         // Gradient step size
-        it.step = nuc*rate;
+        stepper->setStep(nuc*rate);
 
         // Epoch iterations
-        it.run(X, loss_func, algParams, *sampler);
+        it.run(X, loss_func, algParams, *sampler, *stepper);
 
         // compute objective estimate
         it.timer.start(timer_fest);
@@ -409,7 +525,7 @@ namespace Genten {
                 << fit;
           out << ", step = "
               << std::setw(8) << std::setprecision(1) << std::scientific
-              << it.step;
+              << stepper->getStep();
           out << ", time = "
               << std::setw(8) << std::setprecision(2) << std::scientific
               << it.timer.getTotalTime(timer_sgd) << " sec";
@@ -426,22 +542,14 @@ namespace Genten {
           it.u.set(u_prev);
           fest = fest_prev;
           fit = fit_prev;
-          if (use_adam) {
-            it.adam_m.set(adam_m_prev);
-            it.adam_v.set(adam_v_prev);
-            it.beta1t /= pow(beta1,epoch_iters);
-            it.beta2t /= pow(beta2,epoch_iters);
-          }
+          stepper->setFailed();
         }
         else {
           // update previous data
           u_prev.set(it.u);
           fest_prev = fest;
           fit_prev = fit;
-          if (use_adam) {
-            adam_m_prev.set(it.adam_m);
-            adam_v_prev.set(it.adam_v);
-          }
+          stepper->setPassed();
         }
 
         if (nfails > max_fails || fest < tol)
