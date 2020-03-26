@@ -10,6 +10,8 @@ Copyright 2017 National Technology & Engineering Solutions of Sandia, LLC
 (NTESS). Under the terms of Contract DE-NA0003525 with NTESS, the U.S.
 Government retains certain rights in this software.
 
+[[_TOC_]]
+
 # Build Instructions
 
 *Note:  Genten requires a C++14 standard-compliant compiler.*
@@ -295,7 +297,7 @@ cmake \
 which goes in the top-level/kokkos/build/opt_gnu_openmp directory above.
 After executing this script, do "make" and "make install".
 
-### Build genten:
+### Build Genten
 
 Genten is then built with CMake similar to the inline build discussed above,
 however the path to the Kokkos installation is specified instead of any
