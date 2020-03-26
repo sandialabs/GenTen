@@ -10,6 +10,8 @@ Copyright 2017 National Technology & Engineering Solutions of Sandia, LLC
 (NTESS). Under the terms of Contract DE-NA0003525 with NTESS, the U.S.
 Government retains certain rights in this software.
 
+[[_TOC_]]
+
 # Build Instructions
 
 *Note:  Genten requires a C++14 standard-compliant compiler.*
@@ -113,6 +115,19 @@ LAPACK_ADD_LIBS CMake variables, e.g., for Intel MKL:
  -D LAPACK_ADD_LIBS="-liomp5;-lpthread;-lm;-ldl" \
 ```
 
+#### MATLAB
+
+Genten includes a limited MATLAB interface designed to be integrated with 
+the [Tensor Toolbox](https://www.tensortoolbox.org/).  To enable it, simply
+add the configure options:
+```
+ -D ENABLE_MATLAB=ON \
+ -D MATLAB_PATH=/path/to/MATLAB/R2018b \
+```
+where `/path/to/MATLAB/R2018b` is the path to your toplevel MATLAB installation
+(R2018b in this case).
+
+
 ### Advanced architectures
 
 Through the use of Kokkos, Genten can be compiled and run on a variety
@@ -208,7 +223,7 @@ compiler.  If this is not correct, the compiler can be changed by
 setting the NVCC_WRAPPER_DEFAULT_COMPILER environment variable, e.g.,
 
 ```
-export NVCC_WRAPPER_DEFAULT_COMPILER=/home/software/gcc/4.9.2/bin/g++-4.9
+export NVCC_WRAPPER_DEFAULT_COMPILER=/path/to/my/gnu/compiler/g++
 ```
 
 Note that instead of LAPACK, cuSolver and cuBLAS are used instead,
@@ -282,7 +297,7 @@ cmake \
 which goes in the top-level/kokkos/build/opt_gnu_openmp directory above.
 After executing this script, do "make" and "make install".
 
-### Build genten:
+### Build Genten
 
 Genten is then built with CMake similar to the inline build discussed above,
 however the path to the Kokkos installation is specified instead of any
@@ -362,3 +377,104 @@ cmake \
  ${EXTRA_ARGS} \
  ../../genten
 ```
+
+# Testing Genten
+
+Once Genten has been compiled, it can be tested by executing `ctest`.
+
+# Using Genten
+
+The primary executable for Genten is `bin/genten` in your build tree, which is
+a driver for reading in a (sparse) tensor and performing a CP or GCP 
+decomposition of it.  The driver accepts numerous command line options
+controlling various aspects of the computation.  Run `genten --help` for a full
+listing.  For example
+```
+./bin/genten --input data/aminoacid_data.txt --rank 16 --output aa.ktns
+```
+will perform a rank 16 CP decomposition of the amino-acid tensor data set 
+included with Genten in the data directory, and save the resulting factors in 
+`aa.ktns`.  One should see output similar to:
+```
+./bin/genten --input data/aminoacid_data.txt --rank 16 --output aa.ktns
+Read tensor with 61305 nonzeros, dimensions [ 5 201 61 ], and starting index 0
+Data import took  0.033 seconds
+
+CP-ALS (perm MTTKRP method, symmetric-gram formulation):
+Iter   1: fit =  9.710805e-01 fitdelta =  9.7e-01
+Iter   2: fit =  9.865534e-01 fitdelta =  1.5e-02
+Iter   3: fit =  9.876203e-01 fitdelta =  1.1e-03
+Iter   4: fit =  9.880996e-01 fitdelta =  4.8e-04
+Iter   5: fit =  9.883227e-01 fitdelta =  2.2e-04
+Final fit =  9.883227e-01
+Ktensor export took  0.005 seconds
+```
+
+For larger tensor datasets, consider those available from the 
+[FROSTT](https://frost.io) collection.  Note that Genten *does not* require
+a header at the top of the sparse tensor file indicating the number of modes,
+their dimensions, and the number of nonzeros.  Any textfile consisting of a list
+of nonzeros in coordinate format (i.e., nonzero indices and value) can be
+read.  If configured with Boost support, compressed tensors can be read directly
+without first decompressing them.
+
+## Using the MATLAB interface
+
+To use Genten within MATLAB, you must first add the Tensor Toolbox and the path
+to the `matlab` directory in your Genten build tree to your MATLAB path.
+Genten provides a MATLAB class `sptensor_gt` that works similarly to the
+Tensor Toolbox sparse tensor class `sptensor` that can be passed to various
+MATLAB functions provided by Genten for manipulating the tensor.  A given
+tensor `X` in `sptensor` format can be converted to `sptensor_gt` format
+by calling the constructor:
+```
+>> X = sptenrand([10 20 30],100);
+>> X_gt = sptensor_gt(X);
+```
+Genten then provides overloads of several functions in the Tensor Toolbox
+that call the corresponding implementation in Genten when passed a tensor
+in `sptensor_gt` format, e.g.,
+```
+>> U = cp_als(X_gt,16,'maxiters',5);
+
+CP-ALS (perm MTTKRP method, symmetric-gram formulation):
+Iter   1: fit =  1.265589e-01 fitdelta =  1.3e-01
+Iter   2: fit =  1.909217e-01 fitdelta =  6.4e-02
+Iter   3: fit =  2.195554e-01 fitdelta =  2.9e-02
+Iter   4: fit =  2.465984e-01 fitdelta =  2.7e-02
+Iter   5: fit =  2.692030e-01 fitdelta =  2.3e-02
+Final fit =  2.692030e-01
+```
+Note that in addition to the normal options accepted by `cp_als`,
+all options accepted by the `genten` command-line driver (without the 
+leading '--') are also accepted, e.g.,
+```
+>> U = cp_als(X_gt,16,'maxiters',5,'mttkrp-method','duplicated','timings');
+Parsing tensor took 3.740000e-04 seconds
+
+CP-ALS (duplicated MTTKRP method, symmetric-gram formulation):
+Iter   1: fit =  1.250860e-01 fitdelta =  1.3e-01
+Iter   2: fit =  2.081054e-01 fitdelta =  8.3e-02
+Iter   3: fit =  2.570137e-01 fitdelta =  4.9e-02
+Iter   4: fit =  2.900351e-01 fitdelta =  3.3e-02
+Iter   5: fit =  3.106995e-01 fitdelta =  2.1e-02
+Final fit =  3.106995e-01
+CpAls completed 6 iterations in 1.03e-02 seconds
+	MTTKRP total time = 9.27e-04 seconds, average time = 6.18e-05 seconds
+	MTTKRP throughput = 9.64e-02 GFLOP/s, bandwidth factor = 1.48e-01
+	Inner product total time = 7.60e-05 seconds, average time = 1.52e-05 seconds
+	Gramian total time = 1.22e-04 seconds, average time = 8.13e-06 seconds
+	Solve total time = 4.93e-04 seconds, average time = 3.29e-05 seconds
+	Scale total time = 6.54e-03 seconds, average time = 4.36e-04 seconds
+	Norm total time = 3.53e-04 seconds, average time = 2.35e-05 seconds
+	Arrange total time = 3.47e-04 seconds, average time = 3.47e-04 seconds
+```
+
+# More information and how to cite
+
+For more information on the algorithms used in Genten with Kokkos, or to cite
+Genten, please see
+* Eric T. Phipps and Tamara G. Kolda, *Software for Sparse Tensor Decomposition
+  on Emerging Computing Architectures*, SIAM Journal on Scientific Computing
+  2019 41:3, C269-C290
+  (available [here](https://epubs.siam.org/doi/ref/10.1137/18M1210691)).
