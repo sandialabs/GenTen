@@ -154,8 +154,11 @@ namespace Genten {
 
     timer.start(timer_cpals);
 
+    ttb_indx nc = u.ncomponents();     // number of components
+    ttb_indx nd = x.ndims();           // number of dimensions
+
     if (printIter > 0) {
-      out << "\nCP-ALS ("
+      out << "\nCP-ALS (rank " << nc << ", "
           << Genten::MTTKRP_Method::names[algParams.mttkrp_method]
           << " MTTKRP method, ";
       if (algParams.full_gram)
@@ -183,9 +186,6 @@ namespace Genten {
         perfInfo[i].dmttkrp_gflops = -1.0;
       }
     }
-
-    ttb_indx nc = u.ncomponents();     // number of components
-    ttb_indx nd = x.ndims();           // number of dimensions
 
     // Distribute the initial guess to have weights of one.
     u.distribute(0);
