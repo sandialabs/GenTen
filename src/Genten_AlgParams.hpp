@@ -103,10 +103,10 @@ namespace Genten {
     bool fuse;                           // Fuse sampling and gradient kernels
     bool fuse_sa;                        // Fused with sparse array gradient
     bool compute_fit;                    // Compute fit metric
-    bool use_adam;                       // Use ADAM step
+    GCP_Step::type step_type;            // GCP-SGD step type
     ttb_real adam_beta1;                 // Decay rate of first moment avg.
     ttb_real adam_beta2;                 // Decay rate of second moment avg.
-    ttb_real adam_eps;                   // Shift in ADAM step
+    ttb_real adam_eps;                   // Shift in ADAM/AdaGrad step
 
     // Constructor initializing values to defaults
     AlgParams();

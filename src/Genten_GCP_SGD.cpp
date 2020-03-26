@@ -49,6 +49,8 @@
 #include "Genten_GCP_ValueKernels.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
 #include "Genten_GCP_KokkosVector.hpp"
+#include "Genten_GCP_SGD_Step.hpp"
+#include "Genten_GCP_SGD_Iter.hpp"
 
 #include "Genten_Sptensor.hpp"
 #include "Genten_SystemTimer.hpp"
@@ -62,259 +64,6 @@
 namespace Genten {
 
   namespace Impl {
-
-    template <typename ExecSpace, typename LossFunction>
-    class GCP_SGD_Step {
-    public:
-      typedef GCP::KokkosVector<ExecSpace> VectorType;
-
-      GCP_SGD_Step() = default;
-
-      virtual ~GCP_SGD_Step() {}
-
-      virtual void setStep(const ttb_real step) = 0;
-
-      virtual ttb_real getStep() const = 0;
-
-      virtual void update() = 0;
-
-      virtual void reset() = 0;
-
-      virtual void setPassed() = 0;
-
-      virtual void setFailed() = 0;
-
-      virtual void eval(const VectorType& g, VectorType& u) const = 0;
-
-    };
-
-    template <typename ExecSpace, typename LossFunction>
-    class SGDStep : public GCP_SGD_Step<ExecSpace,LossFunction> {
-    public:
-      typedef GCP_SGD_Step<ExecSpace,LossFunction> BaseType;
-      typedef typename BaseType::VectorType VectorType;
-
-      SGDStep() {}
-
-      virtual ~SGDStep() {}
-
-      virtual void setStep(const ttb_real s) { step = s; }
-
-      virtual ttb_real getStep() const { return step; }
-
-      virtual void update() {}
-
-      virtual void reset() {}
-
-      virtual void setPassed() {}
-
-      virtual void setFailed() {}
-
-      virtual void eval(const VectorType& g, VectorType& u) const
-      {
-        constexpr bool has_bounds = (LossFunction::has_lower_bound() ||
-                                     LossFunction::has_upper_bound());
-        constexpr ttb_real lb = LossFunction::lower_bound();
-        constexpr ttb_real ub = LossFunction::upper_bound();
-        const ttb_real sgd_step = step;
-        auto uv = u.getView();
-        auto gv = g.getView();
-        u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
-        {
-          ttb_real uu = uv(i);
-          uu -= sgd_step*gv(i);
-          if (has_bounds)
-            uu = uu < lb ? lb : (uu > ub ? ub : uu);
-          uv(i) = uu;
-        });
-      }
-
-    protected:
-      ttb_real step;
-
-    };
-
-    template <typename ExecSpace, typename LossFunction>
-    class AdamStep : public GCP_SGD_Step<ExecSpace,LossFunction> {
-    public:
-      typedef GCP_SGD_Step<ExecSpace,LossFunction> BaseType;
-      typedef typename BaseType::VectorType VectorType;
-
-      AdamStep(const AlgParams& algParams, const VectorType& u) :
-        epoch_iters(algParams.epoch_iters),
-        step(0.0),
-        beta1(algParams.adam_beta1),
-        beta2(algParams.adam_beta2),
-        eps(algParams.adam_eps),
-        beta1t(1.0),
-        beta2t(1.0),
-        adam_step(0.0),
-        m(u.clone()),
-        v(u.clone()),
-        m_prev(u.clone()),
-        v_prev(u.clone())
-      {
-        m.zero();
-        v.zero();
-        m_prev.zero();
-        v_prev.zero();
-      }
-
-      virtual ~AdamStep() {}
-
-      virtual void setStep(const ttb_real s) { step = s; }
-
-      virtual ttb_real getStep() const { return step; }
-
-      virtual void update()
-      {
-        beta1t = beta1 * beta1t;
-        beta2t = beta2 * beta2t;
-        adam_step = step*std::sqrt(1.0-beta2t) / (1.0-beta1t);
-      }
-
-      virtual void reset()
-      {
-        beta1t = 1.0;
-        beta2t = 1.0;
-        m.zero();
-        v.zero();
-        m_prev.zero();
-        v_prev.zero();
-      }
-
-      virtual void setPassed()
-      {
-        m_prev.set(m);
-        v_prev.set(v);
-      }
-
-      virtual void setFailed()
-      {
-        m.set(m_prev);
-        v.set(v_prev);
-        beta1t /= std::pow(beta1, epoch_iters);
-        beta2t /= std::pow(beta2, epoch_iters);
-      }
-
-      virtual void eval(const VectorType& g, VectorType& u) const
-      {
-        using std::sqrt;
-        constexpr bool has_bounds = (LossFunction::has_lower_bound() ||
-                                     LossFunction::has_upper_bound());
-        constexpr ttb_real lb = LossFunction::lower_bound();
-        constexpr ttb_real ub = LossFunction::upper_bound();
-        const ttb_real adam_step_ = adam_step;
-        const ttb_real eps_ = eps;
-        const ttb_real beta1_ = beta1;
-        const ttb_real beta2_ = beta2;
-        auto uv = u.getView();
-        auto gv = g.getView();
-        auto mv = m.getView();
-        auto vv = v.getView();
-        u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
-        {
-          mv(i) = beta1_*mv(i) + (1.0-beta1_)*gv(i);
-          vv(i) = beta2_*vv(i) + (1.0-beta2_)*gv(i)*gv(i);
-          ttb_real uu = uv(i);
-          uu -= adam_step_*mv(i)/sqrt(vv(i)+eps_);
-          if (has_bounds)
-            uu = uu < lb ? lb : (uu > ub ? ub : uu);
-          uv(i) = uu;
-        });
-      }
-
-    protected:
-      ttb_indx epoch_iters;
-      ttb_real step;
-      ttb_real beta1;
-      ttb_real beta2;
-      ttb_real eps;
-      ttb_real beta1t;
-      ttb_real beta2t;
-      ttb_real adam_step;
-
-      VectorType m;
-      VectorType v;
-      VectorType m_prev;
-      VectorType v_prev;
-    };
-
-    template <typename ExecSpace>
-    struct GCP_SGD_Iter {
-      typedef GCP::KokkosVector<ExecSpace> VectorType;
-      VectorType u;
-      VectorType g;
-      KtensorT<ExecSpace> ut;
-      KtensorT<ExecSpace> gt;
-
-      SptensorT<ExecSpace> X_grad;
-      ArrayT<ExecSpace> w_grad;
-
-      int total_iters;
-
-      int timer_sample_g;
-      int timer_grad;
-      int timer_grad_nzs;
-      int timer_grad_zs;
-      int timer_grad_init;
-      int timer_step;
-      int timer_sample_g_z_nz;
-      int timer_sample_g_perm;
-      SystemTimer timer;
-
-      template <typename TensorT, typename LossFunction>
-      void run(TensorT& X,
-               const LossFunction& loss_func,
-               const AlgParams& algParams,
-               Sampler<ExecSpace,LossFunction>& sampler,
-               GCP_SGD_Step<ExecSpace,LossFunction>& stepper)
-      {
-        for (ttb_indx iter=0; iter<algParams.epoch_iters; ++iter) {
-
-          // Update stepper for next iteration
-          stepper.update();
-
-          // sample for gradient
-          if (!algParams.fuse) {
-            timer.start(timer_sample_g);
-            timer.start(timer_sample_g_z_nz);
-            sampler.sampleTensor(true, ut, loss_func,  X_grad, w_grad);
-            timer.stop(timer_sample_g_z_nz);
-            timer.start(timer_sample_g_perm);
-            if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
-                algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated)
-              X_grad.createPermutation();
-            timer.stop(timer_sample_g_perm);
-            timer.stop(timer_sample_g);
-          }
-
-          for (ttb_indx giter=0; giter<algParams.frozen_iters; ++giter) {
-            ++total_iters;
-
-            // compute gradient
-            timer.start(timer_grad);
-            if (algParams.fuse) {
-              timer.start(timer_grad_init);
-              g.zero(); // algorithm does not use weights
-              timer.stop(timer_grad_init);
-              sampler.fusedGradient(ut, loss_func, gt, timer, timer_grad_nzs,
-                                     timer_grad_zs);
-            }
-            else {
-              gt.weights() = 1.0; // gt is zeroed in mttkrp
-              mttkrp_all(X_grad, ut, gt, algParams);
-            }
-            timer.stop(timer_grad);
-
-            // take step and clip for bounds
-            timer.start(timer_step);
-            stepper.eval(g, u);
-            timer.stop(timer_step);
-          }
-        }
-      }
-    };
 
     template <typename TensorT, typename ExecSpace, typename LossFunction>
     void gcp_sgd_impl(TensorT& X, KtensorT<ExecSpace>& u0,
@@ -344,9 +93,6 @@ namespace Genten {
       const ttb_indx maxEpochs = algParams.maxiters;
       const ttb_indx printIter = algParams.printitn;
       const bool compute_fit = algParams.compute_fit;
-
-      // ADAM parameters
-      const bool use_adam = algParams.use_adam;
 
       // Create sampler
       Sampler<ExecSpace,LossFunction> *sampler = nullptr;
@@ -381,7 +127,8 @@ namespace Genten {
             << "%) Zeros\n"
             << "Rank: " << nc << std::endl
             << "Generalized function type: " << loss_func.name() << std::endl
-            << "Optimization method: " << (use_adam ? "adam\n" : "sgd\n")
+            << "Optimization method: " << GCP_Step::names[algParams.step_type]
+            << std::endl
             << "Max iterations (epochs): " << maxEpochs << std::endl
             << "Iterations per epoch: " << epoch_iters << std::endl
             << "Learning rate / decay / maxfails: "
@@ -441,8 +188,10 @@ namespace Genten {
 
       // Create stepper
       GCP_SGD_Step<ExecSpace,LossFunction> *stepper = nullptr;
-      if (use_adam)
+      if (algParams.step_type == GCP_Step::ADAM)
         stepper = new AdamStep<ExecSpace,LossFunction>(algParams, it.u);
+      else if (algParams.step_type == GCP_Step::AdaGrad)
+        stepper = new AdaGradStep<ExecSpace,LossFunction>(algParams, it.u);
       else
         stepper = new SGDStep<ExecSpace,LossFunction>();
 
