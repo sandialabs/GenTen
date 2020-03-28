@@ -86,7 +86,8 @@ Genten::AlgParams::AlgParams() :
   step_type(Genten::GCP_Step::ADAM),
   adam_beta1(0.9),    // Defaults taken from ADAM paper
   adam_beta2(0.999),
-  adam_eps(1.0e-8)
+  adam_eps(1.0e-8),
+  async(false)
 {}
 
 void Genten::AlgParams::parse(std::vector<std::string>& args)
@@ -183,6 +184,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   adam_beta1 = parse_ttb_real(args, "--adam-beta1", adam_beta1, 0.0, 1.0);
   adam_beta2 = parse_ttb_real(args, "--adam-beta2", adam_beta2, 0.0, 1.0);
   adam_eps = parse_ttb_real(args, "--adam-eps", adam_eps, 0.0, 1.0);
+  async = parse_ttb_bool(args, "--async", "--sync", async);
 }
 
 void Genten::AlgParams::print_help(std::ostream& out)
@@ -284,6 +286,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --adam-beta1       Decay rate for 1st moment avg." << std::endl;
   out << "  --adam-beta2       Decay rate for 2nd moment avg." << std::endl;
   out << "  --adam-eps         Shift in ADAM step." << std::endl;
+  out << "  --async            Asynchronous SGD solver" << std::endl;
 }
 
 void Genten::AlgParams::print(std::ostream& out)
@@ -351,6 +354,7 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  adam-beta1 = " << adam_beta1 << std::endl;
   out << "  adam-beta2 = " << adam_beta2 << std::endl;
   out << "  adam-eps = " << adam_eps << std::endl;
+  out << "  async = " << (async ? "true" : "false") << std::endl;
 }
 
 ttb_real

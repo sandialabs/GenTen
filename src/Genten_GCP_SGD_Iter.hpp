@@ -40,25 +40,20 @@
 
 #pragma once
 
-#include <cmath>
-
 #include "Genten_GCP_Sampler.hpp"
-#include "Genten_GCP_SGD_Iter.hpp"
+#include "Genten_GCP_SGD_Step.hpp"
 #include "Genten_GCP_KokkosVector.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
+#include "Genten_Sptensor.hpp"
 #include "Genten_AlgParams.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_MixedFormatOps.hpp"
-
-#ifdef HAVE_CALIPER
-#include <caliper/cali.h>
-#endif
 
 namespace Genten {
 
   namespace Impl {
 
-    template <typename ExecSpace>
+    template <typename ExecSpace, typename LossFunction>
     struct GCP_SGD_Iter {
       typedef GCP::KokkosVector<ExecSpace> VectorType;
       VectorType u;
@@ -81,12 +76,15 @@ namespace Genten {
       int timer_sample_g_perm;
       SystemTimer timer;
 
-      template <typename TensorT, typename LossFunction>
-      void run(TensorT& X,
-               const LossFunction& loss_func,
-               const AlgParams& algParams,
-               Sampler<ExecSpace,LossFunction>& sampler,
-               GCP_SGD_Step<ExecSpace,LossFunction>& stepper)
+      GCP_SGD_Iter() {}
+
+      virtual ~GCP_SGD_Iter() {}
+
+      virtual void run(SptensorT<ExecSpace>& X,
+                       const LossFunction& loss_func,
+                       const AlgParams& algParams,
+                       Sampler<ExecSpace,LossFunction>& sampler,
+                       GCP_SGD_Step<ExecSpace,LossFunction>& stepper)
       {
         for (ttb_indx iter=0; iter<algParams.epoch_iters; ++iter) {
 

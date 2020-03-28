@@ -107,6 +107,7 @@ namespace Genten {
     ttb_real adam_beta1;                 // Decay rate of first moment avg.
     ttb_real adam_beta2;                 // Decay rate of second moment avg.
     ttb_real adam_eps;                   // Shift in ADAM/AdaGrad step
+    bool async;                          // Asynchronous SGD solver
 
     // Constructor initializing values to defaults
     AlgParams();

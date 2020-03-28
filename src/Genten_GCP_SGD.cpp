@@ -51,6 +51,7 @@
 #include "Genten_GCP_KokkosVector.hpp"
 #include "Genten_GCP_SGD_Step.hpp"
 #include "Genten_GCP_SGD_Iter.hpp"
+#include "Genten_GCP_SGD_Iter_Async.hpp"
 
 #include "Genten_Sptensor.hpp"
 #include "Genten_SystemTimer.hpp"
@@ -78,7 +79,12 @@ namespace Genten {
       using std::sqrt;
       using std::pow;
 
-      GCP_SGD_Iter<ExecSpace> it;
+      GCP_SGD_Iter<ExecSpace,LossFunction> *itp = nullptr;
+      if (algParams.async)
+        itp = new GCP_SGD_Iter_Async<ExecSpace,LossFunction>();
+      else
+        itp = new GCP_SGD_Iter<ExecSpace,LossFunction>();
+      GCP_SGD_Iter<ExecSpace,LossFunction>& it = *itp;
 
       const ttb_indx nd = u0.ndims();
       const ttb_indx nc = u0.ncomponents();
@@ -361,7 +367,9 @@ namespace Genten {
       u0.normalize(Genten::NormTwo);
       u0.arrange();
 
+      delete stepper;
       delete sampler;
+      delete itp;
     }
 
   }
