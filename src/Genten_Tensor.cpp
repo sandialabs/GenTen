@@ -97,7 +97,7 @@ TensorT(const SptensorT<ExecSpace>& src) : siz(src.size())
 {
   siz_host = create_mirror_view(siz);
   deep_copy(siz_host, siz);
-  values = ArrayT<ExecSpace>(siz_host.prod(), 0.0);
+  values = ArrayT<ExecSpace>(siz_host.prod(), ttb_real(0.0));
   Impl::copyFromSptensor(*this, src);
 }
 
