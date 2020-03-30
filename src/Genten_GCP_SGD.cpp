@@ -272,7 +272,7 @@ namespace Genten {
         it.timer.stop(timer_fest);
 
         // check convergence
-        const bool failed_epoch = fest > fest_prev;
+        const bool failed_epoch = fest > fest_prev || std::isnan(fest);
 
         if (failed_epoch)
           ++nfails;
