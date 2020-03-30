@@ -45,8 +45,6 @@
 
 // To do:
 //  * Test on Volta.  Do we need warp sync's?
-//  * Understand why/fix RowBlockSize == 128 causes nan's
-//  * Compare performance on larger tensors with longer modes
 
 namespace Genten {
 
@@ -84,7 +82,7 @@ namespace Genten {
       /*const*/ unsigned nc = u.ncomponents();
 
       static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
-      static const unsigned RowBlockSize = 1; // Doesn't work with 128?
+      const unsigned RowBlockSize = algParams.mttkrp_nnz_tile_size;
       const unsigned VectorSize =
         is_cuda ? min(unsigned(128), unsigned(pow(2.0, floor(log2(nc))))) : 1;
       const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
