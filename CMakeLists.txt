@@ -348,8 +348,6 @@ IF (ENABLE_GCP)
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Rayleigh.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Gamma.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Bernoulli.cpp
-    #${Genten_SOURCE_DIR}/src/Genten_GCP_HogWild.cpp
-    #${Genten_SOURCE_DIR}/src/Genten_GCP_SGD2_HogWild.cpp
     )
 
   IF (ENABLE_ROL)
