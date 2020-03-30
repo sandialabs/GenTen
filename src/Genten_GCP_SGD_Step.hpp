@@ -43,6 +43,7 @@
 #include <cmath>
 
 #include "Genten_AlgParams.hpp"
+#include "Genten_Ktensor.hpp"
 #include "Genten_GCP_KokkosVector.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
 
@@ -114,6 +115,20 @@ namespace Genten {
             uu = uu < lb ? lb : (uu > ub ? ub : uu);
           uv(i) = uu;
         });
+      }
+
+      KOKKOS_INLINE_FUNCTION
+      void eval_async(const unsigned dim, const ttb_indx row,
+                      const unsigned col, const ttb_real g,
+                      const KtensorT<ExecSpace>& u) const
+      {
+        Kokkos::atomic_add(&u[dim].entry(row,col), -step*g);
+        if (LossFunction::has_lower_bound())
+          Kokkos::atomic_fetch_max(&u[dim].entry(row,col),
+                                   LossFunction::lower_bound());
+        if (LossFunction::has_upper_bound())
+          Kokkos::atomic_fetch_min(&u[dim].entry(row,col),
+                                   LossFunction::upper_bound());
       }
 
     protected:
@@ -211,6 +226,14 @@ namespace Genten {
         });
       }
 
+      KOKKOS_INLINE_FUNCTION
+      void eval_async(const unsigned dim, const ttb_indx row,
+                      const unsigned col, const ttb_real g,
+                      const KtensorT<ExecSpace>& u) const
+      {
+        Kokkos::abort("eval_async not implemented for Adam stepper!");
+      }
+
     protected:
       ttb_indx epoch_iters;
       ttb_real step;
@@ -237,7 +260,8 @@ namespace Genten {
         step(0.0),
         eps(algParams.adam_eps),
         s(u.clone()),
-        s_prev(u.clone())
+        s_prev(u.clone()),
+        st(s.getKtensor())
       {
         s.zero();
         s_prev.zero();
@@ -293,12 +317,29 @@ namespace Genten {
         });
       }
 
+      KOKKOS_INLINE_FUNCTION
+      void eval_async(const unsigned dim, const ttb_indx row,
+                      const unsigned col, const ttb_real g,
+                      const KtensorT<ExecSpace>& u) const
+      {
+        using std::sqrt;
+        ttb_real ss = Kokkos::atomic_fetch_add(&st[dim].entry(row,col), g*g);
+        Kokkos::atomic_add(&u[dim].entry(row,col), -step*g/sqrt(ss+g*g+eps));
+        if (LossFunction::has_lower_bound())
+          Kokkos::atomic_fetch_max(&u[dim].entry(row,col),
+                                   LossFunction::lower_bound());
+        if (LossFunction::has_upper_bound())
+          Kokkos::atomic_fetch_min(&u[dim].entry(row,col),
+                                   LossFunction::upper_bound());
+      }
+
     protected:
       ttb_real step;
       ttb_real eps;
 
       VectorType s;
       VectorType s_prev;
+      KtensorT<ExecSpace> st;
     };
 
   }

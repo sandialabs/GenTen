@@ -46,15 +46,13 @@
 // To do:
 //  * Test on Volta.  Do we need warp sync's?
 //  * Understand why/fix RowBlockSize == 128 causes nan's
-//  * Template on stepper and add eval_async()
 //  * Compare performance on larger tensors with longer modes
-//  * Implement other asynchronous steppers
 
 namespace Genten {
 
   namespace Impl {
 
-    template <typename ExecSpace, typename LossFunction>
+    template <typename ExecSpace, typename LossFunction, typename Stepper>
     void gcp_sgd_iter_async_kernel(
       const SptensorT<ExecSpace>& X,
       const KtensorT<ExecSpace>& u,
@@ -64,7 +62,7 @@ namespace Genten {
       const ttb_real wz,
       const ttb_real wnz,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
-      const GCP_SGD_Step<ExecSpace,LossFunction>& stepper,
+      const Stepper& stepper,
       const AlgParams& algParams)
     {
       using std::floor;
@@ -95,8 +93,6 @@ namespace Genten {
       const size_t bytes =
         IndScratchSpace::shmem_size(TeamSize,nd) +
         KtnScratchSpace::shmem_size(TeamSize,nd,nc);
-
-      const ttb_real step = stepper.getStep(); // FIXME
 
       Policy policy(N, TeamSize, VectorSize);
       Kokkos::parallel_for(
@@ -183,8 +179,7 @@ namespace Genten {
               for (unsigned m=0; m<nd; ++m)
                 if (m != n)
                   tmp *= team_ktn(team_rank, m, j);
-              // SGD step -- FIXME to call stepper
-              Kokkos::atomic_add(&u[n].entry(k,j), (-step)*tmp);
+              stepper.eval_async(n,k,j,tmp,u);
             });
           }
         }
@@ -207,25 +202,38 @@ namespace Genten {
                        GCP_SGD_Step<ExecSpace,LossFunction>& stepper)
       {
         // Cast sampler to SemiStratified and extract data
-        SemiStratifiedSampler<ExecSpace,LossFunction>& semi_strat_sampler =
-          dynamic_cast<SemiStratifiedSampler<ExecSpace,LossFunction>&>(sampler);
-        const ttb_indx nsz = semi_strat_sampler.getNumSamplesZerosGrad();
-        const ttb_indx nsnz = semi_strat_sampler.getNumSamplesNonzerosGrad();
-        const ttb_real wz = semi_strat_sampler.getWeightZerosGrad();
-        const ttb_real wnz = semi_strat_sampler.getWeightNonzerosGrad();
-        auto& rand_pool = semi_strat_sampler.getRandPool();
+        SemiStratifiedSampler<ExecSpace,LossFunction>* semi_strat_sampler =
+          dynamic_cast<SemiStratifiedSampler<ExecSpace,LossFunction>*>(&sampler);
+        if (semi_strat_sampler == nullptr)
+          Genten::error("Asynchronous iterator requires semi-stratified sampler!");
+        const ttb_indx nsz = semi_strat_sampler->getNumSamplesZerosGrad();
+        const ttb_indx nsnz = semi_strat_sampler->getNumSamplesNonzerosGrad();
+        const ttb_real wz = semi_strat_sampler->getWeightZerosGrad();
+        const ttb_real wnz = semi_strat_sampler->getWeightNonzerosGrad();
+        auto& rand_pool = semi_strat_sampler->getRandPool();
 
         this->timer.start(this->timer_grad);
 
         // Run kernel
-        gcp_sgd_iter_async_kernel(
-          X,this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,stepper,
-          algParams);
+        SGDStep<ExecSpace,LossFunction>* sgd_step =
+          dynamic_cast<SGDStep<ExecSpace,LossFunction>*>(&stepper);
+        AdaGradStep<ExecSpace,LossFunction>* adagrad_step =
+          dynamic_cast<AdaGradStep<ExecSpace,LossFunction>*>(&stepper);
+        if (sgd_step != nullptr)
+          gcp_sgd_iter_async_kernel(
+            X,this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*sgd_step,
+            algParams);
+        else if (adagrad_step != nullptr)
+          gcp_sgd_iter_async_kernel(
+            X,this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*adagrad_step,
+            algParams);
+        else
+          Genten::error("Unsupported GCP-SGD stepper!");
+
+        this->timer.stop(this->timer_grad);
 
         // Update number of iterations
         this->total_iters += algParams.epoch_iters;
-
-        this->timer.stop(this->timer_grad);
       }
     };
 
