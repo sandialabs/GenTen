@@ -40,15 +40,13 @@
 
 #pragma once
 
+#include <cmath>
 #include "Genten_GCP_SGD_Iter.hpp"
 
 // To do:
-//  * Fix VectorSize (use largest power of 2 <= nc, max of 128)
 //  * Test on Volta.  Do we need warp sync's?
 //  * Understand why/fix RowBlockSize == 128 causes nan's
 //  * Template on stepper and add eval_async()
-//  * Fix GCP-SGD banner when using async
-//  * Fix timers
 //  * Compare performance on larger tensors with longer modes
 //  * Implement other asynchronous steppers
 
@@ -69,6 +67,11 @@ namespace Genten {
       const GCP_SGD_Step<ExecSpace,LossFunction>& stepper,
       const AlgParams& algParams)
     {
+      using std::floor;
+      using std::pow;
+      using std::log2;
+      using std::min;
+
       typedef Kokkos::TeamPolicy<ExecSpace> Policy;
       typedef typename Policy::member_type TeamMember;
       typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
@@ -77,16 +80,17 @@ namespace Genten {
       typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > IndScratchSpace;
       typedef Kokkos::View< ttb_real***, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > KtnScratchSpace;
 
-      static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
-      static const unsigned RowBlockSize = 1; // Doesn't work with 128?
-      static const unsigned VectorSize = is_cuda ? 16 : 1; // FIXME
-      static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
-      static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
-
       /*const*/ ttb_indx num_samples = (nsz+nsnz)*algParams.epoch_iters;
       /*const*/ ttb_indx nnz = X.nnz();
       /*const*/ unsigned nd = u.ndims();
       /*const*/ unsigned nc = u.ncomponents();
+
+      static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+      static const unsigned RowBlockSize = 1; // Doesn't work with 128?
+      const unsigned VectorSize =
+        is_cuda ? min(unsigned(128), unsigned(pow(2.0, floor(log2(nc))))) : 1;
+      const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+      const unsigned RowsPerTeam = TeamSize * RowBlockSize;
       const ttb_indx N = (num_samples+RowsPerTeam-1)/RowsPerTeam;
       const size_t bytes =
         IndScratchSpace::shmem_size(TeamSize,nd) +
@@ -100,9 +104,10 @@ namespace Genten {
         KOKKOS_LAMBDA(const TeamMember& team)
       {
         generator_type gen = rand_pool.get_state();
-        IndScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
-        KtnScratchSpace team_ktn(team.team_scratch(0), TeamSize, nd, nc);
-        const ttb_indx team_rank = team.team_rank();
+        const unsigned team_rank = team.team_rank();
+        const unsigned team_size = team.team_size();
+        IndScratchSpace team_ind(team.team_scratch(0), team_size, nd);
+        KtnScratchSpace team_ktn(team.team_scratch(0), team_size, nd, nc);
 
         for (unsigned ii=0; ii<RowBlockSize; ++ii) {
 
@@ -188,7 +193,9 @@ namespace Genten {
     }
 
     template <typename ExecSpace, typename LossFunction>
-    struct GCP_SGD_Iter_Async : public GCP_SGD_Iter<ExecSpace, LossFunction> {
+    class GCP_SGD_Iter_Async : public GCP_SGD_Iter<ExecSpace, LossFunction> {
+    public:
+
       GCP_SGD_Iter_Async() {}
 
       virtual ~GCP_SGD_Iter_Async() {}
@@ -208,6 +215,8 @@ namespace Genten {
         const ttb_real wnz = semi_strat_sampler.getWeightNonzerosGrad();
         auto& rand_pool = semi_strat_sampler.getRandPool();
 
+        this->timer.start(this->timer_grad);
+
         // Run kernel
         gcp_sgd_iter_async_kernel(
           X,this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,stepper,
@@ -215,6 +224,8 @@ namespace Genten {
 
         // Update number of iterations
         this->total_iters += algParams.epoch_iters;
+
+        this->timer.stop(this->timer_grad);
       }
     };
 

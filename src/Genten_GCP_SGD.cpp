@@ -79,6 +79,12 @@ namespace Genten {
       using std::sqrt;
       using std::pow;
 
+      // Check for valid option combinations
+      if (algParams.async &&
+          algParams.sampling_type != GCP_Sampling::SemiStratified)
+        Genten::error("Must use semi-stratified sampling with asynchronous solver!");
+
+      // Create iterator
       GCP_SGD_Iter<ExecSpace,LossFunction> *itp = nullptr;
       if (algParams.async)
         itp = new GCP_SGD_Iter_Async<ExecSpace,LossFunction>();
@@ -142,7 +148,9 @@ namespace Genten {
             << rate << " " << decay << " " << max_fails << std::endl;
         sampler->print(out);
         out << "Gradient method: ";
-        if (algParams.fuse)
+        if (algParams.async)
+          out << "Fused asynchronous sampling and atomic MTTKRP\n";
+        else if (algParams.fuse)
           out << "Fused sampling and "
               << MTTKRP_All_Method::names[algParams.mttkrp_all_method]
               << " MTTKRP\n";
@@ -330,7 +338,7 @@ namespace Genten {
               << " seconds\n"
               << "\tsample-f:  " << it.timer.getTotalTime(timer_sample_f)
               << " seconds\n";
-          if (!algParams.fuse) {
+          if (!algParams.fuse && !algParams.async) {
             out << "\tsample-g:  "
                 << it.timer.getTotalTime(it.timer_sample_g)
                 << " seconds\n"
@@ -356,8 +364,9 @@ namespace Genten {
                 << "\t\tzs:      " << it.timer.getTotalTime(it.timer_grad_zs)
                 << " seconds\n";
           }
-          out << "\tstep/clip: " << it.timer.getTotalTime(it.timer_step)
-              << " seconds\n";
+          if (!algParams.async)
+            out << "\tstep/clip: " << it.timer.getTotalTime(it.timer_step)
+                << " seconds\n";
         }
       }
 

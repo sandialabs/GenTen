@@ -54,7 +54,8 @@ namespace Genten {
   namespace Impl {
 
     template <typename ExecSpace, typename LossFunction>
-    struct GCP_SGD_Iter {
+    class GCP_SGD_Iter {
+    public:
       typedef GCP::KokkosVector<ExecSpace> VectorType;
       VectorType u;
       VectorType g;
