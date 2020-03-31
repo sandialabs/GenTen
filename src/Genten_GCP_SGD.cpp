@@ -84,14 +84,6 @@ namespace Genten {
           algParams.sampling_type != GCP_Sampling::SemiStratified)
         Genten::error("Must use semi-stratified sampling with asynchronous solver!");
 
-      // Create iterator
-      GCP_SGD_Iter<ExecSpace,LossFunction> *itp = nullptr;
-      if (algParams.async)
-        itp = new GCP_SGD_Iter_Async<ExecSpace,LossFunction>();
-      else
-        itp = new GCP_SGD_Iter<ExecSpace,LossFunction>();
-      GCP_SGD_Iter<ExecSpace,LossFunction>& it = *itp;
-
       const ttb_indx nd = u0.ndims();
       const ttb_indx nc = u0.ncomponents();
 
@@ -170,71 +162,66 @@ namespace Genten {
       const int timer_sort = num_timers++;
       const int timer_sample_f = num_timers++;
       const int timer_fest = num_timers++;
-      it.timer_sample_g = num_timers++;
-      it.timer_grad = num_timers++;
-      it.timer_grad_nzs = num_timers++;
-      it.timer_grad_zs = num_timers++;
-      it.timer_grad_init = num_timers++;
-      it.timer_step = num_timers++;
-      it.timer_sample_g_z_nz = num_timers++;
-      it.timer_sample_g_perm = num_timers++;
-      it.timer.init(num_timers, algParams.timings);
+      SystemTimer timer(num_timers, algParams.timings);
 
       // Start timer for total execution time of the algorithm.
-      it.timer.start(timer_sgd);
+      timer.start(timer_sgd);
 
       // Distribute the initial guess to have weights of one.
       u0.normalize(Genten::NormTwo);
       u0.distribute();
 
-      // Ktensor-vector for solution
-      it.u = VectorType(u0);
-      it.u.copyFromKtensor(u0);
-      it.ut = it.u.getKtensor();
+      // Create iterator
+      GCP_SGD_Iter<ExecSpace,LossFunction> *itp = nullptr;
+      if (algParams.async)
+        itp = new GCP_SGD_Iter_Async<ExecSpace,LossFunction>(u0, algParams);
+      else
+        itp = new GCP_SGD_Iter<ExecSpace,LossFunction>(u0, algParams);
+      GCP_SGD_Iter<ExecSpace,LossFunction>& it = *itp;
 
-      // Gradient Ktensor
-      it.g = it.u.clone();
-      it.gt = it.g.getKtensor();
+      // Get vector/Ktensor for current solution (this is a view of the data)
+      VectorType u = it.getSolution();
+      KtensorT<ExecSpace> ut = u.getKtensor();
 
       // Copy Ktensor for restoring previous solution
-      VectorType u_prev = it.u.clone();
-      u_prev.set(it.u);
+      VectorType u_prev = u.clone();
+      u_prev.set(u);
 
       // Create stepper
       GCP_SGD_Step<ExecSpace,LossFunction> *stepper = nullptr;
       if (algParams.step_type == GCP_Step::ADAM)
-        stepper = new AdamStep<ExecSpace,LossFunction>(algParams, it.u);
+        stepper = new AdamStep<ExecSpace,LossFunction>(algParams, u);
       else if (algParams.step_type == GCP_Step::AdaGrad)
-        stepper = new AdaGradStep<ExecSpace,LossFunction>(algParams, it.u);
+        stepper = new AdaGradStep<ExecSpace,LossFunction>(algParams, u);
       else
         stepper = new SGDStep<ExecSpace,LossFunction>();
 
       // Initialize sampler (sorting, hashing, ...)
-      it.timer.start(timer_sort);
+      timer.start(timer_sort);
       RandomMT rng(seed);
       Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(rng.genrnd_int32());
       sampler->initialize(rand_pool, out);
-      it.timer.stop(timer_sort);
+      timer.stop(timer_sort);
 
       // Sample X for f-estimate
       SptensorT<ExecSpace> X_val;
       ArrayT<ExecSpace> w_val;
-      it.timer.start(timer_sample_f);
-      sampler->sampleTensor(false, it.ut, loss_func, X_val, w_val);
-      it.timer.stop(timer_sample_f);
+      timer.start(timer_sample_f);
+      sampler->sampleTensor(false, ut, loss_func, X_val, w_val);
+      timer.stop(timer_sample_f);
 
       // Objective estimates
       ttb_real fit = 0.0;
       ttb_real x_norm = 0.0;
-      it.timer.start(timer_fest);
-      fest = Impl::gcp_value(X_val, it.ut, w_val, loss_func);
+      timer.start(timer_fest);
+      fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
       if (compute_fit) {
         x_norm = X.norm();
-        ttb_real u_norm = it.u.normFsq();
-        ttb_real dot = innerprod(X, it.ut);
+        ttb_real u_norm = u.normFsq();
+        ttb_real dot = innerprod(X, ut);
         fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
       }
-      it.timer.stop(timer_fest);
+      timer.stop(timer_fest);
       ttb_real fest_prev = fest;
       ttb_real fit_prev = fit;
 
@@ -253,23 +240,23 @@ namespace Genten {
       // SGD epoch loop
       ttb_real nuc = 1.0;
       ttb_indx nfails = 0;
-      it.total_iters = 0;
+      ttb_indx total_iters = 0;
       for (numEpochs=0; numEpochs<maxEpochs; ++numEpochs) {
         // Gradient step size
         stepper->setStep(nuc*rate);
 
         // Epoch iterations
-        it.run(X, loss_func, algParams, *sampler, *stepper);
+        total_iters += it.run(X, loss_func, *sampler, *stepper);
 
         // compute objective estimate
-        it.timer.start(timer_fest);
-        fest = Impl::gcp_value(X_val, it.ut, w_val, loss_func);
+        timer.start(timer_fest);
+        fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
         if (compute_fit) {
-          ttb_real u_norm = it.u.normFsq();
-          ttb_real dot = innerprod(X, it.ut);
+          ttb_real u_norm = u.normFsq();
+          ttb_real dot = innerprod(X, ut);
           fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
         }
-        it.timer.stop(timer_fest);
+        timer.stop(timer_fest);
 
         // check convergence
         const bool failed_epoch = fest > fest_prev || std::isnan(fest);
@@ -291,7 +278,7 @@ namespace Genten {
               << stepper->getStep();
           out << ", time = "
               << std::setw(8) << std::setprecision(2) << std::scientific
-              << it.timer.getTotalTime(timer_sgd) << " sec";
+              << timer.getTotalTime(timer_sgd) << " sec";
           if (failed_epoch)
             out << ", nfails = " << nfails
                 << " (resetting to solution from last epoch)";
@@ -302,14 +289,14 @@ namespace Genten {
           nuc *= decay;
 
           // restart from last epoch
-          it.u.set(u_prev);
+          u.set(u_prev);
           fest = fest_prev;
           fit = fit_prev;
           stepper->setFailed();
         }
         else {
           // update previous data
-          u_prev.set(it.u);
+          u_prev.set(u);
           fest_prev = fest;
           fit_prev = fit;
           stepper->setPassed();
@@ -318,7 +305,7 @@ namespace Genten {
         if (nfails > max_fails || fest < tol)
           break;
       }
-      it.timer.stop(timer_sgd);
+      timer.stop(timer_sgd);
 
       if (printIter > 0) {
         out << "End main loop\n"
@@ -330,47 +317,21 @@ namespace Genten {
               << std::setw(10) << std::setprecision(3) << std::scientific
               << fit;
         out << std::endl
-            << "GCP-SGD completed " << it.total_iters << " iterations in "
+            << "GCP-SGD completed " << total_iters << " iterations in "
             << std::setw(8) << std::setprecision(2) << std::scientific
-            << it.timer.getTotalTime(timer_sgd) << " seconds" << std::endl;
+            << timer.getTotalTime(timer_sgd) << " seconds" << std::endl;
         if (algParams.timings) {
-          out << "\tsort/hash: " << it.timer.getTotalTime(timer_sort)
+          out << "\tsort/hash: " << timer.getTotalTime(timer_sort)
               << " seconds\n"
-              << "\tsample-f:  " << it.timer.getTotalTime(timer_sample_f)
-              << " seconds\n";
-          if (!algParams.fuse && !algParams.async) {
-            out << "\tsample-g:  "
-                << it.timer.getTotalTime(it.timer_sample_g)
-                << " seconds\n"
-                << "\t\tzs/nzs:   "
-                << it.timer.getTotalTime(it.timer_sample_g_z_nz)
-                << " seconds\n";
-            if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
-                algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated) {
-              out << "\t\tperm:     "
-                  << it.timer.getTotalTime(it.timer_sample_g_perm)
-                  << " seconds\n";
-            }
-          }
-          out << "\tf-est:     " << it.timer.getTotalTime(timer_fest)
+              << "\tsample-f:  " << timer.getTotalTime(timer_sample_f)
               << " seconds\n"
-              << "\tgradient:  " << it.timer.getTotalTime(it.timer_grad)
+              << "\tf-est:     " << timer.getTotalTime(timer_fest)
               << " seconds\n";
-          if (algParams.fuse) {
-            out << "\t\tinit:    " << it.timer.getTotalTime(it.timer_grad_init)
-                << " seconds\n"
-                << "\t\tnzs:     " << it.timer.getTotalTime(it.timer_grad_nzs)
-                << " seconds\n"
-                << "\t\tzs:      " << it.timer.getTotalTime(it.timer_grad_zs)
-                << " seconds\n";
-          }
-          if (!algParams.async)
-            out << "\tstep/clip: " << it.timer.getTotalTime(it.timer_step)
-                << " seconds\n";
+          it.printTimers(out);
         }
       }
 
-      it.u.copyToKtensor(u0);
+      u.copyToKtensor(u0);
 
       // Normalize Ktensor u
       u0.normalize(Genten::NormTwo);

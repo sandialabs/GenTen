@@ -40,6 +40,8 @@
 
 #pragma once
 
+#include <ostream>
+
 #include "Genten_GCP_Sampler.hpp"
 #include "Genten_GCP_SGD_Step.hpp"
 #include "Genten_GCP_KokkosVector.hpp"
@@ -57,35 +59,41 @@ namespace Genten {
     class GCP_SGD_Iter {
     public:
       typedef GCP::KokkosVector<ExecSpace> VectorType;
-      VectorType u;
-      VectorType g;
-      KtensorT<ExecSpace> ut;
-      KtensorT<ExecSpace> gt;
 
-      SptensorT<ExecSpace> X_grad;
-      ArrayT<ExecSpace> w_grad;
+      GCP_SGD_Iter(const KtensorT<ExecSpace>& u0,
+                   const AlgParams& algParams_) :
+        algParams(algParams_)
+      {
+        // Setup timers
+        int num_timers = 0;
+        timer_sample_g = num_timers++;
+        timer_grad = num_timers++;
+        timer_grad_nzs = num_timers++;
+        timer_grad_zs = num_timers++;
+        timer_grad_init = num_timers++;
+        timer_step = num_timers++;
+        timer_sample_g_z_nz = num_timers++;
+        timer_sample_g_perm = num_timers++;
+        timer.init(num_timers, algParams.timings);
 
-      int total_iters;
+        // Ktensor-vector for solution
+        u = VectorType(u0);
+        u.copyFromKtensor(u0);
+        ut = u.getKtensor();
 
-      int timer_sample_g;
-      int timer_grad;
-      int timer_grad_nzs;
-      int timer_grad_zs;
-      int timer_grad_init;
-      int timer_step;
-      int timer_sample_g_z_nz;
-      int timer_sample_g_perm;
-      SystemTimer timer;
-
-      GCP_SGD_Iter() {}
+        // Gradient Ktensor
+        g = u.clone();
+        gt = g.getKtensor();
+      }
 
       virtual ~GCP_SGD_Iter() {}
 
-      virtual void run(SptensorT<ExecSpace>& X,
-                       const LossFunction& loss_func,
-                       const AlgParams& algParams,
-                       Sampler<ExecSpace,LossFunction>& sampler,
-                       GCP_SGD_Step<ExecSpace,LossFunction>& stepper)
+      virtual VectorType getSolution() const { return u; }
+
+      virtual ttb_indx run(SptensorT<ExecSpace>& X,
+                           const LossFunction& loss_func,
+                           Sampler<ExecSpace,LossFunction>& sampler,
+                           GCP_SGD_Step<ExecSpace,LossFunction>& stepper)
       {
         for (ttb_indx iter=0; iter<algParams.epoch_iters; ++iter) {
 
@@ -107,7 +115,6 @@ namespace Genten {
           }
 
           for (ttb_indx giter=0; giter<algParams.frozen_iters; ++giter) {
-            ++total_iters;
 
             // compute gradient
             timer.start(timer_grad);
@@ -130,7 +137,60 @@ namespace Genten {
             timer.stop(timer_step);
           }
         }
+
+        return algParams.epoch_iters*algParams.frozen_iters;
       }
+
+      virtual void printTimers(std::ostream& out) const
+      {
+        if (!algParams.fuse) {
+          out << "\tsample-g:  "
+              << timer.getTotalTime(timer_sample_g)
+              << " seconds\n"
+              << "\t\tzs/nzs:   "
+              << timer.getTotalTime(timer_sample_g_z_nz)
+              << " seconds\n";
+          if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
+              algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated) {
+            out << "\t\tperm:     "
+                << timer.getTotalTime(timer_sample_g_perm)
+                << " seconds\n";
+          }
+        }
+        out << "\tgradient:  " << timer.getTotalTime(timer_grad)
+            << " seconds\n";
+        if (algParams.fuse) {
+          out << "\t\tinit:    " << timer.getTotalTime(timer_grad_init)
+              << " seconds\n"
+              << "\t\tnzs:     " << timer.getTotalTime(timer_grad_nzs)
+              << " seconds\n"
+              << "\t\tzs:      " << timer.getTotalTime(timer_grad_zs)
+              << " seconds\n";
+        }
+        out << "\tstep/clip: " << timer.getTotalTime(timer_step)
+            << " seconds\n";
+      }
+
+    protected:
+      AlgParams algParams;
+
+      int timer_sample_g;
+      int timer_grad;
+      int timer_grad_nzs;
+      int timer_grad_zs;
+      int timer_grad_init;
+      int timer_step;
+      int timer_sample_g_z_nz;
+      int timer_sample_g_perm;
+      SystemTimer timer;
+
+      VectorType u;
+      VectorType g;
+      KtensorT<ExecSpace> ut;
+      KtensorT<ExecSpace> gt;
+
+      SptensorT<ExecSpace> X_grad;
+      ArrayT<ExecSpace> w_grad;
     };
 
   }

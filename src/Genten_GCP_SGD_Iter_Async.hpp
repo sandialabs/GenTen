@@ -189,15 +189,18 @@ namespace Genten {
     class GCP_SGD_Iter_Async : public GCP_SGD_Iter<ExecSpace, LossFunction> {
     public:
 
-      GCP_SGD_Iter_Async() {}
+      GCP_SGD_Iter_Async(const KtensorT<ExecSpace>& u0,
+                         const AlgParams& algParams) :
+        GCP_SGD_Iter<ExecSpace, LossFunction>(u0, algParams)
+      {
+      }
 
       virtual ~GCP_SGD_Iter_Async() {}
 
-      virtual void run(SptensorT<ExecSpace>& X,
-                       const LossFunction& loss_func,
-                       const AlgParams& algParams,
-                       Sampler<ExecSpace,LossFunction>& sampler,
-                       GCP_SGD_Step<ExecSpace,LossFunction>& stepper)
+      virtual ttb_indx run(SptensorT<ExecSpace>& X,
+                           const LossFunction& loss_func,
+                           Sampler<ExecSpace,LossFunction>& sampler,
+                           GCP_SGD_Step<ExecSpace,LossFunction>& stepper)
       {
         // Cast sampler to SemiStratified and extract data
         SemiStratifiedSampler<ExecSpace,LossFunction>* semi_strat_sampler =
@@ -220,18 +223,24 @@ namespace Genten {
         if (sgd_step != nullptr)
           gcp_sgd_iter_async_kernel(
             X,this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*sgd_step,
-            algParams);
+            this->algParams);
         else if (adagrad_step != nullptr)
           gcp_sgd_iter_async_kernel(
             X,this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*adagrad_step,
-            algParams);
+            this->algParams);
         else
           Genten::error("Unsupported GCP-SGD stepper!");
 
         this->timer.stop(this->timer_grad);
 
         // Update number of iterations
-        this->total_iters += algParams.epoch_iters;
+        return this->algParams.epoch_iters;
+      }
+
+      virtual void printTimers(std::ostream& out) const
+      {
+        out << "\tgradient:  " << this->timer.getTotalTime(this->timer_grad)
+            << " seconds\n";
       }
     };
 
