@@ -74,6 +74,58 @@ namespace Genten {
 
       virtual void eval(const VectorType& g, VectorType& u) const = 0;
 
+    protected:
+
+      KOKKOS_INLINE_FUNCTION
+      void update_u_async(const unsigned dim, const ttb_indx row,
+                          const unsigned col, const ttb_real delta,
+                          const KtensorT<ExecSpace>& u) const
+      {
+        // Without bounds, do simple atomic update
+        if (!LossFunction::has_lower_bound() &&
+            !LossFunction::has_upper_bound())
+          Kokkos::atomic_add(&u[dim].entry(row,col), delta);
+
+        else {
+#if 1
+          // The fastest but least safe version.  Only requires a single atomic,
+          // but bounds could be violated.  Compute a step truncated to bounds.
+          const ttb_real uold = u[dim].entry(row,col);
+          ttb_real unew = uold + delta;
+          if (LossFunction::has_lower_bound() &&
+              unew < LossFunction::lower_bound())
+            unew = LossFunction::lower_bound();
+          if (LossFunction::has_upper_bound() &&
+              unew > LossFunction::upper_bound())
+            unew = LossFunction::upper_bound();
+          const ttb_real delta2 = unew - uold;
+          Kokkos::atomic_add(&u[dim].entry(row,col), delta2);
+#elif 1
+          // Safer but slower.  Only do atomic max/min if necessary.
+          const ttb_real uold =
+            Kokkos::atomic_fetch_add(&u[dim].entry(row,col), delta);
+          const ttb_real unew = uold + delta;
+          if (LossFunction::has_lower_bound() &&
+              unew < LossFunction::lower_bound())
+            Kokkos::atomic_fetch_max(&u[dim].entry(row,col),
+                                     LossFunction::lower_bound());
+          if (LossFunction::has_upper_bound() &&
+              unew > LossFunction::upper_bound())
+            Kokkos::atomic_fetch_min(&u[dim].entry(row,col),
+                                     LossFunction::upper_bound());
+#else
+          // Slowest version.  Always do atomic max/min.
+          Kokkos::atomic_add(&u[dim].entry(row,col), delta);
+          if (LossFunction::has_lower_bound())
+            Kokkos::atomic_fetch_max(&u[dim].entry(row,col),
+                                     LossFunction::lower_bound());
+          if (LossFunction::has_upper_bound())
+            Kokkos::atomic_fetch_min(&u[dim].entry(row,col),
+                                     LossFunction::upper_bound());
+#endif
+        }
+      }
+
     };
 
     template <typename ExecSpace, typename LossFunction>
@@ -122,13 +174,9 @@ namespace Genten {
                       const unsigned col, const ttb_real g,
                       const KtensorT<ExecSpace>& u) const
       {
-        Kokkos::atomic_add(&u[dim].entry(row,col), -step*g);
-        if (LossFunction::has_lower_bound())
-          Kokkos::atomic_fetch_max(&u[dim].entry(row,col),
-                                   LossFunction::lower_bound());
-        if (LossFunction::has_upper_bound())
-          Kokkos::atomic_fetch_min(&u[dim].entry(row,col),
-                                   LossFunction::upper_bound());
+        // Update u incorporating bounds
+        GCP_SGD_Step<ExecSpace,LossFunction>::update_u_async(
+          dim, row, col, -step*g, u);
       }
 
     protected:
@@ -323,14 +371,16 @@ namespace Genten {
                       const KtensorT<ExecSpace>& u) const
       {
         using std::sqrt;
+
+        // Update sum-of-squares of gradient
         ttb_real ss = Kokkos::atomic_fetch_add(&st[dim].entry(row,col), g*g);
-        Kokkos::atomic_add(&u[dim].entry(row,col), -step*g/sqrt(ss+g*g+eps));
-        if (LossFunction::has_lower_bound())
-          Kokkos::atomic_fetch_max(&u[dim].entry(row,col),
-                                   LossFunction::lower_bound());
-        if (LossFunction::has_upper_bound())
-          Kokkos::atomic_fetch_min(&u[dim].entry(row,col),
-                                   LossFunction::upper_bound());
+
+        // Our update to u
+        ttb_real delta = -step*g/sqrt(ss+g*g+eps);
+
+        // Update u incorporating bounds
+        GCP_SGD_Step<ExecSpace,LossFunction>::update_u_async(
+          dim, row, col, delta, u);
       }
 
     protected:
