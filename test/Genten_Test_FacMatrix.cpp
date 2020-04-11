@@ -290,12 +290,6 @@ void Genten_Test_FacMatrix(int infolevel, const std::string & datadir)
   b.entry(1,1) = 1.0;
   b.entry(2,0) = -1.0;
   b.entry(2,1) =  2.0;
-  a_dev = create_mirror_view( exec_space(), a );
-  b_dev = create_mirror_view( exec_space(), b );
-  deep_copy( a_dev, a );
-  deep_copy( b_dev, b );
-  b_dev.solveTransposeRHS (a_dev, true);
-  deep_copy( b, b_dev );
   c = Genten::FacMatrix(3,2);
   c.entry(0,0) = -1.0 / 3.0;
   c.entry(0,1) =  2.0 / 3.0;
@@ -303,7 +297,36 @@ void Genten_Test_FacMatrix(int infolevel, const std::string & datadir)
   c.entry(1,1) = -1.0 / 3.0;
   c.entry(2,0) =  5.0 / 3.0;
   c.entry(2,1) = -4.0 / 3.0;
-  ASSERT(c.isEqual(b,MACHINE_EPSILON), "Solve works for indefinite matrix");
+  a_dev = create_mirror_view( exec_space(), a );
+  deep_copy( a_dev, a );
+
+  Genten::FacMatrixT<exec_space> b1_dev( b.nRows(), b.nCols() );
+  deep_copy( b1_dev, b );
+  b1_dev.solveTransposeRHS (a_dev, true);
+  auto b1 = create_mirror_view( host_exec_space(), b1_dev );
+  deep_copy( b1, b1_dev );
+  ASSERT(c.isEqual(b1,MACHINE_EPSILON),
+         "Solve (full) works for indefinite matrix");
+
+  // Symmetric, indefinite solver currently doesn't work on GPU
+  // (solver not fully implemented in cuSOLVER)
+  if (!Genten::is_cuda_space<exec_space>::value) {
+    Genten::FacMatrixT<exec_space> b2_dev( b.nRows(), b.nCols() );
+    deep_copy( b2_dev, b );
+    b2_dev.solveTransposeRHS (a_dev, false, Genten::Upper, true);
+    auto b2 = create_mirror_view( host_exec_space(), b2_dev );
+    deep_copy( b2, b2_dev );
+    ASSERT(c.isEqual(b2,MACHINE_EPSILON),
+           "Solve (sym, assume spd) works for indefinite matrix");
+
+    Genten::FacMatrixT<exec_space> b3_dev( b.nRows(), b.nCols() );
+    deep_copy( b3_dev, b );
+    b3_dev.solveTransposeRHS (a_dev, false, Genten::Upper, false);
+    auto b3 = create_mirror_view( host_exec_space(), b3_dev );
+    deep_copy( b3, b3_dev );
+    ASSERT(c.isEqual(b3,MACHINE_EPSILON),
+           "Solve (sym, assume indefinite) works for indefinite matrix");
+  }
 
   // colNorms
   Genten::Array nrms(3), nrms_chk(3);

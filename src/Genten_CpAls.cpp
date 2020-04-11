@@ -124,6 +124,7 @@ namespace Genten {
     // Whether to use full or symmetric Gram matrix
     const bool full = algParams.full_gram;
     const UploType uplo = Upper;
+    bool spd = true; // Use SPD solver if possible
 
     const ttb_real tol = algParams.tol;
     const ttb_indx maxIters = algParams.maxiters;
@@ -280,7 +281,7 @@ namespace Genten {
         // with the result.  Equivalent to the Matlab operation
         //   u[n] = (upsilon \ u[n]')'.
         timer.start(timer_solve);
-        u[n].solveTransposeRHS (upsilon, full, uplo);
+        spd = u[n].solveTransposeRHS (upsilon, full, uplo, spd);
         Kokkos::fence();
         timer.stop(timer_solve);
 

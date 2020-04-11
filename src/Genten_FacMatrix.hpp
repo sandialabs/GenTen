@@ -344,14 +344,19 @@ public:
      *
      * uplo says which triangele of A to access if full == false.
      *
+     * spd says whether to first assume matrix is SPD.  If matrix is found
+     * to not be SPD, an indefinite solver will be called and the function
+     * returns false.
+     *
      * Since internal storage of FacMatrix data is row major, the implementation
      * is actually quite simple and avoids both logical transposes.
      *
-     * Throws an exception if A is singular.
+     * Returns whether matrix was truly SPD if spd == true
      */
-    void solveTransposeRHS (const FacMatrixT & A,
+    bool solveTransposeRHS (const FacMatrixT & A,
                             const bool full = full_gram_default,
-                            const UploType uplo = Upper) const;
+                            const UploType uplo = Upper,
+                            const bool spd = true) const;
 
     //! Multiply x elementwise by the ith row of the factor matrix, overwriting x.
     /*!
