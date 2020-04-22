@@ -80,7 +80,7 @@ if strcmp(type,'normal')
   type = 'gaussian';
 elseif strcmp(type,'count')
   type = 'poisson';
-elseif stcmp(type,'binary')
+elseif strcmp(type,'binary')
   type = 'bernoulli'
 end
 c = {'type', type};
@@ -91,6 +91,7 @@ if ~isempty(fsamp)
     c = {'fnzs', fsamp(1), 'fzs', fsamp(1)};
   else
     c = {'fnzs', fsamp(1), 'fzs', fsamp(2)};
+  end
   args = [args c];
 end
 [gsamp,args] = get_option_and_remove(args,'gsamp',[]);
@@ -99,6 +100,7 @@ if ~isempty(gsamp)
     c = {'gnzs', gsamp(1), 'gzs', gsamp(1)};
   else
     c = {'gnzs', gsamp(1), 'gzs', gsamp(2)};
+  end
   args = [args c];
 end
 args = rename_option(args,'sampler','sampling');
