@@ -1535,7 +1535,7 @@ namespace Genten {
     {
       // cusolverDnDsytrs does not appear to work yet, so error out
       Genten::error("Symmetric, indefinite solve with Cuda is not fully implemented in cuSOLVER.  Instead you must use the option '--full-gram' to enable the non-symmetric solver.");
-
+#if 0
       const int m = B.extent(0);
       const int n = B.extent(1);
       const int lda = A.stride_0();
@@ -1617,6 +1617,7 @@ namespace Genten {
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
+#endif
     }
 
     template <typename AT, typename ... AP,
@@ -1809,7 +1810,7 @@ namespace Genten {
     {
       // cusolverDnSsytrs does not appear to work yet, so error out
       Genten::error("Symmetric, indefinite solve with Cuda is not fully implemented in cuSOLVER.  Instead you must use the option '--full-gram' to enable the non-symmetric solver.");
-
+#if 0
       const int m = B.extent(0);
       const int n = B.extent(1);
       const int lda = A.stride_0();
@@ -1891,6 +1892,7 @@ namespace Genten {
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
+#endif
     }
 
     template <typename AT, typename ... AP,
