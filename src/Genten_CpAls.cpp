@@ -472,9 +472,18 @@ namespace Genten {
       result = 0.0;
     else
     {
+      // Warn the user that the residual norm is negative instead of throwing
+      // an error.
       std::ostringstream  sMsg;
-      sMsg << "Genten::cpals_core - residual norm is negative: " << d;
-      Genten::error(sMsg.str());
+      sMsg.setf(std::ios_base::scientific);
+      sMsg.precision(15);
+      sMsg << "Genten::cpals_core - residual norm^2, " << d << ", is negative."
+           << "  ||X||^2 = " << xNorm*xNorm
+           << ", ||M||^2 = " << mNorm*mNorm
+           << ", <X,M> = " << xDotm;
+      //Genten::error(sMsg.str());
+      std::cout << sMsg.str() << std::endl;
+      result = 0.0;
     }
     return( result );
   }
