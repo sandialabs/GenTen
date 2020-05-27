@@ -80,11 +80,21 @@ namespace Genten
      *  @param[in] nNumTimers  Number of timers to allocate.
      *  @param[in] fence       Call Kokkos::fence() when stopping timer
      */
-    SystemTimer (const int  nNumTimers,
+    SystemTimer (const int  nNumTimers = 0,
                  const bool fence = false);
 
     //! Destructor.
-    ~SystemTimer (void);
+    ~SystemTimer ();
+
+    //! Initialize.
+    /*!
+     *  @param[in] nNumTimers  Number of timers to allocate.
+     *  @param[in] fence       Call Kokkos::fence() when stopping timer
+     */
+    void init (const int nNumTimers, const bool fence);
+
+    //! Destroy
+    void destroy();
 
     //! Static method to return current date and time.
     /*!

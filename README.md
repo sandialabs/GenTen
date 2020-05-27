@@ -10,7 +10,11 @@ Copyright 2017 National Technology & Engineering Solutions of Sandia, LLC
 (NTESS). Under the terms of Contract DE-NA0003525 with NTESS, the U.S.
 Government retains certain rights in this software.
 
+[[_TOC_]]
+
 # Build Instructions
+
+*Note:  Genten requires a C++14 standard-compliant compiler.*
 
 Genten requires [Kokkos](github.com/kokkos/kokkos) for on-node thread/GPU
 parallelism, and is available from github via
@@ -29,7 +33,7 @@ itself uses Kokkos.
 
 The instructions below assume a directory structure similar to the following.
 To build Kokkos inline with Genten, the top-level Kokkos source directory must
-be placed inside the top-level Genten source directory.  For concreteness, 
+be placed inside the top-level Genten source directory.  For concreteness,
 assume we will building an optimized version of the code using GNU compilers
 and OpenMP parallelism.
 
@@ -110,6 +114,19 @@ LAPACK_ADD_LIBS CMake variables, e.g., for Intel MKL:
  -D LAPACK_LIBS=${MKLROOT}/lib/intel64/libmkl_rt.so \
  -D LAPACK_ADD_LIBS="-liomp5;-lpthread;-lm;-ldl" \
 ```
+
+#### MATLAB
+
+Genten includes a limited MATLAB interface designed to be integrated with 
+the [Tensor Toolbox](https://www.tensortoolbox.org/).  To enable it, simply
+add the configure options:
+```
+ -D ENABLE_MATLAB=ON \
+ -D MATLAB_PATH=/path/to/MATLAB/R2018b \
+```
+where `/path/to/MATLAB/R2018b` is the path to your toplevel MATLAB installation
+(R2018b in this case).
+
 
 ### Advanced architectures
 
@@ -206,7 +223,7 @@ compiler.  If this is not correct, the compiler can be changed by
 setting the NVCC_WRAPPER_DEFAULT_COMPILER environment variable, e.g.,
 
 ```
-export NVCC_WRAPPER_DEFAULT_COMPILER=/home/software/gcc/4.9.2/bin/g++-4.9
+export NVCC_WRAPPER_DEFAULT_COMPILER=/path/to/my/gnu/compiler/g++
 ```
 
 Note that instead of LAPACK, cuSolver and cuBLAS are used instead,
@@ -233,7 +250,7 @@ architecture is specified in the Kokkos configure script as Pascal60.
 ## External build with Kokkos
 
 For an external build of Kokkos, you must configure, build and install Kokkos
-first using their Makefiles.  Similar to the inline build above, the
+first using their CMake files.  Similar to the inline build above, the
 instructions below assume the following directory structure:
 
 ```
@@ -252,28 +269,35 @@ top-level
 
 ### Build Kokkos
 
-There are many options for building Kokkos for each architecture, please see
-their documentation.  Here is a simple script for building Kokkos using OpenMP
-on a SandyBridge CPU architecture, assuming the Kokkos source is
-placed in top-level/kokkos/kokkos:
+The CMake script for building Kokkos is similar to the inline build
+scripts shown above, just with all of the Genten-specific options
+removed.  You must also specify an install directory.  Furthemore,
+since Genten requires use of C++14 constructs, the C++ standard
+enabled within Kokkos must be set to 14.  For example,
+here is a simple script for building Kokkos using OpenMP on a
+SandyBridge CPU architecture, assuming the Kokkos source is placed in
+top-level/kokkos/kokkos:
 
 ```
-#!/bin/bash
+rm -f CMakeCache.txt;
+rm -rf CMakeFiles
 
 KOKKOS=../../kokkos
 INSTALL=`pwd`/../../install/opt_gnu_openmp
-${KOKKOS}/generate_makefile.bash \
-  --kokkos-path=${KOKKOS} \
-  --prefix=${INSTALL} \
-  --with-openmp \
-  --arch=SNB \
-  --compiler=g++
+
+cmake \
+  -D CMAKE_INSTALL_PREFIX=${INSTALL} \
+  -D CMAKE_CXX_COMPILER=g++ \
+  -D Kokkos_CXX_STANDARD=14 \
+  -D Kokkos_ENABLE_OPENMP=ON \
+  -D Kokkos_ARCH_SNB=ON \
+  ${KOKKOS}
 ```
 
 which goes in the top-level/kokkos/build/opt_gnu_openmp directory above.
 After executing this script, do "make" and "make install".
 
-### Build genten:
+### Build Genten
 
 Genten is then built with CMake similar to the inline build discussed above,
 however the path to the Kokkos installation is specified instead of any
@@ -297,100 +321,38 @@ cmake \
  ../../genten
 ```
 
-### Advanced architectures
+#### Nvidia GPU architectures
 
-For building on various advanced architectures, options must usually be
-supplied in both the Kokkos and Genten configure scripts.  Examples for each
-architecture are summarized below.
-
-#### Intel CPU architectures
-
-For Intel CPU architectures, the Intel compilers should be used, along
-with Intel MKL.  The configure scripts are similar to the ones above.
-For example, a Kokkos configure script for Haswell is
-
-```
-#!/bin/bash
-
-KOKKOS=../../kokkos
-INSTALL=`pwd`/../../install/opt_intel_openmp
-${KOKKOS}/generate_makefile.bash \
-  --kokkos-path=${KOKKOS} \
-  --prefix=${INSTALL} \
-  --with-openmp \
-  --arch=HSW \
-  --compiler=icpc
-```
-
-A corresponding Genten configure script is
+Since Kokkos now uses CMake for their standalone build, the configure
+scripts for advanced architectures for an external build are similar
+to the inline build as shown above.  However for Nvidia GPU
+architectures, there are some caveats.  As with the inline build,
+nvcc_wrapper must be used as the compiler when compiling Kokkos.
+Furthermore you must enable lambda support through the option `-D
+Kokkos_ENABLE_CUDA_LAMBDA=ON \`, since Genten makes heavy use of
+lambdas.  For example, a Kokkos configure script suitable for Nvida
+K80 GPUs is then
 
 ```
-#!/bin/bash
-
 rm -f CMakeCache.txt;
 rm -rf CMakeFiles
 
-EXTRA_ARGS=$@
-KOKKOS=`pwd`/../../../kokkos/install/opt_intel_openmp
+KOKKOS=`pwd`/../../kokkos
+INSTALL=`pwd`/../../install/opt_gnu_cuda
 
 cmake \
- -D CMAKE_CXX_COMPILER=icpc \
- -D CMAKE_C_COMPILER=icc \
- -D CMAKE_CXX_FLAGS="-g -restrict" \
- -D CMAKE_C_FLAGS="-g -restrict" \
- -D KOKKOS_PATH=${KOKKOS} \
- -D LAPACK_LIBS=$MKLROOT/lib/intel64/libmkl_rt.so \
- -D LAPACK_ADD_LIBS="-liomp5;-lpthread;-lm;-ldl" \
- -D ENABLE_BOOST=ON \
- -D BOOST_PATH=${BOOST_ROOT} \
- -D debug=OFF \
- ${EXTRA_ARGS} \
- ../../genten
+  -D CMAKE_INSTALL_PREFIX=${INSTALL} \
+  -D CMAKE_CXX_COMPILER=${KOKKOS}/bin/nvcc_wrapper \
+  -D Kokkos_CXX_STANDARD=14 \
+  -D Kokkos_ENABLE_CUDA=ON \
+  -D Kokkos_ENABLE_CUDA_UVM=OFF \
+  -D Kokkos_ENABLE_CUDA_LAMBDA=ON \
+  -D Kokkos_ARCH_SNB=ON \
+  -D Kokkos_ARCH_KEPLER37=ON \
+  ${KOKKOS}
 ```
 
-#### Intel KNL architecture
-
-The configure for Intel KNL is quite similar to CPU architectures
-above.  The only changes are to the Kokkos configure script:
-
-```
-#!/bin/bash
-
-KOKKOS=../../kokkos
-INSTALL=`pwd`/../../install/opt_intel_openmp
-${KOKKOS}/generate_makefile.bash \
-  --kokkos-path=${KOKKOS} \
-  --prefix=${INSTALL} \
-  --with-openmp \
-  --arch=KNL \
-  --compiler=icpc \
-  --with-options=aggressive_vectorization
-```
-
-#### Nvidia GPU architectures
-
-As with the inline build above, nvcc_wrapper must be used as the compiler for
-Nvidia GPU architectures.  A Kokkos configure script suitable for Nvida K80
-GPUs is then
-
-```
-#!/bin/bash
-
-KOKKOS=../../kokkos
-KOKKOS=$(cd $KOKKOS; pwd) # for relative path bug in specifying compiler
-INSTALL=`pwd`/../../install/opt_gnu_cuda
-${KOKKOS}/generate_makefile.bash \
-  --kokkos-path=${KOKKOS} \
-  --prefix=${INSTALL} \
-  --with-openmp \
-  --with-cuda \
-  --with-cuda-options=enable_lambda \
-  --arch=HSW,Kepler37 \
-  --compiler=${KOKKOS}/bin/nvcc_wrapper
-```
-
-Similarly, for the Genten configure script we have
-
+This script additionally turns UVM off, which is optional.  Similarly, for the Genten configure script we have
 
 ```
 #!/bin/bash
@@ -416,15 +378,103 @@ cmake \
  ../../genten
 ```
 
-Genten does not require the use of Cuda-UVM as all necessary data transfers
-between the host and device are implemented through Kokkos.  However one can
-enable UVM by adding `force_uvm` to the Cuda options when configuring
-Kokkos, in which case one should also set the environment variables
+# Testing Genten
 
+Once Genten has been compiled, it can be tested by executing `ctest`.
+
+# Using Genten
+
+The primary executable for Genten is `bin/genten` in your build tree, which is
+a driver for reading in a (sparse) tensor and performing a CP or GCP 
+decomposition of it.  The driver accepts numerous command line options
+controlling various aspects of the computation.  Run `genten --help` for a full
+listing.  For example
 ```
-export CUDA_LAUNCH_BLOCKING=1
-export CUDA_VISIBLE_DEVICES=0
+./bin/genten --input data/aminoacid_data.txt --rank 16 --output aa.ktns
+```
+will perform a rank 16 CP decomposition of the amino-acid tensor data set 
+included with Genten in the data directory, and save the resulting factors in 
+`aa.ktns`.  One should see output similar to:
+```
+./bin/genten --input data/aminoacid_data.txt --rank 16 --output aa.ktns
+Read tensor with 61305 nonzeros, dimensions [ 5 201 61 ], and starting index 0
+Data import took  0.033 seconds
+
+CP-ALS (perm MTTKRP method, symmetric-gram formulation):
+Iter   1: fit =  9.710805e-01 fitdelta =  9.7e-01
+Iter   2: fit =  9.865534e-01 fitdelta =  1.5e-02
+Iter   3: fit =  9.876203e-01 fitdelta =  1.1e-03
+Iter   4: fit =  9.880996e-01 fitdelta =  4.8e-04
+Iter   5: fit =  9.883227e-01 fitdelta =  2.2e-04
+Final fit =  9.883227e-01
+Ktensor export took  0.005 seconds
 ```
 
-For the Nvidia Pascal P100 GPUs, the configure is the same, except the
-architecture is specified in the Kokkos configure script as Pascal60.
+For larger tensor datasets, consider those available from the 
+[FROSTT](https://frost.io) collection.  Note that Genten *does not* require
+a header at the top of the sparse tensor file indicating the number of modes,
+their dimensions, and the number of nonzeros.  Any textfile consisting of a list
+of nonzeros in coordinate format (i.e., nonzero indices and value) can be
+read.  If configured with Boost support, compressed tensors can be read directly
+without first decompressing them.
+
+## Using the MATLAB interface
+
+To use Genten within MATLAB, you must first add the Tensor Toolbox and the path
+to the `matlab` directory in your Genten build tree to your MATLAB path.
+Genten provides a MATLAB class `sptensor_gt` that works similarly to the
+Tensor Toolbox sparse tensor class `sptensor` that can be passed to various
+MATLAB functions provided by Genten for manipulating the tensor.  A given
+tensor `X` in `sptensor` format can be converted to `sptensor_gt` format
+by calling the constructor:
+```
+>> X = sptenrand([10 20 30],100);
+>> X_gt = sptensor_gt(X);
+```
+Genten then provides overloads of several functions in the Tensor Toolbox
+that call the corresponding implementation in Genten when passed a tensor
+in `sptensor_gt` format, e.g.,
+```
+>> U = cp_als(X_gt,16,'maxiters',5);
+
+CP-ALS (perm MTTKRP method, symmetric-gram formulation):
+Iter   1: fit =  1.265589e-01 fitdelta =  1.3e-01
+Iter   2: fit =  1.909217e-01 fitdelta =  6.4e-02
+Iter   3: fit =  2.195554e-01 fitdelta =  2.9e-02
+Iter   4: fit =  2.465984e-01 fitdelta =  2.7e-02
+Iter   5: fit =  2.692030e-01 fitdelta =  2.3e-02
+Final fit =  2.692030e-01
+```
+Note that in addition to the normal options accepted by `cp_als`,
+all options accepted by the `genten` command-line driver (without the 
+leading '--') are also accepted, e.g.,
+```
+>> U = cp_als(X_gt,16,'maxiters',5,'mttkrp-method','duplicated','timings');
+Parsing tensor took 3.740000e-04 seconds
+
+CP-ALS (duplicated MTTKRP method, symmetric-gram formulation):
+Iter   1: fit =  1.250860e-01 fitdelta =  1.3e-01
+Iter   2: fit =  2.081054e-01 fitdelta =  8.3e-02
+Iter   3: fit =  2.570137e-01 fitdelta =  4.9e-02
+Iter   4: fit =  2.900351e-01 fitdelta =  3.3e-02
+Iter   5: fit =  3.106995e-01 fitdelta =  2.1e-02
+Final fit =  3.106995e-01
+CpAls completed 6 iterations in 1.03e-02 seconds
+	MTTKRP total time = 9.27e-04 seconds, average time = 6.18e-05 seconds
+	MTTKRP throughput = 9.64e-02 GFLOP/s, bandwidth factor = 1.48e-01
+	Inner product total time = 7.60e-05 seconds, average time = 1.52e-05 seconds
+	Gramian total time = 1.22e-04 seconds, average time = 8.13e-06 seconds
+	Solve total time = 4.93e-04 seconds, average time = 3.29e-05 seconds
+	Scale total time = 6.54e-03 seconds, average time = 4.36e-04 seconds
+	Norm total time = 3.53e-04 seconds, average time = 2.35e-05 seconds
+	Arrange total time = 3.47e-04 seconds, average time = 3.47e-04 seconds
+```
+
+# More information and how to cite
+
+For more information on the algorithms used in Genten with Kokkos, or to cite
+Genten, please see
+* Eric T. Phipps and Tamara G. Kolda, *Software for Sparse Tensor Decomposition
+  on Emerging Computing Architectures*, SIAM Journal on Scientific Computing
+  2019 41:3, C269-C290
+  (available [here](https://epubs.siam.org/doi/ref/10.1137/18M1210691)).

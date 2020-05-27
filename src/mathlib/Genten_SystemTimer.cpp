@@ -88,8 +88,28 @@ namespace Genten
 //  Constructor
 //----------------------------------------------------------------------
   SystemTimer::SystemTimer (const int  nNumTimers,
-                            const bool fence)
+                            const bool fence) : _nNumTimers(0)
   {
+    init(nNumTimers, fence);
+  }
+
+//----------------------------------------------------------------------
+//  Destructor
+//----------------------------------------------------------------------
+  SystemTimer::~SystemTimer ()
+  {
+    destroy();
+  }
+
+//----------------------------------------------------------------------
+//  Initialize
+//----------------------------------------------------------------------
+  void SystemTimer::init(const int  nNumTimers,
+                         const bool fence)
+  {
+    // Destroy any previous initialization
+    destroy();
+
 #if defined(HAVE_REALTIME_CLOCK)
     if (nNumTimers <= 0)
     {
@@ -144,11 +164,10 @@ namespace Genten
     return;
   }
 
-
 //----------------------------------------------------------------------
-//  Destructor
+//  Destroy
 //----------------------------------------------------------------------
-  SystemTimer::~SystemTimer (void)
+  void SystemTimer::destroy()
   {
     if (_nNumTimers == 0)
       return;

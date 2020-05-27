@@ -213,6 +213,23 @@ namespace Genten {
     };
     static constexpr type default_type = Stratified;
   };
+
+  // Sampling functions supported by GCP
+  struct GCP_Step {
+    enum type {
+      SGD,
+      ADAM,
+      AdaGrad
+    };
+    static constexpr unsigned num_types = 3;
+    static constexpr type types[] = {
+      SGD, ADAM, AdaGrad
+    };
+    static constexpr const char* names[] = {
+      "sgd", "adam", "adagrad"
+    };
+    static constexpr type default_type = ADAM;
+  };
 }
 
 /* ----- Utility Functions ----- */

@@ -177,7 +177,7 @@ namespace Genten {
   KOKKOS_INLINE_FUNCTION
   T atomic_oper_fetch(
     const Oper& op, volatile T * const dest ,
-    typename Kokkos::Impl::enable_if<
+    typename std::enable_if<
       sizeof(T) != sizeof(int) && sizeof(T) == sizeof(unsigned long long int) ,
       const T >::type& val )
   {

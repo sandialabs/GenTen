@@ -90,7 +90,14 @@ IF(KOKKOS_INLINE_BUILD)
   # Configure kokkos
   ADD_SUBDIRECTORY(kokkos)
 
+ELSE()
+
+  # Link against installed Kokkos
+  FIND_PACKAGE(Kokkos REQUIRED PATHS ${KOKKOS_PATH} NO_DEFAULT_PATH)
+  MESSAGE("-- Genten:  Using Kokkos:  ${Kokkos_CONFIG}")
+
 ENDIF()
+SET(HAVE_KOKKOS ON)
 
 SET(GENTEN_LIBS "")
 
@@ -158,40 +165,6 @@ IF(ENABLE_MATLAB)
     MESSAGE("\n Could not find MATLAB")
   ENDIF()
 ENDIF()
-
-# For non-inline build of Kokkos, grep Makefile.kokkos for settings
-IF(NOT KOKKOS_INLINE_BUILD)
-  SET(KOKKOS_LIBS "")
-  SET(KOKKOS_LDFLAGS "")
-  SET(KOKKOS_MAKEFILE "${KOKKOS_PATH}/Makefile.kokkos")
-  IF (NOT EXISTS ${KOKKOS_MAKEFILE})
-    MESSAGE(FATAL_ERROR "Cannot find Makefile.kokkos in ${KOKKOS_PATH}.  Please make KOKKOS_PATH is set correctly.")
-  ENDIF()
-
-  FILE(STRINGS ${KOKKOS_MAKEFILE} tmp REGEX KOKKOS_CXXFLAGS)
-  STRING(REGEX REPLACE " *KOKKOS_CXXFLAGS *= *(.*)" "\\1" KOKKOS_CXXFLAGS ${tmp})
-  FILE(STRINGS ${KOKKOS_MAKEFILE} tmp REGEX KOKKOS_CPPFLAGS)
-  STRING(REGEX REPLACE " *KOKKOS_CPPFLAGS *= *(.*)" "\\1" KOKKOS_CPPFLAGS ${tmp})
-  FILE(STRINGS ${KOKKOS_MAKEFILE} tmp REGEX KOKKOS_LDFLAGS)
-  STRING(REGEX REPLACE " *KOKKOS_LDFLAGS *= *(.*)" "\\1" KOKKOS_LDFLAGS ${tmp})
-  FILE(STRINGS ${KOKKOS_MAKEFILE} tmp REGEX KOKKOS_LIBS)
-  STRING(REGEX REPLACE " *KOKKOS_LIBS *= *(.*)" "\\1" KOKKOS_LIBS ${tmp})
-
-  # strip -arch=xxx from KOKKOS_LDFLAGS due to Kokkos bug
-  # (see https://github.com/kokkos/kokkos/issues/872)
-  STRING(REGEX REPLACE "-arch=[a-zA-Z0-9_]+" "" KOKKOS_LDFLAGS ${KOKKOS_LDFLAGS})
-
-  MESSAGE("-- Genten:  Using Kokkos:  ${KOKKOS_PATH}")
-  MESSAGE("--   KOKKOS_CXXFLAGS = ${KOKKOS_CXXFLAGS}")
-  MESSAGE("--   KOKKOS_CPPFLAGS = ${KOKKOS_CPPFLAGS}")
-  MESSAGE("--   KOKKOS_LDFLAGS  = ${KOKKOS_LDFLAGS}")
-  MESSAGE("--   KOKKOS_LIBS     = ${KOKKOS_LIBS}")
-
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${KOKKOS_CXXFLAGS} ${KOKKOS_CPPFLAGS}")
-  SET(GENTEN_LIBS "${GENTEN_LIBS} ${KOKKOS_LDFLAGS} ${KOKKOS_LIBS}")
-  MESSAGE("--   CMAKE_CXXFLAGS  = ${CMAKE_CXX_FLAGS}")
-ENDIF()
-SET(HAVE_KOKKOS ON)
 
 IF (ENABLE_CUBLAS)
   SET(GENTEN_LIBS "${GENTEN_LIBS} -lcublas")
@@ -375,8 +348,6 @@ IF (ENABLE_GCP)
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Rayleigh.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Gamma.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Bernoulli.cpp
-    #${Genten_SOURCE_DIR}/src/Genten_GCP_HogWild.cpp
-    #${Genten_SOURCE_DIR}/src/Genten_GCP_SGD2_HogWild.cpp
     )
 
   IF (ENABLE_ROL)
@@ -388,6 +359,9 @@ ENDIF()
 
 #---- Tell CMake to build the library.
 ADD_LIBRARY (gentenlib ${Genten_SOURCE_LIST})
+IF(NOT KOKKOS_INLINE_BUILD)
+  TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkos)
+ENDIF()
 SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${ROL_LIBRARIES} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
 TARGET_LINK_LIBRARIES(${GENTEN_LINK_LIBS})
 INSTALL (

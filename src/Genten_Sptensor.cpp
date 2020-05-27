@@ -86,6 +86,9 @@ SptensorT(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls,
                           Kokkos::WithoutInitializing),nz,nd),
   perm(), is_sorted(false)
 {
+  siz_host = create_mirror_view(siz);
+  deep_copy(siz_host, siz);
+
   // convert subscripts to ttb_indx with zero indexing and transpose subs array
   // to store each nonzero's subscripts contiguously
   Impl::init_subs(subs, sbs, 1);
@@ -100,6 +103,9 @@ SptensorT(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals,
                           Kokkos::WithoutInitializing),nd,nz),
   perm(), is_sorted(false)
 {
+  siz_host = create_mirror_view(siz);
+  deep_copy(siz_host, siz);
+
   // Copy subscripts into subs.  Because of polymorphic layout, we can't
   // assume subs and subscripts are ordered in the same way
   Impl::init_subs(subs, subscripts, 0);
@@ -116,6 +122,9 @@ SptensorT(const std::vector<ttb_indx>& dims,
   subs("Genten::Sptensor::subs",vals.size(),dims.size()),
   perm(), is_sorted(false)
 {
+  siz_host = create_mirror_view(siz);
+  deep_copy(siz_host, siz);
+
   for (ttb_indx i = 0; i < vals.size(); i ++)
   {
     for (ttb_indx j = 0; j < dims.size(); j ++)
