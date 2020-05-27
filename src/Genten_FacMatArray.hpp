@@ -84,7 +84,7 @@ public:
   // ----- CREATER & DESTROY -----
 
   // Empty constructor
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   FacMatArrayT() = default;
 
   // Construct an array to hold n factor matrices.
@@ -111,11 +111,11 @@ public:
   FacMatArrayT(const view_type& v) : data(v) {}
 
   // Copy constructor
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   FacMatArrayT(const FacMatArrayT & src) = default;
 
   // Destructor.
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   ~FacMatArrayT() = default;
 
   // ----- RESIZE & RESET -----
@@ -129,7 +129,7 @@ public:
   }
 
   // Make a copy of an existing array.
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   FacMatArrayT & operator=(const FacMatArrayT & src) = default;
 
   // Set a factor matrix

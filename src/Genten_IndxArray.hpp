@@ -71,7 +71,7 @@ public:
 
   // Empty Constructor.
   /* Creates an empty size array of length 0. */
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   IndxArrayT() = default;
 
   // Constructor of length n
@@ -111,7 +111,7 @@ public:
   // Copy Constructor.
   /* Does a (deep) copy of the data in src. The reserved size (rsz)
      is set to be equal to the length and may not be the same as for src. */
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   IndxArrayT(const IndxArrayT & src) = default;
 
   // Leave-one-out Copy Constructor.
@@ -120,13 +120,13 @@ public:
   IndxArrayT(const IndxArrayT & src, ttb_indx n);
 
   // Destructor.
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   ~IndxArrayT() = default;
 
   // ----- MODIFY & RESET -----
 
   // Copies data from src, automatically resizing if necessary.
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   IndxArrayT& operator=(const IndxArrayT & src) = default;
 
   template <typename IndxType>

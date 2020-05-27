@@ -66,7 +66,7 @@ public:
 
   // ----- CREATE & DESTROY -----
   // Empty constructor
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   KtensorT() = default;
 
   // Constructor with number of components and dimensions, but
@@ -82,15 +82,15 @@ public:
     lambda(w), data(vals) {}
 
   // Destructor
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   ~KtensorT() = default;
 
   // Copy constructor
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   KtensorT (const KtensorT & arg) = default;
 
   // Assignment operator
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   KtensorT & operator= (const KtensorT & arg) = default;
 
   // ----- MODIFY & RESET -----

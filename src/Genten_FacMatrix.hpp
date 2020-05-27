@@ -95,7 +95,7 @@ public:
      *  ---------------------------------------------------------------- */
 
     //! Default constructor.
-    KOKKOS_INLINE_FUNCTION
+    KOKKOS_DEFAULTED_FUNCTION
     FacMatrixT() = default;
 
     //! Constructor to create an uninitialized matrix of size M x N.
@@ -123,11 +123,11 @@ public:
     FacMatrixT(const view_type& v) : data(v) {}
 
     //! Copy Constructor.
-    KOKKOS_INLINE_FUNCTION
+    KOKKOS_DEFAULTED_FUNCTION
     FacMatrixT(const FacMatrixT & src) = default;
 
     //! Destructor.
-    KOKKOS_INLINE_FUNCTION
+    KOKKOS_DEFAULTED_FUNCTION
     ~FacMatrixT() = default;
 
     /** @} */
@@ -138,7 +138,7 @@ public:
      *  ---------------------------------------------------------------- */
 
     // Make a copy of an existing array.
-    KOKKOS_INLINE_FUNCTION
+    KOKKOS_DEFAULTED_FUNCTION
     FacMatrixT & operator=(const FacMatrixT & src) = default;
 
     // Assign factor matrix as an unmanaged view of the supplied matrix
