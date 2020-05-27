@@ -131,15 +131,15 @@ public:
   }
 
   // Copy constructor.
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   SptensorT (const SptensorT & arg) = default;
 
   // Assignment operator.
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   SptensorT & operator= (const SptensorT & arg) = default;
 
   // Destructor.
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   ~SptensorT() = default;
 
   // Return the number of dimensions (i.e., the order).

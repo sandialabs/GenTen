@@ -108,11 +108,11 @@ public:
   typedef TensorT<host_mirror_space> HostMirror;
 
   // Empty construtor.
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   TensorT() = default;
 
   // Copy constructor
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   TensorT(const TensorT& src) = default;
 
   // Construct tensor of given size initialized to val.
@@ -137,7 +137,7 @@ public:
   TensorT(const KtensorT<ExecSpace>& src);
 
   // Destructor.
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   ~TensorT() = default;
 
   // Copy another tensor (shallow copy)

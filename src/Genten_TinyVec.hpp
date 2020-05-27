@@ -47,6 +47,11 @@
 #include "Genten_Kokkos.hpp"
 #if defined(KOKKOS_ENABLE_CUDA)
 #include "Cuda/Kokkos_Cuda_Team.hpp"
+#if (CUDA_VERSION < 10000)
+#define KOKKOS_DEFAULTED_DEVICE_FUNCTION __device__ inline
+#else
+#define KOKKOS_DEFAULTED_DEVICE_FUNCTION inline
+#endif
 #endif
 
 namespace Genten {
@@ -79,7 +84,7 @@ namespace Genten {
     Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpDim> sz;
     alignas(64) scalar_type v[len];
 
-    KOKKOS_INLINE_FUNCTION
+    KOKKOS_DEFAULTED_FUNCTION
     TinyVec() = default;
 
     KOKKOS_INLINE_FUNCTION
@@ -110,7 +115,7 @@ namespace Genten {
         v[i] = x.v[i];
     }
 
-    KOKKOS_INLINE_FUNCTION
+    KOKKOS_DEFAULTED_FUNCTION
     ~TinyVec() = default;
 
     KOKKOS_INLINE_FUNCTION
@@ -431,7 +436,7 @@ namespace Genten {
     Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpDim> sz;
     scalar_type v0;
 
-    __device__ inline
+    KOKKOS_DEFAULTED_DEVICE_FUNCTION
     TinyVec() = default;
 
     __device__ inline
@@ -453,7 +458,7 @@ namespace Genten {
       v0 = x.v0;
     }
 
-    __device__ inline
+    KOKKOS_DEFAULTED_DEVICE_FUNCTION
     ~TinyVec() = default;
 
     __device__ inline
@@ -669,7 +674,7 @@ namespace Genten {
     Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpDim> sz;
     scalar_type v0, v1;
 
-    __device__ inline
+    KOKKOS_DEFAULTED_DEVICE_FUNCTION
     TinyVec() = default;
 
     __device__ inline
@@ -691,7 +696,7 @@ namespace Genten {
       v0 = x.v0; v1 = x.v1;
     }
 
-    __device__ inline
+    KOKKOS_DEFAULTED_DEVICE_FUNCTION
     ~TinyVec() = default;
 
     __device__ inline
@@ -941,7 +946,7 @@ namespace Genten {
     Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpDim> sz;
     scalar_type v0, v1, v2;
 
-    __device__ inline
+    KOKKOS_DEFAULTED_DEVICE_FUNCTION
     TinyVec() = default;
 
     __device__ inline
@@ -963,7 +968,7 @@ namespace Genten {
       v0 = x.v0; v1 = x.v1; v2 = x.v2;
     }
 
-    __device__ inline
+    KOKKOS_DEFAULTED_DEVICE_FUNCTION
     ~TinyVec() = default;
 
     __device__ inline
@@ -1243,7 +1248,7 @@ namespace Genten {
     Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpDim> sz;
     scalar_type v0, v1, v2, v3;
 
-    __device__ inline
+    KOKKOS_DEFAULTED_DEVICE_FUNCTION
     TinyVec() = default;
 
     __device__ inline
@@ -1265,7 +1270,7 @@ namespace Genten {
       v0 = x.v0; v1 = x.v1; v2 = x.v2; v3 = x.v3;
     }
 
-    __device__ inline
+    KOKKOS_DEFAULTED_DEVICE_FUNCTION
     ~TinyVec() = default;
 
     __device__ inline
