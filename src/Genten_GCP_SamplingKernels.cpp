@@ -1197,9 +1197,10 @@ namespace Genten {
       // Resize Y if necessary
       if (Y.nnz() < num_samples) {
         IndxArrayT<ExecSpace> sz(nd);
+        auto sz_host = create_mirror_view(sz);
         for (unsigned i=0; i<nd; ++i)
-          sz[i] = u[i].nRows();
-        sz.sync_to_device();
+          sz_host[i] = u[i].nRows();
+        deep_copy(sz, sz_host);
         Y = SptensorT<ExecSpace>(sz, num_samples);
       }
 
