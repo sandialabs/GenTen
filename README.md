@@ -125,7 +125,12 @@ add the configure options:
  -D MATLAB_PATH=/path/to/MATLAB/R2018b \
 ```
 where `/path/to/MATLAB/R2018b` is the path to your toplevel MATLAB installation
-(R2018b in this case).
+(R2018b in this case).  On recent Mac OS X architectures, you may also need to
+add
+```
+ -D INDEX_TYPE="unsigned long long" \
+```
+to your configure options.
 
 
 ### Advanced architectures
