@@ -246,7 +246,7 @@ namespace Genten {
         stepper->setStep(nuc*rate);
 
         // Epoch iterations
-        total_iters += it.run(X, loss_func, *sampler, *stepper);
+        it.run(X, loss_func, *sampler, *stepper, total_iters);
 
         // compute objective estimate
         timer.start(timer_fest);

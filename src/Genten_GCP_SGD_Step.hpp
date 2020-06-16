@@ -72,6 +72,8 @@ namespace Genten {
 
       virtual void setFailed() = 0;
 
+      virtual void setNumSamples(const ttb_indx num_samples) = 0;
+
       virtual void eval(const VectorType& g, VectorType& u) const = 0;
 
     protected:
@@ -150,6 +152,8 @@ namespace Genten {
 
       virtual void setFailed() {}
 
+      virtual void setNumSamples(const ttb_indx num_samples) {}
+
       virtual void eval(const VectorType& g, VectorType& u) const
       {
         constexpr bool has_bounds = (LossFunction::has_lower_bound() ||
@@ -168,6 +172,10 @@ namespace Genten {
           uv(i) = uu;
         });
       }
+
+      template <typename TeamMember>
+      KOKKOS_INLINE_FUNCTION
+      void update_async(const ttb_indx num_iters, const TeamMember& team) const {}
 
       KOKKOS_INLINE_FUNCTION
       void eval_async(const unsigned dim, const ttb_indx row,
@@ -192,6 +200,7 @@ namespace Genten {
 
       AdamStep(const AlgParams& algParams, const VectorType& u) :
         epoch_iters(algParams.epoch_iters),
+        num_samples_per_it(0),
         step(0.0),
         beta1(algParams.adam_beta1),
         beta2(algParams.adam_beta2),
@@ -202,7 +211,10 @@ namespace Genten {
         m(u.clone()),
         v(u.clone()),
         m_prev(u.clone()),
-        v_prev(u.clone())
+        v_prev(u.clone()),
+        mt(m.getKtensor()),
+        vt(v.getKtensor()),
+        total_samples("total_samples")
       {
         m.zero();
         v.zero();
@@ -231,6 +243,7 @@ namespace Genten {
         v.zero();
         m_prev.zero();
         v_prev.zero();
+        Kokkos::deep_copy(total_samples, 0);
       }
 
       virtual void setPassed()
@@ -245,6 +258,17 @@ namespace Genten {
         v.set(v_prev);
         beta1t /= std::pow(beta1, epoch_iters);
         beta2t /= std::pow(beta2, epoch_iters);
+
+        auto total_samples_host = Kokkos::create_mirror_view(total_samples);
+        Kokkos::deep_copy(total_samples_host, total_samples);
+        total_samples_host() -= epoch_iters*num_samples_per_it;
+        if (total_samples_host() < 0)
+          total_samples_host() = 0;
+        Kokkos::deep_copy(total_samples, total_samples_host);
+      }
+
+      virtual void setNumSamples(const ttb_indx num_samples) {
+        num_samples_per_it = num_samples;
       }
 
       virtual void eval(const VectorType& g, VectorType& u) const
@@ -274,16 +298,56 @@ namespace Genten {
         });
       }
 
+      template <typename TeamMember>
+      KOKKOS_INLINE_FUNCTION
+      void update_async(const ttb_indx num_iters, const TeamMember& team) const
+      {
+        Kokkos::single(Kokkos::PerThread( team ), [&]()
+        {
+          Kokkos::atomic_add(&total_samples(), ptrdiff_t(num_iters));
+        });
+      }
+
       KOKKOS_INLINE_FUNCTION
       void eval_async(const unsigned dim, const ttb_indx row,
                       const unsigned col, const ttb_real g,
                       const KtensorT<ExecSpace>& u) const
       {
-        Kokkos::abort("eval_async not implemented for Adam stepper!");
+        using std::sqrt;
+        using std::pow;
+
+        // Compute our iteration index
+        const ttb_indx ts = total_samples();
+        const ttb_indx it = (ts+num_samples_per_it-1) / num_samples_per_it;
+
+        // Compute exponential weighting
+        const ttb_real beta1t_ = pow(beta1, ttb_real(it));
+        const ttb_real beta2t_ = pow(beta2, ttb_real(it));
+        const ttb_real adam_step_ = step*sqrt(1.0-beta2t_) / (1.0-beta1t_);
+
+        // Read old values of moments
+        const ttb_real mo = mt[dim].entry(row,col);
+        const ttb_real vo = vt[dim].entry(row,col);
+
+        // New values of moments
+        const ttb_real mn = beta1*mo + (1.0-beta1)*g;
+        const ttb_real vn = beta2*vo + (1.0-beta2)*g*g;
+
+        // Write new values using atomic_add for speed
+        Kokkos::atomic_add(&mt[dim].entry(row,col), mn-mo);
+        Kokkos::atomic_add(&vt[dim].entry(row,col), vn-vo);
+
+        // Update to u
+        const ttb_real delta = -adam_step_*mn/(sqrt(vn)+eps);
+
+        // Update u incorporating bounds
+        GCP_SGD_Step<ExecSpace,LossFunction>::update_u_async(
+          dim, row, col, delta, u);
       }
 
     protected:
       ttb_indx epoch_iters;
+      ttb_indx num_samples_per_it;
       ttb_real step;
       ttb_real beta1;
       ttb_real beta2;
@@ -296,6 +360,11 @@ namespace Genten {
       VectorType v;
       VectorType m_prev;
       VectorType v_prev;
+      KtensorT<ExecSpace> mt;
+      KtensorT<ExecSpace> vt;
+
+      // Specifically using signed integer here to allow for negative
+      Kokkos::View<ptrdiff_t,ExecSpace> total_samples;
     };
 
     template <typename ExecSpace, typename LossFunction>
@@ -339,6 +408,8 @@ namespace Genten {
         s.set(s_prev);
       }
 
+      virtual void setNumSamples(const ttb_indx num_samples) {}
+
       virtual void eval(const VectorType& g, VectorType& u) const
       {
         using std::sqrt;
@@ -364,6 +435,10 @@ namespace Genten {
           uv(i) = uu;
         });
       }
+
+      template <typename TeamMember>
+      KOKKOS_INLINE_FUNCTION
+      void update_async(const ttb_indx num_iters, const TeamMember& team) const {}
 
       KOKKOS_INLINE_FUNCTION
       void eval_async(const unsigned dim, const ttb_indx row,

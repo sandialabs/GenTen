@@ -90,10 +90,11 @@ namespace Genten {
 
       virtual VectorType getSolution() const { return u; }
 
-      virtual ttb_indx run(SptensorT<ExecSpace>& X,
-                           const LossFunction& loss_func,
-                           Sampler<ExecSpace,LossFunction>& sampler,
-                           GCP_SGD_Step<ExecSpace,LossFunction>& stepper)
+      virtual void run(SptensorT<ExecSpace>& X,
+                       const LossFunction& loss_func,
+                       Sampler<ExecSpace,LossFunction>& sampler,
+                       GCP_SGD_Step<ExecSpace,LossFunction>& stepper,
+                       ttb_indx& total_iters)
       {
         for (ttb_indx iter=0; iter<algParams.epoch_iters; ++iter) {
 
@@ -138,7 +139,7 @@ namespace Genten {
           }
         }
 
-        return algParams.epoch_iters*algParams.frozen_iters;
+        total_iters += algParams.epoch_iters*algParams.frozen_iters;
       }
 
       virtual void printTimers(std::ostream& out) const

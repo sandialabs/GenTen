@@ -61,7 +61,8 @@ namespace Genten {
       const ttb_real wnz,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const Stepper& stepper,
-      const AlgParams& algParams)
+      const AlgParams& algParams,
+      const ttb_indx total_iters)
     {
       using std::floor;
       using std::pow;
@@ -181,8 +182,12 @@ namespace Genten {
             });
           }
         }
+        stepper.update_async(RowBlockSize, team);
         rand_pool.free_state(gen);
       }, "gcp_sgd_iter_asyn_kernel");
+
+      // Fence to make sure kernel is finished before updates to stepper
+      Kokkos::fence();
     }
 
     template <typename ExecSpace, typename LossFunction>
@@ -197,10 +202,11 @@ namespace Genten {
 
       virtual ~GCP_SGD_Iter_Async() {}
 
-      virtual ttb_indx run(SptensorT<ExecSpace>& X,
-                           const LossFunction& loss_func,
-                           Sampler<ExecSpace,LossFunction>& sampler,
-                           GCP_SGD_Step<ExecSpace,LossFunction>& stepper)
+      virtual void run(SptensorT<ExecSpace>& X,
+                       const LossFunction& loss_func,
+                       Sampler<ExecSpace,LossFunction>& sampler,
+                       GCP_SGD_Step<ExecSpace,LossFunction>& stepper,
+                       ttb_indx& total_iters)
       {
         // Cast sampler to SemiStratified and extract data
         SemiStratifiedSampler<ExecSpace,LossFunction>* semi_strat_sampler =
@@ -212,6 +218,7 @@ namespace Genten {
         const ttb_real wz = semi_strat_sampler->getWeightZerosGrad();
         const ttb_real wnz = semi_strat_sampler->getWeightNonzerosGrad();
         auto& rand_pool = semi_strat_sampler->getRandPool();
+        stepper.setNumSamples(nsz+nsnz);
 
         this->timer.start(this->timer_grad);
 
@@ -220,21 +227,27 @@ namespace Genten {
           dynamic_cast<SGDStep<ExecSpace,LossFunction>*>(&stepper);
         AdaGradStep<ExecSpace,LossFunction>* adagrad_step =
           dynamic_cast<AdaGradStep<ExecSpace,LossFunction>*>(&stepper);
+        AdamStep<ExecSpace,LossFunction>* adam_step =
+          dynamic_cast<AdamStep<ExecSpace,LossFunction>*>(&stepper);
         if (sgd_step != nullptr)
           gcp_sgd_iter_async_kernel(
             X,this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*sgd_step,
-            this->algParams);
+            this->algParams, total_iters);
         else if (adagrad_step != nullptr)
           gcp_sgd_iter_async_kernel(
             X,this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*adagrad_step,
-            this->algParams);
+            this->algParams, total_iters);
+        else if (adam_step != nullptr)
+          gcp_sgd_iter_async_kernel(
+            X,this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*adam_step,
+            this->algParams, total_iters);
         else
           Genten::error("Unsupported GCP-SGD stepper!");
 
         this->timer.stop(this->timer_grad);
 
         // Update number of iterations
-        return this->algParams.epoch_iters;
+        total_iters += this->algParams.epoch_iters;
       }
 
       virtual void printTimers(std::ostream& out) const
