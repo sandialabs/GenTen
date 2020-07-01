@@ -231,6 +231,12 @@ namespace Genten {
         timer, timer_nzs, timer_zs, timer_sort, timer_scan, timer_step);
     }
 
+    pool_type& getRandPool() { return rand_pool; }
+    ttb_indx getNumSamplesZerosGrad() const { return num_samples_zeros_grad; }
+    ttb_indx getNumSamplesNonzerosGrad() const { return num_samples_nonzeros_grad; }
+    ttb_real getWeightZerosGrad() const { return weight_zeros_grad; }
+    ttb_real getWeightNonzerosGrad() const { return weight_nonzeros_grad; }
+
   protected:
 
     SptensorT<ExecSpace> X;

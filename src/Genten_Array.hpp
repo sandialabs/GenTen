@@ -85,7 +85,7 @@ namespace Genten {
     //! @brief Empty constructor.
     //!
     //! Creates an empty array of length zero.
-    KOKKOS_INLINE_FUNCTION
+    KOKKOS_DEFAULTED_FUNCTION
     ArrayT() = default;
 
     //! @brief Size constructor.
@@ -117,11 +117,11 @@ namespace Genten {
     //!
     //! Does a (deep) copy of the data in src. The reserved size (rsz)
     //! is set to be equal to the length and may not be the same as for src.
-    KOKKOS_INLINE_FUNCTION
+    KOKKOS_DEFAULTED_FUNCTION
     ArrayT(const ArrayT & src) = default;
 
     //! @brief Destructor.
-    KOKKOS_INLINE_FUNCTION
+    KOKKOS_DEFAULTED_FUNCTION
     ~ArrayT() = default;
     //@}
 
@@ -131,7 +131,7 @@ namespace Genten {
     //! @brief Copy from another Genten::ArrayT.
     //!
     //! Does a shallow copy
-    KOKKOS_INLINE_FUNCTION
+    KOKKOS_DEFAULTED_FUNCTION
     ArrayT & operator= (const ArrayT & src) = default;
 
     //! @brief Copy from a double

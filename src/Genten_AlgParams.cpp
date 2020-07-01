@@ -83,10 +83,11 @@ Genten::AlgParams::AlgParams() :
   fuse(false),
   fuse_sa(false),
   compute_fit(false),
-  use_adam(true),
+  step_type(Genten::GCP_Step::ADAM),
   adam_beta1(0.9),    // Defaults taken from ADAM paper
   adam_beta2(0.999),
-  adam_eps(1.0e-8)
+  adam_eps(1.0e-8),
+  async(false)
 {}
 
 void Genten::AlgParams::parse(std::vector<std::string>& args)
@@ -176,10 +177,14 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   fuse = parse_ttb_bool(args, "--fuse", "--no-fuse", fuse);
   fuse_sa = parse_ttb_bool(args, "--fuse-sa", "--no-fuse-sa", fuse_sa);
   compute_fit = parse_ttb_bool(args, "--fit", "--no-fit", compute_fit);
-  use_adam = parse_ttb_bool(args, "--adam", "--no-adam", use_adam);
+  step_type = parse_ttb_enum(args, "--step", step_type,
+                             Genten::GCP_Step::num_types,
+                             Genten::GCP_Step::types,
+                             Genten::GCP_Step::names);
   adam_beta1 = parse_ttb_real(args, "--adam-beta1", adam_beta1, 0.0, 1.0);
   adam_beta2 = parse_ttb_real(args, "--adam-beta2", adam_beta2, 0.0, 1.0);
   adam_eps = parse_ttb_real(args, "--adam-eps", adam_eps, 0.0, 1.0);
+  async = parse_ttb_bool(args, "--async", "--sync", async);
 }
 
 void Genten::AlgParams::print_help(std::ostream& out)
@@ -272,10 +277,16 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --fuse             fuse gradient sampling and MTTKRP" << std::endl;
   out << "  --fuse-sa          fuse with sparse array gradient" << std::endl;
   out << "  --fit              compute fit metric" << std::endl;
-  out << "  --adam             use ADAM step" << std::endl;
+  out << "  --step <type>      GCP-SGD optimization step type: ";
+  for (unsigned i=0; i<Genten::GCP_Step::num_types; ++i) {
+    out << Genten::GCP_Step::names[i];
+    if (i != Genten::GCP_Step::num_types-1)
+      out << ", ";
+  }
   out << "  --adam-beta1       Decay rate for 1st moment avg." << std::endl;
   out << "  --adam-beta2       Decay rate for 2nd moment avg." << std::endl;
   out << "  --adam-eps         Shift in ADAM step." << std::endl;
+  out << "  --async            Asynchronous SGD solver" << std::endl;
 }
 
 void Genten::AlgParams::print(std::ostream& out)
@@ -339,10 +350,11 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  fuse = " << (fuse ? "true" : "false") << std::endl;
   out << "  fuse-sa = " << (fuse_sa ? "true" : "false") << std::endl;
   out << "  fit = " << (compute_fit ? "true" : "false") << std::endl;
-  out << "  adam = " << (use_adam ? "true" : "false") << std::endl;
+  out << "  step = " << Genten::GCP_Step::names[step_type] << std::endl;
   out << "  adam-beta1 = " << adam_beta1 << std::endl;
   out << "  adam-beta2 = " << adam_beta2 << std::endl;
   out << "  adam-eps = " << adam_eps << std::endl;
+  out << "  async = " << (async ? "true" : "false") << std::endl;
 }
 
 ttb_real

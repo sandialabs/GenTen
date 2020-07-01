@@ -94,7 +94,7 @@ namespace Genten {
       const bool compute_fit = algParams.compute_fit;
 
       // ADAM parameters
-      const bool use_adam = algParams.use_adam;
+      const bool use_adam = algParams.step_type == GCP_Step::ADAM;
       const ttb_real beta1 = algParams.adam_beta1;
       const ttb_real beta2 = algParams.adam_beta2;
       const ttb_real eps = algParams.adam_eps;

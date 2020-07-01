@@ -124,6 +124,7 @@ namespace Genten {
     // Whether to use full or symmetric Gram matrix
     const bool full = algParams.full_gram;
     const UploType uplo = Upper;
+    bool spd = true; // Use SPD solver if possible
 
     const ttb_real tol = algParams.tol;
     const ttb_indx maxIters = algParams.maxiters;
@@ -154,8 +155,11 @@ namespace Genten {
 
     timer.start(timer_cpals);
 
+    ttb_indx nc = u.ncomponents();     // number of components
+    ttb_indx nd = x.ndims();           // number of dimensions
+
     if (printIter > 0) {
-      out << "\nCP-ALS ("
+      out << "\nCP-ALS (rank " << nc << ", "
           << Genten::MTTKRP_Method::names[algParams.mttkrp_method]
           << " MTTKRP method, ";
       if (algParams.full_gram)
@@ -183,9 +187,6 @@ namespace Genten {
         perfInfo[i].dmttkrp_gflops = -1.0;
       }
     }
-
-    ttb_indx nc = u.ncomponents();     // number of components
-    ttb_indx nd = x.ndims();           // number of dimensions
 
     // Distribute the initial guess to have weights of one.
     u.distribute(0);
@@ -280,7 +281,7 @@ namespace Genten {
         // with the result.  Equivalent to the Matlab operation
         //   u[n] = (upsilon \ u[n]')'.
         timer.start(timer_solve);
-        u[n].solveTransposeRHS (upsilon, full, uplo);
+        spd = u[n].solveTransposeRHS (upsilon, full, uplo, spd);
         Kokkos::fence();
         timer.stop(timer_solve);
 
@@ -471,9 +472,18 @@ namespace Genten {
       result = 0.0;
     else
     {
+      // Warn the user that the residual norm is negative instead of throwing
+      // an error.
       std::ostringstream  sMsg;
-      sMsg << "Genten::cpals_core - residual norm is negative: " << d;
-      Genten::error(sMsg.str());
+      sMsg.setf(std::ios_base::scientific);
+      sMsg.precision(15);
+      sMsg << "Genten::cpals_core - residual norm^2, " << d << ", is negative."
+           << "  ||X||^2 = " << xNorm*xNorm
+           << ", ||M||^2 = " << mNorm*mNorm
+           << ", <X,M> = " << xDotm;
+      //Genten::error(sMsg.str());
+      std::cout << sMsg.str() << std::endl;
+      result = 0.0;
     }
     return( result );
   }

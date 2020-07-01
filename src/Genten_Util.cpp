@@ -113,3 +113,6 @@ const char*const Genten::GCP_LossFunction::names[];
 
 const Genten::GCP_Sampling::type Genten::GCP_Sampling::types[];
 const char*const Genten::GCP_Sampling::names[];
+
+const Genten::GCP_Step::type Genten::GCP_Step::types[];
+const char*const Genten::GCP_Step::names[];
