@@ -68,7 +68,7 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
 
     // Parse inputs
     const std::string method = mxGetStdString(prhs[0]);
-    const Sptensor_type X = mxGetSptensor<ExecSpace>(prhs[1]);
+    Sptensor_type X = mxGetSptensor<ExecSpace>(prhs[1]);
     const ttb_indx num_samples_nonzeros =
       static_cast<ttb_indx>(mxGetScalar(prhs[2]));
     const ttb_indx num_samples_zeros =
@@ -95,12 +95,15 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
     Genten::GaussianLossFunction loss_func(algParams.loss_eps); // not used
     Sptensor_type Xs;
     array_type w;
-    if (method == "stratified")
+    if (method == "stratified") {
+      if (!X.isSorted())
+        X.sort();
       Genten::Impl::stratified_sample_tensor(
         X, num_samples_nonzeros, num_samples_zeros,
         weight_nonzeros, weight_zeros,
         u, loss_func, false,
         Xs, w, rand_pool, algParams);
+    }
     else if (method == "semi-stratified")
       Genten::Impl::semi_stratified_sample_tensor(
         X, num_samples_nonzeros, num_samples_zeros,
