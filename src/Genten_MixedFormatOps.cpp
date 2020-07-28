@@ -481,7 +481,7 @@ struct MTTKRP_Dense_Kernel {
           TV tmp(nj, x_val);
           tmp *= &(u.weights(j));
           for (unsigned m=0; m<nd_; ++m) {
-            if (m != n)
+            if (m != n_)
               tmp *= &(u[m].entry(sub[m],j));
           }
           val += tmp;
