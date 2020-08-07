@@ -64,6 +64,9 @@ namespace Genten {
     bool debug;          // Print debugging info
     bool timings;        // Print accurate kernel timing info (requires fences)
     bool full_gram;      // Use full Gram matrix formulation
+    bool rank_def_solver; // Use rank-deficient least-squares solver
+    ttb_real rcond;      // Truncation threshold in rank-deficient solver
+    ttb_real penalty;    // Regularization penalty
 
     // MTTKRP options
     MTTKRP_Method::type mttkrp_method; // MTTKRP algorithm

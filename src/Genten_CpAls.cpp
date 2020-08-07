@@ -281,7 +281,11 @@ namespace Genten {
         // with the result.  Equivalent to the Matlab operation
         //   u[n] = (upsilon \ u[n]')'.
         timer.start(timer_solve);
-        spd = u[n].solveTransposeRHS (upsilon, full, uplo, spd);
+        if (algParams.penalty != ttb_real(0.0))
+          upsilon.diagonalShift(algParams.penalty);
+        spd = u[n].solveTransposeRHS (upsilon, full, uplo, spd, algParams);
+        if (algParams.penalty != ttb_real(0.0))
+          upsilon.diagonalShift(-algParams.penalty);
         Kokkos::fence();
         timer.stop(timer_solve);
 
@@ -477,12 +481,19 @@ namespace Genten {
       std::ostringstream  sMsg;
       sMsg.setf(std::ios_base::scientific);
       sMsg.precision(15);
-      sMsg << "Genten::cpals_core - residual norm^2, " << d << ", is negative."
-           << "  ||X||^2 = " << xNorm*xNorm
-           << ", ||M||^2 = " << mNorm*mNorm
-           << ", <X,M> = " << xDotm;
-      //Genten::error(sMsg.str());
-      std::cout << sMsg.str() << std::endl;
+      sMsg << "Genten::cpals_core - residual norm^2, " << d
+           << ", is negative:" << std::endl
+           << "\t||X||^2 = " << xNorm*xNorm << "," << std::endl
+           << "\t||M||^2 = " << mNorm*mNorm << "," << std::endl
+           << "\t<X,M>   = " << xDotm << "." << std::endl
+           << "This likely means the gram matrix is (nearly) singular.\n"
+           << "Try adding regularization by making the penalty term nonzero\n"
+           << "(e.g., --penalty 1e-6) or using the rank-deficient "
+           << "least-squares solver (LAPACK's GELSY)\n"
+           << "(e.g., --full-gram --rank-deficient-solver --rcond 1e-8)."
+           << std::endl;
+      Genten::error(sMsg.str());
+      //std::cout << sMsg.str() << std::endl;
       result = 0.0;
     }
     return( result );

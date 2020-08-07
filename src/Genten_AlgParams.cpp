@@ -53,6 +53,9 @@ Genten::AlgParams::AlgParams() :
   debug(false),
   timings(false),
   full_gram(FacMatrixT<DefaultExecutionSpace>::full_gram_default),
+  rank_def_solver(false),
+  rcond(1e-8),
+  penalty(0.0),
   mttkrp_method(MTTKRP_Method::default_type),
   mttkrp_all_method(MTTKRP_All_Method::default_type),
   mttkrp_nnz_tile_size(128),
@@ -109,6 +112,10 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   debug = parse_ttb_bool(args, "--debug", "--no-debug", debug);
   timings = parse_ttb_bool(args, "--timings", "--no-timings", timings);
   full_gram = parse_ttb_bool(args, "--full-gram", "--sym-gram", full_gram);
+  rank_def_solver = parse_ttb_bool(args, "--rank-def-solver",
+                                   "--no-rank-def-solver", rank_def_solver);
+  rcond = parse_ttb_real(args, "--rcond", rcond, 0.0, DOUBLE_MAX);
+  penalty = parse_ttb_real(args, "--penalty", penalty, 0.0, DOUBLE_MAX);
 
   // MTTKRP options
   mttkrp_method = parse_ttb_enum(args, "--mttkrp-method", mttkrp_method,
@@ -207,6 +214,9 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --debug            turn on debugging output" << std::endl;
   out << "  --timings          print accurate kernel timing info (but may increase total run time by adding fences)" << std::endl;
   out << "  --full-gram        use full Gram matrix formulation (which may be faster than the symmetric formulation on some architectures)" << std::endl;
+  out << "  --rank-def-solver  use rank-deficient least-squares solver (GELSY) with full-gram formluation (useful when gram matrix is singular)" << std::endl;
+  out << "  --rcond <float>    truncation parameter for rank-deficient solver" << std::endl;
+  out << "  --penalty <float>  penalty term for regularization (useful if gram matrix is singular)" << std::endl;
 
   out << std::endl;
   out << "MTTKRP options:" << std::endl;
@@ -303,6 +313,9 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  debug = " << (debug ? "true" : "false") << std::endl;
   out << "  timings = " << (timings ? "true" : "false") << std::endl;
   out << "  full-gram = " << (full_gram ? "true" : "false") << std::endl;
+  out << "  rank-def-solver = " << (rank_def_solver ? "true" : "false") << std::endl;
+  out << "  rcond = " << rcond << std::endl;
+  out << "  penalty = " << penalty << std::endl;
 
   out << std::endl;
   out << "MTTKRP options:" << std::endl;

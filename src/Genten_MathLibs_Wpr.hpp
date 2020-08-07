@@ -178,6 +178,28 @@ namespace Genten
   */
   void sysv(char uplo, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb);
 
+  // GELSY - Compute minimum norm solution to linear, least squares problem
+  /*
+    Computes minumum norm solution to ||AX-B||_2 where A is an m x n matrix,
+    B is an m x nrhs matrix, and X is the n x nrhs matrix to be computed, where
+    A may be rank deficient.  It is assumed the matrices are stored in column
+    major order.  The algorithm uses a complete orthogonal factorization via
+    column-pivoted QR.  The parameter rcond is used to determine where to
+    truncate R, determining the effective rank of A.
+
+    a    - On entry, the m x n matrix A stored columnwise.
+    On exit, a has been overwritten by details of the QR factoriztion.
+    b    - On entry, the m x nrhs matrix B (of right-hand-sides) stored
+    columnwise.
+    On exit, the n x nrhs solution matrix X stored columnwise.
+    rcond- 1/rcond determines the maximum condition number of R used in the
+    least-squares solve.
+
+    throws string exception if the solve failed.
+    returns the effective rank of A.
+  */
+  ttb_indx gelsy(ttb_indx m, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb, double rcond);
+
   //
   // Single precision
   //
@@ -299,4 +321,26 @@ namespace Genten
     throws string exception if the solve failed.
   */
   void sysv(char uplo, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb);
+
+  // GELSY - Compute minimum norm solution to linear, least squares problem
+  /*
+    Computes minumum norm solution to ||AX-B||_2 where A is an m x n matrix,
+    B is an m x nrhs matrix, and X is the n x nrhs matrix to be computed, where
+    A may be rank deficient.  It is assumed the matrices are stored in column
+    major order.  The algorithm uses a complete orthogonal factorization via
+    column-pivoted QR.  The parameter rcond is used to determine where to
+    truncate R, determining the effective rank of A.
+
+    a    - On entry, the m x n matrix A stored columnwise.
+    On exit, a has been overwritten by details of the QR factoriztion.
+    b    - On entry, the m x nrhs matrix B (of right-hand-sides) stored
+    columnwise.
+    On exit, the n x nrhs solution matrix X stored columnwise.
+    rcond- 1/rcond determines the maximum condition number of R used in the
+    least-squares solve.
+
+    throws string exception if the solve failed.
+    returns the effective rank of A.
+  */
+  ttb_indx gelsy(ttb_indx m, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb, float rcond);
 }

@@ -1416,7 +1416,8 @@ namespace Genten {
 
     template <typename ViewA, typename ViewB>
     void solveTransposeRHSImpl(const ViewA& A, const ViewB& B,
-                               const UploType ul) {
+                               const UploType ul,
+                               const AlgParams& algParams) {
       // On CPU we use symmetric, indefinite solver instead of non-symmetric
       // solver because it should be faster.
       const ttb_indx nrows = B.extent(0);
@@ -1425,7 +1426,16 @@ namespace Genten {
       // Switch Upper/Lower because we store row-wise and lapack assumes column
       char uplo = ul == Upper ? 'L' : 'U';
 
-      Genten::sysv(uplo, ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0());
+      if (algParams.rank_def_solver) {
+        ttb_indx rank = Genten::gelsy(ncols, ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0(), algParams.rcond);
+        // if (rank < ncols) {
+        //   std::cout << "Matrix is not full rank!  Numerical rank = " << rank
+        //             << ", matrix order is " << ncols << std::endl;
+        // }
+      }
+      else {
+        Genten::sysv(uplo, ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0());
+      }
     }
 
 #if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUSOLVER)
@@ -1632,8 +1642,12 @@ namespace Genten {
       >::type
     solveTransposeRHSImpl(const Kokkos::View<AT,AP...>& A,
                           const Kokkos::View<BT,BP...>& B,
-                          const UploType uplo)
+                          const UploType uplo,
+                          const AlgParams& algParams)
     {
+      if (algParams.rank_def_solver)
+        throw std::string("Rank-deficient solver not supported on the GPU!");
+
       const int m = B.extent(0);
       const int n = B.extent(1);
       const int lda = A.stride_0();
@@ -1907,8 +1921,12 @@ namespace Genten {
       >::type
     solveTransposeRHSImpl(const Kokkos::View<AT,AP...>& A,
                           const Kokkos::View<BT,BP...>& B,
-                          const UploType uplo)
+                          const UploType uplo,
+                          const AlgParams& algParams)
     {
+      if (algParams.rank_def_solver)
+        throw std::string("Rank-deficient solver not supported on the GPU!");
+
       const int m = B.extent(0);
       const int n = B.extent(1);
       const int lda = A.stride_0();
@@ -1989,7 +2007,8 @@ bool Genten::FacMatrixT<ExecSpace>::
 solveTransposeRHS (const Genten::FacMatrixT<ExecSpace> & A,
                    const bool full,
                    const UploType uplo,
-                   const bool spd) const
+                   const bool spd,
+                   const AlgParams& algParams) const
 {
   const ttb_indx nrows = data.extent(0);
   const ttb_indx ncols = data.extent(1);
@@ -2003,7 +2022,7 @@ solveTransposeRHS (const Genten::FacMatrixT<ExecSpace> & A,
 
   bool is_spd = spd;
   if (full) {
-    Genten::Impl::solveTransposeRHSImpl(Atmp, data, uplo);
+    Genten::Impl::solveTransposeRHSImpl(Atmp, data, uplo, algParams);
     is_spd = false;
   }
   else if (spd) {
@@ -2257,6 +2276,20 @@ innerprod(const Genten::FacMatrixT<ExecSpace>& A,
     ret = Impl::mat_innerprod_kernel<ExecSpace,32>(data, A.data, lambda.values());
 
   return ret;
+}
+
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+diagonalShift(const ttb_real shift) const
+{
+  auto d = data;
+  const unsigned n =
+    data.extent(0) <= data.extent(1) ? data.extent(0) : data.extent(1);
+  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,n),
+                       KOKKOS_LAMBDA(const unsigned i)
+  {
+    d(i,i) += shift;
+  });
 }
 
 #define INST_MACRO(SPACE) template class Genten::FacMatrixT<SPACE>;
