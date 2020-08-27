@@ -291,6 +291,46 @@ bool Genten::posv (char uplo, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx ld
 #endif
 }
 
+ttb_indx Genten::gelsy(ttb_indx m, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb, double rcond)
+{
+#if !defined(LAPACK_FOUND)
+  Genten::error("Genten::gelsy - not found, must link with an LAPACK library.");
+  return 0;
+#else
+  ttb_blas_int m_ml = (ttb_blas_int) m;
+  ttb_blas_int n_ml = (ttb_blas_int) n;
+  ttb_blas_int nrhs_ml = (ttb_blas_int) nrhs;
+  ttb_blas_int lda_ml = (ttb_blas_int) lda;
+  ttb_blas_int ldb_ml = (ttb_blas_int) ldb;
+
+  // Initialize output info and create pivot array
+  ttb_blas_int info_ml = 0;
+  ttb_blas_int * ipiv_ml = new ttb_blas_int[ n ];
+  ttb_blas_int rank_ml = 0;
+
+  // Workspace query
+  ttb_blas_int lwork = -1;
+  double work_tmp = 0;
+  ::dgelsy(&m_ml, &n_ml, &nrhs_ml, a, &lda_ml, b, &ldb_ml, ipiv_ml, &rcond, &rank_ml, &work_tmp, &lwork, &info_ml);
+
+  lwork = ttb_blas_int(work_tmp);
+  double * work = new double[lwork];
+  ::dgelsy(&m_ml, &n_ml, &nrhs_ml, a, &lda_ml, b, &ldb_ml, ipiv_ml, &rcond, &rank_ml, work, &lwork, &info_ml);
+
+  delete[] work;
+  delete[] ipiv_ml;
+
+  // Check output info and free pivot array
+  if (info_ml < 0)
+  {
+    Genten::error("Genten::gelsy - argument error in call to dgelsy");
+  }
+
+  ttb_indx rank = (ttb_indx) rank_ml;
+  return rank;
+#endif
+}
+
 //
 // Single precision
 //
@@ -537,5 +577,45 @@ bool Genten::posv (char uplo, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda
   if (info_ml > 0)
     return false;
   return true;
+#endif
+}
+
+ttb_indx Genten::gelsy(ttb_indx m, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb, float rcond)
+{
+#if !defined(LAPACK_FOUND)
+  Genten::error("Genten::gelsy - not found, must link with an LAPACK library.");
+  return 0;
+#else
+  ttb_blas_int m_ml = (ttb_blas_int) m;
+  ttb_blas_int n_ml = (ttb_blas_int) n;
+  ttb_blas_int nrhs_ml = (ttb_blas_int) nrhs;
+  ttb_blas_int lda_ml = (ttb_blas_int) lda;
+  ttb_blas_int ldb_ml = (ttb_blas_int) ldb;
+
+  // Initialize output info and create pivot array
+  ttb_blas_int info_ml = 0;
+  ttb_blas_int * ipiv_ml = new ttb_blas_int[ n ];
+  ttb_blas_int rank_ml = 0;
+
+  // Workspace query
+  ttb_blas_int lwork = -1;
+  float work_tmp = 0;
+  ::sgelsy(&m_ml, &n_ml, &nrhs_ml, a, &lda_ml, b, &ldb_ml, ipiv_ml, &rcond, &rank_ml, &work_tmp, &lwork, &info_ml);
+
+  lwork = ttb_blas_int(work_tmp);
+  float * work = new float[lwork];
+  ::sgelsy(&m_ml, &n_ml, &nrhs_ml, a, &lda_ml, b, &ldb_ml, ipiv_ml, &rcond, &rank_ml, work, &lwork, &info_ml);
+
+  delete[] work;
+  delete[] ipiv_ml;
+
+  // Check output info and free pivot array
+  if (info_ml < 0)
+  {
+    Genten::error("Genten::gelsy - argument error in call to dgelsy");
+  }
+
+  ttb_indx rank = (ttb_indx) rank_ml;
+  return rank;
 #endif
 }

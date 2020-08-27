@@ -571,5 +571,51 @@ normFsq() const
   return dResult;
 }
 
+template <typename ExecSpace>
+ttb_real Genten::KtensorT<ExecSpace>::
+normFsq(const Genten::ArrayT<ExecSpace>& l) const
+{
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::Ktensor::normFsq");
+#endif
+
+  ttb_real  dResult = 0.0;
+
+  // This technique computes an RxR matrix of dot products between all factor
+  // column vectors of each mode, then forms the Hadamard product of these
+  // matrices.  The last step is the scalar \lambda' H \lambda.
+  const ttb_indx n = ncomponents();
+  Genten::FacMatrixT<ExecSpace>  cH(n,n);
+  cH = 1;
+  Genten::FacMatrixT<ExecSpace>  cG(n,n);
+  for (ttb_indx  n = 0; n < ndims(); n++)
+  {
+    cG.gramian(data[n]);
+    cH.times(cG);
+  }
+
+  dResult = 0.0;
+  // for (ttb_indx  r = 0; r < n; r++)
+  // {
+  //   dResult += lambda[r] * lambda[r] * cH.entry(r,r);
+  //   for (ttb_indx  q = r+1; q < n; q++)
+  //   {
+  //     dResult += 2.0 * lambda[r] * lambda[q] * cH.entry(r,q);
+  //   }
+  // }
+  Kokkos::parallel_reduce("Genten::Ktensor::normFsq_kernel",
+                          Kokkos::RangePolicy<ExecSpace>(0,n),
+                          KOKKOS_LAMBDA(const ttb_indx r, ttb_real& d)
+  {
+    const ttb_real lr = l[r];
+    d += lr * lr * cH.entry(r,r);
+    for (ttb_indx q=r+1; q<n; ++q)
+      d += ttb_real(2) * lr * l[q] * cH.entry(r,q);
+  }, dResult);
+  Kokkos::fence();
+
+  return dResult;
+}
+
 #define INST_MACRO(SPACE) template class Genten::KtensorT<SPACE>;
 GENTEN_INST(INST_MACRO)

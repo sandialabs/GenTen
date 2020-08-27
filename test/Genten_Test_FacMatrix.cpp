@@ -305,7 +305,7 @@ void Genten_Test_FacMatrix(int infolevel, const std::string & datadir)
   b1_dev.solveTransposeRHS (a_dev, true);
   auto b1 = create_mirror_view( host_exec_space(), b1_dev );
   deep_copy( b1, b1_dev );
-  ASSERT(c.isEqual(b1,MACHINE_EPSILON),
+  ASSERT(c.isEqual(b1,ttb_real(10.0)*MACHINE_EPSILON),
          "Solve (full) works for indefinite matrix");
 
   // Symmetric, indefinite solver currently doesn't work on GPU

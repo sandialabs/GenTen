@@ -49,6 +49,7 @@
 #include "Genten_IndxArray.hpp"
 #include "Genten_RandomMT.hpp"
 #include "Genten_Util.hpp"
+#include "Genten_AlgParams.hpp"
 #include <assert.h>
 
 namespace Genten
@@ -356,7 +357,8 @@ public:
     bool solveTransposeRHS (const FacMatrixT & A,
                             const bool full = full_gram_default,
                             const UploType uplo = Upper,
-                            const bool spd = true) const;
+                            const bool spd = true,
+                            const AlgParams& algParams = AlgParams()) const;
 
     //! Multiply x elementwise by the ith row of the factor matrix, overwriting x.
     /*!
@@ -413,8 +415,11 @@ public:
                    const ttb_real         dScalar) const;
 
     //! Compute inner product of two matrices with column weight array
-  ttb_real innerprod(const FacMatrixT& A,
-                     const ArrayT<ExecSpace>& lambda) const;
+    ttb_real innerprod(const FacMatrixT& A,
+                       const ArrayT<ExecSpace>& lambda) const;
+
+    //! apply diagonal shift to matrix
+    void diagonalShift(const ttb_real shift) const;
 
     /** @} */
 

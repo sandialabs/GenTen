@@ -47,7 +47,6 @@
 typedef ptrdiff_t ttb_blas_int;
 typedef ptrdiff_t ttb_vml_int;
 
-
 #if defined(LAPACK_FOUND)
 
   #if defined(HAVE_BLAS_F2C)
@@ -78,9 +77,11 @@ typedef ptrdiff_t ttb_vml_int;
      #define dgesv dgesv_
      #define dposv dposv_
      #define dsysv dsysv_
+     #define dgelsy dgelsy_
      #define sgesv sgesv_
      #define sposv sposv_
      #define ssysv ssysv_
+     #define sgelsy sgelsy_
 
   #elif defined (__IBMCPP__)
      #define dasum dasum
@@ -110,9 +111,11 @@ typedef ptrdiff_t ttb_vml_int;
      #define dgesv dgesv
      #define dposv dposv
      #define dsysv dsysv
+     #define dgelsy dgelsy
      #define sgesv sgesv
      #define sposv sposv
      #define ssysv ssysv
+     #define sgelsy sgelsy
 
   #else
      #define dasum dasum_
@@ -142,9 +145,11 @@ typedef ptrdiff_t ttb_vml_int;
      #define dgesv dgesv_
      #define dposv dposv_
      #define dsysv dsysv_
+     #define dgelsy dgelsy_
      #define sgesv sgesv_
      #define sposv sposv_
      #define ssysv ssysv_
+     #define sgelsy sgelsy_
   #endif
 
 #endif
@@ -246,6 +251,20 @@ extern "C"
                 double * work,
                 ttb_blas_int * lwork,
                 ttb_blas_int * info);
+
+  void dgelsy (ttb_blas_int * m,
+               ttb_blas_int * n,
+               ttb_blas_int * nrhs,
+               double * a,
+               ttb_blas_int * lda,
+               double * b,
+               ttb_blas_int * ldb,
+               ttb_blas_int * ipiv,
+               double * rcond,
+               ttb_blas_int * rank,
+               double * work,
+               ttb_blas_int * lwork,
+               ttb_blas_int * info);
 
     double dnrm2 (ttb_blas_int * nptr,
                   double * x,
@@ -363,6 +382,20 @@ extern "C"
                 float * work,
                 ttb_blas_int * lwork,
                 ttb_blas_int * info);
+
+  void sgelsy (ttb_blas_int * m,
+               ttb_blas_int * n,
+               ttb_blas_int * nrhs,
+               float * a,
+               ttb_blas_int * lda,
+               float * b,
+               ttb_blas_int * ldb,
+               ttb_blas_int * ipiv,
+               float * rcond,
+               ttb_blas_int * rank,
+               float * work,
+               ttb_blas_int * lwork,
+               ttb_blas_int * info);
 
     float snrm2 (ttb_blas_int * nptr,
                   float * x,

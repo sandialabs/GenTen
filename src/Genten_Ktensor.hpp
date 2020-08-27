@@ -292,6 +292,10 @@ public:
   // Return the Frobenius norm squared (sum of squares of each tensor element).
   ttb_real normFsq() const;
 
+  // Return the Frobenius norm squared (sum of squares of each tensor element)
+  // using specified weights array w
+  ttb_real normFsq(const ArrayT<ExecSpace> & w) const;
+
 private:
 
   // Weights array
