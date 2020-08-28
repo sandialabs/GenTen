@@ -81,7 +81,7 @@ if strcmp(type,'normal')
 elseif strcmp(type,'count')
   type = 'poisson';
 elseif strcmp(type,'binary')
-  type = 'bernoulli'
+  type = 'bernoulli';
 end
 c = {'type', type};
 args = [args c];
