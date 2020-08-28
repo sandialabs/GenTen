@@ -88,18 +88,42 @@ args = [args c];
 [fsamp,args] = get_option_and_remove(args,'fsamp',[]);
 if ~isempty(fsamp)
   if length(fsamp) == 1
-    c = {'fnzs', fsamp(1), 'fzs', fsamp(1)};
+    f = fsamp(1);
+    if f == Inf
+      f = nnz(X);
+    end
+    c = {'fnzs', f, 'fzs', f};
   else
-    c = {'fnzs', fsamp(1), 'fzs', fsamp(2)};
+    f1 = fsamp(1);
+    f2 = fsamp(2);
+    if f1 == Inf
+      f1 = nnz(X);
+    end
+    if f2 == Inf
+      f2 = prod(size(X)) - nnz(X);
+    end
+    c = {'fnzs', f1, 'fzs', f2};
   end
   args = [args c];
 end
 [gsamp,args] = get_option_and_remove(args,'gsamp',[]);
 if ~isempty(gsamp)
   if length(gsamp) == 1
-    c = {'gnzs', gsamp(1), 'gzs', gsamp(1)};
+    g = gsamp(1);
+    if g == Inf
+      g = nnz(X);
+    end
+    c = {'gnzs', g, 'gzs', g};
   else
-    c = {'gnzs', gsamp(1), 'gzs', gsamp(2)};
+    g1 = gsamp(1);
+    g2 = gsamp(2);
+    if g1 == Inf
+      g1 = nnz(X);
+    end
+    if g2 == Inf
+      g2 = prod(size(X)) - nnz(X);
+    end
+    c = {'gnzs', g1, 'gzs', g2};
   end
   args = [args c];
 end
