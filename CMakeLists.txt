@@ -293,16 +293,9 @@ INSTALL (
   TARGETS genten_mathlibs_c
   DESTINATION lib
   )
-IF(NOT KOKKOS_INLINE_BUILD)
-  SET(GENTEN_MATHLIBS
-    genten_mathlibs_c
-    )
-ELSE()
-  SET(GENTEN_MATHLIBS
-    genten_mathlibs_c
-    kokkos
-    )
-ENDIF()
+SET(GENTEN_MATHLIBS
+  genten_mathlibs_c
+  )
 TARGET_LINK_LIBRARIES(
   ${GENTEN_MATHLIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
   )
@@ -362,9 +355,7 @@ ENDIF()
 
 #---- Tell CMake to build the library.
 ADD_LIBRARY (gentenlib ${Genten_SOURCE_LIST})
-IF(NOT KOKKOS_INLINE_BUILD)
-  TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkos)
-ENDIF()
+TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkos)
 SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${ROL_LIBRARIES} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
 TARGET_LINK_LIBRARIES(${GENTEN_LINK_LIBS})
 INSTALL (
