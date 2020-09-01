@@ -74,10 +74,14 @@ gcp_gradient_driver(
   const ttb_indx nd = u.ndims();
   const ttb_indx nc = u.ncomponents();
 
+  Genten::IndxArray modes_host = create_mirror_view(
+    typename Genten::IndxArray::exec_space(), modes);
+  deep_copy(modes_host, modes);
+
   // Initialize gradient
   Genten::KtensorT<ExecSpace> G(nc,d); // length(modes), not u.ndims()
   for (int k=0; k<d; ++k) {
-    const ttb_indx kk = modes[k];
+    const ttb_indx kk = modes_host[k];
     Genten::FacMatrixT<ExecSpace> v(u[kk].nRows(), nc); // initializes to zero
     G.set_factor(k, v);
   }
@@ -133,7 +137,7 @@ gcp_gradient_driver(
         !Y.havePerm())
       Y.createPermutation();
     for (int k=0; k<d; ++k) {
-      const ttb_indx kk = modes[k];
+      const ttb_indx kk = modes_host[k];
       Genten::mttkrp(Y, u, kk, G[k], algParams);
     }
 
@@ -155,7 +159,7 @@ gcp_gradient_driver(
       //     !Yt.havePerm())
       //   Yt.createPermutation();
       // for (int k=0; k<d; ++k) {
-      //   const ttb_indx kk = modes[k];
+      //   const ttb_indx kk = modes_host[k];
       //   Genten::FacMatrixT<ExecSpace> v(u[kk].nRows(), nc);
       //   Genten::mttkrp(Yt, ut, kk, v, algParams);
       //   G[k].plus(v);
@@ -166,7 +170,7 @@ gcp_gradient_driver(
   // to do:  saxpy
   if (penalty != 0.0) {
     for (int k=0; k<d; ++k) {
-      const ttb_indx kk = modes[k];
+      const ttb_indx kk = modes_host[k];
       Genten::FacMatrixT<ExecSpace> v(u[kk].nRows(), nc);
       deep_copy(v, u[kk]);
       v.times(penalty);

@@ -348,7 +348,9 @@ mxGetIndxArray(const mxArray* ptr, const bool subtract_one = false) {
   ttb_indx n = mxGetNumberOfElements(ptr);
 
   // Create array
-  array_type w(n, mx_w, subtract_one); // converts from ttb_real to ttb_indx
+  array_host_type w_host(n, mx_w, subtract_one); // converts from ttb_real to ttb_indx
+  array_type w = create_mirror_view(ExecSpace(), w_host);
+  deep_copy(w, w_host);
 
   return w;
 }

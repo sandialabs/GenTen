@@ -396,12 +396,12 @@ namespace Genten {
               weight_nonzeros * ( f.deriv(mp_val, mt_val) );
           }
 
-          auto row_func = [&](auto j, auto nj, auto Nj, auto k, auto n) {
+          auto row_func = [&](auto j, auto nj, auto Nj, auto k, auto n, auto nn) {
             typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
 
             TV tmp(nj, y_val);
             for (unsigned m=0; m<nd; ++m) {
-              if (m != n)
+              if (m != nn)
                 tmp *= &(M[m].entry(ind[m],j));
             }
             Kokkos::atomic_add(&(G[n].entry(k,j)), tmp);
@@ -409,7 +409,7 @@ namespace Genten {
             if (have_Mprev) {
               tmp.broadcast(yt_val);
               for (unsigned m=0; m<nd; ++m) {
-                if (m != n)
+                if (m != nn)
                   tmp *= &(M[m].entry(ind[m],j));
               }
               Kokkos::atomic_add(&(G[n].entry(k,j)), tmp);
@@ -422,11 +422,11 @@ namespace Genten {
             for (unsigned j=0; j<nc; j+=FacBlockSize) {
               if (j+FacBlockSize <= nc) {
                 const unsigned nj = FacBlockSize;
-                row_func(j, nj, std::integral_constant<unsigned,nj>(), k, nn);
+                row_func(j, nj, std::integral_constant<unsigned,nj>(), k, n, nn);
               }
               else {
                 const unsigned nj = nc-j;
-                row_func(j, nj, std::integral_constant<unsigned,0>(), k, nn);
+                row_func(j, nj, std::integral_constant<unsigned,0>(), k, n, nn);
               }
             } // j
           } // n
@@ -479,12 +479,12 @@ namespace Genten {
             yt_val = weight_zeros * ( f.deriv(mp_val, mt_val) );
           }
 
-          auto row_func = [&](auto j, auto nj, auto Nj, auto k, auto n) {
+          auto row_func = [&](auto j, auto nj, auto Nj, auto k, auto n, auto nn) {
             typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
 
             TV tmp(nj, y_val);
-            for (unsigned m=0; m<d; ++m) {
-              if (m != n)
+            for (unsigned m=0; m<nd; ++m) {
+              if (m != nn)
                 tmp *= &(M[m].entry(ind[m],j));
             }
             Kokkos::atomic_add(&(G[n].entry(k,j)), tmp);
@@ -492,24 +492,24 @@ namespace Genten {
             if (have_Mprev) {
               tmp.broadcast(yt_val);
               for (unsigned m=0; m<nd; ++m) {
-                if (m != n)
+                if (m != nn)
                   tmp *= &(M[m].entry(ind[m],j));
               }
               Kokkos::atomic_add(&(G[n].entry(k,j)), tmp);
             }
           };
 
-          for (unsigned n=0; n<nd; ++n) {
+          for (unsigned n=0; n<d; ++n) {
             const unsigned nn = modes[n];
             const ttb_indx k = ind[nn];
             for (unsigned j=0; j<nc; j+=FacBlockSize) {
               if (j+FacBlockSize <= nc) {
                 const unsigned nj = FacBlockSize;
-                row_func(j, nj, std::integral_constant<unsigned,nj>(), k, nn);
+                row_func(j, nj, std::integral_constant<unsigned,nj>(), k, n, nn);
               }
               else {
                 const unsigned nj = nc-j;
-                row_func(j, nj, std::integral_constant<unsigned,0>(), k, nn);
+                row_func(j, nj, std::integral_constant<unsigned,0>(), k, n, nn);
               }
             } // j
           } // n
