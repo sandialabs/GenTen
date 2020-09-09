@@ -212,7 +212,7 @@ cmake \
  -D Kokkos_ENABLE_OPENMP=ON \
  -D Kokkos_ENABLE_CUDA=ON \
  -D Kokkos_ARCH_HSW=ON \
- -D Kokkos_ARCH_Kepler37=ON \
+ -D Kokkos_ARCH_KEPLER37=ON \
  -D ENABLE_CUBLAS=ON \
  -D ENABLE_CUSOLVER=ON \
  -D ENABLE_BOOST=ON \
