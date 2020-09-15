@@ -51,6 +51,19 @@ namespace Genten {
 
   namespace Impl {
 
+    template <typename LossFunction>
+    struct BoundUpdate {
+      KOKKOS_INLINE_FUNCTION
+      ttb_real apply(const ttb_real& u, const ttb_real& delta) const {
+        ttb_real un = u + delta;
+        if (LossFunction::has_lower_bound() && un < LossFunction::lower_bound())
+          un = LossFunction::lower_bound();
+        if (LossFunction::has_upper_bound() && un > LossFunction::upper_bound())
+          un = LossFunction::upper_bound();
+        return un;
+      }
+    };
+
     template <typename ExecSpace, typename LossFunction>
     class GCP_SGD_Step {
     public:
@@ -115,7 +128,7 @@ namespace Genten {
               unew > LossFunction::upper_bound())
             Kokkos::atomic_fetch_min(&u[dim].entry(row,col),
                                      LossFunction::upper_bound());
-#else
+#elif 1
           // Slowest version.  Always do atomic max/min.
           Kokkos::atomic_add(&u[dim].entry(row,col), delta);
           if (LossFunction::has_lower_bound())
@@ -124,6 +137,14 @@ namespace Genten {
           if (LossFunction::has_upper_bound())
             Kokkos::atomic_fetch_min(&u[dim].entry(row,col),
                                      LossFunction::upper_bound());
+#else
+          if (LossFunction::has_lower_bound() ||
+              LossFunction::has_upper_bound())
+            Kokkos::Impl::atomic_oper_fetch(BoundUpdate<LossFunction>(),
+                                            &u[dim].entry(row,col),
+                                            delta);
+          else
+            Kokkos::atomic_add(&u[dim].entry(row,col), delta);
 #endif
         }
       }
@@ -192,6 +213,94 @@ namespace Genten {
 
     };
 
+    struct AdamOp {
+      ttb_real beta;
+
+      KOKKOS_INLINE_FUNCTION
+      AdamOp(const ttb_real& beta_) : beta(beta_) {}
+
+      KOKKOS_INLINE_FUNCTION
+      ttb_real apply(const ttb_real& m, const ttb_real& g) const {
+        return beta*m + (1.0-beta)*g;
+      }
+    };
+
+    template <typename Loss>
+    struct AtomicAdamOp {
+      const ttb_real beta1, beta2, eps, step;
+      volatile ttb_real* const m;
+      volatile ttb_real* const v;
+
+      KOKKOS_INLINE_FUNCTION
+      AtomicAdamOp(const ttb_real beta1_,
+                   const ttb_real beta2_,
+                   const ttb_real eps_,
+                   const ttb_real step_,
+                   volatile ttb_real* const m_,
+                   volatile ttb_real* const v_) :
+        beta1(beta1_), beta2(beta2_), eps(eps_), step(step_), m(m_), v(v_) {}
+
+      KOKKOS_INLINE_FUNCTION
+      ttb_real apply(const ttb_real u, const ttb_real g) const {
+        *m = beta1*(*m) + (1.0-beta1)*g;
+        *v = beta2*(*v) + (1.0-beta2)*g*g;
+        ttb_real unew = u - step*(*m)/(std::sqrt(*v)+eps);
+        if (Loss::has_lower_bound() && unew < Loss::lower_bound())
+          unew = Loss::lower_bound();
+        if (Loss::has_upper_bound() && unew > Loss::upper_bound())
+          unew = Loss::upper_bound();
+        return unew;
+      }
+    };
+
+    template <typename Op, typename T>
+    KOKKOS_INLINE_FUNCTION void
+    atomic_oper(const Op& op, volatile T* const dst, const T val)
+    {
+#ifdef KOKKOS_ACTIVE_EXECUTION_MEMORY_SPACE_HOST
+      while (!Kokkos::Impl::lock_address_host_space((void*)dst))
+        ;
+      Kokkos::memory_fence();
+      T dst_new = op.apply(*dst, val);
+      *dst = dst_new;
+      Kokkos::memory_fence();
+      Kokkos::Impl::unlock_address_host_space((void*)dst);
+
+#elif defined(KOKKOS_ACTIVE_EXECUTION_MEMORY_SPACE_CUDA)
+      T dst_new;
+      // This is a way to (hopefully) avoid dead lock in a warp
+      int done                 = 0;
+#ifdef KOKKOS_IMPL_CUDA_SYNCWARP_NEEDS_MASK
+      unsigned int mask        = KOKKOS_IMPL_CUDA_ACTIVEMASK;
+      unsigned int active      = KOKKOS_IMPL_CUDA_BALLOT_MASK(mask, 1);
+#else
+      unsigned int active = KOKKOS_IMPL_CUDA_BALLOT(1);
+#endif
+      unsigned int done_active = 0;
+      while (active != done_active) {
+        if (!done) {
+          if (Kokkos::Impl::lock_address_cuda_space((void*)u)) {
+            Kokkos::memory_fence();
+            dst_new = op.apply(*dst, val);
+            *dst = dst_new;
+            Kokkos::memory_fence();
+            Kokkos::Impl::unlock_address_cuda_space((void*)dst);
+            done = 1;
+          }
+        }
+#ifdef KOKKOS_IMPL_CUDA_SYNCWARP_NEEDS_MASK
+        done_active = KOKKOS_IMPL_CUDA_BALLOT_MASK(mask, done);
+#else
+        done_active = KOKKOS_IMPL_CUDA_BALLOT(done);
+#endif
+      }
+
+#elif defined(__HIP_DEVICE_COMPILE__)
+      Kokkos::abort("atomic_oper not implemented for large types.")
+#endif
+      return;
+    }
+
     template <typename ExecSpace, typename LossFunction>
     class AdamStep : public GCP_SGD_Step<ExecSpace,LossFunction> {
     public:
@@ -220,6 +329,7 @@ namespace Genten {
         v.zero();
         m_prev.zero();
         v_prev.zero();
+        Kokkos::deep_copy(total_samples, 0);
       }
 
       virtual ~AdamStep() {}
@@ -250,6 +360,10 @@ namespace Genten {
       {
         m_prev.set(m);
         v_prev.set(v);
+        // auto total_samples_host = Kokkos::create_mirror_view(total_samples);
+        // Kokkos::deep_copy(total_samples_host, total_samples);
+        // total_samples_host() += epoch_iters*num_samples_per_it;
+        // Kokkos::deep_copy(total_samples, total_samples_host);
       }
 
       virtual void setFailed()
@@ -315,16 +429,22 @@ namespace Genten {
       {
         using std::sqrt;
         using std::pow;
+        using std::abs;
 
         // Compute our iteration index
         const ttb_indx ts = total_samples();
         const ttb_indx it = (ts+num_samples_per_it-1) / num_samples_per_it;
 
         // Compute exponential weighting
-        const ttb_real beta1t_ = pow(beta1, ttb_real(it));
-        const ttb_real beta2t_ = pow(beta2, ttb_real(it));
+        const ttb_real beta1t_ = pow(beta1, ttb_real(it+1));
+        const ttb_real beta2t_ = pow(beta2, ttb_real(it+1));
         const ttb_real adam_step_ = step*sqrt(1.0-beta2t_) / (1.0-beta1t_);
+        if (beta1t_ > 1.0)
+          Kokkos::abort("beta1t_ > 1.0 !");
+        if (beta2t_ > 1.0)
+          Kokkos::abort("beta2t_ > 1.0 !");
 
+#if 0
         // Read old values of moments
         const ttb_real mo = mt[dim].entry(row,col);
         const ttb_real vo = vt[dim].entry(row,col);
@@ -338,11 +458,41 @@ namespace Genten {
         Kokkos::atomic_add(&vt[dim].entry(row,col), vn-vo);
 
         // Update to u
-        const ttb_real delta = -adam_step_*mn/(sqrt(vn)+eps);
+        const ttb_real delta = -adam_step_*mn/(sqrt(abs(vn))+eps);
 
         // Update u incorporating bounds
         GCP_SGD_Step<ExecSpace,LossFunction>::update_u_async(
           dim, row, col, delta, u);
+#elif 0
+        const ttb_real mn =
+          Kokkos::Impl::atomic_oper_fetch(AdamOp(beta1),
+                                          &mt[dim].entry(row,col),
+                                          g);
+        const ttb_real vn =
+          Kokkos::Impl::atomic_oper_fetch(AdamOp(beta2),
+                                          &vt[dim].entry(row,col),
+                                          g*g);
+
+        // Update to u
+        const ttb_real delta = -adam_step_*mn/(sqrt(abs(vn))+eps);
+
+        // Update u incorporating bounds
+        if (LossFunction::has_lower_bound() ||
+            LossFunction::has_upper_bound())
+          Kokkos::Impl::atomic_oper_fetch(BoundUpdate<LossFunction>(),
+                                          &u[dim].entry(row,col),
+                                          delta);
+        else
+          Kokkos::atomic_add(&u[dim].entry(row,col), delta);
+#else
+        // Can't use regular atomic_oper_fetch because the scalar size isn't
+        // right for the complex update we are using.  Instead use our own
+        // copy of atomic_fetch_oper for "large" types (which really does locks)
+        atomic_oper(AtomicAdamOp<LossFunction>(beta1, beta2, eps, adam_step_,
+                                               &mt[dim].entry(row,col),
+                                               &vt[dim].entry(row,col)),
+                    &u[dim].entry(row,col), g);
+#endif
       }
 
     protected:
