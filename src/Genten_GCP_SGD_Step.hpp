@@ -279,7 +279,7 @@ namespace Genten {
       unsigned int done_active = 0;
       while (active != done_active) {
         if (!done) {
-          if (Kokkos::Impl::lock_address_cuda_space((void*)u)) {
+          if (Kokkos::Impl::lock_address_cuda_space((void*)dst)) {
             Kokkos::memory_fence();
             dst_new = op.apply(*dst, val);
             *dst = dst_new;
@@ -445,6 +445,8 @@ namespace Genten {
           Kokkos::abort("beta2t_ > 1.0 !");
 
 #if 0
+        // While fast, this appears to not work
+
         // Read old values of moments
         const ttb_real mo = mt[dim].entry(row,col);
         const ttb_real vo = vt[dim].entry(row,col);
@@ -463,7 +465,11 @@ namespace Genten {
         // Update u incorporating bounds
         GCP_SGD_Step<ExecSpace,LossFunction>::update_u_async(
           dim, row, col, delta, u);
-#elif 0
+#elif 1
+        // This seems to generally work ok, but doesn't converge as well as
+        // synchronous
+
+        // Also much slower than above.
         const ttb_real mn =
           Kokkos::Impl::atomic_oper_fetch(AdamOp(beta1),
                                           &mt[dim].entry(row,col),
@@ -485,6 +491,8 @@ namespace Genten {
         else
           Kokkos::atomic_add(&u[dim].entry(row,col), delta);
 #else
+        // Not much better than above, but horribly slow on a GPU
+
         // Can't use regular atomic_oper_fetch because the scalar size isn't
         // right for the complex update we are using.  Instead use our own
         // copy of atomic_fetch_oper for "large" types (which really does locks)
