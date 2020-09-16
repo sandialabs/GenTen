@@ -360,10 +360,6 @@ namespace Genten {
       {
         m_prev.set(m);
         v_prev.set(v);
-        // auto total_samples_host = Kokkos::create_mirror_view(total_samples);
-        // Kokkos::deep_copy(total_samples_host, total_samples);
-        // total_samples_host() += epoch_iters*num_samples_per_it;
-        // Kokkos::deep_copy(total_samples, total_samples_host);
       }
 
       virtual void setFailed()
@@ -520,6 +516,278 @@ namespace Genten {
       VectorType v_prev;
       KtensorT<ExecSpace> mt;
       KtensorT<ExecSpace> vt;
+
+      // Specifically using signed integer here to allow for negative
+      Kokkos::View<ptrdiff_t,ExecSpace> total_samples;
+    };
+
+    template <typename Loss>
+    struct AtomicAMSGradOp {
+      const ttb_real beta1, beta2, eps, step;
+      volatile ttb_real* const m;
+      volatile ttb_real* const v;
+      volatile ttb_real* const w;
+
+      KOKKOS_INLINE_FUNCTION
+      AtomicAMSGradOp(const ttb_real beta1_,
+                      const ttb_real beta2_,
+                      const ttb_real eps_,
+                      const ttb_real step_,
+                      volatile ttb_real* const m_,
+                      volatile ttb_real* const v_,
+                      volatile ttb_real* const w_) :
+        beta1(beta1_), beta2(beta2_), eps(eps_), step(step_),
+        m(m_), v(v_), w(w_) {}
+
+      KOKKOS_INLINE_FUNCTION
+      ttb_real apply(const ttb_real u, const ttb_real g) const {
+        *m = beta1*(*m) + (1.0-beta1)*g;
+        *v = beta2*(*v) + (1.0-beta2)*g*g;
+        *w = *v > *w ? *v : *w;
+        ttb_real unew = u - step*(*m)/(std::sqrt(*w)+eps);
+        if (Loss::has_lower_bound() && unew < Loss::lower_bound())
+          unew = Loss::lower_bound();
+        if (Loss::has_upper_bound() && unew > Loss::upper_bound())
+          unew = Loss::upper_bound();
+        return unew;
+      }
+    };
+
+    template <typename ExecSpace, typename LossFunction>
+    class AMSGradStep : public GCP_SGD_Step<ExecSpace,LossFunction> {
+    public:
+      typedef GCP_SGD_Step<ExecSpace,LossFunction> BaseType;
+      typedef typename BaseType::VectorType VectorType;
+
+      AMSGradStep(const AlgParams& algParams, const VectorType& u) :
+        epoch_iters(algParams.epoch_iters),
+        num_samples_per_it(0),
+        step(0.0),
+        beta1(algParams.adam_beta1),
+        beta2(algParams.adam_beta2),
+        eps(algParams.adam_eps),
+        beta1t(1.0),
+        beta2t(1.0),
+        adam_step(0.0),
+        m(u.clone()),
+        v(u.clone()),
+        w(u.clone()),
+        m_prev(u.clone()),
+        v_prev(u.clone()),
+        w_prev(u.clone()),
+        mt(m.getKtensor()),
+        vt(v.getKtensor()),
+        wt(w.getKtensor()),
+        total_samples("total_samples")
+      {
+        m.zero();
+        v.zero();
+        w.zero();
+        m_prev.zero();
+        v_prev.zero();
+        w_prev.zero();
+        Kokkos::deep_copy(total_samples, 0);
+      }
+
+      virtual ~AMSGradStep() {}
+
+      virtual void setStep(const ttb_real s) { step = s; }
+
+      virtual ttb_real getStep() const { return step; }
+
+      virtual void update()
+      {
+        beta1t = beta1 * beta1t;
+        beta2t = beta2 * beta2t;
+        adam_step = step*std::sqrt(1.0-beta2t) / (1.0-beta1t);
+      }
+
+      virtual void reset()
+      {
+        beta1t = 1.0;
+        beta2t = 1.0;
+        m.zero();
+        v.zero();
+        w.zero();
+        m_prev.zero();
+        v_prev.zero();
+        w_prev.zero();
+        Kokkos::deep_copy(total_samples, 0);
+      }
+
+      virtual void setPassed()
+      {
+        m_prev.set(m);
+        v_prev.set(v);
+        w_prev.set(w);
+      }
+
+      virtual void setFailed()
+      {
+        m.set(m_prev);
+        v.set(v_prev);
+        w.set(w_prev);
+        beta1t /= std::pow(beta1, epoch_iters);
+        beta2t /= std::pow(beta2, epoch_iters);
+
+        auto total_samples_host = Kokkos::create_mirror_view(total_samples);
+        Kokkos::deep_copy(total_samples_host, total_samples);
+        total_samples_host() -= epoch_iters*num_samples_per_it;
+        if (total_samples_host() < 0)
+          total_samples_host() = 0;
+        Kokkos::deep_copy(total_samples, total_samples_host);
+      }
+
+      virtual void setNumSamples(const ttb_indx num_samples) {
+        num_samples_per_it = num_samples;
+      }
+
+      virtual void eval(const VectorType& g, VectorType& u) const
+      {
+        using std::sqrt;
+        constexpr bool has_bounds = (LossFunction::has_lower_bound() ||
+                                     LossFunction::has_upper_bound());
+        constexpr ttb_real lb = LossFunction::lower_bound();
+        constexpr ttb_real ub = LossFunction::upper_bound();
+        const ttb_real adam_step_ = adam_step;
+        const ttb_real eps_ = eps;
+        const ttb_real beta1_ = beta1;
+        const ttb_real beta2_ = beta2;
+        auto uv = u.getView();
+        auto gv = g.getView();
+        auto mv = m.getView();
+        auto vv = v.getView();
+        auto wv = w.getView();
+        u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
+        {
+          mv(i) = beta1_*mv(i) + (1.0-beta1_)*gv(i);
+          vv(i) = beta2_*vv(i) + (1.0-beta2_)*gv(i)*gv(i);
+          wv(i) = vv(i) > wv(i) ? vv(i) : wv(i);
+          ttb_real uu = uv(i);
+          uu -= adam_step_*mv(i)/sqrt(wv(i)+eps_);
+          if (has_bounds)
+            uu = uu < lb ? lb : (uu > ub ? ub : uu);
+          uv(i) = uu;
+        });
+      }
+
+      template <typename TeamMember>
+      KOKKOS_INLINE_FUNCTION
+      void update_async(const ttb_indx num_iters, const TeamMember& team) const
+      {
+        Kokkos::single(Kokkos::PerThread( team ), [&]()
+        {
+          Kokkos::atomic_add(&total_samples(), ptrdiff_t(num_iters));
+        });
+      }
+
+      KOKKOS_INLINE_FUNCTION
+      void eval_async(const unsigned dim, const ttb_indx row,
+                      const unsigned col, const ttb_real g,
+                      const KtensorT<ExecSpace>& u) const
+      {
+        using std::sqrt;
+        using std::pow;
+        using std::abs;
+
+        // Compute our iteration index
+        const ttb_indx ts = total_samples();
+        const ttb_indx it = (ts+num_samples_per_it-1) / num_samples_per_it;
+
+        // Compute exponential weighting
+        const ttb_real beta1t_ = pow(beta1, ttb_real(it+1));
+        const ttb_real beta2t_ = pow(beta2, ttb_real(it+1));
+        const ttb_real adam_step_ = step*sqrt(1.0-beta2t_) / (1.0-beta1t_);
+        if (beta1t_ > 1.0)
+          Kokkos::abort("beta1t_ > 1.0 !");
+        if (beta2t_ > 1.0)
+          Kokkos::abort("beta2t_ > 1.0 !");
+
+#if 0
+        // While fast, this appears to not work
+
+        // Read old values of moments
+        const ttb_real mo = mt[dim].entry(row,col);
+        const ttb_real vo = vt[dim].entry(row,col);
+        const ttb_real wo = wt[dim].entry(row,col);
+
+        // New values of moments
+        const ttb_real mn = beta1*mo + (1.0-beta1)*g;
+        const ttb_real vn = beta2*vo + (1.0-beta2)*g*g;
+        const ttb_real wn = vn > wo ? vn : wo;
+
+        // Write new values using atomic_add for speed
+        Kokkos::atomic_add(&mt[dim].entry(row,col), mn-mo);
+        Kokkos::atomic_add(&vt[dim].entry(row,col), vn-vo);
+        Kokkos::atomic_add(&wt[dim].entry(row,col), wn-wo);
+
+        // Update to u
+        const ttb_real delta = -adam_step_*mn/(sqrt(abs(wn))+eps);
+
+        // Update u incorporating bounds
+        GCP_SGD_Step<ExecSpace,LossFunction>::update_u_async(
+          dim, row, col, delta, u);
+#elif 1
+        // This seems to generally work ok, but doesn't converge as well as
+        // synchronous
+
+        // Also much slower than above.
+        const ttb_real mn =
+          Kokkos::Impl::atomic_oper_fetch(AdamOp(beta1),
+                                          &mt[dim].entry(row,col),
+                                          g);
+        const ttb_real vn =
+          Kokkos::Impl::atomic_oper_fetch(AdamOp(beta2),
+                                          &vt[dim].entry(row,col),
+                                          g*g);
+        const ttb_real wn =
+          Kokkos::atomic_max_fetch(&wt[dim].entry(row,col), vn);
+
+        // Update to u
+        const ttb_real delta = -adam_step_*mn/(sqrt(abs(wn))+eps);
+
+        // Update u incorporating bounds
+        if (LossFunction::has_lower_bound() ||
+            LossFunction::has_upper_bound())
+          Kokkos::Impl::atomic_oper_fetch(BoundUpdate<LossFunction>(),
+                                          &u[dim].entry(row,col),
+                                          delta);
+        else
+          Kokkos::atomic_add(&u[dim].entry(row,col), delta);
+#else
+        // Not much better than above, but horribly slow on a GPU
+
+        // Can't use regular atomic_oper_fetch because the scalar size isn't
+        // right for the complex update we are using.  Instead use our own
+        // copy of atomic_fetch_oper for "large" types (which really does locks)
+        atomic_oper(AtomicAMSGradOp<LossFunction>(beta1, beta2, eps, adam_step_,
+                                                  &mt[dim].entry(row,col),
+                                                  &vt[dim].entry(row,col),
+                                                  &wt[dim].entry(row,col)),
+                    &u[dim].entry(row,col), g);
+#endif
+      }
+
+    protected:
+      ttb_indx epoch_iters;
+      ttb_indx num_samples_per_it;
+      ttb_real step;
+      ttb_real beta1;
+      ttb_real beta2;
+      ttb_real eps;
+      ttb_real beta1t;
+      ttb_real beta2t;
+      ttb_real adam_step;
+
+      VectorType m;
+      VectorType v;
+      VectorType w;
+      VectorType m_prev;
+      VectorType v_prev;
+      VectorType w_prev;
+      KtensorT<ExecSpace> mt;
+      KtensorT<ExecSpace> vt;
+      KtensorT<ExecSpace> wt;
 
       // Specifically using signed integer here to allow for negative
       Kokkos::View<ptrdiff_t,ExecSpace> total_samples;

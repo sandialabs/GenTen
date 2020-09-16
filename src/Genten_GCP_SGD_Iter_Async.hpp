@@ -229,6 +229,8 @@ namespace Genten {
           dynamic_cast<AdaGradStep<ExecSpace,LossFunction>*>(&stepper);
         AdamStep<ExecSpace,LossFunction>* adam_step =
           dynamic_cast<AdamStep<ExecSpace,LossFunction>*>(&stepper);
+        AMSGradStep<ExecSpace,LossFunction>* amsgrad_step =
+          dynamic_cast<AMSGradStep<ExecSpace,LossFunction>*>(&stepper);
         if (sgd_step != nullptr)
           gcp_sgd_iter_async_kernel(
             X,this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*sgd_step,
@@ -240,6 +242,10 @@ namespace Genten {
         else if (adam_step != nullptr)
           gcp_sgd_iter_async_kernel(
             X,this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*adam_step,
+            this->algParams, total_iters);
+        else if (amsgrad_step != nullptr)
+          gcp_sgd_iter_async_kernel(
+            X,this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*amsgrad_step,
             this->algParams, total_iters);
         else
           Genten::error("Unsupported GCP-SGD stepper!");

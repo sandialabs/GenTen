@@ -193,6 +193,8 @@ namespace Genten {
         stepper = new AdamStep<ExecSpace,LossFunction>(algParams, u);
       else if (algParams.step_type == GCP_Step::AdaGrad)
         stepper = new AdaGradStep<ExecSpace,LossFunction>(algParams, u);
+      else if (algParams.step_type == GCP_Step::AMSGrad)
+        stepper = new AMSGradStep<ExecSpace,LossFunction>(algParams, u);
       else
         stepper = new SGDStep<ExecSpace,LossFunction>();
 
