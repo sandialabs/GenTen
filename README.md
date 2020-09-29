@@ -70,7 +70,7 @@ CMake to build Genten.
 
 Using our example above, the genten source goes in
 top-level/genten/genten.  To build the code with CMake,
-we create a simple bash script, in top-level\genten\genten\build, 
+we create a simple bash script, in top-level/genten/genten/build, 
 such as the following:
 
 ```
