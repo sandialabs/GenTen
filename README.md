@@ -82,20 +82,18 @@ EXTRA_ARGS=$@
 cmake \
  -D CMAKE_CXX_COMPILER=g++ \
  -D CMAKE_C_COMPILER=gcc \
- -D KOKKOS_INLINE_BUILD=ON \
  -D Kokkos_ENABLE_OPENMP=ON \
  -D Kokkos_ARCH_SKX=ON \
- -D debug=OFF \
  ${EXTRA_ARGS} \
  ../../genten
 ```
 
 The script uses Kokkos options to specify the type of parallelism (OpenMP) and
-the host architecture (SNB for Intel Skylake CPU).
+the host architecture (SKX for Intel Skylake CPU).
 
 Execute this script to configure genten and Kokkos using CMake.  This will use
 Kokkos for setting the necessary CXX flags for your architecture.
-Then run "make".  To run the tests, you can run "./bin/unit_tests".
+Then run "make".  To run the tests, you can run `./bin/unit_tests`.
 
 For examples of using genten, look in directories performance, driver,
 and tests.
@@ -170,13 +168,11 @@ cmake \
  -D CMAKE_C_COMPILER=icc \
  -D CMAKE_CXX_FLAGS="-g -restrict" \
  -D CMAKE_C_FLAGS="-g -restrict" \
- -D KOKKOS_INLINE_BUILD=ON \
  -D Kokkos_ENABLE_OPENMP=ON \
  -D Kokkos_ARCH_SKX=ON \
  -D Kokkos_ENABLE_AGGRESSIVE_VECTORIZATION=ON \
  -D LAPACK_LIBS=$MKLROOT/lib/intel64/libmkl_rt.so \
  -D LAPACK_ADD_LIBS="-liomp5;-lpthread;-lm;-ldl" \
- -D debug=OFF \
  ${EXTRA_ARGS} \
  ../../genten
 ```
@@ -213,12 +209,10 @@ cmake \
  -D CMAKE_C_COMPILER=gcc \
  -D CMAKE_CXX_FLAGS="-g  -lineinfo" \
  -D CMAKE_C_FLAGS="-g" \
- -D KOKKOS_INLINE_BUILD=ON \
  -D Kokkos_ENABLE_OPENMP=ON \
  -D Kokkos_ENABLE_CUDA=ON \
  -D Kokkos_ARCH_SKX=ON \
  -D Kokkos_ARCH_VOLTA70=ON \
- -D debug=OFF \
  ${EXTRA_ARGS} \
  ../../genten
 ```
@@ -281,7 +275,7 @@ removed.  You must also specify an install directory.  Furthemore,
 since Genten requires use of C++14 constructs, the C++ standard
 enabled within Kokkos must be set to 14.  For example,
 here is a simple script for building Kokkos using OpenMP on a
-SandyBridge CPU architecture, assuming the Kokkos source is placed in
+Skylake CPU architecture, assuming the Kokkos source is placed in
 top-level/kokkos/kokkos:
 
 ```
@@ -322,7 +316,6 @@ cmake \
  -D CMAKE_CXX_COMPILER=g++ \
  -D CMAKE_C_COMPILER=gcc \
  -D KOKKOS_PATH=${KOKKOS} \
- -D debug=OFF \
  ${EXTRA_ARGS} \
  ../../genten
 ```
@@ -336,7 +329,7 @@ architectures, there are some caveats.  As with the inline build,
 nvcc_wrapper must be used as the compiler when compiling Kokkos.
 Furthermore you must enable lambda support through the option `-D
 Kokkos_ENABLE_CUDA_LAMBDA=ON \`, since Genten makes heavy use of
-lambdas.  For example, a Kokkos configure script suitable for Nvida
+lambdas.  For example, a Kokkos configure script suitable for Nvidia
 Volta GPUs is then
 
 ```
@@ -375,7 +368,6 @@ cmake \
  -D CMAKE_CXX_FLAGS="-g -lineinfo" \
  -D CMAKE_C_FLAGS="-g" \
  -D KOKKOS_PATH=${KOKKOS} \
- -D debug=OFF \
  ${EXTRA_ARGS} \
  ../../genten
 ```
