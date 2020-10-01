@@ -480,3 +480,21 @@ Genten, please see
   on Emerging Computing Architectures*, SIAM Journal on Scientific Computing
   2019 41:3, C269-C290
   (available [here](https://epubs.siam.org/doi/ref/10.1137/18M1210691)).
+
+# Updating Kokkos
+
+Genten uses `git subtree` to manage the bundled Kokkos source.  Below is a summary of the steps required to update Genten's clone to the latest Kokkos sources.
+
+First add a remote referencing the Kokkos github repo:
+```
+git remote add -f kokkos git@github.com:kokkos/kokkos.git
+```
+Then the Kokkos clone can be udpated via
+```
+git fetch kokkos master
+git subtree pull --prefix kokkos kokkos master --squash
+```
+The new Kokkos sources are then pushed to the Genten repo as usual:
+```
+git push
+```
