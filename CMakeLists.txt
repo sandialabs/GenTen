@@ -55,8 +55,7 @@ SET(CMAKE_CXX_EXTENSIONS OFF)
 #---- Package OPTIONS
 #------------------------------------------------------------
 OPTION(BUILD_SHARED_LIBS "Build shared libraries." OFF)
-OPTION(KOKKOS_INLINE_BUILD "Build Kokkos inline with Genten.  Kokkos source must be in genten/kokkos." OFF)
-OPTION(KOKKOS_PATH "Path to Kokkos installation.  Do not set this for an inline build of Kokkos.")
+OPTION(KOKKOS_PATH "Path to Kokkos installation for external Kokkos builds.  Setting this turns off the inline build with the bundled Kokkos source.")
 OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files" OFF)
 OPTION(ENABLE_CALIPER "Enable Caliper for application profiling" OFF)
 OPTION(ENABLE_MATLAB "Enable MATLAB linkage to Tensor Toolbox" OFF)
@@ -74,6 +73,12 @@ IF(INDEX_TYPE)
   SET(GENTEN_INDEX_TYPE ${INDEX_TYPE})
 ELSE()
   SET(GENTEN_INDEX_TYPE "size_t")
+ENDIF()
+
+IF(KOKKOS_PATH)
+  SET(KOKKOS_INLINE_BUILD OFF)
+ELSE()
+  SET(KOKKOS_INLINE_BUILD ON)
 ENDIF()
 
 # If we are doing an inline build of Kokkos
