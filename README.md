@@ -17,7 +17,7 @@ Government retains certain rights in this software.
 ## Required Dependencies
 
 Genten requires the following components in order to build and run:
-* Kokkos for perfomance portable shared memory parallelism.  Genten tries to maintain compatability with the current master branch of Kokkos (which corresponds to Kokkos releases).  There is no guarantee of compatability with the develop branch.
+* Kokkos for perfomance portable shared memory parallelism.  Genten bundles a clone of the Kokkos source using `git subtree` for use with inline builds (see below), which is generally kept up to date with the current Kokkos master branch (which corresponds to Kokkos releases).  This is the only version of Kokkos that is guaranteed to work with Genten (however later versions or the develop branch may work).
 * A C++14 standard-compliant compiler.  In principle, any C++14 compiler supported by Kokkos should work, however many older compilers that claim compatability have bugs that are often exposed by Kokkos and/or Genten.  Genten is regularly tested with the following compilers and so these or any later version should work (earlier versions of these compilers *may* work, however it is known that Genten does not compile with GCC 5 or 6 and Intel 17 or 18):
   * GCC 7.X
   * Intel 19
@@ -37,24 +37,18 @@ Genten can optionally use the following components:
 ## Building Genten
 
 Genten requires [Kokkos](github.com/kokkos/kokkos) for on-node thread/GPU
-parallelism, and is available from github via
-
-```
-git clone https://github.com/kokkos/kokkos.git
-```
-
-Genten supports two approaches for building Kokkos for use with Genten:  an
+parallelism.  Genten supports two approaches for building Kokkos for use with Genten:  an
 external build of Kokkos that is installed and linked to Genten, or an inline
-build of Kokkos along with Genten.  The latter is simpler and will be described
-first.  The former is useful if Genten must be linked into an application that
-itself uses Kokkos.
+build of Kokkos along with Genten using the bundled Kokkos source.
+The latter is simpler and will be described first.  The former is useful if Genten
+must be linked into an application that itself uses Kokkos.  Note however that only
+the version of Kokkos that is provided with Genten is regularly tested for either
+inline or external builds.
 
 ## Inline build with Kokkos
 
 The instructions below assume a directory structure similar to the following.
-To build Kokkos inline with Genten, the top-level Kokkos source directory must
-be placed inside the top-level Genten source directory.  For concreteness,
-assume we will building an optimized version of the code using GNU compilers
+For concreteness, assume we will building an optimized version of the code using GNU compilers
 and OpenMP parallelism.
 
 ```
