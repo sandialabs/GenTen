@@ -14,7 +14,27 @@ Government retains certain rights in this software.
 
 # Build Instructions
 
-*Note:  Genten requires a C++14 standard-compliant compiler.*
+## Required Dependencies
+
+Genten requires the following components in order to build and run:
+* Kokkos for perfomance portable shared memory parallelism.  Genten tries to maintain compatability with the current master branch of Kokkos (which corresponds to Kokkos releases).  There is no guarantee of compatability with the develop branch.
+* A C++14 standard-compliant compiler.  In principle, any C++14 compiler supported by Kokkos should work, however many older compilers that claim compatability have bugs that are often exposed by Kokkos and/or Genten.  Genten is regularly tested with the following compilers and so these or any later version should work (earlier versions of these compilers *may* work, however it is known that Genten does not compile with GCC 5 or 6 and Intel 17 or 18):
+  * GCC 7.X
+  * Intel 19
+  * Clang 9
+* BLAS and LAPACK for CPU (OpenMP and/or pThreads) builds.
+* The Cuda toolkit for Nvidia Cuda builds.  In principle any version of Cuda supported by Kokkos should work.  Currently this is Cuda versions 9 and 10.
+* CMake for configure/build.  Any version of CMake supported by Kokkos should work.  Currently this is version 3.10 or later.
+
+## Optional Dependencies
+
+Genten can optionally use the following components:
+* MATLAB for integration with the Tensor Toolbox.  Version 2018b or later should work.
+* Boost for reading compressed sparse tensors.
+* Caliper for application profiling.
+* Trilinos/ROL for gradient-based GCP optimization approaches (experimental)
+
+## Building Genten
 
 Genten requires [Kokkos](github.com/kokkos/kokkos) for on-node thread/GPU
 parallelism, and is available from github via
@@ -70,14 +90,14 @@ cmake \
  -D CMAKE_C_COMPILER=gcc \
  -D KOKKOS_INLINE_BUILD=ON \
  -D Kokkos_ENABLE_OPENMP=ON \
- -D Kokkos_ARCH_SNB=ON \
+ -D Kokkos_ARCH_SKX=ON \
  -D debug=OFF \
  ${EXTRA_ARGS} \
  ../../genten
 ```
 
 The script uses Kokkos options to specify the type of parallelism (OpenMP) and
-the host architecture (SNB for Intel Sandy Bridge CPU).
+the host architecture (SNB for Intel Skylake CPU).
 
 Execute this script to configure genten and Kokkos using CMake.  This will use
 Kokkos for setting the necessary CXX flags for your architecture.
@@ -101,14 +121,9 @@ This is enabled by adding the following to your genten configure script:
 where PATH-TO-BOOST is the path to the top-level of your boost
 installation.
 
-#### LAPACK
+#### BLAS/LAPACK
 
-For best performance, a LAPACK library tuned for your machine should
-be used.  Most computations in Genten are implemented directly with
-Kokkos, however LAPACK is used for solving linear systems of
-equations.  If LAPACK is not enabled, Genten provides its own, serial,
-non-performant implementation.  LAPACK is enabled through the LAPACK_LIBS and
-LAPACK_ADD_LIBS CMake variables, e.g., for Intel MKL:
+Most computations in Genten are implemented directly with Kokkos, however BLAS and LAPACK routines are used when possible.  Therefore these libraries are required for CPU builds (i.e., OpenMP or pThreads).  For Cuda GPU builds, Genten instead uses cuBLAS and cuSolver, which are distributed as part of the Cuda toolkit.  LAPACK and BLAS are enabled through the LAPACK_LIBS and LAPACK_ADD_LIBS CMake variables, e.g., for Intel MKL:
 
 ```
  -D LAPACK_LIBS=${MKLROOT}/lib/intel64/libmkl_rt.so \
@@ -140,15 +155,13 @@ of multi-core and many-core architectures, including multi-core CPUs,
 many-core Intel Phi accelerators, and Nvidia GPUs.  Compiling for each
 architecture requires specifying compilers and architecture-related Kokkos
 options in the Genten configure scripts.
-Examples for each supported architecture can be found in
-genten/config-scripts, however the necessary steps will
-be summarized here.
+Examples for common cases are summarized here.
 
 #### Intel CPU architectures
 
 For Intel CPU architectures, the Intel compilers should be used, along
 with Intel MKL.  The configure scripts are similar to the ones above.
-For example, a configure script for Haswell is
+For example, a configure script for Skylake is
 
 ```
 #!/bin/bash
@@ -165,12 +178,10 @@ cmake \
  -D CMAKE_C_FLAGS="-g -restrict" \
  -D KOKKOS_INLINE_BUILD=ON \
  -D Kokkos_ENABLE_OPENMP=ON \
- -D Kokkos_ARCH_HSW=ON \
+ -D Kokkos_ARCH_SKX=ON \
  -D Kokkos_ENABLE_AGGRESSIVE_VECTORIZATION=ON \
  -D LAPACK_LIBS=$MKLROOT/lib/intel64/libmkl_rt.so \
  -D LAPACK_ADD_LIBS="-liomp5;-lpthread;-lm;-ldl" \
- -D ENABLE_BOOST=ON \
- -D BOOST_PATH=${BOOST_ROOT} \
  -D debug=OFF \
  ${EXTRA_ARGS} \
  ../../genten
@@ -194,7 +205,7 @@ this, Kokkos provides a script called nvcc_wrapper that makes nvcc act
 like a normal compiler in terms of command line arguments, which must
 be specified as the compiler.
 
-A configure script suitable for Nvida K80 GPUs is then
+A configure script suitable for Nvida Volta GPUs is then
 
 ```
 rm -f CMakeCache.txt;
@@ -211,12 +222,8 @@ cmake \
  -D KOKKOS_INLINE_BUILD=ON \
  -D Kokkos_ENABLE_OPENMP=ON \
  -D Kokkos_ENABLE_CUDA=ON \
- -D Kokkos_ARCH_HSW=ON \
- -D Kokkos_ARCH_KEPLER37=ON \
- -D ENABLE_CUBLAS=ON \
- -D ENABLE_CUSOLVER=ON \
- -D ENABLE_BOOST=ON \
- -D BOOST_PATH=${BOOST_ROOT} \
+ -D Kokkos_ARCH_SKX=ON \
+ -D Kokkos_ARCH_VOLTA70=ON \
  -D debug=OFF \
  ${EXTRA_ARGS} \
  ../../genten
@@ -295,7 +302,7 @@ cmake \
   -D CMAKE_CXX_COMPILER=g++ \
   -D Kokkos_CXX_STANDARD=14 \
   -D Kokkos_ENABLE_OPENMP=ON \
-  -D Kokkos_ARCH_SNB=ON \
+  -D Kokkos_ARCH_SKX=ON \
   ${KOKKOS}
 ```
 
@@ -336,7 +343,7 @@ nvcc_wrapper must be used as the compiler when compiling Kokkos.
 Furthermore you must enable lambda support through the option `-D
 Kokkos_ENABLE_CUDA_LAMBDA=ON \`, since Genten makes heavy use of
 lambdas.  For example, a Kokkos configure script suitable for Nvida
-K80 GPUs is then
+Volta GPUs is then
 
 ```
 rm -f CMakeCache.txt;
@@ -352,8 +359,8 @@ cmake \
   -D Kokkos_ENABLE_CUDA=ON \
   -D Kokkos_ENABLE_CUDA_UVM=OFF \
   -D Kokkos_ENABLE_CUDA_LAMBDA=ON \
-  -D Kokkos_ARCH_SNB=ON \
-  -D Kokkos_ARCH_KEPLER37=ON \
+  -D Kokkos_ARCH_SKX=ON \
+  -D Kokkos_ARCH_VOLTA70=ON \
   ${KOKKOS}
 ```
 
@@ -374,10 +381,6 @@ cmake \
  -D CMAKE_CXX_FLAGS="-g -lineinfo" \
  -D CMAKE_C_FLAGS="-g" \
  -D KOKKOS_PATH=${KOKKOS} \
- -D ENABLE_CUBLAS=ON \
- -D ENABLE_CUSOLVER=ON \
- -D ENABLE_BOOST=ON \
- -D BOOST_PATH=${BOOST_ROOT} \
  -D debug=OFF \
  ${EXTRA_ARGS} \
  ../../genten
