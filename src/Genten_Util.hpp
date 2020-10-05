@@ -219,14 +219,15 @@ namespace Genten {
     enum type {
       SGD,
       ADAM,
-      AdaGrad
+      AdaGrad,
+      AMSGrad
     };
-    static constexpr unsigned num_types = 3;
+    static constexpr unsigned num_types = 4;
     static constexpr type types[] = {
-      SGD, ADAM, AdaGrad
+      SGD, ADAM, AdaGrad, AMSGrad
     };
     static constexpr const char* names[] = {
-      "sgd", "adam", "adagrad"
+      "sgd", "adam", "adagrad", "amsgrad"
     };
     static constexpr type default_type = ADAM;
   };

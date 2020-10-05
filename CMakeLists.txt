@@ -39,8 +39,8 @@
 #@HEADER
 
 
-#---- Specify the CMake version required.  Kokkos requires 3.3
-CMAKE_MINIMUM_REQUIRED (VERSION 3.3)
+#---- Specify the CMake version required.  Kokkos requires 3.10
+CMAKE_MINIMUM_REQUIRED (VERSION 3.10)
 
 #---- Declaring the project name will define ${Genten_SOURCE_DIR} to be
 #---- the path to this source file, and ${Genten_BINARY_DIR} to be the path
@@ -55,10 +55,8 @@ SET(CMAKE_CXX_EXTENSIONS OFF)
 #---- Package OPTIONS
 #------------------------------------------------------------
 OPTION(BUILD_SHARED_LIBS "Build shared libraries." OFF)
-OPTION(KOKKOS_INLINE_BUILD "Build Kokkos inline with Genten.  Kokkos source must be in genten/kokkos." OFF)
-OPTION(KOKKOS_PATH "Path to Kokkos installation.  Do not set this for an inline build of Kokkos.")
+OPTION(KOKKOS_PATH "Path to Kokkos installation for external Kokkos builds.  Setting this turns off the inline build with the bundled Kokkos source.")
 OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files" OFF)
-OPTION(ENABLE_LAPACK "Enable BLAS/LAPACK (if disabled, Genten implementations will be used" ON)
 OPTION(ENABLE_CALIPER "Enable Caliper for application profiling" OFF)
 OPTION(ENABLE_MATLAB "Enable MATLAB linkage to Tensor Toolbox" OFF)
 OPTION(FLOAT_TYPE "C++ data type used for floating-point values" OFF)
@@ -77,6 +75,15 @@ ELSE()
   SET(GENTEN_INDEX_TYPE "size_t")
 ENDIF()
 
+IF(KOKKOS_PATH)
+  SET(KOKKOS_INLINE_BUILD OFF)
+ELSE()
+  SET(KOKKOS_INLINE_BUILD ON)
+ENDIF()
+
+# Check minimum compiler version
+INCLUDE (cmake/CheckCompilerVersion.cmake)
+
 # If we are doing an inline build of Kokkos
 IF(KOKKOS_INLINE_BUILD)
 
@@ -86,7 +93,7 @@ IF(KOKKOS_INLINE_BUILD)
   ENDIF()
 
   # Configure kokkos
-  ADD_SUBDIRECTORY(kokkos)
+  ADD_SUBDIRECTORY(tpls/kokkos)
 
 ELSE()
 
@@ -130,7 +137,7 @@ IF (ENABLE_GCP)
     OPTION(ROL_PATH "Path to ROL installation")
     FIND_PACKAGE(ROL PATHS "${ROL_PATH}" NO_DEFAULT_PATH)
 
-    MESSAGE("\nFound ROL: ")
+    MESSAGE("\nGenten:  Found ROL: ")
     MESSAGE("   ROL_DIR = ${ROL_DIR}")
     MESSAGE("   ROL_PACKAGE_LIST = ${ROL_PACKAGE_LIST}")
     MESSAGE("   ROL_LIBRARIES = ${ROL_LIBRARIES}")
@@ -156,11 +163,9 @@ IF(ENABLE_MATLAB)
   SET(Matlab_ROOT_DIR "${MATLAB_PATH}")
   FIND_PACKAGE(Matlab COMPONENTS MX_LIBRARY)
   IF(Matlab_FOUND)
-    MESSAGE("\nFound MATLAB: ")
-    MESSAGE("   Matlab_ROOT_DIR = ${Matlab_ROOT_DIR}")
     SET(HAVE_MATLAB ON)
   ELSE()
-    MESSAGE("\n Could not find MATLAB")
+    MESSAGE(FATAL_ERROR "Could not find MATLAB!")
   ENDIF()
 ENDIF()
 
@@ -170,16 +175,18 @@ IF(Kokkos_ENABLE_CUDA)
   IF (ENABLE_CUBLAS)
     SET(GENTEN_LIBS "${GENTEN_LIBS} -lcublas")
     SET(HAVE_CUBLAS ${ENABLE_CUBLAS})
+    MESSAGE (STATUS "GenTen: Using cuBLAS")
   ENDIF()
   IF (ENABLE_CUSOLVER)
     SET(GENTEN_LIBS "${GENTEN_LIBS} -lcusolver")
     SET(HAVE_CUSOLVER ${ENABLE_CUSOLVER})
+    MESSAGE (STATUS "GenTen: Using cuSolver")
   ENDIF()
   # Add useful CXX flags when building with Cuda
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --expt-relaxed-constexpr")
   IF (KOKKOS_CXX_COMPILER_ID STREQUAL NVIDIA)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Xcudafe --diag_suppress=code_is_unreachable")
-    message("CMAKE_CXX_FLAGS = ${CMAKE_CXX_FLAGS}")
+    #message("CMAKE_CXX_FLAGS = ${CMAKE_CXX_FLAGS}")
   ENDIF()
 ENDIF()
 
@@ -272,6 +279,7 @@ INSTALL (
 # Separate pure c code from c++ code so CMake doesn't add Kokkos CXX flags
 # to compile of c code (since the c code can't depend on kokkos)
 #------------------------------------------------------------
+OPTION(ENABLE_LAPACK "Enable BLAS/LAPACK.  Only required for CPU (cuBLAS/cuSolver are used on GPU)." ON)
 INCLUDE (cmake/ConfigureLapack.cmake)
 IF (LAPACK_FOUND)
   ADD_DEFINITIONS (-DLAPACK_FOUND)

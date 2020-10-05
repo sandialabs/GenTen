@@ -43,7 +43,7 @@
 # This module finds one or more libraries supplying LAPACK/BLAS functions.
 # To link with a known library, set its location with command line options.
 # If not set on the command line, then CMake searches in default locations.
-# If no LAPACK/BLAS is found, then default to a TTB implementation; however,
+# If no LAPACK/BLAS is found, then default to a GenTen implementation; however,
 # it is not be tuned for best architecture performance.
 #
 # Command line options:
@@ -64,18 +64,19 @@
 #
 # Note that FIND_LIBRARY does not test if all references are resolved.
 # Do not use LAPACK_LIBRARIES as this is an internal CMake variable name.
-IF(ENABLE_LAPACK AND NOT LAPACK_LIBS)
-  MESSAGE (STATUS "TTB: Looking for LAPACK/BLAS libraries")
-  
-  FIND_LIBRARY(LAPACK lapack)
-  FIND_LIBRARY(BLAS blas)
-  MARK_AS_ADVANCED(LAPACK BLAS)
-  IF(LAPACK AND BLAS)
-    SET(LAPACK_LIBS "${LAPACK};${BLAS}" CACHE STRING "Location of LAPACK/BLAS libraries")
-  ENDIF(LAPACK AND BLAS)
-ELSE (NOT LAPACK_LIBS)
-  MESSAGE (STATUS "TTB: Attempting to use user-defined LAPACK/BLAS libraries: ${LAPACK_LIBS}")
-ENDIF(ENABLE_LAPACK AND NOT LAPACK_LIBS)
+IF(ENABLE_LAPACK)
+  IF(NOT LAPACK_LIBS)
+    MESSAGE (STATUS "GenTen: Looking for LAPACK/BLAS libraries")
+    FIND_LIBRARY(LAPACK lapack)
+    FIND_LIBRARY(BLAS blas)
+    MARK_AS_ADVANCED(LAPACK BLAS)
+    IF(LAPACK AND BLAS)
+      SET(LAPACK_LIBS "${LAPACK};${BLAS}" CACHE STRING "Location of LAPACK/BLAS libraries")
+    ENDIF(LAPACK AND BLAS)
+  ELSE (NOT LAPACK_LIBS)
+    MESSAGE (STATUS "GenTen: Attempting to use user-defined BLAS/LAPACK libraries: ${LAPACK_LIBS}")
+  ENDIF(NOT LAPACK_LIBS)
+ENDIF(ENABLE_LAPACK)
 
 # The following did not work on MacOSX, because the BLAS library was missing
 #FIND_LIBRARY (LAPACK_LIBS NAMES lapack
@@ -83,28 +84,32 @@ ENDIF(ENABLE_LAPACK AND NOT LAPACK_LIBS)
 
 # Set the boolean LAPACK_FOUND.
 IF (NOT ENABLE_LAPACK OR NOT LAPACK_LIBS)
-    SET (LAPACK_FOUND FALSE)
-    SET (LAPACK_LIBS "")
+  SET (LAPACK_FOUND FALSE)
+  SET (LAPACK_LIBS "")
 ELSE (NOT ENABLE_LAPACK OR NOT LAPACK_LIBS)
-    SET (LAPACK_FOUND TRUE)
+  SET (LAPACK_FOUND TRUE)
 
-    # Check if user-specified libraries exist.
-    FOREACH (loopVar  ${LAPACK_LIBS})
-        IF (NOT EXISTS ${loopVar})
-            MESSAGE (FATAL_ERROR "TTB: Cannot find file " ${loopVar})
-        ENDIF (NOT EXISTS ${loopVar})
-    ENDFOREACH (loopVar)
+  # Check if user-specified libraries exist.
+  FOREACH (loopVar  ${LAPACK_LIBS})
+    IF (NOT EXISTS ${loopVar})
+      MESSAGE (FATAL_ERROR "GenTen: Cannot find file " ${loopVar})
+    ENDIF (NOT EXISTS ${loopVar})
+  ENDFOREACH (loopVar)
 ENDIF (NOT ENABLE_LAPACK OR NOT LAPACK_LIBS)
 
 # Report which libraries will be used.
 IF (LAPACK_FOUND)
-    MESSAGE (STATUS "TTB: Using LAPACK/BLAS libraries:")
-    FOREACH (loopVar ${LAPACK_LIBS})
-  	MESSAGE (STATUS "  " ${loopVar})
-    ENDFOREACH (loopVar)
-    FOREACH (loopVar ${LAPACK_ADD_LIBS})
-  	MESSAGE (STATUS "  linking with " ${loopVar})
-    ENDFOREACH (loopVar)
+  MESSAGE (STATUS "GenTen: Using BLAS/LAPACK libraries:")
+  FOREACH (loopVar ${LAPACK_LIBS})
+    MESSAGE (STATUS "  " ${loopVar})
+  ENDFOREACH (loopVar)
+  FOREACH (loopVar ${LAPACK_ADD_LIBS})
+    MESSAGE (STATUS "  linking with " ${loopVar})
+  ENDFOREACH (loopVar)
 ELSE (LAPACK_FOUND)
-    MESSAGE (STATUS "TTB: LAPACK not found, will compile TTB LAPACK code.")
+  IF(Kokkos_ENABLE_CUDA)
+    MESSAGE (STATUS "GenTen: BLAS/LAPACK not enabled or not found, will compile GenTen BLAS/LAPACK stubs for correct host-side linking")
+  ELSE()
+    MESSAGE (FATAL_ERROR "GenTen: BLAS/LAPACK not found, but is required when building only for CPU!")
+  ENDIF()
 ENDIF (LAPACK_FOUND)
