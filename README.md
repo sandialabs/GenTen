@@ -485,7 +485,7 @@ git remote add -f kokkos git@github.com:kokkos/kokkos.git
 Then the Kokkos clone can be udpated via
 ```
 git fetch kokkos master
-git subtree pull --prefix kokkos kokkos master --squash
+git subtree pull --prefix tpls/kokkos kokkos master --squash
 ```
 The new Kokkos sources are then pushed to the Genten repo as usual:
 ```
