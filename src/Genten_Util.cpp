@@ -99,20 +99,20 @@ void Genten::connect_vtune(const int p_rank) {
   system("sleep 10");
 }
 
-const Genten::Solver_Method::type Genten::Solver_Method::types[];
-const char*const Genten::Solver_Method::names[];
+constexpr const Genten::Solver_Method::type Genten::Solver_Method::types[];
+constexpr const char*const Genten::Solver_Method::names[];
 
-const Genten::MTTKRP_Method::type Genten::MTTKRP_Method::types[];
-const char*const Genten::MTTKRP_Method::names[];
+constexpr const Genten::MTTKRP_Method::type Genten::MTTKRP_Method::types[];
+constexpr const char*const Genten::MTTKRP_Method::names[];
 
-const Genten::MTTKRP_All_Method::type Genten::MTTKRP_All_Method::types[];
-const char*const Genten::MTTKRP_All_Method::names[];
+constexpr const Genten::MTTKRP_All_Method::type Genten::MTTKRP_All_Method::types[];
+constexpr const char*const Genten::MTTKRP_All_Method::names[];
 
-const Genten::GCP_LossFunction::type Genten::GCP_LossFunction::types[];
-const char*const Genten::GCP_LossFunction::names[];
+constexpr const Genten::GCP_LossFunction::type Genten::GCP_LossFunction::types[];
+constexpr const char*const Genten::GCP_LossFunction::names[];
 
-const Genten::GCP_Sampling::type Genten::GCP_Sampling::types[];
-const char*const Genten::GCP_Sampling::names[];
+constexpr const Genten::GCP_Sampling::type Genten::GCP_Sampling::types[];
+constexpr const char*const Genten::GCP_Sampling::names[];
 
-const Genten::GCP_Step::type Genten::GCP_Step::types[];
-const char*const Genten::GCP_Step::names[];
+constexpr const Genten::GCP_Step::type Genten::GCP_Step::types[];
+constexpr const char*const Genten::GCP_Step::names[];
