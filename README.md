@@ -39,7 +39,7 @@ Genten can optionally use the following components:
 Genten requires [Kokkos](github.com/kokkos/kokkos) for on-node thread/GPU
 parallelism.  Genten supports two approaches for building Kokkos for use with Genten:  an
 external build of Kokkos that is installed and linked to Genten, or an inline
-build of Kokkos along with Genten using the bundled Kokkos source.
+build of Kokkos along with Genten using the bundled Kokkos source (contained within tpls/kokkos).
 The latter is simpler and will be described first.  The former is useful if Genten
 must be linked into an application that itself uses Kokkos.  Note however that only
 the version of Kokkos that is provided with Genten is regularly tested for either
@@ -55,7 +55,8 @@ and OpenMP parallelism.
 top-level
 | -- genten
      | -- genten
-          | -- kokkos
+          | -- tpls
+               | -- kokkos
      | -- build
           | -- opt_gnu_openmp
 ```
@@ -202,7 +203,7 @@ rm -f CMakeCache.txt;
 rm -rf CMakeFiles
 
 EXTRA_ARGS=$@
-KOKKOS=${PWD}/../../genten/kokkos
+KOKKOS=${PWD}/../../genten/tpls/kokkos
 
 cmake \
  -D CMAKE_CXX_COMPILER=${KOKKOS}/bin/nvcc_wrapper \

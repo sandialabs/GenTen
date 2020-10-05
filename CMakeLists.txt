@@ -90,7 +90,7 @@ IF(KOKKOS_INLINE_BUILD)
   ENDIF()
 
   # Configure kokkos
-  ADD_SUBDIRECTORY(kokkos)
+  ADD_SUBDIRECTORY(tpls/kokkos)
 
 ELSE()
 
