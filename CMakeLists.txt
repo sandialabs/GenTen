@@ -39,8 +39,8 @@
 #@HEADER
 
 
-#---- Specify the CMake version required.  Kokkos requires 3.3
-CMAKE_MINIMUM_REQUIRED (VERSION 3.3)
+#---- Specify the CMake version required.  Kokkos requires 3.10
+CMAKE_MINIMUM_REQUIRED (VERSION 3.10)
 
 #---- Declaring the project name will define ${Genten_SOURCE_DIR} to be
 #---- the path to this source file, and ${Genten_BINARY_DIR} to be the path
@@ -80,6 +80,9 @@ IF(KOKKOS_PATH)
 ELSE()
   SET(KOKKOS_INLINE_BUILD ON)
 ENDIF()
+
+# Check minimum compiler version
+INCLUDE (cmake/CheckCompilerVersion.cmake)
 
 # If we are doing an inline build of Kokkos
 IF(KOKKOS_INLINE_BUILD)

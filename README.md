@@ -19,7 +19,7 @@ Government retains certain rights in this software.
 Genten requires the following components in order to build and run:
 * Kokkos for perfomance portable shared memory parallelism.  Genten bundles a clone of the Kokkos source using `git subtree` for use with inline builds (see below), which is generally kept up to date with the current Kokkos master branch (which corresponds to Kokkos releases).  This is the only version of Kokkos that is guaranteed to work with Genten (however later versions or the develop branch may work).
 * A C++14 standard-compliant compiler.  In principle, any C++14 compiler supported by Kokkos should work, however many older compilers that claim compatability have bugs that are often exposed by Kokkos and/or Genten.  Genten is regularly tested with the following compilers and so these or any later version should work (earlier versions of these compilers *may* work, however it is known that Genten does not compile with GCC 5 and Intel 17 or 18):
-  * GCC 7.X
+  * GCC 7
   * Intel 19
   * Clang 9
 * BLAS and LAPACK for CPU (OpenMP and/or pThreads) builds.
