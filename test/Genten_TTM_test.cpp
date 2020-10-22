@@ -26,12 +26,21 @@ template<typename Space> int bulk_test(Genten::TensorT<Space> X, Genten::TensorT
     result_size[mode] = mat.size(0);
 
     Genten::TensorT<Space> Z(result_size, 0.0);
-    int prod = Z.size().prod();
+    int prod = Z.size().prod(); 
 
     std::cout << std::endl
               << "Testing cuBlas enabled ttm along mode: " << mode << std::endl;
 #if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
-    Genten::ttm(X, mat, mode, Z, true);
+    Genten::TensorT<Genten::DefaultExecutionSpace> X_device = create_mirror_view(Genten::DefaultExecutionSpace(), X);
+	deep_copy(X_device, X);
+    Genten::TensorT<Genten::DefaultExecutionSpace> mat_device = create_mirror_view(Genten::DefaultExecutionSpace(), X);
+	deep_copy(mat_device, mat);
+    Genten::TensorT<Genten::DefaultExecutionSpace> Z_device = create_mirror_view(Genten::DefaultExecutionSpace(), Z);//I guess I needed to specify execution space because I am going from device to host... ----> I've seen examples where when it is the other way around you don't have the specify the execution space...
+	deep_copy(Z_device, Z);
+
+    Genten::ttm(X_device, mat_device, mode, Z_device, true);
+    //Unload data off of device and check correctness	
+	deep_copy(Z,Z_device);
     unit_test_tensor(Z, unit_test, prod); //NOTE: we need to copy data from device
 #else
     Genten::ttm(X, mat, mode, Z, false);
