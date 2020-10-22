@@ -33,7 +33,7 @@ template<typename Space> int bulk_test(Genten::TensorT<Space> X, Genten::TensorT
 #if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
     Genten::TensorT<Genten::DefaultExecutionSpace> X_device = create_mirror_view(Genten::DefaultExecutionSpace(), X);
 	deep_copy(X_device, X);
-    Genten::TensorT<Genten::DefaultExecutionSpace> mat_device = create_mirror_view(Genten::DefaultExecutionSpace(), X);
+    Genten::TensorT<Genten::DefaultExecutionSpace> mat_device = create_mirror_view(Genten::DefaultExecutionSpace(), mat);
 	deep_copy(mat_device, mat);
     Genten::TensorT<Genten::DefaultExecutionSpace> Z_device = create_mirror_view(Genten::DefaultExecutionSpace(), Z);//I guess I needed to specify execution space because I am going from device to host... ----> I've seen examples where when it is the other way around you don't have the specify the execution space...
 	deep_copy(Z_device, Z);
