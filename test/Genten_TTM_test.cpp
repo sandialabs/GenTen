@@ -28,13 +28,15 @@ template<typename Space> int bulk_test(Genten::TensorT<Space> X, Genten::TensorT
     Genten::TensorT<Space> Z(result_size, 0.0);
     int prod = Z.size().prod();
 
+    std::cout << std::endl
+              << "Testing serial dgemm along mode: " << mode << std::endl;
     Genten::Impl::genten_ttm_serial_dgemm(mode, X, mat, Z);
     unit_test_tensor(Z, unit_test, prod);
     std::cout << std::endl
               << "Testing parfor dgemm along mode: " << mode << std::endl;
-    // Z.getValues().values()(0)=483294;
+    //Z.getValues().values()(0)=483294;
     Genten::Impl::genten_ttm_parfor_dgemm(mode, X, mat, Z);
-    // Z.getValues().values()(0)=483294;
+    //Z.getValues().values()(0)=483294;
     unit_test_tensor(Z, unit_test, prod);
     return 0;
 }
