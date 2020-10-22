@@ -40,45 +40,23 @@
 
 #pragma once
 
-///////////////////////////////////////////////////Kokkos headers/includes...
-#include <Kokkos_Core.hpp>
-// #include <KokkosBlas3_gemm.hpp>
-
-// #include <KokkosBatched_Gemm_Decl.hpp>
-// #include <KokkosBatched_Gemm_Serial_Impl.hpp>
-
-// #include <KokkosBatched_Gemm_Decl.hpp>
-// #include <KokkosBatched_Gemm_Team_Impl.hpp>
-///////////////////////////////////////////////////
 #include <iostream>
-#include <fstream>
-#include <algorithm>
-#include <iomanip>
-#include <cstring> //for memcpy
+#include <assert.h>
+#include <utility>
 
-/////////////////////////////////////////////////// Genten includes/headers...
-#include <type_traits>
+#include <Kokkos_Core.hpp>
 
 #include "Genten_Util.hpp"
 #include "Genten_Tensor.hpp"
-#include "Genten_MixedFormatOps.hpp"
-#include "Genten_Sptensor.hpp"
-#include "Genten_TinyVec.hpp"
-#include "Genten_AlgParams.hpp"
-#include "Genten_SimdKernel.hpp"
-///////////////////////////////////////////////////
-
-// #include "KokkosBatched_Gemv_Decl.hpp"
-// #include "KokkosBatched_Gemv_Serial_Impl.hpp"
-// #include "KokkosBatched_Gemv_Team_Impl.hpp"
-//////////////////////////////////////////////////
-
-//07/04/2020
 #include "Genten_MathLibs.hpp"
 
-#include <thread>         
-#include <chrono> 
+#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+#include "cublas_v2.h"
+#endif
 
+//-----------------------------------------------------------------------------
+//  Method:  TTM, Tensor Y, Matrix V, output to Tensor Z
+//-----------------------------------------------------------------------------
 
 namespace Genten
 {
@@ -281,5 +259,276 @@ namespace Genten
 
             return ans;
         }
-    }
-}
+
+#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+        template <typename ExecSpace>
+        void kokkos_ttm_batched_cublas(const TensorT<ExecSpace> &Y,
+                                       const TensorT<ExecSpace> &V,
+                                       const ttb_indx mode,
+                                       TensorT<ExecSpace> &Z)
+        {
+
+            typedef typename Kokkos::View<ttb_real *, ExecSpace> sub_view_type;
+            typedef typename sub_view_type::device_type device_type;
+
+            typedef typename Kokkos::TeamPolicy<ExecSpace>::member_type member_type;
+
+            IndxArrayT<DefaultHostExecutionSpace> Y_size_host = create_mirror_view(DefaultHostExecutionSpace(), Y.size());
+            deep_copy(Y_size_host, Y.size());
+
+            //Get the numbers (rows, cols, num_matrices) for sub matrices of unfolded tensor
+            ttb_indx ncols = Y_size_host.prod(0, mode, 1);             // Y.size().prod(0,mode,1);
+            ttb_indx nmats = Y_size_host.prod(mode + 1, Y.ndims(), 1); //Y.size().prod(mode+1, Y.ndims(), 1);
+            ttb_indx nrows = Y_size_host[mode];                        //Y.size(mode);
+
+            std::cout << "IN TTM cublasDgemmBatched nrows/ncols/nmats: " << nrows << "/" << ncols << "/" << nmats << std::endl;
+
+            //Get nrows, ncols for the V_matrix
+            IndxArrayT<DefaultHostExecutionSpace> V_size_host = create_mirror_view(DefaultHostExecutionSpace(), V.size());
+            deep_copy(V_size_host, V.size());
+
+            ttb_indx Vmat_nrows = V_size_host[0]; //V.size(0);
+            ttb_indx Vmat_ncols = V_size_host[1]; //V.size(1);
+
+            //Setting up parameters for cublasDgemmStridedBatched
+            const int m = ncols;
+            const int k = nrows;
+            const int n = Vmat_nrows;
+            const int lda = ncols;
+            const int strideA = nrows * ncols;
+            const int ldb = Vmat_nrows;
+            const int strideB = 0;
+            const int ldc = ncols;
+            const int strideC = Vmat_nrows * ncols;
+            const ttb_real alpha = ttb_real(1.0);
+            const ttb_real beta = ttb_real(0.0);
+            cublasStatus_t status;
+
+            static cublasHandle_t handle = 0;
+            if (handle == 0)
+            {
+                status = cublasCreate(&handle);
+                if (status != CUBLAS_STATUS_SUCCESS)
+                {
+                    std::cout << "Error!  cublasCreate() failed with status " << status << std::endl;
+                }
+            }
+
+            // We need Z = V*Y, where Z/Y are matricised tensors, and V is input matrix.
+            // But since Z and Y (matricised) are logically LayoutRight, we instead seek Z'=Y'*V'
+            // This way, Y' is LayoutLeft. V, naturally LayoutLeft needs the transpose flag.
+            // The result Z' also comes out LayoutLeft, as desired. All LayoutLeft is what Gemm expects
+            status = cublasDgemmStridedBatched(handle, CUBLAS_OP_N, CUBLAS_OP_T,
+                                               m, n, k,
+                                               &alpha,
+                                               Y.getValues().values().data(), lda, strideA,
+                                               V.getValues().values().data(), ldb, strideB,
+                                               &beta,
+                                               Z.getValues().values().data(), ldc, strideC,
+                                               nmats);
+
+            if (status != CUBLAS_STATUS_SUCCESS)
+            {
+                std::cout << "Error!  cublasDgemmStridedBatched() failed with status " << status << std::endl;
+            }
+        }
+
+        template <typename ExecSpace>
+        void kokkos_ttm_serial_cublas(const TensorT<ExecSpace> &Y,
+                                      const TensorT<ExecSpace> &V,
+                                      const ttb_indx mode,
+                                      TensorT<ExecSpace> &Z)
+        {
+
+            typedef typename Kokkos::View<ttb_real *, ExecSpace> sub_view_type;
+            typedef typename sub_view_type::device_type device_type;
+
+            typedef typename Kokkos::TeamPolicy<ExecSpace>::member_type member_type;
+
+            IndxArrayT<DefaultHostExecutionSpace> Y_size_host = create_mirror_view(DefaultHostExecutionSpace(), Y.size());
+            deep_copy(Y_size_host, Y.size());
+
+            //Get the numbers (rows, cols, num_matrices) for sub matrices of unfolded tensor
+            ttb_indx ncols = Y_size_host.prod(0, mode, 1);             // Y.size().prod(0,mode,1);
+            ttb_indx nmats = Y_size_host.prod(mode + 1, Y.ndims(), 1); //Y.size().prod(mode+1, Y.ndims(), 1);
+            ttb_indx nrows = Y_size_host[mode];                        //Y.size(mode);
+
+            std::cout << "IN TTM serial cublasDgemm nrows/ncols/nmats: " << nrows << "/" << ncols << "/" << nmats << std::endl;
+
+            //Get nrows, ncols for the V_matrix
+            IndxArrayT<DefaultHostExecutionSpace> V_size_host = create_mirror_view(DefaultHostExecutionSpace(), V.size());
+            deep_copy(V_size_host, V.size());
+
+            ttb_indx Vmat_nrows = V_size_host[0]; //V.size(0);
+            ttb_indx Vmat_ncols = V_size_host[1]; //V.size(1);
+
+            for (ttb_indx i = 0; i < nmats; i++)
+            {
+                ttb_indx start = i * nrows * ncols;
+                ttb_indx end = start + nrows * ncols;
+
+                //Get the subview of the entries of "this" submatrix
+                sub_view_type tensor_slice = Kokkos::subview(Y.getValues().values(), std::make_pair(start, end));
+
+                Kokkos::View<ttb_real **, Kokkos::LayoutLeft, device_type,
+                             Kokkos::MemoryTraits<Kokkos::Unmanaged>>
+                    sub_matrix(tensor_slice.data(), ncols, nrows);
+
+                //Now "reshape" the V_matrix from flat 1D-indexed tenspr to matrix of expected shape
+                Kokkos::View<ttb_real **, Kokkos::LayoutLeft, device_type,
+                             Kokkos::MemoryTraits<Kokkos::Unmanaged>>
+                    V_matrix(V.getValues().values().data(), Vmat_nrows, Vmat_ncols);
+
+                //Now create a subview to store the result
+                start = i * Vmat_nrows * ncols;
+                end = start + Vmat_nrows * ncols;
+                sub_view_type result_slice = Kokkos::subview(Z.getValues().values(), std::make_pair(start, end));
+
+                Kokkos::View<ttb_real **, Kokkos::LayoutLeft, device_type,
+                             Kokkos::MemoryTraits<Kokkos::Unmanaged>>
+                    result_sub_matrix(result_slice.data(), ncols, Vmat_nrows);
+
+                const int m = ncols;
+                const int k = nrows;
+                const int n = Vmat_nrows;
+                const int lda = ncols;
+                const int ldb = Vmat_nrows;
+                const int ldc = ncols;
+                const ttb_real alpha = ttb_real(1.0);
+                const ttb_real beta = ttb_real(0.0);
+                cublasStatus_t status;
+
+                static cublasHandle_t handle = 0;
+                if (handle == 0)
+                {
+                    status = cublasCreate(&handle);
+                    if (status != CUBLAS_STATUS_SUCCESS)
+                    {
+                        std::cout << "Error!  cublasCreate() failed with status " << status << std::endl;
+                    }
+                }
+
+                // We need Z = V*Y, where Z/Y are matricised tensors, and V is input matrix.
+                // But since Z and Y (matricised) are logically LayoutRight, we instead seek Z'=Y'*V'
+                // This way, Y' is LayoutLeft. V, naturally LayoutLeft needs the transpose flag.
+                // The result Z' also comes out LayoutLeft, as desired. All LayoutLeft is what Gemm expects
+                status = cublasDgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, m, n, k,
+                                     &alpha, sub_matrix.data(), lda, V_matrix.data(), ldb,
+                                     &beta, result_sub_matrix.data(), ldc);
+
+                if (status != CUBLAS_STATUS_SUCCESS)
+                {
+                    std::cout << "Error!  cublasDgemm()/cublasDsyrk() failed with status " << status << std::endl;
+                }
+            }
+
+            return;
+        }
+
+        template <typename ExecSpace>
+        void kokkos_ttm_last_mode(const TensorT<ExecSpace> &Y,
+                                  const TensorT<ExecSpace> &V,
+                                  const ttb_indx mode,
+                                  TensorT<ExecSpace> &Z)
+        {
+
+            typedef typename Kokkos::View<ttb_real *, ExecSpace> sub_view_type;
+            typedef typename sub_view_type::device_type device_type;
+
+            typedef typename Kokkos::TeamPolicy<ExecSpace>::member_type member_type;
+
+            IndxArrayT<DefaultHostExecutionSpace> Y_size_host = create_mirror_view(DefaultHostExecutionSpace(), Y.size());
+            deep_copy(Y_size_host, Y.size());
+
+            //Get the numbers (rows, cols, num_matrices) for sub matrices of unfolded tensor
+            ttb_indx ncols = Y_size_host.prod(0, mode, 1); // Y.size().prod(0,n,1);
+            ttb_indx nrows = Y_size_host[mode];            //Y.size(n);
+
+            //HKstd::cout<<"IN TTM_LAST_MODE nrows/ncols: "<< nrows<<"/"<<ncols<<std::endl;
+
+            //Get nrows, ncols for the V_matrix
+            IndxArrayT<DefaultHostExecutionSpace> V_size_host = create_mirror_view(DefaultHostExecutionSpace(), V.size());
+            deep_copy(V_size_host, V.size());
+
+            ttb_indx Vmat_nrows = V_size_host[0]; //V.size(0);
+            ttb_indx Vmat_ncols = V_size_host[1]; //V.size(1);
+
+            const int m = ncols;
+            const int k = nrows;
+            const int n = Vmat_nrows;
+            const int lda = ncols;
+            const int ldb = Vmat_nrows;
+            const int ldc = ncols;
+            const double alpha = 1.0;
+            const double beta = 0.0;
+            cublasStatus_t status;
+
+            static cublasHandle_t handle = 0;
+            if (handle == 0)
+            {
+                status = cublasCreate(&handle);
+                if (status != CUBLAS_STATUS_SUCCESS)
+                {
+                    std::cout << "Error!  cublasCreate() failed with status " << status << std::endl;
+                }
+            }
+
+            // We need Z = V*Y, where Z/Y are matricised tensors, and V is input matrix.
+            // But since Z and Y (matricised) are logically LayoutRight, we instead seek Z'=Y'*V'
+            // This way, Y' is LayoutLeft. V, naturally LayoutLeft needs the transpose flag.
+            // The result Z' also comes out LayoutLeft, as desired. All LayoutLeft is what Gemm expects
+            status = cublasDgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, m, n, k,
+                                 &alpha, Y.getValues().values().data(), lda, V.getValues().values().data(), ldb,
+                                 &beta, Z.getValues().values().data(), ldc);
+
+            if (status != CUBLAS_STATUS_SUCCESS)
+            {
+                std::cout << "Error!  cublasDgemm()/cublasDsyrk() failed with status " << status << std::endl;
+            }
+        }
+#endif
+
+    } // namespace Impl
+
+    template <typename ExecSpace>
+    void ttm(const TensorT<ExecSpace> &Y,
+             const TensorT<ExecSpace> &V,
+             const ttb_indx n,
+             TensorT<ExecSpace> &Z,
+             bool all_cublas)
+    {
+
+        const ttb_indx nd = Y.ndims(); // Number of dimensions
+
+        assert(Y.size(n) == V.size(1));
+        //std::cout<<"IN TTM "<<n<<" "<<Y.size(n)<<" "<<V.size(1)<<"\n";
+
+        //const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
+        //std::cout<< is_cuda<<"\n";
+
+        if (all_cublas)
+        {
+#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+            std::cout << "Calling cuBlas ttm from inside cuBlas ttm" << std::endl;
+            if (n == nd - 1)
+            {
+                Impl::kokkos_ttm_last_mode(Y, V, n, Z);
+            }
+            else
+            {
+                Impl::kokkos_ttm_batched_cublas(Y, V, n, Z);
+                //Below implementation was universally slow
+                //Impl::kokkos_ttm_serial_cublas(Y,V,n,Z);
+            }
+#else
+            std::cout << "TTM is asked to launch all cublas kernels but KOKKOS not built with CUBLAS"
+                      << "\n";
+#endif
+        }
+        else
+        {
+            std::cout << "Calling genten_ttm_serial_dgemm from inside cuBlas ttm" << std::endl;
+            Impl::genten_ttm_serial_dgemm(n, Y, V, Z);
+        }
+    } 
+} // namespace Genten

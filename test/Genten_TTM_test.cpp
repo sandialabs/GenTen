@@ -38,6 +38,14 @@ template<typename Space> int bulk_test(Genten::TensorT<Space> X, Genten::TensorT
     Genten::Impl::genten_ttm_parfor_dgemm(mode, X, mat, Z);
     //Z.getValues().values()(0)=483294;
     unit_test_tensor(Z, unit_test, prod);
+    std::cout << std::endl
+              << "Testing cuBlas enabled ttm along mode: " << mode << std::endl;
+    bool all_cublas=false;
+#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+    all_cublas=true;
+#endif
+    Genten::ttm(X, mat, mode, Z, all_cublas);
+    unit_test_tensor(Z, unit_test, prod);
     return 0;
 }
 
