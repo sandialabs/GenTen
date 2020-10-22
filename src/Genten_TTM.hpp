@@ -70,8 +70,6 @@ namespace Genten
         TensorT<ExecSpace> genten_ttm_parfor_dgemm(ttb_indx mode, TensorT<ExecSpace> ten, TensorT<ExecSpace> mat, TensorT<ExecSpace> &ans)
         {
 
-            const double alpha = double(1.0);
-            const double beta = double(0.0);
             int mode_dim = ten.size(mode);
             int prod = ten.size().prod();
             int I_slash = prod / mode_dim;
@@ -173,8 +171,6 @@ namespace Genten
         TensorT<ExecSpace> genten_ttm_serial_dgemm(ttb_indx mode, TensorT<ExecSpace> ten, TensorT<ExecSpace> mat, TensorT<ExecSpace> &ans)
         {
 
-            const double alpha = double(1.0);
-            const double beta = double(0.0);
             int mode_dim = ten.size(mode);
             int prod = ten.size().prod();
             int I_slash = prod / mode_dim;

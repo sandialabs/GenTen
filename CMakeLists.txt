@@ -429,12 +429,12 @@ INSTALL (
 #---- In each case specify the executable and its link library dependencies.
 
 ADD_EXECUTABLE (
-  ttm_gtest_new
-  ${Genten_SOURCE_DIR}/test/Genten_TTM_test.cpp
+  ttm_gtest
+  ${Genten_SOURCE_DIR}/test/Genten_Test_TTM.cpp
   )
-target_link_libraries(ttm_gtest_new ${GTEST_LIBRARY} ${GTEST_INCLUDE_DIR} pthread ${GENTEN_LINK_LIBS})
+target_link_libraries(ttm_gtest ${GTEST_LIBRARY} ${GTEST_INCLUDE_DIR} pthread ${GENTEN_LINK_LIBS})
 INSTALL (
-  TARGETS ttm_gtest_new
+  TARGETS ttm_gtest
   DESTINATION test
 )
 
