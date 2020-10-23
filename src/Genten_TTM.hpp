@@ -125,7 +125,6 @@ namespace Genten
                         auto ten_Y = Kokkos::subview(Y, Kokkos::ALL(), std::make_pair((mode_dim * i), (mode_dim * (i + 1))));
                         auto ans_sub = Kokkos::subview(ans.getValues().values(), std::make_pair((mat.size(0) * I_Less * i), (mat.size(0) * I_Less * (i + 1))));
 
-                        //NOTE: as of now we are not using the layout right result_sub. If the answer comes out transposed, we might be able to use it to get it in the correct order
                         double test = 0;
                         double alphaptr_par = 1;
                         double betaptr_par = 0;
@@ -140,7 +139,7 @@ namespace Genten
                         ttb_blas_int ldaptr_par = mptr;
                         ttb_blas_int ldbptr_par = mat.size(0);
                         ttb_blas_int ldcptr_par = mptr;
-                        //NOTE: we may have switched a, b and corresponding ptrs as inputs here
+
                         dgemm(&transaptr_par,
                               &transbptr_par,
                               &mptr_par,
@@ -177,7 +176,7 @@ namespace Genten
 
             int I_Less = ten.size().prod(0, mode, 1);
             int I_Greater = ten.size().prod(mode + 1, ten.ndims(), 1);
-            ///////////
+            
             char transaptr = 'N';
             char transbptr = 'N';
             ttb_blas_int mptr = mat.size(0);
@@ -230,9 +229,7 @@ namespace Genten
                     b = (double *)mat.getValues().values().data();
                     c = (double *)ans_sub.data();
 
-                    //NOTE: as of now we are not using the layout right result_sub. If the answer comes out transposed, we might be able to use it to get it in the correct order
 
-                    //NOTE: we may have switched a, b and corresponding ptrs as inputs here
                     dgemm(&transaptr,
                           &transbptr,
                           &mptr,
