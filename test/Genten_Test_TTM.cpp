@@ -100,7 +100,7 @@ TEST(Test, ttm_test_0)
     result_size[mode] = mat.size(0);
 
     Tensor_type Z(result_size, 0.0);
-    std::cout << "preparing to calculate ttm:  5x2 * 3x4x2x2 along mode 3" << std::endl;
+    std::cout << "preparing to calculate ttm:  5x2 * 3x4x2x2 along mode 0" << std::endl;
 
     // std::cout << "X(0,0,0,0): " << X(0, 0, 0, 0) << "  X(1,0,0,0): " << X(1, 0, 0, 0) << "  X(0,1,0,0): " << X(0, 1, 0, 0) << "  X(0,0,1,0): " << X(0, 0, 1, 0) << "  X(0,0,0,1): " << X(0, 0, 0, 1) << "  X(2,3,1,1): " << X(2, 3, 1, 1) << std::endl;
 

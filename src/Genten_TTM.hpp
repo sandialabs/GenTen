@@ -277,7 +277,7 @@ namespace Genten
             ttb_indx nmats = Y_size_host.prod(mode + 1, Y.ndims(), 1); //Y.size().prod(mode+1, Y.ndims(), 1);
             ttb_indx nrows = Y_size_host[mode];                        //Y.size(mode);
 
-            std::cout << "IN TTM cublasDgemmBatched nrows/ncols/nmats: " << nrows << "/" << ncols << "/" << nmats << std::endl;
+            //std::cout << "IN TTM cublasDgemmBatched nrows/ncols/nmats: " << nrows << "/" << ncols << "/" << nmats << std::endl;
 
             //Get nrows, ncols for the V_matrix
             IndxArrayT<DefaultHostExecutionSpace> V_size_host = create_mirror_view(DefaultHostExecutionSpace(), V.size());
@@ -349,7 +349,7 @@ namespace Genten
             ttb_indx nmats = Y_size_host.prod(mode + 1, Y.ndims(), 1); //Y.size().prod(mode+1, Y.ndims(), 1);
             ttb_indx nrows = Y_size_host[mode];                        //Y.size(mode);
 
-            std::cout << "IN TTM serial cublasDgemm nrows/ncols/nmats: " << nrows << "/" << ncols << "/" << nmats << std::endl;
+            //std::cout << "IN TTM serial cublasDgemm nrows/ncols/nmats: " << nrows << "/" << ncols << "/" << nmats << std::endl;
 
             //Get nrows, ncols for the V_matrix
             IndxArrayT<DefaultHostExecutionSpace> V_size_host = create_mirror_view(DefaultHostExecutionSpace(), V.size());
@@ -505,7 +505,7 @@ namespace Genten
         if (all_cublas)
         {
 #if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
-            std::cout << "Calling cuBlas ttm from inside cuBlas ttm" << std::endl;
+            //std::cout << "Calling cuBlas ttm from inside cuBlas ttm" << std::endl;
             if (n == nd - 1)
             {
                 Impl::kokkos_ttm_last_mode(Y, V, n, Z);
@@ -523,7 +523,7 @@ namespace Genten
         }
         else
         {
-            std::cout << "Calling genten_ttm_serial_dgemm from inside cuBlas ttm" << std::endl;
+            //std::cout << "Calling genten_ttm_serial_dgemm from inside cuBlas ttm" << std::endl;
             Impl::genten_ttm_serial_dgemm(n, Y, V, Z);
         }
     } 
