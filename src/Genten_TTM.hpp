@@ -287,6 +287,15 @@ namespace Genten
                                        const ttb_indx mode,
                                        TensorT<ExecSpace> &Z)
         {
+            if ((mode + 1 > 0) && (mode < Y.ndims()))
+            {
+                if (Y.size(mode) != V.size(1))
+                {
+                    std::stringstream dim_error;
+                    dim_error << "From kokkos_ttm_batched_cublas, tensor dimension " << mode << " of size " << Y.size(mode) << " does not match number of columns, " << mat.size(1) << ", of input matrix";
+                    std::cerr << dim_error.str() << std::endl;
+                    throw dim_error.str();
+                }
 
             typedef typename Kokkos::View<ttb_real *, ExecSpace> sub_view_type;
             typedef typename sub_view_type::device_type device_type;
@@ -357,6 +366,14 @@ namespace Genten
                    << status;
                 std::cerr << cublasDgemmStridedBatched_error.str() << std::endl;
                 throw cublasDgemmStridedBatched_error.str();
+            }
+            }
+            else
+            {
+                std::stringstream mode_error;
+                mode_error << "From kokkos_ttm_batched_cublas, mode: " << mode << " is invalid. Please provide valid mode";
+                std::cerr << mode_error.str() << std::endl;
+                throw mode_error.str();
             }
         }
 
@@ -540,7 +557,6 @@ namespace Genten
         const ttb_indx nd = Y.ndims(); // Number of dimensions
 
         assert(Y.size(n) == V.size(1));
-
         if (all_cublas)
         {
 #if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
@@ -565,5 +581,6 @@ namespace Genten
         {
             Impl::genten_ttm_serial_dgemm(n, Y, V, Z);
         }
-    }
+        
+    }// ttm
 } // namespace Genten
