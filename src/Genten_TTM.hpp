@@ -129,9 +129,9 @@ namespace Genten
                     ldcptr = mptr;
 
                     Kokkos::View<ttb_real **, Kokkos::LayoutLeft, Kokkos::MemoryTraits<Kokkos::Unmanaged>> Y(ten.getValues().values().data(), I_Less, I_Greater * mode_dim);
-
-                    Kokkos::parallel_for(
-                        I_Greater, KOKKOS_LAMBDA(const int i) {
+                   
+                    Kokkos::parallel_for( "genten_ttm_parfor_dgemm_loop",
+                        Kokkos::RangePolicy<ExecSpace>(0,I_Greater), KOKKOS_LAMBDA(const int i) {
                             auto ten_Y = Kokkos::subview(Y, Kokkos::ALL(), std::make_pair((mode_dim * i), (mode_dim * (i + 1))));
                             auto ans_sub = Kokkos::subview(ans.getValues().values(), std::make_pair((mat.size(0) * I_Less * i), (mat.size(0) * I_Less * (i + 1))));
 

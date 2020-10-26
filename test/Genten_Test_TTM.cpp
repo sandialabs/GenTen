@@ -255,10 +255,9 @@ TEST(Test, ttm_test_3)
 
     bulk_test( X,  mat, mode, unit_test);
 
-    matrix_dims[1] = 3;
-    Tensor_type mat2(matrix_dims, 0.0);
-    
-    // Genten::Impl::genten_ttm_parfor_dgemm(1, X, mat, Z);
+    // matrix_dims[1] = 3;
+    // Tensor_type mat2(matrix_dims, 0.0);
+    // Genten::Impl::genten_ttm_parfor_dgemm(4, X, mat, Z);
     // Genten::Impl::genten_ttm_serial_dgemm(1, X, mat, Z);
     // FacMatrix_type facmat(mat.size(0),mat.size(1),mat.getValues().values().data());
     // bulk_test( X, facmat, mode, unit_test);
