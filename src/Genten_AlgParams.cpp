@@ -344,10 +344,10 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  mttkrp-duplicated-threshold = " << mttkrp_duplicated_threshold << std::endl;
   out << "  warmup = " << (warmup ? "true" : "false") << std::endl;
 
-  // out << std::endl;
-  // out << "TTM options:" << std::endl;
-  // out << "  ttm-method = " << Genten::TTM_Method::names[ttm_method]
-  //     << std::endl;
+  out << std::endl;
+  out << "TTM options:" << std::endl;
+  out << "  ttm-method = " << Genten::TTM_Method::names[ttm_method]
+       << std::endl;
 
   out << std::endl;
   out << "GCP options:" << std::endl;
