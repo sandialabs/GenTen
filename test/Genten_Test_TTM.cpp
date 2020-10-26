@@ -27,8 +27,12 @@ template<typename Space> int bulk_test(Genten::TensorT<Space> X, Genten::TensorT
     Genten::TensorT<Space> Z(result_size, 0.0);
     int prod = Z.size().prod(); 
 
+    Genten::AlgParams al;
+    // al.ttm_method = Genten::TTM_Method::DGEMM;
+    // std::cout << "TTM method: " << al.ttm_method.type <<std::endl;
+
     std::cout << std::endl
-              << "Testing cuBlas enabled ttm along mode: " << mode << std::endl;
+              << "Testing default DGEMM cuBlas enabled ttm along mode: " << mode << std::endl;
 #if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
     Genten::TensorT<Genten::DefaultExecutionSpace> X_device = create_mirror_view(Genten::DefaultExecutionSpace(), X);
 	deep_copy(X_device, X);
@@ -37,12 +41,24 @@ template<typename Space> int bulk_test(Genten::TensorT<Space> X, Genten::TensorT
     Genten::TensorT<Genten::DefaultExecutionSpace> Z_device = create_mirror_view(Genten::DefaultExecutionSpace(), Z);
 	deep_copy(Z_device, Z);
 
-    Genten::ttm(X_device, mat_device, mode, Z_device, true);
+    Genten::ttm(X_device, mat_device, mode, Z_device, al);
+    //Unload data off of device and check correctness	
+	deep_copy(Z,Z_device);
+    unit_test_tensor(Z, unit_test, prod); //NOTE: we need to copy data from device
+    std::cout << std::endl
+              << "Testing Parfor_DGEMM cuBlas enabled ttm along mode: " << mode << std::endl;
+    al.ttm_method = Genten::TTM_Method::Parfor_DGEMM;
+    Genten::ttm(X_device, mat_device, mode, Z_device, al);
     //Unload data off of device and check correctness	
 	deep_copy(Z,Z_device);
     unit_test_tensor(Z, unit_test, prod); //NOTE: we need to copy data from device
 #else
-    Genten::ttm(X, mat, mode, Z, false);
+    Genten::ttm(X, mat, mode, Z, al);
+    unit_test_tensor(Z, unit_test, prod);
+    std::cout << std::endl
+              << "Testing Parfor_DGEMM cuBlas enabled ttm along mode: " << mode << std::endl;
+    al.ttm_method = Genten::TTM_Method::Parfor_DGEMM;
+    Genten::ttm(X, mat, mode, Z, al);
     unit_test_tensor(Z, unit_test, prod);
     std::cout << std::endl
               << "Testing serial dgemm along mode: " << mode << std::endl;

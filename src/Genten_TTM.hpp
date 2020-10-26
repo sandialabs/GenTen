@@ -551,13 +551,13 @@ namespace Genten
              const TensorT<ExecSpace> &V,
              const ttb_indx n,
              TensorT<ExecSpace> &Z,
-             bool all_cublas)
+             Genten::AlgParams al)
     {
 
         const ttb_indx nd = Y.ndims(); // Number of dimensions
 
         assert(Y.size(n) == V.size(1));
-        if (all_cublas)
+        if (al.ttm_method == Genten::TTM_Method::DGEMM)
         {
 #if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
             if (n == nd - 1)
@@ -571,15 +571,26 @@ namespace Genten
                 //Impl::kokkos_ttm_serial_cublas(Y,V,n,Z);
             }
 #else
-                    std::stringstream kokkos_cublas_error;
-                    kokkos_cublas_error << "TTM is asked to launch all cublas kernels but KOKKOS not built with CUBLAS";
-                    std::cerr << kokkos_cublas_error.str() << std::endl;
-                    throw kokkos_cublas_error.str();
+            Impl::genten_ttm_serial_dgemm(n, Y, V, Z);         
 #endif
         }
         else
         {
-            Impl::genten_ttm_serial_dgemm(n, Y, V, Z);
+
+#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+            if (n == nd - 1)
+            {
+                Impl::kokkos_ttm_last_mode(Y, V, n, Z);
+            }
+            else
+            {
+                Impl::kokkos_ttm_batched_cublas(Y, V, n, Z);
+                //Below implementation was universally slow
+                //Impl::kokkos_ttm_serial_cublas(Y,V,n,Z);
+            }
+#else
+            Impl::genten_ttm_parfor_dgemm(n, Y, V, Z);         
+#endif
         }
         
     }// ttm
