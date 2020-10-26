@@ -292,7 +292,7 @@ namespace Genten
                 if (Y.size(mode) != V.size(1))
                 {
                     std::stringstream dim_error;
-                    dim_error << "From kokkos_ttm_batched_cublas, tensor dimension " << mode << " of size " << Y.size(mode) << " does not match number of columns, " << mat.size(1) << ", of input matrix";
+                    dim_error << "From kokkos_ttm_batched_cublas, tensor dimension " << mode << " of size " << Y.size(mode) << " does not match number of columns, " << V.size(1) << ", of input matrix";
                     std::cerr << dim_error.str() << std::endl;
                     throw dim_error.str();
                 }

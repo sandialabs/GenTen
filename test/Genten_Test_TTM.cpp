@@ -28,8 +28,6 @@ template<typename Space> int bulk_test(Genten::TensorT<Space> X, Genten::TensorT
     int prod = Z.size().prod(); 
 
     Genten::AlgParams al;
-    // al.ttm_method = Genten::TTM_Method::DGEMM;
-    // std::cout << "TTM method: " << al.ttm_method.type <<std::endl;
 
     std::cout << std::endl
               << "Testing default DGEMM cuBlas enabled ttm along mode: " << mode << std::endl;
