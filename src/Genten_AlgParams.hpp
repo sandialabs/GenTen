@@ -76,6 +76,9 @@ namespace Genten {
     ttb_real mttkrp_duplicated_threshold;  // Theshold for when dup is used
     bool warmup; // Warmup by calling MTTKRP before decompsition
 
+    // TTM options
+    TTM_Method::type ttm_method; // TTM algorithm
+
     // GCP options
     GCP_LossFunction::type loss_function_type; // Loss function for GCP
     ttb_real loss_eps;                         // Perturbation for GCP

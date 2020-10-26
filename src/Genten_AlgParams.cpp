@@ -61,6 +61,7 @@ Genten::AlgParams::AlgParams() :
   mttkrp_nnz_tile_size(128),
   mttkrp_duplicated_factor_matrix_tile_size(0),
   mttkrp_duplicated_threshold(-1.0),
+  ttm_method(TTM_Method::default_type),
   loss_function_type(Genten::GCP_LossFunction::default_type),
   loss_eps(1.0e-10),
   gcp_tol(-DOUBLE_MAX),
@@ -137,6 +138,12 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
     parse_ttb_real(args, "--mttkrp-duplicated-threshold",
                    mttkrp_duplicated_factor_matrix_tile_size, -1.0, DOUBLE_MAX);
   warmup = parse_ttb_bool(args, "--warmup", "--no-warmup", warmup);
+
+  // TTM options
+  ttm_method = parse_ttb_enum(args, "--ttm-method", ttm_method,
+                                 Genten::TTM_Method::num_types,
+                                 Genten::TTM_Method::types,
+                                 Genten::TTM_Method::names);
 
   // GCP options
   loss_function_type = parse_ttb_enum(args, "--type", loss_function_type,
@@ -241,6 +248,15 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --warmup           do an iteration of mttkrp to warmup (useful for generating accurate timing information)" << std::endl;
 
   out << std::endl;
+  out << "TTM options:" << std::endl;
+  out << "  --ttm-method <method> TTM algorithm: ";
+  for (unsigned i=0; i<Genten::TTM_Method::num_types; ++i) {
+    out << Genten::TTM_Method::names[i];
+    if (i != Genten::TTM_Method::num_types-1)
+      out << ", ";
+  } out << std::endl;
+
+  out << std::endl;
   out << "GCP options:" << std::endl;
   out << "  --type <type>      loss function type for GCP: ";
   for (unsigned i=0; i<Genten::GCP_LossFunction::num_types; ++i) {
@@ -327,6 +343,11 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  mttkrp-duplicated-tile-size = " << mttkrp_duplicated_factor_matrix_tile_size << std::endl;
   out << "  mttkrp-duplicated-threshold = " << mttkrp_duplicated_threshold << std::endl;
   out << "  warmup = " << (warmup ? "true" : "false") << std::endl;
+
+  // out << std::endl;
+  // out << "TTM options:" << std::endl;
+  // out << "  ttm-method = " << Genten::TTM_Method::names[ttm_method]
+  //     << std::endl;
 
   out << std::endl;
   out << "GCP options:" << std::endl;

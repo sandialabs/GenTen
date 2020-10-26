@@ -178,6 +178,23 @@ namespace Genten {
     static constexpr type default_type = Default;
   };
 
+  // TTM algorithm
+  struct TTM_Method {
+    enum type {
+      DGEMM, //serial-for loop around DGEMM calls on CPU, cublas DGEMM on GPU
+      Parfor_DGEMM  //parallel-for loop around DGEMM calls on CPU, batched cublas on GPU
+    };
+    static constexpr unsigned num_types = 2;
+    static constexpr type types[] = {
+      DGEMM,
+      Parfor_DGEMM 
+    };
+    static constexpr const char* names[] = {
+      "dgemm", "parfor-dgemm"
+    };
+    static constexpr type default_type = DGEMM;
+  };
+
   // Loss functions supported by GCP
   struct GCP_LossFunction {
     enum type {

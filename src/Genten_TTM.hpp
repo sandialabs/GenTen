@@ -43,12 +43,14 @@
 #include <iostream>
 #include <assert.h>
 #include <utility>
+#include <sstream>
 
 #include <Kokkos_Core.hpp>
 
 #include "Genten_Util.hpp"
 #include "Genten_Tensor.hpp"
 #include "Genten_MathLibs.hpp"
+#include "Genten_AlgParams.hpp"
 
 #if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
 #include "cublas_v2.h"
@@ -69,170 +71,38 @@ namespace Genten
         template <typename ExecSpace>
         TensorT<ExecSpace> genten_ttm_parfor_dgemm(ttb_indx mode, TensorT<ExecSpace> ten, TensorT<ExecSpace> mat, TensorT<ExecSpace> &ans)
         {
-
-            int mode_dim = ten.size(mode);
-            int prod = ten.size().prod();
-            int I_slash = prod / mode_dim;
-
-            int I_Less = ten.size().prod(0, mode, 1);
-            int I_Greater = ten.size().prod(mode + 1, ten.ndims(), 1);
-
-            char transaptr = 'N';
-            char transbptr = 'N';
-            ttb_blas_int mptr = mat.size(0);
-            ttb_blas_int nptr = I_slash;
-            ttb_blas_int kptr = mode_dim;
-            double alphaptr = 1;
-            double *a = (double *)mat.getValues().values().data();
-            ttb_blas_int ldaptr = mptr;
-            double *b = (double *)ten.getValues().values().data();
-            ttb_blas_int ldbptr = kptr;
-            double betaptr = 0;
-            double *c = (double *)ans.getValues().values().data();
-            ttb_blas_int ldcptr = mptr;
-
-            if (mode == 0)
+            if ((mode + 1 > 0) && (mode < ten.ndims()))
             {
-                dgemm(&transaptr,
-                      &transbptr,
-                      &mptr,
-                      &nptr,
-                      &kptr,
-                      &alphaptr,
-                      a,
-                      &ldaptr,
-                      b,
-                      &ldbptr,
-                      &betaptr,
-                      c,
-                      &ldcptr);
-            }
-            else if ((mode < ten.ndims()) && (mode > 0))
-            {
-                transbptr = 'T';
-
-                mptr = I_Less;
-                nptr = mat.size(0);
-                kptr = mat.size(1);
-                ldaptr = mptr;
-                ldbptr = mat.size(0);
-                ldcptr = mptr;
-
-                Kokkos::View<ttb_real **, Kokkos::LayoutLeft, Kokkos::MemoryTraits<Kokkos::Unmanaged>> Y(ten.getValues().values().data(), I_Less, I_Greater * mode_dim);
-
-                Kokkos::parallel_for(
-                    I_Greater, KOKKOS_LAMBDA(const int i) {
-                        auto ten_Y = Kokkos::subview(Y, Kokkos::ALL(), std::make_pair((mode_dim * i), (mode_dim * (i + 1))));
-                        auto ans_sub = Kokkos::subview(ans.getValues().values(), std::make_pair((mat.size(0) * I_Less * i), (mat.size(0) * I_Less * (i + 1))));
-
-                        //NOTE: as of now we are not using the layout right result_sub. If the answer comes out transposed, we might be able to use it to get it in the correct order
-                        double test = 0;
-                        double alphaptr_par = 1;
-                        double betaptr_par = 0;
-                        double *a_par = (double *)ten_Y.data();
-                        double *b_par = (double *)mat.getValues().values().data();
-                        double *c_par = (double *)ans_sub.data();
-                        char transbptr_par = 'T';
-                        char transaptr_par = 'N';
-                        ttb_blas_int mptr_par = I_Less;
-                        ttb_blas_int nptr_par = mat.size(0);
-                        ttb_blas_int kptr_par = mat.size(1);
-                        ttb_blas_int ldaptr_par = mptr;
-                        ttb_blas_int ldbptr_par = mat.size(0);
-                        ttb_blas_int ldcptr_par = mptr;
-                        //NOTE: we may have switched a, b and corresponding ptrs as inputs here
-                        dgemm(&transaptr_par,
-                              &transbptr_par,
-                              &mptr_par,
-                              &nptr_par,
-                              &kptr_par,
-                              &alphaptr_par,
-                              a_par,
-                              &ldaptr_par,
-                              b_par,
-                              &ldbptr_par,
-                              &betaptr_par,
-                              c_par,
-                              &ldcptr_par);
-                    });
-            }
-            else
-            {
-                std::cout << "mode: " << mode << " is invalid. Please provide valid mode" << std::endl;
-            }
-
-            return ans;
-        }
-
-        /////////////////////////////////////////
-        //Serial for-loop using dgemm function inside of Genten_MathLibs.hpp
-        //
-        template <typename ExecSpace>
-        TensorT<ExecSpace> genten_ttm_serial_dgemm(ttb_indx mode, TensorT<ExecSpace> ten, TensorT<ExecSpace> mat, TensorT<ExecSpace> &ans)
-        {
-
-            int mode_dim = ten.size(mode);
-            int prod = ten.size().prod();
-            int I_slash = prod / mode_dim;
-
-            int I_Less = ten.size().prod(0, mode, 1);
-            int I_Greater = ten.size().prod(mode + 1, ten.ndims(), 1);
-            ///////////
-            char transaptr = 'N';
-            char transbptr = 'N';
-            ttb_blas_int mptr = mat.size(0);
-            ttb_blas_int nptr = I_slash;
-            ttb_blas_int kptr = mode_dim;
-            double alphaptr = 1;
-            double *a = (double *)mat.getValues().values().data();
-            ttb_blas_int ldaptr = mptr;
-            double *b = (double *)ten.getValues().values().data();
-            ttb_blas_int ldbptr = kptr;
-            double betaptr = 0;
-            double *c = (double *)ans.getValues().values().data();
-            ttb_blas_int ldcptr = mptr;
-
-            if (mode == 0)
-            {
-                dgemm(&transaptr,
-                      &transbptr,
-                      &mptr,
-                      &nptr,
-                      &kptr,
-                      &alphaptr,
-                      a,
-                      &ldaptr,
-                      b,
-                      &ldbptr,
-                      &betaptr,
-                      c,
-                      &ldcptr);
-            }
-            else if ((mode < ten.ndims()) && (mode > 0))
-            {
-                transbptr = 'T';
-
-                mptr = I_Less;
-                nptr = mat.size(0);
-                kptr = mat.size(1);
-                ldaptr = mptr;
-                ldbptr = mat.size(0);
-                ldcptr = mptr;
-
-                Kokkos::View<ttb_real **, Kokkos::LayoutLeft, Kokkos::MemoryTraits<Kokkos::Unmanaged>> Y(ten.getValues().values().data(), I_Less, I_Greater * mode_dim);
-                for (int i = 0; i < I_Greater; ++i)
+                if (ten.size(mode) != mat.size(1))
                 {
+                    std::stringstream dim_error;
+                    dim_error << "From genten_ttm_parfor_dgemm, tensor dimension " << mode << " of size " << ten.size(mode) <<" does not match number of columns, "<< mat.size(1) <<", of input matrix";
+                    std::cerr << dim_error.str() << std::endl;
+                    throw dim_error.str();
+                }
+                int mode_dim = ten.size(mode);
+                int prod = ten.size().prod();
+                int I_slash = prod / mode_dim;
 
-                    auto ten_Y = Kokkos::subview(Y, Kokkos::ALL(), std::make_pair((mode_dim * i), (mode_dim * (i + 1))));
-                    auto ans_sub = Kokkos::subview(ans.getValues().values(), std::make_pair((mat.size(0) * I_Less * i), (mat.size(0) * I_Less * (i + 1))));
+                int I_Less = ten.size().prod(0, mode, 1);
+                int I_Greater = ten.size().prod(mode + 1, ten.ndims(), 1);
 
-                    a = (double *)ten_Y.data();
-                    b = (double *)mat.getValues().values().data();
-                    c = (double *)ans_sub.data();
+                char transaptr = 'N';
+                char transbptr = 'N';
+                ttb_blas_int mptr = mat.size(0);
+                ttb_blas_int nptr = I_slash;
+                ttb_blas_int kptr = mode_dim;
+                double alphaptr = 1;
+                double *a = (double *)mat.getValues().values().data();
+                ttb_blas_int ldaptr = mptr;
+                double *b = (double *)ten.getValues().values().data();
+                ttb_blas_int ldbptr = kptr;
+                double betaptr = 0;
+                double *c = (double *)ans.getValues().values().data();
+                ttb_blas_int ldcptr = mptr;
 
-                    //NOTE: as of now we are not using the layout right result_sub. If the answer comes out transposed, we might be able to use it to get it in the correct order
-
-                    //NOTE: we may have switched a, b and corresponding ptrs as inputs here
+                if (mode == 0)
+                {
                     dgemm(&transaptr,
                           &transbptr,
                           &mptr,
@@ -247,10 +117,164 @@ namespace Genten
                           c,
                           &ldcptr);
                 }
+                else if ((mode < ten.ndims()) && (mode > 0))
+                {
+                    transbptr = 'T';
+
+                    mptr = I_Less;
+                    nptr = mat.size(0);
+                    kptr = mat.size(1);
+                    ldaptr = mptr;
+                    ldbptr = mat.size(0);
+                    ldcptr = mptr;
+
+                    Kokkos::View<ttb_real **, Kokkos::LayoutLeft, Kokkos::MemoryTraits<Kokkos::Unmanaged>> Y(ten.getValues().values().data(), I_Less, I_Greater * mode_dim);
+
+                    Kokkos::parallel_for(
+                        I_Greater, KOKKOS_LAMBDA(const int i) {
+                            auto ten_Y = Kokkos::subview(Y, Kokkos::ALL(), std::make_pair((mode_dim * i), (mode_dim * (i + 1))));
+                            auto ans_sub = Kokkos::subview(ans.getValues().values(), std::make_pair((mat.size(0) * I_Less * i), (mat.size(0) * I_Less * (i + 1))));
+
+                            double test = 0;
+                            double alphaptr_par = 1;
+                            double betaptr_par = 0;
+                            double *a_par = (double *)ten_Y.data();
+                            double *b_par = (double *)mat.getValues().values().data();
+                            double *c_par = (double *)ans_sub.data();
+                            char transbptr_par = 'T';
+                            char transaptr_par = 'N';
+                            ttb_blas_int mptr_par = I_Less;
+                            ttb_blas_int nptr_par = mat.size(0);
+                            ttb_blas_int kptr_par = mat.size(1);
+                            ttb_blas_int ldaptr_par = mptr;
+                            ttb_blas_int ldbptr_par = mat.size(0);
+                            ttb_blas_int ldcptr_par = mptr;
+
+                            dgemm(&transaptr_par,
+                                  &transbptr_par,
+                                  &mptr_par,
+                                  &nptr_par,
+                                  &kptr_par,
+                                  &alphaptr_par,
+                                  a_par,
+                                  &ldaptr_par,
+                                  b_par,
+                                  &ldbptr_par,
+                                  &betaptr_par,
+                                  c_par,
+                                  &ldcptr_par);
+                        });
+                }
             }
             else
             {
-                std::cout << "mode: " << mode << " is invalid. Please provide valid mode" << std::endl;
+                std::stringstream mode_error;
+                mode_error << "From genten_ttm_parfor_dgemm, mode: " << mode << " is invalid. Please provide valid mode";
+                std::cerr << mode_error.str() << std::endl;
+                throw mode_error.str();
+            }
+
+            return ans;
+        }
+
+        /////////////////////////////////////////
+        //Serial for-loop using dgemm function inside of Genten_MathLibs.hpp
+        //
+        template <typename ExecSpace>
+        TensorT<ExecSpace> genten_ttm_serial_dgemm(ttb_indx mode, TensorT<ExecSpace> ten, TensorT<ExecSpace> mat, TensorT<ExecSpace> &ans)
+        {
+
+            if ((mode + 1 > 0) && (mode < ten.ndims()))
+            {
+                if (ten.size(mode) != mat.size(1))
+                {
+                    std::stringstream dim_error;
+                    dim_error << "From genten_ttm_serial_dgemm, tensor dimension " << mode << " of size " << ten.size(mode) << " does not match number of columns, " << mat.size(1) << ", of input matrix";
+                    std::cerr << dim_error.str() << std::endl;
+                    throw dim_error.str();
+                }
+
+                int mode_dim = ten.size(mode);
+                int prod = ten.size().prod();
+                int I_slash = prod / mode_dim;
+
+                int I_Less = ten.size().prod(0, mode, 1);
+                int I_Greater = ten.size().prod(mode + 1, ten.ndims(), 1);
+
+                char transaptr = 'N';
+                char transbptr = 'N';
+                ttb_blas_int mptr = mat.size(0);
+                ttb_blas_int nptr = I_slash;
+                ttb_blas_int kptr = mode_dim;
+                double alphaptr = 1;
+                double *a = (double *)mat.getValues().values().data();
+                ttb_blas_int ldaptr = mptr;
+                double *b = (double *)ten.getValues().values().data();
+                ttb_blas_int ldbptr = kptr;
+                double betaptr = 0;
+                double *c = (double *)ans.getValues().values().data();
+                ttb_blas_int ldcptr = mptr;
+
+                if (mode == 0)
+                {
+                    dgemm(&transaptr,
+                          &transbptr,
+                          &mptr,
+                          &nptr,
+                          &kptr,
+                          &alphaptr,
+                          a,
+                          &ldaptr,
+                          b,
+                          &ldbptr,
+                          &betaptr,
+                          c,
+                          &ldcptr);
+                }
+                else if ((mode < ten.ndims()) && (mode > 0))
+                {
+                    transbptr = 'T';
+
+                    mptr = I_Less;
+                    nptr = mat.size(0);
+                    kptr = mat.size(1);
+                    ldaptr = mptr;
+                    ldbptr = mat.size(0);
+                    ldcptr = mptr;
+
+                    Kokkos::View<ttb_real **, Kokkos::LayoutLeft, Kokkos::MemoryTraits<Kokkos::Unmanaged>> Y(ten.getValues().values().data(), I_Less, I_Greater * mode_dim);
+                    for (int i = 0; i < I_Greater; ++i)
+                    {
+
+                        auto ten_Y = Kokkos::subview(Y, Kokkos::ALL(), std::make_pair((mode_dim * i), (mode_dim * (i + 1))));
+                        auto ans_sub = Kokkos::subview(ans.getValues().values(), std::make_pair((mat.size(0) * I_Less * i), (mat.size(0) * I_Less * (i + 1))));
+
+                        a = (double *)ten_Y.data();
+                        b = (double *)mat.getValues().values().data();
+                        c = (double *)ans_sub.data();
+
+                        dgemm(&transaptr,
+                              &transbptr,
+                              &mptr,
+                              &nptr,
+                              &kptr,
+                              &alphaptr,
+                              a,
+                              &ldaptr,
+                              b,
+                              &ldbptr,
+                              &betaptr,
+                              c,
+                              &ldcptr);
+                    }
+                }
+            }
+            else
+            {
+                std::stringstream mode_error;
+                mode_error << "From genten_ttm_serial_dgemm, mode: " << mode << " is invalid. Please provide valid mode";
+                std::cerr << mode_error.str() << std::endl;
+                throw mode_error.str();
             }
 
             return ans;
@@ -277,7 +301,6 @@ namespace Genten
             ttb_indx nmats = Y_size_host.prod(mode + 1, Y.ndims(), 1); //Y.size().prod(mode+1, Y.ndims(), 1);
             ttb_indx nrows = Y_size_host[mode];                        //Y.size(mode);
 
-            std::cout << "IN TTM cublasDgemmBatched nrows/ncols/nmats: " << nrows << "/" << ncols << "/" << nmats << std::endl;
 
             //Get nrows, ncols for the V_matrix
             IndxArrayT<DefaultHostExecutionSpace> V_size_host = create_mirror_view(DefaultHostExecutionSpace(), V.size());
@@ -306,7 +329,11 @@ namespace Genten
                 status = cublasCreate(&handle);
                 if (status != CUBLAS_STATUS_SUCCESS)
                 {
-                    std::cout << "Error!  cublasCreate() failed with status " << status << std::endl;
+                    std::stringstream cublasCreate_error;
+                    cublasCreate_error << "Error!  cublasCreate() failed with status "
+                       << status;
+                    std::cerr << cublasCreate_error.str() << std::endl;
+                    throw cublasCreate_error.str();
                 }
             }
 
@@ -325,7 +352,11 @@ namespace Genten
 
             if (status != CUBLAS_STATUS_SUCCESS)
             {
-                std::cout << "Error!  cublasDgemmStridedBatched() failed with status " << status << std::endl;
+                std::stringstream cublasDgemmStridedBatched_error;
+                cublasDgemmStridedBatched_error << "Error!  cublasDgemmStridedBatched() failed with status "
+                   << status;
+                std::cerr << cublasDgemmStridedBatched_error.str() << std::endl;
+                throw cublasDgemmStridedBatched_error.str();
             }
         }
 
@@ -348,8 +379,6 @@ namespace Genten
             ttb_indx ncols = Y_size_host.prod(0, mode, 1);             // Y.size().prod(0,mode,1);
             ttb_indx nmats = Y_size_host.prod(mode + 1, Y.ndims(), 1); //Y.size().prod(mode+1, Y.ndims(), 1);
             ttb_indx nrows = Y_size_host[mode];                        //Y.size(mode);
-
-            std::cout << "IN TTM serial cublasDgemm nrows/ncols/nmats: " << nrows << "/" << ncols << "/" << nmats << std::endl;
 
             //Get nrows, ncols for the V_matrix
             IndxArrayT<DefaultHostExecutionSpace> V_size_host = create_mirror_view(DefaultHostExecutionSpace(), V.size());
@@ -400,7 +429,11 @@ namespace Genten
                     status = cublasCreate(&handle);
                     if (status != CUBLAS_STATUS_SUCCESS)
                     {
-                        std::cout << "Error!  cublasCreate() failed with status " << status << std::endl;
+                        std::stringstream cublasCreate_error;
+                        cublasCreate_error << "Error!  cublasCreate() failed with status "
+                                           << status;
+                        std::cerr << cublasCreate_error.str() << std::endl;
+                        throw cublasCreate_error.str();
                     }
                 }
 
@@ -414,7 +447,11 @@ namespace Genten
 
                 if (status != CUBLAS_STATUS_SUCCESS)
                 {
-                    std::cout << "Error!  cublasDgemm()/cublasDsyrk() failed with status " << status << std::endl;
+                    std::stringstream cublasDgemm_error;
+                    cublasDgemm_error << "Error!  cublasDgemm()/cublasDsyrk() failed with status "
+                       << status;
+                    std::cerr << cublasDgemm_error.str() << std::endl;
+                    throw cublasDgemm_error.str();
                 }
             }
 
@@ -440,8 +477,6 @@ namespace Genten
             ttb_indx ncols = Y_size_host.prod(0, mode, 1); // Y.size().prod(0,n,1);
             ttb_indx nrows = Y_size_host[mode];            //Y.size(n);
 
-            //HKstd::cout<<"IN TTM_LAST_MODE nrows/ncols: "<< nrows<<"/"<<ncols<<std::endl;
-
             //Get nrows, ncols for the V_matrix
             IndxArrayT<DefaultHostExecutionSpace> V_size_host = create_mirror_view(DefaultHostExecutionSpace(), V.size());
             deep_copy(V_size_host, V.size());
@@ -465,7 +500,11 @@ namespace Genten
                 status = cublasCreate(&handle);
                 if (status != CUBLAS_STATUS_SUCCESS)
                 {
-                    std::cout << "Error!  cublasCreate() failed with status " << status << std::endl;
+                    std::stringstream cublasCreate_error;
+                    cublasCreate_error << "Error!  cublasCreate() failed with status "
+                                       << status;
+                    std::cerr << cublasCreate_error.str() << std::endl;
+                    throw cublasCreate_error.str();
                 }
             }
 
@@ -479,7 +518,11 @@ namespace Genten
 
             if (status != CUBLAS_STATUS_SUCCESS)
             {
-                std::cout << "Error!  cublasDgemm()/cublasDsyrk() failed with status " << status << std::endl;
+                std::stringstream cublasDgemm_error;
+                cublasDgemm_error << "Error!  cublasDgemm()/cublasDsyrk() failed with status "
+                                  << status;
+                std::cerr << cublasDgemm_error.str() << std::endl;
+                throw cublasDgemm_error.str();
             }
         }
 #endif
@@ -497,15 +540,10 @@ namespace Genten
         const ttb_indx nd = Y.ndims(); // Number of dimensions
 
         assert(Y.size(n) == V.size(1));
-        //std::cout<<"IN TTM "<<n<<" "<<Y.size(n)<<" "<<V.size(1)<<"\n";
-
-        //const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
-        //std::cout<< is_cuda<<"\n";
 
         if (all_cublas)
         {
 #if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
-            std::cout << "Calling cuBlas ttm from inside cuBlas ttm" << std::endl;
             if (n == nd - 1)
             {
                 Impl::kokkos_ttm_last_mode(Y, V, n, Z);
@@ -517,14 +555,15 @@ namespace Genten
                 //Impl::kokkos_ttm_serial_cublas(Y,V,n,Z);
             }
 #else
-            std::cout << "TTM is asked to launch all cublas kernels but KOKKOS not built with CUBLAS"
-                      << "\n";
+                    std::stringstream kokkos_cublas_error;
+                    kokkos_cublas_error << "TTM is asked to launch all cublas kernels but KOKKOS not built with CUBLAS";
+                    std::cerr << kokkos_cublas_error.str() << std::endl;
+                    throw kokkos_cublas_error.str();
 #endif
         }
         else
         {
-            std::cout << "Calling genten_ttm_serial_dgemm from inside cuBlas ttm" << std::endl;
             Impl::genten_ttm_serial_dgemm(n, Y, V, Z);
         }
-    } 
+    }
 } // namespace Genten
