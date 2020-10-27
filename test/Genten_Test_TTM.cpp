@@ -1,23 +1,37 @@
-#include <gtest/gtest.h> 
+    // #include <gtest/gtest.h> 
 #include <iostream>
+#include <sstream>
 #include "Genten_IOtext.hpp"
 #include "Genten_TTM.hpp"
 #include <string>
+#include "Genten_Test_Utils.hpp"
+#include "Genten_Util.hpp"
+
+
+using namespace Genten::Test;
 
 template <typename Space>
-int unit_test_tensor(Genten::TensorT<Space> Z, ttb_real *unit_test, int prod)
+bool unit_test_tensor(Genten::TensorT<Space> Z, ttb_real *unit_test, int prod)
 {
     for (int i = 0; i < prod; ++i)
     {
         // std::cout << Z.getValues().values()(i) <<std::endl;
-        EXPECT_NEAR(Z.getValues().values()(i), unit_test[i], 1e-10);
+        // EXPECT_NEAR(Z.getValues().values()(i), unit_test[i], 1e-10);
+        if(Z.getValues().values()(i) != unit_test[i]){
+            std::stringstream dim_error;
+            dim_error << "Z[" << i << "]: " << Z.getValues().values()(i) << "   unit_test: " << unit_test[i];
+            std::cerr << dim_error.str() << std::endl;
+            throw dim_error.str();
+            return false;
+        }
         Z.getValues().values()(i) = 0; //Zeroing Z out so that we know each ttm implementation is changing Z
     }
     
-    return 0;
+    return true;
 }
 
-template<typename Space> int bulk_test(Genten::TensorT<Space> X, Genten::TensorT<Space> mat, int mode, ttb_real *unit_test)
+template<typename Space> 
+int bulk_test(Genten::TensorT<Space> X, Genten::TensorT<Space> mat, int mode, ttb_real *unit_test)
 {
 
     Genten::IndxArrayT<Space> result_size(X.ndims());
@@ -42,32 +56,32 @@ template<typename Space> int bulk_test(Genten::TensorT<Space> X, Genten::TensorT
     Genten::ttm(X_device, mat_device, mode, Z_device, al);
     //Unload data off of device and check correctness	
 	deep_copy(Z,Z_device);
-    unit_test_tensor(Z, unit_test, prod); //NOTE: we need to copy data from device
+    ASSERT(unit_test_tensor(Z, unit_test, prod), "test"); //NOTE: we need to copy data from device
     std::cout << std::endl
               << "Testing Parfor_DGEMM cuBlas enabled ttm along mode: " << mode << std::endl;
     al.ttm_method = Genten::TTM_Method::Parfor_DGEMM;
     Genten::ttm(X_device, mat_device, mode, Z_device, al);
     //Unload data off of device and check correctness	
 	deep_copy(Z,Z_device);
-    unit_test_tensor(Z, unit_test, prod); //NOTE: we need to copy data from device
+    ASSERT(unit_test_tensor(Z, unit_test, prod), "test"); //NOTE: we need to copy data from device
 #else
     Genten::ttm(X, mat, mode, Z, al);
-    unit_test_tensor(Z, unit_test, prod);
+    ASSERT(unit_test_tensor(Z, unit_test, prod), "test");
     std::cout << std::endl
               << "Testing Parfor_DGEMM cuBlas enabled ttm along mode: " << mode << std::endl;
     al.ttm_method = Genten::TTM_Method::Parfor_DGEMM;
     Genten::ttm(X, mat, mode, Z, al);
-    unit_test_tensor(Z, unit_test, prod);
+    ASSERT(unit_test_tensor(Z, unit_test, prod), "test");
     std::cout << std::endl
               << "Testing serial dgemm along mode: " << mode << std::endl;
     Genten::Impl::genten_ttm_serial_dgemm(mode, X, mat, Z);
-    unit_test_tensor(Z, unit_test, prod);
+    ASSERT(unit_test_tensor(Z, unit_test, prod), "test");
     std::cout << std::endl
               << "Testing parfor dgemm along mode: " << mode << std::endl;
     //Z.getValues().values()(0)=483294;
     Genten::Impl::genten_ttm_parfor_dgemm(mode, X, mat, Z);
-    //Z.getValues().values()(0)=483294;
-    unit_test_tensor(Z, unit_test, prod);
+    // Z.getValues().values()(0)=483294; //Sanity check
+    ASSERT(unit_test_tensor(Z, unit_test, prod), "test");
 #endif
     
     
@@ -75,7 +89,8 @@ template<typename Space> int bulk_test(Genten::TensorT<Space> X, Genten::TensorT
     return 0;
 }
 
-TEST(Test, ttm_test_0)
+// TEST(Test, ttm_test_0)
+void test0()
 {
     typedef Genten::DefaultHostExecutionSpace Space;
     typedef Genten::TensorT<Space> Tensor_type;
@@ -113,8 +128,9 @@ TEST(Test, ttm_test_0)
     result_size[mode] = mat.size(0);
 
     Tensor_type Z(result_size, 0.0);
-    std::cout << "preparing to calculate ttm:  5x2 * 3x4x2x2 along mode 0" << std::endl;
-
+    // std::cout << "preparing to calculate ttm:  5x2 * 3x4x2x2 along mode 0" << std::endl;
+    MESSAGE("preparing to calculate ttm:  5x2 * 3x4x2x2 along mode 0");
+    
     int prod = Z.size().prod();
 
     ttb_real unit_test[120] = {25, 28, 31, 34, 37, 70, 82, 94, 106, 118, 115, 136, 157, 178, 199, 160, 190, 220, 250, 280, 205, 244, 283, 322, 361, 250, 298, 346, 394, 442, 295, 352, 409, 466, 523, 340, 406, 472, 538, 604, 385, 460, 535, 610, 685, 430, 514, 598, 682, 766, 475, 568, 661, 754, 847, 520, 622, 724, 826, 928, 565, 676, 787, 898, 1009, 610, 730, 850, 970, 1090, 655, 784, 913, 1042, 1171, 700, 838, 976, 1114, 1252};
@@ -122,7 +138,8 @@ TEST(Test, ttm_test_0)
     bulk_test( X,  mat, mode, unit_test);
 }
 
-TEST(Test, ttm_test_1)
+// TEST(Test, ttm_test_1)
+void test1()
 {
     typedef Genten::DefaultHostExecutionSpace Space;
     typedef Genten::TensorT<Space> Tensor_type;
@@ -170,7 +187,8 @@ TEST(Test, ttm_test_1)
     bulk_test( X,  mat, mode, unit_test);
 }
 
-TEST(Test, ttm_test_2)
+// TEST(Test, ttm_test_2)
+void test2()
 {
     typedef Genten::DefaultHostExecutionSpace Space;
     typedef Genten::TensorT<Space> Tensor_type;
@@ -218,7 +236,8 @@ TEST(Test, ttm_test_2)
     bulk_test( X,  mat, mode, unit_test);
 }
 
-TEST(Test, ttm_test_3)
+// TEST(Test, ttm_test_3)
+void test3()
 {
     typedef Genten::DefaultHostExecutionSpace Space;
     typedef Genten::TensorT<Space> Tensor_type;
@@ -277,14 +296,18 @@ TEST(Test, ttm_test_3)
     // bulk_test( X, facmat, mode, unit_test);
 }
 
-int main(int argc, char **argv)
+void Genten_Test_TTM(int infolevel)
 {
+    initialize("Tests on Genten::TTM", infolevel);
     std::cout << "hello world" << std::endl;
+    test0();
+    test1();
+    test2();
+    test3();
+    // testing::InitGoogleTest(&argc, argv);
+    // Kokkos::initialize(argc, argv);
+    // int ret = RUN_ALL_TESTS();
+    // Kokkos::finalize();
 
-    testing::InitGoogleTest(&argc, argv);
-    Kokkos::initialize(argc, argv);
-    int ret = RUN_ALL_TESTS();
-    Kokkos::finalize();
-
-    return ret;
+    finalize();
 }

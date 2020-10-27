@@ -46,6 +46,7 @@
 using namespace std;
 
 // Forward declarations.
+void Genten_Test_TTM(int infolevel);
 void Genten_Test_Array(int infolevel);
 void Genten_Test_CpAls(int infolevel);
 void Genten_Test_FacMatrix(int infolevel, const string & dirname);
@@ -76,6 +77,7 @@ int main(int argc, char * argv[])
       infolevel = 0;
   }
 
+  Genten_Test_TTM(infolevel);
   Genten_Test_Array(infolevel);
   Genten_Test_IndxArray(infolevel);
   Genten_Test_FacMatrix(infolevel, "./data/");

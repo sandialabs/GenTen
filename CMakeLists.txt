@@ -387,6 +387,7 @@ include_directories(${GTEST_INCLUDE_DIR})
 #---- Specifications for building unit_tests.
 
 SET(UNIT_TEST_SRCS
+  ${Genten_SOURCE_DIR}/test/Genten_Test_TTM.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_Array.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_CpAls.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_FacMatrix.cpp
@@ -428,15 +429,15 @@ INSTALL (
 #---- Specifications for building each performance test.
 #---- In each case specify the executable and its link library dependencies.
 
-ADD_EXECUTABLE (
-  ttm_gtest
-  ${Genten_SOURCE_DIR}/test/Genten_Test_TTM.cpp
-  )
-target_link_libraries(ttm_gtest ${GTEST_LIBRARY} ${GTEST_INCLUDE_DIR} pthread ${GENTEN_LINK_LIBS})
-INSTALL (
-  TARGETS ttm_gtest
-  DESTINATION test
-)
+# ADD_EXECUTABLE (
+#   ttm_gtest
+#   ${Genten_SOURCE_DIR}/test/Genten_Test_TTM.cpp
+#   )
+# target_link_libraries(ttm_gtest ${GTEST_LIBRARY} ${GTEST_INCLUDE_DIR} pthread ${GENTEN_LINK_LIBS})
+# INSTALL (
+#   TARGETS ttm_gtest
+#   DESTINATION test
+# )
 
 ADD_EXECUTABLE (
   perf_CpAlsAminoAcid
