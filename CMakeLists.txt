@@ -371,14 +371,14 @@ INSTALL (
   DESTINATION lib
   )
 
-FIND_PACKAGE(GTest REQUIRED)
-IF (${GTest_FOUND})
-  MESSAGE(STATUS "FOUND GTEST")
-  MESSAGE(STATUS "GTEST_INCLUDE_DIR: " ${GTEST_INCLUDE_DIR})
-ELSE (${GTest_FOUND})
-  MESSAGE(STATUS "DID NOT FIND GTEST")
-ENDIF (${GTest_FOUND})
-include_directories(${GTEST_INCLUDE_DIR})
+# FIND_PACKAGE(GTest REQUIRED)
+# IF (${GTest_FOUND})
+#   MESSAGE(STATUS "FOUND GTEST")
+#   MESSAGE(STATUS "GTEST_INCLUDE_DIR: " ${GTEST_INCLUDE_DIR})
+# ELSE (${GTest_FOUND})
+#   MESSAGE(STATUS "DID NOT FIND GTEST")
+# ENDIF (${GTest_FOUND})
+# include_directories(${GTEST_INCLUDE_DIR})
 
 #------------------------------------------------------------
 #---- Unit Test Executables
@@ -425,19 +425,6 @@ INSTALL (
 #------------------------------------------------------------
 #---- Performance Test Executables
 #------------------------------------------------------------
-
-#---- Specifications for building each performance test.
-#---- In each case specify the executable and its link library dependencies.
-
-# ADD_EXECUTABLE (
-#   ttm_gtest
-#   ${Genten_SOURCE_DIR}/test/Genten_Test_TTM.cpp
-#   )
-# target_link_libraries(ttm_gtest ${GTEST_LIBRARY} ${GTEST_INCLUDE_DIR} pthread ${GENTEN_LINK_LIBS})
-# INSTALL (
-#   TARGETS ttm_gtest
-#   DESTINATION test
-# )
 
 ADD_EXECUTABLE (
   perf_CpAlsAminoAcid
