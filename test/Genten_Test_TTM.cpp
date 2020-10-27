@@ -1,6 +1,8 @@
     // #include <gtest/gtest.h> 
 #include <iostream>
 #include <sstream>
+#include <string>
+#include <string.h>
 #include "Genten_IOtext.hpp"
 #include "Genten_TTM.hpp"
 #include <string>
@@ -43,8 +45,7 @@ int bulk_test(Genten::TensorT<Space> X, Genten::TensorT<Space> mat, int mode, tt
 
     Genten::AlgParams al;
 
-    std::cout << std::endl
-              << "Testing default DGEMM cuBlas enabled ttm along mode: " << mode << std::endl;
+    MESSAGE("Testing default DGEMM cuBlas enabled ttm along mode: " + std::to_string(mode)); // std::strcat("along mode: ", std::to_string(mode).c_str())); //std::to_string(mode)
 #if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
     Genten::TensorT<Genten::DefaultExecutionSpace> X_device = create_mirror_view(Genten::DefaultExecutionSpace(), X);
 	deep_copy(X_device, X);
@@ -56,32 +57,28 @@ int bulk_test(Genten::TensorT<Space> X, Genten::TensorT<Space> mat, int mode, tt
     Genten::ttm(X_device, mat_device, mode, Z_device, al);
     //Unload data off of device and check correctness	
 	deep_copy(Z,Z_device);
-    ASSERT(unit_test_tensor(Z, unit_test, prod), "test"); //NOTE: we need to copy data from device
-    std::cout << std::endl
-              << "Testing Parfor_DGEMM cuBlas enabled ttm along mode: " << mode << std::endl;
+    ASSERT(unit_test_tensor(Z, unit_test, prod), "CUDA DGEMM"); //NOTE: we need to copy data from device
+    MESSAGE("Testing Parfor_DGEMM cuBlas enabled ttm along mode: " + std::to_string(mode));
     al.ttm_method = Genten::TTM_Method::Parfor_DGEMM;
     Genten::ttm(X_device, mat_device, mode, Z_device, al);
     //Unload data off of device and check correctness	
 	deep_copy(Z,Z_device);
-    ASSERT(unit_test_tensor(Z, unit_test, prod), "test"); //NOTE: we need to copy data from device
+    ASSERT(unit_test_tensor(Z, unit_test, prod), "CUDA Parfor_DGEMM"); //NOTE: we need to copy data from device
 #else
     Genten::ttm(X, mat, mode, Z, al);
-    ASSERT(unit_test_tensor(Z, unit_test, prod), "test");
-    std::cout << std::endl
-              << "Testing Parfor_DGEMM cuBlas enabled ttm along mode: " << mode << std::endl;
+    ASSERT(unit_test_tensor(Z, unit_test, prod), "DGEMM");
+    MESSAGE("Testing Parfor_DGEMM cuBlas enabled ttm along mode: " + std::to_string(mode));
     al.ttm_method = Genten::TTM_Method::Parfor_DGEMM;
     Genten::ttm(X, mat, mode, Z, al);
-    ASSERT(unit_test_tensor(Z, unit_test, prod), "test");
-    std::cout << std::endl
-              << "Testing serial dgemm along mode: " << mode << std::endl;
+    ASSERT(unit_test_tensor(Z, unit_test, prod), "Parfor_DGEMM");
+    MESSAGE("Testing serial dgemm along mode: " + std::to_string(mode));
     Genten::Impl::genten_ttm_serial_dgemm(mode, X, mat, Z);
-    ASSERT(unit_test_tensor(Z, unit_test, prod), "test");
-    std::cout << std::endl
-              << "Testing parfor dgemm along mode: " << mode << std::endl;
+    ASSERT(unit_test_tensor(Z, unit_test, prod), "serial_dgemm");
+    MESSAGE("Testing parfor dgemm along mode: " + std::to_string(mode));
     //Z.getValues().values()(0)=483294;
     Genten::Impl::genten_ttm_parfor_dgemm(mode, X, mat, Z);
     // Z.getValues().values()(0)=483294; //Sanity check
-    ASSERT(unit_test_tensor(Z, unit_test, prod), "test");
+    ASSERT(unit_test_tensor(Z, unit_test, prod), "parfor_dgemm");
 #endif
     
     
@@ -130,7 +127,7 @@ void test0()
     Tensor_type Z(result_size, 0.0);
     // std::cout << "preparing to calculate ttm:  5x2 * 3x4x2x2 along mode 0" << std::endl;
     MESSAGE("preparing to calculate ttm:  5x2 * 3x4x2x2 along mode 0");
-    
+
     int prod = Z.size().prod();
 
     ttb_real unit_test[120] = {25, 28, 31, 34, 37, 70, 82, 94, 106, 118, 115, 136, 157, 178, 199, 160, 190, 220, 250, 280, 205, 244, 283, 322, 361, 250, 298, 346, 394, 442, 295, 352, 409, 466, 523, 340, 406, 472, 538, 604, 385, 460, 535, 610, 685, 430, 514, 598, 682, 766, 475, 568, 661, 754, 847, 520, 622, 724, 826, 928, 565, 676, 787, 898, 1009, 610, 730, 850, 970, 1090, 655, 784, 913, 1042, 1171, 700, 838, 976, 1114, 1252};
@@ -177,7 +174,7 @@ void test1()
     result_size[mode] = mat.size(0);
 
     Tensor_type Z(result_size, 0.0);
-    std::cout << "preparing to calculate ttm:  5x4 * 3x4x2x2 along mode 1" << std::endl;
+    MESSAGE("preparing to calculate ttm:  5x4 * 3x4x2x2 along mode 1");
 
     int prod = Z.size().prod();
 
@@ -226,7 +223,7 @@ void test2()
     result_size[mode] = mat.size(0);
 
     Tensor_type Z(result_size, 0.0);
-    std::cout << "preparing to calculate ttm: 5x2 * 3x4x2x2 along mode 2" << std::endl;
+    MESSAGE("preparing to calculate ttm: 5x2 * 3x4x2x2 along mode 2");
 
     int prod = Z.size().prod();
 
@@ -275,7 +272,7 @@ void test3()
     result_size[mode] = mat.size(0);
 
     Tensor_type Z(result_size, 0.0);
-    std::cout << "preparing to calculate ttm:  5x2 * 3x4x2x2 along mode 3" << std::endl;
+    MESSAGE("preparing to calculate ttm:  5x2 * 3x4x2x2 along mode 3");
 
     int prod = Z.size().prod();
 
@@ -299,7 +296,6 @@ void test3()
 void Genten_Test_TTM(int infolevel)
 {
     initialize("Tests on Genten::TTM", infolevel);
-    std::cout << "hello world" << std::endl;
     test0();
     test1();
     test2();
