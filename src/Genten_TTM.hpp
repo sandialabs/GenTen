@@ -84,14 +84,19 @@ namespace Genten
                     throw dim_error.str();
                 }
 
+                // TensorT<Kokkos::DefaultHostExecutionSpace>
+                Genten::FacMatrixT<Genten::DefaultHostExecutionSpace> mat_dim_host = create_mirror_view(mat.size());
+                deep_copy(mat_dim_host, mat);
+                Genten::IndxArrayT<DefaultHostExecutionSpace> ten_dim_host = create_mirror_view(ten.size());
+                deep_copy(ten_dim_host, ten);
 
-                int mode_dim = ten.size(mode);
+                int mode_dim = ten_dim_host.size(mode);
                 std::cout << "0" << std::endl;
-                int prod = ten.size().prod();
+                int prod = ten_dim_host.size().prod();
                 int I_slash = prod / mode_dim;
 
-                int I_Less = ten.size().prod(0, mode, 1);
-                int I_Greater = ten.size().prod(mode + 1, ten.ndims(), 1);
+                int I_Less = ten_dim_host.size().prod(0, mode, 1);
+                int I_Greater = ten_dim_host.size().prod(mode + 1, ten_dim_host.ndims(), 1);
 
                 // typedef Kokkos::View<ttb_real **, Kokkos::LayoutLeft, ExecSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> unmanaged_view_type;
                 Kokkos::View<ttb_real **, Kokkos::LayoutLeft, ExecSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> Y_def(ten.getValues().values().data(), I_Less, I_Greater * mode_dim);
@@ -100,19 +105,20 @@ namespace Genten
                 deep_copy(Y, Y_def);
 
                 //NOTE: might have to do the same thing for ans and mat...
-                Kokkos::View<ttb_real **, Kokkos::LayoutLeft, ExecSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> mat_def(mat.getValues().values().data(), mat.size(0), mat.size(1));
+                Kokkos::View<ttb_real **, Kokkos::LayoutLeft, ExecSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> mat_def(mat.getValues().values().data(), mat_dim_host.size(0), mat_dim_host.size(1));
                 Kokkos::View<ttb_real **, Kokkos::LayoutLeft, Kokkos::DefaultHostExecutionSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> mat_host = create_mirror_view(DefaultHostExecutionSpace(), mat_def); //DefaultHostExecutionSpace()
                 //If ten was already in host space, this should be a no-op
                 deep_copy(mat_host, mat_def);
 
-                Kokkos::View<ttb_real *, Kokkos::LayoutLeft, ExecSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> ans_def(ans.getValues().values().data(), I_slash*mat.size(0));
+                Kokkos::View<ttb_real *, Kokkos::LayoutLeft, ExecSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> ans_def(ans.getValues().values().data(), I_slash*mat_dim_host.size(0));
                 Kokkos::View<ttb_real *, Kokkos::LayoutLeft, Kokkos::DefaultHostExecutionSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> ans_host = create_mirror_view(DefaultHostExecutionSpace(), ans_def);
                 //If ten was already in host space, this should be a no-op
                 deep_copy(ans_host, ans_def);
+                std::cout << "1" << std::endl;
 
                 char transaptr = 'N';
                 char transbptr = 'N';
-                ttb_blas_int mptr = mat.size(0);
+                ttb_blas_int mptr = mat_dim_host.size(0);
                 ttb_blas_int nptr = I_slash;
                 ttb_blas_int kptr = mode_dim;
                 double alphaptr = 1;
@@ -140,15 +146,15 @@ namespace Genten
                           c,
                           &ldcptr);
                 }
-                else if ((mode < ten.ndims()) && (mode > 0))
+                else if ((mode < ten_dim_host.ndims()) && (mode > 0))
                 {
                     transbptr = 'T';
 
                     mptr = I_Less;
-                    nptr = mat.size(0);
-                    kptr = mat.size(1);
+                    nptr = mat_dim_host.size(0);
+                    kptr = mat_dim_host.size(1);
                     ldaptr = mptr;
-                    ldbptr = mat.size(0);
+                    ldbptr = mat_dim_host.size(0);
                     ldcptr = mptr;
 
                     
@@ -157,7 +163,7 @@ namespace Genten
                     Kokkos::parallel_for( "genten_ttm_parfor_dgemm_loop",
                         Kokkos::RangePolicy<ExecSpace>(0,I_Greater), KOKKOS_LAMBDA(const int i) {
                             auto ten_Y = Kokkos::subview(Y, Kokkos::ALL(), std::make_pair((mode_dim * i), (mode_dim * (i + 1))));
-                            auto ans_sub = Kokkos::subview(ans_host, std::make_pair((mat.size(0) * I_Less * i), (mat.size(0) * I_Less * (i + 1))));
+                            auto ans_sub = Kokkos::subview(ans_host, std::make_pair((mat_dim_host.size(0) * I_Less * i), (mat_dim_host.size(0) * I_Less * (i + 1))));
 
                             double test = 0;
                             double alphaptr_par = 1;
@@ -168,10 +174,10 @@ namespace Genten
                             char transbptr_par = 'T';
                             char transaptr_par = 'N';
                             ttb_blas_int mptr_par = I_Less;
-                            ttb_blas_int nptr_par = mat.size(0);
-                            ttb_blas_int kptr_par = mat.size(1);
+                            ttb_blas_int nptr_par = mat_dim_host.size(0);
+                            ttb_blas_int kptr_par = mat_dim_host.size(1);
                             ttb_blas_int ldaptr_par = mptr;
-                            ttb_blas_int ldbptr_par = mat.size(0);
+                            ttb_blas_int ldbptr_par = mat_dim_host.size(0);
                             ttb_blas_int ldcptr_par = mptr;
 
                             dgemm(&transaptr_par,
