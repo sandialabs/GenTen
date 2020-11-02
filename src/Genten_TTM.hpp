@@ -188,7 +188,7 @@ namespace Genten
                 std::cerr << mode_error.str() << std::endl;
                 throw mode_error.str();
             }
-
+            deep_copy(ans, ans_host);
             return 0;
         }
 
