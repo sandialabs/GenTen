@@ -51,8 +51,8 @@
 
 using namespace Genten::Test;
 
-template <typename Space>
-bool unit_test_tensor(Genten::TensorT<Space> Z, ttb_real *unit_test, int prod)
+template <typename HostSpace>
+bool unit_test_tensor(Genten::TensorT<HostSpace> Z, ttb_real *unit_test, int prod)
 {
     for (int i = 0; i < prod; ++i)
     {
@@ -69,28 +69,28 @@ bool unit_test_tensor(Genten::TensorT<Space> Z, ttb_real *unit_test, int prod)
     return true;
 }
 
-template<typename Space> 
-int bulk_test(Genten::TensorT<Space> X, Genten::TensorT<Space> mat, int mode, ttb_real *unit_test)
+template<typename ExecSpace, typename HostSpace> 
+int bulk_test(Genten::TensorT<HostSpace> X, Genten::TensorT<HostSpace> mat, int mode, ttb_real *unit_test)
 {
 
-    Genten::IndxArrayT<Space> result_size(X.ndims());
+    Genten::IndxArrayT<HostSpace> result_size(X.ndims());
     deep_copy(result_size, X.size());
     result_size[mode] = mat.size(0);
 
-    Genten::TensorT<Space> Z(result_size, 0.0);
+    Genten::TensorT<HostSpace> Z(result_size, 0.0);
     int prod = Z.size().prod(); 
 
     Genten::AlgParams al;
 
-    MESSAGE("Testing default DGEMM cuBlas enabled ttm along mode: " + std::to_string(mode)); 
-#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
-    Genten::TensorT<Genten::DefaultExecutionSpace> X_device = create_mirror_view(Genten::DefaultExecutionSpace(), X);
+
+    Genten::TensorT<ExecSpace> X_device = create_mirror_view(X);
 	deep_copy(X_device, X);
-    Genten::TensorT<Genten::DefaultExecutionSpace> mat_device = create_mirror_view(Genten::DefaultExecutionSpace(), mat);
+    Genten::TensorT<ExecSpace> mat_device = create_mirror_view(mat);
 	deep_copy(mat_device, mat);
-    Genten::TensorT<Genten::DefaultExecutionSpace> Z_device = create_mirror_view(Genten::DefaultExecutionSpace(), Z);
+    Genten::TensorT<ExecSpace> Z_device = create_mirror_view(Z);
 	deep_copy(Z_device, Z);
 
+    MESSAGE("Testing default DGEMM cuBlas enabled ttm along mode: " + std::to_string(mode)); 
     Genten::ttm(X_device, mat_device, mode, Z_device, al);
     //Unload data off of device and check correctness	
 	deep_copy(Z,Z_device);
@@ -101,9 +101,11 @@ int bulk_test(Genten::TensorT<Space> X, Genten::TensorT<Space> mat, int mode, tt
     //Unload data off of device and check correctness	
 	deep_copy(Z,Z_device);
     ASSERT(unit_test_tensor(Z, unit_test, prod), "CUDA Parfor_DGEMM"); //NOTE: we need to copy data from device
-    
-    //As of now this should fail because we need to copy data from device to
-    //to use dgemm functions...
+
+
+    MESSAGE("Testing parfor dgemm along mode: " + std::to_string(mode));
+    //serial/parfor dgemm function will internally transfer data from device to
+    //host and use MathLib dgemm function as gemm kernel
     Z.getValues().values()(0)=483294;  //Sanity check
     deep_copy(Z_device, Z);
     Genten::Impl::genten_ttm_parfor_dgemm(mode, X_device, mat_device, Z_device);
@@ -112,38 +114,21 @@ int bulk_test(Genten::TensorT<Space> X, Genten::TensorT<Space> mat, int mode, tt
     // Z.getValues().values()(0)=483294;
     ASSERT(unit_test_tensor(Z, unit_test, prod), "parfor_dgemm"); //NOTE: we need to copy data from device
     
+    MESSAGE("Testing serial dgemm along mode: " + std::to_string(mode));
     Genten::Impl::genten_ttm_serial_dgemm(mode, X_device, mat_device, Z_device);
     //Unload data off of device and check correctness	
 	deep_copy(Z,Z_device);
     // Z.getValues().values()(0)=483294;
     ASSERT(unit_test_tensor(Z, unit_test, prod), "parfor_dgemm"); //NOTE: we need to copy data from device
-#else
-    Genten::ttm(X, mat, mode, Z, al);
-    ASSERT(unit_test_tensor(Z, unit_test, prod), "DGEMM");
-    MESSAGE("Testing Parfor_DGEMM cuBlas enabled ttm along mode: " + std::to_string(mode));
-    al.ttm_method = Genten::TTM_Method::Parfor_DGEMM;
-    Genten::ttm(X, mat, mode, Z, al);
-    ASSERT(unit_test_tensor(Z, unit_test, prod), "Parfor_DGEMM");
-    MESSAGE("Testing serial dgemm along mode: " + std::to_string(mode));
-    Genten::Impl::genten_ttm_serial_dgemm(mode, X, mat, Z);
-    ASSERT(unit_test_tensor(Z, unit_test, prod), "serial_dgemm");
-    MESSAGE("Testing parfor dgemm along mode: " + std::to_string(mode));
-    // Z.getValues().values()(0)=483294;  //Sanity check
-    Genten::Impl::genten_ttm_parfor_dgemm(mode, X, mat, Z);
-    // Z.getValues().values()(0)=483294; //Sanity check
-    ASSERT(unit_test_tensor(Z, unit_test, prod), "parfor_dgemm");
-#endif
-    
-    
-    
+
     return 0;
 }
 
+template<typename ExecSpace>
 void test0()
 {
-    typedef Genten::DefaultHostExecutionSpace Space;
-    typedef Genten::TensorT<Space> Tensor_type;
-    typedef Genten::FacMatrixT<Space> FacMatrix_type;
+    typedef Genten::DefaultHostExecutionSpace HostSpace;
+    typedef Genten::TensorT<HostSpace> Tensor_type;
 
     Genten::IndxArray tensor_dims;
     tensor_dims = Genten::IndxArray(4);
@@ -172,7 +157,7 @@ void test0()
     }
     ttb_indx mode = 0;
 
-    Genten::IndxArrayT<Space> result_size(X.ndims());
+    Genten::IndxArrayT<HostSpace> result_size(X.ndims());
     deep_copy(result_size, X.size());
     result_size[mode] = mat.size(0);
 
@@ -187,14 +172,14 @@ void test0()
 568, 661, 754, 847, 520, 622, 724, 826, 928, 565, 676, 787, 898, 1009, 610, 730, 850, 970, 1090, 655, 784, 913, 1042, 1171, 700, 838, 976,
 1114, 1252};
 
-    bulk_test( X,  mat, mode, unit_test);
+    bulk_test<ExecSpace, HostSpace>( X,  mat, mode, unit_test);
 }
 
+template<typename ExecSpace>
 void test1()
 {
-    typedef Genten::DefaultHostExecutionSpace Space;
-    typedef Genten::TensorT<Space> Tensor_type;
-    typedef Genten::FacMatrixT<Space> FacMatrix_type;
+    typedef Genten::DefaultHostExecutionSpace HostSpace;
+    typedef Genten::TensorT<HostSpace> Tensor_type;
 
     Genten::IndxArray tensor_dims;
     tensor_dims = Genten::IndxArray(4);
@@ -223,7 +208,7 @@ void test1()
     }
     ttb_indx mode = 1;
 
-    Genten::IndxArrayT<Space> result_size(X.ndims());
+    Genten::IndxArrayT<HostSpace> result_size(X.ndims());
     deep_copy(result_size, X.size());
     result_size[mode] = mat.size(0);
 
@@ -236,14 +221,14 @@ void test1()
 740, 778, 768, 810, 852, 834, 880, 926, 930, 960, 990, 1044, 1078, 1112, 1158, 1196, 1234, 1272, 1314, 1356, 1386, 1432, 1478, 1290, 1320,
 1350, 1452, 1486, 1520, 1614, 1652, 1690, 1776, 1818, 1860, 1938, 1984, 2030};
 
-    bulk_test( X,  mat, mode, unit_test);
+    bulk_test<ExecSpace, HostSpace>( X,  mat, mode, unit_test);
 }
 
+template<typename ExecSpace>
 void test2()
 {
-    typedef Genten::DefaultHostExecutionSpace Space;
-    typedef Genten::TensorT<Space> Tensor_type;
-    typedef Genten::FacMatrixT<Space> FacMatrix_type;
+    typedef Genten::DefaultHostExecutionSpace HostSpace;
+    typedef Genten::TensorT<HostSpace> Tensor_type;
 
     Genten::IndxArray tensor_dims;
     tensor_dims = Genten::IndxArray(4);
@@ -272,7 +257,7 @@ void test2()
     }
     ttb_indx mode = 2;
 
-    Genten::IndxArrayT<Space> result_size(X.ndims());
+    Genten::IndxArrayT<HostSpace> result_size(X.ndims());
     deep_copy(result_size, X.size());
     result_size[mode] = mat.size(0);
 
@@ -287,14 +272,14 @@ void test2()
 296, 303, 310, 317, 300, 309, 318, 327, 336, 345, 354, 363, 372, 381, 390, 399, 360, 371, 382, 393, 404, 415, 426, 437, 448, 459, 470, 481,
 420, 433, 446, 459, 472, 485, 498, 511, 524, 537, 550, 563};
 
-    bulk_test( X,  mat, mode, unit_test);
+    bulk_test<ExecSpace, HostSpace>( X,  mat, mode, unit_test);
 }
 
+template<typename ExecSpace>
 void test3()
 {
-    typedef Genten::DefaultHostExecutionSpace Space;
-    typedef Genten::TensorT<Space> Tensor_type;
-    typedef Genten::FacMatrixT<Space> FacMatrix_type;
+    typedef Genten::DefaultHostExecutionSpace HostSpace;
+    typedef Genten::TensorT<HostSpace> Tensor_type;
 
     Genten::IndxArray tensor_dims;
     tensor_dims = Genten::IndxArray(4);
@@ -323,7 +308,7 @@ void test3()
     }
     ttb_indx mode = 3;
 
-    Genten::IndxArrayT<Space> result_size(X.ndims());
+    Genten::IndxArrayT<HostSpace> result_size(X.ndims());
     deep_copy(result_size, X.size());
     result_size[mode] = mat.size(0);
 
@@ -339,15 +324,16 @@ void test3()
                                368, 379, 390, 401, 412, 423, 434, 445, 216, 229, 242, 255, 268, 281, 294, 307, 320, 333, 346, 359, 372, 385,
                                398, 411, 424, 437, 450, 463, 476, 489, 502, 515};
 
-    bulk_test( X,  mat, mode, unit_test);
+    bulk_test<ExecSpace, HostSpace>( X,  mat, mode, unit_test);
 }
 
 void Genten_Test_TTM(int infolevel)
 {
+    typedef Genten::DefaultExecutionSpace ExecSpace;
     initialize("Tests on Genten::TTM", infolevel);
-    test0();
-    test1();
-    test2();
-    test3();
+    test0<ExecSpace>();
+    test1<ExecSpace>();
+    test2<ExecSpace>();
+    test3<ExecSpace>();
     finalize();
 }
