@@ -105,11 +105,18 @@ int bulk_test(Genten::TensorT<Space> X, Genten::TensorT<Space> mat, int mode, tt
     //As of now this should fail because we need to copy data from device to
     //to use dgemm functions...
     Z.getValues().values()(0)=483294;  //Sanity check
+    deep_copy(Z_device, Z);
     Genten::Impl::genten_ttm_parfor_dgemm(mode, X_device, mat_device, Z_device);
     //Unload data off of device and check correctness	
 	deep_copy(Z,Z_device);
     // Z.getValues().values()(0)=483294;
-    ASSERT(unit_test_tensor(Z, unit_test, prod), "CUDA Parfor_DGEMM"); //NOTE: we need to copy data from device
+    ASSERT(unit_test_tensor(Z, unit_test, prod), "parfor_dgemm"); //NOTE: we need to copy data from device
+    
+    Genten::Impl::genten_ttm_serial_dgemm(mode, X_device, mat_device, Z_device);
+    //Unload data off of device and check correctness	
+	deep_copy(Z,Z_device);
+    // Z.getValues().values()(0)=483294;
+    ASSERT(unit_test_tensor(Z, unit_test, prod), "parfor_dgemm"); //NOTE: we need to copy data from device
 #else
     Genten::ttm(X, mat, mode, Z, al);
     ASSERT(unit_test_tensor(Z, unit_test, prod), "DGEMM");
