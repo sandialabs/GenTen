@@ -71,20 +71,21 @@ namespace Genten
         template <typename ExecSpace>
         int genten_ttm_parfor_dgemm(ttb_indx mode, TensorT<ExecSpace> ten, TensorT<ExecSpace> mat, TensorT<ExecSpace> &ans)
         {
+            //NOTE: if TensorT already resides on host then deep_copy is no-op
             Genten::TensorT<Genten::DefaultHostExecutionSpace> ten_host = create_mirror_view(ten);
-            std::cout << ten_host.getValues().values().data()[5] << std::endl;
+            // std::cout << ten_host.getValues().values().data()[5] << std::endl;
             deep_copy(ten_host, ten);
-            std::cout << ten_host.getValues().values().data()[5] << std::endl;
+            // std::cout << ten_host.getValues().values().data()[5] << std::endl;
 
             Genten::TensorT<Genten::DefaultHostExecutionSpace> mat_host = create_mirror_view(mat);
-            std::cout << mat_host.getValues().values().data()[5] << std::endl;
+            // std::cout << mat_host.getValues().values().data()[5] << std::endl;
             deep_copy(mat_host, mat);
-            std::cout << mat_host.getValues().values().data()[5] << std::endl;
+            // std::cout << mat_host.getValues().values().data()[5] << std::endl;
 
             Genten::TensorT<Genten::DefaultHostExecutionSpace> ans_host = create_mirror_view(ans);
-            std::cout << ans_host.getValues().values().data()[5] << std::endl;
-            deep_copy(ans_host, ans);
-            std::cout << ans_host.getValues().values().data()[5] << std::endl;
+            // std::cout << ans_host.getValues().values().data()[5] << std::endl;
+            // deep_copy(ans_host, ans);
+            // std::cout << ans_host.getValues().values().data()[5] << std::endl;
 
             if ((mode + 1 > 0) && (mode < ten_host.ndims()))
             {
@@ -143,10 +144,10 @@ namespace Genten
                     ldbptr = mat_host.size(0);
                     ldcptr = mptr;
 
-                    Kokkos::View<ttb_real **, Kokkos::LayoutLeft, Kokkos::MemoryTraits<Kokkos::Unmanaged>> Y(ten_host.getValues().values().data(), I_Less, I_Greater * mode_dim);
+                    Kokkos::View<ttb_real **, Kokkos::LayoutLeft, Genten::DefaultHostExecutionSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> Y(ten_host.getValues().values().data(), I_Less, I_Greater * mode_dim);
                    
                     Kokkos::parallel_for( "genten_ttm_parfor_dgemm_loop",
-                        Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(0,I_Greater), KOKKOS_LAMBDA(const int i) {
+                        Kokkos::RangePolicy<Genten::DefaultHostExecutionSpace>(0,I_Greater), KOKKOS_LAMBDA(const int i) {
                             auto ten_Y = Kokkos::subview(Y, Kokkos::ALL(), std::make_pair((mode_dim * i), (mode_dim * (i + 1))));
                             auto ans_sub = Kokkos::subview(ans_host.getValues().values(), std::make_pair((mat_host.size(0) * I_Less * i), (mat_host.size(0) * I_Less * (i + 1))));
 
