@@ -67,7 +67,8 @@ namespace Genten
 
         /////////////////////////////////////////
         //Kokkos parfor-loop using dgemm function inside of Genten_MathLibs.hpp
-        //
+        //If input TensorT not on host, will copy it to host, execute on host
+        // then copy back to original space
         template <typename ExecSpace>
         TensorT<ExecSpace> genten_ttm_parfor_dgemm(ttb_indx mode, TensorT<ExecSpace> ten, TensorT<ExecSpace> mat, TensorT<ExecSpace> &ans)
         {
@@ -144,7 +145,6 @@ namespace Genten
                             auto ten_Y = Kokkos::subview(Y, Kokkos::ALL(), std::make_pair((mode_dim * i), (mode_dim * (i + 1))));
                             auto ans_sub = Kokkos::subview(ans_host.getValues().values(), std::make_pair((mat_host.size(0) * I_Less * i), (mat_host.size(0) * I_Less * (i + 1))));
 
-                            double test = 0;
                             double alphaptr_par = 1;
                             double betaptr_par = 0;
                             double *a_par = (double *)ten_Y.data();
@@ -188,7 +188,8 @@ namespace Genten
 
         /////////////////////////////////////////
         //Serial for-loop using dgemm function inside of Genten_MathLibs.hpp
-        //
+        //If input TensorT not on host, will copy it to host, execute on host
+        // then copy back to original space
         template <typename ExecSpace>
         TensorT<ExecSpace> genten_ttm_serial_dgemm(ttb_indx mode, TensorT<ExecSpace> ten, TensorT<ExecSpace> mat, TensorT<ExecSpace> &ans)
         {
@@ -401,105 +402,6 @@ namespace Genten
 #endif
 
         }
-/*
-        template <typename ExecSpace>
-        void kokkos_ttm_serial_cublas(const TensorT<ExecSpace> &Y,
-                                      const TensorT<ExecSpace> &V,
-                                      const ttb_indx mode,
-                                      TensorT<ExecSpace> &Z)
-        {
-
-            typedef typename Kokkos::View<ttb_real *, ExecSpace> sub_view_type;
-            typedef typename sub_view_type::device_type device_type;
-
-            typedef typename Kokkos::TeamPolicy<ExecSpace>::member_type member_type;
-
-            IndxArrayT<DefaultHostExecutionSpace> Y_size_host = create_mirror_view(DefaultHostExecutionSpace(), Y.size());
-            deep_copy(Y_size_host, Y.size());
-
-            //Get the numbers (rows, cols, num_matrices) for sub matrices of unfolded tensor
-            ttb_indx ncols = Y_size_host.prod(0, mode, 1);             // Y.size().prod(0,mode,1);
-            ttb_indx nmats = Y_size_host.prod(mode + 1, Y.ndims(), 1); //Y.size().prod(mode+1, Y.ndims(), 1);
-            ttb_indx nrows = Y_size_host[mode];                        //Y.size(mode);
-
-            //Get nrows, ncols for the V_matrix
-            IndxArrayT<DefaultHostExecutionSpace> V_size_host = create_mirror_view(DefaultHostExecutionSpace(), V.size());
-            deep_copy(V_size_host, V.size());
-
-            ttb_indx Vmat_nrows = V_size_host[0]; //V.size(0);
-            ttb_indx Vmat_ncols = V_size_host[1]; //V.size(1);
-
-            for (ttb_indx i = 0; i < nmats; i++)
-            {
-                ttb_indx start = i * nrows * ncols;
-                ttb_indx end = start + nrows * ncols;
-
-                //Get the subview of the entries of "this" submatrix
-                sub_view_type tensor_slice = Kokkos::subview(Y.getValues().values(), std::make_pair(start, end));
-
-                Kokkos::View<ttb_real **, Kokkos::LayoutLeft, device_type,
-                             Kokkos::MemoryTraits<Kokkos::Unmanaged>>
-                    sub_matrix(tensor_slice.data(), ncols, nrows);
-
-                //Now "reshape" the V_matrix from flat 1D-indexed tenspr to matrix of expected shape
-                Kokkos::View<ttb_real **, Kokkos::LayoutLeft, device_type,
-                             Kokkos::MemoryTraits<Kokkos::Unmanaged>>
-                    V_matrix(V.getValues().values().data(), Vmat_nrows, Vmat_ncols);
-
-                //Now create a subview to store the result
-                start = i * Vmat_nrows * ncols;
-                end = start + Vmat_nrows * ncols;
-                sub_view_type result_slice = Kokkos::subview(Z.getValues().values(), std::make_pair(start, end));
-
-                Kokkos::View<ttb_real **, Kokkos::LayoutLeft, device_type,
-                             Kokkos::MemoryTraits<Kokkos::Unmanaged>>
-                    result_sub_matrix(result_slice.data(), ncols, Vmat_nrows);
-
-                const int m = ncols;
-                const int k = nrows;
-                const int n = Vmat_nrows;
-                const int lda = ncols;
-                const int ldb = Vmat_nrows;
-                const int ldc = ncols;
-                const ttb_real alpha = ttb_real(1.0);
-                const ttb_real beta = ttb_real(0.0);
-                cublasStatus_t status;
-
-                static cublasHandle_t handle = 0;
-                if (handle == 0)
-                {
-                    status = cublasCreate(&handle);
-                    if (status != CUBLAS_STATUS_SUCCESS)
-                    {
-                        std::stringstream cublasCreate_error;
-                        cublasCreate_error << "Error!  cublasCreate() failed with status "
-                                           << status;
-                        std::cerr << cublasCreate_error.str() << std::endl;
-                        throw cublasCreate_error.str();
-                    }
-                }
-
-                // We need Z = V*Y, where Z/Y are matricised tensors, and V is input matrix.
-                // But since Z and Y (matricised) are logically LayoutRight, we instead seek Z'=Y'*V'
-                // This way, Y' is LayoutLeft. V, naturally LayoutLeft needs the transpose flag.
-                // The result Z' also comes out LayoutLeft, as desired. All LayoutLeft is what Gemm expects
-                status = cublasDgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, m, n, k,
-                                     &alpha, sub_matrix.data(), lda, V_matrix.data(), ldb,
-                                     &beta, result_sub_matrix.data(), ldc);
-
-                if (status != CUBLAS_STATUS_SUCCESS)
-                {
-                    std::stringstream cublasDgemm_error;
-                    cublasDgemm_error << "Error!  cublasDgemm()/cublasDsyrk() failed with status "
-                       << status;
-                    std::cerr << cublasDgemm_error.str() << std::endl;
-                    throw cublasDgemm_error.str();
-                }
-            }
-
-            return;
-        }
-        */
 
         template <typename ExecSpace>
         void kokkos_ttm_last_mode(const TensorT<ExecSpace> &Y,
@@ -575,7 +477,6 @@ namespace Genten
                 throw no_cuda_error.str();
 #endif
         }
-// #endif
 
     } // namespace Impl
 
@@ -592,7 +493,6 @@ namespace Genten
         assert(Y.size(n) == V.size(1));
         if (al.ttm_method == Genten::TTM_Method::DGEMM)
         {
-            // #if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
             if (Genten::is_cuda_space<ExecSpace>::value)
             {
                 if (n == nd - 1)
@@ -602,21 +502,16 @@ namespace Genten
                 else
                 {
                     Impl::kokkos_ttm_batched_cublas(Y, V, n, Z);
-                    //Below implementation was universally slow
-                    //Impl::kokkos_ttm_serial_cublas(Y,V,n,Z);
                 }
-                // #else
             }
             else
             {
                 Impl::genten_ttm_serial_dgemm(n, Y, V, Z);
-                // #endif
             }
         }
         else
         {
 
-            // #if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
             if (Genten::is_cuda_space<ExecSpace>::value)
             {
                 if (n == nd - 1)
@@ -626,15 +521,11 @@ namespace Genten
                 else
                 {
                     Impl::kokkos_ttm_batched_cublas(Y, V, n, Z);
-                    //Below implementation was universally slow
-                    //Impl::kokkos_ttm_serial_cublas(Y,V,n,Z);
                 }
-                // #else
             }
             else
             {
                 Impl::genten_ttm_parfor_dgemm(n, Y, V, Z);
-                // #endif
             }
         }
         

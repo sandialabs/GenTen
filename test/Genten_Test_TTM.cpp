@@ -111,14 +111,14 @@ int bulk_test(Genten::TensorT<HostSpace> X, Genten::TensorT<HostSpace> mat, int 
     Genten::Impl::genten_ttm_parfor_dgemm(mode, X_device, mat_device, Z_device);
     //Unload data off of device and check correctness	
 	deep_copy(Z,Z_device);
-    // Z.getValues().values()(0)=483294;
+    // Z.getValues().values()(0)=483294; //Sanity check
     ASSERT(unit_test_tensor(Z, unit_test, prod), "parfor_dgemm"); //NOTE: we need to copy data from device
     
     MESSAGE("Testing serial dgemm along mode: " + std::to_string(mode));
     Genten::Impl::genten_ttm_serial_dgemm(mode, X_device, mat_device, Z_device);
     //Unload data off of device and check correctness	
 	deep_copy(Z,Z_device);
-    // Z.getValues().values()(0)=483294;
+    // Z.getValues().values()(0)=483294; //Sanity check
     ASSERT(unit_test_tensor(Z, unit_test, prod), "parfor_dgemm"); //NOTE: we need to copy data from device
 
     return 0;
