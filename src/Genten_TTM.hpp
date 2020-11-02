@@ -71,6 +71,11 @@ namespace Genten
         template <typename ExecSpace>
         TensorT<ExecSpace> genten_ttm_parfor_dgemm(ttb_indx mode, TensorT<ExecSpace> ten, TensorT<ExecSpace> mat, TensorT<ExecSpace> &ans)
         {
+            Genten::TensorT<Genten::DefaultHostExecutionSpace> ten_host = create_mirror_view(ten);
+            std::cout << ten_host.getValues().values().data()[5];
+            deep_copy(ten_host, ten);
+            std::cout << ten_host.getValues().values().data()[5];
+            
             if ((mode + 1 > 0) && (mode < ten.ndims()))
             {
                 if (ten.size(mode) != mat.size(1))
