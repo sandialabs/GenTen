@@ -297,13 +297,14 @@ namespace Genten
             return ans;
         }
 
-#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+
         template <typename ExecSpace>
         void kokkos_ttm_batched_cublas(const TensorT<ExecSpace> &Y,
                                        const TensorT<ExecSpace> &V,
                                        const ttb_indx mode,
                                        TensorT<ExecSpace> &Z)
         {
+#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
             if ((mode + 1 > 0) && (mode < Y.ndims()))
             {
                 if (Y.size(mode) != V.size(1))
@@ -392,8 +393,15 @@ namespace Genten
                 std::cerr << mode_error.str() << std::endl;
                 throw mode_error.str();
             }
-        }
+#else
+                std::stringstream no_cuda_error;
+                no_cuda_error << "Error!  cuBlas batched function called, but CUDA not enabled";
+                std::cerr << no_cuda_error.str() << std::endl;
+                throw no_cuda_error.str();
+#endif
 
+        }
+/*
         template <typename ExecSpace>
         void kokkos_ttm_serial_cublas(const TensorT<ExecSpace> &Y,
                                       const TensorT<ExecSpace> &V,
@@ -491,6 +499,7 @@ namespace Genten
 
             return;
         }
+        */
 
         template <typename ExecSpace>
         void kokkos_ttm_last_mode(const TensorT<ExecSpace> &Y,
@@ -498,6 +507,7 @@ namespace Genten
                                   const ttb_indx mode,
                                   TensorT<ExecSpace> &Z)
         {
+#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
 
             typedef typename Kokkos::View<ttb_real *, ExecSpace> sub_view_type;
             typedef typename sub_view_type::device_type device_type;
@@ -558,8 +568,14 @@ namespace Genten
                 std::cerr << cublasDgemm_error.str() << std::endl;
                 throw cublasDgemm_error.str();
             }
-        }
+#else
+                std::stringstream no_cuda_error;
+                no_cuda_error << "Error!  cuBlas batched function called, but CUDA not enabled";
+                std::cerr << no_cuda_error.str() << std::endl;
+                throw no_cuda_error.str();
 #endif
+        }
+// #endif
 
     } // namespace Impl
 
@@ -576,38 +592,50 @@ namespace Genten
         assert(Y.size(n) == V.size(1));
         if (al.ttm_method == Genten::TTM_Method::DGEMM)
         {
-#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
-            if (n == nd - 1)
+            // #if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+            if (Genten::is_cuda_space<ExecSpace>::value)
             {
-                Impl::kokkos_ttm_last_mode(Y, V, n, Z);
+                if (n == nd - 1)
+                {
+                    Impl::kokkos_ttm_last_mode(Y, V, n, Z);
+                }
+                else
+                {
+                    Impl::kokkos_ttm_batched_cublas(Y, V, n, Z);
+                    //Below implementation was universally slow
+                    //Impl::kokkos_ttm_serial_cublas(Y,V,n,Z);
+                }
+                // #else
             }
             else
             {
-                Impl::kokkos_ttm_batched_cublas(Y, V, n, Z);
-                //Below implementation was universally slow
-                //Impl::kokkos_ttm_serial_cublas(Y,V,n,Z);
+                Impl::genten_ttm_serial_dgemm(n, Y, V, Z);
+                // #endif
             }
-#else
-            Impl::genten_ttm_serial_dgemm(n, Y, V, Z);         
-#endif
         }
         else
         {
 
-#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
-            if (n == nd - 1)
+            // #if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+            if (Genten::is_cuda_space<ExecSpace>::value)
             {
-                Impl::kokkos_ttm_last_mode(Y, V, n, Z);
+                if (n == nd - 1)
+                {
+                    Impl::kokkos_ttm_last_mode(Y, V, n, Z);
+                }
+                else
+                {
+                    Impl::kokkos_ttm_batched_cublas(Y, V, n, Z);
+                    //Below implementation was universally slow
+                    //Impl::kokkos_ttm_serial_cublas(Y,V,n,Z);
+                }
+                // #else
             }
             else
             {
-                Impl::kokkos_ttm_batched_cublas(Y, V, n, Z);
-                //Below implementation was universally slow
-                //Impl::kokkos_ttm_serial_cublas(Y,V,n,Z);
+                Impl::genten_ttm_parfor_dgemm(n, Y, V, Z);
+                // #endif
             }
-#else
-            Impl::genten_ttm_parfor_dgemm(n, Y, V, Z);         
-#endif
         }
         
     }// ttm
