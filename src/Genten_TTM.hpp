@@ -72,10 +72,20 @@ namespace Genten
         TensorT<ExecSpace> genten_ttm_parfor_dgemm(ttb_indx mode, TensorT<ExecSpace> ten, TensorT<ExecSpace> mat, TensorT<ExecSpace> &ans)
         {
             Genten::TensorT<Genten::DefaultHostExecutionSpace> ten_host = create_mirror_view(ten);
-            std::cout << ten_host.getValues().values().data()[5];
+            std::cout << ten_host.getValues().values().data()[5] << std::endl;
             deep_copy(ten_host, ten);
-            std::cout << ten_host.getValues().values().data()[5];
-            
+            std::cout << ten_host.getValues().values().data()[5] << std::endl;
+
+            Genten::TensorT<Genten::DefaultHostExecutionSpace> mat_host = create_mirror_view(mat);
+            std::cout << mat_host.getValues().values().data()[5] << std::endl;
+            deep_copy(mat_host, mat);
+            std::cout << mat_host.getValues().values().data()[5] << std::endl;
+
+            Genten::TensorT<Genten::DefaultHostExecutionSpace> ans_host = create_mirror_view(ans);
+            std::cout << ans_host.getValues().values().data()[5] << std::endl;
+            deep_copy(ans_host, ans);
+            std::cout << ans_host.getValues().values().data()[5] << std::endl;
+
             if ((mode + 1 > 0) && (mode < ten.ndims()))
             {
                 if (ten.size(mode) != mat.size(1))
