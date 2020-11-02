@@ -73,9 +73,6 @@ namespace Genten
         {
             if ((mode + 1 > 0) && (mode < ten.ndims()))
             {
-                //NOTE: might have to transfer data on to host here so that we
-                //can access dimension information...
-
                 if (ten.size(mode) != mat.size(1))
                 {
                     std::stringstream dim_error;
@@ -83,10 +80,7 @@ namespace Genten
                     std::cerr << dim_error.str() << std::endl;
                     throw dim_error.str();
                 }
-
-
                 int mode_dim = ten.size(mode);
-                std::cout << "0" << std::endl;
                 int prod = ten.size().prod();
                 int I_slash = prod / mode_dim;
 
@@ -134,16 +128,8 @@ namespace Genten
                     ldbptr = mat.size(0);
                     ldcptr = mptr;
 
-                    // typedef Kokkos::View<ttb_real **, Kokkos::LayoutLeft, ExecSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> unmanaged_view_type;
-                    Kokkos::View<ttb_real **, Kokkos::LayoutLeft, ExecSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> Y_def(ten.getValues().values().data(), I_Less, I_Greater * mode_dim);
-
-                    Kokkos::View<ttb_real **, Kokkos::LayoutLeft, Kokkos::DefaultHostExecutionSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> Y = create_mirror_view(DefaultHostExecutionSpace(), Y_def); //DefaultHostExecutionSpace()
-                    deep_copy(Y, Y_def);   
-
-                    //NOTE: might have to do the same thing for ans...
-                    // Kokkos::View<ttb_real *, Kokkos::LayoutLeft, ExecSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> ans_def(ans.getValues().values().data(), I_Less, I_Greater * mode_dim);
-
-
+                    Kokkos::View<ttb_real **, Kokkos::LayoutLeft, Kokkos::MemoryTraits<Kokkos::Unmanaged>> Y(ten.getValues().values().data(), I_Less, I_Greater * mode_dim);
+                   
                     Kokkos::parallel_for( "genten_ttm_parfor_dgemm_loop",
                         Kokkos::RangePolicy<ExecSpace>(0,I_Greater), KOKKOS_LAMBDA(const int i) {
                             auto ten_Y = Kokkos::subview(Y, Kokkos::ALL(), std::make_pair((mode_dim * i), (mode_dim * (i + 1))));
