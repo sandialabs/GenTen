@@ -83,11 +83,11 @@ int bulk_test(Genten::TensorT<HostSpace> X, Genten::TensorT<HostSpace> mat, int 
     Genten::AlgParams al;
 
 
-    Genten::TensorT<ExecSpace> X_device = create_mirror_view(X);
+    Genten::TensorT<ExecSpace> X_device = create_mirror_view(ExecSpace(), X);
 	deep_copy(X_device, X);
-    Genten::TensorT<ExecSpace> mat_device = create_mirror_view(mat);
+    Genten::TensorT<ExecSpace> mat_device = create_mirror_view(ExecSpace(), mat);
 	deep_copy(mat_device, mat);
-    Genten::TensorT<ExecSpace> Z_device = create_mirror_view(Z);
+    Genten::TensorT<ExecSpace> Z_device = create_mirror_view(ExecSpace(), Z);
 	deep_copy(Z_device, Z);
 
     MESSAGE("Testing default DGEMM cuBlas enabled ttm along mode: " + std::to_string(mode)); 
