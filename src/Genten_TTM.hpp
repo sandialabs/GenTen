@@ -93,35 +93,18 @@ namespace Genten
                 int I_Less = ten.size().prod(0, mode, 1);
                 int I_Greater = ten.size().prod(mode + 1, ten.ndims(), 1);
 
-                // typedef Kokkos::View<ttb_real **, Kokkos::LayoutLeft, ExecSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> unmanaged_view_type;
-                Kokkos::View<ttb_real **, Kokkos::LayoutLeft, ExecSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> Y_def(ten.getValues().values().data(), I_Less, I_Greater * mode_dim);
-                Kokkos::View<ttb_real **, Kokkos::LayoutLeft, Kokkos::DefaultHostExecutionSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> Y = create_mirror_view(DefaultHostExecutionSpace(), Y_def); //DefaultHostExecutionSpace()
-                //If ten was already in host space, this should be a no-op
-                deep_copy(Y, Y_def);
-
-                //NOTE: might have to do the same thing for ans and mat...
-                Kokkos::View<ttb_real **, Kokkos::LayoutLeft, ExecSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> mat_def(mat.getValues().values().data(), mat.size(0), mat.size(1));
-                Kokkos::View<ttb_real **, Kokkos::LayoutLeft, Kokkos::DefaultHostExecutionSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> mat_host = create_mirror_view(DefaultHostExecutionSpace(), mat_def); //DefaultHostExecutionSpace()
-                //If ten was already in host space, this should be a no-op
-                deep_copy(mat_host, mat_def);
-
-                Kokkos::View<ttb_real *, Kokkos::LayoutLeft, ExecSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> ans_def(ans.getValues().values().data(), I_slash*mat.size(0));
-                Kokkos::View<ttb_real *, Kokkos::LayoutLeft, Kokkos::DefaultHostExecutionSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> ans_host = create_mirror_view(DefaultHostExecutionSpace(), ans_def);
-                //If ten was already in host space, this should be a no-op
-                deep_copy(ans_host, ans_def);
-
                 char transaptr = 'N';
                 char transbptr = 'N';
                 ttb_blas_int mptr = mat.size(0);
                 ttb_blas_int nptr = I_slash;
                 ttb_blas_int kptr = mode_dim;
                 double alphaptr = 1;
-                double *a = (double *)mat_host.data();
+                double *a = (double *)mat.getValues().values().data();
                 ttb_blas_int ldaptr = mptr;
-                double *b = (double *)Y.data();
+                double *b = (double *)ten.getValues().values().data();
                 ttb_blas_int ldbptr = kptr;
                 double betaptr = 0;
-                double *c = (double *)ans_host.data();
+                double *c = (double *)ans.getValues().values().data();
                 ttb_blas_int ldcptr = mptr;
 
                 if (mode == 0)
@@ -151,19 +134,26 @@ namespace Genten
                     ldbptr = mat.size(0);
                     ldcptr = mptr;
 
-                    
+                    // typedef Kokkos::View<ttb_real **, Kokkos::LayoutLeft, ExecSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> unmanaged_view_type;
+                    Kokkos::View<ttb_real **, Kokkos::LayoutLeft, ExecSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> Y_def(ten.getValues().values().data(), I_Less, I_Greater * mode_dim);
+
+                    Kokkos::View<ttb_real **, Kokkos::LayoutLeft, Kokkos::DefaultHostExecutionSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> Y = create_mirror_view(DefaultHostExecutionSpace(), Y_def); //DefaultHostExecutionSpace()
+                    deep_copy(Y, Y_def);   
+
+                    //NOTE: might have to do the same thing for ans...
+                    // Kokkos::View<ttb_real *, Kokkos::LayoutLeft, ExecSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> ans_def(ans.getValues().values().data(), I_Less, I_Greater * mode_dim);
 
 
                     Kokkos::parallel_for( "genten_ttm_parfor_dgemm_loop",
                         Kokkos::RangePolicy<ExecSpace>(0,I_Greater), KOKKOS_LAMBDA(const int i) {
                             auto ten_Y = Kokkos::subview(Y, Kokkos::ALL(), std::make_pair((mode_dim * i), (mode_dim * (i + 1))));
-                            auto ans_sub = Kokkos::subview(ans_host, std::make_pair((mat.size(0) * I_Less * i), (mat.size(0) * I_Less * (i + 1))));
+                            auto ans_sub = Kokkos::subview(ans.getValues().values(), std::make_pair((mat.size(0) * I_Less * i), (mat.size(0) * I_Less * (i + 1))));
 
                             double test = 0;
                             double alphaptr_par = 1;
                             double betaptr_par = 0;
                             double *a_par = (double *)ten_Y.data();
-                            double *b_par = (double *)mat_host.data();
+                            double *b_par = (double *)mat.getValues().values().data();
                             double *c_par = (double *)ans_sub.data();
                             char transbptr_par = 'T';
                             char transaptr_par = 'N';
