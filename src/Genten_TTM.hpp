@@ -69,7 +69,7 @@ namespace Genten
         //Kokkos parfor-loop using dgemm function inside of Genten_MathLibs.hpp
         //
         template <typename ExecSpace>
-        TensorT<ExecSpace> genten_ttm_parfor_dgemm(ttb_indx mode, TensorT<ExecSpace> ten, TensorT<ExecSpace> mat, TensorT<ExecSpace> &ans)
+        int genten_ttm_parfor_dgemm(ttb_indx mode, TensorT<ExecSpace> ten, TensorT<ExecSpace> mat, TensorT<ExecSpace> &ans)
         {
             Genten::TensorT<Genten::DefaultHostExecutionSpace> ten_host = create_mirror_view(ten);
             std::cout << ten_host.getValues().values().data()[5] << std::endl;
@@ -189,7 +189,7 @@ namespace Genten
                 throw mode_error.str();
             }
 
-            return ans_host;
+            return 0;
         }
 
         /////////////////////////////////////////
