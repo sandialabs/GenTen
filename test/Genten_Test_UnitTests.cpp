@@ -68,6 +68,8 @@ int main(int argc, char * argv[])
 
   Kokkos::initialize(argc, argv);
 
+  try {
+
   // Level 0 is minimal output, 1 is more verbose.
   int infolevel = 0;
   if (argc == 2)
@@ -95,6 +97,11 @@ int main(int argc, char * argv[])
 #endif
 
   cout << "Unit tests complete for " << Genten::getGentenVersion() << endl;
+
+  }
+  catch(std::string& s) {
+    std::cout << s << std::endl;
+  }
 
   Kokkos::finalize();
 

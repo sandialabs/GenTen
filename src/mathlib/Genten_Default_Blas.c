@@ -288,15 +288,26 @@ void dgemm(char *transaptr, char *transbptr, ptrdiff_t *mptr, ptrdiff_t *nptr, p
   }
   else if ((transa == 'T') && (transb == 'N'))
   {
-    // Compute c(:,j) = alpha * a * b(:,j) + beta * c(:,j)
+    // Compute c(:,j) = alpha * a^T * b(:,j) + beta * c(:,j)
     for (j = 0; j < n; j ++)
     {
       dgemv(transaptr, kptr, mptr, alphaptr, a, ldaptr, b + j*ldb, &one, betaptr, c + j*ldc, &one);
     }
   }
-  else
+  else if ((transa == 'N') && (transb == 'T'))
   {
-    // Not implemented
+    // Compute c(:,j) = alpha * a * b(j,:)^T + beta * c(:,j)
+    for (j = 0; j < n; j ++)
+    {
+      dgemv(transaptr, mptr, kptr, alphaptr, a, ldaptr, b + j, ldbptr, betaptr, c + j*ldc, &one);
+    }
+  }
+  else {
+    // Compute c(:,j) = alpha * a^T * b(j,:)^T + beta * c(:,j)
+    for (j = 0; j < n; j ++)
+    {
+      dgemv(transaptr, kptr, mptr, alphaptr, a, ldaptr, b + j, ldbptr, betaptr, c + j*ldc, &one);
+    }
   }
 }
 
