@@ -140,8 +140,11 @@ namespace Genten
 
                     Kokkos::View<ttb_real **, Kokkos::LayoutLeft, Genten::DefaultHostExecutionSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> Y(ten_host.getValues().values().data(), I_Less, I_Greater * mode_dim);
                    
+                    // Don't use KOKKOS_LAMBDA in this case because this
+                    // parallel-for only runs on the host (and KOKKOS_LAMBDA
+                    // adds __host__ __device__)
                     Kokkos::parallel_for( "genten_ttm_parfor_dgemm_loop",
-                        Kokkos::RangePolicy<Genten::DefaultHostExecutionSpace>(0,I_Greater), KOKKOS_LAMBDA(const int i) {
+                        Kokkos::RangePolicy<Genten::DefaultHostExecutionSpace>(0,I_Greater), [=](const int i) {
                             auto ten_Y = Kokkos::subview(Y, Kokkos::ALL(), std::make_pair((mode_dim * i), (mode_dim * (i + 1))));
                             auto ans_sub = Kokkos::subview(ans_host.getValues().values(), std::make_pair((mat_host.size(0) * I_Less * i), (mat_host.size(0) * I_Less * (i + 1))));
 
