@@ -300,7 +300,7 @@ namespace Genten
 
 
         template <typename ExecSpace>
-        void kokkos_ttm_batched_cublas(const TensorT<ExecSpace> &Y,
+        void genten_ttm_batched_cublas(const TensorT<ExecSpace> &Y,
                                        const TensorT<ExecSpace> &V,
                                        const ttb_indx mode,
                                        TensorT<ExecSpace> &Z)
@@ -311,15 +311,13 @@ namespace Genten
                 if (Y.size(mode) != V.size(1))
                 {
                     std::stringstream dim_error;
-                    dim_error << "From kokkos_ttm_batched_cublas, tensor dimension " << mode << " of size " << Y.size(mode) << " does not match number of columns, " << V.size(1) << ", of input matrix";
+                    dim_error << "From genten_ttm_batched_cublas, tensor dimension " << mode << " of size " << Y.size(mode) << " does not match number of columns, " << V.size(1) << ", of input matrix";
                     std::cerr << dim_error.str() << std::endl;
                     throw dim_error.str();
                 }
 
             typedef typename Kokkos::View<ttb_real *, ExecSpace> sub_view_type;
             typedef typename sub_view_type::device_type device_type;
-
-            typedef typename Kokkos::TeamPolicy<ExecSpace>::member_type member_type;
 
             IndxArrayT<DefaultHostExecutionSpace> Y_size_host = create_mirror_view(DefaultHostExecutionSpace(), Y.size());
             deep_copy(Y_size_host, Y.size());
@@ -390,13 +388,13 @@ namespace Genten
             else
             {
                 std::stringstream mode_error;
-                mode_error << "From kokkos_ttm_batched_cublas, mode: " << mode << " is invalid. Please provide valid mode";
+                mode_error << "From genten_ttm_batched_cublas, mode: " << mode << " is invalid. Please provide valid mode";
                 std::cerr << mode_error.str() << std::endl;
                 throw mode_error.str();
             }
 #else
                 std::stringstream no_cuda_error;
-                no_cuda_error << "Error!  cuBlas batched function called, but CUDA not enabled";
+                no_cuda_error << "Error!  genten_ttm_batched_cublas function called, but CUDA not enabled";
                 std::cerr << no_cuda_error.str() << std::endl;
                 throw no_cuda_error.str();
 #endif
@@ -404,7 +402,7 @@ namespace Genten
         }
 
         template <typename ExecSpace>
-        void kokkos_ttm_last_mode(const TensorT<ExecSpace> &Y,
+        void genten_ttm_last_mode_cublas(const TensorT<ExecSpace> &Y,
                                   const TensorT<ExecSpace> &V,
                                   const ttb_indx mode,
                                   TensorT<ExecSpace> &Z)
@@ -413,8 +411,6 @@ namespace Genten
 
             typedef typename Kokkos::View<ttb_real *, ExecSpace> sub_view_type;
             typedef typename sub_view_type::device_type device_type;
-
-            typedef typename Kokkos::TeamPolicy<ExecSpace>::member_type member_type;
 
             IndxArrayT<DefaultHostExecutionSpace> Y_size_host = create_mirror_view(DefaultHostExecutionSpace(), Y.size());
             deep_copy(Y_size_host, Y.size());
@@ -465,14 +461,14 @@ namespace Genten
             if (status != CUBLAS_STATUS_SUCCESS)
             {
                 std::stringstream cublasDgemm_error;
-                cublasDgemm_error << "Error!  cublasDgemm()/cublasDsyrk() failed with status "
+                cublasDgemm_error << "Error!  cublasDgemm() failed with status "
                                   << status;
                 std::cerr << cublasDgemm_error.str() << std::endl;
                 throw cublasDgemm_error.str();
             }
 #else
                 std::stringstream no_cuda_error;
-                no_cuda_error << "Error!  cuBlas batched function called, but CUDA not enabled";
+                no_cuda_error << "Error!  genten_ttm_last_mode_cublas function called, but CUDA not enabled";
                 std::cerr << no_cuda_error.str() << std::endl;
                 throw no_cuda_error.str();
 #endif
@@ -497,11 +493,11 @@ namespace Genten
             {
                 if (n == nd - 1)
                 {
-                    Impl::kokkos_ttm_last_mode(Y, V, n, Z);
+                    Impl::genten_ttm_last_mode_cublas(Y, V, n, Z);
                 }
                 else
                 {
-                    Impl::kokkos_ttm_batched_cublas(Y, V, n, Z);
+                    Impl::genten_ttm_batched_cublas(Y, V, n, Z);
                 }
             }
             else
@@ -516,11 +512,11 @@ namespace Genten
             {
                 if (n == nd - 1)
                 {
-                    Impl::kokkos_ttm_last_mode(Y, V, n, Z);
+                    Impl::genten_ttm_last_mode_cublas(Y, V, n, Z);
                 }
                 else
                 {
-                    Impl::kokkos_ttm_batched_cublas(Y, V, n, Z);
+                    Impl::genten_ttm_batched_cublas(Y, V, n, Z);
                 }
             }
             else
