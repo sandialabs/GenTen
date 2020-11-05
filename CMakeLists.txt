@@ -236,7 +236,7 @@ INCLUDE_DIRECTORIES (
   )
 FILE (GLOB genten_headers
   ${Genten_SOURCE_DIR}/src/*.h
-  ${Genten_SOURCE_DIR}/src/*.hp/
+  ${Genten_SOURCE_DIR}/src/*.hpp
   ${Genten_SOURCE_DIR}/src/mathlib/*.h
   ${Genten_SOURCE_DIR}/src/mathlib/*.hpp
   ${Genten_SOURCE_DIR}/src/rol*.hpp
@@ -329,6 +329,7 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_IOtext.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Ktensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_MixedFormatOps.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_TTM.cpp
   ${Genten_SOURCE_DIR}/src/Genten_MathLibs_Wpr.cpp
   ${Genten_SOURCE_DIR}/src/Genten_portability.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Sptensor.cpp
@@ -371,6 +372,15 @@ INSTALL (
   DESTINATION lib
   )
 
+# FIND_PACKAGE(GTest REQUIRED)
+# IF (${GTest_FOUND})
+#   MESSAGE(STATUS "FOUND GTEST")
+#   MESSAGE(STATUS "GTEST_INCLUDE_DIR: " ${GTEST_INCLUDE_DIR})
+# ELSE (${GTest_FOUND})
+#   MESSAGE(STATUS "DID NOT FIND GTEST")
+# ENDIF (${GTest_FOUND})
+# include_directories(${GTEST_INCLUDE_DIR})
+
 #------------------------------------------------------------
 #---- Unit Test Executables
 #------------------------------------------------------------
@@ -378,6 +388,7 @@ INSTALL (
 #---- Specifications for building unit_tests.
 
 SET(UNIT_TEST_SRCS
+  ${Genten_SOURCE_DIR}/test/Genten_Test_TTM.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_Array.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_CpAls.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_FacMatrix.cpp
@@ -415,9 +426,6 @@ INSTALL (
 #------------------------------------------------------------
 #---- Performance Test Executables
 #------------------------------------------------------------
-
-#---- Specifications for building each performance test.
-#---- In each case specify the executable and its link library dependencies.
 
 ADD_EXECUTABLE (
   perf_CpAlsAminoAcid

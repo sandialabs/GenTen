@@ -108,6 +108,9 @@ constexpr const char*const Genten::MTTKRP_Method::names[];
 constexpr const Genten::MTTKRP_All_Method::type Genten::MTTKRP_All_Method::types[];
 constexpr const char*const Genten::MTTKRP_All_Method::names[];
 
+constexpr const Genten::TTM_Method::type Genten::TTM_Method::types[];
+constexpr const char*const Genten::TTM_Method::names[];
+
 constexpr const Genten::GCP_LossFunction::type Genten::GCP_LossFunction::types[];
 constexpr const char*const Genten::GCP_LossFunction::names[];
 
