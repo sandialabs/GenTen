@@ -215,7 +215,10 @@ namespace Genten {
     };
 
     struct AdamOp {
-      ttb_real beta;
+      ttb_real beta = 0.0;
+
+      KOKKOS_INLINE_FUNCTION
+      AdamOp() = default;
 
       KOKKOS_INLINE_FUNCTION
       AdamOp(const ttb_real& beta_) : beta(beta_) {}

@@ -40,7 +40,7 @@
 
 
 #---- Specify the CMake version required.  Kokkos requires 3.10
-CMAKE_MINIMUM_REQUIRED (VERSION 3.10)
+CMAKE_MINIMUM_REQUIRED (VERSION 3.13)
 
 #---- Declaring the project name will define ${Genten_SOURCE_DIR} to be
 #---- the path to this source file, and ${Genten_BINARY_DIR} to be the path
@@ -56,7 +56,7 @@ SET(CMAKE_CXX_EXTENSIONS OFF)
 #------------------------------------------------------------
 OPTION(BUILD_SHARED_LIBS "Build shared libraries." OFF)
 OPTION(KOKKOS_PATH "Path to Kokkos installation for external Kokkos builds.  Setting this turns off the inline build with the bundled Kokkos source.")
-OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files" OFF)
+OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files and json input" ON)
 OPTION(ENABLE_CALIPER "Enable Caliper for application profiling" OFF)
 OPTION(ENABLE_MATLAB "Enable MATLAB linkage to Tensor Toolbox" OFF)
 OPTION(FLOAT_TYPE "C++ data type used for floating-point values" OFF)
@@ -84,6 +84,7 @@ ENDIF()
 # Check minimum compiler version
 INCLUDE (cmake/CheckCompilerVersion.cmake)
 
+
 # If we are doing an inline build of Kokkos
 IF(KOKKOS_INLINE_BUILD)
 
@@ -105,13 +106,8 @@ ENDIF()
 SET(HAVE_KOKKOS ON)
 
 SET(GENTEN_LIBS "")
-
-IF (ENABLE_BOOST)
-  OPTION(BOOST_PATH "Path to BOOST installation")
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -isystem ${BOOST_PATH}/include")
-  SET(GENTEN_LIBS "${GENTEN_LIBS} -L${BOOST_PATH}/lib -lboost_iostreams -lz")
-  SET(HAVE_BOOST ${ENABLE_BOOST})
-ENDIF()
+find_package(MPI)
+find_package(Boost COMPONENTS serialization)
 
 IF (ENABLE_CALIPER)
   OPTION(CALIPER_PATH "Path to Caliper installation")
@@ -493,6 +489,26 @@ INSTALL (
   TARGETS genten
   DESTINATION drivers
   )
+
+if(MPI_FOUND AND BOOST_FOUND)
+  set(DistContext_Sources 
+    ${Genten_SOURCE_DIR}/src/Genten_DistContext.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_Pmap.cpp
+    )
+  add_library(DistContextLib ${DistContext_Sources})
+  target_link_libraries(DistContextLib Kokkos::kokkos MPI::MPI_C Boost::boost Boost::serialization)
+
+ADD_EXECUTABLE (
+  genten_mpisgd
+  ${Genten_SOURCE_DIR}/driver/Genten_MPISGD_Driver.cpp
+  )
+TARGET_LINK_LIBRARIES (genten_mpisgd ${GENTEN_LINK_LIBS} DistContextLib
+  MPI::MPI_C Boost::boost Boost::serialization)
+INSTALL (
+  TARGETS genten_mpisgd
+  DESTINATION drivers
+  )
+ENDIF(MPI_FOUND AND BOOST_FOUND)
 
 #------------------------------------------------------------
 #---- Matlab

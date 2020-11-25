@@ -138,6 +138,26 @@ namespace Genten
    *  @{
    *  ---------------------------------------------------------------- */
 
+  struct SpTensorHeader {
+    int nnz = 0;
+    std::vector<int> dim_sizes;
+  };
+  
+  //! Read a Sptensor header
+  /*!
+   *  <pre>
+   *  The file should have four header lines followed by the entries.  
+   *  1st line must be the keyword 'sptensor', 
+   *  2nd line must provide the number of modes.  
+   *  3rd line must provide the sizes of all modes.  
+   *  4th line must provide the number of nonzero elements.
+   *  </pre>
+   *
+   *  @param[in] fName  Input filename.
+   *  @throws string    for any error.
+   */
+  SpTensorHeader read_sptensor_header (std::istream& fIn);
+
   //! Read a Sptensor from a text file, matching export_sptensor().
   /*!
    *  <pre>
