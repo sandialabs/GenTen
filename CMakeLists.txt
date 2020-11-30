@@ -630,5 +630,3 @@ add_test(Genten_MTTKRP_aminoacid_atomic ${Genten_BINARY_DIR}/bin/perf_MTTKRP --n
 add_test(Genten_MTTKRP_aminoacid_dupl ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method duplicated)
 add_test(Genten_MTTKRP_aminoacid_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method perm)
 add_test(Genten_MTTKRP_random_dense ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [30,40,50] --dense)
-
-# trivial change to test Jenkins-Gitlab CI integration
