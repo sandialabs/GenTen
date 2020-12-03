@@ -1,0 +1,61 @@
+variables:
+  GIT_STRATEGY: clone
+
+stages:
+  - build
+
+build-clang:
+  stage: build
+  tags:
+    - clang
+  script:
+    - cd ..
+    - rm -rf build_clang
+    - mkdir build_clang
+    - cd build_clang
+    - source ../genten/scripts/sems_clang/setup_env.sh
+    - ../genten/scripts/sems_clang/do_configure.sh
+    - make -j8
+    - ctest
+
+build-gcc:
+  stage: build
+  tags:
+    - gcc
+  script:
+    - cd ..
+    - rm -rf build_gcc
+    - mkdir build_gcc
+    - cd build_gcc
+    - source ../genten/scripts/sems_gcc/setup_env.sh
+    - ../genten/scripts/sems_gcc/do_configure.sh
+    - make -j8
+    - ctest
+
+build-intel:
+  stage: build
+  tags:
+    - intel
+  script:
+    - cd ..
+    - rm -rf build_intel
+    - mkdir build_intel
+    - cd build_intel
+    - source ../genten/scripts/sems_intel/setup_env.sh
+    - ../genten/scripts/sems_intel/do_configure.sh
+    - make -j8
+    - ctest
+
+build-cuda-kepler:
+  stage: build
+  tags:
+    - cuda_kepler
+  script:
+    - cd ..
+    - rm -rf build_cuda_kepler
+    - mkdir build_cuda_kepler
+    - cd build_cuda_kepler
+    - source ../genten/scripts/elbert_cuda_kepler/setup_env.sh
+    - ../genten/scripts/elbert_cuda_kepler/do_configure.sh
+    - make -j32
+    - ctest
