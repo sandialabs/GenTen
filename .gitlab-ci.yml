@@ -45,3 +45,17 @@ build-intel:
     - ../genten/scripts/sems_intel/do_configure.sh
     - make -j8
     - ctest
+
+build-cuda-kepler:
+  stage: build
+  tags:
+    - cuda_kepler
+  script:
+    - cd ..
+    - rm -rf build_cuda_kepler
+    - mkdir build_cuda_kepler
+    - cd build_cuda_kepler
+    - source ../genten/scripts/elbert_cuda_kepler/setup_env.sh
+    - ../genten/scripts/elbert_cuda_kepler/do_configure.sh
+    - make -j32
+    - ctest
