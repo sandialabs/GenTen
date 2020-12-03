@@ -9,28 +9,10 @@ build-clang:
   tags: 
     - clang
   script:
-    - module load sems-cmake/3.10.3
-    - module load sems-clang/9.0.0
-    - module load sems-boost/1.69.0/base
-    - export OMP_PROC_BIND=close
-    - export OMP_PLACES=cores
-    - export OMP_NUM_THREADS=8
+    - cd ..
     - mkdir build_clang
     - cd build_clang
-    - rm -f CMakeCache.txt
-    - rm -rf CMakeFiles
-    - >
-      cmake \
-        -D CMAKE_CXX_COMPILER=clang++ \
-        -D CMAKE_C_COMPILER=clang \
-        -D CMAKE_CXX_FLAGS="-g" \
-        -D CMAKE_C_FLAGS="-g" \
-        -D BUILD_SHARED_LIBS=ON \
-        -D Kokkos_ENABLE_OPENMP=ON \
-        -D Kokkos_ARCH_SNB=ON \
-        -D Kokkos_ENABLE_AGGRESSIVE_VECTORIZATION=ON \
-        -D ENABLE_BOOST=ON \
-        -D BOOST_PATH=${BOOST_ROOT} \
-        ..
+    - source ../genten/scripts/sems_clang/setup_env.sh
+    - /bin/bash ../genten/scripts/sems_clang/do_configure.sh
     - make -j8
     - ctest
