@@ -10,6 +10,7 @@ build-clang:
     - clang
   script:
     - cd ..
+    - rm -rf build_clang
     - mkdir build_clang
     - cd build_clang
     - source ../genten/scripts/sems_clang/setup_env.sh
@@ -23,6 +24,7 @@ build-gcc:
     - gcc
   script:
     - cd ..
+    - rm -rf build_gcc
     - mkdir build_gcc
     - cd build_gcc
     - source ../genten/scripts/sems_gcc/setup_env.sh
@@ -36,6 +38,7 @@ build-intel:
     - intel
   script:
     - cd ..
+    - rm -rf build_intel
     - mkdir build_intel
     - cd build_intel
     - source ../genten/scripts/sems_intel/setup_env.sh
