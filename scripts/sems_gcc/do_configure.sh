@@ -3,8 +3,8 @@ rm -f CMakeCache.txt
 rm -rf CMakeFiles
 
 cmake \
- -D CMAKE_CXX_COMPILER=clang++ \
- -D CMAKE_C_COMPILER=clang \
+ -D CMAKE_CXX_COMPILER=g++ \
+ -D CMAKE_C_COMPILER=gcc \
  -D CMAKE_CXX_FLAGS="-g" \
  -D CMAKE_C_FLAGS="-g" \
  -D BUILD_SHARED_LIBS=ON \
