@@ -6,6 +6,8 @@ stages:
 
 build-clang:
   stage: build
+  rules:
+    - if '$CI_SERVER_HOST == "cee-gitlab.sandia.gov"'
   tags:
     - clang
   script:
@@ -20,6 +22,8 @@ build-clang:
 
 build-gcc:
   stage: build
+  rules:
+    - if '$CI_SERVER_HOST == "cee-gitlab.sandia.gov"'
   tags:
     - gcc
   script:
@@ -34,6 +38,8 @@ build-gcc:
 
 build-intel:
   stage: build
+  rules:
+    - if '$CI_SERVER_HOST == "cee-gitlab.sandia.gov"'
   tags:
     - intel
   script:
@@ -48,6 +54,8 @@ build-intel:
 
 build-cuda-kepler:
   stage: build
+  rules:
+    - if '$CI_SERVER_HOST == "cee-gitlab.sandia.gov"'
   tags:
     - cuda_kepler
   script:
@@ -62,8 +70,8 @@ build-cuda-kepler:
 
 build-gitlab-gcc:
   stage: build
-  tags:
-    - gitlab-org
+  rules:
+    - if '$CI_SERVER_HOST == "gitlab.com"'
   image: gcc
   before_script:
     - apt-get update --yes
@@ -75,5 +83,5 @@ build-gitlab-gcc:
     - mkdir build_gitlab_gcc
     - cd build_gitlab_gcc
     - ../genten/scripts/gitlab_gcc/do_configure.sh
-    - make -j8
+    - make -j4
     - ctest
