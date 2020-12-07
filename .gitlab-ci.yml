@@ -18,7 +18,7 @@ build-clang:
     - make -j8
     - ctest
   rules:
-    - if '$CI_SERVER_HOST == "cee-gitlab.sandia.gov"'
+    - if $CI_SERVER_HOST == cee-gitlab.sandia.gov
       when: always
 
 build-gcc:
