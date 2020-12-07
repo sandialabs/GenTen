@@ -19,7 +19,7 @@ build-clang:
     - ctest
   rules:
     - if $CI_SERVER_HOST == cee-gitlab.sandia.gov
-      when: always
+      when: on_success
 
 build-gcc:
   stage: build
