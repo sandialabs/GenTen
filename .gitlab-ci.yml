@@ -59,3 +59,16 @@ build-cuda-kepler:
     - ../genten/scripts/elbert_cuda_kepler/do_configure.sh
     - make -j32
     - ctest
+
+build-gitlab-gcc:
+  stage: build
+  tags:
+    - gitlab-org
+  script:
+    - cd ..
+    - rm -rf build_gitlab_gcc
+    - mkdir build_gitlab_gcc
+    - cd build_gitlab_gcc
+    - ../genten/scripts/gitlab_gcc/do_configure.sh
+    - make -j8
+    - ctest
