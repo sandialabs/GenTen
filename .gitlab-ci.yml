@@ -68,6 +68,7 @@ build-gitlab-gcc:
   before_script:
     - apt-get update --yes
     - apt-get install --yes cmake
+    - apt-get install --yes libblas-dev liblapack-dev
   script:
     - cd ..
     - rm -rf build_gitlab_gcc
