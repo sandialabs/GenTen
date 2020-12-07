@@ -64,6 +64,10 @@ build-gitlab-gcc:
   stage: build
   tags:
     - gitlab-org
+  image: gcc
+  before_script:
+    - apt-get update --yes
+    - apt-get install --yes cmake
   script:
     - cd ..
     - rm -rf build_gitlab_gcc
