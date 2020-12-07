@@ -6,9 +6,6 @@ stages:
 
 build-clang:
   stage: build
-  rules:
-    - if '$CI_SERVER_HOST == "cee-gitlab.sandia.gov"'
-      when: always
   tags:
     - clang
   script:
@@ -20,6 +17,9 @@ build-clang:
     - ../genten/scripts/sems_clang/do_configure.sh
     - make -j8
     - ctest
+  rules:
+    - if '$CI_SERVER_HOST == "cee-gitlab.sandia.gov"'
+      when: always
 
 build-gcc:
   stage: build
