@@ -19,7 +19,7 @@ build-clang:
     - ctest
   only:
     variables:
-      - $CI_SERVER_HOST == cee-gitlab.sandia.gov
+      - $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
 
 build-gcc:
   stage: build
