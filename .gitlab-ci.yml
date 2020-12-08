@@ -34,8 +34,9 @@ build-gcc:
     - ../genten/scripts/sems_gcc/do_configure.sh
     - make -j8
     - ctest
-  rules:
-    - if $CI_SERVER_HOST == cee-gitlab.sandia.gov
+  only:
+    variables:
+      - $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
 
 build-intel:
   stage: build
@@ -50,8 +51,9 @@ build-intel:
     - ../genten/scripts/sems_intel/do_configure.sh
     - make -j8
     - ctest
-  rules:
-    - if $CI_SERVER_HOST == cee-gitlab.sandia.gov
+  only:
+    variables:
+      - $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
 
 build-cuda-kepler:
   stage: build
@@ -66,8 +68,9 @@ build-cuda-kepler:
     - ../genten/scripts/elbert_cuda_kepler/do_configure.sh
     - make -j32
     - ctest
-  rules:
-    - if $CI_SERVER_HOST == cee-gitlab.sandia.gov
+  only:
+    variables:
+      - $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
 
 build-gitlab-gcc:
   stage: build
@@ -84,5 +87,6 @@ build-gitlab-gcc:
     - ../genten/scripts/gitlab_gcc/do_configure.sh
     - make -j4
     - ctest
-  rules:
-    - if $CI_SERVER_HOST == gitlab.com
+  only:
+    variables:
+      - $CI_SERVER_HOST == "gitlab.com"
