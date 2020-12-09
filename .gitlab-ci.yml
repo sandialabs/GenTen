@@ -72,21 +72,29 @@ build-cuda-kepler:
     variables:
       - $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
 
-build-gitlab-gcc:
+#build-gitlab-gcc:
+#  stage: build
+#  image: gcc
+#  before_script:
+#    - apt-get update --yes
+#    - apt-get install --yes cmake
+#    - apt-get install --yes libblas-dev liblapack-dev
+#  script:
+#    - cd ..
+#    - rm -rf build_gitlab_gcc
+#    - mkdir build_gitlab_gcc
+#    - cd build_gitlab_gcc
+#    - ../genten/scripts/gitlab_gcc/do_configure.sh
+#    - make -j4
+#    - ctest
+#  only:
+#    variables:
+#      - $CI_SERVER_HOST == "gitlab.com"
+
+test-pipeline:
   stage: build
-  image: gcc
-  before_script:
-    - apt-get update --yes
-    - apt-get install --yes cmake
-    - apt-get install --yes libblas-dev liblapack-dev
   script:
-    - cd ..
-    - rm -rf build_gitlab_gcc
-    - mkdir build_gitlab_gcc
-    - cd build_gitlab_gcc
-    - ../genten/scripts/gitlab_gcc/do_configure.sh
-    - make -j4
-    - ctest
+    - echo "Pipeline ran!"
   only:
     variables:
       - $CI_SERVER_HOST == "gitlab.com"
