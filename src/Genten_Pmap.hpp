@@ -49,7 +49,8 @@ namespace Genten {
 class ProcessorMap {
 public:
   ProcessorMap() = default;
-  ProcessorMap(ptree const& input_tree, TensorInfo const& info);
+  ProcessorMap(ptree const& input_tree);
+  ~ProcessorMap();
 
 private:
   /*

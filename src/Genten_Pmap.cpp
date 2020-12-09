@@ -42,10 +42,13 @@
 #include "Genten_DistContext.hpp"
 #include "Genten_IOtext.hpp"
 
+#include <boost/serialization/vector.hpp>
+
 #include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <numeric>
+#include <unordered_map>
 #include <vector>
 
 namespace Genten {
@@ -53,7 +56,7 @@ namespace Genten {
 namespace {
 // Silly function to compute divisors
 auto divisors(int input) {
-  std::vector<int> divisors;
+  small_vector<int> divisors;
   int sroot = std::sqrt(input);
   for (auto i = 1; i <= sroot; ++i) {
     if (input % i == 0) {
@@ -68,85 +71,94 @@ auto divisors(int input) {
   return divisors;
 }
 
-auto spaceRankMultiplierForFactors(std::vector<int> const &grid,
-                                   std::vector<int> const &tensor_dims) {
+// Goal is to count the total storage of the factors for the given grid Storage
+// of each factor is the size of the factor matrix times the number of
+// processes in the grid that are not in our fiber.
+//
+// clang-format off
+// For example given a grid [2, 3, 5, 7] factor matrices would be distributed over: 
+// F0: [_, 3, 5, 7] = 105 of the 210 processes
+// F1: [2, _, 5, 7] = 70 of the 210 processes
+// F2: [2, 3, _, 7] = 42 of the 210 processes
+// F3: [2, 3, 5, _] = 30 of the 210 processes
+// clang-format on
+//
+// Then to compute the total storage you need to multiplie the size of each
+// factor matrix times the number of processes it is distributed over.
+//
+// To keep this code from needing to know about the rank of the factors we will
+// return the result for rank 1 factors. The calling code can simply scale this
+// result by the rank to figure out the total number of elements
+auto nelementsForRank1Factors(small_vector<int> const &grid,
+                              small_vector<int> const &tensor_dims) {
+  auto nprocs =
+      std::accumulate(grid.begin(), grid.end(), 1ll, std::multiplies<>{});
+
   const auto ndims = grid.size();
-  std::vector<int64_t> SizeNotMe(ndims, 1);
-  // Just do this the slow way for now, it can be faster if really needed
+  int64_t nelements = 0;
   for (auto i = 0; i < ndims; ++i) {
-    for (auto j = 0; j < ndims; ++j) {
-      if (j != i) {
-        SizeNotMe[i] *= grid[j];
-      }
-    }
+    const auto replicated_procs = nprocs / grid[i];
+    nelements += replicated_procs * tensor_dims[i];
   }
 
-  int64_t total_element_multiplier = 0;
-  for (auto i = 0; i < ndims; ++i) {
-    total_element_multiplier += SizeNotMe[i] * int64_t(tensor_dims[i]);
-  }
-
-  return total_element_multiplier;
+  return nelements;
 }
 
-auto minFactorSpaceGrid(int nprocs, std::vector<int> const &tensor_dims) {
-  std::vector<int> grid_dims(tensor_dims.size());
+// This function writes the grid with that leads to the minimal storage
+// required for the factor matrices
+auto recurseMinSpaceGrid(int nprocs, small_vector<int> &grid,
+                         small_vector<int> const &tensor_dims,
+                         int dims_remaining) {
+  assert(dims_remaining >= 1);
 
-  // Let's just do a brute force thing and see how it goes
-  int64_t smallest_nel = std::numeric_limits<int64_t>::max();
-  std::vector<int> best_grid;
-
-  for (auto d0 : divisors(nprocs)) {
-    grid_dims[0] = d0;
-
-    for (auto d1 : divisors(nprocs / d0)) {
-      const auto d01 = d0 * d1;
-      grid_dims[1] = d1;
-      grid_dims[2] = nprocs/d01;
-
-      // for (auto d2 : divisors(nprocs / d01)) {
-      //   const auto d012 = d01 * d2;
-      //   grid_dims[2] = d2;
-
-      //   for (auto d3 : divisors(nprocs / d012)) {
-      //     const auto d0123 = d012 * d3;
-      //     grid_dims[3] = d3;
-      //     grid_dims[4] = nprocs / d0123;
-
-          if (std::accumulate(grid_dims.begin(), grid_dims.end(), 1,
-                              std::multiplies<int>()) != nprocs) {
-            std::cout << "Oops I messed up.\n";
-            break;
-          }
-
-          auto nelems = spaceRankMultiplierForFactors(grid_dims, tensor_dims);
-          if (nelems < smallest_nel) {
-            std::cout << "Grid: ";
-            for (auto g : grid_dims) {
-              std::cout << g << " ";
-            }
-            std::cout << std::endl;
-            std::cout << "\tTotal GB with rank 50: " << nelems * 50 * 8 * 1e-9
-                      << "\n";
-            smallest_nel = nelems;
-            best_grid = grid_dims;
-          }
-      //   }
-     //  }
-    }
+  // The last index has no freedom just set it and return
+  if (dims_remaining == 1) {
+    grid.back() = nprocs;
+    return;
   }
 
-  return best_grid;
+  // Current index tells us which position we are in
+  const auto current_index = grid.size() - dims_remaining;
+
+  // Make copy for testing on so that we only ever write to grid when we've
+  // found a better option
+  auto test = grid;
+  auto min_storage = std::numeric_limits<int64_t>::max();
+
+  for (auto d : divisors(nprocs)) {
+    test[current_index] = d;
+    const auto remaining_procs = nprocs / d;
+    recurseMinSpaceGrid(remaining_procs, test, tensor_dims, dims_remaining - 1);
+
+    auto test_storage = nelementsForRank1Factors(test, tensor_dims);
+    if (test_storage < min_storage) {
+      min_storage = test_storage;
+      grid = test;
+    }
+  }
 }
 
-auto minAllReduceComm(int nprocs, std::vector<int> const &tensor_dims) {
-  std::vector<int> grid_dims(tensor_dims.size());
-  return grid_dims;
+auto minFactorSpaceGrid(int nprocs, small_vector<int> const &tensor_dims) {
+  const auto ndims = tensor_dims.size();
+  auto grid = small_vector<int>(ndims);
+  recurseMinSpaceGrid(nprocs, grid, tensor_dims, ndims);
+  auto elements_per_rank = nelementsForRank1Factors(grid, tensor_dims);
+  std::cout << "Final best grid ("
+            << elements_per_rank * sizeof(double) * 15 * 1e-9 << " fp64 GB): ";
+  for (auto g : grid) {
+    std::cout << g << " ";
+  }
+  std::cout << std::endl;
+  return grid;
+}
+
+auto minAllReduceComm(int nprocs, small_vector<int> const &tensor_dims) {
+  return minFactorSpaceGrid(nprocs, tensor_dims);
 }
 
 enum class CartGridStratagy { MinAllReduceComm, MinFactorSpace };
 
-auto CartGrid(int nprocs, std::vector<int> const &tensor_dims,
+auto CartGrid(int nprocs, small_vector<int> const &tensor_dims,
               CartGridStratagy strat = CartGridStratagy::MinAllReduceComm) {
   switch (strat) {
   case CartGridStratagy::MinAllReduceComm:
@@ -155,28 +167,78 @@ auto CartGrid(int nprocs, std::vector<int> const &tensor_dims,
     return minFactorSpaceGrid(nprocs, tensor_dims);
   }
 }
+
+TensorInfo readTensorInfo(std::string const &tensor_file_name) {
+  std::ifstream tensor_file(tensor_file_name);
+  auto header_info = read_sptensor_header(tensor_file);
+  TensorInfo Ti;
+  Ti.nnz = header_info.nnz;
+  Ti.sizes.resize(header_info.dim_sizes.size());
+  std::copy(header_info.dim_sizes.begin(), header_info.dim_sizes.end(),
+            Ti.sizes.begin());
+  return Ti;
+}
+
+int bcastInfo(small_vector<int> &dimension_sizes, TensorInfo &Ti) {
+  auto result = MPI_SUCCESS;
+  result = DistContext::Bcast(dimension_sizes, 0);
+  result = DistContext::Bcast(Ti.nnz, 0);
+  result = DistContext::Bcast(Ti.sizes, 0);
+  return result;
+}
+
 } // namespace
 
-ProcessorMap::ProcessorMap(ptree const &input_tree, TensorInfo const &info)
-    : tensor_info_(info), pmap_tree_(input_tree.get_child("pmap", ptree{})) {
+ProcessorMap::ProcessorMap(ptree const &input_tree)
+    : pmap_tree_(input_tree.get_child("pmap", ptree{})) {
+
+  // Do initial setup on rank 0
   if (DistContext::rank() == 0) {
-
     if (auto file_name = input_tree.get_optional<std::string>("tensor.file")) {
-      std::ifstream tensor_file(file_name.value());
-      auto header_info = read_sptensor_header(tensor_file);
-
-      std::cout << "Dimensions of tensor: ";
-      for (auto d : header_info.dim_sizes) {
-        std::cout << d << " ";
-      }
-      std::cout << std::endl;
-
-      // Fake with 1000 for now
-      auto grid = CartGrid(10000, header_info.dim_sizes,
-                           CartGridStratagy::MinFactorSpace);
-
+      tensor_info_ = readTensorInfo(file_name.value());
+      dimension_sizes_ = CartGrid(DistContext::nranks(), tensor_info_.sizes,
+                                  CartGridStratagy::MinFactorSpace);
     } else {
       std::cout << "No tensor file\n";
+    }
+  }
+
+  bcastInfo(dimension_sizes_, tensor_info_);
+
+  const auto ndims = dimension_sizes_.size();
+  // I don't think we need to be periodic
+  small_vector<int> periodic(ndims, 0);
+  bool reorder = true; // Let MPI be smart I guess
+  MPI_Cart_create(DistContext::commWorld(), dimension_sizes_.size(),
+                  dimension_sizes_.data(), periodic.data(), reorder,
+                  &cart_comm_);
+
+  MPI_Comm_size(cart_comm_, &grid_nprocs_);
+  MPI_Comm_rank(cart_comm_, &grid_rank_);
+
+  small_vector<int> dim_filter(ndims, 1);
+  sub_maps_ = small_vector<MPI_Comm>(ndims);
+
+  for(auto i = 0; i < ndims; ++i){
+    dim_filter[i] = 0; // Get all dims except this one
+    MPI_Cart_sub(cart_comm_, dim_filter.data(), &sub_maps_[i]);
+    dim_filter[i] = 1; // Reset the dim_filter
+
+    // Save our sub comm rank so we can bcast within our rank
+    int sub_rank;
+    MPI_Comm_rank(sub_maps_[i], &sub_rank);
+    sub_grid_rank_.push_back(sub_rank);
+  }
+}
+ProcessorMap::~ProcessorMap() {
+  if (DistContext::initialized()) {
+    for (auto &comm : sub_maps_) {
+      if (comm != MPI_COMM_NULL) {
+        MPI_Comm_free(&comm);
+      }
+    }
+    if (cart_comm_ != MPI_COMM_NULL) {
+      MPI_Comm_free(&cart_comm_);
     }
   }
 }

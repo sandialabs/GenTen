@@ -56,18 +56,14 @@ public:
    * Constructors
    */
   DistSpSystem() = default;
-  DistSpSystem(ptree const &tree) {
-    tensor_tree_ = tree.get_child("tensor");
-    tensor_tree_.put("order", 4);
-    info_ = {100, {1, 3, 6, 8}};
-    ProcessorMap pmap(tree, info_);
-  }
+  DistSpSystem(ptree const &tree)
+      : pmap_(tree), tensor_tree_(tree.get_child("tensor", ptree{})) {}
 
 private:
   /*
    * FieldDecls
    */
-  TensorInfo info_;
+  ProcessorMap pmap_;
   int32_t system_rank_ = 5;            // Default to a rank of 5
   boost::optional<ElementType> score_; // Or loss, we can change the name
   ptree tensor_tree_;
