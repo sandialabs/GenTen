@@ -12,7 +12,7 @@ workflow:
     - if: $CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "questa"
 
 variables:
-  GIT_STRATEGY: clone
+  GIT_STRATEGY: fetch
 
 stages:
   - build
@@ -93,14 +93,12 @@ build-gitlab-gcc:
     - apt-get install --yes cmake
     - apt-get install --yes libblas-dev liblapack-dev
   script:
-    - echo "Pipeline passed"
-#    - cd ..
-#    - rm -rf build_gitlab_gcc
-#    - mkdir build_gitlab_gcc
-#    - cd build_gitlab_gcc
-#    - ../genten/scripts/gitlab_gcc/do_configure.sh
-#    - make -j4
-#    - ctest
+    - cd ..
+    - if [ ! -d "build_gitlab_gcc" ]; then mkdir build_gitlab_gcc; fi
+    - cd build_gitlab_gcc
+    - ../genten/scripts/gitlab_gcc/do_configure.sh
+    - make -j4
+    - ctest
 #  only:
 #    variables:
 #      - $CI_SERVER_HOST == "gitlab.com"
