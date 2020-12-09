@@ -98,3 +98,10 @@ test-pipeline:
   only:
     variables:
       - $CI_SERVER_HOST == "gitlab.com"
+
+test-mege-pipeline:
+  stage: build
+  script:
+    - echo "Merge pipeline ran!"
+  only:
+    - merge_requests
