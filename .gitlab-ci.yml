@@ -9,14 +9,15 @@ build-clang:
   tags:
     - clang
   script:
-    - cd ..
-    - rm -rf build_clang
-    - mkdir build_clang
-    - cd build_clang
-    - source ../genten/scripts/sems_clang/setup_env.sh
-    - ../genten/scripts/sems_clang/do_configure.sh
-    - make -j8
-    - ctest
+    - echo "Pipeline ran!"
+#    - cd ..
+#    - rm -rf build_clang
+#    - mkdir build_clang
+#    - cd build_clang
+#    - source ../genten/scripts/sems_clang/setup_env.sh
+#    - ../genten/scripts/sems_clang/do_configure.sh
+#    - make -j8
+#    - ctest
 #  only:
 #    variables:
 #      - $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
@@ -91,17 +92,17 @@ build-clang:
 #    variables:
 #      - $CI_SERVER_HOST == "gitlab.com"
 
-test-pipeline:
-  stage: build
-  script:
-    - echo "Pipeline ran!"
+#test-pipeline:
+#  stage: build
+#  script:
+#    - echo "Pipeline ran!"
 #  only:
 #    variables:
 #      - $CI_SERVER_HOST == "gitlab.com"
 
-test-mege-pipeline:
-  stage: build
-  script:
-    - echo "Merge pipeline ran!"
-  only:
-    - merge_requests
+#test-mege-pipeline:
+#  stage: build
+#  script:
+#    - echo "Merge pipeline ran!"
+#  only:
+#    - merge_requests
