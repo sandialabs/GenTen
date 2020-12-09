@@ -22,6 +22,23 @@ build-clang:
 #    variables:
 #      - $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
 
+build-clang-merge:
+  stage: build
+  tags:
+    - clang
+  script:
+    - echo "Pipeline ran!"
+#    - cd ..
+#    - rm -rf build_clang
+#    - mkdir build_clang
+#    - cd build_clang
+#    - source ../genten/scripts/sems_clang/setup_env.sh
+#    - ../genten/scripts/sems_clang/do_configure.sh
+#    - make -j8
+#    - ctest
+  only:
+    - merge_requests
+
 #build-gcc:
 #  stage: build
 #  tags:
