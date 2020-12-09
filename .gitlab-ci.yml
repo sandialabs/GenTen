@@ -18,9 +18,6 @@ build-clang:
   stage: build
   tags:
     - clang
-  rules:
-    - if: $CI_PROJECT_NAMESPACE != "tensors"
-      when: never
   script:
     - echo "Pipeline ran!"
 #    - cd ..
@@ -34,6 +31,9 @@ build-clang:
 #  only:
 #    variables:
 #      - $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
+#  rules:
+#    - if: $CI_PROJECT_NAMESPACE != "tensors"
+#      when: never
 
 .build-clang-merge:
   stage: build
