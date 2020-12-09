@@ -41,7 +41,6 @@
 #include "Genten_DistContext.hpp"
 #include "Genten_DistSpSystem.hpp"
 #include "Genten_IOtext.hpp"
-#include "Genten_TypeArray.hpp"
 #include "Genten_Pmap.hpp"
 
 #include <Kokkos_Core.hpp>
