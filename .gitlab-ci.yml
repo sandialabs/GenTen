@@ -101,6 +101,6 @@ build-gitlab-gcc:
 #    - ../genten/scripts/gitlab_gcc/do_configure.sh
 #    - make -j4
 #    - ctest
-  only:
-    variables:
-      - $CI_SERVER_HOST == "gitlab.com"
+#  only:
+#    variables:
+#      - $CI_SERVER_HOST == "gitlab.com"
