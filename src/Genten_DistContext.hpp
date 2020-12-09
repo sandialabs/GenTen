@@ -77,6 +77,10 @@ struct DistContext {
     return instance_->nranks_;
   }
 
+  static bool initialized() {
+    return instance_ != nullptr;
+  }
+
   static MPI_Comm commWorld() {
     assert(instance_ != nullptr);
     return instance_->commWorld_;
@@ -85,6 +89,11 @@ struct DistContext {
   static ptree const &input() {
     assert(instance_ != nullptr);
     return instance_->input_;
+  }
+
+  static void Barrier() {
+    assert(instance_ != nullptr);
+    MPI_Barrier(instance_->commWorld());
   }
 
   // TODO we might want to specialize this function to be more efficent for
@@ -136,5 +145,8 @@ template <typename T> T deserializeFromStr(std::string const &s) {
 }
 
 } // namespace detail
+
+// Bcasts that I don't want to figure out how to do the other way right now
+template <> int DistContext::Bcast(small_vector<int> &t, int root);
 
 } // namespace Genten
