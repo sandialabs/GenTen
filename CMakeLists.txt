@@ -494,6 +494,7 @@ if(MPI_FOUND AND BOOST_FOUND)
   set(DistContext_Sources 
     ${Genten_SOURCE_DIR}/src/Genten_DistContext.cpp
     ${Genten_SOURCE_DIR}/src/Genten_Pmap.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_DistSpSystem.cpp
     )
   add_library(DistContextLib ${DistContext_Sources})
   target_link_libraries(DistContextLib Kokkos::kokkos MPI::MPI_C Boost::boost Boost::serialization)

@@ -143,12 +143,6 @@ auto minFactorSpaceGrid(int nprocs, small_vector<int> const &tensor_dims) {
   auto grid = small_vector<int>(ndims);
   recurseMinSpaceGrid(nprocs, grid, tensor_dims, ndims);
   auto elements_per_rank = nelementsForRank1Factors(grid, tensor_dims);
-  std::cout << "Final best grid ("
-            << elements_per_rank * sizeof(double) * 15 * 1e-9 << " fp64 GB): ";
-  for (auto g : grid) {
-    std::cout << g << " ";
-  }
-  std::cout << std::endl;
   return grid;
 }
 
@@ -168,44 +162,20 @@ auto CartGrid(int nprocs, small_vector<int> const &tensor_dims,
   }
 }
 
-TensorInfo readTensorInfo(std::string const &tensor_file_name) {
-  std::ifstream tensor_file(tensor_file_name);
-  auto header_info = read_sptensor_header(tensor_file);
-  TensorInfo Ti;
-  Ti.nnz = header_info.nnz;
-  Ti.sizes.resize(header_info.dim_sizes.size());
-  std::copy(header_info.dim_sizes.begin(), header_info.dim_sizes.end(),
-            Ti.sizes.begin());
-  return Ti;
-}
-
-int bcastInfo(small_vector<int> &dimension_sizes, TensorInfo &Ti) {
-  auto result = MPI_SUCCESS;
-  result = DistContext::Bcast(dimension_sizes, 0);
-  result = DistContext::Bcast(Ti.nnz, 0);
-  result = DistContext::Bcast(Ti.sizes, 0);
-  return result;
-}
-
 } // namespace
 
-ProcessorMap::ProcessorMap(ptree const &input_tree)
+ProcessorMap::ProcessorMap(ptree const &input_tree, TensorInfo const &Ti)
     : pmap_tree_(input_tree.get_child("pmap", ptree{})) {
 
   // Do initial setup on rank 0
   if (DistContext::rank() == 0) {
-    if (auto file_name = input_tree.get_optional<std::string>("tensor.file")) {
-      tensor_info_ = readTensorInfo(file_name.value());
-      dimension_sizes_ = CartGrid(DistContext::nranks(), tensor_info_.sizes,
-                                  CartGridStratagy::MinFactorSpace);
-    } else {
-      std::cout << "No tensor file\n";
-    }
+    dimension_sizes_ = CartGrid(DistContext::nranks(), Ti.sizes,
+                                CartGridStratagy::MinFactorSpace);
   }
 
-  bcastInfo(dimension_sizes_, tensor_info_);
-
+  DistContext::Bcast(dimension_sizes_, 0);
   const auto ndims = dimension_sizes_.size();
+
   // I don't think we need to be periodic
   small_vector<int> periodic(ndims, 0);
   bool reorder = true; // Let MPI be smart I guess
@@ -219,7 +189,7 @@ ProcessorMap::ProcessorMap(ptree const &input_tree)
   small_vector<int> dim_filter(ndims, 1);
   sub_maps_ = small_vector<MPI_Comm>(ndims);
 
-  for(auto i = 0; i < ndims; ++i){
+  for (auto i = 0; i < ndims; ++i) {
     dim_filter[i] = 0; // Get all dims except this one
     MPI_Cart_sub(cart_comm_, dim_filter.data(), &sub_maps_[i]);
     dim_filter[i] = 1; // Reset the dim_filter
@@ -230,6 +200,7 @@ ProcessorMap::ProcessorMap(ptree const &input_tree)
     sub_grid_rank_.push_back(sub_rank);
   }
 }
+
 ProcessorMap::~ProcessorMap() {
   if (DistContext::initialized()) {
     for (auto &comm : sub_maps_) {

@@ -52,10 +52,16 @@ using ptree = boost::property_tree::ptree;
 namespace detail {
 template <typename T, int Guess = (64 / sizeof(T))>
 constexpr auto default_small_vector_size() {
-  constexpr auto size = sizeof(boost::container::small_vector<T, Guess>);
-  if constexpr(Guess > 0 && size > 64){
+  namespace bc = boost::container;
+  constexpr auto size = sizeof(bc::small_vector<T, Guess>);
+  if constexpr (Guess > 1 && size > 64) {
     return default_small_vector_size<T, Guess - 1>();
   } else {
+    static_assert(size <= 512,
+                  "Even with 1 element boost::container::small_vector was "
+                  "larger than 512 bytes, perhapse this type is not suitible "
+                  "for a small_vector, you may manually provide the size if "
+                  "you really want to put something this big on the stack.");
     return Guess;
   }
 }

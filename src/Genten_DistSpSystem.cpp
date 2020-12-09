@@ -38,50 +38,31 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_DistContext.hpp"
-#include "Genten_Pmap.hpp"
-#include "Genten_TensorInfo.hpp"
+#include "Genten_DistSpSystem.hpp"
+#include "Genten_IOtext.hpp"
+
+#include <fstream>
+#include <exception>
 
 namespace Genten {
 namespace detail {
-// Reads just the header of the tensor to figure out size information
-TensorInfo readTensorInfo(boost::optional<std::string> const &tensor_file_name);
 
-} // namespace detail
-
-template <typename ElementType, typename ExecSpace> class DistSpSystem {
-
-  static_assert(std::is_floating_point<ElementType>::value,
-                "DistSpSystem Requires that the element type be a floating "
-                "point type.");
-
-public:
-  /*
-   * Constructors
-   */
-  DistSpSystem() = default;
-  DistSpSystem(ptree const &tree)
-      : tensor_info_(detail::readTensorInfo(
-            tree.get_optional<std::string>("tensor.file"))),
-        pmap_(tree, tensor_info_),
-        system_rank_(tree.get<int>("tensor.rank", 5)),
-        tensor_tree_(tree.get_child("tensor", ptree{})) {}
-
-  int64_t nnz() const { return tensor_info_.nnz; }
-  int tensorModeSize(int d) const { return tensor_info_.sizes[d]; }
-  small_vector<int> const &tensorModeSizes() const {
-    return tensor_info_.sizes;
+TensorInfo
+readTensorInfo(boost::optional<std::string> const &tensor_file_name) {
+  if (!tensor_file_name.has_value()) {
+    throw std::invalid_argument(
+        "No filename in the input was found with the path tensor.file");
   }
 
-private:
-  /*
-   * FieldDecls
-   */
-  TensorInfo tensor_info_;
-  ProcessorMap pmap_;
-  int32_t system_rank_;                // Default to a rank of 5
-  boost::optional<ElementType> score_; // Or loss, we can change the name
-  ptree tensor_tree_;
-};
+  std::ifstream tensor_file(tensor_file_name.value());
+  auto header_info = read_sptensor_header(tensor_file);
+  TensorInfo Ti;
+  Ti.nnz = header_info.nnz;
+  Ti.sizes.resize(header_info.dim_sizes.size());
+  std::copy(header_info.dim_sizes.begin(), header_info.dim_sizes.end(),
+            Ti.sizes.begin());
+  return Ti;
+}
 
+} // namespace detail
 } // namespace Genten

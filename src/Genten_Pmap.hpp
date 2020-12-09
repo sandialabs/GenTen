@@ -40,8 +40,8 @@
 
 #pragma once
 
-#include "Genten_DistContext.hpp"
 #include "Genten_Boost.hpp"
+#include "Genten_DistContext.hpp"
 #include "Genten_TensorInfo.hpp"
 
 namespace Genten {
@@ -49,14 +49,27 @@ namespace Genten {
 class ProcessorMap {
 public:
   ProcessorMap() = default;
-  ProcessorMap(ptree const& input_tree);
+  ProcessorMap(ptree const &input_tree, TensorInfo const &Ti);
   ~ProcessorMap();
+
+  // Size of the cartesian grid
+  int gridSize() const { return grid_nprocs_; }
+  int gridRank() const { return grid_rank_; }
+  MPI_Comm gridComm() const { return cart_comm_; }
+
+  int subGridSize(int dim) const { return dimension_sizes_[dim]; }
+  int subGridRank(int dim) const { return sub_grid_rank_[dim]; }
+  MPI_Comm subGridComm(int dim) const { return sub_maps_[dim]; }
+
+  small_vector<int> const &subGridSizes() const { return dimension_sizes_; }
+  small_vector<int> const &subGridRanks() const { return sub_grid_rank_; }
+  small_vector<MPI_Comm> const &subGridComms() const { return sub_maps_; }
 
 private:
   /*
    * FieldDecls
    */
-  MPI_Comm cart_comm_; 
+  MPI_Comm cart_comm_;
   int grid_nprocs_;
   int grid_rank_;
 
@@ -64,7 +77,6 @@ private:
   small_vector<int> dimension_sizes_;
   small_vector<MPI_Comm> sub_maps_; // N-1 D sub comms
 
-  TensorInfo tensor_info_;
   ptree pmap_tree_;
 };
 
