@@ -42,14 +42,26 @@
 
 #include <boost/archive/binary_iarchive.hpp>
 #include <boost/archive/binary_oarchive.hpp>
-#include <boost/property_tree/ptree.hpp>
 #include <boost/container/small_vector.hpp>
+#include <boost/property_tree/ptree.hpp>
 
 namespace Genten {
 
 using ptree = boost::property_tree::ptree;
 
-template<typename T, int N = 5>
+namespace detail {
+template <typename T, int Guess = (64 / sizeof(T))>
+constexpr auto default_small_vector_size() {
+  constexpr auto size = sizeof(boost::container::small_vector<T, Guess>);
+  if constexpr(Guess > 0 && size > 64){
+    return default_small_vector_size<T, Guess - 1>();
+  } else {
+    return Guess;
+  }
+}
+} // namespace detail
+
+template <typename T, int N = detail::default_small_vector_size<T>()>
 using small_vector = boost::container::small_vector<T, N>;
 
 } // namespace Genten
