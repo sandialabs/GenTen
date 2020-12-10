@@ -22,8 +22,8 @@ build-clang:
   tags:
     - clang
   rules:
-    - if $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == "gitlab.com"
-      when: always
+    - if $CI_SERVER_HOST == "gitlab.com"
+      when: manual
   script:
     - echo "build-clang pipeline passed"
 #    - cd ..
