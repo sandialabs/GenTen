@@ -35,8 +35,7 @@ build-clang:
 #    variables:
 #      - $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
   rules:
-    - if $CI_SERVER_HOST == "gitlab.com"
-      when: manual
+    - when: manual
 
 .build-gcc:
   stage: build
