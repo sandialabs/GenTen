@@ -83,7 +83,7 @@ build-cuda-kepler:
 
 build-gitlab-gcc:
   stage: build
-  image: build_gnu_clang
+  image: registry.gitlab.com/tensors/genten/build_gnu_clang
   #before_script:
   #  - apt-get update --yes
   #  - apt-get install --yes cmake
