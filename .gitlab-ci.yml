@@ -83,11 +83,11 @@ build-cuda-kepler:
 
 build-gitlab-gcc:
   stage: build
-  image: gcc
-  before_script:
-    - apt-get update --yes
-    - apt-get install --yes cmake
-    - apt-get install --yes libblas-dev liblapack-dev
+  image: build_gnu_clang
+  #before_script:
+  #  - apt-get update --yes
+  #  - apt-get install --yes cmake
+  #  - apt-get install --yes libblas-dev liblapack-dev
   script:
     - cd ..
     - rm -rf build_gitlab_gcc
