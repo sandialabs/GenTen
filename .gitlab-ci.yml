@@ -22,24 +22,18 @@ build-clang:
   tags:
     - clang
   script:
-    - echo "build-clang pipeline passed"
-#    - cd ..
-#    - rm -rf build_clang
-#    - mkdir build_clang
-#    - cd build_clang
-#    - source ../genten/scripts/sems_clang/setup_env.sh
-#    - ../genten/scripts/sems_clang/do_configure.sh
-#    - make -j8
-#    - ctest
-#  only:
-#    variables:
-#      - $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
+    - cd ..
+    - rm -rf build_clang
+    - mkdir build_clang
+    - cd build_clang
+    - source ../genten/scripts/sems_clang/setup_env.sh
+    - ../genten/scripts/sems_clang/do_configure.sh
+    - make -j32
+    - ctest
   rules:
-    - if: $CI_SERVER_HOST == "gitlab.com"
-      when: on_success
-    - when: never
+    - if: $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
 
-.build-gcc:
+build-gcc:
   stage: build
   tags:
     - gcc
@@ -50,13 +44,12 @@ build-clang:
     - cd build_gcc
     - source ../genten/scripts/sems_gcc/setup_env.sh
     - ../genten/scripts/sems_gcc/do_configure.sh
-    - make -j8
+    - make -j32
     - ctest
-  only:
-    variables:
-      - $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
+  rules:
+    - if: $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
 
-.build-intel:
+build-intel:
   stage: build
   tags:
     - intel
@@ -67,13 +60,12 @@ build-clang:
     - cd build_intel
     - source ../genten/scripts/sems_intel/setup_env.sh
     - ../genten/scripts/sems_intel/do_configure.sh
-    - make -j8
+    - make -j32
     - ctest
-  only:
-    variables:
-      - $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
+  rules:
+    - if: $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
 
-.build-cuda-kepler:
+build-cuda-kepler:
   stage: build
   tags:
     - cuda_kepler
@@ -86,11 +78,10 @@ build-clang:
     - ../genten/scripts/elbert_cuda_kepler/do_configure.sh
     - make -j32
     - ctest
-  only:
-    variables:
-      - $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
+  rules:
+    - if: $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
 
-.build-gitlab-gcc:
+build-gitlab-gcc:
   stage: build
   image: gcc
   before_script:
@@ -98,13 +89,15 @@ build-clang:
     - apt-get install --yes cmake
     - apt-get install --yes libblas-dev liblapack-dev
   script:
-    - cd ..
-    - rm -rf build_gitlab_gcc
-    - mkdir build_gitlab_gcc
-    - cd build_gitlab_gcc
-    - ../genten/scripts/gitlab_gcc/do_configure.sh
-    - make -j4
-    - ctest
-#  only:
-#    variables:
-#      - $CI_SERVER_HOST == "gitlab.com"
+    - echo "build-gitlab-gcc passed"
+#    - cd ..
+#    - rm -rf build_gitlab_gcc
+#    - mkdir build_gitlab_gcc
+#    - cd build_gitlab_gcc
+#    - ../genten/scripts/gitlab_gcc/do_configure.sh
+#    - make -j4
+#    - ctest
+  rules:
+    - if: $CI_SERVER_HOST == "gitlab.com"
+      when: on_success
+    - when: never
