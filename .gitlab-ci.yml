@@ -81,19 +81,30 @@ build-cuda-kepler:
   rules:
     - if: $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
 
-build-gitlab-gcc:
+.build-gitlab-gcc:
   stage: build
   image: registry.gitlab.com/tensors/genten/build_gnu_clang:latest
-  #before_script:
-  #  - apt-get update --yes
-  #  - apt-get install --yes cmake
-  #  - apt-get install --yes libblas-dev liblapack-dev
   script:
     - cd ..
     - rm -rf build_gitlab_gcc
     - mkdir build_gitlab_gcc
     - cd build_gitlab_gcc
     - ../genten/scripts/gitlab_gcc/do_configure.sh
+    - make -j4
+    - ctest
+  rules:
+    - if: $CI_SERVER_HOST == "gitlab.com"
+      when: manual
+
+build-gitlab-clang:
+  stage: build
+  image: registry.gitlab.com/tensors/genten/build_gnu_clang:latest
+  script:
+    - cd ..
+    - rm -rf build_gitlab_clang
+    - mkdir build_gitlab_clang
+    - cd build_gitlab_clang
+    - ../genten/scripts/gitlab_clang/do_configure.sh
     - make -j4
     - ctest
   rules:
