@@ -22,7 +22,7 @@ build-clang:
   tags:
     - clang
   rules:
-    - if '$CI_SERVER_HOST == "gitlab.com"'
+    - if $CI_SERVER_HOST == "gitlab.com"
   script:
     - echo "build-clang pipeline passed"
 #    - cd ..
