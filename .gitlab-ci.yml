@@ -21,9 +21,6 @@ build-clang:
   stage: build
   tags:
     - clang
-  rules:
-    - if $CI_SERVER_HOST == "gitlab.com"
-      when: manual
   script:
     - echo "build-clang pipeline passed"
 #    - cd ..
@@ -37,6 +34,9 @@ build-clang:
 #  only:
 #    variables:
 #      - $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
+  rules:
+    - if $CI_SERVER_HOST == "gitlab.com"
+      when: manual
 
 .build-gcc:
   stage: build
