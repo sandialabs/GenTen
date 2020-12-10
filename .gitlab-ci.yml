@@ -99,5 +99,4 @@ build-gitlab-gcc:
 #    - ctest
   rules:
     - if: $CI_SERVER_HOST == "gitlab.com"
-      when: on_success
-    - when: never
+      when: manual
