@@ -96,7 +96,7 @@ build-cuda-kepler:
     - if: $CI_SERVER_HOST == "gitlab.com"
       when: manual
 
-build-gitlab-clang:
+.build-gitlab-clang:
   stage: build
   image: registry.gitlab.com/tensors/genten/build_gnu_clang:latest
   script:
@@ -107,6 +107,21 @@ build-gitlab-clang:
     - ../genten/scripts/gitlab_clang/do_configure.sh
     - make -j4
     - ctest
+  rules:
+    - if: $CI_SERVER_HOST == "gitlab.com"
+      when: manual
+
+build-gitlab-clang-image:
+  stage: build
+  image: docker:stable
+  services:
+    - docker:stable-dind
+  script:
+    - docker build -t genten:latest --build-arg ARCH=BDW -f docker/Dockerfile_clang_openmp_image .
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker tag genten:latest $CI_REGISTRY_IMAGE:latest
+    - docker push $CI_REGISTRY_IMAGE:latest
+    - docker rmi $CI_REGISTRY_IMAGE:latest
   rules:
     - if: $CI_SERVER_HOST == "gitlab.com"
       when: manual

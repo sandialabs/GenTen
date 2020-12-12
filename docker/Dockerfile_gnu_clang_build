@@ -1,0 +1,18 @@
+# Generates a Docker image for building/testing GenTen with GNU or 
+# clang compilers
+
+# Base image
+FROM gcc
+MAINTAINER Eric Phipps <etphipp@sandia.gov>
+
+# Install GenTen dependencies
+RUN \
+  apt-get update --yes && \
+  apt-get install --yes \
+    cmake \
+    libblas-dev \
+    liblapack-dev \
+    libboost-iostreams-dev \
+    clang \
+    && \
+  rm -rf /var/lib/apt/lists/*

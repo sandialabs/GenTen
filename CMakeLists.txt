@@ -203,6 +203,8 @@ SET (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${Genten_BINARY_DIR}/bin)
 SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${Genten_BINARY_DIR}/lib)
 SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${Genten_BINARY_DIR}/lib)
 
+#--- Use standard GNU installation directories
+INCLUDE(GNUInstallDirs)
 
 #------------------------------------------------------------
 #---- INCLUDE Directories
@@ -243,7 +245,7 @@ FILE (GLOB genten_headers
   )
 INSTALL (
   FILES ${genten_headers}
-  DESTINATION include
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/genten
   PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
   )
 
@@ -261,7 +263,7 @@ ADD_CUSTOM_COMMAND (
   )
 INSTALL (
   DIRECTORY ${Genten_SOURCE_DIR}/data
-  DESTINATION .
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/genten
   DIRECTORY_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
                         GROUP_READ GROUP_EXECUTE
                         WORLD_READ WORLD_EXECUTE
@@ -299,7 +301,7 @@ TARGET_LINK_LIBRARIES(
   )
 INSTALL (
   TARGETS genten_mathlibs_c
-  DESTINATION lib
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}
   )
 SET(GENTEN_MATHLIBS
   genten_mathlibs_c
@@ -369,7 +371,7 @@ SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${ROL_LIBRARIES
 TARGET_LINK_LIBRARIES(${GENTEN_LINK_LIBS})
 INSTALL (
   TARGETS gentenlib
-  DESTINATION lib
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}
   )
 
 # FIND_PACKAGE(GTest REQUIRED)
@@ -382,7 +384,7 @@ INSTALL (
 # include_directories(${GTEST_INCLUDE_DIR})
 
 #------------------------------------------------------------
-#---- Unit Test Executables
+#---- Unit Test Executables (not installed)
 #------------------------------------------------------------
 
 #---- Specifications for building unit_tests.
@@ -417,14 +419,10 @@ ADD_EXECUTABLE (
   ${UNIT_TEST_SRCS}
   )
 TARGET_LINK_LIBRARIES (unit_tests ${GENTEN_LINK_LIBS})
-INSTALL (
-  TARGETS unit_tests
-  DESTINATION test
-  )
 
 
 #------------------------------------------------------------
-#---- Performance Test Executables
+#---- Performance Test Executables (not installed)
 #------------------------------------------------------------
 
 ADD_EXECUTABLE (
@@ -432,10 +430,6 @@ ADD_EXECUTABLE (
   ${Genten_SOURCE_DIR}/performance/Genten_CpAlsAminoAcid.cpp
   )
 TARGET_LINK_LIBRARIES (perf_CpAlsAminoAcid ${GENTEN_LINK_LIBS})
-INSTALL (
-  TARGETS perf_CpAlsAminoAcid
-  DESTINATION test
-  )
 
 ADD_EXECUTABLE (
   perf_CpAlsRandomKtensor
@@ -444,10 +438,6 @@ ADD_EXECUTABLE (
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   )
 TARGET_LINK_LIBRARIES (perf_CpAlsRandomKtensor ${GENTEN_LINK_LIBS})
-INSTALL (
-  TARGETS perf_CpAlsRandomKtensor
-  DESTINATION test
-  )
 
 ADD_EXECUTABLE (
   perf_CpAlsRandomKtensor_Sweep
@@ -456,10 +446,6 @@ ADD_EXECUTABLE (
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   )
 TARGET_LINK_LIBRARIES (perf_CpAlsRandomKtensor_Sweep ${GENTEN_LINK_LIBS})
-INSTALL (
-  TARGETS perf_CpAlsRandomKtensor_Sweep
-  DESTINATION test
-  )
 
 ADD_EXECUTABLE (
   perf_MTTKRP
@@ -468,10 +454,6 @@ ADD_EXECUTABLE (
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   )
 TARGET_LINK_LIBRARIES (perf_MTTKRP ${GENTEN_LINK_LIBS})
-INSTALL (
-  TARGETS perf_MTTKRP
-  DESTINATION test
-  )
 
 ADD_EXECUTABLE (
   perf_MTTKRP_Sweep
@@ -480,10 +462,6 @@ ADD_EXECUTABLE (
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   )
 TARGET_LINK_LIBRARIES (perf_MTTKRP_Sweep ${GENTEN_LINK_LIBS})
-INSTALL (
-  TARGETS perf_MTTKRP_Sweep
-  DESTINATION test
-  )
 
 #------------------------------------------------------------
 #---- Drivers
@@ -499,7 +477,7 @@ ADD_EXECUTABLE (
 TARGET_LINK_LIBRARIES (genten ${GENTEN_LINK_LIBS})
 INSTALL (
   TARGETS genten
-  DESTINATION drivers
+  DESTINATION ${CMAKE_INSTALL_BINDIR}
   )
 
 #------------------------------------------------------------
@@ -560,10 +538,10 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
   INSTALL(
     TARGETS gt_matlab gt_cp_driver gt_initialize gt_finalize gt_mttkrp_driver
       gt_innerprod_driver
-    DESTINATION matlab)
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/genten/matlab)
   INSTALL(
     TARGETS gt_compute_perm_driver
-    DESTINATION matlab/@sptensor_gt/private)
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/genten/matlab/@sptensor_gt/private)
   SET_PROPERTY(
     TARGET gt_matlab gt_cp_driver gt_initialize gt_finalize gt_mttkrp_driver
       gt_innerprod_driver
@@ -590,7 +568,7 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
   # Hint:  Use trailing slash in directory name to remove it from install tree
   INSTALL (
     DIRECTORY ${Genten_SOURCE_DIR}/matlab/matlab_src/
-    DESTINATION matlab)
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/genten/matlab)
 
 ENDIF()
 
