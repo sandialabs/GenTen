@@ -17,6 +17,7 @@ variables:
 stages:
   - build
 
+# Clang build for internal repo
 build-clang:
   stage: build
   tags:
@@ -33,6 +34,7 @@ build-clang:
   rules:
     - if: $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
 
+# Gcc build for internal repo
 build-gcc:
   stage: build
   tags:
@@ -49,6 +51,7 @@ build-gcc:
   rules:
     - if: $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
 
+# Intel build for internal repo
 build-intel:
   stage: build
   tags:
@@ -65,6 +68,7 @@ build-intel:
   rules:
     - if: $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
 
+# Cuda-kepler build for internal repo
 build-cuda-kepler:
   stage: build
   tags:
@@ -81,7 +85,8 @@ build-cuda-kepler:
   rules:
     - if: $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
 
-.build-gitlab-gcc:
+# Gcc build for external repo (run manually and is optional)
+build-gitlab-gcc:
   stage: build
   image: registry.gitlab.com/tensors/genten/build_gnu_clang:latest
   script:
@@ -95,8 +100,10 @@ build-cuda-kepler:
   rules:
     - if: $CI_SERVER_HOST == "gitlab.com"
       when: manual
+      allow_failure: true
 
-.build-gitlab-clang:
+# Clang build for external repo (run manually and is optional)
+build-gitlab-clang:
   stage: build
   image: registry.gitlab.com/tensors/genten/build_gnu_clang:latest
   script:
@@ -110,7 +117,9 @@ build-cuda-kepler:
   rules:
     - if: $CI_SERVER_HOST == "gitlab.com"
       when: manual
+      allow_failure: true
 
+# Build genten (w/clang) and push to registry using docker-in-docker
 build-gitlab-clang-image:
   stage: build
   image: docker:stable
@@ -126,4 +135,3 @@ build-gitlab-clang-image:
     - docker rmi $CI_REGISTRY_IMAGE:latest
   rules:
     - if: $CI_SERVER_HOST == "gitlab.com"
-      when: manual
