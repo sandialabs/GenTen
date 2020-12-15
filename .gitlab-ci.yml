@@ -18,7 +18,8 @@ stages:
   - build
 
 # Clang build for internal repo
-build-clang:
+# Disabling because internal runner isn't reliably picking up jobs
+.build-clang:
   stage: build
   tags:
     - clang
@@ -35,7 +36,8 @@ build-clang:
     - if: $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
 
 # Gcc build for internal repo
-build-gcc:
+# Disabling because internal runner isn't reliably picking up jobs
+.build-gcc:
   stage: build
   tags:
     - gcc
@@ -52,7 +54,8 @@ build-gcc:
     - if: $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
 
 # Intel build for internal repo
-build-intel:
+# Disabling because internal runner isn't reliably picking up jobs
+.build-intel:
   stage: build
   tags:
     - intel
@@ -69,7 +72,8 @@ build-intel:
     - if: $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
 
 # Cuda-kepler build for internal repo
-build-cuda-kepler:
+# Disabling because internal runner isn't reliably picking up jobs
+.build-cuda-kepler:
   stage: build
   tags:
     - cuda_kepler
