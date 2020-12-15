@@ -58,7 +58,6 @@ bool unit_test_tensor(Genten::TensorT<HostSpace> Z, ttb_real *unit_test, int pro
       dim_error << "Z[" << i << "]: " << Z.getValues().values()(i) << "   unit_test: " << unit_test[i];
       std::cerr << dim_error.str() << std::endl;
       throw dim_error.str();
-      return false;
     }
     Z.getValues().values()(i) = 0; //Zeroing Z out so that we know each ttm implementation is changing Z
   }
