@@ -411,13 +411,9 @@ ttb_indx SptensorT<ExecSpace>::index(const ind_type& ind) const
   }
 
   // If sorted, do binary search
-  else {
-    const ttb_indx idx = sorted_lower_bound(ind);
-    if (isSubscriptEqual(idx,ind))
-      return idx;
-    else
-      return nz;
-  }
+  const ttb_indx idx = sorted_lower_bound(ind);
+  if (isSubscriptEqual(idx,ind))
+    return idx;
 
   return nz;
 }
