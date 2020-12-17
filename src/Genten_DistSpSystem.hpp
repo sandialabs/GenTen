@@ -37,19 +37,56 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // ************************************************************************
 //@HEADER
+#pragma once
 
+#include "Genten_Boost.hpp"
 #include "Genten_DistContext.hpp"
 #include "Genten_Pmap.hpp"
 #include "Genten_TensorInfo.hpp"
+#include "Genten_Util.hpp"
+
+#include <vector>
 
 namespace Genten {
 namespace detail {
-// Reads just the header of the tensor to figure out size information
-TensorInfo readTensorInfo(boost::optional<std::string> const &tensor_file_name);
 
+// TODO We probably want to make a DistSpSystem base class that provides these
+// methods independent of the element type and ExecSpace that way they aren't
+// just chilling in this detail namespace passing the same things back over and
+// over. But for the POC stage let's just do it this way.
+
+// Reads just the header of the tensor to get info for blocking
+TensorInfo
+readTensorHeader(boost::optional<std::string> const &tensor_file_name);
+
+void readTensorToRank0(boost::optional<std::string> const &tensor_file_name,
+                       TensorInfo const &Ti,
+                       std::vector<small_vector<int>> const &blocking);
+
+enum class TensorBlockingStrategy {
+  // One block per processor in each dimension
+  Uniform_OnePerRank_BS
+};
+
+// Convert a named string into a enum decleration, I kind of want to inline
+// this, but I also want to keep the header easy to read ... I suspect this has
+// 0 performance implications so let's move it to cpp for now.
+TensorBlockingStrategy readBlockingStrategy(std::string name);
+
+std::vector<small_vector<int>>
+generateBlocking(TensorInfo const &Ti, small_vector<int> const &PmapGrid,
+                 TensorBlockingStrategy Bs);
+
+// For now assume medium grained decomposotion, this means that we can figure
+// out the processor owner based solely on the range information As soon as we
+// allow other distributions like multiple blocks per rank this gets more
+// complicated, but for POC let's just do this. 
+int rankInGridThatOwns(small_vector<int> const &COO,
+                       std::vector<small_vector<int>> const &ElementRanges);
 } // namespace detail
 
-template <typename ElementType, typename ExecSpace> class DistSpSystem {
+template <typename ElementType, typename ExecSpace = DefaultExecutionSpace>
+class DistSpSystem {
 
   static_assert(std::is_floating_point<ElementType>::value,
                 "DistSpSystem Requires that the element type be a floating "
@@ -61,11 +98,27 @@ public:
    */
   DistSpSystem() = default;
   DistSpSystem(ptree const &tree)
-      : tensor_info_(detail::readTensorInfo(
+      : tensor_info_(detail::readTensorHeader(
             tree.get_optional<std::string>("tensor.file"))),
         pmap_(tree, tensor_info_),
         system_rank_(tree.get<int>("tensor.rank", 5)),
-        tensor_tree_(tree.get_child("tensor", ptree{})) {}
+        tensor_tree_(tree.get_child("tensor", ptree{})) {
+    auto blockingStrat = tensor_tree_.get_optional<std::string>("blocking");
+    if (!blockingStrat) {
+      if (DistContext::rank() == 0) {
+        std::cout << "No tensor blocking stratgy provided using default.\n";
+      }
+    }
+
+    ranges_ = detail::generateBlocking(
+        tensor_info_, pmap_.subGridSizes(),
+        detail::readBlockingStrategy(blockingStrat.value_or("default")));
+
+    if (pmap_.gridRank() == 0) {
+      detail::readTensorToRank0(tensor_tree_.get_optional<std::string>("file"),
+                                tensor_info_, ranges_);
+    }
+  }
 
   int64_t nnz() const { return tensor_info_.nnz; }
   int tensorModeSize(int d) const { return tensor_info_.sizes[d]; }
@@ -79,9 +132,12 @@ private:
    */
   TensorInfo tensor_info_;
   ProcessorMap pmap_;
-  int32_t system_rank_;                // Default to a rank of 5
+  int system_rank_;                    // Default to a rank of 5
   boost::optional<ElementType> score_; // Or loss, we can change the name
   ptree tensor_tree_;
+
+  // Holds the blocking information for the tensor and factors
+  std::vector<small_vector<int>> ranges_;
 };
 
 } // namespace Genten

@@ -188,7 +188,9 @@ ProcessorMap::ProcessorMap(ptree const &input_tree, TensorInfo const &Ti)
 
   small_vector<int> dim_filter(ndims, 1);
   sub_maps_ = small_vector<MPI_Comm>(ndims);
+  sub_grid_rank_.reserve(ndims);
 
+  // Get information for the MPI Subgrid for each Dimension 
   for (auto i = 0; i < ndims; ++i) {
     dim_filter[i] = 0; // Get all dims except this one
     MPI_Cart_sub(cart_comm_, dim_filter.data(), &sub_maps_[i]);
