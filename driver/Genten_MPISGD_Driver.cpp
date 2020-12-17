@@ -53,7 +53,9 @@ GT::Sptensor getSparseTensor();
 int main(int argc, char **argv) {
   GT::InitializeGenten(&argc, &argv);
   {
-    GT::DistSpSystem<double, Kokkos::DefaultExecutionSpace> SpSys(
+    GT::DistSpSystem<double> SpSys(
+        GT::DistContext::input());
+    GT::DistSpSystem<float> SpSys_float(
         GT::DistContext::input());
   }
   GT::FinalizeGenten();
