@@ -59,9 +59,9 @@ namespace detail {
 TensorInfo
 readTensorHeader(boost::optional<std::string> const &tensor_file_name);
 
-void readTensorToRank0(boost::optional<std::string> const &tensor_file_name,
-                       TensorInfo const &Ti,
-                       std::vector<small_vector<int>> const &blocking);
+void tensorPlayGround(boost::optional<std::string> const &tensor_file_name,
+                      TensorInfo const &Ti, ProcessorMap const &pmap,
+                      std::vector<small_vector<int>> const &blocking);
 
 enum class TensorBlockingStrategy {
   // One block per processor in each dimension
@@ -80,8 +80,8 @@ generateBlocking(TensorInfo const &Ti, small_vector<int> const &PmapGrid,
 // For now assume medium grained decomposotion, this means that we can figure
 // out the processor owner based solely on the range information As soon as we
 // allow other distributions like multiple blocks per rank this gets more
-// complicated, but for POC let's just do this. 
-int rankInGridThatOwns(small_vector<int> const &COO,
+// complicated, but for POC let's just do this.
+int rankInGridThatOwns(small_vector<int> const &COO, ProcessorMap const &pmap,
                        std::vector<small_vector<int>> const &ElementRanges);
 } // namespace detail
 
@@ -103,10 +103,11 @@ public:
         pmap_(tree, tensor_info_),
         system_rank_(tree.get<int>("tensor.rank", 5)),
         tensor_tree_(tree.get_child("tensor", ptree{})) {
+
     auto blockingStrat = tensor_tree_.get_optional<std::string>("blocking");
     if (!blockingStrat) {
       if (DistContext::rank() == 0) {
-        std::cout << "No tensor blocking stratgy provided using default.\n";
+        std::cout << "No tensor blocking strategy provided using default.\n";
       }
     }
 
@@ -114,10 +115,8 @@ public:
         tensor_info_, pmap_.subGridSizes(),
         detail::readBlockingStrategy(blockingStrat.value_or("default")));
 
-    if (pmap_.gridRank() == 0) {
-      detail::readTensorToRank0(tensor_tree_.get_optional<std::string>("file"),
-                                tensor_info_, ranges_);
-    }
+    detail::tensorPlayGround(tensor_tree_.get_optional<std::string>("file"),
+                             tensor_info_, pmap_, ranges_);
   }
 
   int64_t nnz() const { return tensor_info_.nnz; }

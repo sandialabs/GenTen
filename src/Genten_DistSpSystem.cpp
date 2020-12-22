@@ -129,29 +129,202 @@ readTensorHeader(boost::optional<std::string> const &tensor_file_name) {
   return Ti;
 }
 
-void readTensorToRank0(boost::optional<std::string> const &tensor_file_name,
-                       TensorInfo const &Ti,
-                       std::vector<small_vector<int>> const &blocking) {
-  auto file_name = getTensorFile(tensor_file_name);
-  std::ifstream tensor_file(file_name);
+namespace {
 
-  // Need to get this info from ptree after testing, using 1 for now since that
-  // is what lbnl is
-  auto index_base = 1;
+struct TensorDump {
+
+  struct Datatype { // Only works for lbnl right now
+    int coo[5];
+    double val;
+  };
+
+  std::vector<Datatype> data;
+};
+
+// Obviously super broken on anything that isn't Host
+TensorDump readTensor(std::ifstream &ifs) {
+  auto index_base = 1; // Needs to come from ptree
   Genten::Sptensor X;
-  import_sptensor(tensor_file, X, index_base, true /*verbose*/);
+  import_sptensor(ifs, X, index_base, true /*verbose*/);
 
-  auto bits = std::mt19937(std::random_device{}());
-  auto dist = std::uniform_int_distribution<int>(0, X.nnz());
+  TensorDump dump;
+  dump.data.reserve(X.nnz());
 
-  for (auto i = 0; i < 10; ++i) {
-    auto random_cord = X.getSubscripts(dist(bits));
-    small_vector<int> copy(X.ndims());
-    for (auto i = 0; i < X.ndims(); ++i) {
-      copy[i] = random_cord[i]; // Assume OpenMP
+  for (auto i = 0ll; i < X.nnz(); ++i) {
+    TensorDump::Datatype dt;
+    for (auto j = 0; j < X.ndims(); ++j) {
+      dt.coo[j] = X.subscript(i, j);
     }
-    rankInGridThatOwns(copy, blocking);
+
+    dt.val = X.value(i);
+    dump.data.emplace_back(std::move(dt));
   }
+
+  return dump;
+}
+
+} // namespace
+
+void tensorPlayGround(boost::optional<std::string> const &tensor_file_name,
+                      TensorInfo const &Ti, ProcessorMap const &pmap,
+                      std::vector<small_vector<int>> const &blocking) {
+  small_vector<int> who_gets_what =
+      UOPRSingleDimension(Ti.nnz, pmap.gridSize());
+
+  TensorDump dump;
+  // MPI DATA TYPES ARE ANNOYTING
+  // struct Datatype { // Only works for lbnl right now
+  //   int coo[5];
+  //   double val;
+  // };
+  // Example here http://mpi.deino.net/mpi_functions/MPI_Type_create_struct.html
+  // MPI_Datatype COOVal;
+  // MPI_Datatype type[] = {MPI_INT, MPI_DOUBLE};
+  // int type_num[] = {5, 1};
+  // MPI_Aint displacement[2];
+  //
+  // DON'T DO THIS FOR NOW BECAUSE DISPLACEMENTS ARE COMPLICATED
+  //
+  // Because Datatype is all on stack lets just communicate bytes
+
+  if (pmap.gridRank() == 0) {
+    std::cout << "who gets what: ";
+    for (auto i : who_gets_what) {
+      std::cout << i << " ";
+    }
+
+    std::cout << std::endl;
+    auto file_name = getTensorFile(tensor_file_name);
+    std::ifstream tensor_file(file_name);
+
+    dump = readTensor(tensor_file);
+    std::cout << "Dump Size: " << dump.data.size() << std::endl;
+
+    std::vector<MPI_Request> requests(pmap.gridSize() - 1);
+    std::vector<MPI_Status> statuses(pmap.gridSize() - 1);
+    for (auto i = 1; i < pmap.gridSize(); ++i) {
+      // Size to sent to rank i
+      const auto nelements = who_gets_what[i] - who_gets_what[i - 1];
+      constexpr auto dt_size = sizeof(TensorDump::Datatype);
+      const auto nbytes = nelements * dt_size;
+
+      const auto index_of_first_element = who_gets_what[i - 1];
+      std::cout << "Trying to send " << nbytes << " bytes to rank " << i
+                << std::endl;
+      MPI_Isend(dump.data.data() + index_of_first_element, nbytes, MPI_BYTE, i,
+                i, pmap.gridComm(), &requests[i - 1]);
+    }
+    MPI_Waitall(requests.size(), requests.data(), statuses.data());
+    auto begin = dump.data.begin();
+    std::advance(begin, who_gets_what[1]); // wgw[0] == 0 always
+    dump.data.erase(begin, dump.data.end());
+    dump.data.shrink_to_fit(); // Yay now I only have rank 0 data
+  }
+
+  if (pmap.gridRank() != 0) {
+    const auto rank = pmap.gridRank();
+    const auto nelements = who_gets_what[rank] - who_gets_what[rank - 1];
+    dump.data.resize(nelements);
+    constexpr auto dt_size = sizeof(TensorDump::Datatype);
+    const auto nbytes = nelements * dt_size;
+    MPI_Recv(dump.data.data(), nbytes, MPI_BYTE, 0, rank, pmap.gridComm(),
+             nullptr);
+  }
+
+  if (pmap.gridRank() == pmap.gridSize() - 1) {
+    std::cout << "Value: " << dump.data[0].val << "\n\tat: ";
+    for (auto i = 0; i < Ti.sizes.size(); ++i) {
+      std::cout << dump.data[0].coo[i] << " ";
+    }
+    std::cout << std::endl;
+  }
+
+  MPI_Barrier(pmap.gridComm());
+
+  // Let's do something hacky to ship data to everyone else.
+  std::vector<TensorDump> others(pmap.gridSize());
+  for (auto const &dt : dump.data) {
+    small_vector<int> coo(dt.coo, dt.coo + 5); // Hard coded for lbnl
+    auto owner_rank = rankInGridThatOwns(coo, pmap, blocking);
+    others[owner_rank].data.push_back(dt);
+  }
+
+  small_vector<int> amount_to_write(pmap.gridSize(), 0);
+  small_vector<int> total_amount_writen(pmap.gridSize(), 0);
+  for (auto i = 0; i < pmap.gridSize(); ++i) {
+    amount_to_write[i] = others[i].data.size();
+  }
+
+  MPI_Allreduce(amount_to_write.data(), total_amount_writen.data(),
+                pmap.gridSize(), MPI_INT, MPI_SUM, pmap.gridComm());
+
+  small_vector<int> offset_to_write_at(pmap.gridSize(), 0);
+  MPI_Exscan(amount_to_write.data(), offset_to_write_at.data(), pmap.gridSize(),
+             MPI_INT, MPI_SUM, pmap.gridComm());
+
+  for (auto i = 0; i < pmap.gridSize(); ++i) {
+    if (pmap.gridRank() == i) {
+
+      std::cout << "Rank " << i << ": will" << std::endl;
+      for (auto j = 0; j < pmap.gridSize(); ++j) {
+        std::cout << "\t"
+                  << " write from: " << offset_to_write_at[j] << " to "
+                  << offset_to_write_at[j] + amount_to_write[j] << " on rank "
+                  << j << std::endl;
+      }
+    }
+    fflush(nullptr);
+    sleep(2);
+    MPI_Barrier(pmap.gridComm());
+  }
+
+  // HERE IS THE FUN RMA PART!!!!!! Okay maybe not fun
+  // MPI DATA TYPES ARE ANNOYING SO WE ARE GONNA JUST RMA BYTES INSTEAD
+  // struct Datatype { // Only works for lbnl (order 5) right now
+  //   int coo[5];
+  //   double val;
+  // };
+  //
+  // TODO TEST THIS, the displacement piece is probably wrong at the moment I
+  // need to figure out if I should do displacement based on number of bytes or
+  // number of structs in the MPI_Put call.
+  TensorDump::Datatype *dt;
+  MPI_Win window;
+  const auto my_rank = pmap.gridRank();
+  constexpr auto TDsize = sizeof(TensorDump::Datatype);
+  MPI_Win_allocate(total_amount_writen[my_rank] * TDsize,
+                   /*displacement = */ TDsize, MPI_INFO_NULL, pmap.gridComm(),
+                   &dt, &window);
+
+  MPI_Win_fence(0, window);
+
+  for (auto i = 0; i < pmap.gridSize(); ++i) {
+    const auto bytes_to_write = TDsize * amount_to_write[i];
+    MPI_Put(
+        /* Origin ptr */ others[i].data.data(),
+        /* Origin num bytes */ bytes_to_write,
+        /* Datatype for put */ MPI_BYTE,
+        /* Target */ i,
+        /* Displacement at target */ offset_to_write_at[i], // Note not in bytes
+        /* Target num bytes */ bytes_to_write,
+        /* Origin data type */ MPI_BYTE, window);
+  }
+
+  MPI_Win_fence(0, window);
+  for (auto i = 0; i < pmap.gridSize(); ++i) {
+    if (pmap.gridRank() == i) {
+      std::cout << "Rank " << i << ": first written value " << dt[0].val
+                << "\n\tat " << std::flush;
+      for (auto j = 0; j < 5; ++j) {
+        std::cout << dt[0].coo[j] << " ";
+      }
+      std::cout << std::endl;
+    }
+    sleep(1);
+    MPI_Barrier(pmap.gridComm());
+  }
+
+  MPI_Win_free(&window);
 }
 
 std::vector<small_vector<int>>
@@ -204,7 +377,7 @@ int blockInThatDim(int element, small_vector<int> const &range) {
 }
 } // namespace
 
-int rankInGridThatOwns(small_vector<int> const &COO,
+int rankInGridThatOwns(small_vector<int> const &COO, ProcessorMap const &pmap,
                        std::vector<small_vector<int>> const &ElementRanges) {
   const auto ndims = COO.size();
   assert(ndims == ElementRanges.size());
@@ -214,23 +387,10 @@ int rankInGridThatOwns(small_vector<int> const &COO,
     GridPos[i] = blockInThatDim(COO[i], ElementRanges[i]);
   }
 
-  std::cout << "Element COO: ";
-  for (auto i = 0; i < ndims; ++i) {
-    std::cout << COO[i] << " ";
-  }
-  std::cout << std::endl;
+  int rank;
+  MPI_Cart_rank(pmap.gridComm(), GridPos.data(), &rank);
 
-  std::cout << "Range:\n";
-  for (auto i = 0; i < ndims; ++i) {
-    std::cout << "\t" << i << ": ";
-    for (auto pos : ElementRanges[i]) {
-      std::cout << pos << " ";
-    }
-    std::cout << ": Position in grid: " << GridPos[i] << "\n";
-  }
-  std::cout << std::endl;
-
-  return 0;
+  return rank;
 }
 
 } // namespace detail
