@@ -603,6 +603,8 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
 
 ENDIF()
 
+add_subdirectory(tools)
+
 #------------------------------------------------------------
 #---- Testing
 #------------------------------------------------------------
