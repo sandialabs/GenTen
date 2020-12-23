@@ -124,7 +124,7 @@ build-gitlab-clang:
       allow_failure: true
 
 # Build genten (w/clang) and push to registry using docker-in-docker
-build-gitlab-clang-image:
+.build-gitlab-clang-image:
   stage: build
   image: docker:stable
   services:
@@ -133,6 +133,23 @@ build-gitlab-clang-image:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
     - docker pull $CI_REGISTRY_IMAGE:latest || true
     - docker build --cache-from $CI_REGISTRY_IMAGE:latest -t genten:latest --build-arg ARCH=SNB -f docker/Dockerfile_clang_openmp_image .
+    - docker run --name gt -w /build/genten -t genten:latest ctest
+    - docker tag genten:latest $CI_REGISTRY_IMAGE:latest
+    - docker push $CI_REGISTRY_IMAGE:latest
+    - docker rmi $CI_REGISTRY_IMAGE:latest
+  rules:
+    - if: $CI_SERVER_HOST == "gitlab.com"
+
+# Build genten (w/clang) and push to registry using podman
+build-clang-image:
+  stage: build
+  tags:
+    - elbert
+  script:
+    - module load sems-git/2.10.1
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker pull $CI_REGISTRY_IMAGE:latest || true
+    - docker build --cache-from $CI_REGISTRY_IMAGE:latest -t genten:latest --format=docker --build-arg ARCH=SNB -f docker/Dockerfile_clang_openmp_image .
     - docker run --name gt -w /build/genten -t genten:latest ctest
     - docker tag genten:latest $CI_REGISTRY_IMAGE:latest
     - docker push $CI_REGISTRY_IMAGE:latest
