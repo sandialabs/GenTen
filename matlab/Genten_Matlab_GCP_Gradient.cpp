@@ -44,6 +44,7 @@
 #include "Genten_GCP_SamplingKernels.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
 #include "Genten_GCP_SS_Grad.hpp"
+#include "Genten_GCP_Sampler.hpp"
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_SystemTimer.hpp"
 
@@ -53,21 +54,21 @@ template <typename ExecSpace, typename LossFunction>
 Genten::KtensorT<ExecSpace>
 gcp_gradient_driver(
   const std::string& method,
-  const Genten::SptensorT<ExecSpace>& X,
+  Genten::SptensorT<ExecSpace>& X,
   const ttb_indx num_samples_nonzeros,
   const ttb_indx num_samples_zeros,
   const ttb_real weight_nonzeros,
   const ttb_real weight_zeros,
   const Genten::KtensorT<ExecSpace>& u,
-  //const Genten::KtensorT<ExecSpace>& ut,
   const Genten::KtensorT<ExecSpace>& uprev,
+  const Genten::ArrayT<ExecSpace>& window,
+  const ttb_real window_penalty,
   const LossFunction& loss_func,
   const Genten::IndxArrayT<ExecSpace> modes,
   const ttb_real penalty,
   Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
   const Genten::AlgParams& algParams)
 {
-  // to do:  sort/hash
   // to do:  call mttkrp-all
 
   const ttb_indx d = modes.size();
@@ -109,18 +110,32 @@ gcp_gradient_driver(
       X, u, ut, uprev, loss_func,
       num_samples_nonzeros, num_samples_zeros,
       weight_nonzeros, weight_zeros,
+      window, window_penalty,
       modes, G, rand_pool, algParams, timer, 0, 1);
   }
   else {
     // Compute sampled gradient tensor
     Genten::SptensorT<ExecSpace> Y;
     Genten::ArrayT<ExecSpace> w;
-    if (method == "stratified")
-      Genten::Impl::stratified_sample_tensor(
-        X, num_samples_nonzeros, num_samples_zeros,
-        weight_nonzeros, weight_zeros,
-        u, loss_func, true,
-        Y, w, rand_pool, algParams);
+    if (method == "stratified") {
+      if (algParams.hash) {
+        auto hash = Genten::Sampler<ExecSpace,LossFunction>::buildHashMap(X, std::cout);
+        Genten::Impl::stratified_sample_tensor_hash(
+          X, hash, num_samples_nonzeros, num_samples_zeros,
+          weight_nonzeros, weight_zeros,
+          u, loss_func, true,
+          Y, w, rand_pool, algParams);
+      }
+      else {
+        if (!X.isSorted())
+          X.sort();
+        Genten::Impl::stratified_sample_tensor(
+          X, num_samples_nonzeros, num_samples_zeros,
+          weight_nonzeros, weight_zeros,
+          u, loss_func, true,
+          Y, w, rand_pool, algParams);
+      }
+    }
     else if (method == "semi-stratified")
       Genten::Impl::semi_stratified_sample_tensor(
         X, num_samples_nonzeros, num_samples_zeros,
@@ -148,22 +163,30 @@ gcp_gradient_driver(
       Genten::Impl::stratified_ktensor_grad(
         Y, num_samples_nonzeros, num_samples_zeros,
         weight_nonzeros, weight_zeros,
-        ut, uprev, loss_func,
+        ut, uprev, window, window_penalty, loss_func,
         Yt, algParams);
 
       // const ttb_indx num_samples = num_samples_nonzeros+num_samples_zeros;
       // const ttb_real weight = X.numel_float() / ttb_real(num_samples);
+      // Genten::Impl::stratified_ktensor_grad(
+      //   Y, num_samples, ttb_indx(0),
+      //   weight, ttb_real(0.0),
+      //   ut, uprev, window, window_penalty, loss_func,
+      //   Yt, algParams);
+
       // Genten::Impl::uniform_ktensor_grad(
-      //   num_samples, weight, ut, uprev, loss_func, Yt, rand_pool, algParams);
-      // if (algParams.mttkrp_method == Genten::MTTKRP_Method::Perm &&
-      //     !Yt.havePerm())
-      //   Yt.createPermutation();
-      // for (int k=0; k<d; ++k) {
-      //   const ttb_indx kk = modes_host[k];
-      //   Genten::FacMatrixT<ExecSpace> v(u[kk].nRows(), nc);
-      //   Genten::mttkrp(Yt, ut, kk, v, algParams);
-      //   G[k].plus(v);
-      // }
+      //   num_samples, weight, ut, uprev, window, window_penalty, loss_func,
+      //   Yt, rand_pool, algParams);
+
+      if (algParams.mttkrp_method == Genten::MTTKRP_Method::Perm &&
+          !Yt.havePerm())
+        Yt.createPermutation();
+      for (int k=0; k<d; ++k) {
+        const ttb_indx kk = modes_host[k];
+        Genten::FacMatrixT<ExecSpace> v(u[kk].nRows(), nc);
+        Genten::mttkrp(Yt, ut, kk, v, algParams);
+        G[k].plus(v);
+      }
     }
   }
 
@@ -190,12 +213,13 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
   typedef Genten::SptensorT<ExecSpace> Sptensor_type;
   typedef Genten::KtensorT<ExecSpace> Ktensor_type;
   typedef Genten::IndxArrayT<ExecSpace> indx_array_type;
+  typedef Genten::ArrayT<ExecSpace> array_type;
 
   GentenInitialize();
 
   try {
-    if (nrhs < 11 || nlhs != 1) {
-      std::string err = "Expected at least 11 input and 1 output arguments";
+    if (nrhs < 13 || nlhs != 1) {
+      std::string err = "Expected at least 13 input and 1 output arguments";
       throw err;
     }
 
@@ -205,7 +229,7 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
     // Parse inputs
     unsigned arg = 0;
     const std::string method = mxGetStdString(prhs[arg++]);
-    const Sptensor_type X = mxGetSptensor<ExecSpace>(prhs[arg++]);
+    Sptensor_type X = mxGetSptensor<ExecSpace>(prhs[arg++]);
     const ttb_indx num_samples_nonzeros =
       static_cast<ttb_indx>(mxGetScalar(prhs[arg++]));
     const ttb_indx num_samples_zeros =
@@ -215,8 +239,9 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
     const ttb_real weight_zeros =
       static_cast<ttb_real>(mxGetScalar(prhs[arg++]));
     const Ktensor_type u = mxGetKtensor<ExecSpace>(prhs[arg++]);
-    //const Ktensor_type ut = mxGetKtensor<ExecSpace>(prhs[arg++]);
     const Ktensor_type uprev = mxGetKtensor<ExecSpace>(prhs[arg++]);
+    const array_type window = mxGetArray<ExecSpace>(prhs[arg++]);
+    const ttb_real window_penalty = mxGetScalar(prhs[arg++]);
     const std::string loss_type = mxGetStdString(prhs[arg++]);
     const indx_array_type modes = mxGetIndxArray<ExecSpace>(prhs[arg++],true);
     const ttb_real penalty =
@@ -240,26 +265,31 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
     if (loss_type == "gaussian" || loss_type == "normal")
       G = gcp_gradient_driver(method,X,num_samples_nonzeros,num_samples_zeros,
                               weight_nonzeros,weight_zeros,u,uprev,
+                              window,window_penalty,
                               Genten::GaussianLossFunction(algParams.loss_eps),
                               modes,penalty,rand_pool,algParams);
     else if (loss_type == "rayleigh")
       G = gcp_gradient_driver(method,X,num_samples_nonzeros,num_samples_zeros,
                               weight_nonzeros,weight_zeros,u,uprev,
+                              window,window_penalty,
                               Genten::RayleighLossFunction(algParams.loss_eps),
                               modes,penalty,rand_pool,algParams);
     else if (loss_type == "gamma")
       G = gcp_gradient_driver(method,X,num_samples_nonzeros,num_samples_zeros,
                               weight_nonzeros,weight_zeros,u,uprev,
+                              window,window_penalty,
                               Genten::GammaLossFunction(algParams.loss_eps),
                               modes,penalty,rand_pool,algParams);
     else if (loss_type == "bernoulli" || loss_type == "binary")
       G = gcp_gradient_driver(method,X,num_samples_nonzeros,num_samples_zeros,
                               weight_nonzeros,weight_zeros,u,uprev,
+                              window,window_penalty,
                               Genten::BernoulliLossFunction(algParams.loss_eps),
                               modes,penalty,rand_pool,algParams);
     else if (loss_type == "poisson" || loss_type == "count")
       G = gcp_gradient_driver(method,X,num_samples_nonzeros,num_samples_zeros,
                               weight_nonzeros,weight_zeros,u,uprev,
+                              window,window_penalty,
                               Genten::PoissonLossFunction(algParams.loss_eps),
                               modes,penalty,rand_pool,algParams);
     else {

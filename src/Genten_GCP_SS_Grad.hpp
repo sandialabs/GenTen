@@ -79,6 +79,8 @@ namespace Genten {
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
+      const ArrayT<ExecSpace>& window,
+      const ttb_real window_penalty,
       const IndxArrayT<ExecSpace>& modes,
       const KtensorT<ExecSpace>& G,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,

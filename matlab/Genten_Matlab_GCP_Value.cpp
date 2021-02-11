@@ -58,8 +58,8 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
   GentenInitialize();
 
   try {
-    if (nrhs < 4 || nlhs != 1) {
-      std::string err = "Expected at least 4 input and 1 output arguments";
+    if (nrhs < 7 || nlhs > 2) {
+      std::string err = "Expected at least 8 input and 1-2 output arguments";
       throw err;
     }
 
@@ -67,34 +67,46 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
     algParams.fixup<ExecSpace>(std::cout);
 
     // Parse inputs
-    const Sptensor_type X = mxGetSptensor<ExecSpace>(prhs[0]);
-    const Ktensor_type u = mxGetKtensor<ExecSpace>(prhs[1]);
-    const array_type w = mxGetArray<ExecSpace>(prhs[2]);
-    const std::string loss_type =  mxGetStdString(prhs[3]);
-    auto args = mxBuildArgList(nrhs, 4, prhs);
-    algParams.parse(args);
-    if (Genten::check_and_print_unused_args(args, std::cout)) {
-      algParams.print_help(std::cout);
-      std::string err = "Invalid command line arguments.";
-      throw err;
+    unsigned arg = 0;
+    const Sptensor_type X = mxGetSptensor<ExecSpace>(prhs[arg++]);
+    const Ktensor_type u = mxGetKtensor<ExecSpace>(prhs[arg++]);
+    const Ktensor_type uprev = mxGetKtensor<ExecSpace>(prhs[arg++]);
+    const array_type window = mxGetArray<ExecSpace>(prhs[arg++]);
+    const ttb_real window_penalty = mxGetScalar(prhs[arg++]);
+    const array_type w = mxGetArray<ExecSpace>(prhs[arg++]);
+    const std::string loss_type =  mxGetStdString(prhs[arg++]);
+    if (nrhs >= arg+1) {
+      auto args = mxBuildArgList(nrhs, arg, prhs);
+      algParams.parse(args);
+      if (Genten::check_and_print_unused_args(args, std::cout)) {
+        algParams.print_help(std::cout);
+        std::string err = "Invalid command line arguments.";
+        throw err;
+      }
     }
 
-    ttb_real fest = 0.0;
+    ttb_real ften = 0.0;
+    ttb_real fhis = 0.0;
     if (loss_type == "gaussian" || loss_type == "normal")
-      fest = Genten::Impl::gcp_value(
-        X, u, w, Genten::GaussianLossFunction(algParams.loss_eps));
+      Genten::Impl::gcp_value(
+        X, u, uprev, window, window_penalty, w,
+        Genten::GaussianLossFunction(algParams.loss_eps), ften, fhis);
     else if (loss_type == "rayleigh")
-      fest = Genten::Impl::gcp_value(
-        X, u, w, Genten::RayleighLossFunction(algParams.loss_eps));
+      Genten::Impl::gcp_value(
+        X, u, uprev, window, window_penalty, w,
+        Genten::RayleighLossFunction(algParams.loss_eps), ften, fhis);
     else if (loss_type == "gamma")
-      fest = Genten::Impl::gcp_value(
-        X, u, w, Genten::GammaLossFunction(algParams.loss_eps));
+      Genten::Impl::gcp_value(
+        X, u, uprev, window, window_penalty, w,
+        Genten::GammaLossFunction(algParams.loss_eps), ften, fhis);
     else if (loss_type == "bernoulli" || loss_type == "binary")
-      fest = Genten::Impl::gcp_value(
-        X, u, w, Genten::BernoulliLossFunction(algParams.loss_eps));
+      Genten::Impl::gcp_value(
+        X, u, uprev, window, window_penalty, w,
+        Genten::BernoulliLossFunction(algParams.loss_eps), ften, fhis);
     else if (loss_type == "poisson" || loss_type == "count")
-      fest = Genten::Impl::gcp_value(
-        X, u, w, Genten::PoissonLossFunction(algParams.loss_eps));
+      Genten::Impl::gcp_value(
+        X, u, uprev, window, window_penalty, w,
+        Genten::PoissonLossFunction(algParams.loss_eps), ften, fhis);
     else {
       std::string err = "Unknown loss function " + loss_type;
       throw err;
@@ -103,8 +115,14 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
     // Set output
     mxArray *mat_ptr = mxCreateDoubleMatrix( (mwSize) 1, (mwSize) 1,  mxREAL );
     ttb_real *mat = mxGetDoubles(mat_ptr);
-    *mat = fest;
+    *mat = ften;
     plhs[0] = mat_ptr;
+    if (nlhs == 2) {
+      mxArray *mat_ptr2 = mxCreateDoubleMatrix( (mwSize) 1, (mwSize) 1,  mxREAL );
+      ttb_real *mat2 = mxGetDoubles(mat_ptr2);
+      *mat2 = fhis;
+      plhs[1] = mat_ptr2;
+    }
   }
 
   catch(std::string sExc)

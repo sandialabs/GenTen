@@ -1081,6 +1081,9 @@ namespace Genten {
       }, "Genten::GCP_SGD::merge_sampled_tensors_z");
     }
 
+    // In this function, X is a stratified sampled tensor from some other
+    // tensor, and the history term uses the same set of samples from the
+    // samples tensor for each slice in the history term
     template <typename ExecSpace, typename LossFunction>
     void stratified_ktensor_grad(
       const SptensorT<ExecSpace>& X,
@@ -1090,6 +1093,8 @@ namespace Genten {
       const ttb_real weight_zeros,
       const KtensorT<ExecSpace>& u,
       const KtensorT<ExecSpace>& up,
+      const ArrayT<ExecSpace>& window,
+      const ttb_real window_penalty,
       const LossFunction& loss_func,
       SptensorT<ExecSpace>& Y,
       const AlgParams& algParams)
@@ -1112,10 +1117,22 @@ namespace Genten {
         num_samples_nonzeros + num_samples_zeros;
       const ttb_indx N = (total_samples+RowsPerTeam-1)/RowsPerTeam;
       const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
+      /*const*/ ttb_indx nh = window.size();
+
+      if (u[nd-1].nRows() != nh)
+        Genten::error("stratified_ktensor_grad():  temporal mode size of ktensor u does not match given history window!");
+      if (up[nd-1].nRows() != nh)
+        Genten::error("stratified_ktensor_grad():  temporal mode size of ktensor up does not match given history window!");
 
       // Resize Y if necessary
-      if (Y.nnz() < total_samples)
-        Y = SptensorT<ExecSpace>(X.size(), total_samples);
+      if (Y.nnz() < total_samples*nh) {
+        IndxArrayT<ExecSpace> sz = X.size();
+        auto sz_host = create_mirror_view(sz);
+        deep_copy(sz_host, sz);
+        sz_host[nd-1] = nh;
+        deep_copy(sz, sz_host);
+        Y = SptensorT<ExecSpace>(sz, total_samples*nh);
+      }
 
       // Generate terms from given tensor X
       Policy policy(N, TeamSize, VectorSize);
@@ -1129,7 +1146,7 @@ namespace Genten {
         const ttb_indx offset =
           (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
         for (unsigned ii=0; ii<RowBlockSize; ++ii) {
-          const ttb_indx idx = offset + ii;
+          /*const*/ ttb_indx idx = offset + ii;
           if (idx >= total_samples)
             continue;
 
@@ -1140,36 +1157,46 @@ namespace Genten {
           else
             w = weight_zeros;
 
-          // Get and set subscripts
-          Kokkos::single( Kokkos::PerThread( team ), [&] ()
-          {
-            for (ttb_indx m=0; m<nd; ++m) {
-              ind[m] = X.subscript(idx,m);
-              Y.subscript(idx,m) = ind[m];
-            }
-          });
+          for (ttb_indx h=0; h<nh; ++h) {
 
-          // Compute Ktensor values
-          ttb_real m_val =
-            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
-          ttb_real mp_val =
-            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(up, ind);
+            // Get and set subscripts
+            Kokkos::single( Kokkos::PerThread( team ), [&] ()
+            {
+              for (ttb_indx m=0; m<nd; ++m) {
+                ind[m] = m == nd-1 ? h : X.subscript(idx,m);
+                Y.subscript(idx+total_samples*h,m) = ind[m];
+              }
+            });
 
-          // Compute tensor value
-          Kokkos::single( Kokkos::PerThread( team ), [&] ()
-          {
-            Y.value(idx) = w * loss_func.deriv(mp_val, m_val);
-          });
+            // Compute Ktensor values
+            ttb_real m_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+            ttb_real mp_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(up, ind);
+
+            // Compute tensor value
+            Kokkos::single( Kokkos::PerThread( team ), [&] ()
+            {
+              Y.value(idx+total_samples*h) =
+                  window_penalty * window[h] * w *
+                  loss_func.deriv(mp_val, m_val);
+            });
+          }
         }
       }, "Genten::GCP_SGD::stratified_ktensor_grad");
     }
 
+    // This function uniformly samples a Ktensor for computing the history
+    // window term gradient.  It currently samples each slice in the history
+    // term independently.
     template <typename ExecSpace, typename LossFunction>
     void uniform_ktensor_grad(
       const ttb_indx num_samples,
       const ttb_real weight,
       const KtensorT<ExecSpace>& u,
       const KtensorT<ExecSpace>& up,
+      const ArrayT<ExecSpace>& window,
+      const ttb_real window_penalty,
       const LossFunction& loss_func,
       SptensorT<ExecSpace>& Y,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
@@ -1193,15 +1220,21 @@ namespace Genten {
       /*const*/ ttb_indx ns = num_samples;
       const ttb_indx N = (num_samples+RowsPerTeam-1)/RowsPerTeam;
       const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
+      /*const*/ ttb_indx nh = window.size();
+
+      if (u[nd-1].nRows() != nh)
+        Genten::error("uniform_ktensor_grad():  temporal mode size of ktensor u does not match given history window!");
+      if (up[nd-1].nRows() != nh)
+        Genten::error("uniform_ktensor_grad():  temporal mode size of ktensor up does not match given history window!");
 
       // Resize Y if necessary
-      if (Y.nnz() < num_samples) {
+      if (Y.nnz() < num_samples*nh) {
         IndxArrayT<ExecSpace> sz(nd);
         auto sz_host = create_mirror_view(sz);
         for (unsigned i=0; i<nd; ++i)
           sz_host[i] = u[i].nRows();
         deep_copy(sz, sz_host);
-        Y = SptensorT<ExecSpace>(sz, num_samples);
+        Y = SptensorT<ExecSpace>(sz, num_samples*nh);
       }
 
       // Generate terms from given tensor X
@@ -1217,30 +1250,35 @@ namespace Genten {
         const ttb_indx offset =
           (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
         for (unsigned ii=0; ii<RowBlockSize; ++ii) {
-          const ttb_indx idx = offset + ii;
+          /*const*/ ttb_indx idx = offset + ii;
           if (idx >= ns)
             continue;
 
-          // Sample and set subscripts
-          Kokkos::single( Kokkos::PerThread( team ), [&] ()
-          {
-            for (ttb_indx m=0; m<nd; ++m) {
-              ind[m] = Rand::draw(gen,0,u[m].nRows());
-              Y.subscript(idx,m) = ind[m];
-            }
-          });
+          for (ttb_indx h=0; h<nh; ++h) {
 
-          // Compute Ktensor values
-          ttb_real m_val =
-            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
-          ttb_real mp_val =
-            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(up, ind);
+            // Sample and set subscripts
+            Kokkos::single( Kokkos::PerThread( team ), [&] ()
+            {
+              for (ttb_indx m=0; m<nd; ++m) {
+                ind[m] = m == nd-1 ? h : Rand::draw(gen,0,u[m].nRows());
+                Y.subscript(idx+ns*h,m) = ind[m];
+              }
+            });
 
-          // Compute tensor value
-          Kokkos::single( Kokkos::PerThread( team ), [&] ()
-          {
-            Y.value(idx) = weight * loss_func.deriv(mp_val, m_val);
-          });
+            // Compute Ktensor values
+            ttb_real m_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+            ttb_real mp_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(up, ind);
+
+            // Compute tensor value
+            Kokkos::single( Kokkos::PerThread( team ), [&] ()
+            {
+              Y.value(idx+num_samples*h) = window_penalty * window[h] * weight *
+                loss_func.deriv(mp_val, m_val);
+            });
+
+          }
         }
       }, "Genten::GCP_SGD::uniform_ktensor_grad");
     }
@@ -1350,6 +1388,8 @@ namespace Genten {
     const ttb_real weight_zeros,                                        \
     const KtensorT<SPACE>& u,                                           \
     const KtensorT<SPACE>& up,                                          \
+    const ArrayT<SPACE>& window,                                        \
+    const ttb_real window_penalty,                                      \
     const LOSS& loss_func,                                              \
     SptensorT<SPACE>& Y,                                                \
     const AlgParams& algParams);                                        \
@@ -1359,6 +1399,8 @@ namespace Genten {
     const ttb_real weight,                                              \
     const KtensorT<SPACE>& u,                                           \
     const KtensorT<SPACE>& up,                                          \
+    const ArrayT<SPACE>& window,                                        \
+    const ttb_real window_penalty,                                      \
     const LOSS& loss_func,                                              \
     SptensorT<SPACE>& Y,                                                \
     Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \

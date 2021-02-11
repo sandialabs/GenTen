@@ -183,6 +183,8 @@ namespace Genten {
       const ttb_real weight_zeros,
       const KtensorT<ExecSpace>& u,
       const KtensorT<ExecSpace>& up,
+      const ArrayT<ExecSpace>& window,
+      const ttb_real window_penalty,
       const LossFunction& loss_func,
       SptensorT<ExecSpace>& Y,
       const AlgParams& algParams);
@@ -193,6 +195,8 @@ namespace Genten {
       const ttb_real weight,
       const KtensorT<ExecSpace>& u,
       const KtensorT<ExecSpace>& up,
+      const ArrayT<ExecSpace>& window,
+      const ttb_real window_penalty,
       const LossFunction& loss_func,
       SptensorT<ExecSpace>& Y,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,

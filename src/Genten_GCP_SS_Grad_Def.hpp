@@ -600,6 +600,8 @@ namespace Genten {
     const ttb_indx num_samples_zeros,                                   \
     const ttb_real weight_nonzeros,                                     \
     const ttb_real weight_zeros,                                        \
+    const ArrayT<SPACE>& window,                                        \
+    const ttb_real window_penalty,                                      \
     const IndxArrayT<SPACE>& modes,                                     \
     const KtensorT<SPACE>& G,                                           \
     Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
