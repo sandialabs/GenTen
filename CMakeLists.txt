@@ -364,6 +364,12 @@ IF (ENABLE_GCP)
   ENDIF()
 ENDIF()
 
+#---- Adding the higher moment interface to the Library sources
+#---- Must be a better way to do this. Inside an IF??
+SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+  ${Genten_SOURCE_DIR}/joint_moments/Genten_HigherMoments.cpp
+  )
+
 #---- Tell CMake to build the library.
 ADD_LIBRARY (gentenlib ${Genten_SOURCE_LIST})
 TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkos)
