@@ -42,37 +42,38 @@
 
 #include<Kokkos_Core.hpp>
 #include "Genten_Kokkos.hpp"
-#include "Genten_Sptensor.hpp"
-#include "Genten_Ktensor.hpp"
+#include "Genten_Tensor.hpp"
 #include "Genten_IOtext.hpp"
+#include "Genten_HigherMoments.hpp"
 #include "Genten_FormCokurtosisSlice.hpp"
 
-namespace Genten {
+//namespace Genten {
 
-namespace Impl{
+//namespace Impl{
 
 template <typename ExecSpace>
 void form_cokurtosis_tensor_naive(const Kokkos::View<ttb_real**, Kokkos::LayoutLeft, ExecSpace>& data_view,
                                   const ttb_indx nsamples, const ttb_indx nvars,
-                                  TensorT<ExecSpace>& moment_tensor) 
+                                  Genten::TensorT<ExecSpace>& moment_tensor) 
 {
 
 }
 
-}// namespace Impl
+//}// namespace Impl
 
-ttb_real * FormRawMomentTensor(ttb_real *raw_data_ptr, ttb_indx nsamples, ttb_indx nvars, const ttb_indx order=4) {
+double * FormRawMomentTensor(double *raw_data_ptr, int nsamples, int nvars, const int order=4) {
 
-  typedef DefaultExecutionSpace Space;
-  typedef TensorT<Space> Tensor_type;
-  typedef TensorT<DefaultHostExecutionSpace> Tensor_host_type;
+  typedef Genten::DefaultExecutionSpace Space;
+  typedef Genten::TensorT<Space> Tensor_type;
+  typedef Genten::DefaultHostExecutionSpace HostSpace;
+  typedef Genten::TensorT<HostSpace> Tensor_host_type;
 
   //Create the size of moment tensor
   //On host first, then mirror copy to device
   //moment tensor is size nvars^d, where d is order of moment, i.e. nvars*nvars*.... (d times)
-  IndxArrayT<DefaultHostExecutionSpace> moment_tensor_size_host(order, nvars);
+  Genten::IndxArrayT<HostSpace> moment_tensor_size_host(order, nvars);
 
-  IndxArrayT<Space> moment_tensor_size = create_mirror_view( Space(), moment_tensor_size_host);
+  Genten::IndxArrayT<Space> moment_tensor_size = create_mirror_view( Space(), moment_tensor_size_host);
   deep_copy(moment_tensor_size, moment_tensor_size_host);
 
   //Now construct the tensor on the device
@@ -83,7 +84,7 @@ ttb_real * FormRawMomentTensor(ttb_real *raw_data_ptr, ttb_indx nsamples, ttb_in
   //Not as straightforward as it seems
   //Example: https://github.com/kokkos/kokkos-fortran-interop/blob/master/src/flcl-cxx.hpp/#L157
   //raw data is "viewed" as a 2D-array
-  Kokkos::View<ttb_real**,Kokkos::LayoutLeft, DefaultHostExecutionSpace,
+  Kokkos::View<ttb_real**,Kokkos::LayoutLeft, HostSpace,
                Kokkos::MemoryTraits<Kokkos::Unmanaged> > raw_data_host(raw_data_ptr, nsamples, nvars);
 
   //Create mirror of raw_data_host on device and copy over
@@ -92,15 +93,15 @@ ttb_real * FormRawMomentTensor(ttb_real *raw_data_ptr, ttb_indx nsamples, ttb_in
 
 
   //---------Call the Kernel to Compute Moment Tensor----------------
-  Impl::form_cokurtosis_tensor_naive(raw_data, nsamples, nvars, X);
+  form_cokurtosis_tensor_naive(raw_data, nsamples, nvars, X);
 
 
   //Now Mirror the result back from device to host
-  Tensor_host_type X_host = create_mirror_view(DefaultHostExecutionSpace(), X);
+  Tensor_host_type X_host = create_mirror_view(HostSpace(), X);
   deep_copy(X_host, X);
 
   return X_host.getValues().ptr();
 }
 
 
-}// namespace Genten
+//}// namespace Genten
