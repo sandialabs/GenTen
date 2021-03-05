@@ -377,15 +377,7 @@ INSTALL (
 
 #---- Adding the higher moment interface to the Library sources
 #---- Must be a better way to do this. Inside an IF??
-ADD_LIBRARY (
-  gt_higher_moments SHARED
-  ${Genten_SOURCE_DIR}/joint_moments/Genten_HigherMoments.cpp
-  )
-TARGET_LINK_LIBRARIES(gt_higher_moments ${GENTEN_LINK_LIBS})
-INSTALL (
-  TARGETS gt_higher_moments
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  ) 
+ADD_SUBDIRECTORY(joint_moments)
 
 # FIND_PACKAGE(GTest REQUIRED)
 # IF (${GTest_FOUND})
