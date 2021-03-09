@@ -91,7 +91,7 @@ auto UOPRSingleDimension(int ModeLength, int ProcsInMode) {
 auto generateUOPRBlocking(TensorInfo const &Ti,
                           small_vector<int> const &PmapGrid) {
   std::vector<small_vector<int>> blocking;
-  auto const &dim_sizes = Ti.sizes;
+  auto const &dim_sizes = Ti.dim_sizes;
   const auto ndims = dim_sizes.size();
   blocking.reserve(ndims);
 
@@ -120,21 +120,21 @@ readTensorHeader(boost::optional<std::string> const &tensor_file_name) {
   auto file_name = getTensorFile(tensor_file_name);
 
   std::ifstream tensor_file(file_name);
-  auto header_info = read_sptensor_header(tensor_file);
-  TensorInfo Ti;
-  Ti.nnz = header_info.nnz;
-  Ti.sizes.resize(header_info.dim_sizes.size());
-  std::copy(header_info.dim_sizes.begin(), header_info.dim_sizes.end(),
-            Ti.sizes.begin());
-  return Ti;
+  return read_sptensor_header(tensor_file);
 }
 
 namespace {
 
 struct TensorDump {
 
-  struct Datatype { // Only works for lbnl right now
-    int coo[5];
+  // This struct is dangerous since it requires the programer to do bounds
+  // checking, but we are using it at the moment to avoid UB when calling
+  // MPI_Send and to also let us just send Bytes over the wire instead of
+  // having to serialize some more complicated stucture. 
+  struct Datatype {
+    // Technically calling MPI_Send on unitialized data is UB and there is
+    // not an easy way to constexpr write -1 into a std::array.
+    int coo[12] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
     double val;
   };
 
@@ -149,6 +149,7 @@ TensorDump readTensor(std::ifstream &ifs) {
 
   TensorDump dump;
   dump.data.reserve(X.nnz());
+  assert(X.ndims() <= 12);
 
   for (auto i = 0ll; i < X.nnz(); ++i) {
     TensorDump::Datatype dt;
@@ -173,10 +174,6 @@ void tensorPlayGround(boost::optional<std::string> const &tensor_file_name,
 
   TensorDump dump;
   // MPI DATA TYPES ARE ANNOYTING
-  // struct Datatype { // Only works for lbnl right now
-  //   int coo[5];
-  //   double val;
-  // };
   // Example here http://mpi.deino.net/mpi_functions/MPI_Type_create_struct.html
   // MPI_Datatype COOVal;
   // MPI_Datatype type[] = {MPI_INT, MPI_DOUBLE};
@@ -185,7 +182,7 @@ void tensorPlayGround(boost::optional<std::string> const &tensor_file_name,
   //
   // DON'T DO THIS FOR NOW BECAUSE DISPLACEMENTS ARE COMPLICATED
   //
-  // Because Datatype is all on stack lets just communicate bytes
+  // Because Datatype is memcpyable let's just send bytes
 
   if (pmap.gridRank() == 0) {
     std::cout << "who gets what: ";
@@ -233,7 +230,7 @@ void tensorPlayGround(boost::optional<std::string> const &tensor_file_name,
 
   if (pmap.gridRank() == pmap.gridSize() - 1) {
     std::cout << "Value: " << dump.data[0].val << "\n\tat: ";
-    for (auto i = 0; i < Ti.sizes.size(); ++i) {
+    for (auto i = 0; i < Ti.dim_sizes.size(); ++i) {
       std::cout << dump.data[0].coo[i] << " ";
     }
     std::cout << std::endl;
@@ -241,10 +238,11 @@ void tensorPlayGround(boost::optional<std::string> const &tensor_file_name,
 
   MPI_Barrier(pmap.gridComm());
 
+  auto ndims = Ti.dim_sizes.size();
   // Let's do something hacky to ship data to everyone else.
   std::vector<TensorDump> others(pmap.gridSize());
   for (auto const &dt : dump.data) {
-    small_vector<int> coo(dt.coo, dt.coo + 5); // Hard coded for lbnl
+    small_vector<int> coo(dt.coo, dt.coo + ndims); 
     auto owner_rank = rankInGridThatOwns(coo, pmap, blocking);
     others[owner_rank].data.push_back(dt);
   }
@@ -264,7 +262,6 @@ void tensorPlayGround(boost::optional<std::string> const &tensor_file_name,
 
   for (auto i = 0; i < pmap.gridSize(); ++i) {
     if (pmap.gridRank() == i) {
-
       std::cout << "Rank " << i << ": will" << std::endl;
       for (auto j = 0; j < pmap.gridSize(); ++j) {
         std::cout << "\t"
@@ -273,8 +270,6 @@ void tensorPlayGround(boost::optional<std::string> const &tensor_file_name,
                   << j << std::endl;
       }
     }
-    fflush(nullptr);
-    sleep(2);
     MPI_Barrier(pmap.gridComm());
   }
 
@@ -284,10 +279,6 @@ void tensorPlayGround(boost::optional<std::string> const &tensor_file_name,
   //   int coo[5];
   //   double val;
   // };
-  //
-  // TODO TEST THIS, the displacement piece is probably wrong at the moment I
-  // need to figure out if I should do displacement based on number of bytes or
-  // number of structs in the MPI_Put call.
   TensorDump::Datatype *dt;
   MPI_Win window;
   const auto my_rank = pmap.gridRank();
@@ -296,8 +287,9 @@ void tensorPlayGround(boost::optional<std::string> const &tensor_file_name,
                    /*displacement = */ TDsize, MPI_INFO_NULL, pmap.gridComm(),
                    &dt, &window);
 
+  // Jonathan L. told me for AllToAll Fences are probably better than locking if
+  // communication don't conflict
   MPI_Win_fence(0, window);
-
   for (auto i = 0; i < pmap.gridSize(); ++i) {
     const auto bytes_to_write = TDsize * amount_to_write[i];
     MPI_Put(
@@ -309,7 +301,6 @@ void tensorPlayGround(boost::optional<std::string> const &tensor_file_name,
         /* Target num bytes */ bytes_to_write,
         /* Origin data type */ MPI_BYTE, window);
   }
-
   MPI_Win_fence(0, window);
   for (auto i = 0; i < pmap.gridSize(); ++i) {
     if (pmap.gridRank() == i) {
@@ -323,7 +314,6 @@ void tensorPlayGround(boost::optional<std::string> const &tensor_file_name,
     sleep(1);
     MPI_Barrier(pmap.gridComm());
   }
-
   MPI_Win_free(&window);
 }
 

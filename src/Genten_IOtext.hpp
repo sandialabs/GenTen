@@ -53,6 +53,7 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_Tensor.hpp"
+#include "Genten_TensorInfo.hpp"
 
 //! Namespace for the Genten C++ project.
 namespace Genten
@@ -138,11 +139,6 @@ namespace Genten
    *  @{
    *  ---------------------------------------------------------------- */
 
-  struct SpTensorHeader {
-    int nnz = 0;
-    std::vector<int> dim_sizes;
-  };
-  
   //! Read a Sptensor header
   /*!
    *  <pre>
@@ -156,7 +152,7 @@ namespace Genten
    *  @param[in] fName  Input filename.
    *  @throws string    for any error.
    */
-  SpTensorHeader read_sptensor_header (std::istream& fIn);
+  TensorInfo read_sptensor_header (std::istream& fIn);
 
   //! Read a Sptensor from a text file, matching export_sptensor().
   /*!

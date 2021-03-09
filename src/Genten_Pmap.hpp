@@ -48,9 +48,15 @@ namespace Genten {
 
 class ProcessorMap {
 public:
-  ProcessorMap() = default;
   ProcessorMap(ptree const &input_tree, TensorInfo const &Ti);
   ~ProcessorMap();
+
+  ProcessorMap() = delete;
+  ProcessorMap(ProcessorMap const&) = delete;
+  ProcessorMap& operator=(ProcessorMap const&) = delete;
+
+  ProcessorMap(ProcessorMap &&) = delete;
+  ProcessorMap& operator=(ProcessorMap &&) = delete;
 
   // Size of the cartesian grid
   int gridSize() const { return grid_nprocs_; }
@@ -69,7 +75,7 @@ private:
   /*
    * FieldDecls
    */
-  MPI_Comm cart_comm_;
+  MPI_Comm cart_comm_ = MPI_COMM_NULL;
   int grid_nprocs_;
   int grid_rank_;
 

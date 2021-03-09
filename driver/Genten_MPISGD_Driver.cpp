@@ -42,6 +42,7 @@
 #include "Genten_DistSpSystem.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_Pmap.hpp"
+#include "Genten_TensorBlockSystem.hpp"
 
 #include <Kokkos_Core.hpp>
 #include <iostream>
@@ -50,24 +51,20 @@ namespace GT = Genten;
 
 GT::Sptensor getSparseTensor();
 
+void real_main();
+
 int main(int argc, char **argv) {
   GT::InitializeGenten(&argc, &argv);
-  {
-    GT::DistSpSystem<double> SpSys(
-        GT::DistContext::input());
-    GT::DistSpSystem<float> SpSys_float(
-        GT::DistContext::input());
-  }
+  { real_main(); }
   GT::FinalizeGenten();
   return 0;
 }
 
-GT::Sptensor getSparseTensor() {
-  GT::Sptensor T;
-  auto IndexBase = GT::DistContext::input().get<int>("tensor.indexbase", 0);
-  auto TensorFile =
-      GT::DistContext::input().get<std::string>("tensor.file", "");
-  GT::import_sptensor(TensorFile, T, IndexBase, /*compressed*/ false,
-                      /*verbose */ false);
-  return T;
+void real_main() {
+  try {
+    GT::TensorBlockSystem<double> tbs(GT::DistContext::input());
+  } catch (std::exception &e) {
+    std::cerr << e.what() << "\n";
+    std::abort();
+  }
 }

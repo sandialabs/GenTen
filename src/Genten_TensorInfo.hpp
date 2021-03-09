@@ -40,13 +40,12 @@
 
 #pragma once
 
-#include "Genten_Boost.hpp"
-
 #include <cstdint>
+#include <vector>
 
 namespace Genten {
 struct TensorInfo {
-  uint64_t nnz;
-  small_vector<int> sizes;
+  uint64_t nnz = 0;
+  std::vector<int> dim_sizes;
 };
 } // namespace Genten

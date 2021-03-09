@@ -494,6 +494,7 @@ if(MPI_FOUND AND BOOST_FOUND)
   set(DistContext_Sources 
     ${Genten_SOURCE_DIR}/src/Genten_DistContext.cpp
     ${Genten_SOURCE_DIR}/src/Genten_Pmap.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_TensorBlockSystem.cpp
     ${Genten_SOURCE_DIR}/src/Genten_DistSpSystem.cpp
     )
   add_library(DistContextLib ${DistContext_Sources})

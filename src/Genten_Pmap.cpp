@@ -90,7 +90,7 @@ auto divisors(int input) {
 // return the result for rank 1 factors. The calling code can simply scale this
 // result by the rank to figure out the total number of elements
 auto nelementsForRank1Factors(small_vector<int> const &grid,
-                              small_vector<int> const &tensor_dims) {
+                              std::vector<int> const &tensor_dims) {
   auto nprocs =
       std::accumulate(grid.begin(), grid.end(), 1ll, std::multiplies<>{});
 
@@ -107,7 +107,7 @@ auto nelementsForRank1Factors(small_vector<int> const &grid,
 // This function writes the grid with that leads to the minimal storage
 // required for the factor matrices
 auto recurseMinSpaceGrid(int nprocs, small_vector<int> &grid,
-                         small_vector<int> const &tensor_dims,
+                         std::vector<int> const &tensor_dims,
                          int dims_remaining) {
   assert(dims_remaining >= 1);
 
@@ -138,7 +138,7 @@ auto recurseMinSpaceGrid(int nprocs, small_vector<int> &grid,
   }
 }
 
-auto minFactorSpaceGrid(int nprocs, small_vector<int> const &tensor_dims) {
+auto minFactorSpaceGrid(int nprocs, std::vector<int> const &tensor_dims) {
   const auto ndims = tensor_dims.size();
   auto grid = small_vector<int>(ndims);
   recurseMinSpaceGrid(nprocs, grid, tensor_dims, ndims);
@@ -146,13 +146,13 @@ auto minFactorSpaceGrid(int nprocs, small_vector<int> const &tensor_dims) {
   return grid;
 }
 
-auto minAllReduceComm(int nprocs, small_vector<int> const &tensor_dims) {
+auto minAllReduceComm(int nprocs, std::vector<int> const &tensor_dims) {
   return minFactorSpaceGrid(nprocs, tensor_dims);
 }
 
 enum class CartGridStratagy { MinAllReduceComm, MinFactorSpace };
 
-auto CartGrid(int nprocs, small_vector<int> const &tensor_dims,
+auto CartGrid(int nprocs, std::vector<int> const &tensor_dims,
               CartGridStratagy strat = CartGridStratagy::MinAllReduceComm) {
   switch (strat) {
   case CartGridStratagy::MinAllReduceComm:
@@ -169,7 +169,7 @@ ProcessorMap::ProcessorMap(ptree const &input_tree, TensorInfo const &Ti)
 
   // Do initial setup on rank 0
   if (DistContext::rank() == 0) {
-    dimension_sizes_ = CartGrid(DistContext::nranks(), Ti.sizes,
+    dimension_sizes_ = CartGrid(DistContext::nranks(), Ti.dim_sizes,
                                 CartGridStratagy::MinFactorSpace);
   }
 

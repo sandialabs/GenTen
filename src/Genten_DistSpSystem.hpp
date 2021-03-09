@@ -44,6 +44,7 @@
 #include "Genten_Pmap.hpp"
 #include "Genten_TensorInfo.hpp"
 #include "Genten_Util.hpp"
+#include "Genten_DistIO.hpp"
 
 #include <vector>
 
@@ -93,6 +94,7 @@ class DistSpSystem {
                 "point type.");
 
 public:
+
   /*
    * Constructors
    */
@@ -120,9 +122,9 @@ public:
   }
 
   int64_t nnz() const { return tensor_info_.nnz; }
-  int tensorModeSize(int d) const { return tensor_info_.sizes[d]; }
-  small_vector<int> const &tensorModeSizes() const {
-    return tensor_info_.sizes;
+  int tensorModeSize(int d) const { return tensor_info_.dim_sizes[d]; }
+  std::vector<int> const &tensorModeSizes() const {
+    return tensor_info_.dim_sizes;
   }
 
 private:
@@ -131,12 +133,13 @@ private:
    */
   TensorInfo tensor_info_;
   ProcessorMap pmap_;
-  int system_rank_;                    // Default to a rank of 5
+  int system_rank_;                    
   boost::optional<ElementType> score_; // Or loss, we can change the name
   ptree tensor_tree_;
 
   // Holds the blocking information for the tensor and factors
   std::vector<small_vector<int>> ranges_;
+
 };
 
 } // namespace Genten

@@ -363,8 +363,8 @@ void Genten::print_tensor (const Genten::TensorT<ExecSpace>& X,
 //  METHODS FOR Sptensor (type "sptensor")
 //----------------------------------------------------------------------
 
-Genten::SpTensorHeader Genten::read_sptensor_header (std::istream& fIn){
-  Genten::SpTensorHeader header;
+Genten::TensorInfo Genten::read_sptensor_header (std::istream& fIn){
+  Genten::TensorInfo header;
 
   // Header must always be first thing in file
   fIn.seekg(0);
