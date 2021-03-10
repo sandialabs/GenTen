@@ -52,24 +52,29 @@ public:
   ~ProcessorMap();
 
   ProcessorMap() = delete;
-  ProcessorMap(ProcessorMap const&) = delete;
-  ProcessorMap& operator=(ProcessorMap const&) = delete;
+  ProcessorMap(ProcessorMap const &) = delete;
+  ProcessorMap &operator=(ProcessorMap const &) = delete;
 
   ProcessorMap(ProcessorMap &&) = delete;
-  ProcessorMap& operator=(ProcessorMap &&) = delete;
+  ProcessorMap &operator=(ProcessorMap &&) = delete;
 
   // Size of the cartesian grid
   int gridSize() const { return grid_nprocs_; }
+  small_vector<int> const &gridDims() const {return dimension_sizes_; }
+
   int gridRank() const { return grid_rank_; }
   MPI_Comm gridComm() const { return cart_comm_; }
 
-  int subGridSize(int dim) const { return dimension_sizes_[dim]; }
-  int subGridRank(int dim) const { return sub_grid_rank_[dim]; }
-  MPI_Comm subGridComm(int dim) const { return sub_maps_[dim]; }
+  int gridCoord(int dim) const { return coord_[dim];}
+  small_vector<int> const& gridCoords() const { return coord_;}
 
-  small_vector<int> const &subGridSizes() const { return dimension_sizes_; }
-  small_vector<int> const &subGridRanks() const { return sub_grid_rank_; }
-  small_vector<MPI_Comm> const &subGridComms() const { return sub_maps_; }
+  int subCommSize(int dim) const { return sub_comm_sizes_[dim]; }
+  int subCommRank(int dim) const { return sub_grid_rank_[dim]; }
+  MPI_Comm subComm(int dim) const { return sub_maps_[dim]; }
+
+  small_vector<int> const &subCommSizes() const { return sub_comm_sizes_; }
+  small_vector<int> const &subCommRanks() const { return sub_grid_rank_; }
+  small_vector<MPI_Comm> const &subComms() const { return sub_maps_; }
 
 private:
   /*
@@ -78,9 +83,11 @@ private:
   MPI_Comm cart_comm_ = MPI_COMM_NULL;
   int grid_nprocs_;
   int grid_rank_;
+  small_vector<int> coord_;
+  small_vector<int> dimension_sizes_;
 
   small_vector<int> sub_grid_rank_;
-  small_vector<int> dimension_sizes_;
+  small_vector<int> sub_comm_sizes_;
   small_vector<MPI_Comm> sub_maps_; // N-1 D sub comms
 
   ptree pmap_tree_;

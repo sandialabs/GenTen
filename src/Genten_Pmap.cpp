@@ -179,27 +179,28 @@ ProcessorMap::ProcessorMap(ptree const &input_tree, TensorInfo const &Ti)
   // I don't think we need to be periodic
   small_vector<int> periodic(ndims, 0);
   bool reorder = true; // Let MPI be smart I guess
-  MPI_Cart_create(DistContext::commWorld(), dimension_sizes_.size(),
+  MPI_Cart_create(DistContext::commWorld(), ndims,
                   dimension_sizes_.data(), periodic.data(), reorder,
                   &cart_comm_);
 
   MPI_Comm_size(cart_comm_, &grid_nprocs_);
   MPI_Comm_rank(cart_comm_, &grid_rank_);
+  coord_.resize(ndims);
+  MPI_Cart_coords(cart_comm_, grid_rank_, ndims, coord_.data());
 
   small_vector<int> dim_filter(ndims, 1);
-  sub_maps_ = small_vector<MPI_Comm>(ndims);
-  sub_grid_rank_.reserve(ndims);
+  sub_maps_.resize(ndims);
+  sub_grid_rank_.resize(ndims);
+  sub_comm_sizes_.resize(ndims);
 
-  // Get information for the MPI Subgrid for each Dimension 
+  // Get information for the MPI Subgrid for each Dimension
   for (auto i = 0; i < ndims; ++i) {
     dim_filter[i] = 0; // Get all dims except this one
     MPI_Cart_sub(cart_comm_, dim_filter.data(), &sub_maps_[i]);
     dim_filter[i] = 1; // Reset the dim_filter
 
-    // Save our sub comm rank so we can bcast within our rank
-    int sub_rank;
-    MPI_Comm_rank(sub_maps_[i], &sub_rank);
-    sub_grid_rank_.push_back(sub_rank);
+    MPI_Comm_rank(sub_maps_[i], &sub_grid_rank_[i]);
+    MPI_Comm_size(sub_maps_[i], &sub_comm_sizes_[i]);
   }
 }
 

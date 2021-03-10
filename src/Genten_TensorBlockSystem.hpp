@@ -81,24 +81,25 @@ class TensorBlockSystem {
                 "DistSpSystem Requires that the element type be a floating "
                 "point type.");
 
-  bool fileFormatIsBinary(std::string const &file_name) { 
+  bool fileFormatIsBinary(std::string const &file_name) {
     std::ifstream tensor_file(file_name, std::ios::binary);
     std::string header;
     header.resize(4);
-    try{
+    try {
       tensor_file.read(&header[0], 4);
-    } catch(...){
+    } catch (...) {
       return false;
     }
-     
-    if(header == "sptn"){
-      return true;
-    } 
 
-    return false; 
+    if (header == "sptn") {
+      return true;
+    }
+
+    return false;
   }
 
-  void init_distributed(std::string const &file_name, int indexbase, int rank);
+  void init_distributed(std::string const &file_name, int indexbase,
+                        int tensor_rank);
 
   // Initializaton for creating the tensor block system all on all ranks
   // this will hammer the file in a bad way if it's called on every rank
@@ -181,16 +182,16 @@ std::vector<TDatatype> distributeTensorToVectors(std::ifstream &ifs,
                                                  MPI_Comm comm, int rank,
                                                  int nprocs);
 
-std::vector<TDatatype> redistributeTensor(std::vector<TDatatype> const &Tvec,
-                                          std::vector<int> const &TensorDims,
-                                          ProcessorMap const &pmap);
+std::vector<TDatatype> redistributeTensor(
+    std::vector<TDatatype> const &Tvec, std::vector<int> const &TensorDims,
+    std::vector<small_vector<int>> const &blocking, ProcessorMap const &pmap);
 
 } // namespace detail
 
 // We'll put this down here to save some space
 template <typename ElementType, typename ExecSpace>
 void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
-    std::string const &file_name, int indexbase, int rank) {
+    std::string const &file_name, int indexbase, int tensor_rank) {
   if (fileFormatIsBinary(file_name)) {
     throw std::logic_error(
         "I can't quite read the binary format just yet, sorry.");
@@ -199,10 +200,13 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
   // TODO Bcast Ti so we don't read it on every node
   std::ifstream tensor_file(file_name);
   TensorInfo Ti = read_sptensor_header(tensor_file);
+  const auto ndims = Ti.dim_sizes.size();
   pmap_ptr_ =
       std::unique_ptr<ProcessorMap>(new ProcessorMap(DistContext::input(), Ti));
   auto &pmap_ = *pmap_ptr_;
-  MPI_Barrier(DistContext::commWorld());
+
+  const auto blocking =
+      detail::generateMediumGrainBlocking(Ti.dim_sizes, pmap_.gridDims());
 
   // Evenly distribute the tensor around the world
   auto Tvec = detail::distributeTensorToVectors(
@@ -210,7 +214,31 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
       pmap_.gridSize());
 
   // Now redistribute to medium grain format
-  auto distributedData = detail::redistributeTensor(Tvec, Ti.dim_sizes, pmap_);
+  auto distributedData =
+      detail::redistributeTensor(Tvec, Ti.dim_sizes, blocking, pmap_);
+  const auto local_nnz = distributedData.size();
+
+  for (auto i = 0; i < ndims; ++i) {
+    auto coord = pmap_.gridCoord(i);
+    range_.push_back({blocking[i][coord], blocking[i][coord + 1]});
+  }
+
+  // This is a bit roundabout, but 🤷
+  std::vector<ttb_indx> indices(ndims);
+  for (auto i = 0; i < ndims; ++i) {
+    auto const &rpair = range_[i];
+    indices[i] = rpair.upper - rpair.lower;
+  }
+
+  std::vector<ttb_real> values(local_nnz);
+  std::vector<std::vector<ttb_indx>> subs(local_nnz);
+  for (auto i = 0; i < local_nnz; ++i) {
+    auto data = distributedData[i];
+    values[i] = data.val;
+    subs[i] = std::vector<ttb_indx>(data.coo, data.coo + ndims);
+  }
+
+  sp_tensor_ = SptensorT<ExecSpace>(indices, values, subs);
 }
 
 } // namespace Genten

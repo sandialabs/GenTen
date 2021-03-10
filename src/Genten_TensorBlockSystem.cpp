@@ -178,41 +178,38 @@ int rankInGridThatOwns(int const *COO, MPI_Comm grid_comm,
 }
 } // namespace
 
-std::vector<TDatatype> redistributeTensor(std::vector<TDatatype> const &Tvec,
-                                          std::vector<int> const &TensorDims,
-                                          ProcessorMap const &pmap) {
+std::vector<TDatatype> redistributeTensor(
+    std::vector<TDatatype> const &Tvec, std::vector<int> const &TDims,
+    std::vector<small_vector<int>> const &blocking, ProcessorMap const &pmap) {
 
   const auto nprocs = pmap.gridSize();
   const auto rank = pmap.gridRank();
   MPI_Comm grid_comm = pmap.gridComm();
-  const auto blockingInfo =
-      generateMediumGrainBlocking(TensorDims, pmap.subGridSizes());
 
   std::vector<std::vector<TDatatype>> elems_to_write(nprocs);
   for (auto const &elem : Tvec) {
-    auto elem_owner_rank =
-        rankInGridThatOwns(elem.coo, grid_comm, blockingInfo);
+    auto elem_owner_rank = rankInGridThatOwns(elem.coo, grid_comm, blocking);
     elems_to_write[elem_owner_rank].push_back(elem);
   }
 
-  small_vector<int> amount_to_write(nprocs, 0);
-  for (auto i = 0; i < pmap.gridSize(); ++i) {
+  small_vector<int> amount_to_write(nprocs);
+  for (auto i = 0; i < nprocs; ++i) {
     amount_to_write[i] = elems_to_write[i].size();
   }
 
-  small_vector<int> offset_to_write_at(nprocs, 0);
+  small_vector<int> offset_to_write_at(nprocs);
   MPI_Exscan(amount_to_write.data(), offset_to_write_at.data(), nprocs, MPI_INT,
              MPI_SUM, grid_comm);
 
-  // All reduce isn't really optimal here, but I don't think it really matters
-  small_vector<int> total_amount_written(nprocs, 0);
-  MPI_Allreduce(amount_to_write.data(), total_amount_written.data(), nprocs,
-                MPI_INT, MPI_SUM, grid_comm);
+  int amount_to_allocate_for_window = 0;
+  MPI_Reduce_scatter_block(amount_to_write.data(),
+                           &amount_to_allocate_for_window, 1, MPI_INT, MPI_SUM,
+                           grid_comm);
 
   TDatatype *data;
   MPI_Win window;
   constexpr auto DataElemSize = sizeof(TDatatype);
-  MPI_Win_allocate(total_amount_written[rank] * DataElemSize,
+  MPI_Win_allocate(amount_to_allocate_for_window * DataElemSize,
                    /*displacement = */ DataElemSize, MPI_INFO_NULL, grid_comm,
                    &data, &window);
 
@@ -233,8 +230,9 @@ std::vector<TDatatype> redistributeTensor(std::vector<TDatatype> const &Tvec,
   MPI_Win_fence(0, window);
 
   // Copy data to the output vector
-  std::vector<TDatatype> redistributedData(total_amount_written[rank]);
-  std::copy(data, data + total_amount_written[rank], redistributedData.data());
+  std::vector<TDatatype> redistributedData(amount_to_allocate_for_window);
+  std::copy(data, data + amount_to_allocate_for_window,
+            redistributedData.data());
 
   // Free the MPI window and the buffer that it was allocated in
   MPI_Win_free(&window);

@@ -114,7 +114,7 @@ public:
     }
 
     ranges_ = detail::generateBlocking(
-        tensor_info_, pmap_.subGridSizes(),
+        tensor_info_, pmap_.gridDims(),
         detail::readBlockingStrategy(blockingStrat.value_or("default")));
 
     detail::tensorPlayGround(tensor_tree_.get_optional<std::string>("file"),
