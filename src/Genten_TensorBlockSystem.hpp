@@ -223,7 +223,6 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
     range_.push_back({blocking[i][coord], blocking[i][coord + 1]});
   }
 
-  // This is a bit roundabout, but 🤷
   std::vector<ttb_indx> indices(ndims);
   for (auto i = 0; i < ndims; ++i) {
     auto const &rpair = range_[i];
