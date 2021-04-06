@@ -77,6 +77,8 @@ namespace Genten {
     virtual void fusedGradient(const KtensorT<ExecSpace>& u,
                                const LossFunction& loss_func,
                                const KtensorT<ExecSpace>& g,
+                               const ttb_indx mode_beg,
+                               const ttb_indx mode_end,
                                SystemTimer& timer,
                                const int timer_nzs,
                                const int timer_zs) = 0;

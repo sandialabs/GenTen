@@ -32,6 +32,10 @@ function [U,varargout] = gcp_sgd_gt(X,R,varargin)
 % Parse arguments
 %
 args = varargin;
+if isa(X, 'sptensor_gt')
+  a = X.alg_params; % For some reason, X.alg_params{:} only pulls out the first entry here?
+  args = { a{:}, args{:} };
+end
 N = ndims(X);
 
 % Initial guess

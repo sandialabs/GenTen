@@ -183,10 +183,13 @@ namespace Genten {
     virtual void fusedGradient(const KtensorT<ExecSpace>& u,
                                const LossFunction& loss_func,
                                const KtensorT<ExecSpace>& g,
+                               const ttb_indx mode_beg,
+                               const ttb_indx mode_end,
                                SystemTimer& timer,
                                const int timer_nzs,
                                const int timer_zs) override
     {
+      // To do:  connect in mode_beg, mode_end (maybe replace w/streaming?)
       Impl::gcp_sgd_ss_grad(
         X, u, loss_func,
         num_samples_nonzeros_grad, num_samples_zeros_grad,

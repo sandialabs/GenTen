@@ -187,7 +187,7 @@ namespace Genten {
     static constexpr unsigned num_types = 2;
     static constexpr type types[] = {
       DGEMM,
-      Parfor_DGEMM 
+      Parfor_DGEMM
     };
     static constexpr const char* names[] = {
       "dgemm", "parfor-dgemm"
@@ -247,6 +247,23 @@ namespace Genten {
       "sgd", "adam", "adagrad", "amsgrad"
     };
     static constexpr type default_type = ADAM;
+  };
+
+  // Sampling functions supported by GCP
+  struct GCP_Streaming_Solver {
+    enum type {
+      SGD,
+      LeastSquares,
+      OnlineCP
+    };
+    static constexpr unsigned num_types = 3;
+    static constexpr type types[] = {
+      SGD, LeastSquares, OnlineCP
+    };
+    static constexpr const char* names[] = {
+      "sgd", "least-squares", "online-cp"
+    };
+    static constexpr type default_type = SGD;
   };
 }
 

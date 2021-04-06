@@ -61,8 +61,10 @@ namespace Genten {
       typedef GCP::KokkosVector<ExecSpace> VectorType;
 
       GCP_SGD_Iter(const KtensorT<ExecSpace>& u0,
+                   const ttb_indx mode_beg_,
+                   const ttb_indx mode_end_,
                    const AlgParams& algParams_) :
-        algParams(algParams_)
+        mode_beg(mode_beg_), mode_end(mode_end_), algParams(algParams_)
       {
         // Setup timers
         int num_timers = 0;
@@ -80,9 +82,10 @@ namespace Genten {
         u = VectorType(u0);
         u.copyFromKtensor(u0);
         ut = u.getKtensor();
+        us = u.subview(mode_beg, mode_end);
 
         // Gradient Ktensor
-        g = u.clone();
+        g = u.clone(mode_beg, mode_end);
         gt = g.getKtensor();
       }
 
@@ -123,18 +126,18 @@ namespace Genten {
               timer.start(timer_grad_init);
               g.zero(); // algorithm does not use weights
               timer.stop(timer_grad_init);
-              sampler.fusedGradient(ut, loss_func, gt, timer, timer_grad_nzs,
-                                     timer_grad_zs);
+              sampler.fusedGradient(ut, loss_func, gt, mode_beg, mode_end,
+                                    timer, timer_grad_nzs, timer_grad_zs);
             }
             else {
               gt.weights() = 1.0; // gt is zeroed in mttkrp
-              mttkrp_all(X_grad, ut, gt, algParams);
+              mttkrp_all(X_grad, ut, gt, mode_beg, mode_end, algParams);
             }
             timer.stop(timer_grad);
 
             // take step and clip for bounds
             timer.start(timer_step);
-            stepper.eval(g, u);
+            stepper.eval(g, us);
             timer.stop(timer_step);
           }
         }
@@ -173,6 +176,8 @@ namespace Genten {
       }
 
     protected:
+      ttb_indx mode_beg;
+      ttb_indx mode_end;
       AlgParams algParams;
 
       int timer_sample_g;
@@ -189,6 +194,7 @@ namespace Genten {
       VectorType g;
       KtensorT<ExecSpace> ut;
       KtensorT<ExecSpace> gt;
+      VectorType us;
 
       SptensorT<ExecSpace> X_grad;
       ArrayT<ExecSpace> w_grad;

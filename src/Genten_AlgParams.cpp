@@ -91,7 +91,8 @@ Genten::AlgParams::AlgParams() :
   adam_beta1(0.9),    // Defaults taken from ADAM paper
   adam_beta2(0.999),
   adam_eps(1.0e-8),
-  async(false)
+  async(false),
+  streaming_solver(Genten::GCP_Streaming_Solver::default_type)
 {}
 
 void Genten::AlgParams::parse(std::vector<std::string>& args)
@@ -199,6 +200,11 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   adam_beta2 = parse_ttb_real(args, "--adam-beta2", adam_beta2, 0.0, 1.0);
   adam_eps = parse_ttb_real(args, "--adam-eps", adam_eps, 0.0, 1.0);
   async = parse_ttb_bool(args, "--async", "--sync", async);
+  streaming_solver = parse_ttb_enum(args, "--streaming-solver",
+                                    streaming_solver,
+                                    Genten::GCP_Streaming_Solver::num_types,
+                                    Genten::GCP_Streaming_Solver::types,
+                                    Genten::GCP_Streaming_Solver::names);
 }
 
 void Genten::AlgParams::print_help(std::ostream& out)
@@ -313,6 +319,15 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --adam-beta2       Decay rate for 2nd moment avg." << std::endl;
   out << "  --adam-eps         Shift in ADAM step." << std::endl;
   out << "  --async            Asynchronous SGD solver" << std::endl;
+
+  out << std::endl;
+  out << "Streaming GCP options:" << std::endl;
+  out << "  --streaming-solver <type> solver type for streaming GCP: ";
+  for (unsigned i=0; i<Genten::GCP_Streaming_Solver::num_types; ++i) {
+    out << Genten::GCP_Streaming_Solver::names[i];
+    if (i != Genten::GCP_Streaming_Solver::num_types-1)
+      out << ", ";
+  }
 }
 
 void Genten::AlgParams::print(std::ostream& out)
@@ -360,7 +375,7 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "GCP-Opt options:" << std::endl;
   out << "  rol = " << rolfilename << std::endl;
 
-   out << std::endl;
+  out << std::endl;
   out << "GCP-SGD options:" << std::endl;
   out << "  sampling = " << Genten::GCP_Sampling::names[sampling_type]
       << std::endl;
@@ -389,6 +404,12 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  adam-beta2 = " << adam_beta2 << std::endl;
   out << "  adam-eps = " << adam_eps << std::endl;
   out << "  async = " << (async ? "true" : "false") << std::endl;
+
+  out << std::endl;
+  out << "Streaming GCP options:" << std::endl;
+  out << "  streaming-solver = "
+      << Genten::GCP_Streaming_Solver::names[streaming_solver]
+      << std::endl;
 }
 
 ttb_real

@@ -72,6 +72,33 @@ mxBuildArgList(int nargs, int offset, const mxArray* margs[]) {
   return args;
 }
 
+Genten::AlgParams
+mxGetAlgParams(const mxArray* ptr) {
+  if (!mxIsStruct(ptr))
+    Genten::error("Argument is not a struct!");
+  int num_fields = mxGetNumberOfFields(ptr);
+  std::vector<std::string> args(2*num_fields);
+  for (int i=0; i<num_fields; ++i) {
+    std::string name = std::string(mxGetFieldNameByNumber(ptr, i));
+    if (name == "streaming_solver") // translations
+      name = "streaming-solver";
+    args[2*i] = name;
+    mxArray* arg = mxGetFieldByNumber(ptr, 0, i);
+    if (mxIsScalar(arg))
+      args[2*i+1] = std::to_string(mxGetScalar(arg));
+    else if (mxIsChar(arg))
+      args[2*i+1] = mxGetStdString(arg);
+    else {
+      std::stringstream ss;
+      ss << "Field " << i << " of struct with name " << args[2*i] << " is not a scalar or string!";
+      Genten::error(ss.str());
+    }
+  }
+  Genten::AlgParams algParams;
+  algParams.parse(args);
+  return algParams;
+}
+
 void GentenInitialize() {
   // Initialize Kokkos
   if (!Kokkos::is_initialized()) {

@@ -360,6 +360,9 @@ std::string mxGetStdString(const mxArray* ptr);
 std::vector<std::string>
 mxBuildArgList(int nargs, int offset, const mxArray* margs[]);
 
+Genten::AlgParams
+mxGetAlgParams(const mxArray* ptr);
+
 void GentenInitialize();
 
 void GentenAtExitFcn();

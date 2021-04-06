@@ -119,3 +119,6 @@ constexpr const char*const Genten::GCP_Sampling::names[];
 
 constexpr const Genten::GCP_Step::type Genten::GCP_Step::types[];
 constexpr const char*const Genten::GCP_Step::names[];
+
+constexpr const Genten::GCP_Streaming_Solver::type Genten::GCP_Streaming_Solver::types[];
+constexpr const char*const Genten::GCP_Streaming_Solver::names[];

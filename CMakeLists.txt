@@ -355,6 +355,7 @@ IF (ENABLE_GCP)
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Rayleigh.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Gamma.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Bernoulli.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_Online_GCP.cpp
     )
 
   IF (ENABLE_ROL)
@@ -541,6 +542,10 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
     NAME gt_gcp_gradient_driver
     SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_GCP_Gradient.cpp
     ${GENTEN_MATLAB_API_VERSION})
+  MATLAB_ADD_MEX(
+    NAME gt_online_gcp
+    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Online_GCP.cpp
+    ${GENTEN_MATLAB_API_VERSION})
   TARGET_LINK_LIBRARIES (gt_cp_driver ${GENTEN_MATLAB_LINK_LIBS})
   TARGET_LINK_LIBRARIES (gt_initialize ${GENTEN_MATLAB_LINK_LIBS})
   TARGET_LINK_LIBRARIES (gt_finalize ${GENTEN_MATLAB_LINK_LIBS})
@@ -550,10 +555,11 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
   TARGET_LINK_LIBRARIES (gt_gcp_sample_driver ${GENTEN_MATLAB_LINK_LIBS})
   TARGET_LINK_LIBRARIES (gt_gcp_value_driver ${GENTEN_MATLAB_LINK_LIBS})
   TARGET_LINK_LIBRARIES (gt_gcp_gradient_driver ${GENTEN_MATLAB_LINK_LIBS})
+  TARGET_LINK_LIBRARIES (gt_online_gcp ${GENTEN_MATLAB_LINK_LIBS})
   INSTALL(
     TARGETS gt_matlab gt_cp_driver gt_initialize gt_finalize gt_mttkrp_driver
       gt_innerprod_driver gt_gcp_sample_driver gt_gcp_value_driver
-      gt_gcp_gradient_driver
+      gt_gcp_gradient_driver gt_online_gcp
     DESTINATION ${CMAKE_INSTALL_DATADIR}/genten/matlab)
   INSTALL(
     TARGETS gt_compute_perm_driver
@@ -561,7 +567,7 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
   SET_PROPERTY(
     TARGET gt_matlab gt_cp_driver gt_initialize gt_finalize gt_mttkrp_driver
       gt_innerprod_driver gt_gcp_sample_driver gt_gcp_value_driver
-      gt_gcp_gradient_driver
+      gt_gcp_gradient_driver gt_online_gcp
     PROPERTY LIBRARY_OUTPUT_DIRECTORY ${Genten_BINARY_DIR}/matlab)
   SET_PROPERTY(
     TARGET gt_compute_perm_driver
@@ -573,7 +579,7 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
     TARGET gt_matlab gt_cp_driver gt_initialize gt_finalize
       gt_compute_perm_driver gt_mttkrp_driver gt_innerprod_driver
       gt_gcp_sample_driver gt_gcp_value_driver
-      gt_gcp_gradient_driver
+      gt_gcp_gradient_driver gt_online_gcp
     PROPERTY DEFINE_SYMBOL "")
 
   # Targets to install matlab source files

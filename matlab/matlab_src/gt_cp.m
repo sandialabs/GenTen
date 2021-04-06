@@ -41,6 +41,11 @@ function [U,varargout] = gt_cp(X,R,varargin)
 %
 %  See also CP_ALS, SPTENSOR_GT, KTENSOR
 
+args = varargin;
+if isa(X, 'sptensor_gt')
+  a = X.alg_params; % For some reason, X.alg_params{:} only pulls out the first entry here?
+  args = { a{:}, args{:} };
+end
 argout = cell(1,nargout-1);
-[U,argout{:}] = gt_cp_driver(X,R,varargin{:});
+[U,argout{:}] = gt_cp_driver(X,R,args{:});
 varargout = argout;

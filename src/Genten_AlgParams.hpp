@@ -115,6 +115,9 @@ namespace Genten {
     ttb_real adam_eps;                   // Shift in ADAM/AdaGrad step
     bool async;                          // Asynchronous SGD solver
 
+    // Streaming GCP options
+    GCP_Streaming_Solver::type streaming_solver;  // Streaming solver
+
     // Constructor initializing values to defaults
     AlgParams();
 
