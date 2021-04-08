@@ -194,6 +194,10 @@ namespace Genten {
         adam_v_prev.zero();
       }
 
+      KtensorT<ExecSpace> up;
+      ArrayT<ExecSpace> window;
+      ttb_real window_penalty = 0.0;
+
       // Initialize sampler (sorting, hashing, ...)
       timer.start(timer_sort);
       RandomMT rng(seed);
@@ -202,17 +206,16 @@ namespace Genten {
       timer.stop(timer_sort);
 
       // Sample X for f-estimate
-      SptensorT<ExecSpace> X_val, X_grad;
-      ArrayT<ExecSpace> w_val, w_grad;
       timer.start(timer_sample_f);
-      sampler.sampleTensor(false, ut, loss_func, X_val, w_val);
+      sampler.sampleTensorF(ut, loss_func);
       timer.stop(timer_sample_f);
 
       // Objective estimates
       ttb_real fit = 0.0;
       ttb_real x_norm = 0.0;
       timer.start(timer_fest);
-      fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
+      ttb_real ften = 0.0;
+      sampler.value(ut, up, window, window_penalty, loss_func, fest, ften);
       if (compute_fit) {
         x_norm = X.norm();
         ttb_real u_norm = u.normFsq();
@@ -262,15 +265,12 @@ namespace Genten {
 
             // compute gradient
             timer.start(timer_grad);
-            timer.start(timer_grad_init);
-            g.zero(); // algorithm does not use weights
-            timer.stop(timer_grad_init);
             sampler.fusedGradientAndStep(
-              u, loss_func, g, gind, perm,
+              u, loss_func, g, gt, gind, perm,
               use_adam, adam_m, adam_v, beta1, beta2, eps,
               use_adam ? adam_step : step,
               has_bounds, lb, ub,
-              timer, timer_grad_nzs, timer_grad_zs,
+              timer, timer_grad_init, timer_grad_nzs, timer_grad_zs,
               timer_grad_sort, timer_grad_scan, timer_step);
             timer.stop(timer_grad);
           }
@@ -278,7 +278,7 @@ namespace Genten {
 
         // compute objective estimate
         timer.start(timer_fest);
-        fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
+        sampler.value(ut, up, window, window_penalty, loss_func, fest, ften);
         if (compute_fit) {
           ttb_real u_norm = u.normFsq();
           ttb_real dot = innerprod(X, ut);

@@ -92,7 +92,11 @@ Genten::AlgParams::AlgParams() :
   adam_beta2(0.999),
   adam_eps(1.0e-8),
   async(false),
-  streaming_solver(Genten::GCP_Streaming_Solver::default_type)
+  streaming_solver(Genten::GCP_Streaming_Solver::default_type),
+  window_method(Genten::GCP_Streaming_Window_Method::default_type),
+  window_size(0),
+  window_weight(1.0),
+  window_penalty(0.0)
 {}
 
 void Genten::AlgParams::parse(std::vector<std::string>& args)
@@ -205,6 +209,16 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                                     Genten::GCP_Streaming_Solver::num_types,
                                     Genten::GCP_Streaming_Solver::types,
                                     Genten::GCP_Streaming_Solver::names);
+  window_method = parse_ttb_enum(args, "--window-method",
+                                 window_method,
+                                 Genten::GCP_Streaming_Window_Method::num_types,
+                                 Genten::GCP_Streaming_Window_Method::types,
+                                 Genten::GCP_Streaming_Window_Method::names);
+  window_size = parse_ttb_indx(args, "--window-size", window_size, 0, INT_MAX);
+  window_weight = parse_ttb_real(args, "--window-weight", window_weight, 0.0,
+                                 DOUBLE_MAX);
+  window_penalty = parse_ttb_real(args, "--window-penalty", window_penalty, 0.0,
+                                  DOUBLE_MAX);
 }
 
 void Genten::AlgParams::print_help(std::ostream& out)
@@ -328,6 +342,18 @@ void Genten::AlgParams::print_help(std::ostream& out)
     if (i != Genten::GCP_Streaming_Solver::num_types-1)
       out << ", ";
   }
+  out << "  --window-method <type> window method for streaming GCP: ";
+  for (unsigned i=0; i<Genten::GCP_Streaming_Window_Method::num_types; ++i) {
+    out << Genten::GCP_Streaming_Window_Method::names[i];
+    if (i != Genten::GCP_Streaming_Window_Method::num_types-1)
+      out << ", ";
+  }
+  out << "  --window-size       Number of terms in streaming history window."
+      << std::endl;
+  out << "  --window-weight     Multiplier for each streaming window term."
+      << std::endl;
+  out << "  --window-penalty    Multiplier for entire streaming window."
+      << std::endl;
 }
 
 void Genten::AlgParams::print(std::ostream& out)
@@ -410,6 +436,12 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  streaming-solver = "
       << Genten::GCP_Streaming_Solver::names[streaming_solver]
       << std::endl;
+  out << "  window-method = "
+      << Genten::GCP_Streaming_Window_Method::names[window_method]
+      << std::endl;
+  out << "  window_size = " << window_size << std::endl;
+  out << "  window_weight = " << window_weight << std::endl;
+  out << "  window_penalty = " << window_penalty << std::endl;
 }
 
 ttb_real

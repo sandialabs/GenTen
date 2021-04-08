@@ -1126,7 +1126,7 @@ namespace Genten {
 
       // Resize Y if necessary
       if (Y.nnz() < total_samples*nh) {
-        IndxArrayT<ExecSpace> sz = X.size();
+        IndxArrayT<ExecSpace> sz = X.size().clone();
         auto sz_host = create_mirror_view(sz);
         deep_copy(sz_host, sz);
         sz_host[nd-1] = nh;

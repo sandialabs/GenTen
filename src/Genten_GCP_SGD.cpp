@@ -124,6 +124,26 @@ namespace Genten {
         KtensorT<ExecSpace>& u0,
         ttb_indx& numEpochs,
         ttb_real& fest,
+        std::ostream& out,
+        const bool print_hdr,
+        const bool print_ftr,
+        const bool print_itn) const
+  {
+    ttb_real ften = 0.0;
+    solve(X, u0, KtensorT<ExecSpace>(), ArrayT<ExecSpace>(), ttb_real(0.0),
+          numEpochs, fest, ften, out, print_hdr, print_ftr, print_itn);
+  }
+
+  template <typename TensorT, typename ExecSpace, typename LossFunction>
+  void
+  GCPSGD<TensorT,ExecSpace,LossFunction>::
+  solve(TensorT& X,
+        KtensorT<ExecSpace>& u0,
+        const KtensorT<ExecSpace>& up,
+        const ArrayT<ExecSpace>& window,
+        const ttb_real window_penalty,
+        ttb_indx& numEpochs,
+        ttb_real& fest,
         ttb_real& ften,
         std::ostream& out,
         const bool print_hdr,
@@ -221,15 +241,11 @@ namespace Genten {
     // Create iterator
     Impl::GCP_SGD_Iter<ExecSpace,LossFunction> *itp = nullptr;
     if (algParams.async)
-      itp = new Impl::GCP_SGD_Iter_Async<ExecSpace,LossFunction>(u0,
-                                                                 mode_beg,
-                                                                 mode_end,
-                                                                 algParams);
+      itp = new Impl::GCP_SGD_Iter_Async<ExecSpace,LossFunction>(
+        u0, up, window, window_penalty, mode_beg, mode_end, algParams);
     else
-      itp = new Impl::GCP_SGD_Iter<ExecSpace,LossFunction>(u0,
-                                                           mode_beg,
-                                                           mode_end,
-                                                           algParams);
+      itp = new Impl::GCP_SGD_Iter<ExecSpace,LossFunction>(
+        u0, up, window, window_penalty, mode_beg, mode_end, algParams);
     Impl::GCP_SGD_Iter<ExecSpace,LossFunction>& it = *itp;
 
     // Get vector/Ktensor for current solution (this is a view of the data)
@@ -248,17 +264,15 @@ namespace Genten {
     timer.stop(timer_sort);
 
     // Sample X for f-estimate
-    SptensorT<ExecSpace> X_val;
-    ArrayT<ExecSpace> w_val;
     timer.start(timer_sample_f);
-    sampler->sampleTensor(false, ut, loss_func, X_val, w_val);
+    sampler->sampleTensorF(ut, loss_func);
     timer.stop(timer_sample_f);
 
     // Objective estimates
     ttb_real fit = 0.0;
     ttb_real x_norm = 0.0;
     timer.start(timer_fest);
-    fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
+    sampler->value(ut, up, window, window_penalty, loss_func, fest, ften);
     if (compute_fit) {
       x_norm = X.norm();
       ttb_real u_norm = u.normFsq();
@@ -294,7 +308,7 @@ namespace Genten {
 
       // compute objective estimate
       timer.start(timer_fest);
-      fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
+      sampler->value(ut, up, window, window_penalty, loss_func, fest, ften);
       if (compute_fit) {
         ttb_real u_norm = u.normFsq();
         ttb_real dot = innerprod(X, ut);
@@ -395,9 +409,7 @@ namespace Genten {
     u0.distribute();
 
     GCPSGD<TensorT,ExecSpace,LossFunction> gcpsgd(u0, loss_func, algParams);
-    ttb_real ften;
-    gcpsgd.solve(X, u0, numEpochs, fest, ften, out,
-                 true, true, algParams.printitn);
+    gcpsgd.solve(X, u0, numEpochs, fest, out, true, true, algParams.printitn);
 
     // Normalize Ktensor u
     u0.normalize(Genten::NormTwo);

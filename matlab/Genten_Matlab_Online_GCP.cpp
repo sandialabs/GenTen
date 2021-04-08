@@ -103,8 +103,8 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
 
     // Create OnlineGCP object
     Genten::Array fest, ften;
-    Genten::online_gcp(X, Xinit, u, fest, ften, algParams, temporalAlgParams,
-                       spatialAlgParams, std::cout);
+    Genten::online_gcp(X, Xinit, u, algParams, temporalAlgParams,
+                       spatialAlgParams, std::cout, fest, ften);
 
 
     // Return results

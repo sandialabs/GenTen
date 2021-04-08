@@ -265,6 +265,22 @@ namespace Genten {
     };
     static constexpr type default_type = SGD;
   };
+
+  // Sampling functions supported by GCP
+  struct GCP_Streaming_Window_Method {
+    enum type {
+      Reservoir,
+      Last
+    };
+    static constexpr unsigned num_types = 2;
+    static constexpr type types[] = {
+      Reservoir, Last
+    };
+    static constexpr const char* names[] = {
+      "reservoir", "last"
+    };
+    static constexpr type default_type = Reservoir;
+  };
 }
 
 /* ----- Utility Functions ----- */

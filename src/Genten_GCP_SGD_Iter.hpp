@@ -61,9 +61,13 @@ namespace Genten {
       typedef GCP::KokkosVector<ExecSpace> VectorType;
 
       GCP_SGD_Iter(const KtensorT<ExecSpace>& u0,
+                   const KtensorT<ExecSpace>& up_,
+                   const ArrayT<ExecSpace>& window_,
+                   const ttb_real window_penalty_,
                    const ttb_indx mode_beg_,
                    const ttb_indx mode_end_,
                    const AlgParams& algParams_) :
+        up(up_), window(window_), window_penalty(window_penalty_),
         mode_beg(mode_beg_), mode_end(mode_end_), algParams(algParams_)
       {
         // Setup timers
@@ -105,34 +109,23 @@ namespace Genten {
           stepper.update();
 
           // sample for gradient
-          if (!algParams.fuse) {
-            timer.start(timer_sample_g);
-            timer.start(timer_sample_g_z_nz);
-            sampler.sampleTensor(true, ut, loss_func,  X_grad, w_grad);
-            timer.stop(timer_sample_g_z_nz);
-            timer.start(timer_sample_g_perm);
-            if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
-                algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated)
-              X_grad.createPermutation();
-            timer.stop(timer_sample_g_perm);
-            timer.stop(timer_sample_g);
-          }
+          timer.start(timer_sample_g);
+          timer.start(timer_sample_g_z_nz);
+          sampler.sampleTensorG(ut, up, window, window_penalty, loss_func);
+          timer.stop(timer_sample_g_z_nz);
+          timer.start(timer_sample_g_perm);
+          sampler.prepareGradient();
+          timer.stop(timer_sample_g_perm);
+          timer.stop(timer_sample_g);
 
           for (ttb_indx giter=0; giter<algParams.frozen_iters; ++giter) {
 
             // compute gradient
             timer.start(timer_grad);
-            if (algParams.fuse) {
-              timer.start(timer_grad_init);
-              g.zero(); // algorithm does not use weights
-              timer.stop(timer_grad_init);
-              sampler.fusedGradient(ut, loss_func, gt, mode_beg, mode_end,
-                                    timer, timer_grad_nzs, timer_grad_zs);
-            }
-            else {
-              gt.weights() = 1.0; // gt is zeroed in mttkrp
-              mttkrp_all(X_grad, ut, gt, mode_beg, mode_end, algParams);
-            }
+            sampler.gradient(ut, up, window, window_penalty,
+                             loss_func, g, gt, mode_beg, mode_end,
+                             timer, timer_grad_init, timer_grad_nzs,
+                             timer_grad_zs);
             timer.stop(timer_grad);
 
             // take step and clip for bounds
@@ -153,20 +146,17 @@ namespace Genten {
               << " seconds\n"
               << "\t\tzs/nzs:   "
               << timer.getTotalTime(timer_sample_g_z_nz)
+              << " seconds\n"
+              << "\t\tperm:     "
+              << timer.getTotalTime(timer_sample_g_perm)
               << " seconds\n";
-          if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
-              algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated) {
-            out << "\t\tperm:     "
-                << timer.getTotalTime(timer_sample_g_perm)
-                << " seconds\n";
-          }
         }
         out << "\tgradient:  " << timer.getTotalTime(timer_grad)
+            << " seconds\n"
+            << "\t\tinit:    " << timer.getTotalTime(timer_grad_init)
             << " seconds\n";
         if (algParams.fuse) {
-          out << "\t\tinit:    " << timer.getTotalTime(timer_grad_init)
-              << " seconds\n"
-              << "\t\tnzs:     " << timer.getTotalTime(timer_grad_nzs)
+          out << "\t\tnzs:     " << timer.getTotalTime(timer_grad_nzs)
               << " seconds\n"
               << "\t\tzs:      " << timer.getTotalTime(timer_grad_zs)
               << " seconds\n";
@@ -176,9 +166,12 @@ namespace Genten {
       }
 
     protected:
-      ttb_indx mode_beg;
-      ttb_indx mode_end;
-      AlgParams algParams;
+      const KtensorT<ExecSpace> up;
+      const ArrayT<ExecSpace> window;
+      const ttb_real window_penalty;
+      const ttb_indx mode_beg;
+      const ttb_indx mode_end;
+      const AlgParams algParams;
 
       int timer_sample_g;
       int timer_grad;
@@ -195,9 +188,6 @@ namespace Genten {
       KtensorT<ExecSpace> ut;
       KtensorT<ExecSpace> gt;
       VectorType us;
-
-      SptensorT<ExecSpace> X_grad;
-      ArrayT<ExecSpace> w_grad;
     };
 
   }

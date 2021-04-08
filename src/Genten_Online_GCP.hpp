@@ -48,31 +48,21 @@
 #include "Genten_Array.hpp"
 #include "Genten_AlgParams.hpp"
 #include "Genten_GCP_SGD.hpp"
+#include "Genten_RandomMT.hpp"
 
 namespace Genten {
 
   //! Class implementing the generalized CP decomposition using SGD approach
   template <typename TensorT, typename ExecSpace, typename LossFunction>
   class OnlineGCP {
-  protected:
-
-    const AlgParams algParams;
-    const AlgParams temporalAlgParams;
-    const AlgParams spatialAlgParams;
-    GCPSGD<TensorT,ExecSpace,LossFunction> temporalSolver;
-    GCPSGD<TensorT,ExecSpace,LossFunction> spatialSolver;
-    FacMatrixT<ExecSpace> A;    // Temp space needed for least-squares
-    FacMatrixT<ExecSpace> tmp;
-    FacMatArrayT<ExecSpace> P;  // Temp space needed for OnlineCP
-    FacMatArrayT<ExecSpace> Q;
-
   public:
     OnlineGCP(TensorT& Xinit,
               const KtensorT<ExecSpace>& u0,
               const LossFunction& loss_func,
               const AlgParams& algParams,
               const AlgParams& temporalAlgParams,
-              const AlgParams& spatialAlgParams);
+              const AlgParams& spatialAlgParams,
+              std::ostream& out);
 
     void processSlice(TensorT& X,
                       KtensorT<ExecSpace>& u,
@@ -83,6 +73,8 @@ namespace Genten {
 
     void init(const TensorT& X, KtensorT<ExecSpace>& u);
 
+  protected:
+
     void leastSquaresSolve(const ttb_indx mode,
                            TensorT& X,
                            KtensorT<ExecSpace>& u,
@@ -90,6 +82,24 @@ namespace Genten {
                            ttb_real& ften,
                            std::ostream& out,
                            const bool print);
+
+    void updateHistory(const KtensorT<ExecSpace>& u);
+
+    const AlgParams algParams;
+    const AlgParams temporalAlgParams;
+    const AlgParams spatialAlgParams;
+    GCPSGD<TensorT,ExecSpace,LossFunction> temporalSolver;
+    GCPSGD<TensorT,ExecSpace,LossFunction> spatialSolver;
+    RandomMT rand;
+    FacMatrixT<ExecSpace> A;    // Temp space needed for least-squares
+    FacMatrixT<ExecSpace> tmp;
+    FacMatArrayT<ExecSpace> P;  // Temp space needed for OnlineCP
+    FacMatArrayT<ExecSpace> Q;
+    KtensorT<ExecSpace> up;     // History window data
+    ArrayT<ExecSpace> window_val;
+    typename ArrayT<ExecSpace>::HostMirror window_val_host;
+    IndxArray window_idx;
+    ttb_indx slice_idx;
   };
 
   //! Compute the generalized CP decomposition of a tensor using SGD approach
@@ -97,11 +107,11 @@ namespace Genten {
   void online_gcp(std::vector<TensorT>& x,
                   TensorT& x_init,
                   KtensorT<ExecSpace>& u,
-                  Array& fest,
-                  Array& ften,
                   const AlgParams& algParams,
                   const AlgParams& temporalAlgParams,
                   const AlgParams& spatialAlgParams,
-                  std::ostream& out);
+                  std::ostream& out,
+                  Array& fest,
+                  Array& ften);
 
 }

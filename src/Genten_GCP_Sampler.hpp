@@ -47,6 +47,7 @@
 #include "Genten_SystemTimer.hpp"
 #include "Genten_GCP_SamplingKernels.hpp"
 #include "Genten_GCP_Hash.hpp"
+#include "Genten_GCP_KokkosVector.hpp"
 
 #include "Kokkos_Random.hpp"
 
@@ -68,20 +69,37 @@ namespace Genten {
 
     virtual void print(std::ostream& out) = 0;
 
-    virtual void sampleTensor(const bool gradient,
-                              const KtensorT<ExecSpace>& u,
-                              const LossFunction& loss_func,
-                              SptensorT<ExecSpace>& Xs,
-                              ArrayT<ExecSpace>& w) = 0;
+    virtual void sampleTensorF(const KtensorT<ExecSpace>& u,
+                               const LossFunction& loss_func) = 0;
 
-    virtual void fusedGradient(const KtensorT<ExecSpace>& u,
-                               const LossFunction& loss_func,
-                               const KtensorT<ExecSpace>& g,
-                               const ttb_indx mode_beg,
-                               const ttb_indx mode_end,
-                               SystemTimer& timer,
-                               const int timer_nzs,
-                               const int timer_zs) = 0;
+    virtual void sampleTensorG(const KtensorT<ExecSpace>& u,
+                               const KtensorT<ExecSpace>& up,
+                               const ArrayT<ExecSpace>& window,
+                               const ttb_real window_penalty,
+                               const LossFunction& loss_func) = 0;
+
+    virtual void prepareGradient() = 0;
+
+    virtual void value(const KtensorT<ExecSpace>& u,
+                       const KtensorT<ExecSpace>& up,
+                       const ArrayT<ExecSpace>& window,
+                       const ttb_real window_penalty,
+                       const LossFunction& loss_func,
+                       ttb_real& fest, ttb_real& ften) = 0;
+
+    virtual void gradient(const KtensorT<ExecSpace>& ut,
+                          const KtensorT<ExecSpace>& up,
+                          const ArrayT<ExecSpace>& window,
+                          const ttb_real window_penalty,
+                          const LossFunction& loss_func,
+                          GCP::KokkosVector<ExecSpace>& g,
+                          const KtensorT<ExecSpace>& gt,
+                          const ttb_indx mode_beg,
+                          const ttb_indx mode_end,
+                          SystemTimer& timer,
+                          const int timer_init,
+                          const int timer_nzs,
+                          const int timer_zs) = 0;
 
     static map_type buildHashMap(const SptensorT<ExecSpace>& X,
                                  std::ostream& out)

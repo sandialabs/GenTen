@@ -78,6 +78,18 @@ namespace Genten {
                KtensorT<ExecSpace>& u0,
                ttb_indx& numEpochs,
                ttb_real& fest,
+               std::ostream& out,
+               const bool print_hdr,
+               const bool print_ftr,
+               const bool print_itn) const;
+
+    void solve(TensorT& X,
+               KtensorT<ExecSpace>& u,
+               const KtensorT<ExecSpace>& up,
+               const ArrayT<ExecSpace>& window,
+               const ttb_real window_penalty,
+               ttb_indx& numEpochs,
+               ttb_real& fest,
                ttb_real& ften,
                std::ostream& out,
                const bool print_hdr,

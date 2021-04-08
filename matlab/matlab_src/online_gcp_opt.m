@@ -5,6 +5,10 @@ parser = inputParser;
 parser.KeepUnmatched = true;
 parser.addParameter('init','rand');
 parser.addParameter('Xinit',[]);
+parser.addParameter('window_size',0,@isscalar);
+parser.addParameter('window_method',0,@ischar);
+parser.addParameter('window_weight',1,@isscalar);
+parser.addParameter('window_penalty',1,@isscalar);
 parser.parse(varargin{:});
 
 mainStart = tic;
@@ -64,6 +68,7 @@ if length(XX) >= 1 && isa(XX{1}, 'sptensor_gt')
   a = XX{1}.alg_params; % XX{1}.alg_params{:} only extracts the first entry?
   args = { a{:}, args{:} };
 end
+args = { args{:}, 'window-size', parser.Results.window_size, 'window-method', parser.Results.window_method, 'window-weight', parser.Results.window_weight, 'window-penalty', parser.Results.window_penalty };
 
 Xinit = parser.Results.Xinit;
 if isempty(Xinit)
