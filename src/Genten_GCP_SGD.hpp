@@ -76,6 +76,7 @@ namespace Genten {
 
     void solve(TensorT& X,
                KtensorT<ExecSpace>& u0,
+               const ttb_real penalty,
                ttb_indx& numEpochs,
                ttb_real& fest,
                std::ostream& out,
@@ -88,6 +89,7 @@ namespace Genten {
                const KtensorT<ExecSpace>& up,
                const ArrayT<ExecSpace>& window,
                const ttb_real window_penalty,
+               const ttb_real penalty,
                ttb_indx& numEpochs,
                ttb_real& fest,
                ttb_real& ften,

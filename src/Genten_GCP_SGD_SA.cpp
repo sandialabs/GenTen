@@ -197,6 +197,7 @@ namespace Genten {
       KtensorT<ExecSpace> up;
       ArrayT<ExecSpace> window;
       ttb_real window_penalty = 0.0;
+      ttb_real factor_penalty = 0.0;
 
       // Initialize sampler (sorting, hashing, ...)
       timer.start(timer_sort);
@@ -215,7 +216,8 @@ namespace Genten {
       ttb_real x_norm = 0.0;
       timer.start(timer_fest);
       ttb_real ften = 0.0;
-      sampler.value(ut, up, window, window_penalty, loss_func, fest, ften);
+      sampler.value(ut, up, window, window_penalty, factor_penalty, loss_func,
+                    fest, ften);
       if (compute_fit) {
         x_norm = X.norm();
         ttb_real u_norm = u.normFsq();
@@ -278,7 +280,8 @@ namespace Genten {
 
         // compute objective estimate
         timer.start(timer_fest);
-        sampler.value(ut, up, window, window_penalty, loss_func, fest, ften);
+        sampler.value(ut, up, window, window_penalty, factor_penalty, loss_func,
+                      fest, ften);
         if (compute_fit) {
           ttb_real u_norm = u.normFsq();
           ttb_real dot = innerprod(X, ut);

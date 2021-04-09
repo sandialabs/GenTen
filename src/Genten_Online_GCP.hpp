@@ -42,13 +42,13 @@
 
 #include <ostream>
 #include <vector>
+#include <random>
 
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_Array.hpp"
 #include "Genten_AlgParams.hpp"
 #include "Genten_GCP_SGD.hpp"
-#include "Genten_RandomMT.hpp"
 
 namespace Genten {
 
@@ -90,7 +90,7 @@ namespace Genten {
     const AlgParams spatialAlgParams;
     GCPSGD<TensorT,ExecSpace,LossFunction> temporalSolver;
     GCPSGD<TensorT,ExecSpace,LossFunction> spatialSolver;
-    RandomMT rand;
+    std::default_random_engine generator;  // Random number generator
     FacMatrixT<ExecSpace> A;    // Temp space needed for least-squares
     FacMatrixT<ExecSpace> tmp;
     FacMatArrayT<ExecSpace> P;  // Temp space needed for OnlineCP

@@ -84,6 +84,7 @@ namespace Genten {
                        const KtensorT<ExecSpace>& up,
                        const ArrayT<ExecSpace>& window,
                        const ttb_real window_penalty,
+                       const ttb_real penalty,
                        const LossFunction& loss_func,
                        ttb_real& fest, ttb_real& ften) = 0;
 
@@ -91,6 +92,7 @@ namespace Genten {
                           const KtensorT<ExecSpace>& up,
                           const ArrayT<ExecSpace>& window,
                           const ttb_real window_penalty,
+                          const ttb_real penalty,
                           const LossFunction& loss_func,
                           GCP::KokkosVector<ExecSpace>& g,
                           const KtensorT<ExecSpace>& gt,

@@ -193,6 +193,7 @@ namespace Genten {
                        const KtensorT<ExecSpace>& up,
                        const ArrayT<ExecSpace>& window,
                        const ttb_real window_penalty,
+                       const ttb_real penalty,
                        const LossFunction& loss_func,
                        ttb_real& fest, ttb_real& ften) override
     {
@@ -207,12 +208,18 @@ namespace Genten {
                         ften, fhis);
         fest = ften + fhis;
       }
+      if (penalty != ttb_real(0.0)) {
+        const ttb_indx nd = u.ndims();
+        for (ttb_indx i=0; i<nd; ++i)
+          fest += ttb_real(0.5) * penalty * u[i].normFsq();
+      }
     }
 
     virtual void gradient(const KtensorT<ExecSpace>& ut,
                           const KtensorT<ExecSpace>& up,
                           const ArrayT<ExecSpace>& window,
                           const ttb_real window_penalty,
+                          const ttb_real penalty,
                           const LossFunction& loss_func,
                           GCP::KokkosVector<ExecSpace>& g,
                           const KtensorT<ExecSpace>& gt,
@@ -240,6 +247,10 @@ namespace Genten {
 
         mttkrp_all(Yh, uh, gt, mode_beg, mode_end, algParams, false);
       }
+
+      if (penalty != 0.0)
+        for (ttb_indx i=mode_beg; i<mode_end; ++i)
+          gt[i-mode_beg].plus(ut[i], penalty);
     }
 
   protected:

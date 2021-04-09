@@ -202,11 +202,13 @@ namespace Genten {
                          const KtensorT<ExecSpace>& up,
                          const ArrayT<ExecSpace>& window,
                          const ttb_real window_penalty,
+                         const ttb_real penalty,
                          const ttb_indx mode_beg,
                          const ttb_indx mode_end,
                          const AlgParams& algParams) :
         GCP_SGD_Iter<ExecSpace, LossFunction>(u0, up, window, window_penalty,
-                                              mode_beg, mode_end, algParams)
+                                              penalty, mode_beg, mode_end,
+                                              algParams)
       {
       }
 
@@ -233,7 +235,7 @@ namespace Genten {
         this->timer.start(this->timer_grad);
 
         // Run kernel
-        // To do:  handle history terms
+        // To do:  handle history terms, penalty
         SGDStep<ExecSpace,LossFunction>* sgd_step =
           dynamic_cast<SGDStep<ExecSpace,LossFunction>*>(&stepper);
         AdaGradStep<ExecSpace,LossFunction>* adagrad_step =

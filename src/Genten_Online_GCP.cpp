@@ -38,6 +38,9 @@
 // ************************************************************************
 //@HEADER
 
+#include <algorithm>
+#include <random>
+
 #include "Genten_Online_GCP.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
 #include "Genten_SystemTimer.hpp"
@@ -69,7 +72,7 @@ namespace Genten {
     spatialAlgParams(spatialAlgParams_),
     temporalSolver(u,loss_func,u.ndims()-1,u.ndims(),temporalAlgParams_),
     spatialSolver(u,loss_func,0,u.ndims()-1,spatialAlgParams_),
-    rand(algParams.seed)
+    generator(algParams.seed)
   {
     const ttb_indx nc = u.ncomponents();
     if (temporalAlgParams.streaming_solver == GCP_Streaming_Solver::LeastSquares ||
@@ -189,7 +192,8 @@ namespace Genten {
     if (temporalAlgParams.streaming_solver == GCP_Streaming_Solver::SGD) {
       // No history for temporal solver
       temporalSolver.reset();
-      temporalSolver.solve(X, u, num_epoch, fest, out, false, false, print);
+      temporalSolver.solve(X, u, algParams.factor_penalty,
+                           num_epoch, fest, out, false, false, print);
     }
     else if (temporalAlgParams.streaming_solver ==
              GCP_Streaming_Solver::LeastSquares ||
@@ -205,6 +209,7 @@ namespace Genten {
       out << "Updating spatial modes..." << std::endl;
     if (spatialAlgParams.streaming_solver == GCP_Streaming_Solver::SGD)
       spatialSolver.solve(X, u, up, window_val, algParams.window_penalty,
+                          algParams.factor_penalty,
                           num_epoch, fest, ften, out, false, false, print);
     else if (spatialAlgParams.streaming_solver ==
              GCP_Streaming_Solver::LeastSquares)
@@ -263,9 +268,8 @@ namespace Genten {
                     const bool print)
   {
     // To do:
-    //  * penalty, history
+    //  * history
     //  * innerproduct trick
-    //  * reg terms in fest
     const ttb_indx nd = u.ndims();
     const bool full = algParams.full_gram;
     A.oprod(u.weights());
@@ -276,6 +280,8 @@ namespace Genten {
         A.times(tmp);
       }
     }
+    if (algParams.factor_penalty != ttb_real(0.0))
+      A.diagonalShift(algParams.factor_penalty);
     if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
         !X.havePerm())
       X.createPermutation();
@@ -284,8 +290,12 @@ namespace Genten {
     const ttb_real ip = innerprod(X, u);
     const ttb_real nrmx = X.norm();
     const ttb_real nrmusq = u.normFsq();
-    fest = nrmx*nrmx + nrmusq - ttb_real(2.0)*ip;
-    ften = fest;
+    ften = nrmx*nrmx + nrmusq - ttb_real(2.0)*ip;
+    fest = ften;
+    if (algParams.factor_penalty != ttb_real(0.0)) {
+      for (ttb_indx i=0; i<nd; ++i)
+        fest += ttb_real(0.5) * algParams.factor_penalty * u[i].normFsq();
+    }
     if (print)
       out << "f = " << fest << std::endl;
   }
@@ -337,9 +347,9 @@ namespace Genten {
       else if (algParams.window_method ==
                GCP_Streaming_Window_Method::Reservoir) {
         for (ttb_indx i=0; i<num_new; ++i) {
-          // Random integer in [0,slice_idx+i)
-          const ttb_indx j =
-            ttb_indx(rand.genrnd_double()*double(slice_idx+i));
+          // Random integer in [0,slice_idx+idx+i)
+          std::uniform_int_distribution<ttb_indx> rand(0,slice_idx+idx+i-1);
+          const ttb_indx j = rand(generator);
 
           // Replace entry j in history with slice_idx+i
           if (j < algParams.window_size) {
@@ -349,6 +359,9 @@ namespace Genten {
             window_idx[j] = slice_idx+idx+i;
           }
         }
+        // To do:  sort window_idx and permute up[nd-1] appropriately
+        // std::sort(window_idx.values().data(),
+        //           window_idx.values().data()+algParams.window_size);
       }
       else
         Genten::error(

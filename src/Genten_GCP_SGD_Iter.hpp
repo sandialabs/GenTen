@@ -64,11 +64,13 @@ namespace Genten {
                    const KtensorT<ExecSpace>& up_,
                    const ArrayT<ExecSpace>& window_,
                    const ttb_real window_penalty_,
+                   const ttb_real penalty_,
                    const ttb_indx mode_beg_,
                    const ttb_indx mode_end_,
                    const AlgParams& algParams_) :
         up(up_), window(window_), window_penalty(window_penalty_),
-        mode_beg(mode_beg_), mode_end(mode_end_), algParams(algParams_)
+        penalty(penalty_), mode_beg(mode_beg_), mode_end(mode_end_),
+        algParams(algParams_)
       {
         // Setup timers
         int num_timers = 0;
@@ -122,7 +124,7 @@ namespace Genten {
 
             // compute gradient
             timer.start(timer_grad);
-            sampler.gradient(ut, up, window, window_penalty,
+            sampler.gradient(ut, up, window, window_penalty, penalty,
                              loss_func, g, gt, mode_beg, mode_end,
                              timer, timer_grad_init, timer_grad_nzs,
                              timer_grad_zs);
@@ -169,6 +171,7 @@ namespace Genten {
       const KtensorT<ExecSpace> up;
       const ArrayT<ExecSpace> window;
       const ttb_real window_penalty;
+      const ttb_real penalty;
       const ttb_indx mode_beg;
       const ttb_indx mode_end;
       const AlgParams algParams;

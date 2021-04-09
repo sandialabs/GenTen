@@ -264,9 +264,9 @@ public:
     // Compute X = a * X
     void times(ttb_real a) const;
 
-    // x += y
+    // x += s*y
     /* accumulate y into x */
-    void plus(const FacMatrixT & y) const;
+    void plus(const FacMatrixT & y, const ttb_real s = ttb_real(1.0)) const;
 
     // x += yi forall yi in ya
     void plusAll(const FacMatArrayT<ExecSpace> & ya) const;
@@ -312,6 +312,9 @@ public:
     // Compute the sum of all the entries for symmetric matrix.
     // If uplo == Upper/Lower, only upper/lower triangle is accessed.
     ttb_real sum(const UploType uplo) const;
+
+    // Compute Frobenius norm-squared of matrix
+    ttb_real normFsq() const;
 
     // tell location of first nonfinite number (Inf or NaN) where will  be 0 if result is false,
     bool hasNonFinite(ttb_indx &where) const;

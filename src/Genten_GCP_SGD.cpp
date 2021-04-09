@@ -122,6 +122,7 @@ namespace Genten {
   GCPSGD<TensorT,ExecSpace,LossFunction>::
   solve(TensorT& X,
         KtensorT<ExecSpace>& u0,
+        const ttb_real penalty,
         ttb_indx& numEpochs,
         ttb_real& fest,
         std::ostream& out,
@@ -131,7 +132,7 @@ namespace Genten {
   {
     ttb_real ften = 0.0;
     solve(X, u0, KtensorT<ExecSpace>(), ArrayT<ExecSpace>(), ttb_real(0.0),
-          numEpochs, fest, ften, out, print_hdr, print_ftr, print_itn);
+          penalty, numEpochs, fest, ften, out, print_hdr, print_ftr, print_itn);
   }
 
   template <typename TensorT, typename ExecSpace, typename LossFunction>
@@ -142,6 +143,7 @@ namespace Genten {
         const KtensorT<ExecSpace>& up,
         const ArrayT<ExecSpace>& window,
         const ttb_real window_penalty,
+        const ttb_real penalty,
         ttb_indx& numEpochs,
         ttb_real& fest,
         ttb_real& ften,
@@ -242,10 +244,10 @@ namespace Genten {
     Impl::GCP_SGD_Iter<ExecSpace,LossFunction> *itp = nullptr;
     if (algParams.async)
       itp = new Impl::GCP_SGD_Iter_Async<ExecSpace,LossFunction>(
-        u0, up, window, window_penalty, mode_beg, mode_end, algParams);
+        u0, up, window, window_penalty, penalty, mode_beg, mode_end, algParams);
     else
       itp = new Impl::GCP_SGD_Iter<ExecSpace,LossFunction>(
-        u0, up, window, window_penalty, mode_beg, mode_end, algParams);
+        u0, up, window, window_penalty, penalty, mode_beg, mode_end, algParams);
     Impl::GCP_SGD_Iter<ExecSpace,LossFunction>& it = *itp;
 
     // Get vector/Ktensor for current solution (this is a view of the data)
@@ -272,7 +274,8 @@ namespace Genten {
     ttb_real fit = 0.0;
     ttb_real x_norm = 0.0;
     timer.start(timer_fest);
-    sampler->value(ut, up, window, window_penalty, loss_func, fest, ften);
+    sampler->value(ut, up, window, window_penalty, penalty, loss_func, fest,
+                   ften);
     if (compute_fit) {
       x_norm = X.norm();
       ttb_real u_norm = u.normFsq();
@@ -308,7 +311,8 @@ namespace Genten {
 
       // compute objective estimate
       timer.start(timer_fest);
-      sampler->value(ut, up, window, window_penalty, loss_func, fest, ften);
+      sampler->value(ut, up, window, window_penalty, penalty, loss_func, fest,
+                     ften);
       if (compute_fit) {
         ttb_real u_norm = u.normFsq();
         ttb_real dot = innerprod(X, ut);
@@ -409,7 +413,8 @@ namespace Genten {
     u0.distribute();
 
     GCPSGD<TensorT,ExecSpace,LossFunction> gcpsgd(u0, loss_func, algParams);
-    gcpsgd.solve(X, u0, numEpochs, fest, out, true, true, algParams.printitn);
+    gcpsgd.solve(X, u0, ttb_real(0.0),numEpochs, fest, out, true, true,
+                 algParams.printitn);
 
     // Normalize Ktensor u
     u0.normalize(Genten::NormTwo);

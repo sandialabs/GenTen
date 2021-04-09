@@ -96,7 +96,8 @@ Genten::AlgParams::AlgParams() :
   window_method(Genten::GCP_Streaming_Window_Method::default_type),
   window_size(0),
   window_weight(1.0),
-  window_penalty(0.0)
+  window_penalty(0.0),
+  factor_penalty(0.0)
 {}
 
 void Genten::AlgParams::parse(std::vector<std::string>& args)
@@ -218,6 +219,8 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   window_weight = parse_ttb_real(args, "--window-weight", window_weight, 0.0,
                                  DOUBLE_MAX);
   window_penalty = parse_ttb_real(args, "--window-penalty", window_penalty, 0.0,
+                                  DOUBLE_MAX);
+  factor_penalty = parse_ttb_real(args, "--factor-penalty", factor_penalty, 0.0,
                                   DOUBLE_MAX);
 }
 
@@ -354,6 +357,8 @@ void Genten::AlgParams::print_help(std::ostream& out)
       << std::endl;
   out << "  --window-penalty    Multiplier for entire streaming window."
       << std::endl;
+  out << "  --factor-penalty    Penalty term on factor matrices."
+      << std::endl;
 }
 
 void Genten::AlgParams::print(std::ostream& out)
@@ -439,9 +444,10 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  window-method = "
       << Genten::GCP_Streaming_Window_Method::names[window_method]
       << std::endl;
-  out << "  window_size = " << window_size << std::endl;
-  out << "  window_weight = " << window_weight << std::endl;
-  out << "  window_penalty = " << window_penalty << std::endl;
+  out << "  window-size = " << window_size << std::endl;
+  out << "  window-weight = " << window_weight << std::endl;
+  out << "  window-penalty = " << window_penalty << std::endl;
+  out << "  factor-penalty = " << factor_penalty << std::endl;
 }
 
 ttb_real

@@ -121,6 +121,7 @@ namespace Genten {
     ttb_indx window_size;                // Number of terms in window
     ttb_real window_weight;              // Multiplier for each window term
     ttb_real window_penalty;             // Multiplier for entire window
+    ttb_real factor_penalty;             // Penalty term on factor matrices
 
     // Constructor initializing values to defaults
     AlgParams();

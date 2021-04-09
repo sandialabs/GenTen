@@ -188,12 +188,12 @@ times(const Genten::FacMatrixT<ExecSpace> & v) const
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-plus(const Genten::FacMatrixT<ExecSpace> & y) const
+plus(const Genten::FacMatrixT<ExecSpace> & y, const ttb_real s) const
 {
   // TODO: check size compatibility, parallelize
   auto data_1d = make_data_1d();
   auto y_data_1d = y.make_data_1d();
-  data_1d.plus(y_data_1d);
+  data_1d.plus(y_data_1d, s);
 }
 
 template <typename ExecSpace>
@@ -1253,6 +1253,34 @@ sum(const UploType uplo) const
   Kokkos::fence();
 
   return sum;
+}
+
+template <typename ExecSpace>
+ttb_real Genten::FacMatrixT<ExecSpace>::
+normFsq() const
+{
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::FacMatrix::normFsq");
+#endif
+
+  const ttb_indx nrows = data.extent(0);
+  const ttb_indx ncols = data.extent(1);
+
+  ttb_real nrm = 0;
+  // for (ttb_indx i=0; i<nrows; ++i)
+  //   for (ttb_indx j=0; j<ncols; ++j)
+  //     nrm += data(i,j)*data(i,j);
+  view_type d = data;
+  Kokkos::parallel_reduce("Genten::FacMatrix::normFsq_kernel",
+                          Kokkos::RangePolicy<ExecSpace>(0,nrows),
+                          KOKKOS_LAMBDA(const ttb_indx i, ttb_real& s)
+  {
+    for (ttb_indx j=0; j<ncols; ++j)
+      s += d(i,j)*d(i,j);
+  }, nrm);
+  Kokkos::fence();
+
+  return nrm;
 }
 
 template <typename ExecSpace>
