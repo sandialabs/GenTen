@@ -155,7 +155,7 @@ int blockInThatDim(int element, small_vector<int> const &range) {
   // largest possible element and range.size() >= 2 we don't have to worry
   // about block_guess + 1 going past the end.
   auto block_guess = 0;
-  while (element > range[block_guess + 1]) {
+  while (element >= range[block_guess + 1]) {
     ++block_guess;
   }
 
