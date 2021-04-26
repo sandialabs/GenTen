@@ -390,7 +390,7 @@ Genten::TensorInfo Genten::read_sptensor_header (std::istream& fIn){
   fIn >> header.nnz;
 
   // TODO actually use this in the import code
-  fIn.seekg(0); // Reset this because it is not yet used by import_sptenor
+  fIn.seekg(0); // Reset this because it is not yet used by import_sptensor
  
   return header;
 }

@@ -60,11 +60,23 @@ int main(int argc, char **argv) {
   return 0;
 }
 
+void check_input() {
+  auto &in = GT::DistContext::input();
+  if (GT::DistContext::rank() == 0) {
+    if (in.get_optional<std::string>("tensor.file") == boost::none){
+      throw std::logic_error{"Input must contain tensor.file"};
+    }
+  }
+}
+
 void real_main() {
   try {
-    GT::TensorBlockSystem<double> tbs(GT::DistContext::input());
+    check_input();
+    GT::TensorBlockSystem<double, Kokkos::OpenMP> tbs(GT::DistContext::input());
+    tbs.allReduceSGD();
   } catch (std::exception &e) {
-    std::cerr << e.what() << "\n";
-    std::abort();
+    auto rank = GT::DistContext::rank();
+    std::cerr << "Rank: " << rank << " " << e.what() << "\n";
+    MPI_Abort(GT::DistContext::commWorld(), 0);
   }
 }

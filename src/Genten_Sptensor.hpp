@@ -214,6 +214,9 @@ public:
   KOKKOS_INLINE_FUNCTION
   vals_view_type getValues() const { return values.values(); }
 
+  KOKKOS_INLINE_FUNCTION
+  ArrayT<ExecSpace> const& getValArray() const { return values; }
+
   // Return reference to n-th subscript of i-th nonzero
   template <typename IType, typename NType>
   KOKKOS_INLINE_FUNCTION

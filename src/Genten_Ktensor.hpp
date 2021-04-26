@@ -233,6 +233,12 @@ public:
     return data;
   }
 
+  KOKKOS_INLINE_FUNCTION
+  FacMatArrayT<ExecSpace> & factors() 
+  {
+    return data;
+  }
+
   // Set a factor matrix
   void set_factor(const ttb_indx i, const FacMatrixT<ExecSpace>& src) const
   {
