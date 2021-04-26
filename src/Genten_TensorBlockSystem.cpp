@@ -39,9 +39,27 @@
 //@HEADER
 
 #include "Genten_TensorBlockSystem.hpp"
+#include <string>
 
 namespace Genten {
 namespace detail {
+
+bool fileFormatIsBinary(std::string const &file_name) {
+  std::ifstream tensor_file(file_name, std::ios::binary);
+  std::string header;
+  header.resize(4);
+  try {
+    tensor_file.read(&header[0], 4);
+  } catch (...) {
+    return false;
+  }
+
+  if (header == "sptn") {
+    return true;
+  }
+
+  return false;
+}
 
 small_vector<int> singleDimMediumGrainBlocking(int ModeLength,
                                                int ProcsInMode) {
@@ -73,6 +91,7 @@ small_vector<int> singleDimMediumGrainBlocking(int ModeLength,
 
   return Range;
 }
+
 std::vector<small_vector<int>>
 generateMediumGrainBlocking(std::vector<int> ModeLengths,
                             small_vector<int> const &ProcGridSizes) {
@@ -120,25 +139,35 @@ std::vector<TDatatype> distributeTensorToVectors(std::ifstream &ifs,
 
     std::vector<MPI_Request> requests(nprocs - 1);
     std::vector<MPI_Status> statuses(nprocs - 1);
+    auto total_sent = 0;
     for (auto i = 1; i < nprocs; ++i) {
       // Size to sent to rank i
-      const auto nelements = who_gets_what[i] - who_gets_what[i - 1];
+      const auto nelements = who_gets_what[i + 1] - who_gets_what[i];
       const auto nbytes = nelements * dt_size;
+      total_sent += nelements;
 
-      const auto index_of_first_element = who_gets_what[i - 1];
+      const auto index_of_first_element = who_gets_what[i];
       MPI_Isend(Tvec.data() + index_of_first_element, nbytes, MPI_BYTE, i, i,
                 comm, &requests[i - 1]);
     }
     MPI_Waitall(requests.size(), requests.data(), statuses.data());
+    auto total_before = Tvec.size();
     auto begin = Tvec.begin();
     std::advance(begin, who_gets_what[1]); // wgw[0] == 0 always
     Tvec.erase(begin, Tvec.end());
     Tvec.shrink_to_fit(); // Yay now I only have rank 0 data
+
+    auto total_after = Tvec.size() + total_sent;
+    if (total_after != total_before) {
+      throw std::logic_error(
+          "The number of elements after sending and shrinking did not match "
+          "the input number of elements.");
+    }
   } else {
-    const auto nelements = who_gets_what[rank] - who_gets_what[rank - 1];
+    const auto nelements = who_gets_what[rank + 1] - who_gets_what[rank];
     Tvec.resize(nelements);
     const auto nbytes = nelements * dt_size;
-    MPI_Recv(Tvec.data(), nbytes, MPI_BYTE, 0, rank, comm, nullptr);
+    MPI_Recv(Tvec.data(), nbytes, MPI_BYTE, 0, rank, comm, MPI_STATUS_IGNORE);
   }
 
   return Tvec;

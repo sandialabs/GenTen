@@ -42,12 +42,19 @@
 
 #include "Genten_Boost.hpp"
 #include "Genten_DistContext.hpp"
+#include "Genten_Driver.hpp"
+#include "Genten_GCP_LossFunctions.hpp"
+#include "Genten_GCP_SGD_Iter.hpp"
+#include "Genten_GCP_SemiStratifiedSampler.hpp"
+#include "Genten_GCP_ValueKernels.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_Pmap.hpp"
 #include "Genten_Sptensor.hpp"
 
+#include <cmath>
 #include <fstream>
 #include <memory>
+#include <random>
 
 namespace Genten {
 
@@ -55,22 +62,6 @@ struct RangePair {
   int64_t lower;
   int64_t upper;
 };
-
-template <typename ExecSpace>
-auto rangesToIndexArray(small_vector<RangePair> const &ranges) {
-  IndxArrayT<ExecSpace> outArray(ranges.size());
-  auto mirrorArray = create_mirror_view(outArray);
-
-  auto i = 0;
-  for (auto const &rp : ranges) {
-    const auto size = rp.upper - rp.lower;
-    mirrorArray[i] = size;
-    ++i;
-  }
-
-  deep_copy(outArray, mirrorArray);
-  return outArray;
-}
 
 // Class to hold a block of the tensor and the factor matrix blocks that can
 // be used to generate a representation of the tensor block, if the entire
@@ -81,91 +72,39 @@ class TensorBlockSystem {
                 "DistSpSystem Requires that the element type be a floating "
                 "point type.");
 
-  bool fileFormatIsBinary(std::string const &file_name) {
-    std::ifstream tensor_file(file_name, std::ios::binary);
-    std::string header;
-    header.resize(4);
-    try {
-      tensor_file.read(&header[0], 4);
-    } catch (...) {
-      return false;
-    }
-
-    if (header == "sptn") {
-      return true;
-    }
-
-    return false;
-  }
-
+  /// The normal initialization method, inializes in parallel
   void init_distributed(std::string const &file_name, int indexbase,
                         int tensor_rank);
 
   // Initializaton for creating the tensor block system all on all ranks
-  // this will hammer the file in a bad way if it's called on every rank
-  void init_independent(std::string const &file_name, int indexbase, int rank) {
-    if (fileFormatIsBinary(file_name)) {
-      throw std::logic_error(
-          "I can't quite read the binary format just yet, sorry.");
-    }
+  void init_independent(std::string const &file_name, int indexbase, int rank);
 
-    typename SptensorT<ExecSpace>::HostMirror sp_tensor_host;
-    import_sptensor(file_name, sp_tensor_host, indexbase, false, false);
-    std::cout << "The size of the sp_tensor is: " << sp_tensor_host.size()
-              << "\n";
-    sp_tensor_ = create_mirror_view(ExecSpace{}, sp_tensor_host);
-    deep_copy(sp_tensor_, sp_tensor_host);
+  /// Initialize the factor matrices
+  void init_factors();
 
-    auto const &index_view = sp_tensor_host.size();
-    const auto ndims = index_view.size();
-    range_.reserve(ndims);
-    for (auto i = 0; i < ndims; ++i) {
-      range_.push_back({0ll, int64_t(index_view[i])});
-    }
-
-    Kfac_ =
-        KtensorT<ExecSpace>(rank, ndims, rangesToIndexArray<ExecSpace>(range_));
-    Kfac_.setMatrices(0.0);
-  }
+  void allReduceGradient(KtensorT<ExecSpace> &g);
 
 public:
-  // This constructor is for testing and experimentation in the case that the
-  // entire tensor is to be fit into a single block.  Doing that is a really
-  // useful sanity check.
-  TensorBlockSystem(ptree const &tree) {
-    const auto file_name = tree.get<std::string>("tensor.file");
-    const auto indexbase = tree.get<int>("tensor.indexbase", 0);
-    const auto rank = tree.get<int>("tensor.rank", 5);
+  TensorBlockSystem(ptree const &tree);
+  ElementType getTensorNorm() const;
 
-    const auto init_strategy =
-        tree.get<std::string>("tensor.initialization", "distributed");
-    if (init_strategy == "distributed") {
-      init_distributed(file_name, indexbase, rank);
-    } else if (init_strategy == "replicated") {
-      // TODO This should really do single then bcast
-      init_independent(file_name, indexbase, rank);
-    } else if (init_strategy == "single") {
-      if (DistContext::rank() == 0) {
-        init_independent(file_name, indexbase, rank);
-      }
-    } else {
-      throw std::logic_error("Tensor initialization must be one of of "
-                             "{distributed, replicated, or single}\n");
-    }
-  }
-
-  // Factor matrices in the ith dimension
-  FacMatrixT<ExecSpace> const &factor(int i) const { return Kfac_[i]; }
-  FacMatrixT<ExecSpace> &factor(int i) { return Kfac_[i]; }
+  /// Runs allReduceSGD reporting back an error estimate
+  ElementType allReduceSGD();
 
 private:
+  ptree input_;
   small_vector<RangePair> range_;
   SptensorT<ExecSpace> sp_tensor_;
   KtensorT<ExecSpace> Kfac_;
   std::unique_ptr<ProcessorMap> pmap_ptr_;
 };
 
+// Helper declerations
 namespace detail {
+bool fileFormatIsBinary(std::string const &file_name);
+
+template <typename ExecSpace>
+auto rangesToIndexArray(small_vector<RangePair> const &ranges);
 small_vector<int> singleDimMediumGrainBlocking(int ModeLength, int ProcsInMode);
 
 std::vector<small_vector<int>>
@@ -186,13 +125,68 @@ std::vector<TDatatype> redistributeTensor(
     std::vector<TDatatype> const &Tvec, std::vector<int> const &TensorDims,
     std::vector<small_vector<int>> const &blocking, ProcessorMap const &pmap);
 
+template <typename ExecSpace>
+void printRandomElements(SptensorT<ExecSpace> const &tensor,
+                         int num_elements_per_rank, ProcessorMap const &pmap,
+                         small_vector<RangePair> const &ranges);
 } // namespace detail
+
+template <typename ElementType, typename ExecSpace>
+TensorBlockSystem<ElementType, ExecSpace>::TensorBlockSystem(ptree const &tree)
+    : input_(tree.get_child("tensor")) {
+  const auto file_name = input_.get<std::string>("file");
+  const auto indexbase = input_.get<int>("indexbase", 0);
+  const auto rank = input_.get<int>("rank", 5);
+
+  const auto init_strategy =
+      input_.get<std::string>("tensor.initialization", "distributed");
+  if (init_strategy == "distributed") {
+    init_distributed(file_name, indexbase, rank);
+  } else if (init_strategy == "replicated") {
+    // TODO This should really do single then bcast
+    init_independent(file_name, indexbase, rank);
+  } else if (init_strategy == "single") {
+    if (DistContext::rank() == 0) {
+      init_independent(file_name, indexbase, rank);
+    }
+  } else {
+    throw std::logic_error("Tensor initialization must be one of of "
+                           "{distributed, replicated, or single}\n");
+  }
+}
+
+template <typename ElementType, typename ExecSpace>
+void TensorBlockSystem<ElementType, ExecSpace>::init_independent(
+    std::string const &file_name, int indexbase, int rank) {
+  if (detail::fileFormatIsBinary(file_name)) {
+    throw std::logic_error(
+        "I can't quite read the binary format just yet, sorry.");
+  }
+
+  typename SptensorT<ExecSpace>::HostMirror sp_tensor_host;
+  import_sptensor(file_name, sp_tensor_host, indexbase, false, false);
+  std::cout << "The size of the sp_tensor is: " << sp_tensor_host.size()
+            << "\n";
+  sp_tensor_ = create_mirror_view(ExecSpace{}, sp_tensor_host);
+  deep_copy(sp_tensor_, sp_tensor_host);
+
+  auto const &index_view = sp_tensor_host.size();
+  const auto ndims = index_view.size();
+  range_.reserve(ndims);
+  for (auto i = 0; i < ndims; ++i) {
+    range_.push_back({0ll, int64_t(index_view[i])});
+  }
+
+  Kfac_ = KtensorT<ExecSpace>(rank, ndims,
+                              detail::rangesToIndexArray<ExecSpace>(range_));
+  Kfac_.setMatrices(0.0);
+}
 
 // We'll put this down here to save some space
 template <typename ElementType, typename ExecSpace>
 void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
     std::string const &file_name, int indexbase, int tensor_rank) {
-  if (fileFormatIsBinary(file_name)) {
+  if (detail::fileFormatIsBinary(file_name)) {
     throw std::logic_error(
         "I can't quite read the binary format just yet, sorry.");
   }
@@ -235,9 +229,295 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
     auto data = distributedData[i];
     values[i] = data.val;
     subs[i] = std::vector<ttb_indx>(data.coo, data.coo + ndims);
+    for (auto j = 0; j < ndims; ++j) {
+      subs[i][j] -= range_[j].lower;
+    }
   }
 
   sp_tensor_ = SptensorT<ExecSpace>(indices, values, subs);
+  detail::printRandomElements(sp_tensor_, 3, *pmap_ptr_, range_);
+  init_factors();
 }
+
+template <typename ElementType, typename ExecSpace>
+ElementType TensorBlockSystem<ElementType, ExecSpace>::getTensorNorm() const {
+  auto const &values = sp_tensor_.getValArray();
+  double norm2 = values.dot(values);
+  MPI_Allreduce(MPI_IN_PLACE, &norm2, 1, MPI_DOUBLE, MPI_SUM,
+                pmap_ptr_->gridComm());
+  return std::sqrt(ElementType(norm2));
+}
+
+// Try something a bit silly, let each node do a really simple decomp like it
+// is the only one in existance this will give us a embarrassinglly parallel
+// initial guess which hopefully isn't actually all that bad!
+template <typename ElementType, typename ExecSpace>
+void TensorBlockSystem<ElementType, ExecSpace>::init_factors() {
+  Genten::AlgParams algParams;
+  {
+    algParams.rank = input_.get<int>("rank", 5);
+    algParams.method = Solver_Method::GCP_SGD;
+    algParams.maxiters = 20;
+    algParams.num_samples_nonzeros_grad = 20;
+    algParams.num_samples_zeros_grad = 20;
+    algParams.epoch_iters = 15;
+    algParams.step_type = GCP_Step::AdaGrad;
+    algParams.mttkrp_all_method = MTTKRP_All_Method::Atomic;
+    algParams.fuse = true;
+    algParams.sampling_type = GCP_Sampling::SemiStratified;
+  }
+
+  const auto ndims = sp_tensor_.ndims();
+
+  // TODO AllReduce
+  const auto norm_x = getTensorNorm();
+
+  // Init KFac_ randomly on each node
+  Kfac_ = KtensorT<ExecSpace>(algParams.rank, ndims, sp_tensor_.size());
+  Genten::RandomMT cRMT(42);
+  Kfac_.setWeights(1.0); // Matlab cp_als always sets the weights to one.
+  Kfac_.setMatricesScatter(false, false, cRMT);
+
+  // TODO AllReduce, this one specifically is pretty tricky
+  auto norm_k = std::sqrt(Kfac_.normFsq());
+  Kfac_.weights().times(norm_x / norm_k);
+  Kfac_.distribute();
+
+  std::stringstream rank_data;
+  auto result = Genten::driver(sp_tensor_, Kfac_, algParams, rank_data);
+  deep_copy(Kfac_, result);
+  if (pmap_ptr_->gridSize() == 1) {
+    std::cout << rank_data.str() << std::endl;
+  }
+
+  if (pmap_ptr_->gridSize() > 1) {
+    allReduceGradient(Kfac_);
+  }
+}
+
+template <typename ElementType, typename ExecSpace>
+void TensorBlockSystem<ElementType, ExecSpace>::allReduceGradient(
+    KtensorT<ExecSpace> &g) {
+  // Do the AllReduce for each gradient
+  const auto ndims = sp_tensor_.ndims();
+  auto const &gridSizes = pmap_ptr_->subCommSizes();
+  for (auto i = 0; i < ndims; ++i) {
+    if (gridSizes[i] == 1) {
+      // No need to AllReduce when one rank owns all the data
+      continue;
+    }
+
+    auto subComm = pmap_ptr_->subComm(i);
+    auto subRank = pmap_ptr_->subCommRank(i);
+
+    FacMatrixT<ExecSpace> const &fac_mat = g.factors().values()[i];
+    auto fac_ptr = fac_mat.rowptr(0);
+    auto fac_size = fac_mat.nRows() * fac_mat.nCols();
+
+    MPI_Allreduce(MPI_IN_PLACE, fac_ptr, fac_size, MPI_DOUBLE, MPI_SUM,
+                  subComm);
+  }
+
+  for (auto i = 0; i < ndims; ++i) {
+    FacMatrixT<ExecSpace> const &fac_mat = g.factors().values()[i];
+    auto fac_ptr = fac_mat.rowptr(0);
+    auto fac_size = fac_mat.nRows() * fac_mat.nCols();
+    for (auto j = 0; j < fac_size; ++j) {
+      fac_ptr[j] /= double(gridSizes[i]);
+    }
+  }
+}
+
+template <typename ElementType, typename ExecSpace>
+ElementType TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD() {
+  AlgParams algParams;
+  {
+    algParams.maxiters = input_.get<int>("max_epochs", 1000);
+    algParams.epoch_iters = input_.get<int>("epoch_size", 1000);
+    algParams.num_samples_nonzeros_grad = input_.get<int>("batch_size_nz", 128);
+    algParams.num_samples_zeros_grad =
+        input_.get<int>("batch_size_zero", algParams.num_samples_nonzeros_grad);
+    algParams.fuse = true;
+    algParams.mttkrp_all_method = MTTKRP_All_Method::Atomic;
+    // Uses defaults
+    // algParams.w_f_nz;
+    // algParams.w_f_z;
+    // algParams.w_g_nz;
+    // algParams.w_g_z;
+  }
+  algParams.fixup<ExecSpace>(std::cout);
+
+  const auto min_lr = input_.get<double>("min_lr", 1e-14);
+  const auto max_lr = input_.get<double>("max_lr", 1e-9);
+  const auto Ti = input_.get<int>("Ti", 100);
+  // Adjust for the size of the MPI grid to keep batch size similar
+  const auto nprocs = pmap_ptr_->gridSize();
+  algParams.num_samples_nonzeros_grad /= nprocs;
+  algParams.num_samples_zeros_grad /= nprocs;
+  if (pmap_ptr_->gridRank() == 0) {
+    std::cout << "Iters/epoch:      " << algParams.epoch_iters << "\n";
+    std::cout << "batch size nz:    " << algParams.num_samples_nonzeros_grad
+              << "\n";
+    std::cout << "batch size zeros: " << algParams.num_samples_zeros_grad
+              << "\n";
+    auto total_batch =
+        algParams.num_samples_nonzeros_grad + algParams.num_samples_zeros_grad;
+    std::cout << "batch size total: " << total_batch << "\n";
+    std::cout << "NZ Samples / epoch:  "
+              << algParams.num_samples_nonzeros_grad * algParams.epoch_iters
+              << "\n";
+    std::cout << "Min LR: " << min_lr << "\n";
+    std::cout << "Max LR: " << max_lr << "\n";
+    std::cout << "Ti: " << Ti << std::endl;
+  }
+  MPI_Barrier(pmap_ptr_->gridComm());
+
+  auto loss = GaussianLossFunction(1e-10);
+
+  Impl::SGDStep<ExecSpace, GaussianLossFunction> stepper;
+
+  using VectorType = GCP::KokkosVector<ExecSpace>;
+  auto u = VectorType(Kfac_);
+  u.copyFromKtensor(Kfac_);
+  KtensorT<ExecSpace> ut = u.getKtensor();
+
+  VectorType g = u.clone(); // Gradient Ktensor
+  decltype(Kfac_) GFac = g.getKtensor();
+
+  auto sampler = SemiStratifiedSampler<ExecSpace, GaussianLossFunction>(
+      sp_tensor_, algParams);
+
+  RandomMT rng(42);
+  Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(rng.genrnd_int32());
+  sampler.initialize(rand_pool, std::cout);
+
+  SptensorT<ExecSpace> X_val;
+  ArrayT<ExecSpace> w_val;
+  sampler.sampleTensor(false, ut, loss, X_val, w_val);
+
+  // Stuff for the timer that we can'g avoid providing
+  SystemTimer timer;
+  int tnzs = 0;
+  int tzs = 0;
+
+  // Fit stuff
+  auto fest = Impl::gcp_value(X_val, ut, w_val, loss);
+  double x_norm = sp_tensor_.norm();
+  double u_norm = std::sqrt(u.normFsq());
+  double dot = innerprod(sp_tensor_, ut);
+  auto fit =
+      1.0 - std::sqrt(x_norm * x_norm + u_norm * u_norm - 2.0 * dot) / x_norm;
+
+  double epoch_lr = min_lr;
+  bool warming_up = true;
+  auto Tcur = 0;
+  for (auto e = 0; e < algParams.maxiters; ++e) { // Epochs
+    if (!warming_up) {
+      epoch_lr = min_lr + 0.5 * (max_lr - min_lr) *
+                              (1 + std::cos(double(Tcur) / Ti * M_PI));
+      ++Tcur;
+      if (Tcur == Ti) {
+        Tcur = 0;
+      }
+    } else {
+      epoch_lr = min_lr + 0.5 * (max_lr - min_lr) *
+                              (1 + std::cos(double(Tcur + Ti) / Ti * M_PI));
+      ++Tcur;
+      if (Tcur == Ti) {
+        warming_up = false;
+        Tcur = 0;
+      }
+    }
+    stepper.setStep(epoch_lr);
+    if (pmap_ptr_->gridRank() == 0) {
+      std::cout << "Epoch LR: " << epoch_lr << std::endl;
+    }
+    for (auto i = 0; i < algParams.epoch_iters; ++i) {
+      g.zero();
+      sampler.fusedGradient(ut, loss, GFac, timer, tnzs, tzs);
+      if (pmap_ptr_->gridSize() > 1) {
+        allReduceGradient(GFac);
+      }
+      stepper.eval(g, u);
+    }
+    if (pmap_ptr_->gridRank() == 0) {
+      x_norm = sp_tensor_.norm();
+      u_norm = std::sqrt(u.normFsq());
+      dot = innerprod(sp_tensor_, ut);
+      fit = 1.0 -
+            std::sqrt(x_norm * x_norm + u_norm * u_norm - 2.0 * dot) / x_norm;
+      fest = Impl::gcp_value(X_val, ut, w_val, loss);
+      std::cout << "\tLocal Fit(" << e << "): " << fit << ", " << fest
+                << std::endl;
+    }
+  }
+
+  return -1.0;
+}
+
+namespace detail {
+
+template <typename ExecSpace>
+void printRandomElements(SptensorT<ExecSpace> const &tensor,
+                         int num_elements_per_rank, ProcessorMap const &pmap,
+                         small_vector<RangePair> const &ranges) {
+  static_assert(
+      std::is_same<ExecSpace, Kokkos::DefaultHostExecutionSpace>::value,
+      "To print random elements we want a host tensor.");
+
+  const auto size = pmap.gridSize();
+  const auto rank = pmap.gridRank();
+  auto gComm = pmap.gridComm();
+
+  const auto nnz = tensor.nnz();
+  std::uniform_int_distribution<> dist(0, nnz - 1);
+  std::mt19937_64 gen(std::random_device{}());
+
+  for (auto i = 0; i < size; ++i) {
+    if (rank != i) {
+      continue;
+    }
+    std::cout << "Rank: " << rank << " ranges:[";
+    for (auto j = 0; j < ranges.size(); ++j) {
+      std::cout << "{" << ranges[j].lower << ", " << ranges[j].upper << "}";
+      if (j < ranges.size() - 1) {
+        std::cout << ", ";
+      }
+    }
+    std::cout << "]\n";
+    for (auto i = 0; i < num_elements_per_rank; ++i) {
+      auto rand_idx = dist(gen);
+      auto indices = tensor.getSubscripts(rand_idx);
+      auto value = tensor.value(rand_idx);
+
+      std::cout << "\t";
+      for (auto j = 0; j < tensor.ndims(); ++j) {
+        std::cout << indices[j] << " ";
+      }
+      std::cout << value << "\n";
+    }
+    std::cout << std::endl;
+    MPI_Barrier(gComm);
+    sleep(1);
+  }
+}
+
+template <typename ExecSpace>
+auto rangesToIndexArray(small_vector<RangePair> const &ranges) {
+  IndxArrayT<ExecSpace> outArray(ranges.size());
+  auto mirrorArray = create_mirror_view(outArray);
+
+  auto i = 0;
+  for (auto const &rp : ranges) {
+    const auto size = rp.upper - rp.lower;
+    mirrorArray[i] = size;
+    ++i;
+  }
+
+  deep_copy(outArray, mirrorArray);
+  return outArray;
+}
+
+} // namespace detail
 
 } // namespace Genten
