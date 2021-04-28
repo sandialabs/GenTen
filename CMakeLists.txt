@@ -39,8 +39,8 @@
 #@HEADER
 
 
-#---- Specify the CMake version required.  Kokkos requires 3.10
-CMAKE_MINIMUM_REQUIRED (VERSION 3.10)
+#---- Specify the CMake version required.  Kokkos requires 3.16
+CMAKE_MINIMUM_REQUIRED (VERSION 3.16)
 
 #---- Declaring the project name will define ${Genten_SOURCE_DIR} to be
 #---- the path to this source file, and ${Genten_BINARY_DIR} to be the path
