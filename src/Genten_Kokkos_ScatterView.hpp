@@ -453,9 +453,9 @@ public:
         typename dest_type::array_layout,
         Layout>::value,
         "ScatterView contribute destination has different layout");
-    static_assert(Kokkos::Impl::VerifyExecutionCanAccessMemorySpace<
-        typename ExecSpace::memory_space,
-        typename dest_type::memory_space>::value,
+    static_assert(Kokkos::Impl::SpaceAccessibility<
+        ExecSpace,
+        typename dest_type::memory_space>::accessible,
         "ScatterView contribute destination memory space not accessible");
     if (dest.data() == internal_view.data()) return;
     Kokkos::Impl::Experimental::ReduceDuplicates<internal_view_type, dest_type, Op>(
@@ -643,9 +643,9 @@ public:
         typename dest_type::array_layout,
         Kokkos::LayoutRight>::value,
         "ScatterView deep_copy destination has different layout");
-    static_assert(Kokkos::Impl::VerifyExecutionCanAccessMemorySpace<
-        typename ExecSpace::memory_space,
-        typename dest_type::memory_space>::value,
+    static_assert(Kokkos::Impl::SpaceAccessibility<
+        ExecSpace,
+        typename dest_type::memory_space>::accessible,
         "ScatterView deep_copy destination memory space not accessible");
     bool is_equal = (dest.data() == internal_view.data());
     size_t start = is_equal ? 1 : 0;
@@ -790,9 +790,9 @@ public:
         typename dest_type::array_layout,
         Kokkos::LayoutLeft>::value,
         "ScatterView deep_copy destination has different layout");
-    static_assert(Kokkos::Impl::VerifyExecutionCanAccessMemorySpace<
-        typename ExecSpace::memory_space,
-        typename dest_type::memory_space>::value,
+    static_assert(Kokkos::Impl::SpaceAccessibility<
+        ExecSpace,
+        typename dest_type::memory_space>::accessible,
         "ScatterView deep_copy destination memory space not accessible");
     auto extent = internal_view.extent(
         internal_view_type::rank - 1);
