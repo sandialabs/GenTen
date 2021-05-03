@@ -214,6 +214,122 @@ namespace Genten {
 
     };
 
+    template <typename ExecSpace, typename LossFunction>
+    class SGDMomentumStep : public GCP_SGD_Step<ExecSpace,LossFunction> {
+    public:
+      typedef GCP_SGD_Step<ExecSpace,LossFunction> BaseType;
+      typedef typename BaseType::VectorType VectorType;
+
+      SGDMomentumStep(AlgParams const& algParams, VectorType const& u):
+        v_scale_(0.9), 
+        v_(u.clone()),
+        vt_(v_.getKtensor())
+      {
+        v_.zero();
+      }
+
+      virtual ~SGDMomentumStep() {}
+
+      virtual void setStep(const ttb_real s) { step_ = s; }
+
+      virtual ttb_real getStep() const { return step_; }
+
+      virtual void update() {}
+
+      virtual void reset() {}
+
+      virtual void setPassed() {}
+
+      virtual void setFailed() {
+        v_.zero();
+      }
+
+      virtual void setNumSamples(const ttb_indx num_samples) {}
+
+      virtual void eval(const VectorType& g, VectorType& u) const
+      {
+        const ttb_real sgd_step = step_;
+        auto uv = u.getView();
+        auto gv = g.getView();
+        auto vv = v_.getView();
+        u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
+        {
+          vv(i) = v_scale_ * vv(i) - sgd_step * gv(i);
+          uv(i) += vv(i);
+        });
+      }
+
+      template <typename TeamMember>
+      KOKKOS_INLINE_FUNCTION
+      void update_async(const ttb_indx num_iters, const TeamMember& team) const {
+        Genten::error("SGDMomentumStep is not tested in aysnc code.");
+      }
+
+      KOKKOS_INLINE_FUNCTION
+      void eval_async(const unsigned dim, const ttb_indx row,
+                      const unsigned col, const ttb_real g,
+                      const KtensorT<ExecSpace>& u) const
+      {
+        Genten::error("SGDMomentumStep is not tested in aysnc code.");
+      }
+
+    protected:
+      ttb_real v_scale_;
+      ttb_real step_;
+      VectorType v_;
+      KtensorT<ExecSpace> vt_;
+    };
+
+
+    // Read about NAG at 
+    // https://www.cs.utoronto.ca/~ilya/pubs/ilya_sutskever_phd_thesis.pdf page
+    // 74
+    //
+    // TODO Give this a way to feed the velocity vector back into the gradient
+    // calculation
+    template <typename ExecSpace, typename LossFunction>
+    class NAGStep : private SGDMomentumStep<ExecSpace, LossFunction> {
+    public:
+      typedef GCP_SGD_Step<ExecSpace,LossFunction> BaseType;
+      typedef typename BaseType::VectorType VectorType;
+
+      NAGStep(AlgParams const& algParams, VectorType const& u): 
+        SGDMomentumStep<ExecSpace, LossFunction>(algParams, u) {
+          Genten::error("NAGStep needs to be finished since it requires"
+              "\"sharing\" the velocity with the gradient calculator.");
+        }
+
+      virtual ~NAGStep() {}
+
+      virtual void eval(const VectorType& g, VectorType& u) const
+      {
+        const ttb_real sgd_step = this->step_;
+        const ttb_real v_scale = this->v_scale_;
+        auto uv = u.getView();
+        auto gv = g.getView();
+        auto vv = this->v_.getView();
+        u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
+        {
+          vv(i) = v_scale * vv(i) - sgd_step * gv(i);
+          uv(i) += vv(i);
+        });
+      }
+
+      template <typename TeamMember>
+      KOKKOS_INLINE_FUNCTION
+      void update_async(const ttb_indx num_iters, const TeamMember& team) const {
+        Genten::error("NAGStep is not tested in aysnc code.");
+      }
+
+      KOKKOS_INLINE_FUNCTION
+      void eval_async(const unsigned dim, const ttb_indx row,
+                      const unsigned col, const ttb_real g,
+                      const KtensorT<ExecSpace>& u) const
+      {
+        Genten::error("NAGStep is not tested in aysnc code.");
+      }
+    };
+
     struct AdamOp {
       ttb_real beta = 0.0;
 

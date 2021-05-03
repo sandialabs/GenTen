@@ -103,6 +103,9 @@ namespace Genten {
       if (weight_zeros_grad < 0.0)
         weight_zeros_grad =
           ttb_real(tsz) / ttb_real(num_samples_zeros_grad);
+
+      nz_percent = double(num_samples_nonzeros_grad * algParams.epoch_iters) /
+        double(nnz) * 100.0;
     }
 
     virtual ~SemiStratifiedSampler() {}
@@ -146,8 +149,10 @@ namespace Genten {
           << " nonzero and " << num_samples_zeros_value << " zero samples\n"
           << "Gradient sampler:  semi-stratified with "
            << num_samples_nonzeros_grad
-          << " nonzero and " << num_samples_zeros_grad << " zero samples"
-          << std::endl;
+          << " nonzero and " << num_samples_zeros_grad << " zero samples\n"
+          << "Nonzeros per epoch: " << num_samples_nonzeros_grad * algParams.epoch_iters << "\n"
+          << "Nonzeros per epoch percent: " << nz_percent << "\n";
+          out << std::endl;
     }
 
     virtual void sampleTensor(const bool gradient,
@@ -250,6 +255,7 @@ namespace Genten {
     ttb_real weight_zeros_value;
     ttb_real weight_nonzeros_grad;
     ttb_real weight_zeros_grad;
+    ttb_real nz_percent;
     map_type hash_map;
   };
 

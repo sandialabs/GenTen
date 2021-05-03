@@ -195,8 +195,12 @@ namespace Genten {
         stepper = new AdaGradStep<ExecSpace,LossFunction>(algParams, u);
       else if (algParams.step_type == GCP_Step::AMSGrad)
         stepper = new AMSGradStep<ExecSpace,LossFunction>(algParams, u);
-      else
+      else if (algParams.step_type == GCP_Step::SGDMomentum)
+        stepper = new SGDMomentumStep<ExecSpace,LossFunction>(algParams, u);
+      else {
         stepper = new SGDStep<ExecSpace,LossFunction>();
+        std::cout << "Using SGD\n";
+      }
 
       // Initialize sampler (sorting, hashing, ...)
       timer.start(timer_sort);
@@ -219,7 +223,7 @@ namespace Genten {
       fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
       if (compute_fit) {
         x_norm = X.norm();
-        ttb_real u_norm = u.normFsq();
+        ttb_real u_norm = sqrt(u.normFsq());
         ttb_real dot = innerprod(X, ut);
         fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
       }
@@ -239,13 +243,48 @@ namespace Genten {
         out << std::endl;
       }
 
+      struct Annealer {
+        ttb_real last_returned = 0.0; 
+        ttb_real min_lr;
+        ttb_real max_lr = 1e-10;
+        int epoch_internal = 0;
+
+        Annealer(AlgParams const& algParams): 
+          min_lr(algParams.anneal_min_lr),
+          max_lr(algParams.anneal_max_lr)
+        {}
+
+        ttb_real operator()(int epoch){
+           if(epoch_internal <= 20){
+             last_returned = min_lr + 0.5 * (max_lr - min_lr) * (1 +
+                 std::cos(double(epoch_internal + 20)/20 * M_PI)); 
+           } else {
+              last_returned = min_lr + 0.5 * (max_lr - min_lr) * (1 +
+                  std::cos(double(epoch_internal % 20)/20 * M_PI)); 
+           }
+           ++epoch_internal;
+           return last_returned;
+        }
+
+        void failed(){
+          max_lr = 0.1 * last_returned;
+          epoch_internal = 0;
+        } 
+
+        void success(){ }
+      } annealer(algParams);
+
       // SGD epoch loop
       ttb_real nuc = 1.0;
       ttb_indx nfails = 0;
       ttb_indx total_iters = 0;
       for (numEpochs=0; numEpochs<maxEpochs; ++numEpochs) {
         // Gradient step size
-        stepper->setStep(nuc*rate);
+        if(algParams.anneal){
+          stepper->setStep(annealer(numEpochs));
+        } else {
+          stepper->setStep(nuc*rate);
+        }
 
         // Epoch iterations
         it.run(X, loss_func, *sampler, *stepper, total_iters);
@@ -254,14 +293,17 @@ namespace Genten {
         timer.start(timer_fest);
         fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
         if (compute_fit) {
-          ttb_real u_norm = u.normFsq();
+          ttb_real u_norm = sqrt(u.normFsq());
           ttb_real dot = innerprod(X, ut);
           fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
         }
         timer.stop(timer_fest);
 
         // check convergence
-        const bool failed_epoch = fest > fest_prev || std::isnan(fest);
+        bool failed_epoch = std::abs(fest) > std::abs(fest_prev) || std::isnan(fest);
+        if(compute_fit && failed_epoch){
+          failed_epoch = std::abs(fit) > std::abs(fit_prev);
+        }
 
         if (failed_epoch)
           ++nfails;
@@ -281,9 +323,10 @@ namespace Genten {
           out << ", time = "
               << std::setw(8) << std::setprecision(2) << std::scientific
               << timer.getTotalTime(timer_sgd) << " sec";
-          if (failed_epoch)
+          if (failed_epoch){
             out << ", nfails = " << nfails
-                << " (resetting to solution from last epoch)";
+                << " " << std::abs(fit_prev) - std::abs(fit);
+          }
           out << std::endl;
         }
 
@@ -295,6 +338,7 @@ namespace Genten {
           fest = fest_prev;
           fit = fit_prev;
           stepper->setFailed();
+          annealer.failed();
         }
         else {
           // update previous data
@@ -302,6 +346,7 @@ namespace Genten {
           fest_prev = fest;
           fit_prev = fit;
           stepper->setPassed();
+          annealer.success();
         }
 
         if (nfails > max_fails || fest < tol)

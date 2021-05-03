@@ -90,7 +90,10 @@ Genten::AlgParams::AlgParams() :
   adam_beta1(0.9),    // Defaults taken from ADAM paper
   adam_beta2(0.999),
   adam_eps(1.0e-8),
-  async(false)
+  async(false),
+  anneal(false),
+  anneal_min_lr(1e-14),
+  anneal_max_lr(1e-10)
 {}
 
 void Genten::AlgParams::parse(std::vector<std::string>& args)
@@ -192,6 +195,9 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   adam_beta2 = parse_ttb_real(args, "--adam-beta2", adam_beta2, 0.0, 1.0);
   adam_eps = parse_ttb_real(args, "--adam-eps", adam_eps, 0.0, 1.0);
   async = parse_ttb_bool(args, "--async", "--sync", async);
+  anneal = parse_ttb_bool(args, "--anneal", "--no-anneal", anneal);
+  anneal_min_lr = parse_ttb_real(args, "--anneal-min-lr", anneal_min_lr, 0.0, 1.0);
+  anneal_max_lr = parse_ttb_real(args, "--anneal-max-lr", anneal_max_lr, 0.0, 1.0);
 }
 
 void Genten::AlgParams::print_help(std::ostream& out)
@@ -368,6 +374,11 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  adam-beta2 = " << adam_beta2 << std::endl;
   out << "  adam-eps = " << adam_eps << std::endl;
   out << "  async = " << (async ? "true" : "false") << std::endl;
+  out << "  anneal = " << (anneal ? "true" : "false") << std::endl;
+  if(anneal){
+    out << "  anneal-min-lr = " << anneal_min_lr << std::endl;
+    out << "  anneal-max-lr = " << anneal_max_lr << std::endl;
+  }
 }
 
 ttb_real

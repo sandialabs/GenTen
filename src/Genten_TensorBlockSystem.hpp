@@ -265,6 +265,7 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_factors() {
     algParams.mttkrp_all_method = MTTKRP_All_Method::Atomic;
     algParams.fuse = true;
     algParams.sampling_type = GCP_Sampling::SemiStratified;
+    algParams.compute_fit = true;
   }
 
   const auto ndims = sp_tensor_.ndims();
@@ -374,8 +375,6 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD() {
 
   auto loss = GaussianLossFunction(1e-10);
 
-  Impl::SGDStep<ExecSpace, GaussianLossFunction> stepper;
-
   using VectorType = GCP::KokkosVector<ExecSpace>;
   auto u = VectorType(Kfac_);
   u.copyFromKtensor(Kfac_);
@@ -386,6 +385,10 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD() {
 
   auto sampler = SemiStratifiedSampler<ExecSpace, GaussianLossFunction>(
       sp_tensor_, algParams);
+
+  //Impl::SGDStep<ExecSpace, GaussianLossFunction> stepper;
+  Impl::SGDMomentumStep<ExecSpace, GaussianLossFunction> stepper(algParams,
+                                                                     u);
 
   RandomMT rng(42);
   Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(rng.genrnd_int32());
