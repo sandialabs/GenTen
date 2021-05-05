@@ -221,11 +221,18 @@ namespace Genten {
       ttb_real x_norm = 0.0;
       timer.start(timer_fest);
       fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
-      if (compute_fit) {
+      auto fitter = [&]{
         x_norm = X.norm();
-        ttb_real u_norm = sqrt(u.normFsq());
-        ttb_real dot = innerprod(X, ut);
-        fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
+        const auto x_norm2 = x_norm * x_norm;
+        const auto u_norm2 = ut.normFsq();
+        const auto dot = innerprod(X, ut);
+        const auto numerator = sqrt(x_norm2 + u_norm2 - 2.0 * dot);
+        const auto denom = (x_norm + sqrt(u_norm2));
+        return 1.0 - numerator/denom;
+      };
+
+      if (compute_fit) {
+        fit = fitter();
       }
       timer.stop(timer_fest);
       ttb_real fest_prev = fest;
@@ -246,28 +253,50 @@ namespace Genten {
       struct Annealer {
         ttb_real last_returned = 0.0; 
         ttb_real min_lr;
-        ttb_real max_lr = 1e-10;
+        ttb_real max_lr;
+        ttb_real warmup_scale;
         int epoch_internal = 0;
+        int cycle_size = 50;
+        int warmup_size = 25;
+        bool do_warmup = true;
 
         Annealer(AlgParams const& algParams): 
           min_lr(algParams.anneal_min_lr),
           max_lr(algParams.anneal_max_lr)
-        {}
+        {
+            const auto term = std::log(max_lr/min_lr)/warmup_size;
+            warmup_scale = std::exp(term);
+        }
 
         ttb_real operator()(int epoch){
-           if(epoch_internal <= 20){
-             last_returned = min_lr + 0.5 * (max_lr - min_lr) * (1 +
-                 std::cos(double(epoch_internal + 20)/20 * M_PI)); 
+           if(do_warmup){
+             last_returned = min_lr * std::pow(warmup_scale, epoch_internal);
            } else {
+              if(epoch_internal > cycle_size){
+                epoch_internal = 0;
+              }
+
               last_returned = min_lr + 0.5 * (max_lr - min_lr) * (1 +
-                  std::cos(double(epoch_internal % 20)/20 * M_PI)); 
+                  std::cos(double(epoch_internal)/cycle_size * M_PI)); 
            }
            ++epoch_internal;
+           if(epoch_internal == warmup_size){
+             epoch_internal = 0; // Start over
+             do_warmup = false;
+           }
            return last_returned;
         }
 
         void failed(){
-          max_lr = 0.1 * last_returned;
+          if(do_warmup){
+            max_lr = min_lr * std::pow(warmup_scale, epoch_internal - 2);
+            do_warmup = false;
+          } else {
+            max_lr = 0.5 * last_returned;
+            do_warmup = true;
+            const auto term = std::log(max_lr/min_lr)/warmup_size;
+            warmup_scale = std::exp(term);
+          }
           epoch_internal = 0;
         } 
 
@@ -293,16 +322,17 @@ namespace Genten {
         timer.start(timer_fest);
         fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
         if (compute_fit) {
-          ttb_real u_norm = sqrt(u.normFsq());
-          ttb_real dot = innerprod(X, ut);
-          fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
+          // ttb_real u_norm = sqrt(ut.normFsq());
+          // ttb_real dot = innerprod(X, ut);
+          // fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
+          fit = fitter();
         }
         timer.stop(timer_fest);
 
         // check convergence
-        bool failed_epoch = std::abs(fest) > std::abs(fest_prev) || std::isnan(fest);
-        if(compute_fit && failed_epoch){
-          failed_epoch = std::abs(fit) > std::abs(fit_prev);
+        bool failed_epoch = fest > fest_prev || std::isnan(fest);
+        if(compute_fit){
+          failed_epoch = fit > fit_prev || std::isnan(fit);
         }
 
         if (failed_epoch)

@@ -40,6 +40,7 @@
 
 #pragma once
 
+#include "Genten_Annealer.hpp"
 #include "Genten_Boost.hpp"
 #include "Genten_DistContext.hpp"
 #include "Genten_Driver.hpp"
@@ -82,7 +83,7 @@ class TensorBlockSystem {
   /// Initialize the factor matrices
   void init_factors();
 
-  void allReduceGradient(KtensorT<ExecSpace> &g);
+  void allReduceKT(KtensorT<ExecSpace> &g);
 
 public:
   TensorBlockSystem(ptree const &tree);
@@ -257,15 +258,17 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_factors() {
   {
     algParams.rank = input_.get<int>("rank", 5);
     algParams.method = Solver_Method::GCP_SGD;
-    algParams.maxiters = 20;
-    algParams.num_samples_nonzeros_grad = 20;
-    algParams.num_samples_zeros_grad = 20;
-    algParams.epoch_iters = 15;
-    algParams.step_type = GCP_Step::AdaGrad;
+    algParams.maxiters = 1;
+    algParams.num_samples_nonzeros_grad = 100;
+    algParams.num_samples_zeros_grad = 100;
+    algParams.epoch_iters = 1000;
+    algParams.rate = 1e-13;
+    algParams.step_type = GCP_Step::SGDMomentum;
     algParams.mttkrp_all_method = MTTKRP_All_Method::Atomic;
     algParams.fuse = true;
     algParams.sampling_type = GCP_Sampling::SemiStratified;
-    algParams.compute_fit = true;
+    algParams.num_samples_nonzeros_value = 10000;
+    algParams.num_samples_zeros_value = 10000;
   }
 
   const auto ndims = sp_tensor_.ndims();
@@ -284,20 +287,20 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_factors() {
   Kfac_.weights().times(norm_x / norm_k);
   Kfac_.distribute();
 
-  std::stringstream rank_data;
-  auto result = Genten::driver(sp_tensor_, Kfac_, algParams, rank_data);
-  deep_copy(Kfac_, result);
-  if (pmap_ptr_->gridSize() == 1) {
-    std::cout << rank_data.str() << std::endl;
-  }
+  // std::stringstream rank_data;
+  // auto result = Genten::driver(sp_tensor_, Kfac_, algParams, rank_data);
+  // deep_copy(Kfac_, result);
+  // if (pmap_ptr_->gridSize() == 1) {
+  //   std::cout << rank_data.str() << std::endl;
+  // }
 
   if (pmap_ptr_->gridSize() > 1) {
-    allReduceGradient(Kfac_);
+    allReduceKT(Kfac_);
   }
 }
 
 template <typename ElementType, typename ExecSpace>
-void TensorBlockSystem<ElementType, ExecSpace>::allReduceGradient(
+void TensorBlockSystem<ElementType, ExecSpace>::allReduceKT(
     KtensorT<ExecSpace> &g) {
   // Do the AllReduce for each gradient
   const auto ndims = sp_tensor_.ndims();
@@ -338,6 +341,8 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD() {
     algParams.num_samples_nonzeros_grad = input_.get<int>("batch_size_nz", 128);
     algParams.num_samples_zeros_grad =
         input_.get<int>("batch_size_zero", algParams.num_samples_nonzeros_grad);
+    algParams.num_samples_nonzeros_value = 100000;
+    algParams.num_samples_zeros_value = 100000;
     algParams.fuse = true;
     algParams.mttkrp_all_method = MTTKRP_All_Method::Atomic;
     // Uses defaults
@@ -348,14 +353,17 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD() {
   }
   algParams.fixup<ExecSpace>(std::cout);
 
-  const auto min_lr = input_.get<double>("min_lr", 1e-14);
-  const auto max_lr = input_.get<double>("max_lr", 1e-9);
-  const auto Ti = input_.get<int>("Ti", 100);
   // Adjust for the size of the MPI grid to keep batch size similar
   const auto nprocs = pmap_ptr_->gridSize();
+  const auto my_rank = pmap_ptr_->gridRank();
+
   algParams.num_samples_nonzeros_grad /= nprocs;
   algParams.num_samples_zeros_grad /= nprocs;
-  if (pmap_ptr_->gridRank() == 0) {
+  algParams.num_samples_nonzeros_value /= nprocs;
+  algParams.num_samples_zeros_value /= nprocs;
+
+  // TODO Reduce some of these so they print correctly when using many procs
+  if (my_rank == 0) {
     std::cout << "Iters/epoch:      " << algParams.epoch_iters << "\n";
     std::cout << "batch size nz:    " << algParams.num_samples_nonzeros_grad
               << "\n";
@@ -367,9 +375,10 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD() {
     std::cout << "NZ Samples / epoch:  "
               << algParams.num_samples_nonzeros_grad * algParams.epoch_iters
               << "\n";
-    std::cout << "Min LR: " << min_lr << "\n";
-    std::cout << "Max LR: " << max_lr << "\n";
-    std::cout << "Ti: " << Ti << std::endl;
+    // std::cout << "Min LR: " << min_lr << "\n";
+    // std::cout << "Max LR: " << max_lr << "\n";
+    // std::cout << "Ti: " << Ti << std::endl;
+    std::cout << std::endl;
   }
   MPI_Barrier(pmap_ptr_->gridComm());
 
@@ -383,14 +392,22 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD() {
   VectorType g = u.clone(); // Gradient Ktensor
   decltype(Kfac_) GFac = g.getKtensor();
 
+  VectorType center = u.clone(); // Center Tensor for elastic avg
+  decltype(Kfac_) CFac = center.getKtensor();
+
+  VectorType cdiff = u.clone(); // Center Tensor for elastic avg
+  cdiff.zero();
+  decltype(Kfac_) CFacDiff = cdiff.getKtensor();
+
   auto sampler = SemiStratifiedSampler<ExecSpace, GaussianLossFunction>(
       sp_tensor_, algParams);
 
-  //Impl::SGDStep<ExecSpace, GaussianLossFunction> stepper;
-  Impl::SGDMomentumStep<ExecSpace, GaussianLossFunction> stepper(algParams,
-                                                                     u);
+  // Impl::SGDStep<ExecSpace, GaussianLossFunction> stepper;
+  Impl::SGDMomentumStep<ExecSpace, GaussianLossFunction> stepper(algParams, u);
 
-  RandomMT rng(42);
+
+  auto seed = input_.get<unsigned long>("seed", std::random_device{}());
+  RandomMT rng(seed);
   Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(rng.genrnd_int32());
   sampler.initialize(rand_pool, std::cout);
 
@@ -405,54 +422,69 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD() {
 
   // Fit stuff
   auto fest = Impl::gcp_value(X_val, ut, w_val, loss);
-  double x_norm = sp_tensor_.norm();
-  double u_norm = std::sqrt(u.normFsq());
-  double dot = innerprod(sp_tensor_, ut);
-  auto fit =
-      1.0 - std::sqrt(x_norm * x_norm + u_norm * u_norm - 2.0 * dot) / x_norm;
 
-  double epoch_lr = min_lr;
-  bool warming_up = true;
-  auto Tcur = 0;
-  for (auto e = 0; e < algParams.maxiters; ++e) { // Epochs
-    if (!warming_up) {
-      epoch_lr = min_lr + 0.5 * (max_lr - min_lr) *
-                              (1 + std::cos(double(Tcur) / Ti * M_PI));
-      ++Tcur;
-      if (Tcur == Ti) {
-        Tcur = 0;
-      }
-    } else {
-      epoch_lr = min_lr + 0.5 * (max_lr - min_lr) *
-                              (1 + std::cos(double(Tcur + Ti) / Ti * M_PI));
-      ++Tcur;
-      if (Tcur == Ti) {
-        warming_up = false;
-        Tcur = 0;
-      }
-    }
+  if (nprocs > 1) {
+    MPI_Allreduce(MPI_IN_PLACE, &fest, 1, MPI_DOUBLE, MPI_SUM,
+                  pmap_ptr_->gridComm());
+  }
+
+  auto fest_prev = fest;
+  const auto maxEpochs = algParams.maxiters;
+  const auto epochIters = algParams.epoch_iters;
+  const auto dp_iters = input_.get<int>("downpour_iters", 4);
+  CosineAnnealer annealer(input_);
+  for (auto e = 0; e < maxEpochs; ++e) { // Epochs
+    auto epoch_lr = annealer(e);
     stepper.setStep(epoch_lr);
     if (pmap_ptr_->gridRank() == 0) {
       std::cout << "Epoch LR: " << epoch_lr << std::endl;
     }
-    for (auto i = 0; i < algParams.epoch_iters; ++i) {
+
+    auto do_epoch_iter = [&] {
       g.zero();
       sampler.fusedGradient(ut, loss, GFac, timer, tnzs, tzs);
-      if (pmap_ptr_->gridSize() > 1) {
-        allReduceGradient(GFac);
-      }
       stepper.eval(g, u);
+    };
+
+    auto extraIters = 0;
+    auto allreduceCounter = 0;
+    for (auto i = 0; i < epochIters; ++i) {
+      if (nprocs > 1) {
+        if ((i + 1) % dp_iters == 0 || i == algParams.epoch_iters - 1) {
+          MPI_Request barrier_done;
+          MPI_Ibarrier(pmap_ptr_->gridComm(), &barrier_done);
+
+          int flag = 0;
+          MPI_Test(&barrier_done, &flag, MPI_STATUS_IGNORE);
+          while(flag == 0){
+            do_epoch_iter();
+            ++extraIters;
+            MPI_Test(&barrier_done, &flag, MPI_STATUS_IGNORE);
+          }
+          
+          ++allreduceCounter;
+          allReduceKT(Kfac_);
+        }
+      }
+
+      do_epoch_iter();
     }
+
+    fest = Impl::gcp_value(X_val, ut, w_val, loss);
+    if (nprocs > 1) {
+      MPI_Allreduce(MPI_IN_PLACE, &fest, 1, MPI_DOUBLE, MPI_SUM,
+                    pmap_ptr_->gridComm());
+      MPI_Allreduce(MPI_IN_PLACE, &extraIters, 1, MPI_INT, MPI_SUM,
+                    pmap_ptr_->gridComm());
+    }
+
     if (pmap_ptr_->gridRank() == 0) {
-      x_norm = sp_tensor_.norm();
-      u_norm = std::sqrt(u.normFsq());
-      dot = innerprod(sp_tensor_, ut);
-      fit = 1.0 -
-            std::sqrt(x_norm * x_norm + u_norm * u_norm - 2.0 * dot) / x_norm;
-      fest = Impl::gcp_value(X_val, ut, w_val, loss);
-      std::cout << "\tLocal Fit(" << e << "): " << fit << ", " << fest
+      std::cout << "\tFit(" << e << "): " << fest << ", " << fest_prev - fest
+                << ", did " << allreduceCounter << " factor allReduces.\n"
+                << "\tdid " << extraIters << " extra iters."
                 << std::endl;
     }
+    fest_prev = fest;
   }
 
   return -1.0;
