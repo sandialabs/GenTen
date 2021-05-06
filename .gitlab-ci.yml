@@ -141,7 +141,8 @@ build-gitlab-clang-image:
     - if: $CI_SERVER_HOST == "gitlab.com"
 
 # Build genten (w/clang) and push to registry using podman
-build-clang-image:
+# Disable this for now because the runner seems to not be working
+.build-clang-image:
   stage: build
   script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
