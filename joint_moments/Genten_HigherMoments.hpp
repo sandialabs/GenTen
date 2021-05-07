@@ -48,5 +48,5 @@ double * FormRawMomentTensor(double *raw_data_ptr, int nsamples, int nvars, cons
 
 void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nvars,
                                      Kokkos::View<ttb_real**, Kokkos::LayoutLeft, Genten::DefaultHostExecutionSpace>& principal_vecs,
-                                     Kokkos::View<ttb_real**, Kokkos::LayoutLeft, Genten::DefaultHostExecutionSpace>& principal_vals);
+                                     Kokkos::View<ttb_real* , Kokkos::LayoutLeft, Genten::DefaultHostExecutionSpace>& principal_vals);
 }
