@@ -73,7 +73,7 @@ void real_main() {
   try {
     check_input();
     GT::TensorBlockSystem<double, Kokkos::OpenMP> tbs(GT::DistContext::input());
-    tbs.allReduceSGD();
+    tbs.SGD();
   } catch (std::exception &e) {
     auto rank = GT::DistContext::rank();
     std::cerr << "Rank: " << rank << " " << e.what() << "\n";

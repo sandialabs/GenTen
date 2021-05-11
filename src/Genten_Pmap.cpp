@@ -158,6 +158,8 @@ auto CartGrid(int nprocs, std::vector<int> const &tensor_dims,
     return minAllReduceComm(nprocs, tensor_dims);
   case CartGridStratagy::MinFactorSpace:
     return minFactorSpaceGrid(nprocs, tensor_dims);
+  default:
+    return minFactorSpaceGrid(nprocs, tensor_dims);
   }
 }
 
@@ -201,6 +203,10 @@ ProcessorMap::ProcessorMap(ptree const &input_tree, TensorInfo const &Ti)
     MPI_Comm_rank(sub_maps_[i], &sub_grid_rank_[i]);
     MPI_Comm_size(sub_maps_[i], &sub_comm_sizes_[i]);
   }
+}
+
+void ProcessorMap::gridBarrier() const {
+  MPI_Barrier(cart_comm_);
 }
 
 ProcessorMap::~ProcessorMap() {

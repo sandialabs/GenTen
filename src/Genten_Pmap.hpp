@@ -43,6 +43,7 @@
 #include "Genten_Boost.hpp"
 #include "Genten_DistContext.hpp"
 #include "Genten_TensorInfo.hpp"
+#include "Genten_Util.hpp"
 
 namespace Genten {
 
@@ -60,13 +61,13 @@ public:
 
   // Size of the cartesian grid
   int gridSize() const { return grid_nprocs_; }
-  small_vector<int> const &gridDims() const {return dimension_sizes_; }
+  small_vector<int> const &gridDims() const { return dimension_sizes_; }
 
   int gridRank() const { return grid_rank_; }
   MPI_Comm gridComm() const { return cart_comm_; }
 
-  int gridCoord(int dim) const { return coord_[dim];}
-  small_vector<int> const& gridCoords() const { return coord_;}
+  int gridCoord(int dim) const { return coord_[dim]; }
+  small_vector<int> const &gridCoords() const { return coord_; }
 
   int subCommSize(int dim) const { return sub_comm_sizes_[dim]; }
   int subCommRank(int dim) const { return sub_grid_rank_[dim]; }
@@ -75,6 +76,28 @@ public:
   small_vector<int> const &subCommSizes() const { return sub_comm_sizes_; }
   small_vector<int> const &subCommRanks() const { return sub_grid_rank_; }
   small_vector<MPI_Comm> const &subComms() const { return sub_maps_; }
+
+  void gridBarrier() const;
+
+  template <typename T> T gridAllReduce(T element, MPI_Op op = MPI_SUM) const {
+    static_assert(std::is_arithmetic<T>::value,
+                  "gridAllReduce requires something like a double, or int");
+
+    MPI_Allreduce(MPI_IN_PLACE, &element, 1, convertType(element), op,
+                  cart_comm_);
+    return element;
+  }
+
+private:
+  MPI_Datatype convertType(double) const { return MPI_DOUBLE; }
+
+  MPI_Datatype convertType(float) const { return MPI_FLOAT; }
+
+  MPI_Datatype convertType(unsigned long) const { return MPI_UNSIGNED_LONG; }
+
+  MPI_Datatype convertType(int) const { return MPI_INT; }
+
+  MPI_Datatype convertType(long) const { return MPI_LONG; }
 
 private:
   /*
