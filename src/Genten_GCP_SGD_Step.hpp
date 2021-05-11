@@ -238,7 +238,8 @@ namespace Genten {
 
       virtual void reset() {}
 
-      virtual void setPassed() {}
+      virtual void setPassed() {
+      }
 
       virtual void setFailed() {
         v_.zero();
@@ -252,10 +253,20 @@ namespace Genten {
         auto uv = u.getView();
         auto gv = g.getView();
         auto vv = v_.getView();
+
+        constexpr bool has_bounds = (LossFunction::has_lower_bound() ||
+                                     LossFunction::has_upper_bound());
+        constexpr ttb_real lb = LossFunction::lower_bound();
+        constexpr ttb_real ub = LossFunction::upper_bound();
+
         u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
         {
           vv(i) = v_scale_ * vv(i) - sgd_step * gv(i);
-          uv(i) += vv(i);
+          ttb_real uu = uv(i) + vv(i);
+          if (has_bounds){
+            uu = uu < lb ? lb : (uu > ub ? ub : uu);
+          }
+          uv(i) = uu;
         });
       }
 
@@ -288,32 +299,18 @@ namespace Genten {
     // TODO Give this a way to feed the velocity vector back into the gradient
     // calculation
     template <typename ExecSpace, typename LossFunction>
-    class NAGStep : private SGDMomentumStep<ExecSpace, LossFunction> {
+    class NAGStep : public SGDMomentumStep<ExecSpace, LossFunction> {
     public:
       typedef GCP_SGD_Step<ExecSpace,LossFunction> BaseType;
       typedef typename BaseType::VectorType VectorType;
 
       NAGStep(AlgParams const& algParams, VectorType const& u): 
         SGDMomentumStep<ExecSpace, LossFunction>(algParams, u) {
-          Genten::error("NAGStep needs to be finished since it requires"
-              "\"sharing\" the velocity with the gradient calculator.");
         }
 
       virtual ~NAGStep() {}
 
-      virtual void eval(const VectorType& g, VectorType& u) const
-      {
-        const ttb_real sgd_step = this->step_;
-        const ttb_real v_scale = this->v_scale_;
-        auto uv = u.getView();
-        auto gv = g.getView();
-        auto vv = this->v_.getView();
-        u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
-        {
-          vv(i) = v_scale * vv(i) - sgd_step * gv(i);
-          uv(i) += vv(i);
-        });
-      }
+      VectorType const& velocity() const { return this->v_;}
 
       template <typename TeamMember>
       KOKKOS_INLINE_FUNCTION

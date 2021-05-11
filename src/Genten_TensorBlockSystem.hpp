@@ -83,7 +83,8 @@ class TensorBlockSystem {
   /// Initialize the factor matrices
   void init_factors();
 
-  void allReduceKT(KtensorT<ExecSpace> &g);
+  void allReduceKT(KtensorT<ExecSpace> &g, bool divide_by_grid_size = true);
+  void iAllReduceKT(KtensorT<ExecSpace> &g, std::vector<MPI_Request> &Requests);
 
 public:
   TensorBlockSystem(ptree const &tree);
@@ -258,12 +259,13 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_factors() {
   {
     algParams.rank = input_.get<int>("rank", 5);
     algParams.method = Solver_Method::GCP_SGD;
-    algParams.maxiters = 1;
+    algParams.loss_function_type = GCP_LossFunction::Poisson;
+    algParams.maxiters = 5;
     algParams.num_samples_nonzeros_grad = 100;
     algParams.num_samples_zeros_grad = 100;
-    algParams.epoch_iters = 1000;
-    algParams.rate = 1e-13;
-    algParams.step_type = GCP_Step::SGDMomentum;
+    algParams.epoch_iters = 500;
+    algParams.rate = 1e-3;
+    algParams.step_type = GCP_Step::ADAM;
     algParams.mttkrp_all_method = MTTKRP_All_Method::Atomic;
     algParams.fuse = true;
     algParams.sampling_type = GCP_Sampling::SemiStratified;
@@ -278,7 +280,7 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_factors() {
 
   // Init KFac_ randomly on each node
   Kfac_ = KtensorT<ExecSpace>(algParams.rank, ndims, sp_tensor_.size());
-  Genten::RandomMT cRMT(42);
+  Genten::RandomMT cRMT(std::random_device{}());
   Kfac_.setWeights(1.0); // Matlab cp_als always sets the weights to one.
   Kfac_.setMatricesScatter(false, false, cRMT);
 
@@ -290,7 +292,8 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_factors() {
   // std::stringstream rank_data;
   // auto result = Genten::driver(sp_tensor_, Kfac_, algParams, rank_data);
   // deep_copy(Kfac_, result);
-  // if (pmap_ptr_->gridSize() == 1) {
+
+  // if(pmap_ptr_->gridRank() == 0){
   //   std::cout << rank_data.str() << std::endl;
   // }
 
@@ -301,10 +304,11 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_factors() {
 
 template <typename ElementType, typename ExecSpace>
 void TensorBlockSystem<ElementType, ExecSpace>::allReduceKT(
-    KtensorT<ExecSpace> &g) {
+    KtensorT<ExecSpace> &g, bool divide_by_grid_size) {
   // Do the AllReduce for each gradient
   const auto ndims = sp_tensor_.ndims();
   auto const &gridSizes = pmap_ptr_->subCommSizes();
+  Kokkos::fence();
   for (auto i = 0; i < ndims; ++i) {
     if (gridSizes[i] == 1) {
       // No need to AllReduce when one rank owns all the data
@@ -314,21 +318,43 @@ void TensorBlockSystem<ElementType, ExecSpace>::allReduceKT(
     auto subComm = pmap_ptr_->subComm(i);
     auto subRank = pmap_ptr_->subCommRank(i);
 
-    FacMatrixT<ExecSpace> const &fac_mat = g.factors().values()[i];
-    auto fac_ptr = fac_mat.rowptr(0);
-    auto fac_size = fac_mat.nRows() * fac_mat.nCols();
-
+    FacMatrixT<ExecSpace> const &fac_mat = g.factors()[i];
+    auto fac_ptr = fac_mat.view().data();
+    const auto fac_size = fac_mat.view().span();
     MPI_Allreduce(MPI_IN_PLACE, fac_ptr, fac_size, MPI_DOUBLE, MPI_SUM,
                   subComm);
   }
 
-  for (auto i = 0; i < ndims; ++i) {
-    FacMatrixT<ExecSpace> const &fac_mat = g.factors().values()[i];
-    auto fac_ptr = fac_mat.rowptr(0);
-    auto fac_size = fac_mat.nRows() * fac_mat.nCols();
-    for (auto j = 0; j < fac_size; ++j) {
-      fac_ptr[j] /= double(gridSizes[i]);
+  if (divide_by_grid_size) {
+    for (auto d = 0; d < ndims; ++d) {
+      const ttb_real scale = double(1.0 / gridSizes[d]);
+      g.factors()[d].times(scale);
     }
+  }
+}
+
+template <typename ElementType, typename ExecSpace>
+void TensorBlockSystem<ElementType, ExecSpace>::iAllReduceKT(
+    KtensorT<ExecSpace> &g, std::vector<MPI_Request> &Requests) {
+  // Do the AllReduce for each gradient
+  const auto ndims = sp_tensor_.ndims();
+  auto const &gridSizes = pmap_ptr_->subCommSizes();
+  auto completetions = 0;
+  for (auto i = 0; i < ndims; ++i) {
+    if (gridSizes[i] == 1) {
+      // No need to AllReduce when one rank owns all the data
+      continue;
+    }
+
+    auto subComm = pmap_ptr_->subComm(i);
+    auto subRank = pmap_ptr_->subCommRank(i);
+
+    FacMatrixT<ExecSpace> const &fac_mat = g.factors()[i];
+    auto fac_ptr = fac_mat.view().data();
+    const auto fac_size = fac_mat.view().span();
+    MPI_Iallreduce(MPI_IN_PLACE, fac_ptr, fac_size, MPI_DOUBLE, MPI_SUM,
+                   subComm, &Requests[i]);
+    ++completetions;
   }
 }
 
@@ -357,6 +383,18 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD() {
   const auto nprocs = pmap_ptr_->gridSize();
   const auto my_rank = pmap_ptr_->gridRank();
 
+  const auto global_nzg = algParams.num_samples_nonzeros_grad;
+  const auto global_zg = algParams.num_samples_zeros_grad;
+  const auto global_batch_size = global_nzg + global_zg;
+  long long input_nnz = sp_tensor_.nnz();
+
+  MPI_Allreduce(MPI_IN_PLACE, &input_nnz, 1, MPI_LONG_LONG, MPI_SUM,
+                pmap_ptr_->gridComm());
+
+  const auto percent_nz_batch = double(global_nzg) / double(input_nnz) * 100.0;
+  const auto percent_nz_epoch =
+      double(algParams.epoch_iters * global_nzg) / double(input_nnz) * 100.0;
+
   algParams.num_samples_nonzeros_grad /= nprocs;
   algParams.num_samples_zeros_grad /= nprocs;
   algParams.num_samples_nonzeros_value /= nprocs;
@@ -365,16 +403,10 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD() {
   // TODO Reduce some of these so they print correctly when using many procs
   if (my_rank == 0) {
     std::cout << "Iters/epoch:      " << algParams.epoch_iters << "\n";
-    std::cout << "batch size nz:    " << algParams.num_samples_nonzeros_grad
-              << "\n";
-    std::cout << "batch size zeros: " << algParams.num_samples_zeros_grad
-              << "\n";
-    auto total_batch =
-        algParams.num_samples_nonzeros_grad + algParams.num_samples_zeros_grad;
-    std::cout << "batch size total: " << total_batch << "\n";
-    std::cout << "NZ Samples / epoch:  "
-              << algParams.num_samples_nonzeros_grad * algParams.epoch_iters
-              << "\n";
+    std::cout << "batch size nz:    " << global_nzg << "\n";
+    std::cout << "batch size zeros: " << global_zg << "\n";
+    std::cout << "batch size total: " << global_batch_size << "\n";
+    std::cout << "NZ \% epoch :  " << percent_nz_epoch << "\n";
     // std::cout << "Min LR: " << min_lr << "\n";
     // std::cout << "Max LR: " << max_lr << "\n";
     // std::cout << "Ti: " << Ti << std::endl;
@@ -382,7 +414,8 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD() {
   }
   MPI_Barrier(pmap_ptr_->gridComm());
 
-  auto loss = GaussianLossFunction(1e-10);
+  // auto loss = GaussianLossFunction(1e-10);
+  auto loss = PoissonLossFunction(1e-10);
 
   using VectorType = GCP::KokkosVector<ExecSpace>;
   auto u = VectorType(Kfac_);
@@ -390,21 +423,28 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD() {
   KtensorT<ExecSpace> ut = u.getKtensor();
 
   VectorType g = u.clone(); // Gradient Ktensor
+  g.zero();
   decltype(Kfac_) GFac = g.getKtensor();
 
   VectorType center = u.clone(); // Center Tensor for elastic avg
-  decltype(Kfac_) CFac = center.getKtensor();
+  center.set(u);
+  KtensorT<ExecSpace> CFac = center.getKtensor();
+  allReduceKT(CFac); // All must agree on what the center is
 
-  VectorType cdiff = u.clone(); // Center Tensor for elastic avg
-  cdiff.zero();
-  decltype(Kfac_) CFacDiff = cdiff.getKtensor();
+  VectorType diff = u.clone(); // Center Tensor for elastic avg
+  diff.zero();
+  KtensorT<ExecSpace> diffKT = diff.getKtensor();
 
-  auto sampler = SemiStratifiedSampler<ExecSpace, GaussianLossFunction>(
-      sp_tensor_, algParams);
+  VectorType nag = u.clone(); // Center Tensor for elastic avg
+  nag.set(u);
+  KtensorT<ExecSpace> nagKT = nag.getKtensor();
 
-  // Impl::SGDStep<ExecSpace, GaussianLossFunction> stepper;
-  Impl::SGDMomentumStep<ExecSpace, GaussianLossFunction> stepper(algParams, u);
+  auto sampler =
+      SemiStratifiedSampler<ExecSpace, decltype(loss)>(sp_tensor_, algParams);
 
+  // Impl::SGDStep<ExecSpace, decltype(loss)> stepper;
+  // Impl::SGDMomentumStep<ExecSpace, decltype(loss)> stepper(algParams, u);
+  Impl::NAGStep<ExecSpace, decltype(loss)> stepper(algParams, u);
 
   auto seed = input_.get<unsigned long>("seed", std::random_device{}());
   RandomMT rng(seed);
@@ -433,6 +473,14 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD() {
   const auto epochIters = algParams.epoch_iters;
   const auto dp_iters = input_.get<int>("downpour_iters", 4);
   CosineAnnealer annealer(input_);
+  std::vector<MPI_Request> elastic_requests;
+  bool first_average = true;
+  for (auto gs : pmap_ptr_->subCommSizes()) {
+    if (gs > 1) {
+      elastic_requests.push_back(MPI_REQUEST_NULL);
+    }
+  }
+
   for (auto e = 0; e < maxEpochs; ++e) { // Epochs
     auto epoch_lr = annealer(e);
     stepper.setStep(epoch_lr);
@@ -442,7 +490,9 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD() {
 
     auto do_epoch_iter = [&] {
       g.zero();
-      sampler.fusedGradient(ut, loss, GFac, timer, tnzs, tzs);
+      nag.set(u);
+      nag.plus(stepper.velocity(), 0.9);
+      sampler.fusedGradient(nagKT, loss, GFac, timer, tnzs, tzs);
       stepper.eval(g, u);
     };
 
@@ -450,20 +500,40 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD() {
     auto allreduceCounter = 0;
     for (auto i = 0; i < epochIters; ++i) {
       if (nprocs > 1) {
-        if ((i + 1) % dp_iters == 0 || i == algParams.epoch_iters - 1) {
-          MPI_Request barrier_done;
-          MPI_Ibarrier(pmap_ptr_->gridComm(), &barrier_done);
-
-          int flag = 0;
-          MPI_Test(&barrier_done, &flag, MPI_STATUS_IGNORE);
-          while(flag == 0){
-            do_epoch_iter();
-            ++extraIters;
-            MPI_Test(&barrier_done, &flag, MPI_STATUS_IGNORE);
+        if ((i + 1) % dp_iters == 0 || i == epochIters - 1) {
+          if (first_average) {
+            first_average = false;
+          } else {
+            //int flag = 0;
+            //MPI_Testall(elastic_requests.size(), elastic_requests.data(), &flag,
+            //            MPI_STATUSES_IGNORE);
+            //while (flag == 0) {
+            //  do_epoch_iter();
+            //  ++extraIters;
+            //  MPI_Testall(elastic_requests.size(), elastic_requests.data(),
+            //              &flag, MPI_STATUSES_IGNORE);
+            //}
+            MPI_Waitall(elastic_requests.size(), elastic_requests.data(),
+                        MPI_STATUSES_IGNORE);
+            center.plus(diff, 1.0/nprocs);
           }
-          
+
+          u.elastic_difference(diff, center, 1.0);
+          u.plus(diff, -0.9); // Subtract dist from myself
+          iAllReduceKT(diffKT, elastic_requests);
+
+          // MPI_Request barrier_done;
+          // MPI_Ibarrier(pmap_ptr_->gridComm(), &barrier_done);
+
+          // int flag = 0;
+          // MPI_Test(&barrier_done, &flag, MPI_STATUS_IGNORE);
+          // while (flag == 0) {
+          //   do_epoch_iter();
+          //   ++extraIters;
+          //   MPI_Test(&barrier_done, &flag, MPI_STATUS_IGNORE);
+          // }
+          // allReduceKT(ut);
           ++allreduceCounter;
-          allReduceKT(Kfac_);
         }
       }
 
@@ -471,8 +541,11 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD() {
     }
 
     fest = Impl::gcp_value(X_val, ut, w_val, loss);
+    auto fest_center = Impl::gcp_value(X_val, CFac, w_val, loss);
     if (nprocs > 1) {
       MPI_Allreduce(MPI_IN_PLACE, &fest, 1, MPI_DOUBLE, MPI_SUM,
+                    pmap_ptr_->gridComm());
+      MPI_Allreduce(MPI_IN_PLACE, &fest_center, 1, MPI_DOUBLE, MPI_SUM,
                     pmap_ptr_->gridComm());
       MPI_Allreduce(MPI_IN_PLACE, &extraIters, 1, MPI_INT, MPI_SUM,
                     pmap_ptr_->gridComm());
@@ -480,9 +553,9 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD() {
 
     if (pmap_ptr_->gridRank() == 0) {
       std::cout << "\tFit(" << e << "): " << fest << ", " << fest_prev - fest
-                << ", did " << allreduceCounter << " factor allReduces.\n"
-                << "\tdid " << extraIters << " extra iters."
-                << std::endl;
+                << ", fest_center " << fest_center << ", did "
+                << allreduceCounter << " factor allReduces.\n"
+                << "\tdid " << extraIters << " extra iters." << std::endl;
     }
     fest_prev = fest;
   }
@@ -527,7 +600,7 @@ void printRandomElements(SptensorT<ExecSpace> const &tensor,
 
       std::cout << "\t";
       for (auto j = 0; j < tensor.ndims(); ++j) {
-        std::cout << indices[j] << " ";
+        std::cout << indices[j] + ranges[j].lower << " ";
       }
       std::cout << value << "\n";
     }

@@ -56,7 +56,7 @@ namespace Genten {
 namespace {
 // Silly function to compute divisors
 auto divisors(int input) {
-  small_vector<int> divisors;
+  small_vector<int> divisors(1,input);
   int sroot = std::sqrt(input);
   for (auto i = 1; i <= sroot; ++i) {
     if (input % i == 0) {
@@ -142,7 +142,6 @@ auto minFactorSpaceGrid(int nprocs, std::vector<int> const &tensor_dims) {
   const auto ndims = tensor_dims.size();
   auto grid = small_vector<int>(ndims);
   recurseMinSpaceGrid(nprocs, grid, tensor_dims, ndims);
-  auto elements_per_rank = nelementsForRank1Factors(grid, tensor_dims);
   return grid;
 }
 

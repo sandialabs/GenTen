@@ -216,18 +216,19 @@ namespace Genten {
       sampler->sampleTensor(false, ut, loss_func, X_val, w_val);
       timer.stop(timer_sample_f);
 
+      ttb_real x_norm = X.norm();
+      auto u_norm = std::sqrt(ut.normFsq());
+
       // Objective estimates
       ttb_real fit = 0.0;
-      ttb_real x_norm = 0.0;
       timer.start(timer_fest);
       fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
       auto fitter = [&]{
-        x_norm = X.norm();
         const auto x_norm2 = x_norm * x_norm;
         const auto u_norm2 = ut.normFsq();
         const auto dot = innerprod(X, ut);
         const auto numerator = sqrt(x_norm2 + u_norm2 - 2.0 * dot);
-        const auto denom = (x_norm + sqrt(u_norm2));
+        const auto denom = x_norm;
         return 1.0 - numerator/denom;
       };
 
@@ -247,40 +248,42 @@ namespace Genten {
           out << ", fit: "
               << std::setw(10) << std::setprecision(3) << std::scientific
               << fit;
+        out << "Norm of X: " << x_norm;
         out << std::endl;
       }
 
       struct Annealer {
         ttb_real last_returned = 0.0; 
+        ttb_real last_good = 0.0; 
         ttb_real min_lr;
-        ttb_real max_lr;
+        ttb_real max_lr = 0.0;
+        ttb_real warm_up_min;
+        ttb_real warm_up_max;
         ttb_real warmup_scale;
         int epoch_internal = 0;
-        int cycle_size = 50;
-        int warmup_size = 25;
+        int cycle_size = 100;
+        int warmup_size = 50;
         bool do_warmup = true;
 
         Annealer(AlgParams const& algParams): 
           min_lr(algParams.anneal_min_lr),
-          max_lr(algParams.anneal_max_lr)
+          max_lr(algParams.anneal_max_lr),
+          warm_up_max(10 * algParams.anneal_max_lr)
         {
-            const auto term = std::log(max_lr/min_lr)/warmup_size;
+            warm_up_min = 0.1 * min_lr;
+            const auto term = std::log(warm_up_max/warm_up_min)/warmup_size;
             warmup_scale = std::exp(term);
         }
 
         ttb_real operator()(int epoch){
            if(do_warmup){
-             last_returned = min_lr * std::pow(warmup_scale, epoch_internal);
+             last_returned = warm_up_min * std::pow(warmup_scale, epoch_internal);
            } else {
-              if(epoch_internal > cycle_size){
-                epoch_internal = 0;
-              }
-
               last_returned = min_lr + 0.5 * (max_lr - min_lr) * (1 +
-                  std::cos(double(epoch_internal)/cycle_size * M_PI)); 
+                  std::cos(double(epoch_internal + cycle_size)/cycle_size * M_PI)); 
            }
            ++epoch_internal;
-           if(epoch_internal == warmup_size){
+           if(do_warmup && epoch_internal == warmup_size){
              epoch_internal = 0; // Start over
              do_warmup = false;
            }
@@ -289,24 +292,26 @@ namespace Genten {
 
         void failed(){
           if(do_warmup){
-            max_lr = min_lr * std::pow(warmup_scale, epoch_internal - 2);
             do_warmup = false;
+            max_lr = 0.5 * last_good;
           } else {
-            max_lr = 0.5 * last_returned;
-            do_warmup = true;
-            const auto term = std::log(max_lr/min_lr)/warmup_size;
-            warmup_scale = std::exp(term);
+            min_lr *= 0.1;
+            max_lr *= 0.1;
           }
           epoch_internal = 0;
         } 
 
-        void success(){ }
+        void success(){ 
+          last_good = last_returned;
+        }
       } annealer(algParams);
 
       // SGD epoch loop
       ttb_real nuc = 1.0;
       ttb_indx nfails = 0;
       ttb_indx total_iters = 0;
+
+
       for (numEpochs=0; numEpochs<maxEpochs; ++numEpochs) {
         // Gradient step size
         if(algParams.anneal){
@@ -331,14 +336,12 @@ namespace Genten {
 
         // check convergence
         bool failed_epoch = fest > fest_prev || std::isnan(fest);
-        if(compute_fit){
-          failed_epoch = fit > fit_prev || std::isnan(fit);
-        }
 
         if (failed_epoch)
           ++nfails;
 
          // Print progress of the current iteration.
+        u_norm = std::sqrt(ut.normFsq());
         if ((printIter > 0) && (((numEpochs + 1) % printIter) == 0)) {
           out << "Epoch " << std::setw(3) << numEpochs + 1 << ": f-est = "
               << std::setw(13) << std::setprecision(6) << std::scientific
@@ -353,9 +356,9 @@ namespace Genten {
           out << ", time = "
               << std::setw(8) << std::setprecision(2) << std::scientific
               << timer.getTotalTime(timer_sgd) << " sec";
+          out << " u_norm: " << u_norm;
           if (failed_epoch){
-            out << ", nfails = " << nfails
-                << " " << std::abs(fit_prev) - std::abs(fit);
+            out << ", nfails = " << nfails;
           }
           out << std::endl;
         }
