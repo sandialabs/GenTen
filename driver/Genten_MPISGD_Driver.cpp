@@ -51,11 +51,11 @@ namespace GT = Genten;
 
 GT::Sptensor getSparseTensor();
 
-void real_main();
+void real_main(int argc, char **argv);
 
 int main(int argc, char **argv) {
   GT::InitializeGenten(&argc, &argv);
-  { real_main(); }
+  { real_main(argc, argv); }
   GT::FinalizeGenten();
   return 0;
 }
@@ -69,20 +69,29 @@ void check_input() {
   }
 }
 
-void real_main() {
+void real_main(int argc, char **argv) {
   try {
     check_input();
     const auto size = GT::DistContext::nranks();
     const auto rank = GT::DistContext::rank();
 
     if (rank == 0) {
-      std::cout << "Running Geten-MPI-SGD with: " << size << " ranks\n";
+      std::cout << "Running Geten-MPI-SGD with: " << size << " mpi-ranks\n";
       std::cout << "\tdecomposing file: "
                 << GT::DistContext::input().get<std::string>("tensor.file")
                 << "\n";
       std::cout << "\tusing method: "
                 << GT::DistContext::input().get<std::string>("tensor.method")
                 << std::endl;
+
+      if(argc == 3 && std::string(argv[2]) == "--debug"){
+        std::cout << "Input file: " << argv[1] << ":\n";
+        std::ifstream json_input(argv[1]);
+        if(json_input.is_open()){
+          std::cout << json_input.rdbuf();
+        }
+        std::cout << std::flush;
+      }
     }
     GT::DistContext::Barrier();
 

@@ -407,7 +407,10 @@ AlgParams TensorBlockSystem<ElementType, ExecSpace>::setAlgParams() const {
       input_.get<int>("batch_size_zero", algParams.num_samples_nonzeros_grad);
   algParams.num_samples_nonzeros_value = 100000;
   algParams.sampling_type = Genten::GCP_Sampling::SemiStratified;
+  algParams.sampling_type = Genten::GCP_Sampling::SemiStratified;
   algParams.num_samples_zeros_value = 100000;
+  algParams.mttkrp_method = Genten::MTTKRP_Method::Duplicated;
+  algParams.mttkrp_all_method = Genten::MTTKRP_All_Method::Duplicated;
   algParams.fuse = true;
 
   // Adjust for the number of processors
