@@ -87,6 +87,7 @@ class TensorBlockSystem {
   void iAllReduceKT(KtensorT<ExecSpace> &g, std::vector<MPI_Request> &Requests);
 
   template <typename Loss> ElementType allReduceSGD(Loss const &loss);
+  template <typename Loss> ElementType allReduceADAM(Loss const &loss);
   template <typename Loss> ElementType elasticAverageSGD(Loss const &loss);
   template <typename Loss> ElementType pickMethod(Loss const &loss);
 
@@ -379,6 +380,8 @@ TensorBlockSystem<ElementType, ExecSpace>::pickMethod(Loss const &loss) {
     return elasticAverageSGD(loss);
   } else if (method == "allreduce") {
     return allReduceSGD(loss);
+  } else if (method == "adam"){
+    return allReduceADAM(loss);
   }
   Genten::error("Your method for distributed SGD wasn't recognized.\n");
   return -1.0;
@@ -393,7 +396,10 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::SGD() {
     return pickMethod(GaussianLossFunction(1e-10));
   } else if (loss == "poisson") {
     return pickMethod(PoissonLossFunction(1e-10));
-  }
+  } else if (loss == "bernoulli"){
+    return pickMethod(BernoulliLossFunction(1e-10));
+  } 
+
   Genten::error("Need to add more loss functions to distributed SGD.\n");
   return -1.0;
 }
@@ -741,6 +747,110 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD(Loss const &loss) {
     if (nprocs > 1) { 
       allReduceKT(ut);
       ++allreduceCounter;
+    }
+
+    fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
+    t1 = MPI_Wtime();
+
+    if (my_rank == 0) {
+      std::cout << "\tFit(" << e << "): " << fest << ", " << fest_prev - fest
+                << " did " << allreduceCounter << " factor allReduces."
+                << " in " << (t1 - t0) << " seconds.\n"
+                << std::flush;
+    }
+    fest_prev = fest;
+  }
+
+
+  return fest_prev;
+}
+
+template <typename ElementType, typename ExecSpace>
+template <typename Loss>
+ElementType
+TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
+  auto algParams = setAlgParams();
+
+  const auto nprocs = this->nprocs();
+  const auto my_rank = gridRank();
+
+  const auto local_batch_size = algParams.num_samples_nonzeros_grad;
+  const auto local_batch_sizez = algParams.num_samples_zeros_grad;
+  const auto input_nnz = globalNNZ();
+
+  const auto global_nzg = pmap_ptr_->gridAllReduce(local_batch_size);
+  const auto global_zg = pmap_ptr_->gridAllReduce(local_batch_sizez);
+  const auto global_batch_size = global_nzg + global_zg;
+
+  const auto percent_nz_batch = double(global_nzg) / double(input_nnz) * 100.0;
+  const auto percent_nz_epoch =
+      double(algParams.epoch_iters * global_nzg) / double(input_nnz) * 100.0;
+
+  if (my_rank == 0) {
+    std::cout << "Iters/epoch:      " << algParams.epoch_iters << "\n";
+    std::cout << "batch size nz:    " << global_nzg << "\n";
+    std::cout << "batch size zeros: " << global_zg << "\n";
+    std::cout << "batch size total: " << global_batch_size << "\n";
+    std::cout << "NZ \% epoch :  " << percent_nz_epoch << "\n";
+    std::cout << std::endl;
+  }
+  pmap_ptr_->gridBarrier();
+
+  // This is a lot of copies :/ but accept it for now
+  using VectorType = GCP::KokkosVector<ExecSpace>;
+  auto u = VectorType(Kfac_);
+  u.copyFromKtensor(Kfac_);
+  KtensorT<ExecSpace> ut = u.getKtensor();
+
+  VectorType g = u.clone(); // Gradient Ktensor
+  g.zero();
+  decltype(Kfac_) GFac = g.getKtensor();
+
+  auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(sp_tensor_, algParams);
+
+  Impl::AdamStep<ExecSpace, Loss> stepper(algParams, u);
+
+  auto seed = input_.get<std::uint64_t>("seed", std::random_device{}());
+  Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
+  sampler.initialize(rand_pool, std::cout);
+
+  SptensorT<ExecSpace> X_val;
+  ArrayT<ExecSpace> w_val;
+  sampler.sampleTensor(false, ut, loss, X_val, w_val);
+
+  // Stuff for the timer that we can'g avoid providing
+  SystemTimer timer;
+  int tnzs = 0;
+  int tzs = 0;
+
+  // Fit stuff
+  auto fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
+
+  auto fest_prev = fest;
+  const auto maxEpochs = algParams.maxiters;
+  const auto epochIters = algParams.epoch_iters;
+
+  // TODO make the Annealer swappable
+  auto epoch_lr = 1e-3; 
+  double t0 = 0, t1 = 0;
+  for (auto e = 0; e < maxEpochs; ++e) { // Epochs
+    t0 = MPI_Wtime();
+    stepper.setStep(epoch_lr);
+    if (my_rank == 0) {
+      std::cout << "Epoch LR: " << epoch_lr << std::endl;
+    }
+
+    auto do_epoch_iter = [&] {
+    };
+
+    auto allreduceCounter = 0;
+    for (auto i = 0; i < epochIters; ++i) {
+      stepper.update();
+      g.zero();
+      sampler.fusedGradient(ut, loss, GFac, timer, tnzs, tzs);
+      allReduceKT(GFac, false /* don't average */);
+      ++allreduceCounter;
+      stepper.eval(g, u);
     }
 
     fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
