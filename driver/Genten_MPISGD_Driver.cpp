@@ -84,7 +84,7 @@ void real_main(int argc, char **argv) {
                 << GT::DistContext::input().get<std::string>("tensor.method")
                 << std::endl;
 
-      if(argc == 3 && std::string(argv[2]) == "--debug"){
+      if(GT::DistContext::input().get<bool>("debug", false)){
         std::cout << "Input file: " << argv[1] << ":\n";
         std::ifstream json_input(argv[1]);
         if(json_input.is_open()){
