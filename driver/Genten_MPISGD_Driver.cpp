@@ -63,7 +63,7 @@ int main(int argc, char **argv) {
 void check_input() {
   auto &in = GT::DistContext::input();
   if (GT::DistContext::rank() == 0) {
-    if (in.get_optional<std::string>("tensor.file") == boost::none){
+    if (in.get_optional<std::string>("tensor.file") == boost::none) {
       throw std::logic_error{"Input must contain tensor.file"};
     }
   }
@@ -72,6 +72,20 @@ void check_input() {
 void real_main() {
   try {
     check_input();
+    const auto size = GT::DistContext::nranks();
+    const auto rank = GT::DistContext::rank();
+
+    if (rank == 0) {
+      std::cout << "Running Geten-MPI-SGD with: " << size << " ranks\n";
+      std::cout << "\tdecomposing file: "
+                << GT::DistContext::input().get<std::string>("tensor.file")
+                << "\n";
+      std::cout << "\tusing method: "
+                << GT::DistContext::input().get<std::string>("tensor.method")
+                << std::endl;
+    }
+    GT::DistContext::Barrier();
+
     GT::TensorBlockSystem<double, Kokkos::OpenMP> tbs(GT::DistContext::input());
     tbs.SGD();
   } catch (std::exception &e) {

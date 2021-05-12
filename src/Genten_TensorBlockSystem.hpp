@@ -232,6 +232,7 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
       new ProcessorMap(DistContext::input(), Ti_));
   auto &pmap_ = *pmap_ptr_;
 
+  // TODO blocking could be better
   const auto blocking =
       detail::generateMediumGrainBlocking(Ti_.dim_sizes, pmap_.gridDims());
 
@@ -405,9 +406,9 @@ AlgParams TensorBlockSystem<ElementType, ExecSpace>::setAlgParams() const {
   algParams.num_samples_zeros_grad =
       input_.get<int>("batch_size_zero", algParams.num_samples_nonzeros_grad);
   algParams.num_samples_nonzeros_value = 100000;
+  algParams.sampling_type = Genten::GCP_Sampling::SemiStratified;
   algParams.num_samples_zeros_value = 100000;
   algParams.fuse = true;
-  algParams.mttkrp_all_method = MTTKRP_All_Method::Atomic;
 
   // Adjust for the number of processors
   const auto np = nprocs();
@@ -735,8 +736,10 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD(Loss const &loss) {
 
       do_epoch_iter();
     }
-    allReduceKT(ut);
-    ++allreduceCounter;
+    if (nprocs > 1) { 
+      allReduceKT(ut);
+      ++allreduceCounter;
+    }
 
     fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
     t1 = MPI_Wtime();

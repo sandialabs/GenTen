@@ -206,7 +206,9 @@ ProcessorMap::ProcessorMap(ptree const &input_tree, TensorInfo const &Ti)
 }
 
 void ProcessorMap::gridBarrier() const {
-  MPI_Barrier(cart_comm_);
+  if(grid_nprocs_ > 1){
+    MPI_Barrier(cart_comm_);
+  }
 }
 
 ProcessorMap::~ProcessorMap() {

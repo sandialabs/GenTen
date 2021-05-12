@@ -83,8 +83,10 @@ public:
     static_assert(std::is_arithmetic<T>::value,
                   "gridAllReduce requires something like a double, or int");
 
-    MPI_Allreduce(MPI_IN_PLACE, &element, 1, convertType(element), op,
-                  cart_comm_);
+    if(grid_nprocs_ > 1){
+      MPI_Allreduce(MPI_IN_PLACE, &element, 1, convertType(element), op,
+                    cart_comm_);
+    }
     return element;
   }
 
