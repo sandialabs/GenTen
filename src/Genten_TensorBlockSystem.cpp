@@ -235,6 +235,14 @@ std::vector<TDatatype> redistributeTensor(
                            &amount_to_allocate_for_window, 1, MPI_INT, MPI_SUM,
                            grid_comm);
 
+  if (amount_to_allocate_for_window == 0) {
+    const auto my_rank = pmap.gridRank();
+    std::stringstream ss;
+    ss << "WARNING Node(" << my_rank
+       << "), recieved zero nnz in the current blocking\n";
+    std::cout << ss.str() << std::flush;
+  }
+
   TDatatype *data;
   MPI_Win window;
   constexpr auto DataElemSize = sizeof(TDatatype);
