@@ -507,13 +507,9 @@ TensorBlockSystem<ElementType, ExecSpace>::elasticAverageSGD(Loss const &loss) {
   diff.zero();
   KtensorT<ExecSpace> diffKT = diff.getKtensor();
 
-  VectorType nag = u.clone(); // Center Tensor for elastic avg
-  nag.set(u);
-  KtensorT<ExecSpace> nagKT = nag.getKtensor();
-
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(sp_tensor_, algParams);
 
-  Impl::NAGStep<ExecSpace, Loss> stepper(algParams, u);
+  Impl::SGDStep<ExecSpace, Loss> stepper;
 
   auto seed = input_.get<std::uint64_t>("seed", std::random_device{}());
   Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
@@ -546,8 +542,8 @@ TensorBlockSystem<ElementType, ExecSpace>::elasticAverageSGD(Loss const &loss) {
     }
   }
 
-  auto do_sync_allreduce = input_.get<bool>("sync_allreduce", false);
-  auto do_extra_work = input_.get<bool>("do_extra_work", true);
+  auto do_sync_allreduce = input_.get<bool>("sync_allreduce", true);
+  auto do_extra_work = input_.get<bool>("do_extra_work", false);
   double t0 = 0, t1 = 0;
 
   for (auto e = 0; e < maxEpochs; ++e) { // Epochs
@@ -560,9 +556,7 @@ TensorBlockSystem<ElementType, ExecSpace>::elasticAverageSGD(Loss const &loss) {
 
     auto do_epoch_iter = [&] {
       g.zero();
-      nag.set(u);
-      nag.plus(stepper.velocity(), 0.9);
-      sampler.fusedGradient(nagKT, loss, GFac, timer, tnzs, tzs);
+      sampler.fusedGradient(ut, loss, GFac, timer, tnzs, tzs);
       stepper.eval(g, u);
     };
 
@@ -576,7 +570,13 @@ TensorBlockSystem<ElementType, ExecSpace>::elasticAverageSGD(Loss const &loss) {
       }
 
       if ((i + 1) % dp_iters == 0 || i == (epochIters - 1)) {
-        if (!do_sync_allreduce) {
+        if (do_sync_allreduce) {
+          u.elastic_difference(diff, center, 1.0);
+          u.plus(diff, -1.0 * alpha);
+          allReduceKT(diffKT, false);
+          center.plus(diff, alpha);
+          ++allreduceCounter;
+        } else { // iAllReduce
           if (first_average) {
             first_average = false;
           } else {
@@ -600,12 +600,6 @@ TensorBlockSystem<ElementType, ExecSpace>::elasticAverageSGD(Loss const &loss) {
           u.elastic_difference(diff, center, 1.0);
           u.plus(diff, -1.0 * alpha); // Subtract dist from myself
           iAllReduceKT(diffKT, elastic_requests);
-          ++allreduceCounter;
-        } else { // Sync allreduce
-          u.elastic_difference(diff, center, 1.0);
-          u.plus(diff, -1.0 * alpha);
-          allReduceKT(diffKT, false);
-          center.plus(diff, alpha);
           ++allreduceCounter;
         }
       }
