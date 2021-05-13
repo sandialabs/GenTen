@@ -260,36 +260,6 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
 }
 
 template <typename ElementType, typename ExecSpace>
-void TensorBlockSystem<ElementType, ExecSpace>::printBatchInfo(
-    AlgParams const &algParams) const {
-  const auto my_rank = pmap_ptr_->gridRank();
-
-  const auto local_batch_size = algParams.num_samples_nonzeros_grad;
-  const auto local_batch_sizez = algParams.num_samples_zeros_grad;
-  const auto input_nnz = globalNNZ();
-
-  const auto global_nzg = pmap_ptr_->gridAllReduce(local_batch_size);
-  const auto global_zg = pmap_ptr_->gridAllReduce(local_batch_sizez);
-
-  const auto percent_nz_batch = double(global_nzg) / double(input_nnz) * 100.0;
-  const auto percent_nz_epoch =
-      double(algParams.epoch_iters * global_nzg) / double(input_nnz) * 100.0;
-
-  if (my_rank == 0) {
-    std::cout << "Iters/epoch:      " << algParams.epoch_iters << "\n";
-    std::cout << "batch size nz:    " << global_nzg << "\n";
-    std::cout << "\tbatch size nz local:       "
-              << algParams.num_samples_nonzeros_grad << "\n";
-    std::cout << "batch size zeros: " << global_zg << "\n";
-    std::cout << "\tbatch size zeros local:    "
-              << algParams.num_samples_zeros_grad << "\n";
-    std::cout << "NZ \% epoch :  " << percent_nz_epoch << "\n";
-    std::cout << std::endl;
-  }
-  pmap_ptr_->gridBarrier();
-}
-
-template <typename ElementType, typename ExecSpace>
 ElementType TensorBlockSystem<ElementType, ExecSpace>::getTensorNorm() const {
   auto const &values = sp_tensor_.getValArray();
   static double norm2 = values.dot(values);
