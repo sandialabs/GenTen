@@ -91,8 +91,6 @@ class TensorBlockSystem {
   template <typename Loss> ElementType elasticAverageSGD(Loss const &loss);
   template <typename Loss> ElementType pickMethod(Loss const &loss);
 
-  void printBatchInfo(AlgParams const &algParams) const;
-
   AlgParams setAlgParams() const;
 
 public:
@@ -805,6 +803,10 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
 
   // Fit stuff
   auto fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
+  if(my_rank == 0){
+    std::cout << "Initial guess fest: " << fest << std::endl;
+  }
+  pmap_ptr_->gridBarrier();
 
   auto fest_prev = fest;
   const auto maxEpochs = algParams.maxiters;
@@ -819,8 +821,6 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
     if (my_rank == 0) {
       std::cout << "Epoch LR: " << epoch_lr << std::endl;
     }
-
-    auto do_epoch_iter = [&] {};
 
     auto allreduceCounter = 0;
     for (auto i = 0; i < epochIters; ++i) {
