@@ -241,6 +241,16 @@ std::vector<TDatatype> redistributeTensor(
     ss << "WARNING Node(" << my_rank
        << "), recieved zero nnz in the current blocking\n";
     std::cout << ss.str() << std::flush;
+    // TODO Handle this better than just aborting, but I don't have another
+    // good solution for now.
+    if (pmap.gridSize() > 1) {
+      MPI_Abort(pmap.gridComm(), MPI_ERR_UNKNOWN);
+    } else {
+      std::cout << "Zero tensor on a single node? Something probably went "
+                   "really wrong."
+                << std::endl;
+      std::abort();
+    }
   }
 
   TDatatype *data;
