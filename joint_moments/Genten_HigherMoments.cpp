@@ -40,10 +40,6 @@
 
 #pragma once
 
-#include<Kokkos_Core.hpp>
-#include "Genten_Kokkos.hpp"
-#include "Genten_Tensor.hpp"
-#include "Genten_IOtext.hpp"
 #include "Genten_HigherMoments.hpp"
 #include "Genten_FormCokurtosisSlice.hpp"
 #include "Genten_MathLibs_Wpr.hpp"
