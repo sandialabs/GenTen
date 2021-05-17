@@ -129,7 +129,7 @@ generateMediumGrainBlocking(std::vector<int> ModeLengths,
                             small_vector<int> const &ProcGridSizes);
 
 struct TDatatype {
-  int coo[12] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+  int coo[6] = {-1, -1, -1, -1, -1, -1};
   double val;
 };
 
@@ -216,9 +216,37 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
       new ProcessorMap(DistContext::input(), Ti_));
   auto &pmap_ = *pmap_ptr_;
 
+  if (DistContext::isDebug()) {
+    if (this->gridRank() == 0) {
+      std::cout << "Pmap initalization complete with grid: ";
+      for (auto p : pmap_ptr_->gridDims()) {
+        std::cout << p << " ";
+      }
+      std::cout << std::endl;
+    } 
+    pmap_ptr_->gridBarrier();
+  }
+
   // TODO blocking could be better
   const auto blocking =
       detail::generateMediumGrainBlocking(Ti_.dim_sizes, pmap_.gridDims());
+
+  if (DistContext::isDebug()) {
+    if (this->gridRank() == 0) {
+      std::cout << "With blocking:\n";
+      auto dim = 0;
+      for (auto const &inner : blocking) {
+        std::cout << "\tdim(" << dim << "): ";
+        ++dim;
+        for(auto i : inner){
+          std::cout << i << " ";
+        }
+        std::cout << "\n";
+      }
+      std::cout << std::endl;
+    } 
+    pmap_ptr_->gridBarrier();
+  }
 
   // Evenly distribute the tensor around the world
   auto Tvec = detail::distributeTensorToVectors(
@@ -253,8 +281,16 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
   }
 
   sp_tensor_ = SptensorT<ExecSpace>(indices, values, subs);
-  if(DistContext::input().get<bool>("debug", false)){
-    detail::printRandomElements(sp_tensor_, 3, *pmap_ptr_, range_);
+  if (DistContext::input().get<bool>("debug", false)) {
+    if (this->gridRank() == 0) {
+      std::cout << "MPI Ranks in each dimension: ";
+      for (auto p : pmap_ptr_->gridDims()) {
+        std::cout << p << " ";
+      }
+      std::cout << std::endl;
+    }
+    pmap_ptr_->gridBarrier();
+    // detail::printRandomElements(sp_tensor_, 3, *pmap_ptr_, range_);
   }
   init_factors();
 }
@@ -767,7 +803,7 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
 
   // Fit stuff
   auto fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
-  if(my_rank == 0){
+  if (my_rank == 0) {
     std::cout << "Initial guess fest: " << fest << std::endl;
   }
   pmap_ptr_->gridBarrier();
@@ -841,7 +877,7 @@ void printRandomElements(SptensorT<ExecSpace> const &tensor,
       }
     }
     std::cout << "]\n";
-    if(nnz >= num_elements_per_rank){
+    if (nnz >= num_elements_per_rank) {
       for (auto i = 0; i < num_elements_per_rank; ++i) {
         auto rand_idx = dist(gen);
         auto indices = tensor.getSubscripts(rand_idx);

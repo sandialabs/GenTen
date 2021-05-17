@@ -147,6 +147,9 @@ std::vector<TDatatype> distributeTensorToVectors(std::ifstream &ifs,
       total_sent += nelements;
 
       const auto index_of_first_element = who_gets_what[i];
+      if(std::uint64_t(nbytes) >= std::numeric_limits<int>::max()){
+        std::cout << "OOPs, tried to send to many bytes :/." << std::endl;
+      }
       MPI_Isend(Tvec.data() + index_of_first_element, nbytes, MPI_BYTE, i, i,
                 comm, &requests[i - 1]);
     }
@@ -167,6 +170,9 @@ std::vector<TDatatype> distributeTensorToVectors(std::ifstream &ifs,
     const auto nelements = who_gets_what[rank + 1] - who_gets_what[rank];
     Tvec.resize(nelements);
     const auto nbytes = nelements * dt_size;
+    if(std::uint64_t(nbytes) >= std::numeric_limits<int>::max()){
+      std::cout << "OOPs, tried to recieve to many bytes :/." << std::endl;
+    }
     MPI_Recv(Tvec.data(), nbytes, MPI_BYTE, 0, rank, comm, MPI_STATUS_IGNORE);
   }
 

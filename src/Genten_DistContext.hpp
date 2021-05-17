@@ -77,9 +77,7 @@ struct DistContext {
     return instance_->nranks_;
   }
 
-  static bool initialized() {
-    return instance_ != nullptr;
-  }
+  static bool initialized() { return instance_ != nullptr; }
 
   static MPI_Comm commWorld() {
     assert(instance_ != nullptr);
@@ -89,6 +87,11 @@ struct DistContext {
   static ptree const &input() {
     assert(instance_ != nullptr);
     return instance_->input_;
+  }
+
+  static bool isDebug() {
+    assert(instance_ != nullptr);
+    return instance_->input_.get<bool>("debug", false);
   }
 
   static void Barrier() {
