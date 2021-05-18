@@ -43,119 +43,71 @@
 #include "Genten_Boost.hpp"
 
 #include <cmath>
+#include <memory>
 
 namespace Genten {
+class AnnealerBase {
+public:
+  AnnealerBase(ptree const &ptree) {}
+  virtual double operator()(int epoch) = 0;
+  virtual void failed(){};
+  virtual void success(){};
 
-class CosineAnnealer {
-  double last_returned = 0.0;
+private:
+};
+
+class TraditionalAnnealer : public AnnealerBase {
+  double step_size_;
+
+public:
+  TraditionalAnnealer(ptree const &ptree)
+      : AnnealerBase(ptree), step_size_(ptree.get<double>("lr.step", 3e-4)) {}
+
+  double operator()(int epoch) override { return step_size_; }
+  void failed() override { step_size_ /= 10; }
+};
+
+class CosineAnnealer : public AnnealerBase {
   double min_lr;
   double max_lr;
-  double warmup_scale;
-  int epoch_internal = 0;
-  int cycle_size;
-  int warmup_size;
-  bool do_warmup;
+  int Ti;
+  int Tcur = 0;
 
 public:
   CosineAnnealer(ptree const &ptree)
-      : min_lr(ptree.get<double>("lr.min_lr", 1e-12)),
+      : AnnealerBase(ptree), min_lr(ptree.get<double>("lr.min_lr", 1e-12)),
         max_lr(ptree.get<double>("lr.max_lr", 1e-9)),
-        warmup_size(ptree.get<int>("lr.warmup_size", 20)),
-        cycle_size(ptree.get<int>("lr.cycle_size", 50)),
-        do_warmup(ptree.get<bool>("lr.warmup", true)) {
-    if (auto ws = ptree.get_optional<double>("lr.warmup_scale")) {
-      warmup_scale = ws.get();
-    } else {
-      const auto term = std::log(max_lr / min_lr) / warmup_size;
-      warmup_scale = std::exp(term);
-    }
+        Ti(ptree.get<int>("lr.Ti", 10)) {}
+
+  double operator()(int) override {
+    return min_lr +
+           0.5 * (max_lr - min_lr) * (1 + std::cos(double(Tcur) / Ti * M_PI));
   }
 
-  inline double operator()(int epoch) {
-    if (do_warmup) {
-      last_returned = min_lr * std::pow(warmup_scale, epoch_internal);
-    } else {
-      if (epoch_internal > cycle_size) {
-        epoch_internal = 0;
-      }
-
-      last_returned =
-          min_lr +
-          0.5 * (max_lr - min_lr) *
-              (1 + std::cos(double(epoch_internal) / cycle_size * M_PI));
-    }
-    ++epoch_internal;
-    if (do_warmup && epoch_internal == warmup_size) {
-      epoch_internal = 0; // Start over
-      do_warmup = false;
-    }
-
-    return last_returned;
+  void failed() override {
+    min_lr *= 0.5;
+    max_lr *= 0.5;
+    Tcur = 0;
   }
 
-  inline void failed() {
-    if (do_warmup) {
-      max_lr = min_lr * std::pow(warmup_scale, epoch_internal - 2);
-      do_warmup = false;
-    } else {
-      max_lr = 0.5 * last_returned;
+  void success() override {
+    ++Tcur;
+    if (Tcur > Ti) {
+      Tcur = 0;
+      Ti *= 2;
     }
-    epoch_internal = 0;
   }
-
-  inline void success() {}
 };
 
-class BoringAnnealer {
-  double min_lr;
-  double max_lr;
-  double warmup_scale;
-  int warmup_size;
-  bool do_warmup;
-  int epoch_internal = 0;
-
-public:
-  BoringAnnealer(ptree const &ptree)
-      : min_lr(ptree.get<double>("lr.min_lr", 1e-12)),
-        max_lr(ptree.get<double>("lr.max_lr", 1e-9)),
-        warmup_size(ptree.get<int>("lr.warmup_size", 20)),
-        do_warmup(ptree.get<bool>("lr.warmup", true)) {
-    if (auto ws = ptree.get_optional<double>("lr.warmup_scale")) {
-      warmup_scale = ws.get();
-    } else {
-      const auto term = std::log(max_lr / min_lr) / warmup_size;
-      warmup_scale = std::exp(term);
-    }
+inline std::unique_ptr<AnnealerBase> getAnnealer(ptree const& ptree){
+  auto annealer = ptree.get<std::string>("annealer", "traditional");
+  if(annealer == "traditional"){
+    return std::make_unique<TraditionalAnnealer>(TraditionalAnnealer(ptree));
+  } else if(annealer == "cosine"){
+    return std::make_unique<CosineAnnealer>(CosineAnnealer(ptree));
+  } else {
+    return std::make_unique<TraditionalAnnealer>(TraditionalAnnealer(ptree));
   }
-
-  inline double operator()(int epoch) {
-    auto out = 0.0;
-    if (do_warmup) {
-      out = min_lr * std::pow(warmup_scale, epoch_internal);
-    } else {
-      out = max_lr;
-    }
-    ++epoch_internal;
-    if (epoch_internal == warmup_size) {
-      epoch_internal = 0; // Start over
-      do_warmup = false;
-    }
-
-    return out;
-  }
-
-  inline void failed() {
-    if (do_warmup) {
-      max_lr = min_lr * std::pow(warmup_scale, epoch_internal - 2);
-      do_warmup = false;
-    } else {
-      // Half the distance between max and min_lr
-      max_lr = (max_lr - min_lr)/2.0 + min_lr;
-    }
-    epoch_internal = 0;
-  }
-
-  inline void success() {}
-};
+}
 
 } // namespace Genten

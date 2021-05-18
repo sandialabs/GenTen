@@ -223,7 +223,7 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
         std::cout << p << " ";
       }
       std::cout << std::endl;
-    } 
+    }
     pmap_ptr_->gridBarrier();
   }
 
@@ -238,13 +238,13 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
       for (auto const &inner : blocking) {
         std::cout << "\tdim(" << dim << "): ";
         ++dim;
-        for(auto i : inner){
+        for (auto i : inner) {
           std::cout << i << " ";
         }
         std::cout << "\n";
       }
       std::cout << std::endl;
-    } 
+    }
     pmap_ptr_->gridBarrier();
   }
 
@@ -780,6 +780,9 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
   u.copyFromKtensor(Kfac_);
   KtensorT<ExecSpace> ut = u.getKtensor();
 
+  VectorType u_best = u.clone();
+  u_best.set(u);
+
   VectorType g = u.clone(); // Gradient Ktensor
   g.zero();
   decltype(Kfac_) GFac = g.getKtensor();
@@ -812,15 +815,14 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
   const auto maxEpochs = algParams.maxiters;
   const auto epochIters = algParams.epoch_iters;
 
-  // TODO make the Annealer swappable
-  auto epoch_lr = 1e-3;
+  auto annealer_ptr = getAnnealer(input_);
+  auto &annealer = *annealer_ptr;
   double t0 = 0, t1 = 0;
+  auto nfails = 0;
   for (auto e = 0; e < maxEpochs; ++e) { // Epochs
     t0 = MPI_Wtime();
+    const auto epoch_lr = annealer(e);
     stepper.setStep(epoch_lr);
-    if (my_rank == 0) {
-      std::cout << "Epoch LR: " << epoch_lr << std::endl;
-    }
 
     auto allreduceCounter = 0;
     for (auto i = 0; i < epochIters; ++i) {
@@ -835,14 +837,43 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
     fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
     t1 = MPI_Wtime();
 
+    const auto fest_diff = fest_prev - fest;
     if (my_rank == 0) {
-      std::cout << "\tFit(" << e << "): " << fest << ", " << fest_prev - fest
-                << " did " << allreduceCounter << " factor allReduces."
-                << " in " << (t1 - t0) << " seconds.\n"
-                << std::flush;
+      std::cout << "Fit(" << e << "): " << fest
+                << "\n\tchange in fit: " << fest_diff
+                << "\n\tlr:            " << epoch_lr
+                << "\n\tallReduces:    " << allreduceCounter
+                << "\n\tSeconds:       " << (t1 - t0) << "\n";
+
+      std::cout << std::flush;
     }
-    fest_prev = fest;
+
+    if(fest_diff < 0) {
+      annealer.success();
+      ++nfails;
+      if(fest > 15 * fest_prev){
+        nfails = 10;
+      }
+    } else { // Actually succeeded
+      stepper.setPassed();
+      u_best.set(u);
+      fest_prev = fest;
+      annealer.success();
+      nfails = 0;
+    }
+
+    if(nfails >= 10){ // Real failure :(
+      if(my_rank == 0){
+        std::cout << "Resetting things and trying again\n";
+      }
+      u.set(u_best);
+      fest = fest_prev;
+      stepper.setFailed();
+      annealer.failed();
+      nfails = 0;
+    }
   }
+  u.set(u_best);
 
   return fest_prev;
 }

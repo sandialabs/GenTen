@@ -340,8 +340,6 @@ namespace Genten {
         if (failed_epoch)
           ++nfails;
 
-         // Print progress of the current iteration.
-        u_norm = std::sqrt(ut.normFsq());
         if ((printIter > 0) && (((numEpochs + 1) % printIter) == 0)) {
           out << "Epoch " << std::setw(3) << numEpochs + 1 << ": f-est = "
               << std::setw(13) << std::setprecision(6) << std::scientific
@@ -356,7 +354,6 @@ namespace Genten {
           out << ", time = "
               << std::setw(8) << std::setprecision(2) << std::scientific
               << timer.getTotalTime(timer_sgd) << " sec";
-          out << " u_norm: " << u_norm;
           if (failed_epoch){
             out << ", nfails = " << nfails;
           }
