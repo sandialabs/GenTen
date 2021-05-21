@@ -44,6 +44,7 @@
 #include "Genten_FormCokurtosisSlice.hpp"
 #include "Genten_MathLibs_Wpr.hpp"
 #include "compute_krp.hpp"
+#include <math.h>
 
 //namespace Genten {
 
@@ -140,8 +141,9 @@ void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nva
 
 
   int nthreads_per_team = 64;
-  int nteams_x = nvars*nvars/nthreads_per_team;
-  if((nvars*nvars)%nthreads_per_team != 0) nteams_x += 1;
+  //HKint nteams_x = nvars*nvars/nthreads_per_team;
+  //HKif((nvars*nvars)%nthreads_per_team != 0) nteams_x += 1;
+  int nteams_x = (int)( ceil( (double)(nvars*nvars)/((double)(nthreads_per_team)) ) );
   int nteams_y = 32; //hard-coding for now
   int nteams = nteams_x * nteams_y;
 
