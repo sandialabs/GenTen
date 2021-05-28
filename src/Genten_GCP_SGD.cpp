@@ -219,9 +219,9 @@ namespace Genten {
       fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
       if (compute_fit) {
         x_norm = X.norm();
-        ttb_real u_norm = u.normFsq();
+        ttb_real u_norm = ut.normFsq();
         ttb_real dot = innerprod(X, ut);
-        fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
+        fit = 1.0 - sqrt(x_norm*x_norm + u_norm - 2.0*dot) / x_norm;
       }
       timer.stop(timer_fest);
       ttb_real fest_prev = fest;
@@ -254,9 +254,9 @@ namespace Genten {
         timer.start(timer_fest);
         fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
         if (compute_fit) {
-          ttb_real u_norm = u.normFsq();
+          ttb_real u_norm = ut.normFsq();
           ttb_real dot = innerprod(X, ut);
-          fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
+          fit = 1.0 - sqrt(x_norm*x_norm + u_norm - 2.0*dot) / x_norm;
         }
         timer.stop(timer_fest);
 

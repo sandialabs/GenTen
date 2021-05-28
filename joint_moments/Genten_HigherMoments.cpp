@@ -38,8 +38,6 @@
 // ************************************************************************
 //@HEADER
 
-#pragma once
-
 #include "Genten_HigherMoments.hpp"
 #include "Genten_FormCokurtosisSlice.hpp"
 #include "Genten_MathLibs_Wpr.hpp"
