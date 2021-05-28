@@ -44,6 +44,10 @@
 #include "compute_krp.hpp"
 #include <math.h>
 
+#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+#include "cublas_v2.h"
+#endif
+
 //namespace Genten {
 
 //namespace Impl{
@@ -124,7 +128,7 @@ void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nva
 
   Kokkos::View<ttb_real**,Kokkos::LayoutLeft, Space> cokurtosis_tensor("cokurt_tensor", nvars*nvars, nvars*nvars);
 
-#if defined(KOKKOS_ENABLE_CUDA)
+#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
   //Setup cublas handles once, will be reused repeatedly
   cublasStatus_t status;
 
@@ -154,7 +158,7 @@ void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nva
 
   //Now compute cokurtosis tensor = (1/nCols)(krp_of_raw * transp(krp_of_raw) )
   ttb_real alpha = 1.0/ttb_real(nsamples); ttb_real beta = 0.0;
-#if defined(KOKKOS_ENABLE_CUDA)
+#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
   status = cublasDgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T,
                        nvars*nvars, nvars*nvars, nsamples,
                        &alpha,
@@ -178,7 +182,7 @@ void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nva
 
   // C is implicitly reshaped to (nvars)x(nvars^3) in the call to DGEMM itself
   ttb_real alpha2 = 1.0;
-#if defined(KOKKOS_ENABLE_CUDA)
+#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
   status = cublasDgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T,
                        nvars, nvars, nvars*nvars*nvars,
                        &alpha2,
