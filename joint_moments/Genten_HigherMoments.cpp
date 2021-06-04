@@ -118,7 +118,7 @@ void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nva
   //Create a Tensor_type of raw data
   //We will be basically casting the raw_data_ptr to a Kokkos Unmanaged View
   Kokkos::View<ttb_real**,Kokkos::LayoutLeft, HostSpace,
-               Kokkos::MemoryTraits<Kokkos::Unmanaged> > raw_data_host(raw_data_ptr, nsamples, nvars);
+               Kokkos::MemoryTraits<Kokkos::Unmanaged> > raw_data_host(raw_data_ptr, nvars, nsamples);
 
   //Create mirror of raw_data_host on device and copy over
   Kokkos::View<ttb_real**,Kokkos::LayoutLeft, Space> raw_data = Kokkos::create_mirror_view(Space(), raw_data_host);
@@ -148,6 +148,8 @@ void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nva
   int nteams_x = (int)( ceil( (double)(nvars*nvars)/((double)(nthreads_per_team)) ) );
   int nteams_y = 32; //hard-coding for now
   int nteams = nteams_x * nteams_y;
+
+  std::cout<<"Launching KRP kernel with "<<nteams_x<<" "<<nteams_y<<" "<<nteams<<std::endl;
 
   //We're using a 2D block of thread teams (nteams_x*nteams_y in number)
   //The Team Policy can also be specified with a 1D index, so we'll flatten the 2D index
