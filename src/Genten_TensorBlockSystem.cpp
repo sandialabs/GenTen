@@ -61,7 +61,7 @@ bool fileFormatIsBinary(std::string const &file_name) {
   return false;
 }
 
-small_vector<int> singleDimMediumGrainBlocking(int ModeLength,
+small_vector<int> singleDimUniformBlocking(int ModeLength,
                                                int ProcsInMode) {
   small_vector<int> Range{0};
   const auto FibersPerBlock = ModeLength / ProcsInMode;
@@ -93,7 +93,7 @@ small_vector<int> singleDimMediumGrainBlocking(int ModeLength,
 }
 
 std::vector<small_vector<int>>
-generateMediumGrainBlocking(std::vector<int> ModeLengths,
+generateUniformBlocking(std::vector<int> ModeLengths,
                             small_vector<int> const &ProcGridSizes) {
   const auto Ndims = ModeLengths.size();
   std::vector<small_vector<int>> blocking;
@@ -101,7 +101,7 @@ generateMediumGrainBlocking(std::vector<int> ModeLengths,
 
   for (auto i = 0; i < Ndims; ++i) {
     blocking.emplace_back(
-        singleDimMediumGrainBlocking(ModeLengths[i], ProcGridSizes[i]));
+        singleDimUniformBlocking(ModeLengths[i], ProcGridSizes[i]));
   }
 
   return blocking;
@@ -114,7 +114,7 @@ std::vector<TDatatype> distributeTensorToVectors(std::ifstream &ifs,
   constexpr auto dt_size = sizeof(detail::TDatatype);
   std::vector<detail::TDatatype> Tvec;
   small_vector<int> who_gets_what =
-      detail::singleDimMediumGrainBlocking(nnz, nprocs);
+      detail::singleDimUniformBlocking(nnz, nprocs);
 
   if (rank == 0) {
     { // Write tensor to form we can MPI_Send more easily.
@@ -147,9 +147,6 @@ std::vector<TDatatype> distributeTensorToVectors(std::ifstream &ifs,
       total_sent += nelements;
 
       const auto index_of_first_element = who_gets_what[i];
-      if(std::uint64_t(nbytes) >= std::numeric_limits<int>::max()){
-        std::cout << "OOPs, tried to send to many bytes :/." << std::endl;
-      }
       MPI_Isend(Tvec.data() + index_of_first_element, nbytes, MPI_BYTE, i, i,
                 comm, &requests[i - 1]);
     }
@@ -170,9 +167,6 @@ std::vector<TDatatype> distributeTensorToVectors(std::ifstream &ifs,
     const auto nelements = who_gets_what[rank + 1] - who_gets_what[rank];
     Tvec.resize(nelements);
     const auto nbytes = nelements * dt_size;
-    if(std::uint64_t(nbytes) >= std::numeric_limits<int>::max()){
-      std::cout << "OOPs, tried to recieve to many bytes :/." << std::endl;
-    }
     MPI_Recv(Tvec.data(), nbytes, MPI_BYTE, 0, rank, comm, MPI_STATUS_IGNORE);
   }
 

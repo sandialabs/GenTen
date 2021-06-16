@@ -500,16 +500,30 @@ if(MPI_FOUND AND BOOST_FOUND)
   add_library(DistContextLib ${DistContext_Sources})
   target_link_libraries(DistContextLib Kokkos::kokkos MPI::MPI_C Boost::boost Boost::serialization)
 
+  set(MPIIO_Sources
+    ${Genten_SOURCE_DIR}/src/Genten_MPI_IO.cpp
+    )
+  add_library(GentenMpiIoLib ${MPIIO_Sources})
+  target_link_libraries(GentenMpiIoLib MPI::MPI_C)
+
 ADD_EXECUTABLE (
   genten_mpisgd
   ${Genten_SOURCE_DIR}/driver/Genten_MPISGD_Driver.cpp
   )
-TARGET_LINK_LIBRARIES (genten_mpisgd ${GENTEN_LINK_LIBS} DistContextLib
-  MPI::MPI_C Boost::boost Boost::serialization)
+
+TARGET_LINK_LIBRARIES (genten_mpisgd ${GENTEN_LINK_LIBS} DistContextLib 
+  GentenMpiIoLib
+  MPI::MPI_C 
+  Boost::boost 
+  Boost::serialization
+  )
+
 INSTALL (
   TARGETS genten_mpisgd
   DESTINATION drivers
   )
+
+
 ENDIF(MPI_FOUND AND BOOST_FOUND)
 
 #------------------------------------------------------------

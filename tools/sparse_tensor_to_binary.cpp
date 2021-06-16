@@ -47,6 +47,8 @@
 #include <string>
 #include <vector>
 
+bool input_is_zero_based = false;
+
 const std::string header_string =
     R"delimiter(sptensor
 ndims
@@ -118,7 +120,7 @@ SpTensorHeader readHeader(std::ifstream &inFile, uint64_t float_data_size) {
   return header;
 }
 
-void writeIndexValue(std::ofstream &outFile, SpTensorHeader const &header,
+void writeIndexValue(std::ostream &outFile, SpTensorHeader const &header,
                      uint64_t value, int position) {
   uint16_t i16;
   uint32_t i32;
@@ -136,7 +138,7 @@ void writeIndexValue(std::ofstream &outFile, SpTensorHeader const &header,
   }
 }
 
-void writeDataValue(std::ofstream &outFile, SpTensorHeader const &header,
+void writeDataValue(std::ostream &outFile, SpTensorHeader const &header,
                     double value) {
   float fp32;
   switch (header.float_data_size) {
@@ -162,7 +164,9 @@ void writeRestOfTheData(std::ifstream &inFile, std::ofstream &outFile,
     for (auto i = 0; i < ndims; ++i) {
       uint64_t value;
       inFile >> value;
-      --value; // For 0 based indexing
+      if (!input_is_zero_based) {
+        --value; // For 0 based indexing
+      }
       writeIndexValue(outFile, header, value, i);
     }
     double data_value;
@@ -189,7 +193,7 @@ sptensor                   -> Type
 The output file will have the following form without the newlines or -> comments
 73 70 74 6e                   -> 4 char 'sptn'
 ndims                         -> uint32_t
-bytes_for_float_type          -> uint32_t
+bits_for_float_type           -> uint32_t
 size0 size1 size2 size3 size4 -> ndims uint64_t
 bits0 bits1 bits2 bits3 bits4 -> number of bits used for each index
 number_non_zero               -> uint64_t
@@ -207,7 +211,7 @@ float_type
  * the local directory with the basename(filename).bin
  */
 int main(int argc, char **argv) {
-  if (argc < 2 || argc > 3) {
+  if (argc < 2 || argc > 4) {
     std::cout << "Input is a file name to a tensor file and optionally the "
                  "size you want to store the floating point data in in bits "
                  "for now assume only {16,32,64(default)} are valid.  The "
@@ -216,9 +220,9 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  auto float_data_size = 64ull;
-  if (argc == 3) {
-    float_data_size = std::stoull(argv[2]);
+  uint32_t float_data_size = 64;
+  if (argc >= 3) {
+    float_data_size = std::stoul(argv[2]);
     if (float_data_size == 16 || float_data_size == 32) {
       std::cout << "Using non-default floating point size of "
                 << float_data_size << "\n";
@@ -226,6 +230,16 @@ int main(int argc, char **argv) {
       throw std::invalid_argument(
           "2nd argumanet for float data point size must be 16, 32, or 64.");
     }
+  }
+
+  if (argc == 4) {
+    input_is_zero_based = std::stoi(argv[3]);
+  }
+  if (input_is_zero_based) {
+    std::cout << "Assuming tensor indexing is zero based.\n";
+  } else {
+    std::cout << "Assuming tensor indexing is one based, will write zero based "
+                 "result.\n";
   }
 
   std::ifstream input_file(argv[1]);
@@ -244,12 +258,14 @@ int main(int argc, char **argv) {
                 sizeof(decltype(float_data_size)));
   for (auto i = 0; i < header.ndims; ++i) {
     auto value = header.dim_sizes[i];
+    std::cout << "Writing: " << value << "\n";
     outfile.write(reinterpret_cast<char *>(&value), sizeof(uint64_t));
   }
   for (auto i = 0; i < header.ndims; ++i) {
     auto value = header.dim_data_sizes[i];
     outfile.write(reinterpret_cast<char *>(&value), sizeof(uint64_t));
   }
+  outfile.write(reinterpret_cast<char *>(&(header.nnz)), sizeof(std::uint64_t));
   uint64_t total_bits = 32 /*sptn*/ + 64 /*ndims*/ + 64 /*float_data_size*/ +
                         header.ndims * 64 /* each dim size */ + 64 /* nnz */;
 

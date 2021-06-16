@@ -49,6 +49,7 @@
 #include "Genten_GCP_SemiStratifiedSampler.hpp"
 #include "Genten_GCP_ValueKernels.hpp"
 #include "Genten_IOtext.hpp"
+#include "Genten_MPI_IO.h"
 #include "Genten_Pmap.hpp"
 #include "Genten_Sptensor.hpp"
 
@@ -58,6 +59,12 @@
 #include <random>
 
 namespace Genten {
+
+namespace detail {
+std::vector<small_vector<int>>
+generateUniformBlocking(std::vector<int> ModeLengths,
+                        small_vector<int> const &ProcGridSizes);
+}
 
 struct RangePair {
   int64_t lower;
@@ -104,8 +111,8 @@ public:
   std::int64_t nprocs() const { return pmap_ptr_->gridSize(); }
   std::int64_t gridRank() const { return pmap_ptr_->gridRank(); }
 
-  KtensorT<ExecSpace> collectFactorsRank0();
   ElementType SGD();
+  void exportKTensor(std::string const &file_name);
 
 private:
   ptree input_;
@@ -114,6 +121,7 @@ private:
   KtensorT<ExecSpace> Kfac_;
   std::unique_ptr<ProcessorMap> pmap_ptr_;
   TensorInfo Ti_;
+  small_vector<small_vector<int>> global_blocking_;
 };
 
 // Helper declerations
@@ -122,11 +130,7 @@ bool fileFormatIsBinary(std::string const &file_name);
 
 template <typename ExecSpace>
 auto rangesToIndexArray(small_vector<RangePair> const &ranges);
-small_vector<int> singleDimMediumGrainBlocking(int ModeLength, int ProcsInMode);
-
-std::vector<small_vector<int>>
-generateMediumGrainBlocking(std::vector<int> ModeLengths,
-                            small_vector<int> const &ProcGridSizes);
+small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode);
 
 struct TDatatype {
   int coo[6] = {-1, -1, -1, -1, -1, -1};
@@ -203,13 +207,16 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_independent(
 template <typename ElementType, typename ExecSpace>
 void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
     std::string const &file_name, int indexbase, int tensor_rank) {
-  if (detail::fileFormatIsBinary(file_name)) {
+  bool is_binary = detail::fileFormatIsBinary(file_name);
+  if (is_binary) {
     throw std::logic_error(
         "I can't quite read the binary format just yet, sorry.");
   }
 
   // TODO Bcast Ti so we don't read it on every node
-  std::ifstream tensor_file(file_name);
+
+  std::ifstream tensor_file;
+  tensor_file.open(file_name);
   Ti_ = read_sptensor_header(tensor_file);
   const auto ndims = Ti_.dim_sizes.size();
   pmap_ptr_ = std::unique_ptr<ProcessorMap>(
@@ -229,7 +236,7 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
 
   // TODO blocking could be better
   const auto blocking =
-      detail::generateMediumGrainBlocking(Ti_.dim_sizes, pmap_.gridDims());
+      detail::generateUniformBlocking(Ti_.dim_sizes, pmap_.gridDims());
 
   if (DistContext::isDebug()) {
     if (this->gridRank() == 0) {
@@ -848,10 +855,10 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
       std::cout << std::flush;
     }
 
-    if(fest_diff < 0) {
+    if (fest_diff < 0) {
       annealer.success();
       ++nfails;
-      if(fest > 15 * fest_prev){
+      if (fest > 15 * fest_prev) {
         nfails = 10;
       }
     } else { // Actually succeeded
@@ -862,8 +869,8 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
       nfails = 0;
     }
 
-    if(nfails >= 10){ // Real failure :(
-      if(my_rank == 0){
+    if (nfails >= 10) { // Real failure :(
+      if (my_rank == 0) {
         std::cout << "Resetting things and trying again\n";
       }
       u.set(u_best);
@@ -874,8 +881,49 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
     }
   }
   u.set(u_best);
+  deep_copy(Kfac_, ut);
 
   return fest_prev;
+}
+
+template <typename ElementType, typename ExecSpace>
+void TensorBlockSystem<ElementType, ExecSpace>::exportKTensor(
+    std::string const &file_name) {
+  const auto blocking =
+      detail::generateUniformBlocking(Ti_.dim_sizes, pmap_ptr_->gridDims());
+
+  if (this->gridRank() == 0) { // I am the chosen one
+    auto const &sizes = Ti_.dim_sizes;
+    IndxArrayT<ExecSpace> sizes_idx(sizes.size());
+    for (auto i = 0; i < sizes.size(); ++i) {
+      sizes_idx[i] = sizes[i];
+    }
+    KtensorT<ExecSpace> out(Kfac_.ncomponents(), Kfac_.ndims(), sizes_idx);
+
+    std::cout << "Blocking:\n";
+    const auto ndims = blocking.size();
+    small_vector<int> grid_pos(ndims, 0);
+    for (auto d = 0; d < ndims; ++d) {
+      const auto nblocks = blocking[d].size() - 1;
+      std::cout << "\tDim(" << d << ")\n";
+      for (auto b = 0; b < nblocks; ++b) {
+        std::cout << "\t\t{" << blocking[d][b] << ", " << blocking[d][b + 1]
+                  << "} owned by ";
+        grid_pos[d] = b;
+        int owner = 0;
+        MPI_Cart_rank(pmap_ptr_->gridComm(), grid_pos.data(), &owner);
+        std::cout << owner << "\n";
+        grid_pos[d] = 0;
+      }
+    }
+    std::cout << std::endl;
+
+    std::cout << "Subcomm sizes: ";
+    for (auto s : pmap_ptr_->subCommSizes()) {
+      std::cout << s << " ";
+    }
+    std::cout << std::endl;
+  }
 }
 
 namespace detail {

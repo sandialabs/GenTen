@@ -1,3 +1,4 @@
+#pragma once
 //@HEADER
 // ************************************************************************
 //     Genten: Software for Generalized Tensor Decompositions
@@ -37,70 +38,43 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // ************************************************************************
 //@HEADER
+//
 
-#include "Genten_DistContext.hpp"
-#include "Genten_DistSpSystem.hpp"
-#include "Genten_IOtext.hpp"
-#include "Genten_Pmap.hpp"
-#include "Genten_TensorBlockSystem.hpp"
+#include <mpi.h>
 
-#include <Kokkos_Core.hpp>
-#include <iostream>
+#include <cstdint>
+#include <iosfwd>
+#include <string>
+#include <vector>
 
-namespace GT = Genten;
+namespace Genten {
+namespace MPI_IO {
+MPI_File openFile(MPI_Comm comm, std::string const &file_name,
+                  int access_mode = MPI_MODE_RDONLY,
+                  MPI_Info info = MPI_INFO_NULL);
 
-GT::Sptensor getSparseTensor();
+struct SptnFileHeader {
+  std::uint32_t ndims = 0;
+  std::uint32_t float_bits = 0;
+  std::vector<std::uint64_t> dim_lengths;
+  std::vector<std::uint64_t> dim_bits;
+  std::uint64_t nnz = 0;
+  std::uint64_t data_starting_byte = 0;
 
-void real_main(int argc, char **argv);
+  std::uint64_t bytesInDataLine() const;
+  std::uint64_t indByteOffset(int ind) const;
+  std::uint64_t dataByteOffset() const;
+  std::uint64_t totalBytesToRead() const;
 
-int main(int argc, char **argv) {
-  GT::InitializeGenten(&argc, &argv);
-  { real_main(argc, argv); }
-  GT::FinalizeGenten();
-  return 0;
-}
+  std::vector<std::uint64_t> getOffsetRanges(int nranks) const;
 
-void check_input() {
-  auto &in = GT::DistContext::input();
-  if (GT::DistContext::rank() == 0) {
-    if (in.get_optional<std::string>("tensor.file") == boost::none) {
-      throw std::logic_error{"Input must contain tensor.file"};
-    }
-  }
-}
+  std::pair<std::uint64_t, std::uint64_t> getLocalOffsetRange(int rank,
+                                                              int nranks) const;
+};
 
-void real_main(int argc, char **argv) {
-  try {
-    check_input();
-    const auto size = GT::DistContext::nranks();
-    const auto rank = GT::DistContext::rank();
+std::ostream &operator<<(std::ostream &os, SptnFileHeader const &h);
 
-    if (rank == 0) {
-      std::cout << "Running Geten-MPI-SGD with: " << size << " mpi-ranks\n";
-      std::cout << "\tdecomposing file: "
-                << GT::DistContext::input().get<std::string>("tensor.file")
-                << "\n";
-      std::cout << "\tusing method: "
-                << GT::DistContext::input().get<std::string>("tensor.method")
-                << std::endl;
+SptnFileHeader readHeader(MPI_Comm comm, MPI_File fh);
 
-      if(GT::DistContext::input().get<bool>("debug", false)){
-        std::cout << "Input file: " << argv[1] << ":\n";
-        std::ifstream json_input(argv[1]);
-        if(json_input.is_open()){
-          std::cout << json_input.rdbuf();
-        }
-        std::cout << std::flush;
-      }
-    }
-    GT::DistContext::Barrier();
-
-    GT::TensorBlockSystem<double, Kokkos::OpenMP> tbs(GT::DistContext::input());
-    tbs.SGD();
-    tbs.exportKTensor("out.txt");
-  } catch (std::exception &e) {
-    auto rank = GT::DistContext::rank();
-    std::cerr << "Rank: " << rank << " " << e.what() << "\n";
-    MPI_Abort(GT::DistContext::commWorld(), 0);
-  }
-}
+} // namespace MPI_IO
+} // namespace Genten
