@@ -92,7 +92,7 @@ small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode) {
 }
 
 std::vector<small_vector<int>>
-generateUniformBlocking(std::vector<int> ModeLengths,
+generateUniformBlocking(std::vector<std::uint32_t> const &ModeLengths,
                         small_vector<int> const &ProcGridSizes) {
   const auto Ndims = ModeLengths.size();
   std::vector<small_vector<int>> blocking;
@@ -207,7 +207,7 @@ int rankInGridThatOwns(std::uint32_t const *COO, MPI_Comm grid_comm,
 
 std::vector<MPI_IO::TDatatype<double>>
 redistributeTensor(std::vector<MPI_IO::TDatatype<double>> const &Tvec,
-                   std::vector<int> const &TDims,
+                   std::vector<std::uint32_t> const &TDims,
                    std::vector<small_vector<int>> const &blocking,
                    ProcessorMap const &pmap) {
 

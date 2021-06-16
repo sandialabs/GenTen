@@ -123,7 +123,7 @@ public:
 
   int64_t nnz() const { return tensor_info_.nnz; }
   int tensorModeSize(int d) const { return tensor_info_.dim_sizes[d]; }
-  std::vector<int> const &tensorModeSizes() const {
+  std::vector<std::uint32_t> const &tensorModeSizes() const {
     return tensor_info_.dim_sizes;
   }
 

@@ -42,6 +42,7 @@
 #pragma once
 
 #include <Genten_Boost.hpp>
+#include <Genten_TensorInfo.hpp>
 
 #include <cstdint>
 #include <vector>
@@ -67,6 +68,8 @@ struct SptnFileHeader {
 
   std::pair<std::uint64_t, std::uint64_t> getLocalOffsetRange(int rank,
                                                               int nranks) const;
+
+  TensorInfo toTensorInfo() const;
 };
 
 std::ostream &operator<<(std::ostream &os, SptnFileHeader const &h);

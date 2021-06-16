@@ -97,7 +97,7 @@ void real_main(int argc, char **argv) {
 
     GT::TensorBlockSystem<double, Kokkos::OpenMP> tbs(GT::DistContext::input());
     tbs.SGD();
-    tbs.exportKTensor("out.txt");
+    // tbs.exportKTensor("out.txt");
   } catch (std::exception &e) {
     auto rank = GT::DistContext::rank();
     std::cerr << "Rank: " << rank << " " << e.what() << "\n";

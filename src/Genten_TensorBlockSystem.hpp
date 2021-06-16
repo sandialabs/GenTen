@@ -63,7 +63,7 @@ namespace Genten {
 
 namespace detail {
 std::vector<small_vector<int>>
-generateUniformBlocking(std::vector<int> ModeLengths,
+generateUniformBlocking(std::vector<std::uint32_t> const &ModeLengths,
                         small_vector<int> const &ProcGridSizes);
 }
 
@@ -77,15 +77,16 @@ struct RangePair {
 // tensor is placed into one block this is just a TensorSystem
 template <typename ElementType, typename ExecSpace = DefaultExecutionSpace>
 class TensorBlockSystem {
-  static_assert(std::is_floating_point<ElementType>::value,
-                "DistSpSystem Requires that the element type be a floating "
-                "point type.");
+  static_assert(
+      std::is_floating_point<ElementType>::value,
+      "TensorBlockSystem Requires that the element type be a floating "
+      "point type.");
 
   /// The normal initialization method, inializes in parallel
   void init_distributed(std::string const &file_name, int indexbase,
                         int tensor_rank);
 
-  // Initializaton for creating the tensor block system all on all ranks
+  // Initialization for creating the tensor block system all on all ranks
   void init_independent(std::string const &file_name, int indexbase, int rank);
 
   /// Initialize the factor matrices
@@ -108,7 +109,7 @@ public:
   std::uint64_t globalNNZ() const { return Ti_.nnz; }
   std::int64_t localNNZ() const { return sp_tensor_.nnz(); }
   std::int32_t ndims() const { return sp_tensor_.ndims(); }
-  std::vector<int> const &dims() const { return Ti_.dim_sizes; }
+  std::vector<std::uint32_t> const &dims() const { return Ti_.dim_sizes; }
   std::int64_t nprocs() const { return pmap_ptr_->gridSize(); }
   std::int64_t gridRank() const { return pmap_ptr_->gridRank(); }
 
@@ -139,7 +140,7 @@ distributeTensorToVectors(std::ifstream &ifs, uint64_t nnz, int indexbase,
 
 std::vector<MPI_IO::TDatatype<double>>
 redistributeTensor(std::vector<MPI_IO::TDatatype<double>> const &Tvec,
-                   std::vector<int> const &TensorDims,
+                   std::vector<std::uint32_t> const &TensorDims,
                    std::vector<small_vector<int>> const &blocking,
                    ProcessorMap const &pmap);
 
@@ -205,16 +206,22 @@ template <typename ElementType, typename ExecSpace>
 void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
     std::string const &file_name, int indexbase, int tensor_rank) {
   bool is_binary = detail::fileFormatIsBinary(file_name);
-  if (is_binary) {
+  if (is_binary && indexbase != 0) {
     throw std::logic_error(
-        "I can't quite read the binary format just yet, sorry.");
+        "The binary format only supports zero based indexing\n");
   }
 
-  // TODO Bcast Ti so we don't read it on every node
-
   std::ifstream tensor_file;
-  tensor_file.open(file_name);
-  Ti_ = read_sptensor_header(tensor_file);
+  MPI_File mpi_fh;
+  MPI_IO::SptnFileHeader binary_header;
+  if (!is_binary) {
+    tensor_file.open(file_name);
+    Ti_ = read_sptensor_header(tensor_file);
+  } else {
+    mpi_fh = MPI_IO::openFile(DistContext::commWorld(), file_name);
+    binary_header = MPI_IO::readHeader(DistContext::commWorld(), mpi_fh);
+    Ti_ = binary_header.toTensorInfo();
+  }
   const auto ndims = Ti_.dim_sizes.size();
   pmap_ptr_ = std::unique_ptr<ProcessorMap>(
       new ProcessorMap(DistContext::input(), Ti_));
@@ -253,9 +260,15 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
   }
 
   // Evenly distribute the tensor around the world
-  auto Tvec = detail::distributeTensorToVectors(
-      tensor_file, Ti_.nnz, indexbase, pmap_.gridComm(), pmap_.gridRank(),
-      pmap_.gridSize());
+  std::vector<MPI_IO::TDatatype<double>> Tvec;
+  if (!is_binary) {
+    Tvec = detail::distributeTensorToVectors(tensor_file, Ti_.nnz, indexbase,
+                                             pmap_.gridComm(), pmap_.gridRank(),
+                                             pmap_.gridSize());
+  } else {
+    Tvec = MPI_IO::parallelReadElements(DistContext::commWorld(), mpi_fh,
+                                        binary_header);
+  }
 
   // Now redistribute to medium grain format
   auto distributedData =
@@ -294,7 +307,6 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
       std::cout << std::endl;
     }
     pmap_ptr_->gridBarrier();
-    // detail::printRandomElements(sp_tensor_, 3, *pmap_ptr_, range_);
   }
   init_factors();
 }
@@ -659,8 +671,8 @@ TensorBlockSystem<ElementType, ExecSpace>::elasticAverageSGD(Loss const &loss) {
     fest_prev = fest;
   }
 
-  // We have to wait on the last all reduce if we did one since I don't want to
-  // figure out how to cancel it right now
+  // We have to wait on the last all reduce if we did one since I don't want
+  // to figure out how to cancel it right now
   if (!do_sync_allreduce && do_extra_work) {
     MPI_Waitall(elastic_requests.size(), elastic_requests.data(),
                 MPI_STATUSES_IGNORE);

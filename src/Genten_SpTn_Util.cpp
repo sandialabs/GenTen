@@ -54,6 +54,16 @@ SptnFileHeader::getLocalOffsetRange(int rank, int nranks) const {
   return {range[rank], range[rank + 1]};
 };
 
+TensorInfo SptnFileHeader::toTensorInfo() const {
+  TensorInfo Ti;
+
+  Ti.nnz = nnz;
+  Ti.dim_sizes.resize(ndims);
+  std::copy(dim_lengths.begin(), dim_lengths.end(), Ti.dim_sizes.begin());
+
+  return Ti;
+}
+
 std::ostream &operator<<(std::ostream &os, SptnFileHeader const &h) {
   os << "Sparse Tensor Info :\n";
   os << "\tDimensions : " << h.ndims << "\n";

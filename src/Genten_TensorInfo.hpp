@@ -45,7 +45,7 @@
 
 namespace Genten {
 struct TensorInfo {
-  uint64_t nnz = 0;
-  std::vector<int> dim_sizes;
+  std::uint64_t nnz = 0;
+  std::vector<std::uint32_t> dim_sizes;
 };
 } // namespace Genten
