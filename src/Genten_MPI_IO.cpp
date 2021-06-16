@@ -40,10 +40,8 @@
 //
 #include <Genten_MPI_IO.h>
 
-#include <cassert>
 #include <iostream>
-#include <numeric>
-#include <stdexcept>
+#include <memory>
 
 namespace Genten {
 namespace MPI_IO {
@@ -63,73 +61,6 @@ MPI_File openFile(MPI_Comm comm, std::string const &file_name, int access_mode,
     MPI_Abort(comm, error);
   }
   return fh;
-}
-
-std::uint64_t SptnFileHeader::bytesInDataLine() const {
-  return std::accumulate(dim_bits.begin(), dim_bits.end(), float_bits) / 8;
-}
-
-std::uint64_t SptnFileHeader::dataByteOffset() const {
-  return std::accumulate(dim_bits.begin(), dim_bits.end(), 0) / 8;
-}
-
-std::uint64_t SptnFileHeader::indByteOffset(int ind) const {
-  if (ind >= ndims) {
-    throw std::out_of_range(
-        "Called indByteOffset with index that was out of range\n");
-  }
-  auto it = dim_bits.begin();
-  std::advance(it, ind);
-  return std::accumulate(dim_bits.begin(), it, 0) / 8;
-}
-
-std::uint64_t SptnFileHeader::totalBytesToRead() const {
-  return bytesInDataLine() * nnz;
-}
-
-std::vector<std::uint64_t> SptnFileHeader::getOffsetRanges(int nranks) const {
-  const auto nper_rank = nnz / nranks;
-  assert(nper_rank != 0);
-
-  std::vector<std::uint64_t> out;
-  out.reserve(nranks + 1);
-
-  const auto line_bytes = bytesInDataLine();
-  std::uint64_t starting_elem = 0;
-  for (auto i = 0; i < nranks; ++i) {
-    out.push_back(starting_elem * line_bytes + data_starting_byte);
-    starting_elem += nper_rank;
-  }
-  out.push_back(nnz * line_bytes + data_starting_byte);
-
-  return out;
-}
-
-std::pair<std::uint64_t, std::uint64_t>
-SptnFileHeader::getLocalOffsetRange(int rank, int nranks) const {
-  // This is overkill and I don't care
-  const auto range = getOffsetRanges(nranks);
-  return {range[rank], range[rank+1]};
-};
-
-std::ostream &operator<<(std::ostream &os, SptnFileHeader const &h) {
-  os << "Sparse Tensor Info :\n";
-  os << "\tDimensions : " << h.ndims << "\n";
-  os << "\tFloat bits : " << h.float_bits << "\n";
-  os << "\tSizes      : ";
-  for (auto s : h.dim_lengths) {
-    os << s << " ";
-  }
-  os << "\n";
-  os << "\tIndex bits : ";
-  for (auto s : h.dim_bits) {
-    os << s << " ";
-  }
-  os << "\n";
-  os << "\tNNZ        : " << h.nnz << "\n";
-  os << "\tData Byte  : " << h.data_starting_byte;
-
-  return os;
 }
 
 SptnFileHeader readHeader(MPI_Comm comm, MPI_File fh) {
@@ -190,6 +121,97 @@ SptnFileHeader readHeader(MPI_Comm comm, MPI_File fh) {
   }
 
   return header;
+}
+
+namespace {
+TDatatype<double> readElement(SptnFileHeader const &h,
+                              unsigned char const *const data_ptr) {
+  TDatatype<double> data;
+  const auto ndims = h.ndims;
+  auto const &bits = h.dim_bits;
+
+  auto read_index = [](auto byte_ptr, int bits_for_index) -> std::uint32_t {
+    switch (bits_for_index) {
+    case 16:
+      return *reinterpret_cast<std::uint16_t const *const>(byte_ptr);
+    case 32:
+      return *reinterpret_cast<std::uint32_t const *const>(byte_ptr);
+    default:
+      throw std::runtime_error(
+          "TDatatype can't handle indices that require 64 bits of space yet.");
+    }
+  };
+
+  for (auto i = 0; i < ndims; ++i) {
+    data.coo[i] = read_index(data_ptr + h.indByteOffset(i), bits[i]);
+  }
+
+  if (h.float_bits == 32) {
+    data.val =
+        *reinterpret_cast<float const *const>(data_ptr + h.dataByteOffset());
+  } else if (h.float_bits == 64) {
+    data.val =
+        *reinterpret_cast<double const *const>(data_ptr + h.dataByteOffset());
+  } else {
+    throw std::runtime_error("Currently the floating point data must have a "
+                             "precision of 32 or 64 bits.");
+  }
+
+  return data;
+}
+} // namespace
+
+std::vector<TDatatype<double>> parallelReadElements(MPI_Comm comm, MPI_File fh,
+                                                    SptnFileHeader const &h) {
+  int rank, nprocs;
+  MPI_Comm_rank(comm, &rank);
+  MPI_Comm_size(comm, &nprocs);
+
+  const auto ndims = h.ndims;
+  const auto bytes_per_element = h.bytesInDataLine();
+  const auto local_range = h.getLocalOffsetRange(rank, nprocs);
+  const auto nlocal_bytes = local_range.second - local_range.first;
+  const auto nlocol_elements = nlocal_bytes / bytes_per_element;
+
+  std::vector<TDatatype<double>> out;
+  out.reserve(nlocol_elements);
+
+  // Get the local data from the file
+  auto byte_array = std::make_unique<unsigned char[]>(nlocal_bytes);
+  int error = MPI_File_read_at_all(fh, local_range.first, byte_array.get(),
+                                   nlocal_bytes, MPI_BYTE, MPI_STATUSES_IGNORE);
+  if (error != MPI_SUCCESS) {
+    MPI_Abort(comm, error);
+  }
+
+#if 1
+  // Read first element from each node
+  if (rank != 0) {
+    MPI_Gather(byte_array.get(), bytes_per_element, MPI_BYTE, nullptr,
+               bytes_per_element, MPI_BYTE, 0, comm);
+  } else {
+    unsigned char elems[nprocs * bytes_per_element];
+    MPI_Gather(byte_array.get(), bytes_per_element, MPI_BYTE, elems,
+               bytes_per_element, MPI_BYTE, 0, comm);
+
+    for(auto i = 0; i < nprocs; ++i){
+      std::cout << "Rank " << i << "'s first element was: ";
+      auto elem = readElement(h,elems + i * bytes_per_element);
+      for(auto j = 0; j < ndims; ++j){
+        std::cout << elem.coo[j] << " ";
+      }
+      std::cout << elem.val << "\n";
+    }
+  }
+#endif
+
+  // Fill the vector
+  for(auto i = 0; i < nlocol_elements; ++i){
+    auto curr = byte_array.get() + i * bytes_per_element;
+    out.push_back(readElement(h, curr));
+  }
+
+  return out;
 }
 
 } // namespace MPI_IO

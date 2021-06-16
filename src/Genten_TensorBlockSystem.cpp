@@ -61,8 +61,7 @@ bool fileFormatIsBinary(std::string const &file_name) {
   return false;
 }
 
-small_vector<int> singleDimUniformBlocking(int ModeLength,
-                                               int ProcsInMode) {
+small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode) {
   small_vector<int> Range{0};
   const auto FibersPerBlock = ModeLength / ProcsInMode;
   auto Remainder = ModeLength % ProcsInMode;
@@ -94,7 +93,7 @@ small_vector<int> singleDimUniformBlocking(int ModeLength,
 
 std::vector<small_vector<int>>
 generateUniformBlocking(std::vector<int> ModeLengths,
-                            small_vector<int> const &ProcGridSizes) {
+                        small_vector<int> const &ProcGridSizes) {
   const auto Ndims = ModeLengths.size();
   std::vector<small_vector<int>> blocking;
   blocking.reserve(Ndims);
@@ -107,12 +106,11 @@ generateUniformBlocking(std::vector<int> ModeLengths,
   return blocking;
 }
 
-std::vector<TDatatype> distributeTensorToVectors(std::ifstream &ifs,
-                                                 uint64_t nnz, int indexbase,
-                                                 MPI_Comm comm, int rank,
-                                                 int nprocs) {
-  constexpr auto dt_size = sizeof(detail::TDatatype);
-  std::vector<detail::TDatatype> Tvec;
+std::vector<MPI_IO::TDatatype<double>>
+distributeTensorToVectors(std::ifstream &ifs, uint64_t nnz, int indexbase,
+                          MPI_Comm comm, int rank, int nprocs) {
+  constexpr auto dt_size = sizeof(MPI_IO::TDatatype<double>);
+  std::vector<MPI_IO::TDatatype<double>> Tvec;
   small_vector<int> who_gets_what =
       detail::singleDimUniformBlocking(nnz, nprocs);
 
@@ -192,7 +190,7 @@ int blockInThatDim(int element, small_vector<int> const &range) {
 }
 
 // The MPI_Comm must be the one that represents the grid for this to work
-int rankInGridThatOwns(int const *COO, MPI_Comm grid_comm,
+int rankInGridThatOwns(std::uint32_t const *COO, MPI_Comm grid_comm,
                        std::vector<small_vector<int>> const &ElementRanges) {
   const auto ndims = ElementRanges.size();
   small_vector<int> GridPos(ndims);
@@ -207,15 +205,17 @@ int rankInGridThatOwns(int const *COO, MPI_Comm grid_comm,
 }
 } // namespace
 
-std::vector<TDatatype> redistributeTensor(
-    std::vector<TDatatype> const &Tvec, std::vector<int> const &TDims,
-    std::vector<small_vector<int>> const &blocking, ProcessorMap const &pmap) {
+std::vector<MPI_IO::TDatatype<double>>
+redistributeTensor(std::vector<MPI_IO::TDatatype<double>> const &Tvec,
+                   std::vector<int> const &TDims,
+                   std::vector<small_vector<int>> const &blocking,
+                   ProcessorMap const &pmap) {
 
   const auto nprocs = pmap.gridSize();
   const auto rank = pmap.gridRank();
   MPI_Comm grid_comm = pmap.gridComm();
 
-  std::vector<std::vector<TDatatype>> elems_to_write(nprocs);
+  std::vector<std::vector<MPI_IO::TDatatype<double>>> elems_to_write(nprocs);
   for (auto const &elem : Tvec) {
     auto elem_owner_rank = rankInGridThatOwns(elem.coo, grid_comm, blocking);
     elems_to_write[elem_owner_rank].push_back(elem);
@@ -253,9 +253,9 @@ std::vector<TDatatype> redistributeTensor(
     }
   }
 
-  TDatatype *data;
+  MPI_IO::TDatatype<double> *data;
   MPI_Win window;
-  constexpr auto DataElemSize = sizeof(TDatatype);
+  constexpr auto DataElemSize = sizeof(MPI_IO::TDatatype<double>);
   MPI_Win_allocate(amount_to_allocate_for_window * DataElemSize,
                    /*displacement = */ DataElemSize, MPI_INFO_NULL, grid_comm,
                    &data, &window);
@@ -277,7 +277,8 @@ std::vector<TDatatype> redistributeTensor(
   MPI_Win_fence(0, window);
 
   // Copy data to the output vector
-  std::vector<TDatatype> redistributedData(amount_to_allocate_for_window);
+  std::vector<MPI_IO::TDatatype<double>> redistributedData(
+      amount_to_allocate_for_window);
   std::copy(data, data + amount_to_allocate_for_window,
             redistributedData.data());
 

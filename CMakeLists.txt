@@ -501,10 +501,11 @@ if(MPI_FOUND AND BOOST_FOUND)
   target_link_libraries(DistContextLib Kokkos::kokkos MPI::MPI_C Boost::boost Boost::serialization)
 
   set(MPIIO_Sources
+    ${Genten_SOURCE_DIR}/src/Genten_SpTn_Util.cpp
     ${Genten_SOURCE_DIR}/src/Genten_MPI_IO.cpp
     )
   add_library(GentenMpiIoLib ${MPIIO_Sources})
-  target_link_libraries(GentenMpiIoLib MPI::MPI_C)
+  target_link_libraries(GentenMpiIoLib MPI::MPI_C Boost::boost)
 
 ADD_EXECUTABLE (
   genten_mpisgd

@@ -51,6 +51,7 @@
 #include "Genten_IOtext.hpp"
 #include "Genten_MPI_IO.h"
 #include "Genten_Pmap.hpp"
+#include "Genten_SpTn_Util.h"
 #include "Genten_Sptensor.hpp"
 
 #include <cmath>
@@ -132,19 +133,15 @@ template <typename ExecSpace>
 auto rangesToIndexArray(small_vector<RangePair> const &ranges);
 small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode);
 
-struct TDatatype {
-  int coo[6] = {-1, -1, -1, -1, -1, -1};
-  double val;
-};
+std::vector<MPI_IO::TDatatype<double>>
+distributeTensorToVectors(std::ifstream &ifs, uint64_t nnz, int indexbase,
+                          MPI_Comm comm, int rank, int nprocs);
 
-std::vector<TDatatype> distributeTensorToVectors(std::ifstream &ifs,
-                                                 uint64_t nnz, int indexbase,
-                                                 MPI_Comm comm, int rank,
-                                                 int nprocs);
-
-std::vector<TDatatype> redistributeTensor(
-    std::vector<TDatatype> const &Tvec, std::vector<int> const &TensorDims,
-    std::vector<small_vector<int>> const &blocking, ProcessorMap const &pmap);
+std::vector<MPI_IO::TDatatype<double>>
+redistributeTensor(std::vector<MPI_IO::TDatatype<double>> const &Tvec,
+                   std::vector<int> const &TensorDims,
+                   std::vector<small_vector<int>> const &blocking,
+                   ProcessorMap const &pmap);
 
 template <typename ExecSpace>
 void printRandomElements(SptensorT<ExecSpace> const &tensor,
