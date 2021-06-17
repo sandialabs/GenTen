@@ -127,8 +127,11 @@ private:
   std::unique_ptr<ProcessorMap> pmap_ptr_;
   TensorInfo Ti_;
   small_vector<small_vector<int>> global_blocking_;
+
   // Only used by the MPI Onesided methods
   small_vector<MPI_Win> factor_shard_windows_;
+  small_vector<small_vector<std::uint64_t>> window_row_starts_;
+  small_vector<small_vector<std::uint64_t>> window_row_stops_;
 };
 
 // Helper declerations
@@ -554,8 +557,8 @@ void TensorBlockSystem<ElementType, ExecSpace>::shardFactors() {
 
   const auto dim_rank = pmap_ptr_->subCommRank(0);
 
-  const auto start_row = dim_rank * rows_per_rank;
-  const auto stop_row = [&] {
+  const std::uint64_t start_row = dim_rank * rows_per_rank;
+  const std::uint64_t stop_row = [&] {
     if (dim_rank < nranks_in_dim - 1) { // Not last rank
       return (dim_rank + 1) * rows_per_rank;
     } else {
@@ -563,23 +566,18 @@ void TensorBlockSystem<ElementType, ExecSpace>::shardFactors() {
     }
   }();
 
+  small_vector<std::uint64_t> window_start(nranks_in_dim);
+  small_vector<std::uint64_t> window_stop(nranks_in_dim);
+
+  auto comm = pmap_ptr_->subComm(0);
+  MPI_Allgather(&start_row, 1, MPI_UNSIGNED_LONG_LONG, window_start.data(), 1,
+                MPI_UNSIGNED_LONG_LONG, comm);
+  MPI_Allgather(&stop_row, 1, MPI_UNSIGNED_LONG_LONG, window_stop.data(), 1,
+                MPI_UNSIGNED_LONG_LONG, comm);
+  window_row_starts_.push_back(std::move(window_start));
+  window_row_stops_.push_back(std::move(window_stop));
+
   const std::uint64_t local_rows = stop_row - start_row;
-
-  if (dim_rank == 0) {
-    std::uint64_t rows_on_ranks[nranks_in_dim];
-    MPI_Gather(&local_rows, 1, MPI_UNSIGNED_LONG_LONG, rows_on_ranks, 1,
-               MPI_UNSIGNED_LONG_LONG, 0, pmap_ptr_->subComm(0));
-    std::cout << "Each rank gets:\n";
-    for (auto i = 0; i < nranks_in_dim; ++i) {
-      std::cout << "\t" << i << ": " << rows_on_ranks[i] << "\n";
-    }
-    std::cout << std::flush;
-  } else {
-    MPI_Gather(&local_rows, 1, MPI_UNSIGNED_LONG_LONG, nullptr, 1,
-               MPI_UNSIGNED_LONG_LONG, 0, pmap_ptr_->subComm(0));
-  }
-
-  // This should allocate me a window for the factors
   const auto local_elements = local_rows * nCols;
   MPI_Win win;
   double *window_data_test;
@@ -587,18 +585,41 @@ void TensorBlockSystem<ElementType, ExecSpace>::shardFactors() {
                    MPI_INFO_NULL, pmap_ptr_->subComm(0), &window_data_test,
                    &win);
   factor_shard_windows_.push_back(win);
+
+  FacMatrixT<ExecSpace> const &fac0 = Kfac_.factors()[0];
+  const auto stride = fac0.view().stride_0();
+
+  std::cout << "Count: " << local_elements << std::endl;
+  std::cout << "nCols: " << nCols << std::endl;
+  std::cout << "Stride: " << stride << std::endl;
+  MPI_Datatype test_type;
+  MPI_Type_vector(local_rows, nCols, stride, MPI_DOUBLE, &test_type);
+  MPI_Type_commit(&test_type);
+
   // Let's just locally do the simple thing here that I am sure should work
   // without an MPI_Datatype for the factor rows. I think this should write all
   // our local rows and then be done. The real way to do this is create a Data
   // type for the Kokkos View that is FacMatrixT and write the whole thing in
   // one shot, but we can do row by row for now.
+  auto *data = fac0.rowptr(0);
   MPI_Win_fence(0, win);
-  for (auto r = start_row; r < stop_row; ++r) {
-    FacMatrixT<ExecSpace> const &fac0 = Kfac_.factors()[0];
-    MPI_Put(fac0.rowptr(r), nCols, MPI_DOUBLE, dim_rank,
-            nCols * (r - start_row), nCols, MPI_DOUBLE, win);
+  // for (auto r = start_row; r < stop_row; ++r) {
+  //   int iter = r - start_row;
+  //   MPI_Put(data + iter * stride , nCols, MPI_DOUBLE, dim_rank,
+  //           nCols * (r - start_row), nCols, MPI_DOUBLE, win);
+  // }
+  MPI_Put(fac0.rowptr(0), 1, test_type, dim_rank, 0, local_elements, MPI_DOUBLE,
+          win);
+  MPI_Win_fence(0, win);
+  if (dim_rank == 0) {
+    auto block_first = fac0.entry(start_row, 0);
+    double window_first = 0.0;
+    MPI_Win_lock(MPI_LOCK_EXCLUSIVE, dim_rank, 0, win);
+    MPI_Get(&window_first, 1, MPI_DOUBLE, dim_rank, 0, 1, MPI_DOUBLE, win);
+    MPI_Win_unlock(dim_rank, win);
+    std::cout << "Fac, window: " << block_first << ", " << window_first
+              << std::endl;
   }
-  MPI_Win_fence(0, win);
 };
 
 template <typename ElementType, typename ExecSpace>
