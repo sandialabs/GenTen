@@ -97,10 +97,13 @@ class TensorBlockSystem {
 
   template <typename Loss> ElementType allReduceSGD(Loss const &loss);
   template <typename Loss> ElementType allReduceADAM(Loss const &loss);
-  template <typename Loss> ElementType elasticAverageSGD(Loss const &loss);
+  template <typename Loss> ElementType elasticAllReduceSGD(Loss const &loss);
+  template <typename Loss> ElementType elasticAvgOneSidedSGD(Loss const &loss);
   template <typename Loss> ElementType pickMethod(Loss const &loss);
 
   AlgParams setAlgParams() const;
+
+  void shardFactors();
 
 public:
   TensorBlockSystem(ptree const &tree);
@@ -124,6 +127,8 @@ private:
   std::unique_ptr<ProcessorMap> pmap_ptr_;
   TensorInfo Ti_;
   small_vector<small_vector<int>> global_blocking_;
+  // Only used by the MPI Onesided methods
+  small_vector<MPI_Win> factor_shard_windows_;
 };
 
 // Helper declerations
@@ -301,7 +306,7 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
   if (DistContext::input().get<bool>("debug", false)) {
     if (this->gridRank() == 0) {
       std::cout << "MPI Ranks in each dimension: ";
-      for (auto p : pmap_ptr_->gridDims()) {
+      for (auto p : pmap_ptr_->subCommSizes()) {
         std::cout << p << " ";
       }
       std::cout << std::endl;
@@ -412,13 +417,15 @@ template <typename ElementType, typename ExecSpace>
 template <typename Loss>
 ElementType
 TensorBlockSystem<ElementType, ExecSpace>::pickMethod(Loss const &loss) {
-  auto method = input_.get<std::string>("method", "elastic");
-  if (method == "elastic") {
-    return elasticAverageSGD(loss);
+  auto method = input_.get<std::string>("method", "adam");
+  if (method == "elasticAllReduce") {
+    return elasticAllReduceSGD(loss);
   } else if (method == "allreduce") {
     return allReduceSGD(loss);
   } else if (method == "adam") {
     return allReduceADAM(loss);
+  } else if (method == "elasticAvgOneSided") {
+    return elasticAvgOneSidedSGD(loss);
   }
   Genten::error("Your method for distributed SGD wasn't recognized.\n");
   return -1.0;
@@ -531,10 +538,89 @@ AlgParams TensorBlockSystem<ElementType, ExecSpace>::setAlgParams() const {
   return algParams;
 }
 
+// Goal for this function is to shard parts of the factor matrices over the
+// nodes that need them.  These shards will form the "parameter" server used as
+// the source of truth for the factors. For now we are going to just try to
+// spread the data out equally and not get fancy with who owns what
+template <typename ElementType, typename ExecSpace>
+void TensorBlockSystem<ElementType, ExecSpace>::shardFactors() {
+  // Let's just start with the first dim and work up to all of them
+  const auto nRows = Ti_.dim_sizes[0];
+  const auto nCols = Kfac_.ncomponents();
+
+  // This is how many ranks our in our fiber for this dimension
+  const auto nranks_in_dim = pmap_ptr_->subCommSize(0);
+  const auto rows_per_rank = nRows / nranks_in_dim;
+
+  const auto dim_rank = pmap_ptr_->subCommRank(0);
+
+  const auto start_row = dim_rank * rows_per_rank;
+  const auto stop_row = [&] {
+    if (dim_rank < nranks_in_dim - 1) { // Not last rank
+      return (dim_rank + 1) * rows_per_rank;
+    } else {
+      return nRows;
+    }
+  }();
+
+  const std::uint64_t local_rows = stop_row - start_row;
+
+  if (dim_rank == 0) {
+    std::uint64_t rows_on_ranks[nranks_in_dim];
+    MPI_Gather(&local_rows, 1, MPI_UNSIGNED_LONG_LONG, rows_on_ranks, 1,
+               MPI_UNSIGNED_LONG_LONG, 0, pmap_ptr_->subComm(0));
+    std::cout << "Each rank gets:\n";
+    for (auto i = 0; i < nranks_in_dim; ++i) {
+      std::cout << "\t" << i << ": " << rows_on_ranks[i] << "\n";
+    }
+    std::cout << std::flush;
+  } else {
+    MPI_Gather(&local_rows, 1, MPI_UNSIGNED_LONG_LONG, nullptr, 1,
+               MPI_UNSIGNED_LONG_LONG, 0, pmap_ptr_->subComm(0));
+  }
+
+  // This should allocate me a window for the factors
+  const auto local_elements = local_rows * nCols;
+  MPI_Win win;
+  double *window_data_test;
+  MPI_Win_allocate(local_elements * sizeof(double), sizeof(double),
+                   MPI_INFO_NULL, pmap_ptr_->subComm(0), &window_data_test,
+                   &win);
+  factor_shard_windows_.push_back(win);
+  // Let's just locally do the simple thing here that I am sure should work
+  // without an MPI_Datatype for the factor rows. I think this should write all
+  // our local rows and then be done. The real way to do this is create a Data
+  // type for the Kokkos View that is FacMatrixT and write the whole thing in
+  // one shot, but we can do row by row for now.
+  MPI_Win_fence(0, win);
+  for (auto r = start_row; r < stop_row; ++r) {
+    FacMatrixT<ExecSpace> const &fac0 = Kfac_.factors()[0];
+    MPI_Put(fac0.rowptr(r), nCols, MPI_DOUBLE, dim_rank,
+            nCols * (r - start_row), nCols, MPI_DOUBLE, win);
+  }
+  MPI_Win_fence(0, win);
+};
+
 template <typename ElementType, typename ExecSpace>
 template <typename Loss>
-ElementType
-TensorBlockSystem<ElementType, ExecSpace>::elasticAverageSGD(Loss const &loss) {
+ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAvgOneSidedSGD(
+    Loss const &loss) {
+  // At this point we know our local factors are initialized so we can shard
+  shardFactors();
+
+  // Sorry this isn't in the destructor future person reading this
+  for (auto &win : factor_shard_windows_) {
+    MPI_Win_free(&win);
+  }
+  // Until we finish this just return the alternate version so we
+  // do something
+  return allReduceADAM(loss);
+}
+
+template <typename ElementType, typename ExecSpace>
+template <typename Loss>
+ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
+    Loss const &loss) {
   const auto nprocs = this->nprocs();
   const auto my_rank = gridRank();
 

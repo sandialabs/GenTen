@@ -261,7 +261,7 @@ redistributeTensor(std::vector<MPI_IO::TDatatype<double>> const &Tvec,
                    &data, &window);
 
   // Jonathan L. told me for AllToAll Fences are probably better than locking if
-  // communication don't conflict
+  // communications don't conflict
   MPI_Win_fence(0, window);
   for (auto i = 0; i < nprocs; ++i) {
     const auto bytes_to_write = DataElemSize * amount_to_write[i];
@@ -278,9 +278,7 @@ redistributeTensor(std::vector<MPI_IO::TDatatype<double>> const &Tvec,
 
   // Copy data to the output vector
   std::vector<MPI_IO::TDatatype<double>> redistributedData(
-      amount_to_allocate_for_window);
-  std::copy(data, data + amount_to_allocate_for_window,
-            redistributedData.data());
+      data, data + amount_to_allocate_for_window);
 
   // Free the MPI window and the buffer that it was allocated in
   MPI_Win_free(&window);
