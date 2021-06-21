@@ -98,6 +98,7 @@ class TensorBlockSystem {
   template <typename Loss> ElementType allReduceSGD(Loss const &loss);
   template <typename Loss> ElementType allReduceADAM(Loss const &loss);
   template <typename Loss> ElementType elasticAllReduceSGD(Loss const &loss);
+
   template <typename Loss> ElementType elasticAvgOneSidedSGD(Loss const &loss);
   template <typename Loss> ElementType pickMethod(Loss const &loss);
 
@@ -733,27 +734,41 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
       std::cout << "Epoch LR: " << epoch_lr << std::endl;
     }
 
-    auto do_epoch_iter = [&] {
+    auto do_epoch_iter = [&](double &gtime, double &etime) {
       g.zero();
+      auto start = MPI_Wtime();
       sampler.fusedGradient(ut, loss, GFac, timer, tnzs, tzs);
+      auto ge = MPI_Wtime();
       stepper.eval(g, u);
+      auto end = MPI_Wtime();
+
+      gtime += ge - start;
+      etime += end - ge;
     };
 
     auto extraIters = 0;
     auto allreduceCounter = 0;
     const auto alpha = 0.9 / nprocs;
+    auto gradient_time = 0.0;
+    auto evaluation_time = 0.0;
+    auto elastic_time = 0.0;
+
     for (auto i = 0; i < epochIters; ++i) {
+
       if (nprocs == 1) { // Short circuit if on single node
-        do_epoch_iter();
+        do_epoch_iter(gradient_time, evaluation_time);
         continue;
       }
 
       if ((i + 1) % dp_iters == 0 || i == (epochIters - 1)) {
         if (do_sync_allreduce) {
+          auto et0 = MPI_Wtime();
           u.elastic_difference(diff, center, 1.0);
           u.plus(diff, -1.0 * alpha);
           allReduceKT(diffKT, false);
           center.plus(diff, alpha);
+          auto et1 = MPI_Wtime();
+          elastic_time += et1 - et0;
           ++allreduceCounter;
         } else { // iAllReduce
           if (first_average) {
@@ -766,7 +781,8 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
               while (flag == 0) {
                 MPI_Testall(elastic_requests.size(), elastic_requests.data(),
                             &flag, MPI_STATUSES_IGNORE);
-                do_epoch_iter();
+                double _ = 0.0;
+                do_epoch_iter(_, _);
                 ++extraIters;
               }
             } else {
@@ -783,21 +799,85 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
         }
       }
 
-      g.zero();
-      sampler.fusedGradient(ut, loss, GFac, timer, tnzs, tzs);
-      stepper.eval(g, u);
+      do_epoch_iter(gradient_time, evaluation_time);
     }
 
     fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, CFac, w_val, loss));
     t1 = MPI_Wtime();
 
-    if (my_rank == 0) {
-      std::cout << "\tFit(" << e << "): " << fest << ", " << fest_prev - fest
-                << " did " << allreduceCounter << " factor allReduces"
-                << " in " << (t1 - t0) << " seconds.\n"
-                << "\tdid " << extraIters << " extra iters." << std::endl;
+    const auto fest_diff = fest_prev - fest;
+
+    std::vector<double> gradient_times;
+    std::vector<double> elastic_times;
+    std::vector<double> eval_times;
+    if (do_sync_allreduce) {
+      if (my_rank == 0) {
+        gradient_times.resize(nprocs);
+        elastic_times.resize(nprocs);
+        eval_times.resize(nprocs);
+
+        MPI_Gather(&gradient_time, 1, MPI_DOUBLE, &gradient_times[0], 1,
+                   MPI_DOUBLE, 0, pmap_ptr_->gridComm());
+        MPI_Gather(&evaluation_time, 1, MPI_DOUBLE, &eval_times[0], 1,
+                   MPI_DOUBLE, 0, pmap_ptr_->gridComm());
+        MPI_Gather(&elastic_time, 1, MPI_DOUBLE, &elastic_times[0], 1,
+                   MPI_DOUBLE, 0, pmap_ptr_->gridComm());
+      } else {
+        MPI_Gather(&gradient_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
+                   pmap_ptr_->gridComm());
+        MPI_Gather(&evaluation_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
+                   pmap_ptr_->gridComm());
+        MPI_Gather(&elastic_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
+                   pmap_ptr_->gridComm());
+      }
     }
-    fest_prev = fest;
+
+    if (my_rank == 0) {
+      auto min_max_gradient =
+          std::minmax_element(gradient_times.begin(), gradient_times.end());
+      auto grad_avg =
+          std::accumulate(gradient_times.begin(), gradient_times.end(), 0.0) /
+          double(nprocs);
+
+      auto min_max_elastic =
+          std::minmax_element(elastic_times.begin(), elastic_times.end());
+      auto elastic_avg =
+          std::accumulate(elastic_times.begin(), elastic_times.end(), 0.0) /
+          double(nprocs);
+
+      auto min_max_evals =
+          std::minmax_element(eval_times.begin(), eval_times.end());
+      auto eval_avg =
+          std::accumulate(eval_times.begin(), eval_times.end(), 0.0) /
+          double(nprocs);
+
+      std::cout << "Fit(" << e << "): " << fest
+                << "\n\tchange in fit: " << fest_diff
+                << "\n\tlr:            " << epoch_lr
+                << "\n\tallReduces:    " << allreduceCounter
+                << "\n\tSeconds:       " << (t1 - t0);
+      if (do_sync_allreduce) {
+        std::cout << "\n\t\tGradient(avg, min, max):  " << grad_avg << ", "
+                  << *min_max_gradient.first << ", " << *min_max_gradient.second
+                  << "\n\t\tElastic(avg, min, max):   " << elastic_avg << ", "
+                  << *min_max_elastic.first << ", " << *min_max_elastic.second
+                  << "\n\t\tEval(avg, min, max):      " << eval_avg << ", "
+                  << *min_max_evals.first << ", " << *min_max_evals.second
+                  << "\n";
+      } else {
+        std::cout << "\n";
+      }
+
+      std::cout << std::flush;
+    }
+
+    if (fest_diff > 0) {
+      stepper.setPassed();
+      fest_prev = fest;
+      annealer.success();
+    } else {
+      annealer.failed();
+    }
   }
 
   // We have to wait on the last all reduce if we did one since I don't want
@@ -1049,13 +1129,13 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
                 << "\n\tlr:            " << epoch_lr
                 << "\n\tallReduces:    " << allreduceCounter
                 << "\n\tSeconds:       " << (e_end - e_start)
-                << "\n\t\tGradient(min, max, avg):  " << *min_max_gradient.first
-                << ", " << *min_max_gradient.second << ", " << grad_avg
-                << "\n\t\tAllReduce(min, max, avg): "
+                << "\n\t\tGradient(avg, min, max):  " << grad_avg << ", "
+                << *min_max_gradient.first << ", " << *min_max_gradient.second
+                << "\n\t\tAllReduce(avg, min, max): " << ar_avg << ", "
                 << *min_max_allreduce.first << ", " << *min_max_allreduce.second
-                << ", " << ar_avg
-                << "\n\t\tEval(min, max, avg):      " << *min_max_evals.first
-                << ", " << *min_max_evals.second << ", " << eval_avg << "\n";
+                << "\n\t\tEval(avg, min, max):      " << eval_avg << ", "
+                << *min_max_evals.first << ", " << *min_max_evals.second
+                << "\n";
 
       std::cout << std::flush;
     }
