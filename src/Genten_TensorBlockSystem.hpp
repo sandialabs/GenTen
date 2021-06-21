@@ -475,7 +475,11 @@ AlgParams TensorBlockSystem<ElementType, ExecSpace>::setAlgParams() const {
 
   algParams.sampling_type = Genten::GCP_Sampling::SemiStratified;
   algParams.mttkrp_method = Genten::MTTKRP_Method::Default;
-  algParams.mttkrp_all_method = Genten::MTTKRP_All_Method::Duplicated;
+  if (ExecSpace::concurrency() > 1) {
+    algParams.mttkrp_all_method = Genten::MTTKRP_All_Method::Duplicated;
+  } else {
+    algParams.mttkrp_all_method = Genten::MTTKRP_All_Method::Single;
+  }
   algParams.fuse = true;
 
   // If the epoch size isnt provided we should just try to hit every non-zero
@@ -528,11 +532,21 @@ AlgParams TensorBlockSystem<ElementType, ExecSpace>::setAlgParams() const {
     std::cout << "batch size nz:         " << global_batch_size_nz << "\n";
     std::cout << "batch size zeros:      " << global_zg << "\n";
     std::cout << "NZ percent per epoch : " << percent_nz_epoch << "\n";
-    std::cout << "Node Specific info: {local_nnz, local_batch_size_nz, "
-                 "local_batch_size_z}\n";
-    for (auto i = 0; i < np; ++i) {
-      std::cout << "\tNode(" << i << "): " << lnzs[i] << ", " << bs_nz[i]
-                << ", " << bs_z[i] << "\n";
+    std::cout << "MTTKRP_All_Method :    ";
+    if (algParams.mttkrp_all_method == MTTKRP_All_Method::Duplicated) {
+      std::cout << "Duplicated.\n";
+    } else if (algParams.mttkrp_all_method == MTTKRP_All_Method::Single) {
+      std::cout << "Single.\n";
+    } else {
+      std::cout << "method(" << algParams.mttkrp_all_method << ")\n";
+    }
+    if (np < 41) {
+      std::cout << "Node Specific info: {local_nnz, local_batch_size_nz, "
+                   "local_batch_size_z}\n";
+      for (auto i = 0; i < np; ++i) {
+        std::cout << "\tNode(" << i << "): " << lnzs[i] << ", " << bs_nz[i]
+                  << ", " << bs_z[i] << "\n";
+      }
     }
     std::cout << std::endl;
   }
@@ -672,7 +686,11 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
 
   auto seed = input_.get<std::uint64_t>("seed", std::random_device{}());
   Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
-  sampler.initialize(rand_pool, std::cout);
+  std::stringstream ss;
+  sampler.initialize(rand_pool, ss);
+  if (nprocs < 41) {
+    std::cout << ss.str();
+  }
 
   SptensorT<ExecSpace> X_val;
   ArrayT<ExecSpace> w_val;
@@ -916,7 +934,11 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
 
   auto seed = input_.get<std::uint64_t>("seed", std::random_device{}());
   Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
-  sampler.initialize(rand_pool, std::cout);
+  std::stringstream ss;
+  sampler.initialize(rand_pool, ss);
+  if (nprocs < 41) {
+    std::cout << ss.str();
+  }
 
   SptensorT<ExecSpace> X_val;
   ArrayT<ExecSpace> w_val;
@@ -940,33 +962,67 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
 
   auto annealer_ptr = getAnnealer(input_);
   auto &annealer = *annealer_ptr;
-  double t0 = 0, t1 = 0;
   auto nfails = 0;
+  // For adam with all of the all reduces I am hopeful the barriers don't
+  // really matter for timeing
   for (auto e = 0; e < maxEpochs; ++e) { // Epochs
-    t0 = MPI_Wtime();
+    pmap_ptr_->gridBarrier();            // Makes times more accurate
+    double e_start = MPI_Wtime();
     const auto epoch_lr = annealer(e);
     stepper.setStep(epoch_lr);
 
     auto allreduceCounter = 0;
+    double zero_time = 0;
+    double gradient_time = 0;
+    double allreduce_time = 0;
+    double update_time = 0;
+    double eval_time = 0;
     for (auto i = 0; i < epochIters; ++i) {
+      auto us = MPI_Wtime();
       stepper.update();
+      auto zs = MPI_Wtime();
       g.zero();
+      auto ze = MPI_Wtime();
       sampler.fusedGradient(ut, loss, GFac, timer, tnzs, tzs);
+      auto ge = MPI_Wtime();
       allReduceKT(GFac, false /* don't average */);
-      ++allreduceCounter;
+      auto are = MPI_Wtime();
       stepper.eval(g, u);
+      auto ee = MPI_Wtime();
+      update_time += zs - us;
+      zero_time += ze - zs;
+      gradient_time += ge - ze;
+      allreduce_time += are - ge;
+      eval_time += ee - are;
+      ++allreduceCounter;
     }
 
+    double fest_start = MPI_Wtime();
     fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
-    t1 = MPI_Wtime();
+    pmap_ptr_->gridBarrier(); // Makes times more accurate
+    double e_end = MPI_Wtime();
 
     const auto fest_diff = fest_prev - fest;
     if (my_rank == 0) {
+      auto epoch_time = e_end - e_start;
+      auto fest_time = e_end - fest_start;
       std::cout << "Fit(" << e << "): " << fest
                 << "\n\tchange in fit: " << fest_diff
                 << "\n\tlr:            " << epoch_lr
                 << "\n\tallReduces:    " << allreduceCounter
-                << "\n\tSeconds:       " << (t1 - t0) << "\n";
+                << "\n\tSeconds:       " << (e_end - e_start) << "(100%)"
+                << "\n\t\tStep update: " << update_time << " ("
+                << update_time / epoch_time * 100 << "%)"
+                << "\n\t\tG zero:      " << zero_time << " ("
+                << zero_time / epoch_time * 100 << "%)"
+                << "\n\t\tGradient :   " << gradient_time << " ("
+                << gradient_time / epoch_time * 100 << "%)"
+                << "\n\t\tAllReduce :  " << allreduce_time << " ("
+                << allreduce_time / epoch_time * 100 << "%)"
+                << "\n\t\tEval :       " << eval_time << " ("
+                << eval_time / epoch_time * 100 << "%)"
+                << "\n\t\tfest:        " << fest_time << " ("
+                << fest_time / epoch_time * 100 << "%)\n";
 
       std::cout << std::flush;
     }
