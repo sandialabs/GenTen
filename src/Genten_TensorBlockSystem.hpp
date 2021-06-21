@@ -479,7 +479,7 @@ AlgParams TensorBlockSystem<ElementType, ExecSpace>::setAlgParams() const {
   algParams.sampling_type = Genten::GCP_Sampling::SemiStratified;
   algParams.mttkrp_method = Genten::MTTKRP_Method::Default;
   if (ExecSpace::concurrency() > 1) {
-    algParams.mttkrp_all_method = Genten::MTTKRP_All_Method::Duplicated;
+    algParams.mttkrp_all_method = Genten::MTTKRP_All_Method::Atomic;
   } else {
     algParams.mttkrp_all_method = Genten::MTTKRP_All_Method::Single;
   }
@@ -537,9 +537,11 @@ AlgParams TensorBlockSystem<ElementType, ExecSpace>::setAlgParams() const {
     std::cout << "NZ percent per epoch : " << percent_nz_epoch << "\n";
     std::cout << "MTTKRP_All_Method :    ";
     if (algParams.mttkrp_all_method == MTTKRP_All_Method::Duplicated) {
-      std::cout << "Duplicated.\n";
+      std::cout << "Duplicated\n";
     } else if (algParams.mttkrp_all_method == MTTKRP_All_Method::Single) {
-      std::cout << "Single.\n";
+      std::cout << "Single\n";
+    } else if (algParams.mttkrp_all_method == MTTKRP_All_Method::Atomic) {
+      std::cout << "Atomic\n";
     } else {
       std::cout << "method(" << algParams.mttkrp_all_method << ")\n";
     }
