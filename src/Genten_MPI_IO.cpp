@@ -184,7 +184,7 @@ std::vector<TDatatype<double>> parallelReadElements(MPI_Comm comm, MPI_File fh,
     MPI_Abort(comm, error);
   }
 
-#if 1
+#if 0
   // Read first element from each node
   if (rank != 0) {
     MPI_Gather(byte_array.get(), bytes_per_element, MPI_BYTE, nullptr,

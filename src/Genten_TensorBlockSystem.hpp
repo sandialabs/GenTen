@@ -132,6 +132,7 @@ private:
   small_vector<MPI_Win> factor_shard_windows_;
   small_vector<small_vector<std::uint64_t>> window_row_starts_;
   small_vector<small_vector<std::uint64_t>> window_row_stops_;
+  small_vector<small_vector<MPI_Datatype>> factor_data_types_;
 };
 
 // Helper declerations
@@ -374,6 +375,7 @@ void TensorBlockSystem<ElementType, ExecSpace>::allReduceKT(
     auto subComm = pmap_ptr_->subComm(i);
     auto subRank = pmap_ptr_->subCommRank(i);
 
+    // MPI_SUM doesn't support user defined types for AllReduce BOO
     FacMatrixT<ExecSpace> const &fac_mat = g.factors()[i];
     auto fac_ptr = fac_mat.view().data();
     const auto fac_size = fac_mat.view().span();
@@ -781,7 +783,9 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
         }
       }
 
-      do_epoch_iter();
+      g.zero();
+      sampler.fusedGradient(ut, loss, GFac, timer, tnzs, tzs);
+      stepper.eval(g, u);
     }
 
     fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, CFac, w_val, loss));
@@ -972,15 +976,11 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
     stepper.setStep(epoch_lr);
 
     auto allreduceCounter = 0;
-    double zero_time = 0;
     double gradient_time = 0;
     double allreduce_time = 0;
-    double update_time = 0;
     double eval_time = 0;
     for (auto i = 0; i < epochIters; ++i) {
-      auto us = MPI_Wtime();
       stepper.update();
-      auto zs = MPI_Wtime();
       g.zero();
       auto ze = MPI_Wtime();
       sampler.fusedGradient(ut, loss, GFac, timer, tnzs, tzs);
@@ -989,8 +989,6 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
       auto are = MPI_Wtime();
       stepper.eval(g, u);
       auto ee = MPI_Wtime();
-      update_time += zs - us;
-      zero_time += ze - zs;
       gradient_time += ge - ze;
       allreduce_time += are - ge;
       eval_time += ee - are;
@@ -1001,28 +999,63 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
     fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
     pmap_ptr_->gridBarrier(); // Makes times more accurate
     double e_end = MPI_Wtime();
-
+    auto epoch_time = e_end - e_start;
+    auto fest_time = e_end - fest_start;
     const auto fest_diff = fest_prev - fest;
+
+    std::vector<double> gradient_times;
+    std::vector<double> all_reduce_times;
+    std::vector<double> eval_times;
     if (my_rank == 0) {
-      auto epoch_time = e_end - e_start;
-      auto fest_time = e_end - fest_start;
+      gradient_times.resize(nprocs);
+      all_reduce_times.resize(nprocs);
+      eval_times.resize(nprocs);
+      MPI_Gather(&gradient_time, 1, MPI_DOUBLE, &gradient_times[0], 1,
+                 MPI_DOUBLE, 0, pmap_ptr_->gridComm());
+      MPI_Gather(&allreduce_time, 1, MPI_DOUBLE, &all_reduce_times[0], 1,
+                 MPI_DOUBLE, 0, pmap_ptr_->gridComm());
+      MPI_Gather(&eval_time, 1, MPI_DOUBLE, &eval_times[0], 1, MPI_DOUBLE, 0,
+                 pmap_ptr_->gridComm());
+    } else {
+      MPI_Gather(&gradient_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
+                 pmap_ptr_->gridComm());
+      MPI_Gather(&allreduce_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
+                 pmap_ptr_->gridComm());
+      MPI_Gather(&eval_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
+                 pmap_ptr_->gridComm());
+    }
+
+    if (my_rank == 0) {
+      auto min_max_gradient =
+          std::minmax_element(gradient_times.begin(), gradient_times.end());
+      auto grad_avg =
+          std::accumulate(gradient_times.begin(), gradient_times.end(), 0.0) /
+          double(nprocs);
+
+      auto min_max_allreduce =
+          std::minmax_element(all_reduce_times.begin(), all_reduce_times.end());
+      auto ar_avg = std::accumulate(all_reduce_times.begin(),
+                                    all_reduce_times.end(), 0.0) /
+                    double(nprocs);
+
+      auto min_max_evals =
+          std::minmax_element(eval_times.begin(), eval_times.end());
+      auto eval_avg =
+          std::accumulate(eval_times.begin(), eval_times.end(), 0.0) /
+          double(nprocs);
+
       std::cout << "Fit(" << e << "): " << fest
                 << "\n\tchange in fit: " << fest_diff
                 << "\n\tlr:            " << epoch_lr
                 << "\n\tallReduces:    " << allreduceCounter
-                << "\n\tSeconds:       " << (e_end - e_start) << "(100%)"
-                << "\n\t\tStep update: " << update_time << " ("
-                << update_time / epoch_time * 100 << "%)"
-                << "\n\t\tG zero:      " << zero_time << " ("
-                << zero_time / epoch_time * 100 << "%)"
-                << "\n\t\tGradient :   " << gradient_time << " ("
-                << gradient_time / epoch_time * 100 << "%)"
-                << "\n\t\tAllReduce :  " << allreduce_time << " ("
-                << allreduce_time / epoch_time * 100 << "%)"
-                << "\n\t\tEval :       " << eval_time << " ("
-                << eval_time / epoch_time * 100 << "%)"
-                << "\n\t\tfest:        " << fest_time << " ("
-                << fest_time / epoch_time * 100 << "%)\n";
+                << "\n\tSeconds:       " << (e_end - e_start)
+                << "\n\t\tGradient(min, max, avg):  " << *min_max_gradient.first
+                << ", " << *min_max_gradient.second << ", " << grad_avg
+                << "\n\t\tAllReduce(min, max, avg): "
+                << *min_max_allreduce.first << ", " << *min_max_allreduce.second
+                << ", " << ar_avg
+                << "\n\t\tEval(min, max, avg):      " << *min_max_evals.first
+                << ", " << *min_max_evals.second << ", " << eval_avg << "\n";
 
       std::cout << std::flush;
     }
