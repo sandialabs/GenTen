@@ -609,8 +609,18 @@ void TensorBlockSystem<ElementType, ExecSpace>::initMPIWindows() {
       continue;
     }
 
-    const auto nRows_total = Ti_.dim_sizes[i];
+    const auto nRows_total = Kfac_.factors()[i].nRows();
     const auto rows_per_rank = nRows_total / nranks_in_dim;
+    if (rows_per_rank == 0) {
+      if (pmap_ptr_->subCommRank(i) == 0) {
+        std::cout << "Dim " << i << " factor only has " << nRows_total
+                  << " rows, but it's distributed across: " << nranks_in_dim
+                  << " ranks.\nSuggestion: Try one of the AllReduce algorithms "
+                     "or use fewer mpi ranks."
+                  << std::endl;
+      }
+      MPI_Abort(pmap_ptr_->gridComm(), MPI_ERR_UNKNOWN);
+    }
 
     const auto my_rank = pmap_ptr_->subCommRank(i);
 
