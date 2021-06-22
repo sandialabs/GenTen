@@ -809,9 +809,6 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAvgOneSidedSGD(
     auto epoch_lr = annealer(e);
     auto times_centering = 0;
     stepper.setStep(epoch_lr);
-    if (my_rank == 0) {
-      std::cout << "Epoch LR: " << epoch_lr << std::endl;
-    }
 
     auto do_epoch_iter = [&]() {
       g.zero();
@@ -962,9 +959,6 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
     t0 = MPI_Wtime();
     auto epoch_lr = annealer(e);
     stepper.setStep(epoch_lr);
-    if (my_rank == 0) {
-      std::cout << "Epoch LR: " << epoch_lr << std::endl;
-    }
 
     auto do_epoch_iter = [&](double &gtime, double &etime) {
       g.zero();
@@ -1177,9 +1171,6 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD(Loss const &loss) {
     t0 = MPI_Wtime();
     auto epoch_lr = annealer(e);
     stepper.setStep(epoch_lr);
-    if (my_rank == 0) {
-      std::cout << "Epoch LR: " << epoch_lr << std::endl;
-    }
 
     auto do_epoch_iter = [&] {
       g.zero();
