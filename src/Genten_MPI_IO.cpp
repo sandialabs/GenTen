@@ -171,6 +171,13 @@ std::vector<TDatatype<double>> parallelReadElements(MPI_Comm comm, MPI_File fh,
   const auto bytes_per_element = h.bytesInDataLine();
   const auto local_range = h.getLocalOffsetRange(rank, nprocs);
   const auto nlocal_bytes = local_range.second - local_range.first;
+  if (nlocal_bytes > std::numeric_limits<int>::max()) {
+    std::cout << "Rank: " << rank << " trying to read: " << nlocal_bytes
+              << ", but MPI can't read more than: "
+              << std::numeric_limits<int>::max() << "bytes in one shot."
+              << std::endl;
+    MPI_Abort(comm, MPI_ERR_UNKNOWN);
+  }
   const auto nlocol_elements = nlocal_bytes / bytes_per_element;
 
   std::vector<TDatatype<double>> out;
@@ -184,29 +191,8 @@ std::vector<TDatatype<double>> parallelReadElements(MPI_Comm comm, MPI_File fh,
     MPI_Abort(comm, error);
   }
 
-#if 0
-  // Read first element from each node
-  if (rank != 0) {
-    MPI_Gather(byte_array.get(), bytes_per_element, MPI_BYTE, nullptr,
-               bytes_per_element, MPI_BYTE, 0, comm);
-  } else {
-    unsigned char elems[nprocs * bytes_per_element];
-    MPI_Gather(byte_array.get(), bytes_per_element, MPI_BYTE, elems,
-               bytes_per_element, MPI_BYTE, 0, comm);
-
-    for(auto i = 0; i < nprocs; ++i){
-      std::cout << "Rank " << i << "'s first element was: ";
-      auto elem = readElement(h,elems + i * bytes_per_element);
-      for(auto j = 0; j < ndims; ++j){
-        std::cout << elem.coo[j] << " ";
-      }
-      std::cout << elem.val << "\n";
-    }
-  }
-#endif
-
   // Fill the vector
-  for(auto i = 0; i < nlocol_elements; ++i){
+  for (auto i = 0; i < nlocol_elements; ++i) {
     auto curr = byte_array.get() + i * bytes_per_element;
     out.push_back(readElement(h, curr));
   }
