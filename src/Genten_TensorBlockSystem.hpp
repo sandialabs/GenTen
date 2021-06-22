@@ -228,6 +228,7 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
         "The binary format only supports zero based indexing\n");
   }
 
+  auto t0 = MPI_Wtime();
   std::ifstream tensor_file;
   MPI_File mpi_fh;
   MPI_IO::SptnFileHeader binary_header;
@@ -275,8 +276,15 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
     }
     pmap_ptr_->gridBarrier();
   }
+  pmap_ptr_->gridBarrier();
+  auto t1 = MPI_Wtime();
+  if(pmap_ptr_->gridRank() == 0){
+    std::cout << "Read tensor header in: " << t1 - t0 << "s" << std::endl;
+  }
 
   // Evenly distribute the tensor around the world
+  pmap_ptr_->gridBarrier();
+  auto t2 = MPI_Wtime();
   std::vector<MPI_IO::TDatatype<double>> Tvec;
   if (!is_binary) {
     Tvec = detail::distributeTensorToVectors(tensor_file, Ti_.nnz, indexbase,
@@ -286,12 +294,26 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
     Tvec = MPI_IO::parallelReadElements(DistContext::commWorld(), mpi_fh,
                                         binary_header);
   }
+  pmap_ptr_->gridBarrier();
+  auto t3 = MPI_Wtime();
+  if(pmap_ptr_->gridRank() == 0){
+    std::cout << "Read in file in: " << t3 - t2 << "s" << std::endl;
+  }
 
+  pmap_ptr_->gridBarrier();
+  auto t4 = MPI_Wtime();
   // Now redistribute to medium grain format
   auto distributedData =
       detail::redistributeTensor(Tvec, Ti_.dim_sizes, blocking, pmap_);
-  const auto local_nnz = distributedData.size();
+  pmap_ptr_->gridBarrier();
+  auto t5 = MPI_Wtime();
+  if(pmap_ptr_->gridRank() == 0){
+    std::cout << "Redistributied file in: " << t5 - t4 << "s" << std::endl;
+  }
 
+  pmap_ptr_->gridBarrier();
+  auto t6 = MPI_Wtime();
+  const auto local_nnz = distributedData.size();
   for (auto i = 0; i < ndims; ++i) {
     auto coord = pmap_.gridCoord(i);
     range_.push_back({blocking[i][coord], blocking[i][coord + 1]});
@@ -324,6 +346,11 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
       std::cout << std::endl;
     }
     pmap_ptr_->gridBarrier();
+  }
+  pmap_ptr_->gridBarrier();
+  auto t7 = MPI_Wtime();
+  if(pmap_ptr_->gridRank() == 0){
+    std::cout << "Copied to data struct in: " << t7 - t6 << "s" << std::endl;
   }
   init_factors();
 }
