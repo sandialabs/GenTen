@@ -104,7 +104,13 @@ class TensorBlockSystem {
 
   AlgParams setAlgParams() const;
 
-  void shardFactors();
+  void shardCenter();
+  void initMPIDatatypes();
+  void initMPIWindows();
+
+  enum class CenterOP { CenterRead, CenterAccumulate };
+
+  void doCenterOp(KtensorT<ExecSpace> &kt, CenterOP op);
 
 public:
   TensorBlockSystem(ptree const &tree);
@@ -134,6 +140,7 @@ private:
   small_vector<small_vector<std::uint64_t>> window_row_starts_;
   small_vector<small_vector<std::uint64_t>> window_row_stops_;
   small_vector<small_vector<MPI_Datatype>> factor_data_types_;
+  small_vector<double *> window_ptrs_;
 };
 
 // Helper declerations
@@ -560,84 +567,180 @@ AlgParams TensorBlockSystem<ElementType, ExecSpace>::setAlgParams() const {
   return algParams;
 }
 
-// Goal for this function is to shard parts of the factor matrices over the
-// nodes that need them.  These shards will form the "parameter" server used as
-// the source of truth for the factors. For now we are going to just try to
-// spread the data out equally and not get fancy with who owns what
 template <typename ElementType, typename ExecSpace>
-void TensorBlockSystem<ElementType, ExecSpace>::shardFactors() {
-  // Let's just start with the first dim and work up to all of them
-  const auto nRows = Ti_.dim_sizes[0];
+void TensorBlockSystem<ElementType, ExecSpace>::initMPIWindows() {
+  const auto ndims = this->ndims();
   const auto nCols = Kfac_.ncomponents();
 
-  // This is how many ranks our in our fiber for this dimension
-  const auto nranks_in_dim = pmap_ptr_->subCommSize(0);
-  const auto rows_per_rank = nRows / nranks_in_dim;
-
-  const auto dim_rank = pmap_ptr_->subCommRank(0);
-
-  const std::uint64_t start_row = dim_rank * rows_per_rank;
-  const std::uint64_t stop_row = [&] {
-    if (dim_rank < nranks_in_dim - 1) { // Not last rank
-      return (dim_rank + 1) * rows_per_rank;
-    } else {
-      return nRows;
+  for (auto i = 0; i < ndims; ++i) {
+    const auto nranks_in_dim = pmap_ptr_->subCommSize(i);
+    if (nranks_in_dim == 1) {
+      window_row_starts_.push_back({});
+      window_row_stops_.push_back({});
+      factor_shard_windows_.push_back(nullptr);
+      window_ptrs_.push_back(nullptr);
+      continue;
     }
-  }();
 
-  small_vector<std::uint64_t> window_start(nranks_in_dim);
-  small_vector<std::uint64_t> window_stop(nranks_in_dim);
+    const auto nRows_total = Ti_.dim_sizes[i];
+    const auto rows_per_rank = nRows_total / nranks_in_dim;
 
-  auto comm = pmap_ptr_->subComm(0);
-  MPI_Allgather(&start_row, 1, MPI_UNSIGNED_LONG_LONG, window_start.data(), 1,
-                MPI_UNSIGNED_LONG_LONG, comm);
-  MPI_Allgather(&stop_row, 1, MPI_UNSIGNED_LONG_LONG, window_stop.data(), 1,
-                MPI_UNSIGNED_LONG_LONG, comm);
-  window_row_starts_.push_back(std::move(window_start));
-  window_row_stops_.push_back(std::move(window_stop));
+    const auto my_rank = pmap_ptr_->subCommRank(i);
 
-  const std::uint64_t local_rows = stop_row - start_row;
-  const auto local_elements = local_rows * nCols;
-  MPI_Win win;
-  double *window_data_test;
-  MPI_Win_allocate(local_elements * sizeof(double), sizeof(double),
-                   MPI_INFO_NULL, pmap_ptr_->subComm(0), &window_data_test,
-                   &win);
-  factor_shard_windows_.push_back(win);
+    const std::uint64_t start_row = my_rank * rows_per_rank;
+    const std::uint64_t stop_row = [&] {
+      if (my_rank < nranks_in_dim - 1) {
+        return (my_rank + 1) * rows_per_rank;
+      } else {
+        return nRows_total;
+      }
+    }();
 
-  FacMatrixT<ExecSpace> const &fac0 = Kfac_.factors()[0];
-  const auto stride = fac0.view().stride_0();
+    auto comm = pmap_ptr_->subComm(i);
+    {
+      small_vector<std::uint64_t> starts(nranks_in_dim);
+      small_vector<std::uint64_t> stops(nranks_in_dim);
 
-  std::cout << "Count: " << local_elements << std::endl;
-  std::cout << "nCols: " << nCols << std::endl;
-  std::cout << "Stride: " << stride << std::endl;
-  MPI_Datatype test_type;
-  MPI_Type_vector(local_rows, nCols, stride, MPI_DOUBLE, &test_type);
-  MPI_Type_commit(&test_type);
+      MPI_Allgather(&start_row, 1, MPI_UNSIGNED_LONG_LONG, &starts[0], 1,
+                    MPI_UNSIGNED_LONG_LONG, comm);
+      MPI_Allgather(&stop_row, 1, MPI_UNSIGNED_LONG_LONG, &stops[0], 1,
+                    MPI_UNSIGNED_LONG_LONG, comm);
 
-  // Let's just locally do the simple thing here that I am sure should work
-  // without an MPI_Datatype for the factor rows. I think this should write all
-  // our local rows and then be done. The real way to do this is create a Data
-  // type for the Kokkos View that is FacMatrixT and write the whole thing in
-  // one shot, but we can do row by row for now.
-  auto *data = fac0.rowptr(0);
-  MPI_Win_fence(0, win);
-  // for (auto r = start_row; r < stop_row; ++r) {
-  //   int iter = r - start_row;
-  //   MPI_Put(data + iter * stride , nCols, MPI_DOUBLE, dim_rank,
-  //           nCols * (r - start_row), nCols, MPI_DOUBLE, win);
-  // }
-  MPI_Put(fac0.rowptr(0), 1, test_type, dim_rank, 0, local_elements, MPI_DOUBLE,
-          win);
-  MPI_Win_fence(0, win);
-  if (dim_rank == 0) {
-    auto block_first = fac0.entry(start_row, 0);
-    double window_first = 0.0;
-    MPI_Win_lock(MPI_LOCK_EXCLUSIVE, dim_rank, 0, win);
-    MPI_Get(&window_first, 1, MPI_DOUBLE, dim_rank, 0, 1, MPI_DOUBLE, win);
-    MPI_Win_unlock(dim_rank, win);
-    std::cout << "Fac, window: " << block_first << ", " << window_first
-              << std::endl;
+      window_row_starts_.push_back(std::move(starts));
+      window_row_stops_.push_back(std::move(stops));
+    }
+
+    // Compute local window size
+    const std::uint64_t local_rows = stop_row - start_row;
+    const auto local_elements = local_rows * nCols;
+    MPI_Win win;
+    double *window_data = nullptr;
+    MPI_Win_allocate(local_elements * sizeof(double), sizeof(double),
+                     MPI_INFO_NULL, comm, &window_data, &win);
+    factor_shard_windows_.push_back(win);
+    window_ptrs_.push_back(window_data);
+  }
+}
+
+template <typename ElementType, typename ExecSpace>
+void TensorBlockSystem<ElementType, ExecSpace>::initMPIDatatypes() {
+  if (factor_shard_windows_.empty() || window_row_starts_.empty() ||
+      window_row_stops_.empty()) {
+    throw std::runtime_error(
+        "Windows must be initialized before datatypes can be.");
+  }
+
+  const auto ndims = this->ndims();
+  const auto nCols = Kfac_.ncomponents();
+
+  for (auto i = 0; i < ndims; ++i) {
+    const auto dim_size = pmap_ptr_->subCommSize(i);
+    if (dim_size == 1) {
+      factor_data_types_.push_back({});
+      continue;
+    }
+
+    auto const &dim_starts = window_row_starts_[i];
+    auto const &dim_stops = window_row_stops_[i];
+    FacMatrixT<ExecSpace> const &fac = Kfac_.factors()[i];
+    const auto dim_stride = fac.view().stride_0();
+
+    small_vector<MPI_Datatype> dim_types;
+    for (auto r = 0; r < dim_size; ++r) {
+      const auto start_row = dim_starts[r];
+      const auto stop_row = dim_stops[r];
+      const auto dim_nrows = stop_row - start_row;
+
+      MPI_Datatype factor_type;
+      MPI_Type_vector(dim_nrows, nCols, dim_stride, MPI_DOUBLE, &factor_type);
+      MPI_Type_commit(&factor_type);
+      dim_types.push_back(factor_type);
+    }
+    factor_data_types_.push_back(std::move(dim_types));
+  }
+}
+
+template <typename ElementType, typename ExecSpace>
+void TensorBlockSystem<ElementType, ExecSpace>::doCenterOp(
+    KtensorT<ExecSpace> &kt, CenterOP op) {
+  if (factor_shard_windows_.empty() || window_row_starts_.empty() ||
+      window_row_stops_.empty()) {
+    throw std::runtime_error(
+        "Windows must be initialized before they can be read.");
+  }
+
+  const auto ndims = this->ndims();
+  const auto nCols = Kfac_.ncomponents();
+  auto win_elements = [&](auto const &starts, auto const &stops, int rank) {
+    return nCols * (stops[rank] - starts[rank]);
+  };
+
+  for (auto d = 0; d < ndims; ++d) {
+    MPI_Win &win = factor_shard_windows_[d];
+    if (win == nullptr) {
+      continue; // This dimension doesn't have a window since its exclusively
+                // owned
+    }
+
+    const auto windows_to_read = pmap_ptr_->subCommSize(d);
+    auto const &starts = window_row_starts_[d];
+    auto const &stops = window_row_stops_[d];
+    auto const window_offset = 0;
+
+    MPI_Win_lock_all(0, win);
+    for (auto w = 0; w < windows_to_read; ++w) {
+      const auto nelements = win_elements(starts, stops, w);
+      auto &datatype = factor_data_types_[d][w];
+      FacMatrixT<ExecSpace> const &fac = kt.factors()[d];
+      const auto first_row = starts[w];
+      auto *fac_ptr = fac.rowptr(first_row);
+
+      if (op == CenterOP::CenterRead) {
+        MPI_Get_accumulate(nullptr, 0, MPI_DOUBLE, fac_ptr, 1, datatype, w,
+                           window_offset, nelements, MPI_DOUBLE, MPI_NO_OP,
+                           win);
+      } else if (op == CenterOP::CenterAccumulate) {
+        MPI_Accumulate(fac_ptr, 1, datatype, w, window_offset, nelements,
+                       MPI_DOUBLE, MPI_SUM, win);
+      }
+    }
+    MPI_Win_unlock_all(win);
+  }
+}
+
+// Goal for this function is to shard parts of the factor matrices over the
+// nodes that need them.  These shards will form the "parameter" server used as
+// the source of truth for the elastic centers. For now we are going to just try
+// to spread the data out equally and not get fancy with who owns what
+template <typename ElementType, typename ExecSpace>
+void TensorBlockSystem<ElementType, ExecSpace>::shardCenter() {
+  initMPIWindows();
+  initMPIDatatypes();
+
+  // Write out local data to each window
+  const auto ndims = this->ndims();
+  const auto nCols = Kfac_.ncomponents();
+  for (auto i = 0; i < ndims; ++i) {
+    MPI_Win win = factor_shard_windows_[i];
+    if (win == nullptr) {
+      continue;
+    }
+
+    const auto dim_rank = pmap_ptr_->subCommRank(i);
+    const std::uint64_t row_start = window_row_starts_[i][dim_rank];
+    const auto row_stop = window_row_stops_[i][dim_rank];
+    const auto rows_to_write = row_stop - row_start;
+    const std::uint64_t elements_to_write = rows_to_write * nCols;
+
+    FacMatrixT<ExecSpace> const &fac = Kfac_.factors()[i];
+    auto *start_row_ptr = fac.rowptr(row_start);
+
+    MPI_Datatype type_to_write = factor_data_types_[i][dim_rank];
+
+    MPI_Win_fence(0, win);
+    MPI_Put(start_row_ptr, 1, type_to_write, dim_rank, 0, elements_to_write,
+            MPI_DOUBLE, win);
+    MPI_Win_fence(0, win);
   }
 };
 
@@ -646,15 +749,142 @@ template <typename Loss>
 ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAvgOneSidedSGD(
     Loss const &loss) {
   // At this point we know our local factors are initialized so we can shard
-  shardFactors();
+  shardCenter();
+  using VectorType = GCP::KokkosVector<ExecSpace>;
+  auto u = VectorType(Kfac_);
+  u.copyFromKtensor(Kfac_);
+  KtensorT<ExecSpace> ut = u.getKtensor();
 
-  // Sorry this isn't in the destructor future person reading this
-  for (auto &win : factor_shard_windows_) {
-    MPI_Win_free(&win);
+  VectorType g = u.clone(); // Gradient Ktensor
+  g.zero();
+  decltype(Kfac_) gfac = g.getKtensor();
+
+  VectorType center = u.clone(); // Center Tensor for elastic avg
+  center.set(u);
+  KtensorT<ExecSpace> cfac = center.getKtensor();
+
+  VectorType diff = u.clone(); // Center Tensor for elastic avg
+  diff.zero();
+  KtensorT<ExecSpace> dfac = diff.getKtensor();
+
+  const auto nprocs = this->nprocs();
+  const auto my_rank = gridRank();
+
+  auto algParams = setAlgParams();
+
+  auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(sp_tensor_, algParams);
+
+  Impl::SGDStep<ExecSpace, Loss> stepper;
+
+  auto seed = input_.get<std::uint64_t>("seed", std::random_device{}());
+  Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
+  std::stringstream ss;
+  sampler.initialize(rand_pool, ss);
+  if (nprocs < 41) {
+    std::cout << ss.str();
   }
-  // Until we finish this just return the alternate version so we
-  // do something
-  return allReduceADAM(loss);
+
+  SptensorT<ExecSpace> X_val;
+  ArrayT<ExecSpace> w_val;
+  sampler.sampleTensor(false, ut, loss, X_val, w_val);
+
+  // Stuff for the timer that we can'g avoid providing
+  SystemTimer timer;
+  int tnzs = 0;
+  int tzs = 0;
+
+  // Fit stuff
+  auto fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
+
+  auto fest_prev = fest;
+  const auto maxEpochs = algParams.maxiters;
+  const auto epochIters = algParams.epoch_iters;
+  const auto dp_iters = input_.get<int>("downpour_iters", 4);
+
+  CosineAnnealer annealer(input_);
+
+  for (auto e = 0; e < maxEpochs; ++e) { // Epochs
+    pmap_ptr_->gridBarrier();
+    auto t0 = MPI_Wtime();
+    auto epoch_lr = annealer(e);
+    auto times_centering = 0;
+    stepper.setStep(epoch_lr);
+    if (my_rank == 0) {
+      std::cout << "Epoch LR: " << epoch_lr << std::endl;
+    }
+
+    auto do_epoch_iter = [&]() {
+      g.zero();
+      sampler.fusedGradient(ut, loss, gfac, timer, tnzs, tzs);
+      stepper.eval(g, u);
+    };
+
+    const auto alpha = 0.9 / nprocs;
+    for (auto i = 0; i < epochIters; ++i) {
+      if (nprocs > 1 && (i + 1) % dp_iters == 0) {
+        doCenterOp(cfac, CenterOP::CenterRead);
+        for (auto d = 0; d < ndims(); ++d) {
+          if (factor_shard_windows_[d] == nullptr) {
+            deep_copy(cfac.factors()[d], ut.factors()[d]);
+          }
+        }
+
+        u.elastic_difference(diff, center, 1.0);
+        diff.scale(alpha);
+        u.plus(diff, -1.0);
+        doCenterOp(dfac, CenterOP::CenterAccumulate);
+        ++times_centering;
+      }
+
+      do_epoch_iter();
+    }
+
+    doCenterOp(cfac, CenterOP::CenterRead);
+    for (auto d = 0; d < ndims(); ++d) {
+      if (factor_shard_windows_[d] == nullptr) {
+        deep_copy(cfac.factors()[d], ut.factors()[d]);
+      }
+    }
+    fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, cfac, w_val, loss));
+    pmap_ptr_->gridBarrier();
+    auto t1 = MPI_Wtime();
+
+    const auto fest_diff = fest_prev - fest;
+
+    if (my_rank == 0) {
+      std::cout << "Fit(" << e << "): " << fest
+                << "\n\tchange in fit: " << fest_diff
+                << "\n\tlr:            " << epoch_lr
+                << "\n\tnSync steps:   " << times_centering
+                << "\n\tSeconds:       " << (t1 - t0);
+      std::cout << std::endl;
+    }
+
+    if (fest_diff > 0) {
+      stepper.setPassed();
+      fest_prev = fest;
+      annealer.success();
+    } else {
+      annealer.failed();
+    }
+  }
+
+  //
+  // Clean up my MPI STUFF (move to destructor later)
+  //
+  for (auto win : factor_shard_windows_) {
+    if (win != nullptr) {
+      MPI_Win_free(&win);
+    }
+  }
+
+  for (auto &vec : factor_data_types_) {
+    for (auto &type : vec) {
+      MPI_Type_free(&type);
+    }
+  }
+
+  return 0.0;
 }
 
 template <typename ElementType, typename ExecSpace>
