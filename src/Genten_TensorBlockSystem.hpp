@@ -278,7 +278,7 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
   }
   pmap_ptr_->gridBarrier();
   auto t1 = MPI_Wtime();
-  if(pmap_ptr_->gridRank() == 0){
+  if (pmap_ptr_->gridRank() == 0) {
     std::cout << "Read tensor header in: " << t1 - t0 << "s" << std::endl;
   }
 
@@ -296,7 +296,7 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
   }
   pmap_ptr_->gridBarrier();
   auto t3 = MPI_Wtime();
-  if(pmap_ptr_->gridRank() == 0){
+  if (pmap_ptr_->gridRank() == 0) {
     std::cout << "Read in file in: " << t3 - t2 << "s" << std::endl;
   }
 
@@ -307,7 +307,7 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
       detail::redistributeTensor(Tvec, Ti_.dim_sizes, blocking, pmap_);
   pmap_ptr_->gridBarrier();
   auto t5 = MPI_Wtime();
-  if(pmap_ptr_->gridRank() == 0){
+  if (pmap_ptr_->gridRank() == 0) {
     std::cout << "Redistributied file in: " << t5 - t4 << "s" << std::endl;
   }
 
@@ -349,7 +349,7 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
   }
   pmap_ptr_->gridBarrier();
   auto t7 = MPI_Wtime();
-  if(pmap_ptr_->gridRank() == 0){
+  if (pmap_ptr_->gridRank() == 0) {
     std::cout << "Copied to data struct in: " << t7 - t6 << "s" << std::endl;
   }
   init_factors();
@@ -641,11 +641,23 @@ void TensorBlockSystem<ElementType, ExecSpace>::initMPIWindows() {
     const std::uint64_t local_rows = stop_row - start_row;
     const auto local_elements = local_rows * nCols;
     MPI_Win win;
+
     double *window_data = nullptr;
     MPI_Win_allocate(local_elements * sizeof(double), sizeof(double),
                      MPI_INFO_NULL, comm, &window_data, &win);
     factor_shard_windows_.push_back(win);
     window_ptrs_.push_back(window_data);
+  }
+
+  if (DistContext::isDebug() && pmap_ptr_->gridRank() == 0) {
+    std::cout << "Start stop pairs:\n";
+    for (auto i = 0; i < window_row_starts_.size(); ++i) {
+      std::cout << "\tDim " << i << "\n";
+      for (auto j = 0; j < window_row_starts_[i].size(); ++j) {
+        std::cout << "\t\t" << window_row_starts_[i][j] << ", "
+                  << window_row_stops_[i][j] << "\n";
+      }
+    }
   }
 }
 
@@ -758,6 +770,11 @@ void TensorBlockSystem<ElementType, ExecSpace>::shardCenter() {
     const auto row_stop = window_row_stops_[i][dim_rank];
     const auto rows_to_write = row_stop - row_start;
     const std::uint64_t elements_to_write = rows_to_write * nCols;
+    if (elements_to_write == 0) {
+      std::cout << pmap_ptr_->gridRank() << " tried to write: " << 0
+                << " elements for dim(" << i << ")\n";
+      MPI_Abort(pmap_ptr_->gridComm(), MPI_ERR_UNKNOWN);
+    }
 
     FacMatrixT<ExecSpace> const &fac = Kfac_.factors()[i];
     auto *start_row_ptr = fac.rowptr(row_start);

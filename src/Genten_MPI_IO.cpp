@@ -189,12 +189,20 @@ std::vector<TDatatype<double>> parallelReadElements(MPI_Comm comm, MPI_File fh,
   out.reserve(nlocal_elements);
 
   // Get the local data from the file
+  MPI_Barrier(comm);
+  auto t0 = MPI_Wtime();
   auto byte_array = std::make_unique<unsigned char[]>(nlocal_bytes);
   int error =
       MPI_File_read_at_all(fh, local_range.first, byte_array.get(),
                            nlocal_elements, element_type, MPI_STATUSES_IGNORE);
   if (error != MPI_SUCCESS) {
     MPI_Abort(comm, error);
+  }
+  MPI_Barrier(comm);
+  auto t1 = MPI_Wtime();
+  if (rank == 0) {
+    std::cout << "\tTime in MPI_File_read_at_all: " << t1 - t0 << "s"
+              << std::endl;
   }
 
   MPI_Type_free(&element_type);
