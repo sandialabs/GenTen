@@ -171,28 +171,36 @@ std::vector<TDatatype<double>> parallelReadElements(MPI_Comm comm, MPI_File fh,
   const auto bytes_per_element = h.bytesInDataLine();
   const auto local_range = h.getLocalOffsetRange(rank, nprocs);
   const auto nlocal_bytes = local_range.second - local_range.first;
-  if (nlocal_bytes > std::numeric_limits<int>::max()) {
-    std::cout << "Rank: " << rank << " trying to read: " << nlocal_bytes
+  const auto nlocal_elements = nlocal_bytes / bytes_per_element;
+
+  if (nlocal_elements > std::numeric_limits<int>::max()) {
+    std::cout << "Rank: " << rank << " trying to read: " << nlocal_elements
               << ", but MPI can't read more than: "
-              << std::numeric_limits<int>::max() << "bytes in one shot."
+              << std::numeric_limits<int>::max() << "elements in one shot."
               << std::endl;
     MPI_Abort(comm, MPI_ERR_UNKNOWN);
   }
-  const auto nlocol_elements = nlocal_bytes / bytes_per_element;
+
+  MPI_Datatype element_type;
+  MPI_Type_contiguous(bytes_per_element, MPI_BYTE, &element_type);
+  MPI_Type_commit(&element_type);
 
   std::vector<TDatatype<double>> out;
-  out.reserve(nlocol_elements);
+  out.reserve(nlocal_elements);
 
   // Get the local data from the file
   auto byte_array = std::make_unique<unsigned char[]>(nlocal_bytes);
-  int error = MPI_File_read_at_all(fh, local_range.first, byte_array.get(),
-                                   nlocal_bytes, MPI_BYTE, MPI_STATUSES_IGNORE);
+  int error =
+      MPI_File_read_at_all(fh, local_range.first, byte_array.get(),
+                           nlocal_elements, element_type, MPI_STATUSES_IGNORE);
   if (error != MPI_SUCCESS) {
     MPI_Abort(comm, error);
   }
 
+  MPI_Type_free(&element_type);
+
   // Fill the vector
-  for (auto i = 0; i < nlocol_elements; ++i) {
+  for (auto i = 0; i < nlocal_elements; ++i) {
     auto curr = byte_array.get() + i * bytes_per_element;
     out.push_back(readElement(h, curr));
   }
