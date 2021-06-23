@@ -209,9 +209,8 @@ testPmapGrid(ProcessorMap const &pmap, int factor_rank,
   const auto ndims = tensor_dims.size();
   for (auto i = 0; i < ndims; ++i) {
     auto const &blocking_dim = blocking[i];
-    const auto grid_cord = pmap.gridCoord(i);
-    const auto nrows_dim =
-        blocking_dim[grid_cord + 1] - blocking_dim[grid_cord];
+    const int grid_cord = pmap.gridCoord(i);
+    const int nrows_dim = blocking_dim[grid_cord + 1] - blocking_dim[grid_cord];
 
     test_factors.emplace_back(nrows_dim * factor_rank, 0.0);
   }
@@ -250,13 +249,11 @@ void updateGuessGrid(small_vector<int> &grid,
   auto max_idx = std::distance(scores.begin(), min_max.second);
 
   auto divisors_min = divisors(grid[min_idx]);
-  if (divisors_min.size() > 2) {
+  if (divisors_min.size() >= 2) {
     auto scale = divisors_min[1];
     grid[max_idx] *= scale;
     grid[min_idx] /= scale;
-  } else { // divisor was prime let's try a swap
-    std::swap(grid[max_idx], grid[min_idx]);
-  }
+  } 
 }
 
 auto minAllReduceComm(int nprocs, int factor_rank,
@@ -279,7 +276,11 @@ auto minAllReduceComm(int nprocs, int factor_rank,
     auto guess_score =
         std::accumulate(guess_scores.begin(), guess_scores.end(), 0.0);
     if (DistContext::rank() == 0 && DistContext::isDebug()) {
-      std::cout << "\tGrid scored: " << guess_score << std::endl;
+      std::cout << "\tGrid scored: " << guess_score << ", ";
+      for(auto s : guess_scores){
+        std::cout << s << " ";
+      }
+      std::cout << std::endl;
     }
     DistContext::Barrier();
     if (guess_score < score) {
