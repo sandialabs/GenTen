@@ -242,7 +242,7 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
   }
   const auto ndims = Ti_.dim_sizes.size();
   pmap_ptr_ = std::unique_ptr<ProcessorMap>(
-      new ProcessorMap(DistContext::input(), Ti_));
+      new ProcessorMap(DistContext::input(), Ti_.dim_sizes));
   auto &pmap_ = *pmap_ptr_;
 
   if (DistContext::isDebug()) {
@@ -408,7 +408,6 @@ void TensorBlockSystem<ElementType, ExecSpace>::allReduceKT(
     }
 
     auto subComm = pmap_ptr_->subComm(i);
-    auto subRank = pmap_ptr_->subCommRank(i);
 
     // MPI_SUM doesn't support user defined types for AllReduce BOO
     FacMatrixT<ExecSpace> const &fac_mat = g.factors()[i];
@@ -443,7 +442,6 @@ void TensorBlockSystem<ElementType, ExecSpace>::iAllReduceKT(
     }
 
     auto subComm = pmap_ptr_->subComm(i);
-    auto subRank = pmap_ptr_->subCommRank(i);
 
     FacMatrixT<ExecSpace> const &fac_mat = g.factors()[i];
     auto fac_ptr = fac_mat.view().data();

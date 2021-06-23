@@ -42,14 +42,19 @@
 
 #include "Genten_Boost.hpp"
 #include "Genten_DistContext.hpp"
-#include "Genten_TensorInfo.hpp"
 #include "Genten_Util.hpp"
+
+#include <vector>
 
 namespace Genten {
 
 class ProcessorMap {
 public:
-  ProcessorMap(ptree const &input_tree, TensorInfo const &Ti);
+  ProcessorMap(ptree const &input_tree,
+               std::vector<std::uint32_t> const &tensor_dims);
+  ProcessorMap(ptree const &input_tree,
+               std::vector<std::uint32_t> const &tensor_dims,
+               small_vector<int> const &predetermined_grid);
   ~ProcessorMap();
 
   ProcessorMap() = delete;
@@ -83,7 +88,7 @@ public:
     static_assert(std::is_arithmetic<T>::value,
                   "gridAllReduce requires something like a double, or int");
 
-    if(grid_nprocs_ > 1){
+    if (grid_nprocs_ > 1) {
       MPI_Allreduce(MPI_IN_PLACE, &element, 1, convertType(element), op,
                     cart_comm_);
     }

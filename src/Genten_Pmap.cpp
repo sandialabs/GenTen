@@ -56,12 +56,12 @@ namespace Genten {
 namespace {
 // Silly function to compute divisors
 auto divisors(int input) {
-  small_vector<int> divisors(1,input);
+  small_vector<int> divisors(1, input);
   int sroot = std::sqrt(input);
   for (auto i = 1; i <= sroot; ++i) {
     if (input % i == 0) {
       divisors.push_back(i);
-      if (i != sroot) {
+      if (i > 1 && i != sroot) {
         divisors.push_back(input / i);
       }
     }
@@ -138,24 +138,168 @@ auto recurseMinSpaceGrid(int nprocs, small_vector<int> &grid,
   }
 }
 
-auto minFactorSpaceGrid(int nprocs, std::vector<std::uint32_t> const &tensor_dims) {
+auto minFactorSpaceGrid(int nprocs,
+                        std::vector<std::uint32_t> const &tensor_dims) {
   const auto ndims = tensor_dims.size();
   auto grid = small_vector<int>(ndims);
-  recurseMinSpaceGrid(nprocs, grid, tensor_dims, ndims);
+  if (DistContext::rank() == 0) {
+    recurseMinSpaceGrid(nprocs, grid, tensor_dims, ndims);
+  }
+  DistContext::Bcast(grid, 0);
   return grid;
 }
 
-auto minAllReduceComm(int nprocs, std::vector<std::uint32_t> const &tensor_dims) {
-  return minFactorSpaceGrid(nprocs, tensor_dims);
+enum class CartGridStratagy { MinAllReduceComm, MinFactorSpace };
+small_vector<int>
+CartGrid(int nprocs, std::vector<std::uint32_t> const &tensor_dims,
+         int factor_rank,
+         CartGridStratagy strat = CartGridStratagy::MinAllReduceComm);
+
+small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode) {
+  small_vector<int> Range{0};
+  const auto FibersPerBlock = ModeLength / ProcsInMode;
+  auto Remainder = ModeLength % ProcsInMode;
+
+  // We ended up with more processors than rows in the fiber :O Just return all
+  // fibers in the same block. It seems easier to handle this here than to try
+  // to make the while loop logic do something smart
+  if (FibersPerBlock == 0) {
+    Range.push_back(ModeLength);
+  }
+
+  while (Range.back() < ModeLength) {
+    const auto back = Range.back();
+    // This branch makes our blocks 1 bigger to eat the Remainder fibers
+    if (Remainder > 0) {
+      Range.push_back(back + FibersPerBlock + 1);
+      --Remainder;
+    } else {
+      Range.push_back(back + FibersPerBlock);
+    }
+  }
+
+  // Sanity check that we ended with the correct number of blocks and fibers
+  assert(Range.size() == ProcsInMode + 1);
+  assert(Range.back() == ModeLength);
+
+  return Range;
 }
 
-enum class CartGridStratagy { MinAllReduceComm, MinFactorSpace };
+std::vector<small_vector<int>>
+generateUniformBlocking(std::vector<std::uint32_t> const &ModeLengths,
+                        small_vector<int> const &ProcGridSizes) {
+  const auto Ndims = ModeLengths.size();
+  std::vector<small_vector<int>> blocking;
+  blocking.reserve(Ndims);
 
-auto CartGrid(int nprocs, std::vector<std::uint32_t> const &tensor_dims,
-              CartGridStratagy strat = CartGridStratagy::MinAllReduceComm) {
+  for (auto i = 0; i < Ndims; ++i) {
+    blocking.emplace_back(
+        singleDimUniformBlocking(ModeLengths[i], ProcGridSizes[i]));
+  }
+
+  return blocking;
+}
+
+small_vector<double>
+testPmapGrid(ProcessorMap const &pmap, int factor_rank,
+             std::vector<std::uint32_t> const &tensor_dims) {
+  small_vector<std::vector<double>> test_factors;
+  auto blocking = generateUniformBlocking(tensor_dims, pmap.gridDims());
+
+  const auto ndims = tensor_dims.size();
+  for (auto i = 0; i < ndims; ++i) {
+    auto const &blocking_dim = blocking[i];
+    const auto grid_cord = pmap.gridCoord(i);
+    const auto nrows_dim =
+        blocking_dim[grid_cord + 1] - blocking_dim[grid_cord];
+
+    test_factors.emplace_back(nrows_dim * factor_rank, 0.0);
+  }
+
+  small_vector<double> times(ndims, 0.0);
+  auto run_allreduce = [&] {
+    for (auto i = 0; i < ndims; ++i) {
+      if (pmap.subCommSize(i) == 1) { // Don't Allreduce when not replicated
+        continue;
+      }
+
+      auto t0 = MPI_Wtime();
+      MPI_Allreduce(MPI_IN_PLACE, &test_factors[i][0], test_factors[i].size(),
+                    MPI_DOUBLE, MPI_SUM, pmap.subComm(i));
+
+      times[i] += MPI_Wtime() - t0;
+    }
+  };
+
+  // Time 5 iterations of AllReduce to try and get something reasonable
+  for (auto i = 0; i < 20; ++i) {
+    run_allreduce();
+  }
+
+  MPI_Allreduce(MPI_IN_PLACE, &times[0], ndims, MPI_DOUBLE, MPI_SUM,
+                pmap.gridComm());
+
+  return times;
+}
+
+void updateGuessGrid(small_vector<int> &grid,
+                     small_vector<double> const &scores) {
+  const auto ndim = scores.size();
+  auto min_max = std::minmax_element(scores.begin(), scores.end());
+  auto min_idx = std::distance(scores.begin(), min_max.first);
+  auto max_idx = std::distance(scores.begin(), min_max.second);
+
+  auto divisors_min = divisors(grid[min_idx]);
+  if (divisors_min.size() > 2) {
+    auto scale = divisors_min[1];
+    grid[max_idx] *= scale;
+    grid[min_idx] /= scale;
+  } else { // divisor was prime let's try a swap
+    std::swap(grid[max_idx], grid[min_idx]);
+  }
+}
+
+auto minAllReduceComm(int nprocs, int factor_rank,
+                      std::vector<std::uint32_t> const &tensor_dims) {
+  auto guess_grid = minFactorSpaceGrid(nprocs, tensor_dims);
+  small_vector<int> chosen_grid(guess_grid.size());
+  bool decided = false;
+  auto score = std::numeric_limits<double>::max();
+  while (!decided) {
+    if (DistContext::rank() == 0 && DistContext::isDebug()) {
+      std::cout << "Testing processor grid: ";
+      for (auto i : guess_grid) {
+        std::cout << i << " ";
+      }
+      std::cout << std::endl;
+    }
+    DistContext::Barrier();
+    ProcessorMap pmap({}, tensor_dims, guess_grid);
+    auto guess_scores = testPmapGrid(pmap, factor_rank, tensor_dims);
+    auto guess_score =
+        std::accumulate(guess_scores.begin(), guess_scores.end(), 0.0);
+    if (DistContext::rank() == 0 && DistContext::isDebug()) {
+      std::cout << "\tGrid scored: " << guess_score << std::endl;
+    }
+    DistContext::Barrier();
+    if (guess_score < score) {
+      chosen_grid = guess_grid;
+      score = guess_score;
+      updateGuessGrid(guess_grid, guess_scores);
+    } else {
+      decided = true;
+    }
+  }
+
+  return chosen_grid;
+}
+
+small_vector<int> CartGrid(int nprocs,
+                           std::vector<std::uint32_t> const &tensor_dims,
+                           int factor_rank, CartGridStratagy strat) {
   switch (strat) {
   case CartGridStratagy::MinAllReduceComm:
-    return minAllReduceComm(nprocs, tensor_dims);
+    return minAllReduceComm(nprocs, factor_rank, tensor_dims);
   case CartGridStratagy::MinFactorSpace:
     return minFactorSpaceGrid(nprocs, tensor_dims);
   default:
@@ -163,26 +307,37 @@ auto CartGrid(int nprocs, std::vector<std::uint32_t> const &tensor_dims,
   }
 }
 
-} // namespace
-
-ProcessorMap::ProcessorMap(ptree const &input_tree, TensorInfo const &Ti)
-    : pmap_tree_(input_tree.get_child("pmap", ptree{})) {
-
-  // Do initial setup on rank 0
-  if (DistContext::rank() == 0) {
-    dimension_sizes_ = CartGrid(DistContext::nranks(), Ti.dim_sizes,
-                                CartGridStratagy::MinFactorSpace);
+CartGridStratagy readGridStrat(ptree const &tree) {
+  auto strat_str = tree.get("pmap.strategy", "reduce_space");
+  if (strat_str == "reduce_comm") {
+    return CartGridStratagy::MinAllReduceComm;
+  } else if (strat_str == "reduce_space") {
+    return CartGridStratagy::MinFactorSpace;
   }
 
-  DistContext::Bcast(dimension_sizes_, 0);
+  if (DistContext::rank() == 0) {
+    std::cout << "Didn't reconize grid strategy: " << strat_str
+              << " accepted options are reduce_comm and reduce_space. "
+                 "Defaulting to reduce_space."
+              << std::endl;
+  }
+  return CartGridStratagy::MinFactorSpace;
+}
+
+} // namespace
+
+ProcessorMap::ProcessorMap(ptree const &input_tree,
+                           std::vector<std::uint32_t> const &tensor_dims,
+                           small_vector<int> const &predetermined_grid)
+    : dimension_sizes_(predetermined_grid),
+      pmap_tree_(input_tree.get_child("pmap", ptree{})) {
   const auto ndims = dimension_sizes_.size();
 
   // I don't think we need to be periodic
   small_vector<int> periodic(ndims, 0);
   bool reorder = true; // Let MPI be smart I guess
-  MPI_Cart_create(DistContext::commWorld(), ndims,
-                  dimension_sizes_.data(), periodic.data(), reorder,
-                  &cart_comm_);
+  MPI_Cart_create(DistContext::commWorld(), ndims, dimension_sizes_.data(),
+                  periodic.data(), reorder, &cart_comm_);
 
   MPI_Comm_size(cart_comm_, &grid_nprocs_);
   MPI_Comm_rank(cart_comm_, &grid_rank_);
@@ -205,8 +360,15 @@ ProcessorMap::ProcessorMap(ptree const &input_tree, TensorInfo const &Ti)
   }
 }
 
+ProcessorMap::ProcessorMap(ptree const &input_tree,
+                           std::vector<std::uint32_t> const &tensor_dims)
+    : ProcessorMap(input_tree, tensor_dims,
+                   CartGrid(DistContext::nranks(), tensor_dims,
+                            input_tree.get<int>("tensor.rank"),
+                            readGridStrat(input_tree))) {}
+
 void ProcessorMap::gridBarrier() const {
-  if(grid_nprocs_ > 1){
+  if (grid_nprocs_ > 1) {
     MPI_Barrier(cart_comm_);
   }
 }
