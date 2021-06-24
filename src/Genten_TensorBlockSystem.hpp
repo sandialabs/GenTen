@@ -650,6 +650,13 @@ void TensorBlockSystem<ElementType, ExecSpace>::initMPIWindows() {
     const auto local_elements = local_rows * nCols;
     MPI_Win win;
 
+    if (DistContext::isDebug()) {
+      std::stringstream ss;
+      ss << "Dim: " << i << ", rank: " << my_rank << " makeing window of "
+         << local_elements << " elements.";
+      std::cout << ss.str() << std::endl;
+    }
+
     double *window_data = nullptr;
     MPI_Win_allocate(local_elements * sizeof(double), sizeof(double),
                      MPI_INFO_NULL, comm, &window_data, &win);
@@ -681,6 +688,9 @@ void TensorBlockSystem<ElementType, ExecSpace>::initMPIDatatypes() {
   const auto nCols = Kfac_.ncomponents();
 
   for (auto i = 0; i < ndims; ++i) {
+    if (DistContext::isDebug() && pmap_ptr_->gridRank() == 0) {
+      std::cout << "Dim " << i << " datatypes:\n";
+    }
     const auto dim_size = pmap_ptr_->subCommSize(i);
     if (dim_size == 1) {
       factor_data_types_.push_back({});
@@ -702,6 +712,10 @@ void TensorBlockSystem<ElementType, ExecSpace>::initMPIDatatypes() {
       MPI_Type_vector(dim_nrows, nCols, dim_stride, MPI_DOUBLE, &factor_type);
       MPI_Type_commit(&factor_type);
       dim_types.push_back(factor_type);
+      if (DistContext::isDebug() && pmap_ptr_->gridRank() == 0) {
+        std::cout << "\tNrows: " << dim_nrows << ", blocksize: " << nCols
+                  << ", stride: " << dim_stride << std::endl;
+      }
     }
     factor_data_types_.push_back(std::move(dim_types));
   }
@@ -733,21 +747,28 @@ void TensorBlockSystem<ElementType, ExecSpace>::doCenterOp(
     auto const &starts = window_row_starts_[d];
     auto const &stops = window_row_stops_[d];
     auto const window_offset = 0;
+    FacMatrixT<ExecSpace> const &fac = kt.factors()[d];
 
     MPI_Win_lock_all(0, win);
     for (auto w = 0; w < windows_to_read; ++w) {
+      // Compute new types here since we can't be sure that Kt has the same
+      // ones as our orignial Ktensor
+      MPI_Datatype type;
+      MPI_Type_vector(stops[w] - starts[w], nCols, fac.view().stride_0(),
+                      MPI_DOUBLE, &type);
+      MPI_Type_commit(&type);
+
       const auto nelements = win_elements(starts, stops, w);
-      auto &datatype = factor_data_types_[d][w];
-      FacMatrixT<ExecSpace> const &fac = kt.factors()[d];
       const auto first_row = starts[w];
       auto *fac_ptr = fac.rowptr(first_row);
 
       if (op == CenterOP::CenterRead) {
-        MPI_Get_accumulate(nullptr, 0, MPI_DOUBLE, fac_ptr, 1, datatype, w,
+
+        MPI_Get_accumulate(nullptr, 0, MPI_DOUBLE, fac_ptr, 1, type, w,
                            window_offset, nelements, MPI_DOUBLE, MPI_NO_OP,
                            win);
       } else if (op == CenterOP::CenterAccumulate) {
-        MPI_Accumulate(fac_ptr, 1, datatype, w, window_offset, nelements,
+        MPI_Accumulate(fac_ptr, 1, type, w, window_offset, nelements,
                        MPI_DOUBLE, MPI_SUM, win);
       }
     }
@@ -811,8 +832,8 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAvgOneSidedSGD(
   g.zero();
   decltype(Kfac_) gfac = g.getKtensor();
 
-  VectorType center = u.clone(); // Center Tensor for elastic avg
-  center.set(u);
+  VectorType center = VectorType(Kfac_); // Center Tensor for elastic avg
+  center.copyFromKtensor(Kfac_);
   KtensorT<ExecSpace> cfac = center.getKtensor();
 
   VectorType diff = u.clone(); // Center Tensor for elastic avg
