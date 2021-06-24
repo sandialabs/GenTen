@@ -67,17 +67,20 @@ public:
   void failed() override { step_size_ /= 10; }
 };
 
+// Slightly annoyingly I want the first run through to be a warm up then resets
+// So we will maintain a different count than Tcur to decide when to reset Tcur
 class CosineAnnealer : public AnnealerBase {
   double min_lr;
   double max_lr;
   int Ti;
-  int Tcur = 0;
+  int Tcur;
+  int iter = 0;
 
 public:
   CosineAnnealer(ptree const &ptree)
       : AnnealerBase(ptree), min_lr(ptree.get<double>("lr.min_lr", 1e-12)),
         max_lr(ptree.get<double>("lr.max_lr", 1e-9)),
-        Ti(ptree.get<int>("lr.Ti", 10)) {}
+        Ti(ptree.get<int>("lr.Ti", 10)), Tcur(Ti) {}
 
   double operator()(int) override {
     return min_lr +
@@ -91,9 +94,11 @@ public:
   }
 
   void success() override {
+    ++iter;
     ++Tcur;
-    if (Tcur > Ti) {
+    if (iter > Ti) {
       Tcur = 0;
+      iter = 0;
       Ti *= 2;
     }
   }
