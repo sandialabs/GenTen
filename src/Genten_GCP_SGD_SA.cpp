@@ -43,7 +43,6 @@
 #include <cmath>
 
 #include "Genten_GCP_SGD.hpp"
-#include "Genten_GCP_StratifiedSampler.hpp"
 #include "Genten_GCP_SemiStratifiedSampler.hpp"
 #include "Genten_GCP_ValueKernels.hpp"
 #include "Genten_GCP_LossFunctions.hpp"

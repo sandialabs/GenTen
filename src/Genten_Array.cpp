@@ -423,10 +423,12 @@ void Genten::ArrayT<ExecSpace>::
 shift(ttb_real a) const
 {
   const ttb_indx sz = data.extent(0);
-  for (ttb_indx i = 0; i < sz; i ++)
+  view_type d = data;
+  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
   {
-    data[i] = data[i] + a;
-  }
+    d[i] += a;
+  }, "Genten::Array::scalar_shift_kernel");
 }
 
 template <typename ExecSpace>

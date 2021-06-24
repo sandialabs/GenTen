@@ -219,14 +219,15 @@ namespace Genten {
     enum type {
       Uniform,
       Stratified,
-      SemiStratified
+      SemiStratified,
+      Dense
     };
-    static constexpr unsigned num_types = 3;
+    static constexpr unsigned num_types = 4;
     static constexpr type types[] = {
-      Uniform, Stratified, SemiStratified
+      Uniform, Stratified, SemiStratified, Dense
     };
     static constexpr const char* names[] = {
-      "uniform", "stratified", "semi-stratified"
+      "uniform", "stratified", "semi-stratified", "dense"
     };
     static constexpr type default_type = Stratified;
   };

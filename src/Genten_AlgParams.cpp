@@ -96,7 +96,7 @@ Genten::AlgParams::AlgParams() :
   window_method(Genten::GCP_Streaming_Window_Method::default_type),
   window_size(0),
   window_weight(1.0),
-  window_penalty(0.0),
+  window_penalty(1.0),
   factor_penalty(0.0)
 {}
 

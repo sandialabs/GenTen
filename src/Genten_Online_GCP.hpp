@@ -75,7 +75,7 @@ namespace Genten {
 
   protected:
 
-    void leastSquaresSolve(const ttb_indx mode,
+    void leastSquaresSolve(const bool temporal,
                            TensorT& X,
                            KtensorT<ExecSpace>& u,
                            ttb_real& fest,
@@ -91,10 +91,9 @@ namespace Genten {
     GCPSGD<TensorT,ExecSpace,LossFunction> temporalSolver;
     GCPSGD<TensorT,ExecSpace,LossFunction> spatialSolver;
     std::default_random_engine generator;  // Random number generator
-    FacMatrixT<ExecSpace> A;    // Temp space needed for least-squares
-    FacMatrixT<ExecSpace> tmp;
-    FacMatArrayT<ExecSpace> P;  // Temp space needed for OnlineCP
-    FacMatArrayT<ExecSpace> Q;
+    FacMatrixT<ExecSpace> A, tmp, tmp3; // Temp space needed for least-squares
+    std::vector< FacMatrixT<ExecSpace> > Z1, Z2, Z3, ZZ1, ZZ2, ZZ3, tmp2;
+    std::vector< FacMatrixT<ExecSpace> > P, Q; // Temp space needed for OnlineCP
     KtensorT<ExecSpace> up;     // History window data
     ArrayT<ExecSpace> window_val;
     typename ArrayT<ExecSpace>::HostMirror window_val_host;

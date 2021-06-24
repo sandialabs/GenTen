@@ -87,6 +87,14 @@ namespace Genten {
     static typename ExecSpace::size_type eval() { return 0; }
   };
 
+  template <typename ExecSpace>
+  struct is_host_space {
+    static constexpr bool value =
+      is_serial_space<ExecSpace>::value ||
+      is_threads_space<ExecSpace>::value ||
+      is_openmp_space<ExecSpace>::value;
+  };
+
 #if defined(KOKKOS_ENABLE_SERIAL)
   template <>
   struct is_serial_space<Kokkos::Serial> {

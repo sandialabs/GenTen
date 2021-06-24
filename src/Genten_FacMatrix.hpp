@@ -264,6 +264,9 @@ public:
     // Compute X = a * X
     void times(ttb_real a) const;
 
+    // Compute X = X + a
+    void plus(ttb_real a) const;
+
     // x += s*y
     /* accumulate y into x */
     void plus(const FacMatrixT & y, const ttb_real s = ttb_real(1.0)) const;
@@ -292,6 +295,11 @@ public:
     /* X(i,j) = V(i) * V(j). */
     void oprod(const ArrayT<ExecSpace> & v) const;
 
+    // Compute the rank-one matrix that is the outer product of the vector v.
+    /* X(i,j) = V1(i) * V2(j). */
+    void oprod(const ArrayT<ExecSpace> & v1,
+               const ArrayT<ExecSpace> & v2) const;
+
     // Compute the norms of all the columns.
     /* The norm_type indicates the type of norm.
        The optional "minval" argument sets the minimum value of each column norm. */
@@ -301,6 +309,9 @@ public:
     /* If "inverse" is set to true, then scale by the reciprocal of the entries
      * in s. */
     void colScale(const ArrayT<ExecSpace> & s, bool inverse) const;
+
+    // Scale each row by the corresponding scalar entry in s.
+    void rowScale(const ArrayT<ExecSpace> & s, bool inverse) const;
 
     // see ktensor::scaleRandomElements
     void scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise) const;
@@ -337,6 +348,15 @@ public:
     void multByVector(bool                bTranspose,
                       const ArrayT<ExecSpace> &  x,
                             ArrayT<ExecSpace> &  y) const;
+
+    //! Perform matrix-matrix multiply
+    /*!
+     * Commputes C <- alpha * op(A) * op(B) + beta*C where C is *this
+     * and op() may be a transpose or not.
+     */
+    void gemm(const bool trans_a, const bool trans_b, const ttb_real alpha,
+              const FacMatrixT<ExecSpace>& A, const FacMatrixT<ExecSpace>& B,
+              const ttb_real beta) const;
 
     //! Solve AX = B' where B is this matrix.
     /*!

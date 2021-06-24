@@ -46,6 +46,7 @@
 #include "Genten_GCP_UniformSampler.hpp"
 #include "Genten_GCP_StratifiedSampler.hpp"
 #include "Genten_GCP_SemiStratifiedSampler.hpp"
+#include "Genten_GCP_DenseSampler.hpp"
 #include "Genten_GCP_ValueKernels.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
 #include "Genten_GCP_KokkosVector.hpp"
@@ -182,6 +183,9 @@ namespace Genten {
     else if (algParams.sampling_type == GCP_Sampling::SemiStratified)
       sampler = new Genten::SemiStratifiedSampler<ExecSpace,LossFunction>(
         X, algParams);
+    else if (algParams.sampling_type == GCP_Sampling::Dense)
+      sampler = new Genten::DenseSampler<ExecSpace,LossFunction>(
+        X, algParams);
     else
       Genten::error("Genten::gcp_sgd - unknown sampling type");
 
@@ -286,7 +290,7 @@ namespace Genten {
     ttb_real fest_prev = fest;
     ttb_real fit_prev = fit;
 
-    if (print_hdr) {
+    if (print_hdr || print_itn) {
       out << "Begin main loop\n"
           << "Initial f-est: "
           << std::setw(13) << std::setprecision(6) << std::scientific

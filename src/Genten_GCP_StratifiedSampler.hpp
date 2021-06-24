@@ -233,7 +233,7 @@ namespace Genten {
       if (penalty != ttb_real(0.0)) {
         const ttb_indx nd = u.ndims();
         for (ttb_indx i=0; i<nd; ++i)
-          fest += ttb_real(0.5) * penalty * u[i].normFsq();
+          fest += penalty * u[i].normFsq();
       }
     }
 
@@ -272,7 +272,7 @@ namespace Genten {
 
       if (penalty != 0.0)
         for (ttb_indx i=mode_beg; i<mode_end; ++i)
-          gt[i-mode_beg].plus(ut[i], penalty);
+          gt[i-mode_beg].plus(ut[i], ttb_real(2.0)*penalty);
     }
 
   protected:
