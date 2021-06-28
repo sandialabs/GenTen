@@ -1324,7 +1324,6 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
 
   auto annealer_ptr = getAnnealer(input_);
   auto &annealer = *annealer_ptr;
-  auto nfails = 0;
   // For adam with all of the all reduces I am hopeful the barriers don't
   // really matter for timeing
   for (auto e = 0; e < maxEpochs; ++e) { // Epochs
@@ -1418,29 +1417,17 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
       std::cout << std::flush;
     }
 
-    if (fest_diff < 0) {
-      annealer.success();
-      ++nfails;
-      if (fest > 15 * fest_prev) {
-        nfails = 10;
-      }
-    } else { // Actually succeeded
+    std::cout <<  fest_diff << ", " << -0.005 * fest_prev << "\n";
+    if (fest_diff > -0.005 * fest_prev) {
       stepper.setPassed();
       u_best.set(u);
       fest_prev = fest;
       annealer.success();
-      nfails = 0;
-    }
-
-    if (nfails >= 10) { // Real failure :(
-      if (my_rank == 0) {
-        std::cout << "Resetting things and trying again\n";
-      }
+    } else {
       u.set(u_best);
       fest = fest_prev;
       stepper.setFailed();
       annealer.failed();
-      nfails = 0;
     }
   }
   u.set(u_best);
