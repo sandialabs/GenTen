@@ -650,29 +650,11 @@ void TensorBlockSystem<ElementType, ExecSpace>::initMPIWindows() {
     const auto local_elements = local_rows * nCols;
     MPI_Win win;
 
-    if (DistContext::isDebug()) {
-      std::stringstream ss;
-      ss << "Dim: " << i << ", rank: " << my_rank << " makeing window of "
-         << local_elements << " elements.";
-      std::cout << ss.str() << std::endl;
-    }
-
     double *window_data = nullptr;
     MPI_Win_allocate(local_elements * sizeof(double), sizeof(double),
                      MPI_INFO_NULL, comm, &window_data, &win);
     factor_shard_windows_.push_back(win);
     window_ptrs_.push_back(window_data);
-  }
-
-  if (DistContext::isDebug() && pmap_ptr_->gridRank() == 0) {
-    std::cout << "Start stop pairs:\n";
-    for (auto i = 0; i < window_row_starts_.size(); ++i) {
-      std::cout << "\tDim " << i << "\n";
-      for (auto j = 0; j < window_row_starts_[i].size(); ++j) {
-        std::cout << "\t\t" << window_row_starts_[i][j] << ", "
-                  << window_row_stops_[i][j] << "\n";
-      }
-    }
   }
 }
 
@@ -847,7 +829,7 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAvgOneSidedSGD(
 
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(sp_tensor_, algParams);
 
-  Impl::SGDStep<ExecSpace, Loss> stepper;
+  Impl::SGDMomentumStep<ExecSpace, Loss> stepper(algParams, u);
 
   auto seed = input_.get<std::uint64_t>("seed", std::random_device{}());
   Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
@@ -930,7 +912,7 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAvgOneSidedSGD(
       std::cout << std::endl;
     }
 
-    if (fest_diff > 0) {
+    if (fest_diff > -0.03 * fest_prev) {
       stepper.setPassed();
       fest_prev = fest;
       annealer.success();

@@ -91,6 +91,7 @@ public:
     min_lr *= 0.5;
     max_lr *= 0.5;
     Tcur = 0;
+    iter = 0;
   }
 
   void success() override {

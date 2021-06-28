@@ -84,13 +84,10 @@ void real_main(int argc, char **argv) {
                 << GT::DistContext::input().get<std::string>("tensor.method")
                 << std::endl;
 
-      if(GT::DistContext::input().get<bool>("debug", false)){
+      if(GT::DistContext::isDebug()){
         std::cout << "Input file: " << argv[1] << ":\n";
-        std::ifstream json_input(argv[1]);
-        if(json_input.is_open()){
-          std::cout << json_input.rdbuf();
-        }
-        std::cout << std::flush;
+        auto ss = GT::debugInput();
+        std::cout << ss.str() << std::endl;
       }
     }
     GT::DistContext::Barrier();

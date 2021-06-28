@@ -51,6 +51,7 @@
 namespace Genten {
 bool InitializeGenten(int *argc, char ***argv);
 bool FinalizeGenten();
+std::stringstream debugInput();
 
 namespace detail {
 template <typename T> std::string serializeToStr(T const &t);

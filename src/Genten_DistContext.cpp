@@ -74,7 +74,7 @@ ptree readInput(std::string const &json_file) {
   }
 
   // Have rank 0 serialize the ptree and bcast it to all other ranks
-  if(DistContext::Bcast(tree, 0) != MPI_SUCCESS){
+  if (DistContext::Bcast(tree, 0) != MPI_SUCCESS) {
     printf("Error with Bcasting the input tree.\n");
     std::abort();
   }
@@ -106,6 +106,21 @@ template <> int DistContext::Bcast(small_vector<int> &t, int root) {
   return bcast_result;
 }
 
+std::stringstream debugInput() {
+  ptree in = DistContext::input();
+
+  in.add<int>("mpi_ranks", DistContext::nranks());
+  if (Kokkos::hwloc::available()) {
+    in.add<int>("cores_per_numa",
+                Kokkos::hwloc::get_available_cores_per_numa());
+    in.add<int>("numa_count", Kokkos::hwloc::get_available_numa_count());
+  }
+
+  std::stringstream ss;
+  boost::property_tree::json_parser::write_json(ss, in);
+  return ss;
+}
+
 bool InitializeGenten(int *argc, char ***argv) {
   static bool initialized = [&] {
     int provided = 0;
@@ -117,12 +132,6 @@ bool InitializeGenten(int *argc, char ***argv) {
     MPI_Comm_dup(MPI_COMM_WORLD, &(dc.commWorld_));
     MPI_Comm_rank(dc.commWorld_, &(dc.rank_));
     MPI_Comm_size(dc.commWorld_, &(dc.nranks_));
-
-    if (dc.rank_ == 0) {
-      std::cout << "Genten Initialized With: " << dc.nranks_ << " ranks"
-                << std::endl;
-    }
-    MPI_Barrier(dc.commWorld_);
 
     auto real_argv = *argv;
     for (auto i = 0; i < *argc; ++i) {
