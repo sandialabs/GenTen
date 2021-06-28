@@ -1417,7 +1417,6 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
       std::cout << std::flush;
     }
 
-    std::cout <<  fest_diff << ", " << -0.005 * fest_prev << "\n";
     if (fest_diff > -0.005 * fest_prev) {
       stepper.setPassed();
       u_best.set(u);
