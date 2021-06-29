@@ -865,15 +865,24 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAvgOneSidedSGD(
     auto times_centering = 0;
     stepper.setStep(epoch_lr);
 
+    auto tgrad = 0.0;
+    auto teval = 0.0;
+    auto tcomm = 0.0;
     auto do_epoch_iter = [&]() {
       g.zero();
+      auto t0 = MPI_Wtime();
       sampler.fusedGradient(ut, loss, gfac, timer, tnzs, tzs);
+      auto t1 = MPI_Wtime();
       stepper.eval(g, u);
+      auto te = MPI_Wtime();
+      tgrad += t1 - t0;
+      teval += te - t1;
     };
 
     const auto alpha = 0.9 / nprocs;
     for (auto i = 0; i < epochIters; ++i) {
       if (nprocs > 1 && (i + 1) % dp_iters == 0) {
+        auto tc0 = MPI_Wtime();
         doCenterOp(cfac, CenterOP::CenterRead);
         for (auto d = 0; d < ndims(); ++d) {
           if (factor_shard_windows_[d] == nullptr) {
@@ -886,6 +895,7 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAvgOneSidedSGD(
         u.plus(diff, -1.0);
         doCenterOp(dfac, CenterOP::CenterAccumulate);
         ++times_centering;
+        tcomm += MPI_Wtime() - tc0;
       }
 
       do_epoch_iter();
@@ -903,16 +913,63 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAvgOneSidedSGD(
 
     const auto fest_diff = fest_prev - fest;
 
+    std::vector<double> gradient_times;
+    std::vector<double> all_reduce_times;
+    std::vector<double> eval_times;
     if (my_rank == 0) {
+      gradient_times.resize(nprocs);
+      all_reduce_times.resize(nprocs);
+      eval_times.resize(nprocs);
+      MPI_Gather(&tgrad, 1, MPI_DOUBLE, &gradient_times[0], 1,
+                 MPI_DOUBLE, 0, pmap_ptr_->gridComm());
+      MPI_Gather(&tcomm, 1, MPI_DOUBLE, &all_reduce_times[0], 1,
+                 MPI_DOUBLE, 0, pmap_ptr_->gridComm());
+      MPI_Gather(&teval, 1, MPI_DOUBLE, &eval_times[0], 1, MPI_DOUBLE, 0,
+                 pmap_ptr_->gridComm());
+    } else {
+      MPI_Gather(&tgrad, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
+                 pmap_ptr_->gridComm());
+      MPI_Gather(&tcomm, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
+                 pmap_ptr_->gridComm());
+      MPI_Gather(&teval, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
+                 pmap_ptr_->gridComm());
+    }
+
+    if (my_rank == 0) {
+      auto min_max_gradient =
+          std::minmax_element(gradient_times.begin(), gradient_times.end());
+      auto grad_avg =
+          std::accumulate(gradient_times.begin(), gradient_times.end(), 0.0) /
+          double(nprocs);
+
+      auto min_max_allreduce =
+          std::minmax_element(all_reduce_times.begin(), all_reduce_times.end());
+      auto ar_avg = std::accumulate(all_reduce_times.begin(),
+                                    all_reduce_times.end(), 0.0) /
+                    double(nprocs);
+
+      auto min_max_evals =
+          std::minmax_element(eval_times.begin(), eval_times.end());
+      auto eval_avg =
+          std::accumulate(eval_times.begin(), eval_times.end(), 0.0) /
+          double(nprocs);
+
       std::cout << "Fit(" << e << "): " << fest
                 << "\n\tchange in fit: " << fest_diff
                 << "\n\tlr:            " << epoch_lr
                 << "\n\tnSync steps:   " << times_centering
-                << "\n\tSeconds:       " << (t1 - t0);
-      std::cout << std::endl;
+                << "\n\tSeconds:       " << (t1 - t0)
+                << "\n\t\tGradient(avg, min, max):  " << grad_avg << ", "
+                << *min_max_gradient.first << ", " << *min_max_gradient.second
+                << "\n\t\tElastic(avg, min, max): " << ar_avg << ", "
+                << *min_max_allreduce.first << ", " << *min_max_allreduce.second
+                << "\n\t\tEval(avg, min, max):      " << eval_avg << ", "
+                << *min_max_evals.first << ", " << *min_max_evals.second
+                << "\n";
+      std::cout << std::flush;
     }
 
-    if (fest_diff > -0.03 * fest_prev) {
+    if (fest_diff > -0.005 * fest_prev) {
       stepper.setPassed();
       fest_prev = fest;
       annealer.success();
