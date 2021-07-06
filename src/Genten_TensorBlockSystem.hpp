@@ -58,6 +58,7 @@
 #include <fstream>
 #include <memory>
 #include <random>
+#include <unordered_map>
 
 namespace Genten {
 
@@ -114,6 +115,7 @@ class TensorBlockSystem {
 
 public:
   TensorBlockSystem(ptree const &tree);
+  ~TensorBlockSystem();
   ElementType getTensorNorm() const;
 
   std::uint64_t globalNNZ() const { return Ti_.nnz; }
@@ -139,7 +141,16 @@ private:
   small_vector<MPI_Win> factor_shard_windows_;
   small_vector<small_vector<std::uint64_t>> window_row_starts_;
   small_vector<small_vector<std::uint64_t>> window_row_stops_;
-  small_vector<small_vector<MPI_Datatype>> factor_data_types_;
+
+  // We can't just store datatypes for KFac_ because copies of KFac_ don't have
+  // the same stride :(
+  // small_vector<small_vector<MPI_Datatype>> factor_data_types_;
+
+  /* Instead we are going to just associate a datatype with each double* that
+   * arrives, this means that we always get a unique datatype, but that we
+   * don't continually allocate new ones every time we try to do an operation
+   */
+  std::unordered_map<double *, MPI_Datatype> mpi_datatype_map_;
   small_vector<double *> window_ptrs_;
 };
 
@@ -170,6 +181,7 @@ void printRandomElements(SptensorT<ExecSpace> const &tensor,
 template <typename ElementType, typename ExecSpace>
 TensorBlockSystem<ElementType, ExecSpace>::TensorBlockSystem(ptree const &tree)
     : input_(tree.get_child("tensor")) {
+
   const auto file_name = input_.get<std::string>("file");
   const auto indexbase = input_.get<int>("indexbase", 0);
   const auto rank = input_.get<int>("rank", 5);
@@ -188,6 +200,18 @@ TensorBlockSystem<ElementType, ExecSpace>::TensorBlockSystem(ptree const &tree)
   } else {
     throw std::logic_error("Tensor initialization must be one of of "
                            "{distributed, replicated, or single}\n");
+  }
+}
+
+template <typename ElementType, typename ExecSpace>
+TensorBlockSystem<ElementType, ExecSpace>::~TensorBlockSystem() {
+  // Have to delete the MPI types that don't automatically clean up :P
+  for(auto &win : factor_shard_windows_){
+    MPI_Win_free(&win);
+  }
+
+  for(auto &pair : mpi_datatype_map_){
+    MPI_Type_free(&(pair.second));
   }
 }
 
@@ -675,7 +699,6 @@ void TensorBlockSystem<ElementType, ExecSpace>::initMPIDatatypes() {
     }
     const auto dim_size = pmap_ptr_->subCommSize(i);
     if (dim_size == 1) {
-      factor_data_types_.push_back({});
       continue;
     }
 
@@ -690,16 +713,19 @@ void TensorBlockSystem<ElementType, ExecSpace>::initMPIDatatypes() {
       const auto stop_row = dim_stops[r];
       const auto dim_nrows = stop_row - start_row;
 
+      auto *data_ptr = fac.rowptr(start_row);
+
       MPI_Datatype factor_type;
       MPI_Type_vector(dim_nrows, nCols, dim_stride, MPI_DOUBLE, &factor_type);
       MPI_Type_commit(&factor_type);
-      dim_types.push_back(factor_type);
+
+      mpi_datatype_map_[data_ptr] = factor_type;
+
       if (DistContext::isDebug() && pmap_ptr_->gridRank() == 0) {
         std::cout << "\tNrows: " << dim_nrows << ", blocksize: " << nCols
                   << ", stride: " << dim_stride << std::endl;
       }
     }
-    factor_data_types_.push_back(std::move(dim_types));
   }
 }
 
@@ -731,21 +757,28 @@ void TensorBlockSystem<ElementType, ExecSpace>::doCenterOp(
     auto const window_offset = 0;
     FacMatrixT<ExecSpace> const &fac = kt.factors()[d];
 
+    auto getDataType = [&, this](FacMatrixT<ExecSpace> const &fac,
+                                 auto start_row, int window) {
+      auto * data_ptr = fac.rowptr(start_row);
+      if (mpi_datatype_map_.count(data_ptr) == 0) {
+        MPI_Datatype type;
+        MPI_Type_vector(stops[window] - starts[window], nCols,
+                        fac.view().stride_0(), MPI_DOUBLE, &type);
+        MPI_Type_commit(&type);
+        mpi_datatype_map_.insert({data_ptr, type});
+      }
+
+      return mpi_datatype_map_[data_ptr];
+    };
+
     MPI_Win_lock_all(0, win);
     for (auto w = 0; w < windows_to_read; ++w) {
-      // Compute new types here since we can't be sure that Kt has the same
-      // ones as our orignial Ktensor
-      MPI_Datatype type;
-      MPI_Type_vector(stops[w] - starts[w], nCols, fac.view().stride_0(),
-                      MPI_DOUBLE, &type);
-      MPI_Type_commit(&type);
-
       const auto nelements = win_elements(starts, stops, w);
       const auto first_row = starts[w];
+      auto type = getDataType(fac, first_row, w);
+
       auto *fac_ptr = fac.rowptr(first_row);
-
       if (op == CenterOP::CenterRead) {
-
         MPI_Get_accumulate(nullptr, 0, MPI_DOUBLE, fac_ptr, 1, type, w,
                            window_offset, nelements, MPI_DOUBLE, MPI_NO_OP,
                            win);
@@ -790,7 +823,7 @@ void TensorBlockSystem<ElementType, ExecSpace>::shardCenter() {
     FacMatrixT<ExecSpace> const &fac = Kfac_.factors()[i];
     auto *start_row_ptr = fac.rowptr(row_start);
 
-    MPI_Datatype type_to_write = factor_data_types_[i][dim_rank];
+    MPI_Datatype type_to_write = mpi_datatype_map_[start_row_ptr];
 
     MPI_Win_fence(0, win);
     MPI_Put(start_row_ptr, 1, type_to_write, dim_rank, 0, elements_to_write,
@@ -920,10 +953,10 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAvgOneSidedSGD(
       gradient_times.resize(nprocs);
       all_reduce_times.resize(nprocs);
       eval_times.resize(nprocs);
-      MPI_Gather(&tgrad, 1, MPI_DOUBLE, &gradient_times[0], 1,
-                 MPI_DOUBLE, 0, pmap_ptr_->gridComm());
-      MPI_Gather(&tcomm, 1, MPI_DOUBLE, &all_reduce_times[0], 1,
-                 MPI_DOUBLE, 0, pmap_ptr_->gridComm());
+      MPI_Gather(&tgrad, 1, MPI_DOUBLE, &gradient_times[0], 1, MPI_DOUBLE, 0,
+                 pmap_ptr_->gridComm());
+      MPI_Gather(&tcomm, 1, MPI_DOUBLE, &all_reduce_times[0], 1, MPI_DOUBLE, 0,
+                 pmap_ptr_->gridComm());
       MPI_Gather(&teval, 1, MPI_DOUBLE, &eval_times[0], 1, MPI_DOUBLE, 0,
                  pmap_ptr_->gridComm());
     } else {
@@ -975,25 +1008,12 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAvgOneSidedSGD(
       annealer.success();
     } else {
       annealer.failed();
+      stepper.setFailed();
+      return fest_prev;
     }
   }
 
-  //
-  // Clean up my MPI STUFF (move to destructor later)
-  //
-  for (auto win : factor_shard_windows_) {
-    if (win != nullptr) {
-      MPI_Win_free(&win);
-    }
-  }
-
-  for (auto &vec : factor_data_types_) {
-    for (auto &type : vec) {
-      MPI_Type_free(&type);
-    }
-  }
-
-  return 0.0;
+  return fest;
 }
 
 template <typename ElementType, typename ExecSpace>
