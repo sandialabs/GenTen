@@ -206,11 +206,11 @@ TensorBlockSystem<ElementType, ExecSpace>::TensorBlockSystem(ptree const &tree)
 template <typename ElementType, typename ExecSpace>
 TensorBlockSystem<ElementType, ExecSpace>::~TensorBlockSystem() {
   // Have to delete the MPI types that don't automatically clean up :P
-  for(auto &win : factor_shard_windows_){
+  for (auto &win : factor_shard_windows_) {
     MPI_Win_free(&win);
   }
 
-  for(auto &pair : mpi_datatype_map_){
+  for (auto &pair : mpi_datatype_map_) {
     MPI_Type_free(&(pair.second));
   }
 }
@@ -759,7 +759,7 @@ void TensorBlockSystem<ElementType, ExecSpace>::doCenterOp(
 
     auto getDataType = [&, this](FacMatrixT<ExecSpace> const &fac,
                                  auto start_row, int window) {
-      auto * data_ptr = fac.rowptr(start_row);
+      auto *data_ptr = fac.rowptr(start_row);
       if (mpi_datatype_map_.count(data_ptr) == 0) {
         MPI_Datatype type;
         MPI_Type_vector(stops[window] - starts[window], nCols,
@@ -889,7 +889,9 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAvgOneSidedSGD(
   const auto epochIters = algParams.epoch_iters;
   const auto dp_iters = input_.get<int>("downpour_iters", 4);
 
-  CosineAnnealer annealer(input_);
+  // CosineAnnealer annealer(input_);
+  auto annealer_ptr = getAnnealer(input_);
+  auto &annealer = *annealer_ptr;
 
   for (auto e = 0; e < maxEpochs; ++e) { // Epochs
     pmap_ptr_->gridBarrier();
@@ -1046,7 +1048,8 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
 
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(sp_tensor_, algParams);
 
-  Impl::SGDStep<ExecSpace, Loss> stepper;
+  // Impl::SGDStep<ExecSpace, Loss> stepper;
+  Impl::SGDMomentumStep<ExecSpace, Loss> stepper(algParams, u);
 
   auto seed = input_.get<std::uint64_t>("seed", std::random_device{}());
   Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
@@ -1074,7 +1077,9 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
   const auto dp_iters = input_.get<int>("downpour_iters", 4);
 
   // TODO make the Annealer swappable
-  CosineAnnealer annealer(input_);
+  auto annealer_ptr = getAnnealer(input_);
+  auto &annealer = *annealer_ptr;
+  // CosineAnnealer annealer(input_);
   std::vector<MPI_Request> elastic_requests;
   bool first_average = true;
   for (auto gs : pmap_ptr_->subCommSizes()) {
@@ -1084,8 +1089,15 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
   }
 
   auto do_sync_allreduce = input_.get<bool>("sync_allreduce", true);
+  auto just_average =
+      (do_sync_allreduce) ? input_.get<bool>("just_average", true) : false;
   auto do_extra_work = input_.get<bool>("do_extra_work", false);
   double t0 = 0, t1 = 0;
+  if (my_rank == 0) {
+    std::cout << "Sync Allreduce: " << do_sync_allreduce
+              << "\nJust average: " << just_average
+              << "\ndo_extra_work: " << do_extra_work << std::endl;
+  }
 
   for (auto e = 0; e < maxEpochs; ++e) { // Epochs
     t0 = MPI_Wtime();
@@ -1121,10 +1133,14 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
       if ((i + 1) % dp_iters == 0 || i == (epochIters - 1)) {
         if (do_sync_allreduce) {
           auto et0 = MPI_Wtime();
-          u.elastic_difference(diff, center, 1.0);
-          u.plus(diff, -1.0 * alpha);
-          allReduceKT(diffKT, false);
-          center.plus(diff, alpha);
+          if (!just_average) {
+            u.elastic_difference(diff, center, 1.0);
+            u.plus(diff, -1.0 * alpha);
+            allReduceKT(diffKT, false);
+            center.plus(diff, alpha);
+          } else {
+            allReduceKT(ut, true);
+          }
           auto et1 = MPI_Wtime();
           elastic_time += et1 - et0;
           ++allreduceCounter;
@@ -1160,7 +1176,11 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
       do_epoch_iter(gradient_time, evaluation_time);
     }
 
-    fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, CFac, w_val, loss));
+    if(!just_average){
+      fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, CFac, w_val, loss));
+    } else {
+      fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
+    }
     t1 = MPI_Wtime();
 
     const auto fest_diff = fest_prev - fest;
@@ -1229,12 +1249,14 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
       std::cout << std::flush;
     }
 
-    if (fest_diff > 0) {
+    if (fest_diff > -0.005 * fest_prev) {
       stepper.setPassed();
       fest_prev = fest;
       annealer.success();
     } else {
       annealer.failed();
+      stepper.setFailed();
+      return fest_prev;
     }
   }
 
