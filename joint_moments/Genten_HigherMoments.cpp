@@ -44,9 +44,7 @@
 #include "compute_krp.hpp"
 #include <math.h>
 
-#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
-#include "cublas_v2.h"
-#endif
+#include "perform_eigen_decomp.hpp"
 
 //namespace Genten {
 
@@ -209,7 +207,7 @@ void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nva
   Kokkos::View<ttb_real*, Space> eig_vals = Kokkos::create_mirror_view(Space(), principal_vals);
   std::cout<<"Starting eigen decomposition of gram matrix"<<std::endl;
 
-  //HK perform_eigen_decomp(num_features, gram_matrix, eig_vals); 
+  perform_eigen_decomp(nvars, gram_matrix, eig_vals); 
 
   std::cout<<"Finished eigen decomposition"<<std::endl;
 
