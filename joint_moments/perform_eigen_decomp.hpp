@@ -2,17 +2,12 @@
 #include <cuda_runtime.h>
 #include "cublas_v2.h"
 #include <cusolverDn.h>
+#else
+#include <lapacke.h>
 #endif
 
 typedef typename Kokkos::View<double**, Kokkos::LayoutLeft, Kokkos::DefaultExecutionSpace> gram_view_type;
 typedef typename Kokkos::View<double*,  Kokkos::DefaultExecutionSpace> eig_view_type;
-
-/* DSYEV prototype */
-extern "C"
-{
-    void dsyev( char* jobz, char* uplo, int* n, double* a, int* lda,
-        double* w, double* work, int* lwork, int* info );
-}
 
 void perform_eigen_decomp(int nRows, gram_view_type& gram_matrix, eig_view_type& eig_vals)
 {
@@ -66,11 +61,11 @@ void perform_eigen_decomp(int nRows, gram_view_type& gram_matrix, eig_view_type&
     // First perform a workspace query
     lwork = -1;
     double best_lwork_val;
-    dsyev("V", "U", &nRows, gram_matrix.data(), &nRows, eig_vals.data(), &best_lwork_val, &lwork, &info);
+    dsyev_("V", "U", &nRows, gram_matrix.data(), &nRows, eig_vals.data(), &best_lwork_val, &lwork, &info);
     lwork = (int)best_lwork_val;
     d_work = (double*)malloc(lwork*sizeof(double));
 
     // Call for actual eigensolve
-    dsyev("V", "U", &nRows, gram_matrix.data(), &nRows, eig_vals.data(), d_work, &lwork, &info);
+    dsyev_("V", "U", &nRows, gram_matrix.data(), &nRows, eig_vals.data(), d_work, &lwork, &info);
 #endif
 }
