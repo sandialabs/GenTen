@@ -104,14 +104,19 @@ double * FormRawMomentTensor(double *raw_data_ptr, int nsamples, int nvars, cons
 
 
 void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nvars,
-                                     Kokkos::View<ttb_real**, Kokkos::LayoutLeft, Genten::DefaultHostExecutionSpace>& principal_vecs,
-                                     Kokkos::View<ttb_real*, Kokkos::LayoutLeft, Genten::DefaultHostExecutionSpace>& principal_vals)
+                                     double *pvecs, double *pvals)
 {
 
   typedef Genten::DefaultExecutionSpace Space;
   typedef Genten::TensorT<Space> Tensor_type;
   typedef Genten::DefaultHostExecutionSpace HostSpace;
   typedef Genten::TensorT<HostSpace> Tensor_host_type;
+
+  //Declare Kokkos Views for principal kurtosis vectors and values
+  //These Views are internal, and their content will be memcpied to the pointers
+  //passed in by calling code
+  Kokkos::View<ttb_real**, Kokkos::LayoutLeft, HostSpace> principal_vecs("principal_vecs", nvars, nvars);
+  Kokkos::View<ttb_real*, Kokkos::LayoutLeft, HostSpace> principal_vals("principal_vals", nvars);
 
   //Create a Tensor_type of raw data
   //We will be basically casting the raw_data_ptr to a Kokkos Unmanaged View
@@ -215,6 +220,9 @@ void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nva
   deep_copy(principal_vecs, gram_matrix);
   deep_copy(principal_vals, eig_vals); 
 
+  //Now that principal_vecs/vals are on host, do a memcpy into ptrs passed in
+  memcpy(pvecs, principal_vecs.data(), nvars*nvars*sizeof(double));
+  memcpy(pvals, principal_vals.data(), nvars*sizeof(double) );
 } 
 
 //}// namespace Genten
