@@ -1,0 +1,40 @@
+###############################################################################
+# Note:
+# This file is named XxxConfig.cmake because once upon a time
+# when it was named xxx-config.cmake, we found that CMake's exported
+# targets script includes all "xxx*.cmake" files. This logic would
+# cause this script to be included more than once, seeding instability
+# that caused great harm to the kingdom.
+###############################################################################
+
+cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
+
+@PACKAGE_INIT@
+
+
+if(NOT GENTEN_FOUND)
+
+    set(GENTEN_VERSION "@PROJECT_VERSION@")
+    set(GENTEN_INSTALL_PREFIX "@CMAKE_INSTALL_PREFIX@")
+
+    set(GENTEN_KOKKOS_DIR  "@KOKKOS_PATH@")
+
+    # advertise if mfem support is enabled
+    set(GENTEN_LAPACK_FOUND @LAPACK_FOUND@)
+    set(GENTEN_LAPACK_LIBS "@LAPACK_LIBS@")
+
+    # pull in vars with details about configured paths
+    get_filename_component(GENTEN_CMAKE_CONFIG_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
+
+    # setup dependent pkgs (i.e., kokkos)
+    include(${GENTEN_CMAKE_CONFIG_DIR}/genten_setup_deps.cmake)
+
+    # include the main exported targets
+    include("${GENTEN_CMAKE_CONFIG_DIR}/genten.cmake")
+
+    # finish setup
+    include("${GENTEN_CMAKE_CONFIG_DIR}/genten_setup_targets.cmake")
+
+    set(GENTEN_FOUND TRUE)
+
+endif()

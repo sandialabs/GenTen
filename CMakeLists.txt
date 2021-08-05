@@ -39,13 +39,13 @@
 #@HEADER
 
 
-#---- Specify the CMake version required.  Kokkos requires 3.10
-CMAKE_MINIMUM_REQUIRED (VERSION 3.10)
+#---- Specify the CMake version required.  Kokkos requires 3.16
+CMAKE_MINIMUM_REQUIRED (VERSION 3.16)
 
 #---- Declaring the project name will define ${Genten_SOURCE_DIR} to be
 #---- the path to this source file, and ${Genten_BINARY_DIR} to be the path
 #---- to the directory where cmake has been invoked.
-PROJECT (Genten)
+project(Genten VERSION "0.0.0")
 
 #---- Require C++14 without GNU extensions
 SET(CMAKE_CXX_STANDARD 14)
@@ -54,8 +54,8 @@ SET(CMAKE_CXX_EXTENSIONS OFF)
 #------------------------------------------------------------
 #---- Package OPTIONS
 #------------------------------------------------------------
+# Note: OPTION is a binary thing and can't have string in them
 OPTION(BUILD_SHARED_LIBS "Build shared libraries." OFF)
-OPTION(KOKKOS_PATH "Path to Kokkos installation for external Kokkos builds.  Setting this turns off the inline build with the bundled Kokkos source.")
 OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files" OFF)
 OPTION(ENABLE_CALIPER "Enable Caliper for application profiling" OFF)
 OPTION(ENABLE_MATLAB "Enable MATLAB linkage to Tensor Toolbox" OFF)
@@ -75,6 +75,7 @@ ELSE()
   SET(GENTEN_INDEX_TYPE "size_t")
 ENDIF()
 
+# if the kokkos path is provided use the installation
 IF(KOKKOS_PATH)
   SET(KOKKOS_INLINE_BUILD OFF)
 ELSE()
@@ -302,6 +303,7 @@ TARGET_LINK_LIBRARIES(
 INSTALL (
   TARGETS genten_mathlibs_c
   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  EXPORT genten
   )
 SET(GENTEN_MATHLIBS
   genten_mathlibs_c
@@ -364,6 +366,7 @@ IF (ENABLE_GCP)
   ENDIF()
 ENDIF()
 
+
 #---- Tell CMake to build the library.
 ADD_LIBRARY (gentenlib ${Genten_SOURCE_LIST})
 TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkos)
@@ -371,8 +374,13 @@ SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${ROL_LIBRARIES
 TARGET_LINK_LIBRARIES(${GENTEN_LINK_LIBS})
 INSTALL (
   TARGETS gentenlib
+  EXPORT genten
   DESTINATION ${CMAKE_INSTALL_LIBDIR}
   )
+
+#---- Adding the higher moment interface to the Library sources
+#---- Must be a better way to do this. Inside an IF??
+ADD_SUBDIRECTORY(joint_moments)
 
 # FIND_PACKAGE(GTest REQUIRED)
 # IF (${GTest_FOUND})
@@ -477,6 +485,7 @@ ADD_EXECUTABLE (
 TARGET_LINK_LIBRARIES (genten ${GENTEN_LINK_LIBS})
 INSTALL (
   TARGETS genten
+  EXPORT genten
   DESTINATION ${CMAKE_INSTALL_BINDIR}
   )
 
@@ -608,3 +617,9 @@ add_test(Genten_MTTKRP_aminoacid_atomic ${Genten_BINARY_DIR}/bin/perf_MTTKRP --n
 add_test(Genten_MTTKRP_aminoacid_dupl ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method duplicated)
 add_test(Genten_MTTKRP_aminoacid_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method perm)
 add_test(Genten_MTTKRP_random_dense ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [30,40,50] --dense)
+
+#------------------------------------------------------------
+#---- Config
+#------------------------------------------------------------
+add_subdirectory(config)
+install(EXPORT genten DESTINATION lib64/cmake/${PROJECT_NAME})

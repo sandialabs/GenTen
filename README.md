@@ -24,7 +24,7 @@ Genten requires the following components in order to build and run:
   * Clang 9
 * BLAS and LAPACK for CPU (OpenMP and/or pThreads) builds.
 * The Cuda toolkit for Nvidia Cuda builds.  In principle any version of Cuda supported by Kokkos should work.  Currently this is Cuda versions 9 and 10.
-* CMake for configure/build.  Any version of CMake supported by Kokkos should work.  Currently this is version 3.10 or later.
+* CMake for configure/build.  Any version of CMake supported by Kokkos should work.  Currently this is version 3.16 or later.
 
 ## Optional Dependencies
 
