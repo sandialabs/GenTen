@@ -87,14 +87,25 @@ namespace Genten {
                                      ttb_indx(1000));
       if (num_samples_nonzeros_value == 0)
         num_samples_nonzeros_value = std::min(ftmp, nnz);
+      else if (num_samples_nonzeros_value == INT_MAX)
+        num_samples_nonzeros_value = nnz;
+
       if (num_samples_zeros_value == 0)
         num_samples_zeros_value =
           ttb_indx(std::min(ttb_real(num_samples_nonzeros_value), nz));
+      else if (num_samples_zeros_value == INT_MAX)
+        num_samples_zeros_value = nz;
+
       if (num_samples_nonzeros_grad == 0)
         num_samples_nonzeros_grad = std::min(gtmp, nnz);
+      else if (num_samples_nonzeros_grad == INT_MAX)
+        num_samples_nonzeros_grad = nnz;
+
       if (num_samples_zeros_grad == 0)
         num_samples_zeros_grad =
           ttb_indx(std::min(ttb_real(num_samples_nonzeros_grad), nz));
+      else if (num_samples_zeros_grad == INT_MAX)
+        num_samples_zeros_grad = nz;
 
       // Compute weights if necessary
       if (weight_nonzeros_value < 0.0)

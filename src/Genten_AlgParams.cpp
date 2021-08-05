@@ -517,15 +517,19 @@ Genten::parse_ttb_indx(std::vector<std::string>& args,
       return tmp;
     }
     // convert to ttb_indx
-    char *cend = 0;
-    tmp = std::strtol(it->c_str(),&cend,10);
-    // check if cl_arg is actually a ttb_indx
-    if (it->c_str() == cend) {
-      std::ostringstream error_string;
-      error_string << "Unparseable input: " << cl_arg << " " << *it
-                   << ", must be an integer" << std::endl;
-      Genten::error(error_string.str());
-      exit(1);
+    if (*it == "inf" || *it == "Inf")
+      tmp = INT_MAX;
+    else {
+      char *cend = 0;
+      tmp = std::strtol(it->c_str(),&cend,10);
+      // check if cl_arg is actually a ttb_indx
+      if (it->c_str() == cend) {
+        std::ostringstream error_string;
+        error_string << "Unparseable input: " << cl_arg << " " << *it
+                     << ", must be an integer" << std::endl;
+        Genten::error(error_string.str());
+        exit(1);
+      }
     }
     // Remove argument from list
     args.erase(arg_it, ++it);
