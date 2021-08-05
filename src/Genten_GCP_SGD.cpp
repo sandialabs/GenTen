@@ -282,9 +282,9 @@ namespace Genten {
                    ften);
     if (compute_fit) {
       x_norm = X.norm();
-      ttb_real u_norm = u.normFsq();
+      ttb_real u_norm = ut.normFsq();
       ttb_real dot = innerprod(X, ut);
-      fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
+      fit = 1.0 - sqrt(x_norm*x_norm + u_norm - 2.0*dot) / x_norm;
     }
     timer.stop(timer_fest);
     ttb_real fest_prev = fest;
@@ -318,9 +318,10 @@ namespace Genten {
       sampler->value(ut, up, window, window_penalty, penalty, loss_func, fest,
                      ften);
       if (compute_fit) {
-        ttb_real u_norm = u.normFsq();
+        x_norm = X.norm();
+        ttb_real u_norm = ut.normFsq();
         ttb_real dot = innerprod(X, ut);
-        fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
+        fit = 1.0 - sqrt(x_norm*x_norm + u_norm - 2.0*dot) / x_norm;
       }
       timer.stop(timer_fest);
 

@@ -148,9 +148,9 @@ namespace Genten {
     }
 
     KOKKOS_INLINE_FUNCTION static constexpr bool has_lower_bound() { return true; }
-    KOKKOS_INLINE_FUNCTION static constexpr bool has_upper_bound() { return true; }
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_upper_bound() { return false; }
     KOKKOS_INLINE_FUNCTION static constexpr ttb_real lower_bound() { return 0.0; }
-    KOKKOS_INLINE_FUNCTION static constexpr ttb_real upper_bound() { return 1.0; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real upper_bound() { return DOUBLE_MAX; }
 
   private:
     ttb_real eps;
