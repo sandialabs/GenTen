@@ -309,6 +309,9 @@ public:
     // TODO: This function really should be removed and replaced with a ktensor norm function, because that's kind of how it's used.
     ttb_real sum() const;
 
+    // Compute the norm \sqrt{\sum_{ij} m_{ij}^2}
+    ttb_real norm() const;
+
     // Compute the sum of all the entries for symmetric matrix.
     // If uplo == Upper/Lower, only upper/lower triangle is accessed.
     ttb_real sum(const UploType uplo) const;

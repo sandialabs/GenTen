@@ -1216,6 +1216,34 @@ sum() const
   return sum;
 }
 
+template <typename ExecSpace>
+ttb_real Genten::FacMatrixT<ExecSpace>::
+norm() const
+{
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::FacMatrix::sum");
+#endif
+
+  const ttb_indx nrows = data.extent(0);
+  const ttb_indx ncols = data.extent(1);
+
+  ttb_real sum = 0;
+  // for (ttb_indx i=0; i<nrows; ++i)
+  //   for (ttb_indx j=0; j<ncols; ++j)
+  //     sum += data(i,j);
+  view_type d = data;
+  Kokkos::parallel_reduce("Genten::FacMatrix::sum_kernel",
+                          Kokkos::RangePolicy<ExecSpace>(0,nrows),
+                          KOKKOS_LAMBDA(const ttb_indx i, ttb_real& s)
+  {
+    for (ttb_indx j=0; j<ncols; ++j)
+      s += d(i,j) * d(i,j);
+  }, sum);
+  Kokkos::fence();
+
+  return std::sqrt(sum);
+}
+
 // TODO: This function really should be removed and replaced with a ktensor norm function, because that's kind of how it's used.
 template <typename ExecSpace>
 ttb_real Genten::FacMatrixT<ExecSpace>::

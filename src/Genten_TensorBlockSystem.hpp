@@ -96,8 +96,9 @@ class TensorBlockSystem {
   void allReduceKT(KtensorT<ExecSpace> &g, bool divide_by_grid_size = true);
   void iAllReduceKT(KtensorT<ExecSpace> &g, std::vector<MPI_Request> &Requests);
 
-  template <typename Loss> ElementType allReduceSGD(Loss const &loss);
-  template <typename Loss> ElementType allReduceADAM(Loss const &loss);
+  template <typename Stepper, typename Loss>
+  ElementType allReduceTrad(Loss const &loss);
+
   template <typename Loss> ElementType elasticAllReduceSGD(Loss const &loss);
 
   template <typename Loss> ElementType elasticAvgOneSidedSGD(Loss const &loss);
@@ -482,10 +483,16 @@ TensorBlockSystem<ElementType, ExecSpace>::pickMethod(Loss const &loss) {
   auto method = input_.get<std::string>("method", "adam");
   if (method == "elasticAllReduce") {
     return elasticAllReduceSGD(loss);
-  } else if (method == "allreduce") {
-    return allReduceSGD(loss);
+  } else if (method == "sgd") {
+    return allReduceTrad<Impl::SGDMomentumStep<ExecSpace, Loss>>(loss);
+  } else if (method == "sgdm") {
+    return allReduceTrad<Impl::SGDMomentumStep<ExecSpace, Loss>>(loss);
   } else if (method == "adam") {
-    return allReduceADAM(loss);
+    return allReduceTrad<Impl::AdamStep<ExecSpace, Loss>>(loss);
+  } else if (method == "adagrad") {
+    return allReduceTrad<Impl::AdaGradStep<ExecSpace, Loss>>(loss);
+  } else if (method == "demon") {
+    return allReduceTrad<Impl::DEMON<ExecSpace, Loss>>(loss);
   } else if (method == "elasticAvgOneSided") {
     return elasticAvgOneSidedSGD(loss);
   }
@@ -1176,8 +1183,9 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
       do_epoch_iter(gradient_time, evaluation_time);
     }
 
-    if(!just_average){
-      fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, CFac, w_val, loss));
+    if (!just_average) {
+      fest =
+          pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, CFac, w_val, loss));
     } else {
       fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
     }
@@ -1271,107 +1279,9 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
 }
 
 template <typename ElementType, typename ExecSpace>
-template <typename Loss>
+template <typename Stepper, typename Loss>
 ElementType
-TensorBlockSystem<ElementType, ExecSpace>::allReduceSGD(Loss const &loss) {
-  const auto nprocs = this->nprocs();
-  const auto my_rank = gridRank();
-
-  auto algParams = setAlgParams();
-
-  // This is a lot of copies :/ but accept it for now
-  using VectorType = GCP::KokkosVector<ExecSpace>;
-  auto u = VectorType(Kfac_);
-  u.copyFromKtensor(Kfac_);
-  KtensorT<ExecSpace> ut = u.getKtensor();
-
-  VectorType g = u.clone(); // Gradient Ktensor
-  g.zero();
-  decltype(Kfac_) GFac = g.getKtensor();
-
-  VectorType nag = u.clone(); // Center Tensor for elastic avg
-  nag.set(u);
-  KtensorT<ExecSpace> nagKT = nag.getKtensor();
-
-  auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(sp_tensor_, algParams);
-
-  Impl::NAGStep<ExecSpace, Loss> stepper(algParams, u);
-
-  auto seed = input_.get<std::uint64_t>("seed", std::random_device{}());
-  Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
-  sampler.initialize(rand_pool, std::cout);
-
-  SptensorT<ExecSpace> X_val;
-  ArrayT<ExecSpace> w_val;
-  sampler.sampleTensor(false, ut, loss, X_val, w_val);
-
-  // Stuff for the timer that we can'g avoid providing
-  SystemTimer timer;
-  int tnzs = 0;
-  int tzs = 0;
-
-  // Fit stuff
-  auto fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
-
-  auto fest_prev = fest;
-  const auto maxEpochs = algParams.maxiters;
-  const auto epochIters = algParams.epoch_iters;
-  const auto dp_iters = input_.get<int>("downpour_iters", 4);
-
-  // TODO make the Annealer swappable
-  CosineAnnealer annealer(input_);
-  double t0 = 0, t1 = 0;
-  for (auto e = 0; e < maxEpochs; ++e) { // Epochs
-    t0 = MPI_Wtime();
-    auto epoch_lr = annealer(e);
-    stepper.setStep(epoch_lr);
-
-    auto do_epoch_iter = [&] {
-      g.zero();
-      nag.set(u);
-      nag.plus(stepper.velocity(), 0.9);
-      sampler.fusedGradient(nagKT, loss, GFac, timer, tnzs, tzs);
-      stepper.eval(g, u);
-    };
-
-    auto allreduceCounter = 0;
-    for (auto i = 0; i < epochIters; ++i) {
-      if (nprocs == 1) { // Short circuit if on single node
-        do_epoch_iter();
-        continue;
-      }
-
-      if ((i + 1) % dp_iters == 0) {
-        allReduceKT(ut);
-        ++allreduceCounter;
-      }
-
-      do_epoch_iter();
-    }
-    if (nprocs > 1) {
-      allReduceKT(ut);
-      ++allreduceCounter;
-    }
-
-    fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
-    t1 = MPI_Wtime();
-
-    if (my_rank == 0) {
-      std::cout << "\tFit(" << e << "): " << fest << ", " << fest_prev - fest
-                << " did " << allreduceCounter << " factor allReduces."
-                << " in " << (t1 - t0) << " seconds.\n"
-                << std::flush;
-    }
-    fest_prev = fest;
-  }
-
-  return fest_prev;
-}
-
-template <typename ElementType, typename ExecSpace>
-template <typename Loss>
-ElementType
-TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
+TensorBlockSystem<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
   const auto nprocs = this->nprocs();
   const auto my_rank = gridRank();
 
@@ -1391,7 +1301,7 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
 
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(sp_tensor_, algParams);
 
-  Impl::AdamStep<ExecSpace, Loss> stepper(algParams, u);
+  Stepper stepper(algParams, u);
 
   auto seed = input_.get<std::uint64_t>("seed", std::random_device{}());
   Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
@@ -1425,6 +1335,13 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
   auto &annealer = *annealer_ptr;
   // For adam with all of the all reduces I am hopeful the barriers don't
   // really matter for timeing
+  struct ModeGrad {
+    small_vector<double, 5> times;
+    int epoch;
+    int iteration;
+  };
+
+  std::vector<ModeGrad> gradient_info;
   for (auto e = 0; e < maxEpochs; ++e) { // Epochs
     pmap_ptr_->gridBarrier();            // Makes times more accurate
     double e_start = MPI_Wtime();
@@ -1442,6 +1359,14 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
       sampler.fusedGradient(ut, loss, GFac, timer, tnzs, tzs);
       auto ge = MPI_Wtime();
       allReduceKT(GFac, false /* don't average */);
+      if (my_rank == 0) {
+        const auto ndims = GFac.ndims();
+        ModeGrad m{.epoch = e, .iteration = i};
+        for (auto i = 0; i < ndims; ++i) {
+          m.times.push_back(GFac[i].norm());
+        }
+        gradient_info.push_back(std::move(m));
+      }
       auto are = MPI_Wtime();
       stepper.eval(g, u);
       auto ee = MPI_Wtime();
@@ -1530,6 +1455,32 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceADAM(Loss const &loss) {
   }
   u.set(u_best);
   deep_copy(Kfac_, ut);
+
+  if (my_rank == 0) {
+    std::ofstream outfile("tmp.csv");
+    outfile << "method,index,mode,norm\n";
+    for (auto const &g : gradient_info) {
+      std::string name;
+      if (std::is_same<Stepper, Impl::AdamStep<ExecSpace, Loss>>::value) {
+        name = "adam";
+      }
+      if (std::is_same<Stepper, Impl::AdaGradStep<ExecSpace, Loss>>::value) {
+        name = "adagrad";
+      }
+      if (std::is_same<Stepper, Impl::DEMON<ExecSpace, Loss>>::value) {
+        name = "demon";
+      }
+      if (std::is_same<Stepper,
+                       Impl::SGDMomentumStep<ExecSpace, Loss>>::value) {
+        name = "sgdm";
+      }
+      auto index = g.epoch * epochIters + g.iteration;
+      for (auto i = 0; i < g.times.size(); ++i) {
+        outfile << name << "," << index << "," << i << "," << g.times[i]
+                << "\n";
+      }
+    }
+  }
 
   return fest_prev;
 }
