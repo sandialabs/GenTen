@@ -159,6 +159,7 @@ namespace Genten {
       typedef typename BaseType::VectorType VectorType;
 
       SGDStep() {}
+      SGDStep(AlgParams const& algParams, VectorType const& u){}
 
       virtual ~SGDStep() {}
 

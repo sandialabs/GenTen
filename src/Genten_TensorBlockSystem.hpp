@@ -99,8 +99,7 @@ class TensorBlockSystem {
   template <typename Stepper, typename Loss>
   ElementType allReduceTrad(Loss const &loss);
 
-  template <typename Loss> ElementType elasticAllReduceSGD(Loss const &loss);
-
+  template <typename Loss> ElementType fedOpt(Loss const &loss);
   template <typename Loss> ElementType elasticAvgOneSidedSGD(Loss const &loss);
   template <typename Loss> ElementType pickMethod(Loss const &loss);
 
@@ -481,8 +480,8 @@ template <typename Loss>
 ElementType
 TensorBlockSystem<ElementType, ExecSpace>::pickMethod(Loss const &loss) {
   auto method = input_.get<std::string>("method", "adam");
-  if (method == "elasticAllReduce") {
-    return elasticAllReduceSGD(loss);
+  if (method == "fedopt") {
+    return fedOpt(loss);
   } else if (method == "sgd") {
     return allReduceTrad<Impl::SGDMomentumStep<ExecSpace, Loss>>(loss);
   } else if (method == "sgdm") {
@@ -869,7 +868,7 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAvgOneSidedSGD(
 
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(sp_tensor_, algParams);
 
-  Impl::SGDMomentumStep<ExecSpace, Loss> stepper(algParams, u);
+  Impl::DEMON<ExecSpace, Loss> stepper(algParams, u);
 
   auto seed = input_.get<std::uint64_t>("seed", std::random_device{}());
   Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
@@ -1027,8 +1026,8 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAvgOneSidedSGD(
 
 template <typename ElementType, typename ExecSpace>
 template <typename Loss>
-ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
-    Loss const &loss) {
+ElementType
+TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
   const auto nprocs = this->nprocs();
   const auto my_rank = gridRank();
 
@@ -1039,27 +1038,28 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
   auto u = VectorType(Kfac_);
   u.copyFromKtensor(Kfac_);
   KtensorT<ExecSpace> ut = u.getKtensor();
+  allReduceKT(ut);
 
   VectorType g = u.clone(); // Gradient Ktensor
   g.zero();
   decltype(Kfac_) GFac = g.getKtensor();
 
-  VectorType center = u.clone(); // Center Tensor for elastic avg
-  center.set(u);
-  KtensorT<ExecSpace> CFac = center.getKtensor();
-  allReduceKT(CFac); // All must agree on what the center is
+  VectorType meta_u = u.clone();
+  meta_u.set(u);
+  KtensorT<ExecSpace> MUFac = meta_u.getKtensor();
 
-  VectorType diff = u.clone(); // Center Tensor for elastic avg
+  VectorType diff = meta_u.clone();
   diff.zero();
-  KtensorT<ExecSpace> diffKT = diff.getKtensor();
+  KtensorT<ExecSpace> Dfac = diff.getKtensor();
 
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(sp_tensor_, algParams);
 
   // Impl::SGDStep<ExecSpace, Loss> stepper;
-  Impl::SGDMomentumStep<ExecSpace, Loss> stepper(algParams, u);
-
+  Impl::DEMON<ExecSpace, Loss> stepper(algParams, u);
+  Impl::AdamStep<ExecSpace, Loss> meta_stepper(algParams, meta_u);
   auto seed = input_.get<std::uint64_t>("seed", std::random_device{}());
   Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
+
   std::stringstream ss;
   sampler.initialize(rand_pool, ss);
   if (nprocs < 41) {
@@ -1083,29 +1083,12 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
   const auto epochIters = algParams.epoch_iters;
   const auto dp_iters = input_.get<int>("downpour_iters", 4);
 
-  // TODO make the Annealer swappable
   auto annealer_ptr = getAnnealer(input_);
   auto &annealer = *annealer_ptr;
-  // CosineAnnealer annealer(input_);
-  std::vector<MPI_Request> elastic_requests;
-  bool first_average = true;
-  for (auto gs : pmap_ptr_->subCommSizes()) {
-    if (gs > 1) {
-      elastic_requests.push_back(MPI_REQUEST_NULL);
-    }
-  }
 
-  auto do_sync_allreduce = input_.get<bool>("sync_allreduce", true);
-  auto just_average =
-      (do_sync_allreduce) ? input_.get<bool>("just_average", true) : false;
-  auto do_extra_work = input_.get<bool>("do_extra_work", false);
+  auto fedavg = input_.get<bool>("fedavg", false);
+
   double t0 = 0, t1 = 0;
-  if (my_rank == 0) {
-    std::cout << "Sync Allreduce: " << do_sync_allreduce
-              << "\nJust average: " << just_average
-              << "\ndo_extra_work: " << do_extra_work << std::endl;
-  }
-
   for (auto e = 0; e < maxEpochs; ++e) { // Epochs
     t0 = MPI_Wtime();
     auto epoch_lr = annealer(e);
@@ -1123,72 +1106,32 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
       etime += end - ge;
     };
 
-    auto extraIters = 0;
     auto allreduceCounter = 0;
-    const auto alpha = 0.9 / nprocs;
     auto gradient_time = 0.0;
     auto evaluation_time = 0.0;
-    auto elastic_time = 0.0;
+    auto sync_time = 0.0;
 
     for (auto i = 0; i < epochIters; ++i) {
-
-      if (nprocs == 1) { // Short circuit if on single node
-        do_epoch_iter(gradient_time, evaluation_time);
-        continue;
-      }
-
-      if ((i + 1) % dp_iters == 0 || i == (epochIters - 1)) {
-        if (do_sync_allreduce) {
-          auto et0 = MPI_Wtime();
-          if (!just_average) {
-            u.elastic_difference(diff, center, 1.0);
-            u.plus(diff, -1.0 * alpha);
-            allReduceKT(diffKT, false);
-            center.plus(diff, alpha);
-          } else {
-            allReduceKT(ut, true);
-          }
-          auto et1 = MPI_Wtime();
-          elastic_time += et1 - et0;
-          ++allreduceCounter;
-        } else { // iAllReduce
-          if (first_average) {
-            first_average = false;
-          } else {
-            if (do_extra_work) {
-              int flag = 0;
-              MPI_Testall(elastic_requests.size(), elastic_requests.data(),
-                          &flag, MPI_STATUSES_IGNORE);
-              while (flag == 0) {
-                MPI_Testall(elastic_requests.size(), elastic_requests.data(),
-                            &flag, MPI_STATUSES_IGNORE);
-                double _ = 0.0;
-                do_epoch_iter(_, _);
-                ++extraIters;
-              }
-            } else {
-              MPI_Waitall(elastic_requests.size(), elastic_requests.data(),
-                          MPI_STATUSES_IGNORE);
-            }
-            center.plus(diff, alpha);
-          }
-
-          u.elastic_difference(diff, center, 1.0);
-          u.plus(diff, -1.0 * alpha); // Subtract dist from myself
-          iAllReduceKT(diffKT, elastic_requests);
-          ++allreduceCounter;
-        }
-      }
-
       do_epoch_iter(gradient_time, evaluation_time);
+      if ((i + 1) % dp_iters == 0 || i == (epochIters - 1)) {
+        auto s0 = MPI_Wtime();
+        if (fedavg) {
+          allReduceKT(ut, true);
+        } else {
+          meta_stepper.update();
+          diff.set(meta_u);
+          diff.plus(u, -1.0); // Subtract u from meta_u to get Meta grad
+          allReduceKT(Dfac, true);
+          meta_stepper.setStep(3e-4);
+          meta_stepper.eval(diff, meta_u);
+          u.set(meta_u); // Everyone agrees that meta_u is the new factors
+        }
+        ++allreduceCounter;
+        sync_time += MPI_Wtime() - s0;
+      }
     }
 
-    if (!just_average) {
-      fest =
-          pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, CFac, w_val, loss));
-    } else {
-      fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
-    }
+    fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
     t1 = MPI_Wtime();
 
     const auto fest_diff = fest_prev - fest;
@@ -1196,26 +1139,24 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
     std::vector<double> gradient_times;
     std::vector<double> elastic_times;
     std::vector<double> eval_times;
-    if (do_sync_allreduce) {
-      if (my_rank == 0) {
-        gradient_times.resize(nprocs);
-        elastic_times.resize(nprocs);
-        eval_times.resize(nprocs);
+    if (my_rank == 0) {
+      gradient_times.resize(nprocs);
+      elastic_times.resize(nprocs);
+      eval_times.resize(nprocs);
 
-        MPI_Gather(&gradient_time, 1, MPI_DOUBLE, &gradient_times[0], 1,
-                   MPI_DOUBLE, 0, pmap_ptr_->gridComm());
-        MPI_Gather(&evaluation_time, 1, MPI_DOUBLE, &eval_times[0], 1,
-                   MPI_DOUBLE, 0, pmap_ptr_->gridComm());
-        MPI_Gather(&elastic_time, 1, MPI_DOUBLE, &elastic_times[0], 1,
-                   MPI_DOUBLE, 0, pmap_ptr_->gridComm());
-      } else {
-        MPI_Gather(&gradient_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
-                   pmap_ptr_->gridComm());
-        MPI_Gather(&evaluation_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
-                   pmap_ptr_->gridComm());
-        MPI_Gather(&elastic_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
-                   pmap_ptr_->gridComm());
-      }
+      MPI_Gather(&gradient_time, 1, MPI_DOUBLE, &gradient_times[0], 1,
+                 MPI_DOUBLE, 0, pmap_ptr_->gridComm());
+      MPI_Gather(&evaluation_time, 1, MPI_DOUBLE, &eval_times[0], 1, MPI_DOUBLE,
+                 0, pmap_ptr_->gridComm());
+      MPI_Gather(&sync_time, 1, MPI_DOUBLE, &elastic_times[0], 1, MPI_DOUBLE,
+                 0, pmap_ptr_->gridComm());
+    } else {
+      MPI_Gather(&gradient_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
+                 pmap_ptr_->gridComm());
+      MPI_Gather(&evaluation_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
+                 pmap_ptr_->gridComm());
+      MPI_Gather(&sync_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
+                 pmap_ptr_->gridComm());
     }
 
     if (my_rank == 0) {
@@ -1242,23 +1183,18 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
                 << "\n\tlr:            " << epoch_lr
                 << "\n\tallReduces:    " << allreduceCounter
                 << "\n\tSeconds:       " << (t1 - t0);
-      if (do_sync_allreduce) {
-        std::cout << "\n\t\tGradient(avg, min, max):  " << grad_avg << ", "
-                  << *min_max_gradient.first << ", " << *min_max_gradient.second
-                  << "\n\t\tElastic(avg, min, max):   " << elastic_avg << ", "
-                  << *min_max_elastic.first << ", " << *min_max_elastic.second
-                  << "\n\t\tEval(avg, min, max):      " << eval_avg << ", "
-                  << *min_max_evals.first << ", " << *min_max_evals.second
-                  << "\n";
-      } else {
-        std::cout << "\n";
-      }
-
-      std::cout << std::flush;
+      std::cout << "\n\t\tGradient(avg, min, max):  " << grad_avg << ", "
+                << *min_max_gradient.first << ", " << *min_max_gradient.second
+                << "\n\t\tAllReduce(avg, min, max):   " << elastic_avg << ", "
+                << *min_max_elastic.first << ", " << *min_max_elastic.second
+                << "\n\t\tEval(avg, min, max):      " << eval_avg << ", "
+                << *min_max_evals.first << ", " << *min_max_evals.second
+                << "\n";
     }
 
     if (fest_diff > -0.005 * fest_prev) {
       stepper.setPassed();
+      meta_stepper.setPassed();
       fest_prev = fest;
       annealer.success();
     } else {
@@ -1266,13 +1202,6 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAllReduceSGD(
       stepper.setFailed();
       return fest_prev;
     }
-  }
-
-  // We have to wait on the last all reduce if we did one since I don't want
-  // to figure out how to cancel it right now
-  if (!do_sync_allreduce && do_extra_work) {
-    MPI_Waitall(elastic_requests.size(), elastic_requests.data(),
-                MPI_STATUSES_IGNORE);
   }
 
   return fest_prev;
