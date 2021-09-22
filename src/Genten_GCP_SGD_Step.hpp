@@ -222,7 +222,7 @@ namespace Genten {
       typedef typename BaseType::VectorType VectorType;
 
       SGDMomentumStep(AlgParams const& algParams, VectorType const& u):
-        v_scale_(0.95), 
+        v_scale_(0.9), 
         v_(u.clone()),
         vt_(v_.getKtensor())
       {
