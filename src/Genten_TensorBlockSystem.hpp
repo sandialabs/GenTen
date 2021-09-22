@@ -1028,10 +1028,14 @@ template <typename ElementType, typename ExecSpace>
 template <typename Loss>
 ElementType
 TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
+  const auto start_time = MPI_Wtime();
   const auto nprocs = this->nprocs();
   const auto my_rank = gridRank();
 
   auto algParams = setAlgParams();
+  if (auto eps = input_.get_optional<ElementType>("eps")) {
+    algParams.adam_eps = *eps;
+  }
 
   // This is a lot of copies :/ but accept it for now
   using VectorType = GCP::KokkosVector<ExecSpace>;
@@ -1083,8 +1087,8 @@ TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
   // Fit stuff
   auto fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
   auto fest_best = fest;
-
   auto fest_prev = fest;
+
   const auto maxEpochs = algParams.maxiters;
   const auto epochIters = algParams.epoch_iters;
   const auto dp_iters = input_.get<int>("downpour_iters", 4);
@@ -1093,6 +1097,7 @@ TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
   auto &annealer = *annealer_ptr;
 
   auto fedavg = input_.get<bool>("fedavg", false);
+  auto meta_lr = input_.get<ElementType>("meta_lr", 1e-3);
 
   double t0 = 0, t1 = 0;
   for (auto e = 0; e < maxEpochs; ++e) { // Epochs
@@ -1124,11 +1129,12 @@ TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
         if (fedavg) {
           allReduceKT(ut, true);
         } else {
-          meta_stepper.update();
           diff.set(meta_u);
           diff.plus(u, -1.0); // Subtract u from meta_u to get Meta grad
           allReduceKT(Dfac, true);
-          meta_stepper.setStep(5e-2);
+
+          meta_stepper.update();
+          meta_stepper.setStep(meta_lr);
           meta_stepper.eval(diff, meta_u);
           u.set(meta_u); // Everyone agrees that meta_u is the new factors
         }
@@ -1146,6 +1152,10 @@ TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
     std::vector<double> elastic_times;
     std::vector<double> eval_times;
     if (my_rank == 0) {
+      if (std::isnan(fest)) {
+        std::cout << "IS NAN: Best result was: " << fest_best << std::endl;
+        return fest_best;
+      }
       gradient_times.resize(nprocs);
       elastic_times.resize(nprocs);
       eval_times.resize(nprocs);
@@ -1157,6 +1167,9 @@ TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
       MPI_Gather(&sync_time, 1, MPI_DOUBLE, &elastic_times[0], 1, MPI_DOUBLE, 0,
                  pmap_ptr_->gridComm());
     } else {
+      if (std::isnan(fest)) {
+        return fest_best;
+      }
       MPI_Gather(&gradient_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
                  pmap_ptr_->gridComm());
       MPI_Gather(&evaluation_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
@@ -1188,7 +1201,8 @@ TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
                 << "\n\tchange in fit: " << fest_diff
                 << "\n\tlr:            " << epoch_lr
                 << "\n\tallReduces:    " << allreduceCounter
-                << "\n\tSeconds:       " << (t1 - t0);
+                << "\n\tSeconds:       " << (t1 - t0)
+                << "\n\tElapsed Time:  " << (t1 - start_time);
       std::cout << "\n\t\tGradient(avg, min, max):  " << grad_avg << ", "
                 << *min_max_gradient.first << ", " << *min_max_gradient.second
                 << "\n\t\tAllReduce(avg, min, max):   " << elastic_avg << ", "
@@ -1198,7 +1212,7 @@ TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
                 << "\n";
     }
 
-    if (!std::isnan(fest) && fest_diff > -0.001 * fest_best) {
+    if (fest_diff > -0.001 * fest_best) {
       stepper.setPassed();
       meta_stepper.setPassed();
       u_best.set(u);
@@ -1223,6 +1237,7 @@ ElementType
 TensorBlockSystem<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
   const auto nprocs = this->nprocs();
   const auto my_rank = gridRank();
+  const auto start_time = MPI_Wtime();
 
   auto algParams = setAlgParams();
 
@@ -1369,6 +1384,7 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
                 << "\n\tlr:            " << epoch_lr
                 << "\n\tallReduces:    " << allreduceCounter
                 << "\n\tSeconds:       " << (e_end - e_start)
+                << "\n\tElapsed Time:  " << (e_end - start_time)
                 << "\n\t\tGradient(avg, min, max):  " << grad_avg << ", "
                 << *min_max_gradient.first << ", " << *min_max_gradient.second
                 << "\n\t\tAllReduce(avg, min, max): " << ar_avg << ", "
