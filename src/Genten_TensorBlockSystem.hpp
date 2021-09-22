@@ -1212,7 +1212,7 @@ TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
                 << "\n";
     }
 
-    if (fest_diff > -0.001 * fest_prev) {
+    if (fest_diff > -0.001 * fest_best) {
       stepper.setPassed();
       meta_stepper.setPassed();
       fest_prev = fest;
@@ -1278,6 +1278,7 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
 
   // Fit stuff
   auto fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
+  auto fest_best = fest;
   if (my_rank == 0) {
     std::cout << "Initial guess fest: " << fest << std::endl;
   }
@@ -1384,11 +1385,14 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
       std::cout << std::flush;
     }
 
-    if (fest_diff > -0.001 * fest_prev) {
+    if (fest_diff > -0.001 * fest_best) {
       stepper.setPassed();
-      u_best.set(u);
       fest_prev = fest;
       annealer.success();
+      if(fest < fest_best){
+        u_best.set(u);
+        fest_best = fest;
+      }
     } else {
       u.set(u_best);
       fest = fest_prev;
