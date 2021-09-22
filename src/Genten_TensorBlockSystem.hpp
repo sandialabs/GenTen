@@ -483,7 +483,7 @@ TensorBlockSystem<ElementType, ExecSpace>::pickMethod(Loss const &loss) {
   if (method == "fedopt") {
     return fedOpt(loss);
   } else if (method == "sgd") {
-    return allReduceTrad<Impl::SGDMomentumStep<ExecSpace, Loss>>(loss);
+    return allReduceTrad<Impl::SGDStep<ExecSpace, Loss>>(loss);
   } else if (method == "sgdm") {
     return allReduceTrad<Impl::SGDMomentumStep<ExecSpace, Loss>>(loss);
   } else if (method == "adam") {
@@ -1040,6 +1040,9 @@ TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
   KtensorT<ExecSpace> ut = u.getKtensor();
   allReduceKT(ut);
 
+  VectorType u_best = u.clone();
+  u_best.set(u);
+
   VectorType g = u.clone(); // Gradient Ktensor
   g.zero();
   decltype(Kfac_) GFac = g.getKtensor();
@@ -1054,9 +1057,11 @@ TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
 
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(sp_tensor_, algParams);
 
-  // Impl::SGDStep<ExecSpace, Loss> stepper;
-  Impl::DEMON<ExecSpace, Loss> stepper(algParams, u);
+  Impl::SGDStep<ExecSpace, Loss> stepper;
+  // Impl::DEMON<ExecSpace, Loss> stepper(algParams, u);
+  // Impl::SGDMomentumStep<ExecSpace, Loss> stepper(algParams, u);
   Impl::AdamStep<ExecSpace, Loss> meta_stepper(algParams, meta_u);
+  // Impl::AdaGradStep<ExecSpace, Loss> meta_stepper(algParams, meta_u);
   auto seed = input_.get<std::uint64_t>("seed", std::random_device{}());
   Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
 
@@ -1077,6 +1082,7 @@ TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
 
   // Fit stuff
   auto fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
+  auto fest_best = fest;
 
   auto fest_prev = fest;
   const auto maxEpochs = algParams.maxiters;
@@ -1122,7 +1128,7 @@ TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
           diff.set(meta_u);
           diff.plus(u, -1.0); // Subtract u from meta_u to get Meta grad
           allReduceKT(Dfac, true);
-          meta_stepper.setStep(3e-4);
+          meta_stepper.setStep(5e-2);
           meta_stepper.eval(diff, meta_u);
           u.set(meta_u); // Everyone agrees that meta_u is the new factors
         }
@@ -1148,8 +1154,8 @@ TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
                  MPI_DOUBLE, 0, pmap_ptr_->gridComm());
       MPI_Gather(&evaluation_time, 1, MPI_DOUBLE, &eval_times[0], 1, MPI_DOUBLE,
                  0, pmap_ptr_->gridComm());
-      MPI_Gather(&sync_time, 1, MPI_DOUBLE, &elastic_times[0], 1, MPI_DOUBLE,
-                 0, pmap_ptr_->gridComm());
+      MPI_Gather(&sync_time, 1, MPI_DOUBLE, &elastic_times[0], 1, MPI_DOUBLE, 0,
+                 pmap_ptr_->gridComm());
     } else {
       MPI_Gather(&gradient_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
                  pmap_ptr_->gridComm());
@@ -1192,15 +1198,19 @@ TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
                 << "\n";
     }
 
-    if (fest_diff > -0.005 * fest_prev) {
+    if (!std::isnan(fest) && fest_diff > -0.001 * fest_best) {
       stepper.setPassed();
       meta_stepper.setPassed();
+      u_best.set(u);
       fest_prev = fest;
+      fest_best = std::min(fest, fest_best);
       annealer.success();
     } else {
+      u.set(u_best);
       annealer.failed();
       stepper.setFailed();
-      return fest_prev;
+      meta_stepper.setFailed();
+      fest = fest_best;
     }
   }
 
