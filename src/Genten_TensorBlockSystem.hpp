@@ -1289,13 +1289,7 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
   auto &annealer = *annealer_ptr;
   // For adam with all of the all reduces I am hopeful the barriers don't
   // really matter for timeing
-  struct ModeGrad {
-    small_vector<double, 5> times;
-    int epoch;
-    int iteration;
-  };
 
-  std::vector<ModeGrad> gradient_info;
   for (auto e = 0; e < maxEpochs; ++e) { // Epochs
     pmap_ptr_->gridBarrier();            // Makes times more accurate
     double e_start = MPI_Wtime();
@@ -1313,14 +1307,6 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
       sampler.fusedGradient(ut, loss, GFac, timer, tnzs, tzs);
       auto ge = MPI_Wtime();
       allReduceKT(GFac, false /* don't average */);
-      if (my_rank == 0) {
-        const auto ndims = GFac.ndims();
-        ModeGrad m{.epoch = e, .iteration = i};
-        for (auto i = 0; i < ndims; ++i) {
-          m.times.push_back(GFac[i].norm());
-        }
-        gradient_info.push_back(std::move(m));
-      }
       auto are = MPI_Wtime();
       stepper.eval(g, u);
       auto ee = MPI_Wtime();
@@ -1410,32 +1396,6 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
   }
   u.set(u_best);
   deep_copy(Kfac_, ut);
-
-  if (my_rank == 0) {
-    std::ofstream outfile("tmp.csv");
-    outfile << "method,index,mode,norm\n";
-    for (auto const &g : gradient_info) {
-      std::string name;
-      if (std::is_same<Stepper, Impl::AdamStep<ExecSpace, Loss>>::value) {
-        name = "adam";
-      }
-      if (std::is_same<Stepper, Impl::AdaGradStep<ExecSpace, Loss>>::value) {
-        name = "adagrad";
-      }
-      if (std::is_same<Stepper, Impl::DEMON<ExecSpace, Loss>>::value) {
-        name = "demon";
-      }
-      if (std::is_same<Stepper,
-                       Impl::SGDMomentumStep<ExecSpace, Loss>>::value) {
-        name = "sgdm";
-      }
-      auto index = g.epoch * epochIters + g.iteration;
-      for (auto i = 0; i < g.times.size(); ++i) {
-        outfile << name << "," << index << "," << i << "," << g.times[i]
-                << "\n";
-      }
-    }
-  }
 
   return fest_prev;
 }
