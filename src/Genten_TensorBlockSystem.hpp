@@ -1212,13 +1212,15 @@ TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
                 << "\n";
     }
 
-    if (fest_diff > -0.001 * fest_best) {
+    if (fest_diff > -0.001 * fest_prev) {
       stepper.setPassed();
       meta_stepper.setPassed();
-      u_best.set(u);
       fest_prev = fest;
-      fest_best = std::min(fest, fest_best);
       annealer.success();
+      if(fest < fest_best){ // Only set best if really best
+        fest_best = fest;
+        u_best.set(u);
+      }
     } else {
       u.set(u_best);
       annealer.failed();
@@ -1382,7 +1384,7 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
       std::cout << std::flush;
     }
 
-    if (fest_diff > -0.005 * fest_prev) {
+    if (fest_diff > -0.001 * fest_prev) {
       stepper.setPassed();
       u_best.set(u);
       fest_prev = fest;
