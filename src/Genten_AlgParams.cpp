@@ -93,6 +93,7 @@ Genten::AlgParams::AlgParams() :
   adam_eps(1.0e-8),
   async(false),
   streaming_solver(Genten::GCP_Streaming_Solver::default_type),
+  history_method(Genten::GCP_Streaming_History_Method::default_type),
   window_method(Genten::GCP_Streaming_Window_Method::default_type),
   window_size(0),
   window_weight(1.0),
@@ -210,6 +211,11 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                                     Genten::GCP_Streaming_Solver::num_types,
                                     Genten::GCP_Streaming_Solver::types,
                                     Genten::GCP_Streaming_Solver::names);
+  history_method = parse_ttb_enum(args, "--history-method",
+                                 history_method,
+                                 Genten::GCP_Streaming_History_Method::num_types,
+                                 Genten::GCP_Streaming_History_Method::types,
+                                 Genten::GCP_Streaming_History_Method::names);
   window_method = parse_ttb_enum(args, "--window-method",
                                  window_method,
                                  Genten::GCP_Streaming_Window_Method::num_types,
@@ -345,6 +351,12 @@ void Genten::AlgParams::print_help(std::ostream& out)
     if (i != Genten::GCP_Streaming_Solver::num_types-1)
       out << ", ";
   }
+  out << "  --history-method <type> history method for streaming GCP: ";
+  for (unsigned i=0; i<Genten::GCP_Streaming_History_Method::num_types; ++i) {
+    out << Genten::GCP_Streaming_History_Method::names[i];
+    if (i != Genten::GCP_Streaming_History_Method::num_types-1)
+      out << ", ";
+  }
   out << "  --window-method <type> window method for streaming GCP: ";
   for (unsigned i=0; i<Genten::GCP_Streaming_Window_Method::num_types; ++i) {
     out << Genten::GCP_Streaming_Window_Method::names[i];
@@ -440,6 +452,9 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "Streaming GCP options:" << std::endl;
   out << "  streaming-solver = "
       << Genten::GCP_Streaming_Solver::names[streaming_solver]
+      << std::endl;
+  out << "  history-method = "
+      << Genten::GCP_Streaming_History_Method::names[history_method]
       << std::endl;
   out << "  window-method = "
       << Genten::GCP_Streaming_Window_Method::names[window_method]

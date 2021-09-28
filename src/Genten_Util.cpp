@@ -125,3 +125,6 @@ constexpr const char*const Genten::GCP_Streaming_Solver::names[];
 
 constexpr const Genten::GCP_Streaming_Window_Method::type Genten::GCP_Streaming_Window_Method::types[];
 constexpr const char*const Genten::GCP_Streaming_Window_Method::names[];
+
+constexpr const Genten::GCP_Streaming_History_Method::type Genten::GCP_Streaming_History_Method::types[];
+constexpr const char*const Genten::GCP_Streaming_History_Method::names[];

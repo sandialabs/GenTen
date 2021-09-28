@@ -46,6 +46,7 @@
 #include "Genten_GCP_SGD_Step.hpp"
 #include "Genten_GCP_KokkosVector.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
+#include "Genten_GCP_StreamingHistory.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_AlgParams.hpp"
 #include "Genten_SystemTimer.hpp"
@@ -61,15 +62,13 @@ namespace Genten {
       typedef GCP::KokkosVector<ExecSpace> VectorType;
 
       GCP_SGD_Iter(const KtensorT<ExecSpace>& u0,
-                   const KtensorT<ExecSpace>& up_,
-                   const ArrayT<ExecSpace>& window_,
-                   const ttb_real window_penalty_,
+                   const StreamingHistory<ExecSpace>& hist_,
                    const ttb_real penalty_,
                    const ttb_indx mode_beg_,
                    const ttb_indx mode_end_,
                    const AlgParams& algParams_) :
-        up(up_), window(window_), window_penalty(window_penalty_),
-        penalty(penalty_), mode_beg(mode_beg_), mode_end(mode_end_),
+        hist(hist_), penalty(penalty_),
+        mode_beg(mode_beg_), mode_end(mode_end_),
         algParams(algParams_)
       {
         // Setup timers
@@ -113,7 +112,7 @@ namespace Genten {
           // sample for gradient
           timer.start(timer_sample_g);
           timer.start(timer_sample_g_z_nz);
-          sampler.sampleTensorG(ut, up, window, window_penalty, loss_func);
+          sampler.sampleTensorG(ut, hist, loss_func);
           timer.stop(timer_sample_g_z_nz);
           timer.start(timer_sample_g_perm);
           sampler.prepareGradient();
@@ -124,7 +123,7 @@ namespace Genten {
 
             // compute gradient
             timer.start(timer_grad);
-            sampler.gradient(ut, up, window, window_penalty, penalty,
+            sampler.gradient(ut, hist, penalty,
                              loss_func, g, gt, mode_beg, mode_end,
                              timer, timer_grad_init, timer_grad_nzs,
                              timer_grad_zs);
@@ -168,9 +167,7 @@ namespace Genten {
       }
 
     protected:
-      const KtensorT<ExecSpace> up;
-      const ArrayT<ExecSpace> window;
-      const ttb_real window_penalty;
+      const StreamingHistory<ExecSpace> hist;
       const ttb_real penalty;
       const ttb_indx mode_beg;
       const ttb_indx mode_end;

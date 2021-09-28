@@ -117,6 +117,7 @@ namespace Genten {
 
     // Streaming GCP options
     GCP_Streaming_Solver::type streaming_solver;  // Streaming solver
+    GCP_Streaming_History_Method::type history_method; // History method
     GCP_Streaming_Window_Method::type window_method; // Windowing method
     ttb_indx window_size;                // Number of terms in window
     ttb_real window_weight;              // Multiplier for each window term

@@ -45,6 +45,7 @@
 
 // To do:
 //  * Test on Volta.  Do we need warp sync's?
+//  * Add history
 
 namespace Genten {
 
@@ -199,14 +200,12 @@ namespace Genten {
     public:
 
       GCP_SGD_Iter_Async(const KtensorT<ExecSpace>& u0,
-                         const KtensorT<ExecSpace>& up,
-                         const ArrayT<ExecSpace>& window,
-                         const ttb_real window_penalty,
+                         const StreamingHistory<ExecSpace>& hist,
                          const ttb_real penalty,
                          const ttb_indx mode_beg,
                          const ttb_indx mode_end,
                          const AlgParams& algParams) :
-        GCP_SGD_Iter<ExecSpace, LossFunction>(u0, up, window, window_penalty,
+        GCP_SGD_Iter<ExecSpace, LossFunction>(u0, hist,
                                               penalty, mode_beg, mode_end,
                                               algParams)
       {

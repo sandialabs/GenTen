@@ -40,72 +40,47 @@
 
 #pragma once
 
-#include <ostream>
 #include <vector>
 #include <random>
 
-#include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_Array.hpp"
 #include "Genten_AlgParams.hpp"
-#include "Genten_GCP_SGD.hpp"
-#include "Genten_GCP_StreamingHistory.hpp"
 
 namespace Genten {
 
-  //! Class implementing the generalized CP decomposition using SGD approach
-  template <typename TensorT, typename ExecSpace, typename LossFunction>
-  class OnlineGCP {
+  //! Class encapsulating history terms for streaming CP/GCP
+  template <typename ExecSpace>
+  class StreamingHistory {
   public:
-    OnlineGCP(TensorT& Xinit,
-              const KtensorT<ExecSpace>& u0,
-              const LossFunction& loss_func,
-              const AlgParams& algParams,
-              const AlgParams& temporalAlgParams,
-              const AlgParams& spatialAlgParams,
-              std::ostream& out);
 
-    void processSlice(TensorT& X,
-                      KtensorT<ExecSpace>& u,
-                      ttb_real& fest,
-                      ttb_real& ften,
-                      std::ostream& out,
-                      const bool print);
+    StreamingHistory();
 
-    void init(const TensorT& X, KtensorT<ExecSpace>& u);
+    StreamingHistory(const KtensorT<ExecSpace>& u, const AlgParams& algParams);
+
+    void updateHistory(const KtensorT<ExecSpace>& u);
+
+    ttb_real objective(const KtensorT<ExecSpace>& u) const;
+
+    void gradient(const KtensorT<ExecSpace>& u,
+                  const ttb_indx mode_beg, const ttb_indx mode_end,
+                  const KtensorT<ExecSpace>& g) const;
+
+    bool do_gcp_loss() const;
+
+    KtensorT<ExecSpace> up;
+    ArrayT<ExecSpace> window_val;
+    const ttb_real window_penalty;
 
   protected:
 
-    void leastSquaresSolve(const bool temporal,
-                           TensorT& X,
-                           KtensorT<ExecSpace>& u,
-                           ttb_real& fest,
-                           ttb_real& ften,
-                           std::ostream& out,
-                           const bool print);
-
     const AlgParams algParams;
-    const AlgParams temporalAlgParams;
-    const AlgParams spatialAlgParams;
-    GCPSGD<TensorT,ExecSpace,LossFunction> temporalSolver;
-    GCPSGD<TensorT,ExecSpace,LossFunction> spatialSolver;
     std::default_random_engine generator;  // Random number generator
-    FacMatrixT<ExecSpace> A, tmp, tmp3; // Temp space needed for least-squares
-    std::vector< FacMatrixT<ExecSpace> > Z1, Z2, Z3, ZZ1, ZZ2, ZZ3, tmp2;
-    std::vector< FacMatrixT<ExecSpace> > P, Q; // Temp space needed for OnlineCP
-    StreamingHistory<ExecSpace> hist; // history data
+    FacMatrixT<ExecSpace> c1, c2, c3, tmp, tmp2;
+    std::vector< FacMatrixT<ExecSpace> > Z1, Z2;
+    IndxArray window_idx;
+    ttb_indx slice_idx;
+    typename ArrayT<ExecSpace>::HostMirror window_val_host;
   };
-
-  //! Compute the generalized CP decomposition of a tensor using SGD approach
-  template<typename TensorT, typename ExecSpace>
-  void online_gcp(std::vector<TensorT>& x,
-                  TensorT& x_init,
-                  KtensorT<ExecSpace>& u,
-                  const AlgParams& algParams,
-                  const AlgParams& temporalAlgParams,
-                  const AlgParams& spatialAlgParams,
-                  std::ostream& out,
-                  Array& fest,
-                  Array& ften);
 
 }

@@ -132,7 +132,7 @@ namespace Genten {
         const bool print_itn) const
   {
     ttb_real ften = 0.0;
-    solve(X, u0, KtensorT<ExecSpace>(), ArrayT<ExecSpace>(), ttb_real(0.0),
+    solve(X, u0, StreamingHistory<ExecSpace>(),
           penalty, numEpochs, fest, ften, out, print_hdr, print_ftr, print_itn);
   }
 
@@ -141,9 +141,7 @@ namespace Genten {
   GCPSGD<TensorT,ExecSpace,LossFunction>::
   solve(TensorT& X,
         KtensorT<ExecSpace>& u0,
-        const KtensorT<ExecSpace>& up,
-        const ArrayT<ExecSpace>& window,
-        const ttb_real window_penalty,
+        const StreamingHistory<ExecSpace>& hist,
         const ttb_real penalty,
         ttb_indx& numEpochs,
         ttb_real& fest,
@@ -248,10 +246,10 @@ namespace Genten {
     Impl::GCP_SGD_Iter<ExecSpace,LossFunction> *itp = nullptr;
     if (algParams.async)
       itp = new Impl::GCP_SGD_Iter_Async<ExecSpace,LossFunction>(
-        u0, up, window, window_penalty, penalty, mode_beg, mode_end, algParams);
+        u0, hist, penalty, mode_beg, mode_end, algParams);
     else
       itp = new Impl::GCP_SGD_Iter<ExecSpace,LossFunction>(
-        u0, up, window, window_penalty, penalty, mode_beg, mode_end, algParams);
+        u0, hist, penalty, mode_beg, mode_end, algParams);
     Impl::GCP_SGD_Iter<ExecSpace,LossFunction>& it = *itp;
 
     // Get vector/Ktensor for current solution (this is a view of the data)
@@ -266,7 +264,7 @@ namespace Genten {
     timer.start(timer_sort);
     RandomMT rng(seed);
     Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(rng.genrnd_int32());
-    sampler->initialize(rand_pool, out);
+    sampler->initialize(rand_pool, print_itn, out);
     timer.stop(timer_sort);
 
     // Sample X for f-estimate
@@ -278,8 +276,7 @@ namespace Genten {
     ttb_real fit = 0.0;
     ttb_real x_norm = 0.0;
     timer.start(timer_fest);
-    sampler->value(ut, up, window, window_penalty, penalty, loss_func, fest,
-                   ften);
+    sampler->value(ut, hist, penalty, loss_func, fest, ften);
     if (compute_fit) {
       x_norm = X.norm();
       ttb_real u_norm = ut.normFsq();
@@ -315,8 +312,7 @@ namespace Genten {
 
       // compute objective estimate
       timer.start(timer_fest);
-      sampler->value(ut, up, window, window_penalty, penalty, loss_func, fest,
-                     ften);
+      sampler->value(ut, hist, penalty, loss_func, fest, ften);
       if (compute_fit) {
         x_norm = X.norm();
         ttb_real u_norm = ut.normFsq();

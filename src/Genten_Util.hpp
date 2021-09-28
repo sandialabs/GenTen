@@ -282,6 +282,23 @@ namespace Genten {
     };
     static constexpr type default_type = Reservoir;
   };
+
+  // Sampling functions supported by GCP
+  struct GCP_Streaming_History_Method {
+    enum type {
+      Ktensor_Fro,
+      Factor_Fro,
+      GCP_Loss
+    };
+    static constexpr unsigned num_types = 3;
+    static constexpr type types[] = {
+      Ktensor_Fro, Factor_Fro, GCP_Loss
+    };
+    static constexpr const char* names[] = {
+      "ktensor-fro", "factor-fro", "gcp-loss"
+    };
+    static constexpr type default_type = Ktensor_Fro;
+  };
 }
 
 /* ----- Utility Functions ----- */

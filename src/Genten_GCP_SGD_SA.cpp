@@ -193,16 +193,15 @@ namespace Genten {
         adam_v_prev.zero();
       }
 
-      KtensorT<ExecSpace> up;
-      ArrayT<ExecSpace> window;
-      ttb_real window_penalty = 0.0;
+      // History (empty for now)
+      StreamingHistory<ExecSpace> hist;
       ttb_real factor_penalty = 0.0;
 
       // Initialize sampler (sorting, hashing, ...)
       timer.start(timer_sort);
       RandomMT rng(seed);
       Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(rng.genrnd_int32());
-      sampler.initialize(rand_pool, out);
+      sampler.initialize(rand_pool, printIter > 0, out);
       timer.stop(timer_sort);
 
       // Sample X for f-estimate
@@ -215,8 +214,7 @@ namespace Genten {
       ttb_real x_norm = 0.0;
       timer.start(timer_fest);
       ttb_real ften = 0.0;
-      sampler.value(ut, up, window, window_penalty, factor_penalty, loss_func,
-                    fest, ften);
+      sampler.value(ut, hist, factor_penalty, loss_func, fest, ften);
       if (compute_fit) {
         x_norm = X.norm();
         ttb_real u_norm = u.normFsq();
@@ -279,8 +277,7 @@ namespace Genten {
 
         // compute objective estimate
         timer.start(timer_fest);
-        sampler.value(ut, up, window, window_penalty, factor_penalty, loss_func,
-                      fest, ften);
+        sampler.value(ut, hist, factor_penalty, loss_func, fest, ften);
         if (compute_fit) {
           ttb_real u_norm = u.normFsq();
           ttb_real dot = innerprod(X, ut);

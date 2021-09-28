@@ -48,6 +48,7 @@
 #include "Genten_GCP_SamplingKernels.hpp"
 #include "Genten_GCP_Hash.hpp"
 #include "Genten_GCP_KokkosVector.hpp"
+#include "Genten_GCP_StreamingHistory.hpp"
 
 #include "Kokkos_Random.hpp"
 
@@ -65,6 +66,7 @@ namespace Genten {
     virtual ~Sampler() {}
 
     virtual void initialize(const pool_type& rand_pool,
+                            const bool print_itn,
                             std::ostream& out) = 0;
 
     virtual void print(std::ostream& out) = 0;
@@ -73,25 +75,19 @@ namespace Genten {
                                const LossFunction& loss_func) = 0;
 
     virtual void sampleTensorG(const KtensorT<ExecSpace>& u,
-                               const KtensorT<ExecSpace>& up,
-                               const ArrayT<ExecSpace>& window,
-                               const ttb_real window_penalty,
+                               const StreamingHistory<ExecSpace>& hist,
                                const LossFunction& loss_func) = 0;
 
     virtual void prepareGradient() = 0;
 
     virtual void value(const KtensorT<ExecSpace>& u,
-                       const KtensorT<ExecSpace>& up,
-                       const ArrayT<ExecSpace>& window,
-                       const ttb_real window_penalty,
+                       const StreamingHistory<ExecSpace>& hist,
                        const ttb_real penalty,
                        const LossFunction& loss_func,
                        ttb_real& fest, ttb_real& ften) = 0;
 
     virtual void gradient(const KtensorT<ExecSpace>& ut,
-                          const KtensorT<ExecSpace>& up,
-                          const ArrayT<ExecSpace>& window,
-                          const ttb_real window_penalty,
+                          const StreamingHistory<ExecSpace>& hist,
                           const ttb_real penalty,
                           const LossFunction& loss_func,
                           GCP::KokkosVector<ExecSpace>& g,

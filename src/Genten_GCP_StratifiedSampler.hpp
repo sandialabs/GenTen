@@ -125,12 +125,13 @@ namespace Genten {
     virtual ~StratifiedSampler() {}
 
     virtual void initialize(const pool_type& rand_pool_,
+                            const bool printitn,
                             std::ostream& out) override
     {
       rand_pool = rand_pool_;
 
       // Sort/hash tensor if necessary for faster sampling
-      if (algParams.printitn > 0) {
+      if (printitn > 0) {
         if (algParams.hash)
           out << "Hashing tensor for faster sampling...";
         else
@@ -143,7 +144,7 @@ namespace Genten {
       else if (!X.isSorted())
         X.sort();
       timer.stop(0);
-      if (algParams.printitn > 0)
+      if (printitn > 0)
         out << timer.getTotalTime(0) << " seconds" << std::endl;
     }
 
@@ -175,9 +176,7 @@ namespace Genten {
     }
 
     virtual void sampleTensorG(const KtensorT<ExecSpace>& u,
-                               const KtensorT<ExecSpace>& up,
-                               const ArrayT<ExecSpace>& window,
-                               const ttb_real window_penalty,
+                               const StreamingHistory<ExecSpace>& hist,
                                const LossFunction& loss_func) override
     {
       if (algParams.hash)
@@ -194,20 +193,19 @@ namespace Genten {
           u, loss_func, true,
           Yg, wg, rand_pool, algParams);
 
-      if (up.ndims() != 0 && up.ncomponents() != 0 && window.size() != 0 &&
-          window_penalty != ttb_real(0.0)) {
+      if (hist.do_gcp_loss()) {
         // Create uh, u with time mode replaced by time mode of up
         // This should all just be view assignments, so should be fast
         uh.weights() = u.weights();
         const ttb_indx nd = u.ndims();
         for (ttb_indx i=0; i<nd-1; ++i)
           uh.set_factor(i, u[i]);
-        uh.set_factor(nd-1, up[nd-1]);
+        uh.set_factor(nd-1, hist.up[nd-1]);
 
         Impl::stratified_ktensor_grad(
           Yg, num_samples_nonzeros_grad, num_samples_zeros_grad,
           weight_nonzeros_grad, weight_zeros_grad,
-          uh, up, window, window_penalty, loss_func,
+          uh, hist.up, hist.window_val, hist.window_penalty, loss_func,
           Yh, algParams);
       }
     }
@@ -223,22 +221,19 @@ namespace Genten {
     }
 
     virtual void value(const KtensorT<ExecSpace>& u,
-                       const KtensorT<ExecSpace>& up,
-                       const ArrayT<ExecSpace>& window,
-                       const ttb_real window_penalty,
+                       const StreamingHistory<ExecSpace>& hist,
                        const ttb_real penalty,
                        const LossFunction& loss_func,
                        ttb_real& fest, ttb_real& ften) override
     {
-      if (up.ndims() == 0 || up.ncomponents() == 0 || window.size() == 0 ||
-          window_penalty == ttb_real(0.0)) {
+      if (!hist.do_gcp_loss()) {
         ften = Impl::gcp_value(Yf, u, wf, loss_func);
-        fest = ften;
+        fest = ften + hist.objective(u);
       }
       else {
         ttb_real fhis = 0.0;
-        Impl::gcp_value(Yf, u, up, window, window_penalty, wf, loss_func,
-                        ften, fhis);
+        Impl::gcp_value(Yf, u, hist.up, hist.window_val, hist.window_penalty,
+                        wf, loss_func, ften, fhis);
         fest = ften + fhis;
       }
       if (penalty != ttb_real(0.0)) {
@@ -249,9 +244,7 @@ namespace Genten {
     }
 
     virtual void gradient(const KtensorT<ExecSpace>& ut,
-                          const KtensorT<ExecSpace>& up,
-                          const ArrayT<ExecSpace>& window,
-                          const ttb_real window_penalty,
+                          const StreamingHistory<ExecSpace>& hist,
                           const ttb_real penalty,
                           const LossFunction& loss_func,
                           GCP::KokkosVector<ExecSpace>& g,
@@ -276,10 +269,12 @@ namespace Genten {
         const ttb_indx nd = ut.ndims();
         for (ttb_indx i=0; i<nd-1; ++i)
           uh.set_factor(i, ut[i]);
-        uh.set_factor(nd-1, up[nd-1]);
+        uh.set_factor(nd-1, hist.up[nd-1]);
 
         mttkrp_all(Yh, uh, gt, mode_beg, mode_end, algParams, false);
       }
+      else
+        hist.gradient(ut, mode_beg, mode_end, gt);
 
       if (penalty != 0.0)
         for (ttb_indx i=mode_beg; i<mode_end; ++i)

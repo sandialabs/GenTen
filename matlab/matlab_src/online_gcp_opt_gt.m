@@ -101,6 +101,7 @@ args = gt_rename_option(args,'window_size','window-size');
 args = gt_rename_option(args,'window_method','window-method');
 args = gt_rename_option(args,'window_weight','window-weight');
 args = gt_rename_option(args,'window_penalty','window-penalty');
+args = gt_rename_option(args,'window_term','history-method');
 args = gt_rename_option(args,'penalty','factor-penalty');
 
 % Unsupported options
@@ -140,10 +141,6 @@ end
 [monitor_optimization,args] = gt_get_option_and_remove(args,'monitor_optimization',false);
 if monitor_optimization
   error('Option \''monitor_optimization\'' is not supported');
-end
-[window_term,args] = gt_get_option_and_remove(args,'window_term','gcp-loss');
-if ~strcmp(window_term, 'gcp-loss')
-  error('Option \''window_term\'' is not supported');
 end
 [include_his_in_F,args] = gt_get_option_and_remove(args,'include_his_in_F',1);
 if ~include_his_in_F

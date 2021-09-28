@@ -72,7 +72,8 @@ namespace Genten {
     spatialAlgParams(spatialAlgParams_),
     temporalSolver(u,loss_func,u.ndims()-1,u.ndims(),temporalAlgParams_),
     spatialSolver(u,loss_func,0,u.ndims()-1,spatialAlgParams_),
-    generator(algParams.seed)
+    generator(algParams.seed),
+    hist(u,algParams)
   {
     const ttb_indx nc = u.ncomponents();
     const ttb_indx nd = u.ndims();
@@ -140,33 +141,10 @@ namespace Genten {
   OnlineGCP<TensorT,ExecSpace,LossFunction>::
   init(const TensorT& X, KtensorT<ExecSpace>& u)
   {
-    // to do:
-    //   * make sure u is normalized properly with unit weights
-    const ttb_indx nc = u.ncomponents();
-    const ttb_indx nd = X.ndims();
-
-    // Construct window data -- u contains initial history
-    if (algParams.window_size > 0 &&
-        spatialAlgParams.streaming_solver != GCP_Streaming_Solver::OnlineCP) {
-      up = KtensorT<ExecSpace>(nc, nd);
-      for (ttb_indx i=0; i<nd-1; ++i)
-        up.set_factor(i, FacMatrixT<ExecSpace>(u[i].nRows(), nc));
-      up.set_factor(nd-1, FacMatrixT<ExecSpace>(algParams.window_size, nc));
-      deep_copy(up.weights(), u.weights());
-      window_idx = IndxArray(algParams.window_size);
-      window_val = ArrayT<ExecSpace>(algParams.window_size);
-      window_val_host = create_mirror_view(window_val);
-      slice_idx = 0;
-
-      // We rely on unused rows of window_val, up[nd-1] being zero,
-      // so explicitly initialize them
-      window_val = ttb_real(0.0);
-      up[nd-1] = ttb_real(0.0);
-
-      updateHistory(u);
-    }
+    hist.updateHistory(u);
 
     // Adjust size of temporal mode of u to match X
+    const ttb_indx nd = X.ndims();
     const ttb_indx nt = X.size(nd-1);
     if (u.ndims() != nd)
       Genten::error("Genten::online_gcp - u and x have different num dims");
@@ -219,8 +197,7 @@ namespace Genten {
     if (print)
       out << "Updating spatial modes..." << std::endl;
     if (spatialAlgParams.streaming_solver == GCP_Streaming_Solver::SGD)
-      spatialSolver.solve(X, u, up, window_val, algParams.window_penalty,
-                          algParams.factor_penalty,
+      spatialSolver.solve(X, u, hist, algParams.factor_penalty,
                           num_epoch, fest, ften, out, false, false, print);
     else if (spatialAlgParams.streaming_solver ==
              GCP_Streaming_Solver::LeastSquares)
@@ -262,7 +239,7 @@ namespace Genten {
     // Update history window
     if (algParams.window_size > 0 &&
         spatialAlgParams.streaming_solver != GCP_Streaming_Solver::OnlineCP) {
-      updateHistory(u);
+      hist.updateHistory(u);
     }
   }
 
@@ -284,9 +261,9 @@ namespace Genten {
     const bool full = algParams.full_gram;
     const bool include_history =
       !temporal &&
-      up.ndims() != 0 &&
-      up.ncomponents() != 0 &&
-      window_val.size() != 0 &&
+      hist.up.ndims() != 0 &&
+      hist.up.ncomponents() != 0 &&
+      hist.window_val.size() != 0 &&
       algParams.window_penalty != ttb_real(0.0);
 
     if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
@@ -300,13 +277,13 @@ namespace Genten {
       // Z3[k] = up[k]'*up[k], k = 0,...,nd-2
       // Z1[nd-1] = Z2[nd-1] = Z3[nd-1] = up[nd-1]'*diag(window_val)*up[nd-1]
       for (ttb_indx k=0; k<nd-1; ++k) {
-        Z1[k].gemm(true,false,ttb_real(1.0),up[k],u[k],ttb_real(0.0));
+        Z1[k].gemm(true,false,ttb_real(1.0),hist.up[k],u[k],ttb_real(0.0));
         Z2[k].gramian(u[k],true);  // Compute full gram
-        Z3[k].gramian(up[k],true); // compute full gram
+        Z3[k].gramian(hist.up[k],true); // compute full gram
       }
-      deep_copy(tmp3, up[nd-1]);
-      tmp3.rowScale(window_val, false);
-      Z1[nd-1].gemm(true,false,ttb_real(1.0),up[nd-1],tmp3,ttb_real(0.0));
+      deep_copy(tmp3, hist.up[nd-1]);
+      tmp3.rowScale(hist.window_val, false);
+      Z1[nd-1].gemm(true,false,ttb_real(1.0),hist.up[nd-1],tmp3,ttb_real(0.0));
       Z2[nd-1] = Z1[nd-1];
       Z3[nd-1] = Z1[nd-1];
 
@@ -314,9 +291,9 @@ namespace Genten {
       // ZZ2[k] = Z2[0] .* ... .* Z2[k-1] .* Z2[k+1] .* ... .* Z2[nd-1]
       // ZZ3[k] = Z3[0] .* ... .* Z3[k-1] .* Z3[k+1] .* ... .* Z3[nd-1]
       for (ttb_indx k=0; k<nd; ++k) {
-        ZZ1[k].oprod(u.weights(), up.weights());
+        ZZ1[k].oprod(u.weights(), hist.up.weights());
         ZZ2[k].oprod(u.weights());
-        ZZ3[k].oprod(up.weights());
+        ZZ3[k].oprod(hist.up.weights());
         for (ttb_indx n=0; n<nd; ++n) {
           if (n != k) {
             ZZ1[k].times(Z1[n]);
@@ -348,7 +325,7 @@ namespace Genten {
       // Compute RHS
       mttkrp(X, u, mode, u[mode], algParams);
       if (include_history) {
-        tmp2[mode].gemm(false,false,ttb_real(1.0),up[mode],ZZ1[mode],
+        tmp2[mode].gemm(false,false,ttb_real(1.0),hist.up[mode],ZZ1[mode],
                         ttb_real(0.0));
         u[mode].plus(tmp2[mode], ttb_real(2.0)*algParams.window_penalty);
       }
@@ -379,85 +356,6 @@ namespace Genten {
     }
     if (print)
       out << "f = " << fest << std::endl;
-  }
-
-  template <typename TensorT, typename ExecSpace, typename LossFunction>
-  void
-  OnlineGCP<TensorT,ExecSpace,LossFunction>::
-  updateHistory(const KtensorT<ExecSpace>& u)
-  {
-    const ttb_indx nd = u.ndims();
-    ttb_indx num_new = u[nd-1].nRows();
-
-    // Copy spatial modes
-    for (ttb_indx i=0; i<nd-1; ++i)
-      deep_copy(up[i], u[i]);
-
-    // First copy rows from u[nd-1] into up[nd-1] until history is full
-    ttb_indx idx = 0;
-    while (idx < num_new && slice_idx+idx < algParams.window_size) {
-      auto sub1 = Kokkos::subview(up[nd-1].view(),slice_idx+idx,Kokkos::ALL);
-      auto sub2 = Kokkos::subview(u[nd-1].view(),idx,Kokkos::ALL);
-      deep_copy(sub1, sub2);
-      window_idx[slice_idx+idx] = slice_idx+idx;
-      ++idx;
-    }
-
-    // Copy in the rest of the rows in u[nd-1] depending on method
-    if (idx < num_new) {
-      num_new = num_new - idx;
-      if (algParams.window_method == GCP_Streaming_Window_Method::Last) {
-        // Shift each row of up[nd-1] down by num_new
-        for (ttb_indx i=0; i<algParams.window_size-num_new; ++i) {
-          auto sub1 = Kokkos::subview(up[nd-1].view(),i,Kokkos::ALL);
-          auto sub2 = Kokkos::subview(up[nd-1].view(),i+num_new,Kokkos::ALL);
-          deep_copy(sub1, sub2);
-          window_idx[i] = window_idx[i+num_new];
-        }
-        // Copy last num_new rows u[nd-1] into last rows of up[nd-1]
-        auto sub1 = Kokkos::subview(
-          up[nd-1].view(),
-          std::make_pair(algParams.window_size-num_new,algParams.window_size),
-          Kokkos::ALL);
-        auto sub2 = Kokkos::subview(
-          u[nd-1].view(), std::make_pair(idx,idx+num_new), Kokkos::ALL);
-        deep_copy(sub1, sub2);
-        for (ttb_indx i=0; i<num_new; ++i)
-          window_idx[algParams.window_size-num_new+i] = slice_idx+idx+i;
-      }
-      else if (algParams.window_method ==
-               GCP_Streaming_Window_Method::Reservoir) {
-        for (ttb_indx i=0; i<num_new; ++i) {
-          // Random integer in [0,slice_idx+idx+i)
-          std::uniform_int_distribution<ttb_indx> rand(0,slice_idx+idx+i-1);
-          const ttb_indx j = rand(generator);
-
-          // Replace entry j in history with slice_idx+i
-          if (j < algParams.window_size) {
-            auto sub1 = Kokkos::subview(up[nd-1].view(),j,Kokkos::ALL);
-            auto sub2 = Kokkos::subview(u[nd-1].view(),idx+i,Kokkos::ALL);
-            deep_copy(sub1, sub2);
-            window_idx[j] = slice_idx+idx+i;
-          }
-        }
-        // To do:  sort window_idx and permute up[nd-1] appropriately
-        // std::sort(window_idx.values().data(),
-        //           window_idx.values().data()+algParams.window_size);
-      }
-      else
-        Genten::error(
-          std::string("Unsupported window method: ") +
-          std::string(GCP_Streaming_Window_Method::names[algParams.window_method]));
-    }
-
-    // Update slice index counter
-    slice_idx += u[nd-1].nRows();
-
-    // Update weighting values
-    for (ttb_indx i=0; i<algParams.window_size; ++i)
-      window_val_host[i] =
-        std::pow(algParams.window_weight, ttb_real(slice_idx-window_idx[i]));
-    deep_copy(window_val, window_val_host);
   }
 
 

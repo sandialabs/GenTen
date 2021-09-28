@@ -46,6 +46,7 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_AlgParams.hpp"
 #include "Genten_GCP_SGD_Step.hpp"
+#include "Genten_GCP_StreamingHistory.hpp"
 
 namespace Genten {
 
@@ -86,9 +87,7 @@ namespace Genten {
 
     void solve(TensorT& X,
                KtensorT<ExecSpace>& u,
-               const KtensorT<ExecSpace>& up,
-               const ArrayT<ExecSpace>& window,
-               const ttb_real window_penalty,
+               const StreamingHistory<ExecSpace>& hist,
                const ttb_real penalty,
                ttb_indx& numEpochs,
                ttb_real& fest,

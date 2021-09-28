@@ -67,6 +67,7 @@ namespace Genten {
     virtual ~DenseSampler() {}
 
     virtual void initialize(const pool_type& rand_pool_,
+                            const bool printitn,
                             std::ostream& out) override
     {
     }
@@ -84,9 +85,7 @@ namespace Genten {
     }
 
     virtual void sampleTensorG(const KtensorT<ExecSpace>& u,
-                               const KtensorT<ExecSpace>& up,
-                               const ArrayT<ExecSpace>& window,
-                               const ttb_real window_penalty,
+                               const StreamingHistory<ExecSpace>& hist,
                                const LossFunction& loss_func) override
     {
     }
@@ -96,9 +95,7 @@ namespace Genten {
     }
 
     virtual void value(const KtensorT<ExecSpace>& u,
-                       const KtensorT<ExecSpace>& up,
-                       const ArrayT<ExecSpace>& window,
-                       const ttb_real window_penalty,
+                       const StreamingHistory<ExecSpace>& hist,
                        const ttb_real penalty,
                        const LossFunction& loss_func,
                        ttb_real& fest, ttb_real& ften) override
@@ -110,35 +107,36 @@ namespace Genten {
       const ttb_real nrmusq = u.normFsq();
       ften = nrmx*nrmx + nrmusq - ttb_real(2.0)*ip;
       fest = ften;
-      if (up.ndims() != 0 && up.ncomponents() != 0 && window.size() != 0 &&
-          window_penalty != ttb_real(0.0)) {
+      if (hist.do_gcp_loss()) {
         FacMatrixT<ExecSpace> c1(nc,nc); // To do:  reuse
         FacMatrixT<ExecSpace> c2(nc,nc); // To do:  reuse
         FacMatrixT<ExecSpace> c3(nc,nc); // To do:  reuse
         FacMatrixT<ExecSpace> tmp(nc,nc); // To do:  reuse
-        FacMatrixT<ExecSpace> tmp2(up[nd-1].nRows(),nc); // To do:  reuse
+        FacMatrixT<ExecSpace> tmp2(hist.up[nd-1].nRows(),nc); // To do:  reuse
         c1.oprod(u.weights());
-        c2.oprod(up.weights());
-        c3.oprod(u.weights(), up.weights());
+        c2.oprod(hist.up.weights());
+        c3.oprod(u.weights(), hist.up.weights());
         for (ttb_indx k=0; k<nd-1; ++k) {
           tmp.gramian(u[k],true);
           c1.times(tmp);
-          tmp.gramian(up[k],true);
+          tmp.gramian(hist.up[k],true);
           c2.times(tmp);
-          tmp.gemm(true,false,ttb_real(1.0),u[k],up[k],ttb_real(0.0));
+          tmp.gemm(true,false,ttb_real(1.0),u[k],hist.up[k],ttb_real(0.0));
           c3.times(tmp);
         }
-        deep_copy(tmp2, up[nd-1]);
-        tmp2.rowScale(window, false);
-        tmp.gemm(true,false,ttb_real(1.0),up[nd-1],tmp2,ttb_real(0.0));
+        deep_copy(tmp2, hist.up[nd-1]);
+        tmp2.rowScale(hist.window_val, false);
+        tmp.gemm(true,false,ttb_real(1.0),hist.up[nd-1],tmp2,ttb_real(0.0));
         c1.times(tmp);
         c2.times(tmp);
         c3.times(tmp);
         ttb_real t1 = c1.sum();
         ttb_real t2 = c2.sum();
         ttb_real t3 = c3.sum();
-        fest += algParams.window_penalty * (t1 + t2 - ttb_real(2.0)*t3);
+        fest += hist.window_penalty * (t1 + t2 - ttb_real(2.0)*t3);
       }
+      else
+        fest += hist.objective(u);
       if (penalty != ttb_real(0.0)) {
         for (ttb_indx i=0; i<nd; ++i)
           fest += penalty * u[i].normFsq();
@@ -146,9 +144,7 @@ namespace Genten {
     }
 
     virtual void gradient(const KtensorT<ExecSpace>& ut,
-                          const KtensorT<ExecSpace>& up,
-                          const ArrayT<ExecSpace>& window,
-                          const ttb_real window_penalty,
+                          const StreamingHistory<ExecSpace>& hist,
                           const ttb_real penalty,
                           const LossFunction& loss_func,
                           GCP::KokkosVector<ExecSpace>& g,
@@ -185,8 +181,7 @@ namespace Genten {
         gt[m-mode_beg].gemm(false, false, ttb_real(2.0), ut[m], A,
                             ttb_real(-2.0));
       }
-      if (up.ndims() != 0 && up.ncomponents() != 0 && window.size() != 0 &&
-          window_penalty != ttb_real(0.0)) {
+      if (hist.do_gcp_loss()) {
         // Z1[k] = up[k]'*ut[k],  k = 0,...,nd-2
         // Z2[k] =  ut[k]'*ut[k],  k = 0,...,nd-2
         // Z1[nd-1] = Z2[nd-1] = up[nd-1]'*diag(window)*up[nd-1]
@@ -195,20 +190,20 @@ namespace Genten {
         for (ttb_indx k=0; k<nd-1; ++k) {
           Z1[k] = FacMatrixT<ExecSpace>(nc,nc);
           Z2[k] = FacMatrixT<ExecSpace>(nc,nc);
-          Z1[k].gemm(true,false,ttb_real(1.0),up[k],ut[k],ttb_real(0.0));
+          Z1[k].gemm(true,false,ttb_real(1.0),hist.up[k],ut[k],ttb_real(0.0));
           Z2[k].gramian(ut[k],full);
         }
         Z1[nd-1] = FacMatrixT<ExecSpace>(nc,nc);
-        FacMatrixT<ExecSpace> tmp2(up[nd-1].nRows(),nc); // To do:  reuse
-        deep_copy(tmp2, up[nd-1]);
-        tmp2.rowScale(window, false);
-        Z1[nd-1].gemm(true,false,ttb_real(1.0),up[nd-1],tmp2,ttb_real(0.0));
+        FacMatrixT<ExecSpace> tmp2(hist.up[nd-1].nRows(),nc); // To do:  reuse
+        deep_copy(tmp2, hist.up[nd-1]);
+        tmp2.rowScale(hist.window_val, false);
+        Z1[nd-1].gemm(true,false,ttb_real(1.0),hist.up[nd-1],tmp2,ttb_real(0.0));
         Z2[nd-1] = Z1[nd-1];
 
         FacMatrixT<ExecSpace> ZZ1(nc,nc); // To do:  reuse
         FacMatrixT<ExecSpace> ZZ2(nc,nc); // To do:  reuse
         for (ttb_indx m=mode_beg; m<mode_end; ++m) {
-          ZZ1.oprod(up.weights(), ut.weights());
+          ZZ1.oprod(hist.up.weights(), ut.weights());
           ZZ2.oprod(ut.weights());
           for (ttb_indx n=0; n<nd; ++n) {
             if (n != m) {
@@ -217,15 +212,17 @@ namespace Genten {
             }
           }
           gt[m-mode_beg].gemm(false, false,
-                              ttb_real(2.0)*algParams.window_penalty,
+                              ttb_real(2.0)*hist.window_penalty,
                               ut[m], ZZ2,
                               ttb_real(1.0));
           gt[m-mode_beg].gemm(false, false,
-                              -ttb_real(2.0)*algParams.window_penalty,
-                              up[m], ZZ1,
+                              -ttb_real(2.0)*hist.window_penalty,
+                              hist.up[m], ZZ1,
                               ttb_real(1.0));
         }
       }
+      else
+        hist.gradient(ut, mode_beg, mode_end, gt);
     }
 
   protected:
