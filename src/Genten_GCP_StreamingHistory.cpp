@@ -68,18 +68,19 @@ namespace Genten {
     if (ws == 0 || window_penalty == ttb_real(0.0))
       return;
 
-    if (algParams.history_method == GCP_Streaming_History_Method::Ktensor_Fro) {
-      c1   = FacMatrixT<ExecSpace>(nc,nc);
-      c2   = FacMatrixT<ExecSpace>(nc,nc);
-      c3   = FacMatrixT<ExecSpace>(nc,nc);
-      tmp  = FacMatrixT<ExecSpace>(nc,nc);
-      tmp2 = FacMatrixT<ExecSpace>(ws,nc);
-      Z1   = std::vector< FacMatrixT<ExecSpace> >(nd);
-      Z2   = std::vector< FacMatrixT<ExecSpace> >(nd);
-      for (ttb_indx k=0; k<nd; ++k) {
-        Z1[k] = FacMatrixT<ExecSpace>(nc,nc);
-        Z2[k] = FacMatrixT<ExecSpace>(nc,nc);
-      }
+    // Always allocate the temporaries needed for ktensor-fro even if not
+    // selected in algParams, because other objects (e.g., DenseSampler)
+    // may evaluate it regardless of the chosen formulation
+    c1   = FacMatrixT<ExecSpace>(nc,nc);
+    c2   = FacMatrixT<ExecSpace>(nc,nc);
+    c3   = FacMatrixT<ExecSpace>(nc,nc);
+    tmp  = FacMatrixT<ExecSpace>(nc,nc);
+    tmp2 = FacMatrixT<ExecSpace>(ws,nc);
+    Z1   = std::vector< FacMatrixT<ExecSpace> >(nd);
+    Z2   = std::vector< FacMatrixT<ExecSpace> >(nd);
+    for (ttb_indx k=0; k<nd; ++k) {
+      Z1[k] = FacMatrixT<ExecSpace>(nc,nc);
+      Z2[k] = FacMatrixT<ExecSpace>(nc,nc);
     }
 
     // Construct window data -- u contains initial history
@@ -99,124 +100,6 @@ namespace Genten {
     up[nd-1] = ttb_real(0.0);
 
     updateHistory(u);
-  }
-
-  template <typename ExecSpace>
-  ttb_real
-  StreamingHistory<ExecSpace>::
-  objective(const KtensorT<ExecSpace>& u) const
-  {
-    if (window_val.size() == 0 || window_penalty == ttb_real(0.0))
-      return 0.0;
-
-    const ttb_indx nd = u.ndims();
-    const ttb_indx nc = u.ncomponents();
-
-    ttb_real loss = 0.0;
-    if (algParams.history_method == GCP_Streaming_History_Method::Ktensor_Fro) {
-      // For using Gaussian loss on history term
-      // = window_penatly * \sum_h window(h)*\|up - ut\|_F^2 where ut = u
-      // with u[nd-1] replaced by up[nd-1].  Use formula
-      // \|up - ut\|_F^2 = \|up\|^2 + \|ut\|^2 - 2<up,ut>.
-
-      // c1 = ut[0]'*ut[0] .* ... .* ut[nd-2]*'ut[nd-2] .* z
-      // c2 = up[0]'*up[0] .* ... .* up[nd-2]*'up[nd-2] .* z
-      // c3 = up[0]'*ut[0] .* ... .* up[nd-2]*'ut[nd-2] .* z
-      // z  = up[nd-1]'*diag(window)*up[nd-1]
-      c1.oprod(u.weights());
-      c2.oprod(up.weights());
-      c3.oprod(u.weights(), up.weights());
-      for (ttb_indx k=0; k<nd-1; ++k) {
-        tmp.gramian(u[k],true);  // Compute full gram
-        c1.times(tmp);
-
-        tmp.gramian(up[k],true); // compute full gram
-        c2.times(tmp);
-
-        tmp.gemm(true,false,ttb_real(1.0),up[k],u[k],ttb_real(0.0));
-        c3.times(tmp);
-      }
-      deep_copy(tmp2, up[nd-1]);
-      tmp2.rowScale(window_val, false);
-      tmp.gemm(true,false,ttb_real(1.0),up[nd-1],tmp2,ttb_real(0.0));
-      c1.times(tmp);
-      c2.times(tmp);
-      c3.times(tmp);
-
-      ttb_real t1 = c1.sum(); // t1 = \sum_h window(h)*\|u\|^2
-      ttb_real t2 = c2.sum(); // t2 = \sum_h window(h)*\|up\|^2
-      ttb_real t3 = c3.sum(); // t3 = \sum_h window(h)*<up,u>
-
-      loss = window_penalty * (t1 + t2 - ttb_real(2.0)*t3);
-    }
-    else if (algParams.history_method == GCP_Streaming_History_Method::Factor_Fro) {
-      loss = 0.0;
-      for (ttb_indx k=0; k<nd-1; ++k) {
-        // Compute \|up[k]-u[k]\|^2 =
-        //   \|up[k]\|^2 + \|u[k]\|^2 - 2*<up[k],u[k]>
-        ttb_real t1 = up[k].normFsq();
-        ttb_real t2 = u[k].normFsq();
-        ttb_real t3 = up[k].innerprod(u[k],u.weights());
-        loss += window_penalty * ( t1 + t2 - ttb_real(2.0)*t3 );
-      }
-    }
-
-    return loss;
-  }
-
-  template <typename ExecSpace>
-  void
-  StreamingHistory<ExecSpace>::
-  gradient(const KtensorT<ExecSpace>& u,
-           const ttb_indx mode_beg, const ttb_indx mode_end,
-           const KtensorT<ExecSpace>& g) const
-  {
-    if (window_val.size() == 0 || window_penalty == ttb_real(0.0))
-      return;
-
-    const ttb_indx nd = u.ndims();
-    const ttb_indx nc = u.ncomponents();
-
-    if (mode_end >= nd)
-      Genten::error("History term on temporal mode nd-1 is not supported!");
-
-    if (algParams.history_method == GCP_Streaming_History_Method::Ktensor_Fro) {
-      // Z1[k] = up[k]'*u[k],  k = 0,...,nd-2
-      // Z2[k] =  u[k]'*u[k],  k = 0,...,nd-2
-      // Z1[nd-1] = Z2[nd-1] = up[nd-1]'*diag(window)*up[nd-1]
-      for (ttb_indx k=0; k<nd-1; ++k) {
-        Z1[k].gemm(true,false,ttb_real(1.0),up[k],u[k],ttb_real(0.0));
-        Z2[k].gramian(u[k],true);  // Compute full gram
-      }
-      deep_copy(tmp2, up[nd-1]);
-      tmp2.rowScale(window_val, false);
-      Z1[nd-1].gemm(true,false,ttb_real(1.0),up[nd-1],tmp2,ttb_real(0.0));
-      deep_copy(Z2[nd-1], Z1[nd-1]);
-
-      for (ttb_indx k=mode_beg; k<mode_end; ++k) {
-        c1.oprod(u.weights(), up.weights());
-        c2.oprod(u.weights());
-        for (ttb_indx n=0; n<nd; ++n) {
-          if (n != k) {
-            c1.times(Z1[n]);
-            c2.times(Z2[n]);
-          }
-        }
-
-        // g[k] = g[k] + 2*window_penalty * (u[k]*c2 - up[k]*c1)
-        g[k].gemm(false,false, ttb_real(2.0)*window_penalty,u[k],c2,
-                  ttb_real(1.0));
-        g[k].gemm(false,false,-ttb_real(2.0)*window_penalty,up[k],c1,
-                  ttb_real(1.0));
-      }
-    }
-    else if (algParams.history_method == GCP_Streaming_History_Method::Factor_Fro) {
-      for (ttb_indx k=mode_beg; k<mode_end; ++k) {
-        // g[k] = g[k] + 2*window_penalty * (u[k]-up[k])
-        g[k].plus(u[k],   ttb_real(2.0)*window_penalty);
-        g[k].plus(up[k], -ttb_real(2.0)*window_penalty);
-      }
-    }
   }
 
   template <typename ExecSpace>
@@ -309,6 +192,233 @@ namespace Genten {
       algParams.history_method == GCP_Streaming_History_Method::GCP_Loss &&
       up.ndims() != 0 && up.ncomponents() != 0 &&
       window_val.size() != 0 && window_penalty != ttb_real(0.0);
+  }
+
+  template <typename ExecSpace>
+  ttb_real
+  StreamingHistory<ExecSpace>::
+  objective(const KtensorT<ExecSpace>& u) const
+  {
+    if (window_val.size() == 0 || window_penalty == ttb_real(0.0))
+      return 0.0;
+
+    const ttb_indx nd = u.ndims();
+    const ttb_indx nc = u.ncomponents();
+
+    ttb_real loss = 0.0;
+    if (algParams.history_method == GCP_Streaming_History_Method::Ktensor_Fro)
+      loss = ktensor_fro_objective(u);
+    else if (algParams.history_method ==
+             GCP_Streaming_History_Method::Factor_Fro)
+      loss = factor_fro_objective(u);
+
+    return loss;
+  }
+
+  template <typename ExecSpace>
+  ttb_real
+  StreamingHistory<ExecSpace>::
+  ktensor_fro_objective(const KtensorT<ExecSpace>& u) const
+  {
+    if (window_val.size() == 0 || window_penalty == ttb_real(0.0))
+      return 0.0;
+
+    const ttb_indx nd = u.ndims();
+    const ttb_indx nc = u.ncomponents();
+
+    // For using Gaussian loss on history term
+    // = window_penatly * \sum_h window(h)*\|up - ut\|_F^2 where ut = u
+    // with u[nd-1] replaced by up[nd-1].  Use formula
+    // \|up - ut\|_F^2 = \|up\|^2 + \|ut\|^2 - 2<up,ut>.
+
+    // c1 = ut[0]'*ut[0] .* ... .* ut[nd-2]*'ut[nd-2] .* z
+    // c2 = up[0]'*up[0] .* ... .* up[nd-2]*'up[nd-2] .* z
+    // c3 = up[0]'*ut[0] .* ... .* up[nd-2]*'ut[nd-2] .* z
+    // z  = up[nd-1]'*diag(window)*up[nd-1]
+    c1.oprod(u.weights());
+    c2.oprod(up.weights());
+    c3.oprod(u.weights(), up.weights());
+    for (ttb_indx k=0; k<nd-1; ++k) {
+      tmp.gramian(u[k],true);  // Compute full gram
+      c1.times(tmp);
+
+      tmp.gramian(up[k],true); // compute full gram
+      c2.times(tmp);
+
+      tmp.gemm(true,false,ttb_real(1.0),up[k],u[k],ttb_real(0.0));
+      c3.times(tmp);
+    }
+    deep_copy(tmp2, up[nd-1]);
+    tmp2.rowScale(window_val, false);
+    tmp.gemm(true,false,ttb_real(1.0),up[nd-1],tmp2,ttb_real(0.0));
+    c1.times(tmp);
+    c2.times(tmp);
+    c3.times(tmp);
+
+    ttb_real t1 = c1.sum(); // t1 = \sum_h window(h)*\|u\|^2
+    ttb_real t2 = c2.sum(); // t2 = \sum_h window(h)*\|up\|^2
+    ttb_real t3 = c3.sum(); // t3 = \sum_h window(h)*<up,u>
+
+    ttb_real loss = window_penalty * (t1 + t2 - ttb_real(2.0)*t3);
+    return loss;
+  }
+
+  template <typename ExecSpace>
+  ttb_real
+  StreamingHistory<ExecSpace>::
+  factor_fro_objective(const KtensorT<ExecSpace>& u) const
+  {
+    if (window_val.size() == 0 || window_penalty == ttb_real(0.0))
+      return 0.0;
+
+    const ttb_indx nd = u.ndims();
+    const ttb_indx nc = u.ncomponents();
+
+    ttb_real loss = 0.0;
+    for (ttb_indx k=0; k<nd-1; ++k) {
+      // Compute \|up[k]-u[k]\|^2 =
+      //   \|up[k]\|^2 + \|u[k]\|^2 - 2*<up[k],u[k]>
+      ttb_real t1 = up[k].normFsq();
+      ttb_real t2 = u[k].normFsq();
+      ttb_real t3 = up[k].innerprod(u[k],u.weights());
+      loss += window_penalty * ( t1 + t2 - ttb_real(2.0)*t3 );
+    }
+
+    return loss;
+  }
+
+  template <typename ExecSpace>
+  void
+  StreamingHistory<ExecSpace>::
+  gradient(const KtensorT<ExecSpace>& u,
+           const ttb_indx mode_beg, const ttb_indx mode_end,
+           const KtensorT<ExecSpace>& g) const
+  {
+    if (window_val.size() == 0 || window_penalty == ttb_real(0.0))
+      return;
+
+    const ttb_indx nd = u.ndims();
+    const ttb_indx nc = u.ncomponents();
+
+    if (mode_end >= nd)
+      Genten::error("History term on temporal mode nd-1 is not supported!");
+
+    if (algParams.history_method == GCP_Streaming_History_Method::Ktensor_Fro)
+      ktensor_fro_gradient(u, mode_beg, mode_end, g);
+    else if (algParams.history_method ==
+             GCP_Streaming_History_Method::Factor_Fro)
+      factor_fro_gradient(u, mode_beg, mode_end, g);
+  }
+
+  template <typename ExecSpace>
+  void
+  StreamingHistory<ExecSpace>::
+  ktensor_fro_gradient(const KtensorT<ExecSpace>& u,
+                       const ttb_indx mode_beg, const ttb_indx mode_end,
+                       const KtensorT<ExecSpace>& g) const
+  {
+    if (window_val.size() == 0 || window_penalty == ttb_real(0.0))
+      return;
+
+    const ttb_indx nd = u.ndims();
+    if (mode_end >= nd)
+      Genten::error("History term on temporal mode nd-1 is not supported!");
+
+    // Compute intermediate Gram matricies.  We need contributions for all
+    // modes, so use nd as the mode to skip
+    prepare_least_squares_contributions(u, nd);
+
+    for (ttb_indx k=mode_beg; k<mode_end; ++k) {
+      // Compute c1, c2
+      compute_hadamard_products(u, k);
+
+      // g[k] = g[k] + 2*window_penalty * (u[k]*c2 - up[k]*c1)
+      g[k].gemm(false,false, ttb_real(2.0)*window_penalty,u[k],c2,
+                ttb_real(1.0));
+      g[k].gemm(false,false,-ttb_real(2.0)*window_penalty,up[k],c1,
+                ttb_real(1.0));
+    }
+  }
+
+  template <typename ExecSpace>
+  void
+  StreamingHistory<ExecSpace>::
+  factor_fro_gradient(const KtensorT<ExecSpace>& u,
+                      const ttb_indx mode_beg, const ttb_indx mode_end,
+                      const KtensorT<ExecSpace>& g) const
+  {
+    if (window_val.size() == 0 || window_penalty == ttb_real(0.0))
+      return;
+
+    const ttb_indx nd = u.ndims();
+    const ttb_indx nc = u.ncomponents();
+
+    if (mode_end >= nd)
+      Genten::error("History term on temporal mode nd-1 is not supported!");
+
+    for (ttb_indx k=mode_beg; k<mode_end; ++k) {
+      // g[k] = g[k] + 2*window_penalty * (u[k]-up[k])
+      g[k].plus(u[k],   ttb_real(2.0)*window_penalty);
+      g[k].plus(up[k], -ttb_real(2.0)*window_penalty);
+    }
+  }
+
+  template <typename ExecSpace>
+  void
+  StreamingHistory<ExecSpace>::
+  prepare_least_squares_contributions(const KtensorT<ExecSpace>& u,
+                                      const ttb_indx mode) const
+  {
+    if (window_val.size() == 0 || window_penalty == ttb_real(0.0))
+      return;
+
+    // Z1[k] = up[k]'*u[k],  k = 0,...,nd-2
+    // Z2[k] =  u[k]'*u[k],  k = 0,...,nd-2
+    // Z1[nd-1] = Z2[nd-1] = up[nd-1]'*diag(window)*up[nd-1]
+    const ttb_indx nd = u.ndims();
+    for (ttb_indx k=0; k<nd-1; ++k) {
+      if (k != mode) {
+        Z1[k].gemm(true,false,ttb_real(1.0),up[k],u[k],ttb_real(0.0));
+        Z2[k].gramian(u[k],true);  // Compute full gram
+      }
+    }
+    deep_copy(tmp2, up[nd-1]);
+    tmp2.rowScale(window_val, false);
+    Z1[nd-1].gemm(true,false,ttb_real(1.0),up[nd-1],tmp2,ttb_real(0.0));
+    deep_copy(Z2[nd-1], Z1[nd-1]);
+  }
+
+  template <typename ExecSpace>
+  void
+  StreamingHistory<ExecSpace>::
+  least_squares_contributions(
+    const KtensorT<ExecSpace>& u,
+    const ttb_indx mode,
+    const FacMatrixT<ExecSpace>& lhs,
+    const FacMatrixT<ExecSpace>& rhs) const
+  {
+    // Compute c1, c2
+    compute_hadamard_products(u, mode);
+    lhs.plus(c2, ttb_real(2.0)*window_penalty);
+    rhs.gemm(false,false,ttb_real(2.0)*window_penalty,up[mode],c1,
+             ttb_real(1.0));
+  }
+
+  template <typename ExecSpace>
+  void
+  StreamingHistory<ExecSpace>::
+  compute_hadamard_products(const KtensorT<ExecSpace>& u,
+                            const ttb_indx mode) const
+  {
+    const ttb_indx nd = u.ndims();
+    c1.oprod(u.weights(), up.weights());
+    c2.oprod(u.weights());
+    for (ttb_indx n=0; n<nd; ++n) {
+      if (n != mode) {
+        c1.times(Z1[n]);
+        c2.times(Z2[n]);
+      }
+    }
   }
 
 }

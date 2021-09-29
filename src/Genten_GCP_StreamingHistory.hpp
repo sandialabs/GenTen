@@ -54,19 +54,55 @@ namespace Genten {
   class StreamingHistory {
   public:
 
+    //! Initialize history object to an empty history
     StreamingHistory();
 
+    //! Initialize history object from initial Ktensor u
     StreamingHistory(const KtensorT<ExecSpace>& u, const AlgParams& algParams);
 
+    //! Update history window from new Ktensor
     void updateHistory(const KtensorT<ExecSpace>& u);
 
+    //! Whether the user chose the 'gcp-loss' formulation
+    bool do_gcp_loss() const;
+
+    //! Compute history term objective function based on chosen 'history-method'
     ttb_real objective(const KtensorT<ExecSpace>& u) const;
 
+    //! Compute objective using 'ktensor-fro' formulation
+    ttb_real ktensor_fro_objective(const KtensorT<ExecSpace>& u) const;
+
+    //! Compute objective using 'factor-fro' formulation
+    ttb_real factor_fro_objective(const KtensorT<ExecSpace>& u) const;
+
+    //! Compute history term gradient based on chosen 'history-method'
     void gradient(const KtensorT<ExecSpace>& u,
                   const ttb_indx mode_beg, const ttb_indx mode_end,
                   const KtensorT<ExecSpace>& g) const;
 
-    bool do_gcp_loss() const;
+    //! Compute gradient using 'ktensor-fro' formulation
+    void ktensor_fro_gradient(
+      const KtensorT<ExecSpace>& u,
+      const ttb_indx mode_beg, const ttb_indx mode_end,
+      const KtensorT<ExecSpace>& g) const;
+
+    //! Compute gradient using 'factor-fro' formulation
+    void factor_fro_gradient(
+      const KtensorT<ExecSpace>& u,
+      const ttb_indx mode_beg, const ttb_indx mode_end,
+      const KtensorT<ExecSpace>& g) const;
+
+    //! Prepare LHS and RHS contributions to least-squares solve
+    void prepare_least_squares_contributions(
+      const KtensorT<ExecSpace>& u,
+      const ttb_indx mode) const;
+
+    //! Compute LHS and RHS contributions to least-squares solve
+    void least_squares_contributions(
+      const KtensorT<ExecSpace>& u,
+      const ttb_indx mode,
+      const FacMatrixT<ExecSpace>& lhs,
+      const FacMatrixT<ExecSpace>& rhs) const;
 
     KtensorT<ExecSpace> up;
     ArrayT<ExecSpace> window_val;
@@ -77,10 +113,14 @@ namespace Genten {
     const AlgParams algParams;
     std::default_random_engine generator;  // Random number generator
     FacMatrixT<ExecSpace> c1, c2, c3, tmp, tmp2;
-    std::vector< FacMatrixT<ExecSpace> > Z1, Z2;
+    std::vector< FacMatrixT<ExecSpace> > Z1, Z2, Z3;
     IndxArray window_idx;
     ttb_indx slice_idx;
     typename ArrayT<ExecSpace>::HostMirror window_val_host;
+
+    //! Compute the Hadamard products needed in ktensor-fro, least-squares
+    void compute_hadamard_products(const KtensorT<ExecSpace>& u,
+                                   const ttb_indx mode) const;
   };
 
 }

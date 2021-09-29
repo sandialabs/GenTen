@@ -90,8 +90,7 @@ namespace Genten {
     GCPSGD<TensorT,ExecSpace,LossFunction> temporalSolver;
     GCPSGD<TensorT,ExecSpace,LossFunction> spatialSolver;
     std::default_random_engine generator;  // Random number generator
-    FacMatrixT<ExecSpace> A, tmp, tmp3; // Temp space needed for least-squares
-    std::vector< FacMatrixT<ExecSpace> > Z1, Z2, Z3, ZZ1, ZZ2, ZZ3, tmp2;
+    FacMatrixT<ExecSpace> A, tmp; // Temp space needed for least-squares
     std::vector< FacMatrixT<ExecSpace> > P, Q; // Temp space needed for OnlineCP
     StreamingHistory<ExecSpace> hist; // history data
   };

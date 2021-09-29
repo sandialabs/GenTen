@@ -78,28 +78,12 @@ namespace Genten {
     const ttb_indx nc = u.ncomponents();
     const ttb_indx nd = u.ndims();
     if (temporalAlgParams.streaming_solver == GCP_Streaming_Solver::LeastSquares ||
+        spatialAlgParams.streaming_solver == GCP_Streaming_Solver::LeastSquares ||
         temporalAlgParams.streaming_solver == GCP_Streaming_Solver::OnlineCP ||
-        spatialAlgParams.streaming_solver == GCP_Streaming_Solver::LeastSquares)
+        spatialAlgParams.streaming_solver == GCP_Streaming_Solver::OnlineCP)
     {
       A = FacMatrixT<ExecSpace>(nc,nc);
       tmp = FacMatrixT<ExecSpace>(nc,nc);
-      tmp3 = FacMatrixT<ExecSpace>(algParams.window_size,nc);
-      Z1 = std::vector< FacMatrixT<ExecSpace> >(nd);
-      Z2 = std::vector< FacMatrixT<ExecSpace> >(nd);
-      Z3 = std::vector< FacMatrixT<ExecSpace> >(nd);
-      ZZ1 = std::vector< FacMatrixT<ExecSpace> >(nd);
-      ZZ2 = std::vector< FacMatrixT<ExecSpace> >(nd);
-      ZZ3 = std::vector< FacMatrixT<ExecSpace> >(nd);
-      tmp2 = std::vector< FacMatrixT<ExecSpace> >(nd);
-      for (ttb_indx k=0; k<nd; ++k) {
-        Z1[k] = FacMatrixT<ExecSpace>(nc,nc);
-        Z2[k] = FacMatrixT<ExecSpace>(nc,nc);
-        Z3[k] = FacMatrixT<ExecSpace>(nc,nc);
-        ZZ1[k] = FacMatrixT<ExecSpace>(nc,nc);
-        ZZ2[k] = FacMatrixT<ExecSpace>(nc,nc);
-        ZZ3[k] = FacMatrixT<ExecSpace>(nc,nc);
-        tmp2[k] = FacMatrixT<ExecSpace>(u[k].nRows(),nc);
-      }
     }
 
     if (spatialAlgParams.streaming_solver == GCP_Streaming_Solver::OnlineCP) {
@@ -257,52 +241,11 @@ namespace Genten {
     // To do:
     //  * innerproduct trick?
     const ttb_indx nd = u.ndims();
-    const ttb_indx nc = u.ncomponents();
     const bool full = algParams.full_gram;
-    const bool include_history =
-      !temporal &&
-      hist.up.ndims() != 0 &&
-      hist.up.ncomponents() != 0 &&
-      hist.window_val.size() != 0 &&
-      algParams.window_penalty != ttb_real(0.0);
 
     if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
         !X.havePerm())
       X.createPermutation();
-
-    // Compute extra terms arising from history if needed
-    if (include_history) {
-      // Z1[k] = up[k]'*u[k],  k = 0,...,nd-2
-      // Z2[k] =  u[k]'*u[k],  k = 0,...,nd-2
-      // Z3[k] = up[k]'*up[k], k = 0,...,nd-2
-      // Z1[nd-1] = Z2[nd-1] = Z3[nd-1] = up[nd-1]'*diag(window_val)*up[nd-1]
-      for (ttb_indx k=0; k<nd-1; ++k) {
-        Z1[k].gemm(true,false,ttb_real(1.0),hist.up[k],u[k],ttb_real(0.0));
-        Z2[k].gramian(u[k],true);  // Compute full gram
-        Z3[k].gramian(hist.up[k],true); // compute full gram
-      }
-      deep_copy(tmp3, hist.up[nd-1]);
-      tmp3.rowScale(hist.window_val, false);
-      Z1[nd-1].gemm(true,false,ttb_real(1.0),hist.up[nd-1],tmp3,ttb_real(0.0));
-      Z2[nd-1] = Z1[nd-1];
-      Z3[nd-1] = Z1[nd-1];
-
-      // ZZ1[k] = Z1[0] .* ... .* Z1[k-1] .* Z1[k+1] .* ... .* Z1[nd-1]
-      // ZZ2[k] = Z2[0] .* ... .* Z2[k-1] .* Z2[k+1] .* ... .* Z2[nd-1]
-      // ZZ3[k] = Z3[0] .* ... .* Z3[k-1] .* Z3[k+1] .* ... .* Z3[nd-1]
-      for (ttb_indx k=0; k<nd; ++k) {
-        ZZ1[k].oprod(u.weights(), hist.up.weights());
-        ZZ2[k].oprod(u.weights());
-        ZZ3[k].oprod(hist.up.weights());
-        for (ttb_indx n=0; n<nd; ++n) {
-          if (n != k) {
-            ZZ1[k].times(Z1[n]);
-            ZZ2[k].times(Z2[n]);
-            ZZ3[k].times(Z3[n]);
-          }
-        }
-      }
-    }
 
     const ttb_indx mode_beg = temporal ? nd-1 : 0;
     const ttb_indx mode_end = temporal ? nd   : nd-1;
@@ -319,15 +262,15 @@ namespace Genten {
       }
       if (algParams.factor_penalty != ttb_real(0.0))
         A.diagonalShift(ttb_real(2.0)*algParams.factor_penalty);
-      if (include_history)
-        A.plus(ZZ2[mode], ttb_real(2.0)*algParams.window_penalty);
 
       // Compute RHS
       mttkrp(X, u, mode, u[mode], algParams);
-      if (include_history) {
-        tmp2[mode].gemm(false,false,ttb_real(1.0),hist.up[mode],ZZ1[mode],
-                        ttb_real(0.0));
-        u[mode].plus(tmp2[mode], ttb_real(2.0)*algParams.window_penalty);
+
+      // Add in history terms.  The Gram matrices need to be recomputed
+      // each iteration since u[mode] changes after each solve
+      if (!temporal) {
+        hist.prepare_least_squares_contributions(u, mode);
+        hist.least_squares_contributions(u, mode, A, u[mode]);
       }
 
       // Solve least-squares system
@@ -339,17 +282,9 @@ namespace Genten {
     const ttb_real nrmx = X.norm();
     const ttb_real nrmusq = u.normFsq();
     ften = nrmx*nrmx + nrmusq - ttb_real(2.0)*ip;
-    if (!include_history)
-      fest = ften;
-    else {
-      ZZ1[nd-1].times(Z1[nd-1]);
-      ZZ2[nd-1].times(Z2[nd-1]);
-      ZZ3[nd-1].times(Z3[nd-1]);
-      const ttb_real t1 = ZZ1[nd-1].sum(); // t1 = \sum_h window[h]*<up,ut>
-      const ttb_real t2 = ZZ2[nd-1].sum(); // t2 = \sum_h window[h]*\|ut\|^2
-      const ttb_real t3 = ZZ3[nd-1].sum(); // t3 = \sum_h window[h]*\|up\|^2
-      fest = ften + algParams.window_penalty*(t2+t3-ttb_real(2.0)*t1);
-    }
+    fest = ften;
+    if (!temporal)
+      fest += hist.ktensor_fro_objective(u);
     if (algParams.factor_penalty != ttb_real(0.0)) {
       for (ttb_indx i=0; i<nd; ++i)
         fest += algParams.factor_penalty * u[i].normFsq();
@@ -357,7 +292,6 @@ namespace Genten {
     if (print)
       out << "f = " << fest << std::endl;
   }
-
 
   template <typename TensorT, typename ExecSpace, typename LossFunction>
   void online_gcp_impl(std::vector<TensorT>& X,
