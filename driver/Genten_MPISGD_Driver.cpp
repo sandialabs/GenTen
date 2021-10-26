@@ -55,6 +55,41 @@ void real_main(int argc, char **argv);
 
 int main(int argc, char **argv) {
   GT::InitializeGenten(&argc, &argv);
+
+  std::size_t output_signal = 0;
+  if (GT::DistContext::rank() == 0) {
+    std::string help_output =
+        "Input to the mpi driver is a single json file. At the top "
+        "level there are three arguments:\n\tdebug: a boolean that "
+        "turns on extra printing if true.\n\ttensor: a json object "
+        "which controls the tensor decomposition.\n\tdump: a boolean that asks "
+        "the requested method to dump possible input values instead of running "
+        "the calculation.\n";
+
+    if (argc != 2) {
+      std::cout << help_output;
+      output_signal = 1; // Need to return non-zero
+    } else if (std::string(argv[1]) == "-h" ||
+               std::string(argv[1]) == "--help") {
+      std::cout << help_output;
+      output_signal = 2; // Need to return early, but not error
+    }
+    GT::DistContext::Bcast(output_signal, 0);
+  } else {
+    GT::DistContext::Bcast(output_signal, 0);
+  }
+
+  switch (output_signal) {
+  case 0:
+    break;
+  case 2:
+    GT::FinalizeGenten();
+    return 0;
+  default:
+    GT::FinalizeGenten();
+    return -1; // If we get unknown what can we do 🤷‍♀️
+  }
+
   { real_main(argc, argv); }
   GT::FinalizeGenten();
   return 0;
@@ -84,7 +119,7 @@ void real_main(int argc, char **argv) {
                 << GT::DistContext::input().get<std::string>("tensor.method")
                 << std::endl;
 
-      if(GT::DistContext::isDebug()){
+      if (GT::DistContext::isDebug()) {
         std::cout << "Input file: " << argv[1] << ":\n";
         auto ss = GT::debugInput();
         std::cout << ss.str() << std::endl;

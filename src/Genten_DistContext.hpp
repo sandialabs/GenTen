@@ -152,5 +152,6 @@ template <typename T> T deserializeFromStr(std::string const &s) {
 
 // Bcasts that I don't want to figure out how to do the other way right now
 template <> int DistContext::Bcast(small_vector<int> &t, int root);
+template <> int DistContext::Bcast(std::size_t &t, int root);
 
 } // namespace Genten

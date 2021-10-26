@@ -106,6 +106,22 @@ template <> int DistContext::Bcast(small_vector<int> &t, int root) {
   return bcast_result;
 }
 
+template <> int DistContext::Bcast(std::size_t &t, int root) {
+  assert(instance_ != nullptr);
+  if (DistContext::nranks() == 1 && root == 0) {
+    return MPI_SUCCESS;
+  }
+
+  MPI_Datatype size_t_data_type;
+  if constexpr (std::is_same<std::size_t, unsigned long long>::value){
+    size_t_data_type = MPI_UNSIGNED_LONG_LONG;
+  } else {
+    size_t_data_type = MPI_UNSIGNED_LONG;
+  }
+
+  return MPI_Bcast(&t, 1, size_t_data_type, root, instance_->commWorld());
+}
+
 std::stringstream debugInput() {
   ptree in = DistContext::input();
 
