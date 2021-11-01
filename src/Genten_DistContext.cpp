@@ -113,7 +113,7 @@ template <> int DistContext::Bcast(std::size_t &t, int root) {
   }
 
   MPI_Datatype size_t_data_type;
-  if constexpr (std::is_same<std::size_t, unsigned long long>::value){
+  if constexpr (std::is_same<std::size_t, unsigned long long>::value) {
     size_t_data_type = MPI_UNSIGNED_LONG_LONG;
   } else {
     size_t_data_type = MPI_UNSIGNED_LONG;
@@ -153,6 +153,24 @@ bool InitializeGenten(int *argc, char ***argv) {
     for (auto i = 0; i < *argc; ++i) {
       if (contains(real_argv[i], ".json")) {
         dc.input_ = readInput(real_argv[i]);
+      }
+    }
+
+    // Check for dump on command line
+    for (auto i = 0; i < *argc; ++i) {
+      if (std::string(real_argv[i]) == "--dump") {
+        if(dc.input_.count("dump") == 0){
+          dc.input_.add("dump", true);
+        } 
+      }
+    }
+
+    // Check for debug on command line
+    for (auto i = 0; i < *argc; ++i) {
+      if (std::string(real_argv[i]) == "--debug") {
+        if (dc.input_.count("debug") == 0) {
+          dc.input_.add("debug", true);
+        }
       }
     }
 

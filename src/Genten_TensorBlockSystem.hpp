@@ -135,6 +135,8 @@ private:
   KtensorT<ExecSpace> Kfac_;
   std::unique_ptr<ProcessorMap> pmap_ptr_;
   TensorInfo Ti_;
+  bool dump_; // I don't love keeping this flag, but it's easy
+  unsigned int seed_;
   small_vector<small_vector<int>> global_blocking_;
 
   // Only used by the MPI Onesided methods
@@ -180,8 +182,30 @@ void printRandomElements(SptensorT<ExecSpace> const &tensor,
 
 template <typename ElementType, typename ExecSpace>
 TensorBlockSystem<ElementType, ExecSpace>::TensorBlockSystem(ptree const &tree)
-    : input_(tree.get_child("tensor")) {
+    : input_(tree.get_child("tensor")), dump_(tree.get<bool>("dump", false)),
+      seed_(input_.get<unsigned int>("seed", std::random_device{}())) {
 
+  if (dump_) {
+    if (DistContext::rank() == 0) {
+      std::cout
+          << "tensor:\n"
+             "\tfile: The input file\n"
+             "\tindexbase: Value that indices start at (defaults to 0)\n"
+             "\trank: rank at which to decompose the tensor\n"
+             "\tloss: Loss function options are {guassian, poisson, "
+             "bernoulli}\n"
+             "\tmethod: The SGD method to use (default: adam), options {adam, "
+             "fedopt, sgd, sgdm, adagrad, demon, elasticAvgOneSided}\n"
+             "\tmax_epochs: the number of epochs to run.\n"
+             "\tbatch_size_nz: the number of non-zeros to sample per batch.\n"
+             "\tbatch_size_zero: the number of zeros to sample per batch.\n"
+             "\tepoch_size: the number of `epoch_iters` to run, defaults to "
+             "number of "
+             "non-zeros  divided by the number of non-zeros per batch.\n"
+             "\tseed: Random seed default(std::random_device{}()).\n";
+    }
+    return;
+  }
   const auto file_name = input_.get<std::string>("file");
   const auto indexbase = input_.get<int>("indexbase", 0);
   const auto rank = input_.get<int>("rank", 5);
@@ -870,8 +894,7 @@ ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAvgOneSidedSGD(
 
   Impl::DEMON<ExecSpace, Loss> stepper(algParams, u);
 
-  auto seed = input_.get<std::uint64_t>("seed", std::random_device{}());
-  Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
+  Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed_);
   std::stringstream ss;
   sampler.initialize(rand_pool, ss);
   if (nprocs < 41) {
@@ -1066,8 +1089,7 @@ TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
   // Impl::SGDMomentumStep<ExecSpace, Loss> stepper(algParams, u);
   Impl::AdamStep<ExecSpace, Loss> meta_stepper(algParams, meta_u);
   // Impl::AdaGradStep<ExecSpace, Loss> meta_stepper(algParams, meta_u);
-  auto seed = input_.get<std::uint64_t>("seed", std::random_device{}());
-  Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
+  Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed_);
 
   std::stringstream ss;
   sampler.initialize(rand_pool, ss);
@@ -1217,7 +1239,7 @@ TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
       meta_stepper.setPassed();
       fest_prev = fest;
       annealer.success();
-      if(fest < fest_best){ // Only set best if really best
+      if (fest < fest_best) { // Only set best if really best
         fest_best = fest;
         u_best.set(u);
       }
@@ -1237,6 +1259,20 @@ template <typename ElementType, typename ExecSpace>
 template <typename Stepper, typename Loss>
 ElementType
 TensorBlockSystem<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
+  if (dump_) {
+    std::cout
+        << "Methods that use AllReduce(sgd, sgdm, adam, adagrad, demon) "
+           "have the following options under `tensor`:\n"
+           "\tannealer: Choice of annealer default(traditional) options "
+           "{traditional, cosine}\n"
+           "\tlr: (object that controls the learning rate)\n"
+           "\t\tstep: IFF traditional annealer, is the value of the "
+           "learning rate\n"
+           "\t\tmin_lr: IFF cosine annealer, is the lower value reached.\n"
+           "\t\tmax_lr: IFF cosine annealer, is the higher value reached.\n"
+           "\t\tTi: IFF cosine annealer, is the cycle period default(10).\n";
+    return -1.0;
+  }
   const auto nprocs = this->nprocs();
   const auto my_rank = gridRank();
   const auto start_time = MPI_Wtime();
@@ -1259,8 +1295,7 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
 
   Stepper stepper(algParams, u);
 
-  auto seed = input_.get<std::uint64_t>("seed", std::random_device{}());
-  Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
+  Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed_);
   std::stringstream ss;
   sampler.initialize(rand_pool, ss);
   if (nprocs < 41) {
@@ -1389,7 +1424,7 @@ TensorBlockSystem<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
       stepper.setPassed();
       fest_prev = fest;
       annealer.success();
-      if(fest < fest_best){
+      if (fest < fest_best) {
         u_best.set(u);
         fest_best = fest;
       }
