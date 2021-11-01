@@ -47,6 +47,8 @@
 #include "Genten_GCP_KokkosVector.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
 
+#include "impl/Kokkos_Atomic_Generic.hpp"
+
 namespace Genten {
 
   namespace Impl {
