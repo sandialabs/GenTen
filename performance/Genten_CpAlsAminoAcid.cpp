@@ -216,7 +216,6 @@ int main(int argc, char* argv[])
 
     //Genten::export_ktensor("result.txt", result_host);
 
-
     cout << endl;
   }
 
