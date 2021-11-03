@@ -1,3 +1,6 @@
+include:
+  - template: Security/SAST.gitlab-ci.yml
+
 # Only run pipelines for:
 #  - merge requests (to any target branch)
 #  - tags
