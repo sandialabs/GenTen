@@ -16,6 +16,8 @@ workflow:
 
 variables:
   GIT_STRATEGY: clone
+  SAST_EXCLUDED_PATHS: "tpls"
+
 
 stages:
   - build
