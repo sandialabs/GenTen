@@ -19,6 +19,7 @@ variables:
 
 stages:
   - build
+  - test
 
 # Clang build for internal repo
 # Disabling because internal runner isn't reliably picking up jobs
