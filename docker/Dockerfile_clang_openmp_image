@@ -18,6 +18,7 @@ RUN \
     libblas-dev \
     liblapack-dev \
     libboost-iostreams-dev \
+    libomp-dev \
     clang \
     && \
   rm -rf /var/lib/apt/lists/*
@@ -45,9 +46,9 @@ ENV \
   GENTEN_INSTALL_PATH=/usr
 
 # Build and install genten
-RUN \
-  set -o pipefail && \
-  mkdir -p /build/genten  && \
-  cd /build/genten && \
-  /src/genten/scripts/gitlab_clang/do_configure.sh 2>&1 | tee cmake_output.txt && \
-  make -j8 install 2>&1 | tee make_output.txt
+#RUN \
+#  set -o pipefail && \
+#  mkdir -p /build/genten  && \
+#  cd /build/genten && \
+#  /src/genten/scripts/gitlab_clang/do_configure.sh 2>&1 | tee cmake_output.txt && \
+#  make -j8 install 2>&1 | tee make_output.txt
