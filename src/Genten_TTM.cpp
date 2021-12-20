@@ -47,7 +47,7 @@
 #include "Genten_Util.hpp"
 #include "Genten_MathLibs.hpp"
 
-#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_WITH_CUDA)) && defined(HAVE_CUBLAS)
 #include "cublas_v2.h"
 #endif
 
@@ -314,7 +314,7 @@ namespace Genten
                                    const ttb_indx mode,
                                    TensorT<ExecSpace> &Z)
     {
-#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_WITH_CUDA)) && defined(HAVE_CUBLAS)
       if ((mode + 1 > 0) && (mode < Y.ndims()))
       {
         if (Y.size(mode) != V.size(1))
@@ -416,7 +416,7 @@ namespace Genten
                                      const ttb_indx mode,
                                      TensorT<ExecSpace> &Z)
     {
-#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_WITH_CUDA)) && defined(HAVE_CUBLAS)
 
       typedef typename Kokkos::View<ttb_real *, ExecSpace> sub_view_type;
       typedef typename sub_view_type::device_type device_type;
@@ -672,7 +672,11 @@ namespace Genten
     assert(Y.size(n) == V.size(1));
     if (al.ttm_method == Genten::TTM_Method::DGEMM)
     {
-      if (Genten::is_cuda_space<ExecSpace>::value)
+      if (Genten::is_cuda_space<ExecSpace>::value
+#if defined(ENABLE_SYCL_WITH_CUDA)
+       || Genten::is_sycl_space<ExecSpace>::value
+#endif
+         )
       {
         if (n == nd - 1)
         {
@@ -701,7 +705,11 @@ namespace Genten
     }
     else
     {
-      if (Genten::is_cuda_space<ExecSpace>::value)
+      if (Genten::is_cuda_space<ExecSpace>::value
+#if defined(ENABLE_SYCL_WITH_CUDA)
+       || Genten::is_sycl_space<ExecSpace>::value
+#endif
+         )
       {
         if (n == nd - 1)
         {

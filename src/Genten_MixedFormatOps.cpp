@@ -338,7 +338,7 @@ ttb_real Genten::innerprod(const Genten::TensorT<ExecSpace>& x,
   /*const*/ unsigned nd = u.ndims();
   /*const*/ unsigned nc = u.ncomponents();
 
-  // Make VectorSize*TeamSize ~= 256 on Cuda or HIP
+  // Make VectorSize*TeamSize ~= 256 on Cuda, HIP or SYCL
   static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
   const unsigned VectorSize = is_gpu ? nc : 1;
   const unsigned TeamSize = is_gpu ? (256+nc-1)/nc : 1;

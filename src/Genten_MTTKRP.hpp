@@ -302,7 +302,7 @@ struct MTTKRP_Kernel {
     if (space_prop::is_gpu &&
         (method == MTTKRP_Method::Single ||
          method == MTTKRP_Method::Duplicated))
-      Genten::error("Single and duplicated MTTKRP methods are invalid on Cuda or HIP!");
+      Genten::error("Single and duplicated MTTKRP methods are invalid on Cuda, HIP or SYCL!");
 
     // Check if Perm is selected, that perm is computed
     if (method == MTTKRP_Method::Perm && !X.havePerm())
@@ -384,7 +384,7 @@ struct MTTKRP_All_Kernel {
     /*const*/ unsigned RowBlockSize = algParams.mttkrp_nnz_tile_size;
     const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
-    static_assert(!is_gpu, "Cannot call mttkrp_all_kernel for Cuda or HIP space!");
+    static_assert(!is_gpu, "Cannot call mttkrp_all_kernel for Cuda, HIP or SYCL space!");
 
     /*const*/ unsigned nd = u.ndims();
     /*const*/ unsigned nc_total = u.ncomponents();
@@ -476,8 +476,8 @@ struct MTTKRP_All_Kernel {
   }
 };
 
-#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP)
-// Specialization for Cuda or HIP that always uses atomics and doesn't call
+#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || defined(KOKKOS_ENABLE_SYCL)
+// Specialization for Cuda, HIP or SYCL that always uses atomics and doesn't call
 // mttkrp_all_kernel, which won't run on the GPU
 template <int Dupl, int Cont>
 struct MTTKRP_All_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
@@ -511,7 +511,7 @@ struct MTTKRP_All_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
     /*const*/ unsigned nm = me-mb;
 
     if (algParams.mttkrp_all_method != MTTKRP_All_Method::Atomic)
-      Genten::error("MTTKRP-All method must be atomic on Cuda and HIP!");
+      Genten::error("MTTKRP-All method must be atomic on Cuda, HIP and SYCL!");
 
     if (zero_v)
       v.setMatrices(0.0);
@@ -816,7 +816,7 @@ void mttkrp_all(const SptensorT<ExecSpace>& X,
   if (space_prop::is_gpu &&
       (method == MTTKRP_All_Method::Single ||
        method == MTTKRP_All_Method::Duplicated))
-    Genten::error("Single and duplicated MTTKRP-All methods are invalid on Cuda and HIP!");
+    Genten::error("Single and duplicated MTTKRP-All methods are invalid on Cuda, HIP and SYCL!");
 
   if (algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated) {
     for (ttb_indx n=mode_beg; n<mode_end; ++n)

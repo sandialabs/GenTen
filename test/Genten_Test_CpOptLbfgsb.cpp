@@ -341,6 +341,9 @@ void Genten_Test_CpOptLbfgsb(int infolevel) {
 #ifdef KOKKOS_ENABLE_HIP
   Genten_Test_CpOptLbfgsb_Space<Kokkos::Experimental::HIP>(infolevel);
 #endif
+#ifdef KOKKOS_ENABLE_SYCL
+  Genten_Test_CpOptLbfgsb_Space<Kokkos::Experimental::SYCL>(infolevel);
+#endif
 #ifdef KOKKOS_ENABLE_OPENMP
   Genten_Test_CpOptLbfgsb_Space<Kokkos::OpenMP>(infolevel);
 #endif

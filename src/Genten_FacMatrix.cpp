@@ -53,7 +53,7 @@
 #include <assert.h>
 #include <cstring>
 
-#if defined(KOKKOS_ENABLE_CUDA)
+#if defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_WITH_CUDA)
 
 #if defined(HAVE_CUSOLVER)
 #include "cusolverDn.h"
@@ -473,17 +473,16 @@ void gramianImpl(const ViewC& C, const ViewA& A,
 
 #endif
 
-#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_WITH_CUDA)) && defined(HAVE_CUBLAS)
 
   // Gramian implementation for CUDA and double precision using cuBLAS
   template <typename ExecSpace,
             typename CT, typename ... CP,
             typename AT, typename ... AP>
-  typename std::enable_if<
-    ( std::is_same<ExecSpace,Kokkos::Cuda>::value &&
-      std::is_same<typename Kokkos::View<AT,AP...>::non_const_value_type,
-                   double>::value )
-    >::type
+  std::enable_if_t<
+    (is_cuda_space<ExecSpace>::value || is_sycl_space<ExecSpace>::value) &&
+    std::is_same<typename Kokkos::View<AT, AP...>::non_const_value_type, double>::value
+  >
   gramianImpl(const Kokkos::View<CT,CP...>& C, const Kokkos::View<AT,AP...>& A,
               const bool full, const UploType uplo)
   {
@@ -535,11 +534,10 @@ void gramianImpl(const ViewC& C, const ViewA& A,
   template <typename ExecSpace,
             typename CT, typename ... CP,
             typename AT, typename ... AP>
-  typename std::enable_if<
-    ( std::is_same<ExecSpace,Kokkos::Cuda>::value &&
-      std::is_same<typename Kokkos::View<AT,AP...>::non_const_value_type,
-                   float>::value )
-    >::type
+  std::enable_if_t<
+    (is_cuda_space<ExecSpace>::value || is_sycl_space<ExecSpace>::value) &&
+    std::is_same<typename Kokkos::View<AT, AP...>::non_const_value_type, float>::value
+  >
   gramianImpl(const Kokkos::View<CT,CP...>& C, const Kokkos::View<AT,AP...>& A,
               const bool full, const UploType uplo)
   {
@@ -1657,16 +1655,15 @@ gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
                C.data(), ldc);
 }
 
-#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_WITH_CUDA)) && defined(HAVE_CUBLAS)
 template <typename ExecSpace,
           typename AT, typename ... AP,
           typename BT, typename ... BP,
           typename CT, typename ... CP>
-typename std::enable_if<
-  ( is_cuda_space<ExecSpace>::value &&
-    std::is_same<typename Kokkos::View<AT,AP...>::non_const_value_type,
-                 double>::value )
-  >::type
+std::enable_if_t<
+  (is_cuda_space<ExecSpace>::value || is_sycl_space<ExecSpace>::value) &&
+  std::is_same<typename Kokkos::View<AT, AP...>::non_const_value_type, double>::value
+>
 gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
          const Kokkos::View<AT,AP...>& A, const Kokkos::View<BT,BP...>& B,
          const ttb_real beta, const Kokkos::View<CT,CP...>& C)
@@ -1711,11 +1708,10 @@ template <typename ExecSpace,
           typename AT, typename ... AP,
           typename BT, typename ... BP,
           typename CT, typename ... CP>
-typename std::enable_if<
-  ( is_cuda_space<ExecSpace>::value &&
-    std::is_same<typename Kokkos::View<AT,AP...>::non_const_value_type,
-                 float>::value )
-  >::type
+std::enable_if_t<
+  (is_cuda_space<ExecSpace>::value || is_sycl_space<ExecSpace>::value) &&
+  std::is_same<typename Kokkos::View<AT, AP...>::non_const_value_type, float>::value
+>
 gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
          const Kokkos::View<AT,AP...>& A, const Kokkos::View<BT,BP...>& B,
          const ttb_real beta, const Kokkos::View<CT,CP...>& C)
@@ -1945,14 +1941,16 @@ namespace Genten {
 
     template <typename AT, typename ... AP,
               typename BT, typename ... BP>
-    typename std::enable_if<
-      ( std::is_same<typename Kokkos::View<AT,AP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<BT,BP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<AT,BP...>::non_const_value_type,
-        double>::value ), bool
-      >::type
+    std::enable_if_t<
+      (is_cuda_space<typename Kokkos::View<AT, AP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<AT, AP...>::execution_space>::value) &&
+      (is_cuda_space<typename Kokkos::View<BT, BP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<BT, BP...>::execution_space>::value) &&
+      std::is_same<
+        typename Kokkos::View<AT, BP...>::non_const_value_type, double
+      >::value,
+      bool
+    >
     solveTransposeRHSImpl_SPD(const Kokkos::View<AT,AP...>& A,
                               const Kokkos::View<BT,BP...>& B,
                               const UploType ul)
@@ -2034,14 +2032,15 @@ namespace Genten {
 
     template <typename AT, typename ... AP,
               typename BT, typename ... BP>
-    typename std::enable_if<
-      ( std::is_same<typename Kokkos::View<AT,AP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<BT,BP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<AT,BP...>::non_const_value_type,
-        double>::value )
-      >::type
+    std::enable_if_t<
+      (is_cuda_space<typename Kokkos::View<AT, AP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<AT, AP...>::execution_space>::value) &&
+      (is_cuda_space<typename Kokkos::View<BT, BP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<BT, BP...>::execution_space>::value) &&
+      std::is_same<
+        typename Kokkos::View<AT, BP...>::non_const_value_type, double
+      >::value
+    >
     solveTransposeRHSImpl_SID(const Kokkos::View<AT,AP...>& A,
                               const Kokkos::View<BT,BP...>& B,
                               const UploType ul)
@@ -2135,14 +2134,15 @@ namespace Genten {
 
     template <typename AT, typename ... AP,
               typename BT, typename ... BP>
-    typename std::enable_if<
-      ( std::is_same<typename Kokkos::View<AT,AP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<BT,BP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<AT,BP...>::non_const_value_type,
-        double>::value )
-      >::type
+    std::enable_if_t<
+      (is_cuda_space<typename Kokkos::View<AT, AP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<AT, AP...>::execution_space>::value) &&
+      (is_cuda_space<typename Kokkos::View<BT, BP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<BT, BP...>::execution_space>::value) &&
+      std::is_same<
+        typename Kokkos::View<AT, BP...>::non_const_value_type, double
+      >::value
+    >
     solveTransposeRHSImpl(const Kokkos::View<AT,AP...>& A,
                           const Kokkos::View<BT,BP...>& B,
                           const UploType uplo,
@@ -2224,14 +2224,16 @@ namespace Genten {
 
     template <typename AT, typename ... AP,
               typename BT, typename ... BP>
-    typename std::enable_if<
-      ( std::is_same<typename Kokkos::View<AT,AP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<BT,BP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<AT,BP...>::non_const_value_type,
-        float>::value ), bool
-      >::type
+    std::enable_if_t<
+      (is_cuda_space<typename Kokkos::View<AT, AP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<AT, AP...>::execution_space>::value) &&
+      (is_cuda_space<typename Kokkos::View<BT, BP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<BT, BP...>::execution_space>::value) &&
+      std::is_same<
+        typename Kokkos::View<AT, BP...>::non_const_value_type, float
+      >::value,
+      bool
+    >
     solveTransposeRHSImpl_SPD(const Kokkos::View<AT,AP...>& A,
                               const Kokkos::View<BT,BP...>& B,
                               const UploType ul)
@@ -2313,14 +2315,15 @@ namespace Genten {
 
     template <typename AT, typename ... AP,
               typename BT, typename ... BP>
-    typename std::enable_if<
-      ( std::is_same<typename Kokkos::View<AT,AP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<BT,BP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<AT,BP...>::non_const_value_type,
-        float>::value )
-      >::type
+    std::enable_if_t<
+      (is_cuda_space<typename Kokkos::View<AT, AP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<AT, AP...>::execution_space>::value) &&
+      (is_cuda_space<typename Kokkos::View<BT, BP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<BT, BP...>::execution_space>::value) &&
+      std::is_same<
+        typename Kokkos::View<AT, BP...>::non_const_value_type, float
+      >::value
+    >
     solveTransposeRHSImpl_SID(const Kokkos::View<AT,AP...>& A,
                               const Kokkos::View<BT,BP...>& B,
                               const UploType ul)
@@ -2414,14 +2417,15 @@ namespace Genten {
 
     template <typename AT, typename ... AP,
               typename BT, typename ... BP>
-    typename std::enable_if<
-      ( std::is_same<typename Kokkos::View<AT,AP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<BT,BP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<AT,BP...>::non_const_value_type,
-                     float>::value )
-      >::type
+    std::enable_if_t<
+      (is_cuda_space<typename Kokkos::View<AT, AP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<AT, AP...>::execution_space>::value) &&
+      (is_cuda_space<typename Kokkos::View<BT, BP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<BT, BP...>::execution_space>::value) &&
+      std::is_same<
+        typename Kokkos::View<AT, BP...>::non_const_value_type, float
+      >::value
+    >
     solveTransposeRHSImpl(const Kokkos::View<AT,AP...>& A,
                           const Kokkos::View<BT,BP...>& B,
                           const UploType uplo,

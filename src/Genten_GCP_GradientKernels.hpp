@@ -147,7 +147,7 @@ namespace Genten {
         if (space_prop::is_gpu &&
             (method == MTTKRP_Method::Single ||
              method == MTTKRP_Method::Duplicated))
-          Genten::error("Single and duplicated MTTKRP-All methods are invalid on Cuda and HIP!");
+          Genten::error("Single and duplicated MTTKRP-All methods are invalid on Cuda, HIP and SYCL!");
 
         GCP_GradTensor<tensor_type,loss_type,FBS,VS> XX(X, M, w, f);
         const unsigned nd = M.ndims();
@@ -426,7 +426,7 @@ namespace Genten {
                           method == MTTKRP_Method::Atomic))
           method = MTTKRP_Method::Single;
 
-        // Never use Duplicated for Cuda or HIP, use Atomic instead
+        // Never use Duplicated for Cuda, HIP or SYCL, use Atomic instead
         if (space_prop::is_gpu && method == MTTKRP_Duplicated)
           method = MTTKRP_Method::Atomic;
 

@@ -326,6 +326,19 @@ int main(int argc, char* argv[])
                                       nnz,
                                       tensor_outputfilename);
 #endif
+#ifdef KOKKOS_ENABLE_SYCL
+    else if (algParams.exec_space == Genten::Execution_Space::SYCL)
+      ret = main_driver<Kokkos::Experimental::SYCL>(algParams,
+                                      inputfilename,
+                                      outputfilename,
+                                      sparse,
+                                      initfilename,
+                                      index_base,
+                                      gz,
+                                      facDims_h,
+                                      nnz,
+                                      tensor_outputfilename);
+#endif
 #ifdef KOKKOS_ENABLE_OPENMP
     else if (algParams.exec_space == Genten::Execution_Space::OpenMP)
       ret = main_driver<Kokkos::OpenMP>(algParams,

@@ -672,6 +672,20 @@ int main(int argc, char* argv[])
           check, warmup, algParams);
     }
 #endif
+#ifdef KOKKOS_ENABLE_SYCL
+    else if (exec_space == Genten::Execution_Space::SYCL) {
+      if (sparse)
+        ret = run_sparse_mttkrp< Kokkos::Experimental::SYCL >(
+          inputfilename, index_base, gz,
+          cFacDims, nNumComponents, nMaxNonzeroes, nRNGseed, nIters,
+          check, warmup, algParams);
+      else
+        ret = run_dense_mttkrp< Kokkos::Experimental::SYCL >(
+          inputfilename,
+          cFacDims, nNumComponents, nRNGseed, nIters,
+          check, warmup, algParams);
+    }
+#endif
 #ifdef KOKKOS_ENABLE_OPENMP
     else if (exec_space == Genten::Execution_Space::OpenMP) {
       if (sparse)

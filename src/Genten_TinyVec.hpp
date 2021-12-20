@@ -44,6 +44,8 @@
 #include <cmath>
 #include <ostream>
 
+// TODO (STRZ) - SYCL implementation
+
 #include "Genten_Kokkos.hpp"
 #if defined(KOKKOS_ENABLE_CUDA)
 #include "Cuda/Kokkos_Cuda_Team.hpp"

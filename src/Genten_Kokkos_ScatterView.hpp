@@ -161,6 +161,21 @@ struct DefaultContribution<Kokkos::Experimental::HIP, Kokkos::Experimental::Scat
 };
 #endif
 
+#ifdef KOKKOS_ENABLE_SYCL
+template <>
+struct DefaultDuplication<Kokkos::Experimental::SYCL> {
+  enum : int { value = Kokkos::Experimental::ScatterNonDuplicated };
+};
+template <>
+struct DefaultContribution<Kokkos::Experimental::SYCL, Kokkos::Experimental::ScatterNonDuplicated> {
+  enum : int { value = Kokkos::Experimental::ScatterAtomic };
+};
+template <>
+struct DefaultContribution<Kokkos::Experimental::SYCL, Kokkos::Experimental::ScatterDuplicated> {
+  enum : int { value = Kokkos::Experimental::ScatterAtomic };
+};
+#endif
+
 /* ScatterValue is the object returned by the access operator() of ScatterAccess,
    similar to that returned by an Atomic View, it wraps Kokkos::atomic_add with convenient
    operator+=, etc. */

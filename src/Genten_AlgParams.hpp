@@ -243,6 +243,9 @@ namespace Genten {
       else if (space_prop::is_hip)
         mttkrp_method = MTTKRP_Method::Perm;
 
+      else if (space_prop::is_sycl)
+        mttkrp_method = MTTKRP_Method::Perm;
+
       // Otherwise use Perm or Duplicated on CPU depending on the method
       else {
         if (method == Solver_Method::GCP_SGD)
@@ -276,6 +279,9 @@ namespace Genten {
         mttkrp_all_method = MTTKRP_All_Method::Iterated;
 
       else if (space_prop::is_hip)
+        mttkrp_all_method = MTTKRP_All_Method::Iterated;
+
+      else if (space_prop::is_sycl)
         mttkrp_all_method = MTTKRP_All_Method::Iterated;
 
       // Otherwise use Iterated or Duplicated depending on the method
@@ -344,6 +350,29 @@ namespace Genten {
         mttkrp_all_method = MTTKRP_All_Method::Atomic;
         out << "Fused semi-stratified sampling/MTTKRP method requires atomic"
             << " on HIP.  Changing MTTKRP-All method to atomic." << std::endl;
+      }
+    } else if (space_prop::is_sycl) {
+      if (mttkrp_method == MTTKRP_Method::Single ||
+          mttkrp_method == MTTKRP_Method::Duplicated) {
+        out << "MTTKRP method " << MTTKRP_Method::names[mttkrp_method]
+            << " is invalid for SYCL, changing to ";
+        mttkrp_method = MTTKRP_Method::Perm;
+        out << MTTKRP_Method::names[mttkrp_method] << "." << std::endl;
+      }
+      if (mttkrp_all_method == MTTKRP_All_Method::Single ||
+          mttkrp_all_method == MTTKRP_All_Method::Duplicated) {
+        out << "MTTKRP-All method "
+            << MTTKRP_All_Method::names[mttkrp_all_method]
+            << " is invalid for SYCL, changing to ";
+        mttkrp_all_method = MTTKRP_All_Method::Iterated;
+        out << MTTKRP_All_Method::names[mttkrp_all_method] << "." << std::endl;
+      }
+      if (method == Solver_Method::GCP_SGD &&
+          sampling_type == GCP_Sampling::SemiStratified &&
+          fuse && mttkrp_all_method != MTTKRP_All_Method::Atomic) {
+        mttkrp_all_method = MTTKRP_All_Method::Atomic;
+        out << "Fused semi-stratified sampling/MTTKRP method requires atomic"
+            << " on SYCL.  Changing MTTKRP-All method to atomic." << std::endl;
       }
     }
   }

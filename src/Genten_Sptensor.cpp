@@ -46,6 +46,7 @@
 #include "parallel_stable_sort.hpp"
 #endif
 
+// TODO (STRZ) - SYCL implementation (if possible)
 #if defined(KOKKOS_ENABLE_CUDA) || (defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCTHRUST))
 #include <thrust/sort.h>
 #include <thrust/device_ptr.h>
@@ -270,6 +271,7 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
       tmp(i) = i;
     }, "Genten::Sptensor::createPermutationImpl_init_kernel");
 
+// TODO (STRZ) - SYCL implementation (if possible)
 #if defined(KOKKOS_ENABLE_CUDA) || (defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCTHRUST))
     if (is_gpu_space<ExecSpace>::value) {
       thrust::stable_sort(thrust::device_ptr<ttb_indx>(tmp.data()),
@@ -361,6 +363,7 @@ sortImpl(vals_type& vals, subs_type& subs)
       return true;
     };
 
+// TODO (STRZ) - SYCL implementation (if possible)
 #if defined(KOKKOS_ENABLE_CUDA) || (defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCTHRUST))
   if (is_gpu_space<ExecSpace>::value) {
     thrust::stable_sort(thrust::device_ptr<ttb_indx>(tmp.data()),

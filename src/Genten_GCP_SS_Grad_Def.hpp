@@ -92,7 +92,7 @@ namespace Genten {
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
       static_assert(!is_gpu,
-                    "Cannot call gcp_sgd_ss_grad_sv_kernel for Cuda or HIP space!");
+                    "Cannot call gcp_sgd_ss_grad_sv_kernel for Cuda, HIP or SYCL space!");
 
       /*const*/ unsigned nd = M.ndims();
       /*const*/ unsigned nc = M.ncomponents();
@@ -489,8 +489,8 @@ namespace Genten {
       }
     };
 
-#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP)
-    // Specialization for Cuda and HIP that always uses atomics and doesn't call
+#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || defined(KOKKOS_ENABLE_SYCL)
+    // Specialization for Cuda, HIP and SYCL that always uses atomics and doesn't call
     // gcp_sgd_ss_grad_sv_kernel, which won't run on the GPU
     template <typename loss_type>
     struct GCP_SS_Grad<Kokkos_GPU_Space,loss_type> {
@@ -535,7 +535,7 @@ namespace Genten {
       template <unsigned FBS, unsigned VS>
       void run() const {
         if (algParams.mttkrp_all_method != MTTKRP_All_Method::Atomic)
-          Genten::error("MTTKRP-All method must be atomic on Cuda or HIP!");
+          Genten::error("MTTKRP-All method must be atomic on Cuda, HIP or SYCL!");
 
         gcp_sgd_ss_grad_atomic_kernel<FBS,VS>(
           X,M,f,num_samples_nonzeros,num_samples_zeros,
