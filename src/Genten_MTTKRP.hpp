@@ -83,10 +83,10 @@ mttkrp_kernel(const SptensorT<ExecSpace>& X,
   using Kokkos::Experimental::ScatterView;
   using Kokkos::Experimental::ScatterSum;
 
-  static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+  static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
   static const unsigned FacBlockSize = FBS;
-  static const unsigned VectorSize = is_cuda ? VS : 1;
-  static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+  static const unsigned VectorSize = is_gpu ? VS : 1;
+  static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
   /*const*/ unsigned RowBlockSize = algParams.mttkrp_nnz_tile_size;
   const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
@@ -121,7 +121,7 @@ mttkrp_kernel(const SptensorT<ExecSpace>& X,
       // by Jaijai Li.
       ttb_indx offset;
       ttb_indx stride;
-      if (is_cuda) {
+      if (is_gpu) {
         offset = team.league_rank()*TeamSize+team.team_rank();
         stride = team.league_size()*TeamSize;
       }
@@ -179,10 +179,10 @@ mttkrp_kernel_perm(const SptensorT<ExecSpace>& X,
 {
   v = ttb_real(0.0);
 
-  static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+  static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
   static const unsigned FacBlockSize = FBS;
-  static const unsigned VectorSize = is_cuda ? VS : 1;
-  static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+  static const unsigned VectorSize = is_gpu ? VS : 1;
+  static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
   /*const*/ unsigned RowBlockSize = algParams.mttkrp_nnz_tile_size;
   const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
@@ -293,10 +293,10 @@ struct MTTKRP_Kernel {
 
     MTTKRP_Method::type method = algParams.mttkrp_method;
 
-    if (space_prop::is_cuda &&
+    if (space_prop::is_gpu &&
         (method == MTTKRP_Method::Single ||
          method == MTTKRP_Method::Duplicated))
-      Genten::error("Single and duplicated MTTKRP methods are invalid on Cuda!");
+      Genten::error("Single and duplicated MTTKRP methods are invalid on GPU!");
 
     // Check if Perm is selected, that perm is computed
     if (method == MTTKRP_Method::Perm && !X.havePerm())
@@ -360,14 +360,14 @@ struct MTTKRP_All_Kernel {
     using Kokkos::Experimental::ScatterView;
     using Kokkos::Experimental::ScatterSum;
 
-    static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+    static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
     static const unsigned FacBlockSize = FBS;
-    static const unsigned VectorSize = is_cuda ? VS : 1;
-    static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+    static const unsigned VectorSize = is_gpu ? VS : 1;
+    static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
     /*const*/ unsigned RowBlockSize = algParams.mttkrp_nnz_tile_size;
     const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
-    static_assert(!is_cuda, "Cannot call mttkrp_all_kernel for Cuda space!");
+    static_assert(!is_gpu, "Cannot call mttkrp_all_kernel for GPU space!");
 
     /*const*/ unsigned nd = u.ndims();
     /*const*/ unsigned nc_total = u.ncomponents();
@@ -403,7 +403,7 @@ struct MTTKRP_All_Kernel {
         // by Jaijai Li.
         ttb_indx offset;
         ttb_indx stride;
-        if (is_cuda) {
+        if (is_gpu) {
           offset = team.league_rank()*TeamSize+team.team_rank();
           stride = team.league_size()*TeamSize;
         }
@@ -459,12 +459,12 @@ struct MTTKRP_All_Kernel {
   }
 };
 
-#ifdef KOKKOS_ENABLE_CUDA
-// Specialization for Cuda that always uses atomics and doesn't call
+#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP)
+// Specialization for GPU (CUDA or HIP) that always uses atomics and doesn't call
 // mttkrp_all_kernel, which won't run on the GPU
 template <int Dupl, int Cont>
-struct MTTKRP_All_Kernel<Dupl,Cont,Kokkos::Cuda> {
-  typedef Kokkos::Cuda ExecSpace;
+struct MTTKRP_All_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
+  typedef Kokkos_GPU_Space ExecSpace;
 
   const SptensorT<ExecSpace> XX;
   const KtensorT<ExecSpace> uu;
@@ -484,7 +484,7 @@ struct MTTKRP_All_Kernel<Dupl,Cont,Kokkos::Cuda> {
     const KtensorT<ExecSpace> v = vv;
 
     if (algParams.mttkrp_all_method != MTTKRP_All_Method::Atomic)
-      Genten::error("MTTKRP-All method must be atomic on Cuda!");
+      Genten::error("MTTKRP-All method must be atomic on GPU!");
 
     v.setMatrices(0.0);
 
@@ -640,13 +640,9 @@ void orig_kokkos_mttkrp_kernel(const SptensorT<ExecSpace>& X,
                                const FacMatrixT<ExecSpace>& v)
 {
   // Compute team and vector sizes, depending on the architecture
-#if defined(KOKKOS_ENABLE_CUDA)
-  const bool is_cuda = std::is_same<ExecSpace,Kokkos::Cuda>::value;
-#else
-  const bool is_cuda = false;
-#endif
-  const unsigned VectorSize = is_cuda ? (FacBlockSize <= 16 ? FacBlockSize : 16) : 1;
-  const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+  static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+  const unsigned VectorSize = is_gpu ? (FacBlockSize <= 16 ? FacBlockSize : 16) : 1;
+  const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
 
   const unsigned nc = u.ncomponents();
   const ttb_indx nnz = X.nnz();
@@ -779,10 +775,10 @@ void mttkrp_all(const SptensorT<ExecSpace>& X,
 
   MTTKRP_All_Method::type method = algParams.mttkrp_all_method;
 
-  if (space_prop::is_cuda &&
+  if (space_prop::is_gpu &&
       (method == MTTKRP_All_Method::Single ||
        method == MTTKRP_All_Method::Duplicated))
-    Genten::error("Single and duplicated MTTKRP-All methods are invalid on Cuda!");
+    Genten::error("Single and duplicated MTTKRP-All methods are invalid on GPU!");
 
   if (algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated) {
     for (ttb_indx n=0; n<nd; ++n)
