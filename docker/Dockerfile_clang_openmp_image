@@ -12,8 +12,8 @@ SHELL ["/bin/bash", "-c"]
 
 # Install GenTen dependencies
 RUN \
-  apt-get update --yes && \
-  apt-get install --yes \
+  apt-get update --allow-unauthenticated --yes && \
+  apt-get install --allow-unauthenticated --yes \
     cmake \
     libblas-dev \
     liblapack-dev \
