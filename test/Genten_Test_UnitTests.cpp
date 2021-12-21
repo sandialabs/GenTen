@@ -90,9 +90,9 @@ int main(int argc, char * argv[])
   Genten_Test_IO(infolevel, "./data/");
   Genten_Test_CpAls(infolevel);
 #ifdef HAVE_GCP
-#ifdef HAVE_ROL
-  Genten_Test_GCP_Opt(infolevel);
-#endif
+// #ifdef HAVE_ROL
+//   Genten_Test_GCP_Opt(infolevel);
+// #endif
   Genten_Test_GCP_SGD(infolevel);
 #endif
 

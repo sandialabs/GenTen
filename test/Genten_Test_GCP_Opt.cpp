@@ -73,6 +73,7 @@ void Genten_Test_GCP_Opt_Type (int infolevel, const std::string& label,
   typedef Genten::SptensorT<exec_space> Sptensor_type;
   typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
 
+  std::string space_name = Genten::SpaceProperties<exec_space>::name();
   initialize("Test of Genten::GCP_Opt ("+label+", "+space_name+")", infolevel);
 
   MESSAGE("Creating a sparse tensor with data to model");

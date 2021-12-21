@@ -144,22 +144,10 @@ namespace Genten {
 
         MTTKRP_Method::type method = algParams.mttkrp_method;
 
-        // Compute default MTTKRP method
-        if (method == MTTKRP_Method::Default)
-          method = MTTKRP_Method::computeDefault<exec_space>();
-
-        // Check if Perm is selected, that perm is computed
-        if (method == MTTKRP_Method::Perm && !X.havePerm())
-          Genten::error("Perm MTTKRP method selected, but permutation array not computed!");
-
-        // Never use Duplicated or Atomic for Serial, use Single instead
-        if (space_prop::is_serial && (method == MTTKRP_Method::Duplicated ||
-                                      method == MTTKRP_Method::Atomic))
-          method = MTTKRP_Method::Single;
-
-        // Never use Duplicated for Cuda, use Atomic instead
-        if (space_prop::is_cuda && method == MTTKRP_Method::Duplicated)
-          method = MTTKRP_Method::Atomic;
+        if (space_prop::is_cuda &&
+            (method == MTTKRP_Method::Single ||
+             method == MTTKRP_Method::Duplicated))
+          Genten::error("Single and duplicated MTTKRP-All methods are invalid on Cuda!");
 
         GCP_GradTensor<tensor_type,loss_type,FBS,VS> XX(X, M, w, f);
         const unsigned nd = M.ndims();

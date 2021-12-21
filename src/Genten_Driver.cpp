@@ -189,7 +189,7 @@ driver(SptensorT<ExecSpace>& x,
   if (algParams.debug) Genten::print_ktensor(u_host, out, "Solution");
 
 #if defined(HAVE_GCP) && defined(HAVE_ROL)
-  if (do_gcp_opt)
+  if (algParams.method == Genten::Solver_Method::GCP_OPT)
     Teuchos::TimeMonitor::summarize();
 #endif
 
