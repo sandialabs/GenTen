@@ -42,6 +42,7 @@
 #include "Genten_FacMatrix.hpp"
 
 Genten::AlgParams::AlgParams() :
+  exec_space(Execution_Space::default_type),
   method(Solver_Method::default_type),
   rank(16),
   seed(12345),
@@ -99,6 +100,10 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   // Parse options from command-line, using default values set above as defaults
 
   // Generic options
+  exec_space = parse_ttb_enum(args, "--exec-space", exec_space,
+                              Genten::Execution_Space::num_types,
+                              Genten::Execution_Space::types,
+                              Genten::Execution_Space::names);
   method = parse_ttb_enum(args, "--method", method,
                           Genten::Solver_Method::num_types,
                           Genten::Solver_Method::types,
@@ -204,6 +209,13 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
 void Genten::AlgParams::print_help(std::ostream& out)
 {
   out << "Generic options: " << std::endl;
+  out << "  --exec-space <space> execution space to run on: ";
+  for (unsigned i=0; i<Genten::Execution_Space::num_types; ++i) {
+    out << Genten::Execution_Space::names[i];
+    if (i != Genten::Execution_Space::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
   out << "  --method <method>  decomposition method: ";
   for (unsigned i=0; i<Genten::Solver_Method::num_types; ++i) {
     out << Genten::Solver_Method::names[i];
@@ -318,6 +330,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
 void Genten::AlgParams::print(std::ostream& out)
 {
   out << "Generic options: " << std::endl;
+  out << "  exec-space = " << Genten::Execution_Space::names[exec_space] << std::endl;
   out << "  method = " << Genten::Solver_Method::names[method] << std::endl;
   out << "  rank = " << rank << std::endl;
   out << "  seed = " << seed << std::endl;

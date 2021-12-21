@@ -166,7 +166,9 @@ namespace Genten {
         out << "full-gram";
       else
         out << "symmetric-gram";
-      out << " formulation):" << std::endl;
+      out << " formulation, "
+          << Genten::SpaceProperties<ExecSpace>::verbose_name()
+          << "):" << std::endl;
     }
 
     // Initialize CpAlsPerfInfo.

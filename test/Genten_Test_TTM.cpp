@@ -323,13 +323,29 @@ void test3()
   bulk_test<ExecSpace, HostSpace>( X,  mat, mode, unit_test);
 }
 
-void Genten_Test_TTM(int infolevel)
+template <typename ExecSpace>
+void Genten_Test_TTM_Space(int infolevel)
 {
-  typedef Genten::DefaultExecutionSpace ExecSpace;
-  initialize("Tests on Genten::TTM", infolevel);
+  std::string space_name = Genten::SpaceProperties<ExecSpace>::name();
+  initialize("Tests on Genten::TTM (" + space_name + ")", infolevel);
   test0<ExecSpace>();
   test1<ExecSpace>();
   test2<ExecSpace>();
   test3<ExecSpace>();
   finalize();
+}
+
+void Genten_Test_TTM(int infolevel) {
+#ifdef KOKKOS_ENABLE_CUDA
+  Genten_Test_TTM_Space<Kokkos::Cuda>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_OPENMP
+  Genten_Test_TTM_Space<Kokkos::OpenMP>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_THREADS
+  Genten_Test_TTM_Space<Kokkos::Threads>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_SERIAL
+  Genten_Test_TTM_Space<Kokkos::Serial>(infolevel);
+#endif
 }

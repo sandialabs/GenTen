@@ -99,6 +99,9 @@ void Genten::connect_vtune(const int p_rank) {
   system("sleep 10");
 }
 
+constexpr const Genten::Execution_Space::type Genten::Execution_Space::types[];
+constexpr const char*const Genten::Execution_Space::names[];
+
 constexpr const Genten::Solver_Method::type Genten::Solver_Method::types[];
 constexpr const char*const Genten::Solver_Method::names[];
 

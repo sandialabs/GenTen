@@ -112,8 +112,26 @@ namespace Genten {
 
   enum UploType { Upper, Lower };
 
+  // Execution space to run on
+  struct Execution_Space {
+    enum type {
+      Cuda,
+      OpenMP,
+      Threads,
+      Serial,
+      Default
+    };
+    static constexpr unsigned num_types = 5;
+    static constexpr type types[] = {
+      Cuda, OpenMP, Threads, Serial, Default
+    };
+    static constexpr const char* names[] = {
+      "cuda", "openmp", "threads", "serial", "default"
+    };
+    static constexpr type default_type = Default;
+  };
+
   // Solver method
-  // Sampling functions supported by GCP
   struct Solver_Method {
     enum type {
       CP_ALS,

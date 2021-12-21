@@ -48,6 +48,7 @@
 
 using namespace Genten::Test;
 
+// These tests are just on the host, so not templated on the space
 void Genten_Test_Sptensor(int infolevel)
 {
   bool tf;

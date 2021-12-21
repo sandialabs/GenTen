@@ -53,6 +53,7 @@ namespace Genten {
   struct AlgParams {
 
     // Generic options
+    Execution_Space::type exec_space; // Chosen execution space
     Solver_Method::type method; // Solver method ("cp-als", "gcp-sgd", ...)
     ttb_indx rank;       // Rank of decomposition
     unsigned long seed;  // Random number seed

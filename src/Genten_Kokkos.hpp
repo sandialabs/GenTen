@@ -134,6 +134,35 @@ namespace Genten {
     static constexpr bool is_threads = is_threads_space<exec_space>::value;
     static constexpr bool is_cuda = is_cuda_space<exec_space>::value;
 
+    static std::string name() {
+      if (is_serial)
+        return "serial";
+      else if (is_openmp)
+        return "openmp";
+      else if (is_threads)
+        return "threads";
+      else if (is_cuda)
+        return "cuda";
+      return "";
+    }
+
+    static std::string verbose_name() {
+      std::string str = name();
+#ifdef KOKKOS_ENABLE_CUDA
+      if (is_cuda) {
+        Kokkos::Cuda cuda;
+        auto prop = cuda.cuda_device_prop();
+        str += " (device " + std::to_string(cuda.cuda_device()) + ", " +
+          prop.name + ")";
+      }
+#endif
+      if (is_openmp || is_threads)
+        str += " (" + std::to_string(concurrency()) + " threads)";
+
+      // We don't add any details for serial
+      return str;
+    }
+
     // Level of concurrency (i.e., threads) supported by the architecture
     static size_type concurrency() {
       using Kokkos::Experimental::UniqueToken;
