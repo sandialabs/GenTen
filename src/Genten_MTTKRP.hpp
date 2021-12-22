@@ -736,13 +736,17 @@ void mttkrp(const SptensorT<ExecSpace>& X,
   assert( v.nRows() == X.size(n) );
   assert( v.nCols() == nc );
 
-  if (algParams.mttkrp_method == MTTKRP_Method::OrigKokkos) {
+#if defined(KOKKOS_ENABLE_HIP)
     Impl::orig_kokkos_mttkrp(X,u,n,v);
-  }
+#else
+    if (algParams.mttkrp_method == MTTKRP_Method::OrigKokkos) {
+      Impl::orig_kokkos_mttkrp(X,u,n,v);
+     }
   else {
     Impl::MTTKRP_Kernel<ExecSpace> kernel(X,u,n,v,algParams);
     Impl::run_row_simd_kernel(kernel, nc);
   }
+#endif
 }
 
 template <typename ExecSpace>

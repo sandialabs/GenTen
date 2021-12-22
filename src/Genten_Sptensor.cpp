@@ -255,8 +255,7 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
     // Kokkos::sort doesn't allow supplying a custom comparator, so we
     // have to use its implementation to get the permutation vector
     deep_copy( tmp, Kokkos::subview(subs, Kokkos::ALL(), n));
-    Kokkos::BinSort<ViewType, CompType> bin_sort(
-      tmp,CompType(sz/2,0,siz[n]),true);
+    Kokkos::BinSort<ViewType, CompType> bin_sort(tmp,CompType(sz/2,0,siz[n]),true);
     bin_sort.create_permute_vector();
     deep_copy( Kokkos::subview(perm, Kokkos::ALL(), n),
                bin_sort.get_permute_vector() );
@@ -269,6 +268,22 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
     {
       tmp(i) = i;
     }, "Genten::Sptensor::createPermutationImpl_init_kernel");
+
+#if defined(KOKKOS_ENABLE_HIP)
+    // this needs to be fixed, but just for placeholder
+    if (std::is_same<ExecSpace, Kokkos::Experimental::HIP>::value) {
+      auto tmp_h = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), tmp);
+      auto subs_h = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), subs);
+      std::stable_sort(tmp_h.data(), tmp_h.data()+sz,
+      		       [&](const ttb_indx& a, const ttb_indx& b)
+      		       {
+      			 return (subs_h(a,n) < subs_h(b,n));
+      		       });
+      Kokkos::deep_copy(tmp,  tmp_h);
+      Kokkos::deep_copy(subs, subs_h);
+    }
+    else
+#endif
 
 #if defined(KOKKOS_ENABLE_CUDA)
     if (std::is_same<ExecSpace, Kokkos::Cuda>::value) {
@@ -284,6 +299,7 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
 
 #if defined(KOKKOS_ENABLE_OPENMP)
     if (std::is_same<ExecSpace, Kokkos::OpenMP>::value) {
+      std::cout << "GIGIG\n";
       pss::parallel_stable_sort(tmp.data(), tmp.data()+sz,
                                 [&](const ttb_indx& a, const ttb_indx& b)
       {

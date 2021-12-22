@@ -68,30 +68,36 @@ template <typename ExecSpace>
 Genten::FacMatrixT<ExecSpace>::
 FacMatrixT(ttb_indx m, ttb_indx n)
 {
-  // Don't use padding if Cuda is the default execution space, so factor
+  // Don't use padding if Cuda or HIP is the default execution space, so factor
   // matrices allocated on the host have the same shape.  We really need a
   // better way to do this.
-  if (Genten::is_cuda_space<DefaultExecutionSpace>::value)
+  if (Genten::is_cuda_space<DefaultExecutionSpace>::value
+      || Genten::is_hip_space<DefaultExecutionSpace>::value){
     data = view_type("Genten::FacMatrix::data",m,n);
-  else
+  }
+  else{
     data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
                                         Kokkos::AllowPadding),m,n);
+  }
 }
 
 template <typename ExecSpace>
 Genten::FacMatrixT<ExecSpace>::
 FacMatrixT(ttb_indx m, ttb_indx n, const ttb_real * cvec)
 {
-  // Don't use padding if Cuda is the default execution space, so factor
+  // Don't use padding if Cuda or HIP is the default execution space, so factor
   // matrices allocated on the host have the same shape.  We really need a
   // better way to do this.
-  if (Genten::is_cuda_space<DefaultExecutionSpace>::value)
+  if (Genten::is_cuda_space<DefaultExecutionSpace>::value
+      || Genten::is_hip_space<DefaultExecutionSpace>::value){
     data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
                                         Kokkos::WithoutInitializing),m,n);
-  else
+  }
+  else{
     data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
                                         Kokkos::WithoutInitializing,
                                         Kokkos::AllowPadding),m,n);
+  }
   this->convertFromCol(m,n,cvec);
 }
 
@@ -424,6 +430,59 @@ void gramianImpl(const ViewC& C, const ViewA& A,
 }
 
 #endif
+  
+  // FRizzi: This code is just a placeholder to make things work, 
+  // but will need to be replaced  by approriate 
+  // calls to RocBLAS and RocSOLVER. 
+  // We need to do something similar to the cuda specialization.
+#if defined(KOKKOS_ENABLE_HIP) && defined(LAPACK_FOUND)
+  template <typename ExecSpace,
+            typename CT, typename ... CP,
+            typename AT, typename ... AP>
+  typename std::enable_if<
+    ( std::is_same<ExecSpace,Kokkos::Experimental::HIP>::value &&
+      std::is_same<typename Kokkos::View<AT,AP...>::non_const_value_type, double>::value )
+    >::type
+  gramianImpl(const Kokkos::View<CT,CP...>& C, 
+	      const Kokkos::View<AT,AP...>& A,
+              const bool full, 
+	      const UploType uplo)
+  {
+    // for now we can just use the host blas/lapack
+
+    auto C_h = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), C);
+    auto A_h = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), A);
+
+    const ttb_indx m = A_h.extent(0);
+    const ttb_indx n = A_h.extent(1);
+    const ttb_indx lda = A_h.stride_0();
+    const ttb_indx ldc = C_h.stride_0();
+
+    // We compute C = A'*A.  But since A is LayoutRight, and GEMM/SYRK
+    // assumes layout left we compute this as C' = A*A'.  Since SYRK writes
+    // C', uplo == Upper means we call SYRK with 'L', and vice versa.
+
+    if (uplo == Upper) {
+      Genten::syrk('L','N',n,m,1.0,A_h.data(),lda,0.0,C_h.data(),ldc);
+      if (full) {
+	for (ttb_indx i=0; i<n; ++i)
+	  for (ttb_indx j=i+1; j<n; j++)
+	    C_h(j,i) = C_h(i,j);
+      }
+    }
+    else {
+      Genten::syrk('U','N',n,m,1.0,A_h.data(),lda,0.0,C_h.data(),ldc);
+      if (full) {
+	for (ttb_indx i=0; i<n; ++i)
+	  for (ttb_indx j=0; j<i; j++)
+	    C_h(j,i) = C_h(i,j);
+      }
+    }
+
+    Kokkos::deep_copy(C, C_h);
+  }
+#endif
+
 
 #if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
   // Gramian implementation for CUDA and double precision using cuBLAS
