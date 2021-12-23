@@ -63,6 +63,12 @@ namespace Genten {
 #else
 #define GENTEN_INST_CUDA(INSTMACRO) /* */
 #endif
+#ifdef KOKKOS_ENABLE_HIP
+#define GENTEN_INST_HIP(INSTMACRO) \
+  INSTMACRO(Kokkos::Experimental::HIP)
+#else
+#define GENTEN_INST_HIP(INSTMACRO) /* */
+#endif
 #ifdef KOKKOS_ENABLE_OPENMP
 #define GENTEN_INST_OPENMP(INSTMACRO) \
   INSTMACRO(Kokkos::OpenMP)
@@ -85,6 +91,7 @@ namespace Genten {
 #define GENTEN_INST(INSTMACRO)                  \
 namespace Genten {                              \
   GENTEN_INST_CUDA(INSTMACRO)                   \
+  GENTEN_INST_HIP(INSTMACRO)                    \
   GENTEN_INST_OPENMP(INSTMACRO)                 \
   GENTEN_INST_THREADS(INSTMACRO)                \
   GENTEN_INST_SERIAL(INSTMACRO)                 \
@@ -205,7 +212,7 @@ namespace Genten {
     static constexpr unsigned num_types = 2;
     static constexpr type types[] = {
       DGEMM,
-      Parfor_DGEMM 
+      Parfor_DGEMM
     };
     static constexpr const char* names[] = {
       "dgemm", "parfor-dgemm"

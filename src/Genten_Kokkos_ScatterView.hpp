@@ -146,6 +146,21 @@ struct DefaultContribution<Kokkos::Cuda, Kokkos::Experimental::ScatterDuplicated
 };
 #endif
 
+#ifdef KOKKOS_ENABLE_HIP
+template <>
+struct DefaultDuplication<Kokkos::Experimental::HIP> {
+  enum : int { value = Kokkos::Experimental::ScatterNonDuplicated };
+};
+template <>
+struct DefaultContribution<Kokkos::Experimental::HIP, Kokkos::Experimental::ScatterNonDuplicated> {
+  enum : int { value = Kokkos::Experimental::ScatterAtomic };
+};
+template <>
+struct DefaultContribution<Kokkos::Experimental::HIP, Kokkos::Experimental::ScatterDuplicated> {
+  enum : int { value = Kokkos::Experimental::ScatterAtomic };
+};
+#endif
+
 /* ScatterValue is the object returned by the access operator() of ScatterAccess,
    similar to that returned by an Atomic View, it wraps Kokkos::atomic_add with convenient
    operator+=, etc. */
@@ -941,7 +956,7 @@ private:
 public:
   // do need to allow moves though, for the common
   // auto b = a.access();
-  // that assignments turns into a move constructor call 
+  // that assignments turns into a move constructor call
   KOKKOS_INLINE_FUNCTION
   ScatterAccess(ScatterAccess&& other)
     : view(other.view)
