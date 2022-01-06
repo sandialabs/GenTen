@@ -49,6 +49,7 @@ using namespace std;
 void Genten_Test_TTM(int infolevel);
 void Genten_Test_Array(int infolevel);
 void Genten_Test_CpAls(int infolevel);
+void Genten_Test_CpOpt(int infolevel);
 void Genten_Test_FacMatrix(int infolevel, const string & dirname);
 void Genten_Test_IndxArray(int infolevel);
 void Genten_Test_IO(int infolevel, const string & dirname);
@@ -89,7 +90,11 @@ int main(int argc, char * argv[])
   Genten_Test_MixedFormats(infolevel);
   Genten_Test_IO(infolevel, "./data/");
   Genten_Test_CpAls(infolevel);
+#ifdef HAVE_ROL
+  Genten_Test_CpOpt(infolevel);
+#endif
 #ifdef HAVE_GCP
+// Don't test this because it doesn't work
 // #ifdef HAVE_ROL
 //   Genten_Test_GCP_Opt(infolevel);
 // #endif

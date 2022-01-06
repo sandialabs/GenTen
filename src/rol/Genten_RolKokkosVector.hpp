@@ -76,7 +76,7 @@ namespace Genten {
     }
 
     RolKokkosVector(const unsigned nc_, const unsigned nd_,
-                     const IndxArrayT<ExecSpace> & sz_) :
+                     const IndxArray& sz_) :
       nc(nc_), nd(nd_), sz(sz_)
     {
       initialize();
@@ -342,7 +342,7 @@ namespace Genten {
 
     unsigned nc;
     unsigned nd;
-    IndxArrayT<exec_space> sz;
+    IndxArray sz; // this is on the host
     view_type v;
 
   };

@@ -63,10 +63,12 @@ Genten::AlgParams::AlgParams() :
   mttkrp_duplicated_factor_matrix_tile_size(0),
   mttkrp_duplicated_threshold(-1.0),
   ttm_method(TTM_Method::default_type),
+  lower(-DOUBLE_MAX),
+  upper(DOUBLE_MAX),
+  rolfilename(""),
   loss_function_type(Genten::GCP_LossFunction::default_type),
   loss_eps(1.0e-10),
   gcp_tol(-DOUBLE_MAX),
-  rolfilename(""),
   sampling_type(Genten::GCP_Sampling::default_type),
   rate(1.0e-3),
   decay(0.1),
@@ -150,6 +152,11 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                                  Genten::TTM_Method::types,
                                  Genten::TTM_Method::names);
 
+  // CP-Opt options
+  lower = parse_ttb_real(args, "--lower", lower, -DOUBLE_MAX, DOUBLE_MAX);
+  upper = parse_ttb_real(args, "--upper", upper, -DOUBLE_MAX, DOUBLE_MAX);
+  rolfilename = parse_string(args, "--rol", rolfilename.c_str());
+
   // GCP options
   loss_function_type = parse_ttb_enum(args, "--type", loss_function_type,
                                       Genten::GCP_LossFunction::num_types,
@@ -157,9 +164,6 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                                       Genten::GCP_LossFunction::names);
   loss_eps = parse_ttb_real(args, "--eps", loss_eps, 0.0, 1.0);
   gcp_tol = parse_ttb_real(args, "--gcp-tol", gcp_tol, -DOUBLE_MAX, DOUBLE_MAX);
-
-  // GCP-Opt options
-  rolfilename = parse_string(args, "--rol", rolfilename.c_str());
 
   // GCP-SGD options
   sampling_type = parse_ttb_enum(args, "--sampling",
@@ -267,7 +271,11 @@ void Genten::AlgParams::print_help(std::ostream& out)
     if (i != Genten::TTM_Method::num_types-1)
       out << ", ";
   } out << std::endl;
-
+  out << std::endl;
+  out << "CP-Opt options:" << std::endl;
+  out << "  --lower <float>    lower bound of factorization" << std::endl;
+  out << "  --upper <float>    upper bound of factorization" << std::endl;
+  out << "  --rol <string>     path to ROL optimization settings file for CP-Opt method" << std::endl;
   out << std::endl;
   out << "GCP options:" << std::endl;
   out << "  --type <type>      loss function type for GCP: ";
@@ -279,10 +287,6 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << std::endl;
   out << "  --eps <float>      perturbation of loss functions for entries near 0" << std::endl;
   out << "  --gcp-tol <float> GCP solver tolerance" << std::endl;
-
-  out << std::endl;
-  out << "GCP-Opt options:" << std::endl;
-  out << "  --rol <string>     path to ROL optimization settings file for GCP method" << std::endl;
 
   out << std::endl;
   out << "GCP-SGD options:" << std::endl;
@@ -360,7 +364,14 @@ void Genten::AlgParams::print(std::ostream& out)
   out << std::endl;
   out << "TTM options:" << std::endl;
   out << "  ttm-method = " << Genten::TTM_Method::names[ttm_method]
-       << std::endl;
+      << std::endl;
+
+  out << std::endl;
+  out << "CP-Opt options:" << std::endl;
+  out << "  lower = " << lower << std::endl;
+  out << "  upper = " << upper << std::endl;
+  out << "  rol = " << rolfilename << std::endl;
+
 
   out << std::endl;
   out << "GCP options:" << std::endl;
@@ -370,10 +381,6 @@ void Genten::AlgParams::print(std::ostream& out)
   out <<   "gcp-tol = " << gcp_tol << std::endl;
 
   out << std::endl;
-  out << "GCP-Opt options:" << std::endl;
-  out << "  rol = " << rolfilename << std::endl;
-
-   out << std::endl;
   out << "GCP-SGD options:" << std::endl;
   out << "  sampling = " << Genten::GCP_Sampling::names[sampling_type]
       << std::endl;

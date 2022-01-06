@@ -80,13 +80,15 @@ namespace Genten {
     // TTM options
     TTM_Method::type ttm_method; // TTM algorithm
 
+    // CP-Opt options
+    ttb_real lower;     // Lower bound of factorization
+    ttb_real upper;     // Upper bound of factorization
+    std::string rolfilename; // Filename for ROL solver options
+
     // GCP options
     GCP_LossFunction::type loss_function_type; // Loss function for GCP
     ttb_real loss_eps;                         // Perturbation for GCP
     ttb_real gcp_tol;                          // Tolerance for GCP algorithm
-
-    // GCP-Opt options
-    std::string rolfilename; // Filename for ROL solver options
 
     // GCP-SGD options
     GCP_Sampling::type sampling_type;    // Sampling type

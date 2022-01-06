@@ -341,6 +341,12 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
   )
 
+IF (ENABLE_ROL)
+  SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+    ${Genten_SOURCE_DIR}/src/rol/Genten_CP_Opt.cpp
+    )
+ENDIF()
+
 IF (ENABLE_GCP)
   SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
     ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels.cpp
@@ -359,11 +365,12 @@ IF (ENABLE_GCP)
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Bernoulli.cpp
     )
 
-  IF (ENABLE_ROL)
-    SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
-      ${Genten_SOURCE_DIR}/src/rol/Genten_GCP_Opt.cpp
-      )
-  ENDIF()
+  # Disable gcp_opt because it doesn't work
+  # IF (ENABLE_ROL)
+  #   SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+  #     ${Genten_SOURCE_DIR}/src/rol/Genten_GCP_Opt.cpp
+  #     )
+  # ENDIF()
 ENDIF()
 
 
@@ -411,15 +418,20 @@ SET(UNIT_TEST_SRCS
   ${Genten_SOURCE_DIR}/test/Genten_Test_UnitTests.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_Utils.cpp
   )
+IF(ENABLE_ROL)
+  SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
+    ${Genten_SOURCE_DIR}/test/Genten_Test_CpOpt.cpp
+    )
+ENDIF()
 IF (ENABLE_GCP)
    SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
      ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_SGD.cpp
      )
-  IF(ENABLE_ROL)
-    SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
-      ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_Opt.cpp
-      )
-  ENDIF()
+  # IF(ENABLE_ROL)
+  #   SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
+  #     ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_Opt.cpp
+  #     )
+  # ENDIF()
 ENDIF()
 
 ADD_EXECUTABLE (

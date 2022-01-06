@@ -38,16 +38,13 @@
 // ************************************************************************
 //@HEADER
 
-
-/*!
-  @file Genten_CpAls.cpp
-  @brief CP-ALS algorithm, in template form to allow different data tensor types.
-*/
-
 #include "Genten_CpAls.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_IOtext.hpp"
+#ifdef HAVE_ROL
+#include "Genten_CP_Opt.hpp"
+#endif
 
 #ifdef HAVE_GCP
 #include "Genten_GCP_LossFunctions.hpp"
@@ -150,6 +147,21 @@ driver(SptensorT<ExecSpace>& x,
     ttb_real resNorm;
     cpals_core(x, u, algParams, iter, resNorm, 0, NULL, out);
   }
+#ifdef HAVE_ROL
+  else if (algParams.method == Genten::Solver_Method::CP_OPT) {
+    // Run CP-Opt
+    Teuchos::RCP<Teuchos::ParameterList> rol_params;
+    if (algParams.rolfilename != "")
+      rol_params = Teuchos::getParametersFromXmlFile(algParams.rolfilename);
+    timer.start(2);
+    if (rol_params != Teuchos::null)
+      cp_opt(x, u, algParams, *rol_params, &out);
+    else
+      cp_opt(x, u, algParams, &out);
+    timer.stop(2);
+    out << "CP-Opt took " << timer.getTotalTime(2) << " seconds\n";
+  }
+#endif
 #ifdef HAVE_GCP
   else if (algParams.method == Genten::Solver_Method::GCP_SGD &&
            !algParams.fuse_sa) {
@@ -167,17 +179,18 @@ driver(SptensorT<ExecSpace>& x,
   }
 #ifdef HAVE_ROL
   else if (algParams.method == Genten::Solver_Method::GCP_OPT) {
-    // Run GCP
-    Teuchos::RCP<Teuchos::ParameterList> rol_params;
-    if (algParams.rolfilename != "")
-      rol_params = Teuchos::getParametersFromXmlFile(algParams.rolfilename);
-    timer.start(2);
-    if (rol_params != Teuchos::null)
-      gcp_opt(x, u, algParams, *rol_params, &out);
-    else
-      gcp_opt(x, u, algParams, &out);
-    timer.stop(2);
-    out << "GCP took " << timer.getTotalTime(2) << " seconds\n";
+    Genten::error("gcp-opt is disabled because it doesn't work!");
+    // // Run GCP
+    // Teuchos::RCP<Teuchos::ParameterList> rol_params;
+    // if (algParams.rolfilename != "")
+    //   rol_params = Teuchos::getParametersFromXmlFile(algParams.rolfilename);
+    // timer.start(2);
+    // if (rol_params != Teuchos::null)
+    //   gcp_opt(x, u, algParams, *rol_params, &out);
+    // else
+    //   gcp_opt(x, u, algParams, &out);
+    // timer.stop(2);
+    // out << "GCP took " << timer.getTotalTime(2) << " seconds\n";
   }
 #endif
 #endif
