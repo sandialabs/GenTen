@@ -132,7 +132,7 @@ namespace Genten {
     const ttb_real nrm_M_sq = M.normFsq();
     const ttb_real ip       = innerprod(X,M);
 
-    return nrm_X_sq + nrm_M_sq - ttb_real(2.0)*ip;
+    return ttb_real(0.5)*(nrm_X_sq + nrm_M_sq) - ip;
   }
 
   template <typename Tensor>
@@ -165,7 +165,7 @@ namespace Genten {
           A.times(tmp);
         }
       }
-      G[m].gemm(false, false, ttb_real(2.0), M[m], A, ttb_real(-2.0));
+      G[m].gemm(false, false, ttb_real(1.0), M[m], A, ttb_real(-1.0));
     }
 
     // Convert Ktensor to vector

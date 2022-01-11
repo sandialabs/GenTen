@@ -62,6 +62,7 @@ Genten::AlgParams::AlgParams() :
   mttkrp_nnz_tile_size(128),
   mttkrp_duplicated_factor_matrix_tile_size(0),
   mttkrp_duplicated_threshold(-1.0),
+  warmup(false),
   ttm_method(TTM_Method::default_type),
   lower(-DOUBLE_MAX),
   upper(DOUBLE_MAX),

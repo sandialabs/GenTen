@@ -135,16 +135,17 @@ namespace Genten {
   struct Solver_Method {
     enum type {
       CP_ALS,
-      CP_OPT,
+      CP_OPT_ROL,
+      CP_OPT_LBFGSB,
       GCP_SGD,
       GCP_OPT
     };
-    static constexpr unsigned num_types = 3;
+    static constexpr unsigned num_types = 5;
     static constexpr type types[] = {
-      CP_ALS, CP_OPT, GCP_SGD, GCP_OPT
+      CP_ALS, CP_OPT_ROL, CP_OPT_LBFGSB, GCP_SGD, GCP_OPT
     };
     static constexpr const char* names[] = {
-      "cp-als", "cp-opt", "gcp-sgd", "gcp-opt"
+      "cp-als", "cp-opt-rol", "cp-opt-lbfgsb", "gcp-sgd", "gcp-opt"
     };
     static constexpr type default_type = CP_ALS;
   };

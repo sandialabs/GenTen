@@ -38,57 +38,35 @@
 // ************************************************************************
 //@HEADER
 
+#pragma once
 
-//----------------------------------------------------------------------
-//  Platform/build specific symbols
-//
-//  Lines with a cmakedefine directive are replaced at build time with
-//  either "#define symbol" or "#undef symbol".
-//
-//  Include this in source files where a symbol of interest is present.
-//----------------------------------------------------------------------
+#include <ostream>
 
-//---- DEFINED IF REAL TIME SYSTEM UTILITIES ARE FOUND.
-#cmakedefine HAVE_REALTIME_CLOCK
+#include "Genten_Ktensor.hpp"
+#include "Genten_AlgParams.hpp"
 
-//---- DEFINED IF LINKING WITH A BLAS LIBRARY THAT USES F2C WRAPPERS.
-#cmakedefine HAVE_BLAS_F2C
+#include "Teuchos_ParameterList.hpp"
 
-#if defined(_WIN32)
-  #if (_MSC_VER >= 1400)
-    //---- WINDOWS MSVC COMPILER INSISTS THAT SECURE STRING FNS BE USED.
-    #define HAVE_MSVC_SECURE_STRING_FNS
-  #endif
-#endif
+namespace Genten {
 
-//---- DEFINED IF KOKKOS IS ENABLED.
-#cmakedefine HAVE_KOKKOS
+  //! Compute the CP decomposition of a tensor using L-BFSG-B.
+  /*!
+   *  Compute an estimate of the best rank-R CP model of a tensor X
+   *  for Gaussian loss.  The input X currently must be a (sparse)
+   *  Sptensor.  The result is a Ktensor.
+   *
+   *  An initial guess of factor matrices must be provided, which must be
+   *  nonzero.
+   *
+   *  @param[in] x          Data tensor to be fit by the model.
+   *  @param[in,out] u      Input contains an initial guess for the factors.
+   *                        The size of each mode must match the corresponding
+   *                        mode of x, and the number of components determines
+   *                        how many will be in the result.
+   *                        Output contains resulting factorization Ktensor.
+   */
+  template<typename TensorT, typename ExecSpace>
+  void cp_opt_lbfgsb(const TensorT& x, KtensorT<ExecSpace>& u,
+                     const AlgParams& algParams);
 
-//---- DEFINED IF cuBLAS IS ENABLED.
-#cmakedefine HAVE_CUBLAS
-
-//---- DEFINED IF cuSOLVER IS ENABLED.
-#cmakedefine HAVE_CUSOLVER
-
-//---- DEFINED IF BOOST IS ENABLED.
-#cmakedefine HAVE_BOOST
-
-//---- DEFINED IF Caliper IS ENABLED.
-#cmakedefine HAVE_CALIPER
-
-//---- DEFINED IF ROL IS ENABLED.
-#cmakedefine HAVE_ROL
-
-//---- DEFINED IF GCP IS ENABLED.
-#cmakedefine HAVE_GCP
-
-//---- DEFINED IF LBFGSB IS ENABLED.
-#cmakedefine HAVE_LBFGSB
-
-#include <cstddef>
-
-// Floating-point type
-typedef @GENTEN_FLOAT_TYPE@ ttb_real;
-
-// Tensor index type
-typedef @GENTEN_INDEX_TYPE@ ttb_indx;
+}

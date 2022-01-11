@@ -41,7 +41,7 @@
 
 #include <sstream>
 
-#include "Genten_CP_Opt.hpp"
+#include "Genten_CP_Opt_Rol.hpp"
 #include "Genten_IndxArray.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_Ktensor.hpp"
@@ -193,8 +193,8 @@ static void  evaluateResult (const int             infolevel,
  * produces.
  */
 template <typename ExecSpace>
-void Genten_Test_CpOpt_Type (Genten::MTTKRP_All_Method::type mttkrp_method,
-                             int infolevel, const std::string& label)
+void Genten_Test_CpOptRol_Type (Genten::MTTKRP_All_Method::type mttkrp_method,
+                                int infolevel, const std::string& label)
 {
   typedef ExecSpace exec_space;
   typedef Genten::DefaultHostExecutionSpace host_exec_space;
@@ -293,7 +293,7 @@ void Genten_Test_CpOpt_Type (Genten::MTTKRP_All_Method::type mttkrp_method,
   try
   {
     deep_copy(result_dev, initialBasis_dev);
-    Genten::cp_opt(X_dev, result_dev, algParams);
+    Genten::cp_opt_rol(X_dev, result_dev, algParams);
   }
   catch(std::string sExc)
   {
@@ -317,7 +317,7 @@ void Genten_Test_CpOpt_Type (Genten::MTTKRP_All_Method::type mttkrp_method,
   try
   {
     deep_copy(result_dev, initialBasis_dev);
-    Genten::cp_opt(Xd_dev, result_dev, algParams);
+    Genten::cp_opt_rol(Xd_dev, result_dev, algParams);
   }
   catch(std::string sExc)
   {
@@ -335,26 +335,27 @@ void Genten_Test_CpOpt_Type (Genten::MTTKRP_All_Method::type mttkrp_method,
 }
 
 template <typename ExecSpace>
-void Genten_Test_CpOpt_Space (int infolevel)
+void Genten_Test_CpOptRol_Space (int infolevel)
 {
   typedef Genten::SpaceProperties<ExecSpace> space_prop;
 
   // Just choose one mttkrp method for simplicity
-  Genten_Test_CpOpt_Type<ExecSpace>(Genten::MTTKRP_All_Method::Atomic,infolevel,
-                                    "Atomic");
+  Genten_Test_CpOptRol_Type<ExecSpace>(Genten::MTTKRP_All_Method::Atomic,
+                                       infolevel,
+                                       "Atomic");
 }
 
-void Genten_Test_CpOpt(int infolevel) {
+void Genten_Test_CpOptRol(int infolevel) {
 #ifdef KOKKOS_ENABLE_CUDA
-  Genten_Test_CpOpt_Space<Kokkos::Cuda>(infolevel);
+  Genten_Test_CpOptRol_Space<Kokkos::Cuda>(infolevel);
 #endif
 #ifdef KOKKOS_ENABLE_OPENMP
-  Genten_Test_CpOpt_Space<Kokkos::OpenMP>(infolevel);
+  Genten_Test_CpOptRol_Space<Kokkos::OpenMP>(infolevel);
 #endif
 #ifdef KOKKOS_ENABLE_THREADS
-  Genten_Test_CpOpt_Space<Kokkos::Threads>(infolevel);
+  Genten_Test_CpOptRol_Space<Kokkos::Threads>(infolevel);
 #endif
 #ifdef KOKKOS_ENABLE_SERIAL
-  Genten_Test_CpOpt_Space<Kokkos::Serial>(infolevel);
+  Genten_Test_CpOptRol_Space<Kokkos::Serial>(infolevel);
 #endif
 }

@@ -248,7 +248,7 @@ namespace GCP {
 
     unsigned nc;
     unsigned nd;
-    IndxArray sz;
+    IndxArray sz;  // this is on the host
     view_type v;
 
   };

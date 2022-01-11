@@ -47,7 +47,7 @@
 #include <assert.h>
 #include <cstdio>
 
-#include "Genten_CP_Opt.hpp"
+#include "Genten_CP_Opt_Rol.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_Tensor.hpp"
 #include "Genten_RolBoundConstraint.hpp"
@@ -65,13 +65,13 @@
 namespace Genten {
 
   template<typename TensorT, typename ExecSpace>
-  void cp_opt(const TensorT& x, KtensorT<ExecSpace>& u,
-              const AlgParams& algParams,
-              Teuchos::ParameterList& params,
-              std::ostream* stream)
+  void cp_opt_rol(const TensorT& x, KtensorT<ExecSpace>& u,
+                  const AlgParams& algParams,
+                  Teuchos::ParameterList& params,
+                  std::ostream* stream)
   {
 #ifdef HAVE_CALIPER
-    cali::Function cali_func("Genten::cp_opt");
+    cali::Function cali_func("Genten::cp_opt_rol");
 #endif
 
     // Check size compatibility of the arguments.
@@ -157,9 +157,9 @@ namespace Genten {
 
     // Compute final fit
     ttb_real tol;
-    const ttb_real res = std::sqrt(objective->value(*z, tol));
+    const ttb_real res = objective->value(*z, tol);
     const ttb_real nrm = x.norm();
-    const ttb_real fit = ttb_real(1.0) - res / nrm ;
+    const ttb_real fit = ttb_real(1.0) - res / (ttb_real(0.5)*nrm*nrm) ;
     if (stream != nullptr)
       *stream << "Final fit = " << fit << std::endl;
   }
@@ -167,14 +167,14 @@ namespace Genten {
 }
 
 #define INST_MACRO(SPACE)                                               \
-  template void cp_opt<SptensorT<SPACE>,SPACE>(                         \
+  template void cp_opt_rol<SptensorT<SPACE>,SPACE>(                     \
     const SptensorT<SPACE>& x,                                          \
     KtensorT<SPACE>& u,                                                 \
     const AlgParams& algParms,                                          \
     Teuchos::ParameterList& params,                                     \
     std::ostream* stream);                                              \
                                                                         \
-  template void cp_opt<TensorT<SPACE>,SPACE>(                           \
+  template void cp_opt_rol<TensorT<SPACE>,SPACE>(                       \
     const TensorT<SPACE>& x,                                            \
     KtensorT<SPACE>& u,                                                 \
     const AlgParams& algParms,                                          \
