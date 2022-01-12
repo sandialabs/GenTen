@@ -51,7 +51,7 @@
 #include "Genten_CP_Opt_Lbfgsb.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_Tensor.hpp"
-#include "Genten_GCP_KokkosVector.hpp"
+#include "Genten_KokkosVector.hpp"
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_IOtext.hpp"
 
@@ -194,7 +194,7 @@ namespace Genten {
   void cp_opt_lbfgsb(const TensorT& X, KtensorT<ExecSpace>& u,
                      const AlgParams& algParams)
   {
-    typedef GCP::KokkosVector<ExecSpace> kokkos_vector;
+    typedef KokkosVector<ExecSpace> kokkos_vector;
 #ifdef HAVE_CALIPER
     cali::Function cali_func("Genten::cp_opt_lbfgsb");
 #endif

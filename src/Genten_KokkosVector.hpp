@@ -48,7 +48,6 @@
 #include "Kokkos_Random.hpp"
 
 namespace Genten {
-namespace GCP {
 
   // Treats a Ktensor as a vector
   template <typename ExecSpace>
@@ -268,5 +267,4 @@ namespace GCP {
 
   };
 
-}
 }

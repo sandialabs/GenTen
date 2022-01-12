@@ -287,18 +287,18 @@ namespace Genten {
     template <typename ExecSpace, typename loss_type>
     void gcp_sgd_ss_grad_sa(
       const SptensorT<ExecSpace>& X,
-      const GCP::KokkosVector<ExecSpace>& M,
+      const KokkosVector<ExecSpace>& M,
       const loss_type& f,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
-      const GCP::KokkosVector<ExecSpace>& G,
+      const KokkosVector<ExecSpace>& G,
       const Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,ExecSpace>& Gind,
       const Kokkos::View<ttb_indx*,ExecSpace>& perm,
       const bool use_adam,
-      const GCP::KokkosVector<ExecSpace>& adam_m,
-      const GCP::KokkosVector<ExecSpace>& adam_v,
+      const KokkosVector<ExecSpace>& adam_m,
+      const KokkosVector<ExecSpace>& adam_v,
       const ttb_real beta1,
       const ttb_real beta2,
       const ttb_real eps,
@@ -401,18 +401,18 @@ namespace Genten {
 #define LOSS_INST_MACRO(SPACE,LOSS)                                     \
   template void Impl::gcp_sgd_ss_grad_sa(                               \
     const SptensorT<SPACE>& X,                                          \
-    const GCP::KokkosVector<SPACE>& M,                                  \
+    const KokkosVector<SPACE>& M,                                       \
     const LOSS& f,                                                      \
     const ttb_indx num_samples_nonzeros,                                \
     const ttb_indx num_samples_zeros,                                   \
     const ttb_real weight_nonzeros,                                     \
     const ttb_real weight_zeros,                                        \
-    const GCP::KokkosVector<SPACE>& G,                                  \
+    const KokkosVector<SPACE>& G,                                       \
     const Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,SPACE>& Gind,      \
     const Kokkos::View<ttb_indx*,SPACE>& perm,                          \
     const bool use_adam,                                                \
-    const GCP::KokkosVector<SPACE>& adam_m,                             \
-    const GCP::KokkosVector<SPACE>& adam_v,                             \
+    const KokkosVector<SPACE>& adam_m,                                  \
+    const KokkosVector<SPACE>& adam_v,                                  \
     const ttb_real beta1,                                               \
     const ttb_real beta2,                                               \
     const ttb_real eps,                                                 \
