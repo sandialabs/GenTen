@@ -295,11 +295,7 @@ namespace Genten {
             iters > print_iter) {
           print_iter = iters;
 
-          // fixme
-          ttb_real nrmg = 0.0;
-          for (integer i=0; i<n; ++i)
-            if (std::abs(g_host(i)) > nrmg)
-              nrmg = std::abs(g_host(i));
+          const ttb_real nrmg = g.normInf();
           std::cout << "Iter " << std::setw(5) << iters
                     << ", f(x) = "
                     << std::setprecision(6) << std::scientific << f
