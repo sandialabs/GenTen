@@ -41,7 +41,7 @@
 
 #include <sstream>
 
-#include "Genten_CP_Opt_Rol.hpp"
+#include "Genten_CP_Opt_Lbfgsb.hpp"
 #include "Genten_IndxArray.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_Ktensor.hpp"
@@ -170,7 +170,7 @@ static void  evaluateResult (const int             infolevel,
  *    vals = [2 1 1 1 1 1 1 1 1 1 1]
  *    X = sptensor (subs, vals', [2 3 4])
  *    X0 = { rand(2,2), rand(3,2), rand(4,2) }, or values below (it matters!)
- *    F = cp_als (X,2, 'init',X0)
+ *    F = cp_opt (X,2, 'init',X0)
  *  Exact solution (because this is how X was constructed):
  *    lambda = [1 1]
  *    A = [1 1 ; 0 1]
@@ -182,14 +182,12 @@ static void  evaluateResult (const int             infolevel,
  *    B = [0.7071 0.7071 ; 0.0    0.7071 ; 0.7071 0.0   ]
  *    C = [0.7071 0.7071 ; 0.7071 0.0    ; 0.0    0.0    ; 0.0    0.7071]
  *  Random start point can converge to a different (worse) solution, so the
- *  test uses a particular start point:
- *    A0 = [0.8 0.5 ; 0.2 0.5]
- *    B0 = [0.5 0.5 ; 0.1 0.5 ; 0.5 0.1]
- *    C0 = [0.7 0.7 ; 0.7 0.1 ; 0.1 0.1 ; 0.1 0.7]
+ *  test uses a particular start point very near to the correct solution.
  */
 template <typename ExecSpace>
-void Genten_Test_CpOptRol_Type (Genten::MTTKRP_All_Method::type mttkrp_method,
-                                int infolevel, const std::string& label)
+void Genten_Test_CpOptLbfgsb_Type (
+  Genten::MTTKRP_All_Method::type mttkrp_method,
+  int infolevel, const std::string& label)
 {
   typedef ExecSpace exec_space;
   typedef Genten::DefaultHostExecutionSpace host_exec_space;
@@ -201,7 +199,7 @@ void Genten_Test_CpOptRol_Type (Genten::MTTKRP_All_Method::type mttkrp_method,
   //SETUP_DISABLE_CERR;
 
   std::string space_name = Genten::SpaceProperties<exec_space>::name();
-  initialize("Test of Genten::CpOptRol ("+label+", "+space_name+")", infolevel);
+  initialize("Test of Genten::CpOptLbfgsb ("+label+", "+space_name+")", infolevel);
 
   MESSAGE("Creating a sparse tensor with data to model");
   Genten::IndxArray  dims(3);
@@ -241,31 +239,31 @@ void Genten_Test_CpOptRol_Type (Genten::MTTKRP_All_Method::type mttkrp_method,
   MESSAGE("Creating a ktensor with initial guess of lin indep basis vectors");
   ttb_indx  nNumComponents = 2;
   Genten::Ktensor  initialBasis (nNumComponents, dims.size(), dims);
-  initialBasis.setWeights(1.0);
 
-  // Genten::RandomMT cRMT(12345);
-  // initialBasis.setMatricesScatter(false, false, cRMT);
-
+  const ttb_real val = 0.707;
   initialBasis.setMatrices(0.0);
-  initialBasis[0].entry(0,0) = 0.8;
-  initialBasis[0].entry(1,0) = 0.2;
-  initialBasis[0].entry(0,1) = 0.5;
-  initialBasis[0].entry(1,1) = 0.5;
-  initialBasis[1].entry(0,0) = 0.5;
-  initialBasis[1].entry(1,0) = 0.1;
-  initialBasis[1].entry(2,0) = 0.5;
-  initialBasis[1].entry(0,1) = 0.5;
-  initialBasis[1].entry(1,1) = 0.5;
-  initialBasis[1].entry(2,1) = 0.1;
-  initialBasis[2].entry(0,0) = 0.7;
-  initialBasis[2].entry(1,0) = 0.7;
-  initialBasis[2].entry(2,0) = 0.1;
-  initialBasis[2].entry(3,0) = 0.1;
-  initialBasis[2].entry(0,1) = 0.7;
-  initialBasis[2].entry(1,1) = 0.1;
-  initialBasis[2].entry(2,1) = 0.1;
-  initialBasis[2].entry(3,1) = 0.7;
+  initialBasis[0].entry(0,0) = 1.0;
+  initialBasis[0].entry(1,0) = 0.0;
+  initialBasis[0].entry(0,1) = val;
+  initialBasis[0].entry(1,1) = val;
+
+  initialBasis[1].entry(0,0) = val;
+  initialBasis[1].entry(1,0) = 0.0;
+  initialBasis[1].entry(2,0) = val;
+  initialBasis[1].entry(0,1) = val;
+  initialBasis[1].entry(1,1) = val;
+  initialBasis[1].entry(2,1) = 0.0;
+
+  initialBasis[2].entry(0,0) = val;
+  initialBasis[2].entry(1,0) = val;
+  initialBasis[2].entry(2,0) = 0.0;
+  initialBasis[2].entry(3,0) = 0.0;
+  initialBasis[2].entry(0,1) = val;
+  initialBasis[2].entry(1,1) = 0.0;
+  initialBasis[2].entry(2,1) = 0.0;
+  initialBasis[2].entry(3,1) = val;
   initialBasis.weights(0) = 2.0; // Test with weights different from one.
+  initialBasis.weights(1) = 2.828;
   if (infolevel == 1)
     print_ktensor(initialBasis,std::cout,"Initial guess for CpOpt");
 
@@ -287,7 +285,7 @@ void Genten_Test_CpOptRol_Type (Genten::MTTKRP_All_Method::type mttkrp_method,
   try
   {
     deep_copy(result_dev, initialBasis_dev);
-    Genten::cp_opt_rol(X_dev, result_dev, algParams);
+    Genten::cp_opt_lbfgsb(X_dev, result_dev, algParams);
   }
   catch(std::string sExc)
   {
@@ -311,7 +309,7 @@ void Genten_Test_CpOptRol_Type (Genten::MTTKRP_All_Method::type mttkrp_method,
   try
   {
     deep_copy(result_dev, initialBasis_dev);
-    Genten::cp_opt_rol(Xd_dev, result_dev, algParams);
+    Genten::cp_opt_lbfgsb(Xd_dev, result_dev, algParams);
   }
   catch(std::string sExc)
   {
@@ -329,27 +327,27 @@ void Genten_Test_CpOptRol_Type (Genten::MTTKRP_All_Method::type mttkrp_method,
 }
 
 template <typename ExecSpace>
-void Genten_Test_CpOptRol_Space (int infolevel)
+void Genten_Test_CpOptLbfgsb_Space (int infolevel)
 {
   typedef Genten::SpaceProperties<ExecSpace> space_prop;
 
   // Just choose one mttkrp method for simplicity
-  Genten_Test_CpOptRol_Type<ExecSpace>(Genten::MTTKRP_All_Method::Atomic,
-                                       infolevel,
-                                       "Atomic");
+  Genten_Test_CpOptLbfgsb_Type<ExecSpace>(Genten::MTTKRP_All_Method::Atomic,
+                                          infolevel,
+                                          "Atomic");
 }
 
-void Genten_Test_CpOptRol(int infolevel) {
+void Genten_Test_CpOptLbfgsb(int infolevel) {
 #ifdef KOKKOS_ENABLE_CUDA
-  Genten_Test_CpOptRol_Space<Kokkos::Cuda>(infolevel);
+  Genten_Test_CpOptLbfgsb_Space<Kokkos::Cuda>(infolevel);
 #endif
 #ifdef KOKKOS_ENABLE_OPENMP
-  Genten_Test_CpOptRol_Space<Kokkos::OpenMP>(infolevel);
+  Genten_Test_CpOptLbfgsb_Space<Kokkos::OpenMP>(infolevel);
 #endif
 #ifdef KOKKOS_ENABLE_THREADS
-  Genten_Test_CpOptRol_Space<Kokkos::Threads>(infolevel);
+  Genten_Test_CpOptLbfgsb_Space<Kokkos::Threads>(infolevel);
 #endif
 #ifdef KOKKOS_ENABLE_SERIAL
-  Genten_Test_CpOptRol_Space<Kokkos::Serial>(infolevel);
+  Genten_Test_CpOptLbfgsb_Space<Kokkos::Serial>(infolevel);
 #endif
 }

@@ -49,6 +49,9 @@ using namespace std;
 void Genten_Test_TTM(int infolevel);
 void Genten_Test_Array(int infolevel);
 void Genten_Test_CpAls(int infolevel);
+#ifdef HAVE_LBFGSB
+void Genten_Test_CpOptLbfgsb(int infolevel);
+#endif
 #ifdef HAVE_ROL
 void Genten_Test_CpOptRol(int infolevel);
 #endif
@@ -92,6 +95,9 @@ int main(int argc, char * argv[])
   Genten_Test_MixedFormats(infolevel);
   Genten_Test_IO(infolevel, "./data/");
   Genten_Test_CpAls(infolevel);
+#ifdef HAVE_LBFGSB
+  Genten_Test_CpOptLbfgsb(infolevel);
+#endif
 #ifdef HAVE_ROL
   Genten_Test_CpOptRol(infolevel);
 #endif

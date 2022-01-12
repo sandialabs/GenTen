@@ -105,6 +105,9 @@ constexpr const char*const Genten::Execution_Space::names[];
 constexpr const Genten::Solver_Method::type Genten::Solver_Method::types[];
 constexpr const char*const Genten::Solver_Method::names[];
 
+constexpr const Genten::Opt_Method::type Genten::Opt_Method::types[];
+constexpr const char*const Genten::Opt_Method::names[];
+
 constexpr const Genten::MTTKRP_Method::type Genten::MTTKRP_Method::types[];
 constexpr const char*const Genten::MTTKRP_Method::names[];
 

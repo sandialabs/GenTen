@@ -242,17 +242,16 @@ namespace Genten {
     auto g_host = Kokkos::create_mirror_view(g.getView());
 
     // L-BFGS-B data
-    integer m = 5; //fixme
-    double factr = 1e7; // fixme
-    double pgtol = 1e-5; // fixme
+    integer m = algParams.memory;
+    double factr = algParams.factr;
+    double pgtol = algParams.pgtol;
     ttb_indx iterMax = algParams.maxiters;
-    ttb_indx total_iterMax = 5000; // fixme
+    ttb_indx total_iterMax = algParams.max_total_iters;
     std::vector<integer> iwa(3*n);
     std::vector<double> wa(2*m*n + 5*n + 11*m*m + 8*m);
     integer task = START;
-    integer iprint = -1; // fixme
+    integer iprint = -1; // turn off L-BFGS-B output and use our own
     integer csave = 1; // ??
-    const integer LENGTH_STRING = 60;
     const integer LENGTH_LSAVE = 4;
     const integer LENGTH_ISAVE = 44;
     const integer LENGTH_DSAVE = 29;

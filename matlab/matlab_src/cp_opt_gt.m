@@ -92,7 +92,6 @@ end
 
 % Option parsing
 fs = 0;
-opt = 'lbfgsb';
 n = length(args);
 for i=1:n
   if isa(args{i}, 'char') && strcmp(args{i}, 'fixsigns')
@@ -101,24 +100,12 @@ for i=1:n
       args(i:i+1) = [];
       break;
     end
-  elseif isa(args{i}, 'char') && strcmp(args{i}, 'opt')
-    if i+1<=n && (isa(args{i+1}, 'char'))
-      opt = args{i+1};
-      args(i:i+1) = [];
-      break;
-    end
   end
 end
 
 % Call driver
 argout = cell(1,nargout-1);
-if strcmp(opt, 'lbfgsb')
-  [U,argout{:}] = gt_cp_driver(X,R,Uinit,'method','cp-opt-lbfgsb',args{:});
-elseif strcmp(opt, 'rol')
-  [U,argout{:}] = gt_cp_driver(X,R,Uinit,'method','cp-opt-rol',args{:});
-else
-  error(['Unknown opt method: ' opt]);
-end
+[U,argout{:}] = gt_cp_driver(X,R,Uinit,'method','cp-opt',args{:});
 varargout = argout;
 
 % Fix signs

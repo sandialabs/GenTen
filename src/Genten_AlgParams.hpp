@@ -81,9 +81,14 @@ namespace Genten {
     TTM_Method::type ttm_method; // TTM algorithm
 
     // CP-Opt options
-    ttb_real lower;     // Lower bound of factorization
-    ttb_real upper;     // Upper bound of factorization
-    std::string rolfilename; // Filename for ROL solver options
+    Opt_Method::type opt_method; // Optimization method
+    ttb_real lower;              // Lower bound of factorization
+    ttb_real upper;              // Upper bound of factorization
+    std::string rolfilename;     // Filename for ROL solver options
+    ttb_real factr;              // factr parameter for L-BFGS-B
+    ttb_real pgtol;              // pgtol parameter for L-BFGS-B
+    ttb_indx memory;             // memory parameter for L-BFGS-B
+    ttb_indx max_total_iters;    // maximum total iterations for L-BFGS-B
 
     // GCP options
     GCP_LossFunction::type loss_function_type; // Loss function for GCP

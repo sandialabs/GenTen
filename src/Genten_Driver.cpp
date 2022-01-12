@@ -150,30 +150,35 @@ driver(SptensorT<ExecSpace>& x,
     ttb_real resNorm;
     cpals_core(x, u, algParams, iter, resNorm, 0, NULL, out);
   }
+  else if (algParams.method == Genten::Solver_Method::CP_OPT) {
+    timer.start(2);
+    if (algParams.opt_method == Genten::Opt_Method::LBFGSB) {
 #ifdef HAVE_LBFGSB
-  else if (algParams.method == Genten::Solver_Method::CP_OPT_LBFGSB) {
-    timer.start(2);
-    // Run CP-OPT using L-BFGS-B
-    cp_opt_lbfgsb(x, u, algParams);
-    timer.stop(2);
-    out << "CP-OPT took " << timer.getTotalTime(2) << " seconds\n";
-  }
+      // Run CP-OPT using L-BFGS-B
+      cp_opt_lbfgsb(x, u, algParams);
+#else
+      Genten::error("L-BFGS-B requested but not available!");
 #endif
+    }
+    else if (algParams.opt_method == Genten::Opt_Method::ROL) {
 #ifdef HAVE_ROL
-  else if (algParams.method == Genten::Solver_Method::CP_OPT_ROL) {
-    // Run CP-OPT using ROL
-    Teuchos::RCP<Teuchos::ParameterList> rol_params;
-    if (algParams.rolfilename != "")
-      rol_params = Teuchos::getParametersFromXmlFile(algParams.rolfilename);
-    timer.start(2);
-    if (rol_params != Teuchos::null)
-      cp_opt_rol(x, u, algParams, *rol_params, &out);
+      // Run CP-OPT using ROL
+      Teuchos::RCP<Teuchos::ParameterList> rol_params;
+      if (algParams.rolfilename != "")
+        rol_params = Teuchos::getParametersFromXmlFile(algParams.rolfilename);
+      if (rol_params != Teuchos::null)
+        cp_opt_rol(x, u, algParams, *rol_params, &out);
+      else
+        cp_opt_rol(x, u, algParams, &out);
+#else
+      Genten::error("ROL requested but not available!");
+#endif
+    }
     else
-      cp_opt_rol(x, u, algParams, &out);
+      Genten::error("Invalid opt method!");
     timer.stop(2);
     out << "CP-OPT took " << timer.getTotalTime(2) << " seconds\n";
   }
-#endif
 #ifdef HAVE_GCP
   else if (algParams.method == Genten::Solver_Method::GCP_SGD &&
            !algParams.fuse_sa) {

@@ -377,15 +377,15 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
   )
 
-IF (ENABLE_ROL)
-  SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
-    ${Genten_SOURCE_DIR}/src/rol/Genten_CP_Opt_Rol.cpp
-    )
-ENDIF()
-
 IF (ENABLE_LBFGSB)
   SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
     ${Genten_SOURCE_DIR}/src/lbfgsb/Genten_CP_Opt_Lbfgsb.cpp
+    )
+ENDIF()
+
+IF (ENABLE_ROL)
+  SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+    ${Genten_SOURCE_DIR}/src/rol/Genten_CP_Opt_Rol.cpp
     )
 ENDIF()
 
@@ -460,6 +460,11 @@ SET(UNIT_TEST_SRCS
   ${Genten_SOURCE_DIR}/test/Genten_Test_UnitTests.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_Utils.cpp
   )
+IF(ENABLE_LBFGSB)
+  SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
+    ${Genten_SOURCE_DIR}/test/Genten_Test_CpOptLbfgsb.cpp
+    )
+ENDIF()
 IF(ENABLE_ROL)
   SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
     ${Genten_SOURCE_DIR}/test/Genten_Test_CpOptRol.cpp

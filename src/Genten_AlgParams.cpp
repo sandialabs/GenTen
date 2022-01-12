@@ -64,9 +64,14 @@ Genten::AlgParams::AlgParams() :
   mttkrp_duplicated_threshold(-1.0),
   warmup(false),
   ttm_method(TTM_Method::default_type),
+  opt_method(Opt_Method::default_type),
   lower(-DOUBLE_MAX),
   upper(DOUBLE_MAX),
   rolfilename(""),
+  factr(1e7),
+  pgtol(1e-5),
+  memory(5),
+  max_total_iters(5000),
   loss_function_type(Genten::GCP_LossFunction::default_type),
   loss_eps(1.0e-10),
   gcp_tol(-DOUBLE_MAX),
@@ -154,9 +159,17 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                                  Genten::TTM_Method::names);
 
   // CP-Opt options
+  opt_method = parse_ttb_enum(args, "--opt", opt_method,
+                                 Genten::Opt_Method::num_types,
+                                 Genten::Opt_Method::types,
+                                 Genten::Opt_Method::names);
   lower = parse_ttb_real(args, "--lower", lower, -DOUBLE_MAX, DOUBLE_MAX);
   upper = parse_ttb_real(args, "--upper", upper, -DOUBLE_MAX, DOUBLE_MAX);
   rolfilename = parse_string(args, "--rol", rolfilename.c_str());
+  factr = parse_ttb_real(args, "--factr", factr, 0.0, DOUBLE_MAX);
+  pgtol = parse_ttb_real(args, "--pgtol", pgtol, 0.0, DOUBLE_MAX);
+  memory = parse_ttb_indx(args, "--memory", memory, 0, INT_MAX);
+  max_total_iters = parse_ttb_indx(args, "--total-iters", max_total_iters, 0, INT_MAX);
 
   // GCP options
   loss_function_type = parse_ttb_enum(args, "--type", loss_function_type,
@@ -274,9 +287,20 @@ void Genten::AlgParams::print_help(std::ostream& out)
   } out << std::endl;
   out << std::endl;
   out << "CP-Opt options:" << std::endl;
+  out << "  --opt <method> optimization method: ";
+  for (unsigned i=0; i<Genten::Opt_Method::num_types; ++i) {
+    out << Genten::Opt_Method::names[i];
+    if (i != Genten::Opt_Method::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
   out << "  --lower <float>    lower bound of factorization" << std::endl;
   out << "  --upper <float>    upper bound of factorization" << std::endl;
   out << "  --rol <string>     path to ROL optimization settings file for CP-Opt method" << std::endl;
+  out << "  --factr <float>    factr parameter for L-BFGS-B" << std::endl;
+  out << "  --pgtol <float>    pgtol parameter for L-BFGS-B" << std::endl;
+  out << "  --memory <int>     memory parameter for L-BFGS-B" << std::endl;
+  out << "  --total-iters <int>  max total iterations for L-BFGS-B" << std::endl;
   out << std::endl;
   out << "GCP options:" << std::endl;
   out << "  --type <type>      loss function type for GCP: ";
@@ -369,10 +393,14 @@ void Genten::AlgParams::print(std::ostream& out)
 
   out << std::endl;
   out << "CP-Opt options:" << std::endl;
+  out << "  opt = " << Genten::Opt_Method::names[opt_method] << std::endl;
   out << "  lower = " << lower << std::endl;
   out << "  upper = " << upper << std::endl;
   out << "  rol = " << rolfilename << std::endl;
-
+  out <<   "factr = " << factr << std::endl;
+  out <<   "pgtol = " << pgtol << std::endl;
+  out <<   "memory = " << memory << std::endl;
+  out <<   "total-iters = " << max_total_iters << std::endl;
 
   out << std::endl;
   out << "GCP options:" << std::endl;
