@@ -66,32 +66,44 @@ extern "C" {
 namespace Genten {
 
   namespace Impl {
+
     template<typename TensorT, typename ExecSpace>
     void cp_opt_lbfgsb_fg(const TensorT& X, const KtensorT<ExecSpace>& M,
                           const ttb_real nrm_X_sq, const AlgParams& algParams,
                           ttb_real& f, KtensorT<ExecSpace>& G,
-                          FacMatrixT<ExecSpace>& A, FacMatrixT<ExecSpace>& tmp)
+                          std::vector< FacMatrixT<ExecSpace> >& gram,
+                          std::vector< FacMatrixT<ExecSpace> >& hada,
+                          const ArrayT<ExecSpace>& ones)
     {
+      // Gram matrix for each mode
+      const ttb_indx nd = M.ndims();
+      for (ttb_indx n=0; n<nd; ++n)
+        gram[n].gramian(M[n], true, Upper);
+
+      // Hadamard product of gram matrices
+      for (ttb_indx n=0; n<nd; ++n) {
+        hada[n].oprod(M.weights());
+        for (ttb_indx m=0; m<nd; ++m) {
+          if (n != m)
+            hada[n].times(gram[m]);
+        }
+      }
+
+      // MTTKRP
+      mttkrp_all(X, M, G, algParams);
+
+      // <X,M> using 'MTTKRP' trick
+      const ttb_real ip = M[nd-1].innerprod(G[nd-1], M.weights());
+
+      // <M,M>
+      const ttb_real nrm_M_sq = gram[nd-1].innerprod(hada[nd-1], ones);
+
       // Compute objective
-      const ttb_real nrm_M_sq = M.normFsq();
-      const ttb_real ip = innerprod(X,M);
       f = ttb_real(0.5) * (nrm_X_sq + nrm_M_sq) - ip;
 
       // Compute gradient
-      mttkrp_all(X, M, G, algParams);
-      A = ttb_real(0.0);
-      const ttb_indx nd = M.ndims();
-      for (ttb_indx m=0; m<nd; ++m) {
-        A.oprod(M.weights());
-        for (ttb_indx n=0; n<nd; ++n) {
-          if (n != m) {
-            tmp = ttb_real(0.0);
-            tmp.gramian(M[n], true, Upper);
-            A.times(tmp);
-          }
-        }
-        G[m].gemm(false, false, ttb_real(1.0), M[m], A, ttb_real(-1.0));
-      }
+      for (ttb_indx n=0; n<nd; ++n)
+        G[n].gemm(false, false, ttb_real(1.0), M[n], hada[n], ttb_real(-1.0));
     }
 
     std::string findTaskString(integer task)
@@ -250,8 +262,13 @@ namespace Genten {
 
     const ttb_indx nd = u.ndims();
     const ttb_indx nc = u.ncomponents();
-    FacMatrixT<ExecSpace> A(nc,nc);
-    FacMatrixT<ExecSpace> tmp(nc,nc);
+    std::vector< FacMatrixT<ExecSpace> > gram(nd);
+    std::vector< FacMatrixT<ExecSpace> > hada(nd);
+    for (ttb_indx i=0; i<nd; ++i) {
+      gram[i] = FacMatrixT<ExecSpace>(nc,nc);
+      hada[i] = FacMatrixT<ExecSpace>(nc,nc);
+    }
+    ArrayT<ExecSpace> ones(nc, 1.0);
     const ttb_real nrm_X = X.norm();
     const ttb_real nrm_X_sq = nrm_X*nrm_X;
 
@@ -270,7 +287,7 @@ namespace Genten {
         Kokkos::deep_copy(z.getView(), z_host);
         KtensorT<ExecSpace> M = z.getKtensor();
         KtensorT<ExecSpace> G = g.getKtensor();
-        Impl::cp_opt_lbfgsb_fg(X,M,nrm_X_sq,algParams,f,G,A,tmp);
+        Impl::cp_opt_lbfgsb_fg(X,M,nrm_X_sq,algParams,f,G,gram,hada,ones);
         deep_copy(g_host, g.getView());
 
         // Suppress printing of inner iterations by only printing when the
