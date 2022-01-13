@@ -71,7 +71,7 @@ namespace Genten {
   void cp_opt_rol(const TensorT& x, KtensorT<ExecSpace>& u,
                   const AlgParams& algParams,
                   Teuchos::ParameterList& rol_params,
-                  std::ostream* stream = nullptr);
+                  std::ostream& stream = std::cout);
 
   //! Compute the CP decomposition of a tensor using ROL.
   /*!
@@ -98,7 +98,7 @@ namespace Genten {
   template<typename TensorT, typename ExecSpace>
   void cp_opt_rol(const TensorT& x, KtensorT<ExecSpace>& u,
                   const AlgParams& algParams,
-                  std::ostream* stream = nullptr)
+                  std::ostream& stream = std::cout)
   {
     // Setup ROL to do optimization algorithm similar to L-BFGS-B
     Teuchos::ParameterList params;
@@ -112,8 +112,11 @@ namespace Genten {
     status_params.set<double>("Step Tolerance", algParams.tol);
     status_params.set<int>("Iteration Limit", algParams.maxiters);
 
-    if (stream == nullptr && algParams.printitn > 0)
-      stream = &std::cout;
+    // Print iterations
+    if (algParams.printitn > 0) {
+      Teuchos::ParameterList& general_params = rol_params.sublist("General");
+      general_params.set("Output Level", 1);
+    }
 
     cp_opt_rol(x, u, algParams, params, stream);
   }

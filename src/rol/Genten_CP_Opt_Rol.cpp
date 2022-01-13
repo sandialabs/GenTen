@@ -53,8 +53,8 @@
 #include "Genten_RolBoundConstraint.hpp"
 #include "Genten_CP_RolObjective.hpp"
 
-#include "ROL_OptimizationProblem.hpp"
-#include "ROL_OptimizationSolver.hpp"
+#include "ROL_Problem.hpp"
+#include "ROL_Solver.hpp"
 
 #include "Teuchos_TimeMonitor.hpp"
 
@@ -68,7 +68,7 @@ namespace Genten {
   void cp_opt_rol(const TensorT& x, KtensorT<ExecSpace>& u,
                   const AlgParams& algParams,
                   Teuchos::ParameterList& params,
-                  std::ostream* stream)
+                  std::ostream& stream)
   {
 #ifdef HAVE_CALIPER
     cali::Function cali_func("Genten::cp_opt_rol");
@@ -97,57 +97,39 @@ namespace Genten {
     ROL::Ptr<vector_type> z = objective->createDesignVector();
     z->copyFromKtensor(u);
 
-    // Check objective gradient if requested
-    Teuchos::ParameterList& fd_check_pl =
-      params.sublist("Finite Difference Check");
-    const bool do_fd_check = fd_check_pl.get("Check Gradient", true);
-    if (do_fd_check && stream != nullptr) {
-      const int fdOrder = fd_check_pl.get("Finite Difference Order", 1);
-      const int numSteps = fd_check_pl.get("Number of Steps", 9);
-      const ttb_real largestStep = fd_check_pl.get("Largest Step Size", 1.e0);
-      const ttb_real stepReduction = fd_check_pl.get("Step Reduction Factor",
-                                                       1.e-1);
-      std::vector<ttb_real> fdSteps(numSteps,largestStep);
-      for (int i=1; i<numSteps; ++i)
-        fdSteps[i] = stepReduction * fdSteps[i-1];
+    // Create optimization problem
+    ROL::Ptr< ROL::Problem<ttb_real> > problem =
+      ROL::makePtr< ROL::Problem<ttb_real> >(objective, z);
 
-      // Base point for finite difference calculation
-      ROL::Ptr< ROL::Vector<ttb_real> > base = z->clone();
-      base->set(*z);
-
-      // Direction -- uniformaly random between 0 and 1
-      ROL::Ptr< ROL::Vector<ttb_real> > dir = z->clone();
-      std::srand(12345);
-      dir->randomize(0.0,1.0);
-
-      // Run f.d. calculation
-      objective->checkGradient(*base, *dir, fdSteps, true, *stream, fdOrder);
-    }
-
-    // Create constraints
-    ROL::Ptr<ROL::BoundConstraint<ttb_real> > bounds;
+    // Create bound constraints
     if (algParams.lower != -DOUBLE_MAX || algParams.upper != DOUBLE_MAX) {
       ROL::Ptr<vector_type> lower = objective->createDesignVector();
       ROL::Ptr<vector_type> upper = objective->createDesignVector();
       lower->setScalar(algParams.lower);
       upper->setScalar(algParams.upper);
-      bounds = ROL::makePtr<RolBoundConstraint<vector_type> >(lower, upper);
+      ROL::Ptr<ROL::BoundConstraint<ttb_real> > bounds =
+        ROL::makePtr<RolBoundConstraint<vector_type> >(lower, upper);
+      problem->addBoundConstraint(bounds);
     }
 
-    // Create optimization problem
-    ROL::OptimizationProblem<ttb_real> problem(objective, z, bounds);
+    // Finalize problem
+    const bool lumpConstraints = false;
+    const bool printToStream   = algParams.printitn > 0;
+    problem->finalize(lumpConstraints, printToStream, stream);
+
+    // Check interface consistency
+    const bool do_checks = params.get("Check ROL Interface", false);
+    if (do_checks)
+      problem->check(printToStream, stream);
 
     // Create ROL optimization solver
     Teuchos::ParameterList& rol_params = params.sublist("ROL");
-    ROL::OptimizationSolver<ttb_real> solver(problem, rol_params);
+    ROL::Solver<ttb_real> solver(problem, rol_params);
 
     // Run CP
     {
       TEUCHOS_FUNC_TIME_MONITOR("CP_Optimization");
-      if (stream != nullptr)
-        solver.solve(*stream);
-      else
-        solver.solve();
+      solver.solve(stream);
       z->copyToKtensor(u);
     }
 
@@ -160,8 +142,12 @@ namespace Genten {
     const ttb_real res = objective->value(*z, tol);
     const ttb_real nrm = x.norm();
     const ttb_real fit = ttb_real(1.0) - res / (ttb_real(0.5)*nrm*nrm) ;
-    if (stream != nullptr)
-      *stream << "Final fit = " << fit << std::endl;
+    if (algParams.printitn > 0)
+      stream << "Final fit = " << fit << std::endl;
+
+    // Print Teuchos timing info
+    if (algParams.timings)
+      Teuchos::TimeMonitor::summarize(stream);
   }
 
 }
@@ -172,13 +158,13 @@ namespace Genten {
     KtensorT<SPACE>& u,                                                 \
     const AlgParams& algParms,                                          \
     Teuchos::ParameterList& params,                                     \
-    std::ostream* stream);                                              \
+    std::ostream& stream);                                              \
                                                                         \
   template void cp_opt_rol<TensorT<SPACE>,SPACE>(                       \
     const TensorT<SPACE>& x,                                            \
     KtensorT<SPACE>& u,                                                 \
     const AlgParams& algParms,                                          \
     Teuchos::ParameterList& params,                                     \
-    std::ostream* stream);
+    std::ostream& stream);
 
 GENTEN_INST(INST_MACRO)

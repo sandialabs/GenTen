@@ -167,9 +167,9 @@ driver(SptensorT<ExecSpace>& x,
       if (algParams.rolfilename != "")
         rol_params = Teuchos::getParametersFromXmlFile(algParams.rolfilename);
       if (rol_params != Teuchos::null)
-        cp_opt_rol(x, u, algParams, *rol_params, &out);
+        cp_opt_rol(x, u, algParams, *rol_params, out);
       else
-        cp_opt_rol(x, u, algParams, &out);
+        cp_opt_rol(x, u, algParams, out);
 #else
       Genten::error("ROL requested but not available!");
 #endif
@@ -177,7 +177,8 @@ driver(SptensorT<ExecSpace>& x,
     else
       Genten::error("Invalid opt method!");
     timer.stop(2);
-    out << "CP-OPT took " << timer.getTotalTime(2) << " seconds\n";
+    if (algParams.timings)
+      out << "CP-OPT took " << timer.getTotalTime(2) << " seconds\n";
   }
 #ifdef HAVE_GCP
   else if (algParams.method == Genten::Solver_Method::GCP_SGD &&
