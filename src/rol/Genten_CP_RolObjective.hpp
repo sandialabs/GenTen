@@ -72,29 +72,22 @@ namespace Genten {
     typedef RolKokkosVector<exec_space> vector_type;
 #endif
 
-    CP_RolObjective(const tensor_type& x,
-                     const ktensor_type& m,
-                     const AlgParams& algParms) :
-      X(x), M(m), algParams(algParms)
-    {
-      const unsigned nc = M.ncomponents();
-#if COPY_KTENSOR
-      const unsigned nd = M.ndims();
-      G = ktensor_type(nc, nd);
-      for (unsigned i=0; i<nd; ++i)
-        G.set_factor(i, FacMatrixT<exec_space>(M[i].nRows(), nc));
-#endif
-
-      A = FacMatrixT<exec_space>(nc,nc);
-      tmp = FacMatrixT<exec_space>(nc,nc);
-    }
+    CP_RolObjective(const tensor_type& x, const ktensor_type& m,
+                    const AlgParams& algParms);
 
     virtual ~CP_RolObjective() {}
 
-    virtual ttb_real value(const ROL::Vector<ttb_real>& x, ttb_real& tol);
+    virtual void update(const ROL::Vector<ttb_real>& xx, ROL::UpdateType type,
+                        int iter) override;
+
+    virtual void update(const ROL::Vector<ttb_real> &xx, bool flag, int iter);
+
+    virtual ttb_real value(const ROL::Vector<ttb_real>& x,
+                           ttb_real& tol) override;
 
     virtual void gradient(ROL::Vector<ttb_real>& g,
-                          const ROL::Vector<ttb_real>& x, ttb_real &tol);
+                          const ROL::Vector<ttb_real>& x,
+                          ttb_real &tol) override;
 
     ROL::Ptr<vector_type> createDesignVector() const
     {
@@ -108,10 +101,83 @@ namespace Genten {
     ktensor_type G;
     AlgParams algParams;
 
-    FacMatrixT<exec_space> A, tmp;
+    ttb_real nrm_X_sq;
+    std::vector< FacMatrixT<exec_space> > gram;
+    std::vector< FacMatrixT<exec_space> > hada;
+    ArrayT<exec_space> ones;
 
   };
 
+  template <typename Tensor>
+  CP_RolObjective<Tensor>::
+  CP_RolObjective(const tensor_type& x,
+                  const ktensor_type& m,
+                  const AlgParams& algParms) :
+      X(x), M(m), algParams(algParms)
+    {
+      const ttb_indx nc = M.ncomponents();
+      const ttb_indx nd = M.ndims();
+#if COPY_KTENSOR
+      G = ktensor_type(nc, nd);
+      for (ttb_indx i=0; i<nd; ++i)
+        G.set_factor(i, FacMatrixT<exec_space>(M[i].nRows(), nc));
+#endif
+
+      const ttb_real nrm_X = X.norm();
+      nrm_X_sq = nrm_X*nrm_X;
+
+      gram.resize(nd);
+      hada.resize(nd);
+      for (ttb_indx i=0; i<nd; ++i) {
+        gram[i] = FacMatrixT<exec_space>(nc,nc);
+        hada[i] = FacMatrixT<exec_space>(nc,nc);
+      }
+      ones = ArrayT<exec_space>(nc, 1.0);
+    }
+
+  // Compute information that is common to both value() and gradient()
+  // when a new design vector is computed
+  template <typename Tensor>
+  void
+  CP_RolObjective<Tensor>::
+  update(const ROL::Vector<ttb_real>& xx, ROL::UpdateType type, int iter)
+  {
+    TEUCHOS_FUNC_TIME_MONITOR("CP_RolObjective::update");
+
+    const vector_type& x = dynamic_cast<const vector_type&>(xx);
+
+    // Convert input vector to a Ktensor
+    M = x.getKtensor();
+#if COPY_KTENSOR
+    x.copyToKtensor(M);
+#endif
+
+    // Gram matrix for each mode
+    const ttb_indx nd = M.ndims();
+    for (ttb_indx n=0; n<nd; ++n)
+      gram[n].gramian(M[n], true, Upper);
+
+    // Hadamard product of gram matrices
+    for (ttb_indx n=0; n<nd; ++n) {
+      hada[n].oprod(M.weights());
+      for (ttb_indx m=0; m<nd; ++m) {
+        if (n != m)
+          hada[n].times(gram[m]);
+      }
+    }
+
+  }
+
+  template <typename Tensor>
+  void
+  CP_RolObjective<Tensor>::
+  update(const ROL::Vector<ttb_real>& xx, bool flag, int iter)
+  {
+    update(xx, ROL::UpdateType::Accept, iter);
+  }
+
+  // Compute value of the objective function:
+  //      0.5 * ||X-M||^2 = 0.5* (||X||^2 + ||M||^2) - <X,M>
   template <typename Tensor>
   ttb_real
   CP_RolObjective<Tensor>::
@@ -127,14 +193,19 @@ namespace Genten {
     x.copyToKtensor(M);
 #endif
 
-    const ttb_real nrm_X    = X.norm();
-    const ttb_real nrm_X_sq = nrm_X*nrm_X;
-    const ttb_real nrm_M_sq = M.normFsq();
-    const ttb_real ip       = innerprod(X,M);
+    // ||M||^2 = <M,M>
+    const ttb_indx nd = M.ndims();
+    const ttb_real nrm_M_sq = gram[nd-1].innerprod(hada[nd-1], ones);
+
+    // <X,M>.  Unfortunately can't use MTTKRP trick since we don't want to
+    // compute MTTKRP in update()
+    const ttb_real ip = innerprod(X,M);
 
     return ttb_real(0.5)*(nrm_X_sq + nrm_M_sq) - ip;
   }
 
+  // Compute gradient of objective function:
+  //       G[m] = -X_(m)*Z_m*diag(w) + A_m*[diag(w)*Z_m^T*Z_m*diag(w)]
   template <typename Tensor>
   void
   CP_RolObjective<Tensor>::
@@ -153,20 +224,10 @@ namespace Genten {
     x.copyToKtensor(M);
 #endif
 
-    mttkrp_all(X, M, G, algParams);
     const ttb_indx nd = M.ndims();
-    A = ttb_real(0.0);
-    for (ttb_indx m=0; m<nd; ++m) {
-      A.oprod(M.weights());
-      for (ttb_indx n=0; n<nd; ++n) {
-        if (n != m) {
-          tmp = ttb_real(0.0);
-          tmp.gramian(M[n], true, Upper);
-          A.times(tmp);
-        }
-      }
-      G[m].gemm(false, false, ttb_real(1.0), M[m], A, ttb_real(-1.0));
-    }
+    mttkrp_all(X, M, G, algParams);
+    for (ttb_indx n=0; n<nd; ++n)
+      G[n].gemm(false, false, ttb_real(1.0), M[n], hada[n], ttb_real(-1.0));
 
     // Convert Ktensor to vector
 #if COPY_KTENSOR
