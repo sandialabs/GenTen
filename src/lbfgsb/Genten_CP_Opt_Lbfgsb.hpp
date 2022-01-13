@@ -45,8 +45,6 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_AlgParams.hpp"
 
-#include "Teuchos_ParameterList.hpp"
-
 namespace Genten {
 
   //! Compute the CP decomposition of a tensor using L-BFSG-B.
