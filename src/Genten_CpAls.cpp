@@ -229,7 +229,7 @@ namespace Genten {
       // Compute residual norm and fit of the initial guess.
       // Fit can be a huge negative number for bad start points,
       // so bound it at zero.
-      ttb_real  dUnorm = u.normFsq();
+      ttb_real  dUnorm = sqrt(u.normFsq());
       ttb_real  dXtU = innerprod (x, u, lambda);
       perfInfo[nNextPerf].dResNorm = computeResNorm(xNorm, dUnorm, dXtU);
       fit = 1.0 - (perfInfo[nNextPerf].dResNorm / xNorm);

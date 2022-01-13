@@ -44,7 +44,7 @@
 
 #include "Genten_AlgParams.hpp"
 #include "Genten_Ktensor.hpp"
-#include "Genten_GCP_KokkosVector.hpp"
+#include "Genten_KokkosVector.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
 
 #include "impl/Kokkos_Atomic_Generic.hpp"
@@ -69,7 +69,7 @@ namespace Genten {
     template <typename ExecSpace, typename LossFunction>
     class GCP_SGD_Step {
     public:
-      typedef GCP::KokkosVector<ExecSpace> VectorType;
+      typedef KokkosVector<ExecSpace> VectorType;
 
       GCP_SGD_Step() = default;
 

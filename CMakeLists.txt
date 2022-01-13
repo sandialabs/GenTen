@@ -129,6 +129,12 @@ IF (ENABLE_CALIPER)
   SET(HAVE_CALIPER ${ENABLE_CALIPER})
 ENDIF()
 
+# L-BFGS-B requires ttb_real == double
+IF (GENTEN_FLOAT_TYPE STREQUAL "double")
+  SET(ENABLE_LBFGSB ON)
+  SET(HAVE_LBFGSB ON)
+ENDIF()
+
 SET(ROL_LIBRARIES "")
 SET(ROL_TPL_LIBRARIES "")
 IF (ENABLE_GCP)
@@ -234,15 +240,19 @@ INCLUDE_DIRECTORIES (
   ${Genten_SOURCE_DIR}/src/
   ${Genten_SOURCE_DIR}/src/mathlib/
   ${Genten_SOURCE_DIR}/src/rol/
+  ${Genten_SOURCE_DIR}/src/lbfgsb/
   ${Genten_BINARY_DIR}/CMakeInclude/
   ${Genten_SOURCE_DIR}/driver/
+  ${Genten_SOURCE_DIR}/tpls/lbfgsb/
   )
 FILE (GLOB genten_headers
   ${Genten_SOURCE_DIR}/src/*.h
   ${Genten_SOURCE_DIR}/src/*.hpp
   ${Genten_SOURCE_DIR}/src/mathlib/*.h
   ${Genten_SOURCE_DIR}/src/mathlib/*.hpp
-  ${Genten_SOURCE_DIR}/src/rol*.hpp
+  ${Genten_SOURCE_DIR}/src/rol/*.hpp
+  ${Genten_SOURCE_DIR}/src/lbfgsb/*.hpp
+  ${Genten_SOURCE_DIR}/tpls/lbfgsb/*.h
   )
 INSTALL (
   FILES ${genten_headers}
@@ -312,6 +322,32 @@ TARGET_LINK_LIBRARIES(
   ${GENTEN_MATHLIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
   )
 
+#------------------------------------------------------------
+#---- L-BFGS-B library
+#------------------------------------------------------------
+IF (ENABLE_LBFGSB)
+  ADD_LIBRARY (genten_lbfgsb_c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/lbfgsb.c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/linesearch.c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/subalgorithms.c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/print.c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/linpack.c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/miniCBLAS.c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/timer.c
+    )
+  TARGET_LINK_LIBRARIES(
+    genten_lbfgsb_c
+    ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
+    )
+  INSTALL (
+    TARGETS genten_lbfgsb_c
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    EXPORT genten
+    )
+  SET(GENTEN_MATHLIBS ${GENTEN_MATHLIBS}
+    genten_lbfgsb_c
+    )
+ENDIF()
 
 #------------------------------------------------------------
 #---- Genten Library
@@ -341,6 +377,18 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
   )
 
+IF (ENABLE_LBFGSB)
+  SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+    ${Genten_SOURCE_DIR}/src/lbfgsb/Genten_CP_Opt_Lbfgsb.cpp
+    )
+ENDIF()
+
+IF (ENABLE_ROL)
+  SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+    ${Genten_SOURCE_DIR}/src/rol/Genten_CP_Opt_Rol.cpp
+    )
+ENDIF()
+
 IF (ENABLE_GCP)
   SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
     ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels.cpp
@@ -359,11 +407,12 @@ IF (ENABLE_GCP)
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Bernoulli.cpp
     )
 
-  IF (ENABLE_ROL)
-    SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
-      ${Genten_SOURCE_DIR}/src/rol/Genten_GCP_Opt.cpp
-      )
-  ENDIF()
+  # Disable gcp_opt because it doesn't work
+  # IF (ENABLE_ROL)
+  #   SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+  #     ${Genten_SOURCE_DIR}/src/rol/Genten_GCP_Opt.cpp
+  #     )
+  # ENDIF()
 ENDIF()
 
 
@@ -423,15 +472,25 @@ SET(UNIT_TEST_SRCS
   ${Genten_SOURCE_DIR}/test/Genten_Test_UnitTests.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_Utils.cpp
   )
+IF(ENABLE_LBFGSB)
+  SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
+    ${Genten_SOURCE_DIR}/test/Genten_Test_CpOptLbfgsb.cpp
+    )
+ENDIF()
+IF(ENABLE_ROL)
+  SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
+    ${Genten_SOURCE_DIR}/test/Genten_Test_CpOptRol.cpp
+    )
+ENDIF()
 IF (ENABLE_GCP)
    SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
      ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_SGD.cpp
      )
-  IF(ENABLE_ROL)
-    SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
-      ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_Opt.cpp
-      )
-  ENDIF()
+  # IF(ENABLE_ROL)
+  #   SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
+  #     ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_Opt.cpp
+  #     )
+  # ENDIF()
 ENDIF()
 
 ADD_EXECUTABLE (

@@ -38,85 +38,33 @@
 // ************************************************************************
 //@HEADER
 
+#pragma once
 
-#include <iostream>
+#include <ostream>
 
-#include "Genten_Util.hpp"
+#include "Genten_Ktensor.hpp"
+#include "Genten_AlgParams.hpp"
 
-using namespace std;
+namespace Genten {
 
-// Forward declarations.
-void Genten_Test_TTM(int infolevel);
-void Genten_Test_Array(int infolevel);
-void Genten_Test_CpAls(int infolevel);
-#ifdef HAVE_LBFGSB
-void Genten_Test_CpOptLbfgsb(int infolevel);
-#endif
-#ifdef HAVE_ROL
-void Genten_Test_CpOptRol(int infolevel);
-#endif
-void Genten_Test_FacMatrix(int infolevel, const string & dirname);
-void Genten_Test_IndxArray(int infolevel);
-void Genten_Test_IO(int infolevel, const string & dirname);
-void Genten_Test_Ktensor(int infolevel);
-void Genten_Test_MixedFormats(int infolevel);
-void Genten_Test_Sptensor(int infolevel);
-void Genten_Test_Tensor(int infolevel);
-#ifdef HAVE_GCP
-// #ifdef HAVE_ROL
-// void Genten_Test_GCP_Opt(int infolevel);
-// #endif
-void Genten_Test_GCP_SGD(int infolevel);
-#endif
+  //! Compute the CP decomposition of a tensor using L-BFSG-B.
+  /*!
+   *  Compute an estimate of the best rank-R CP model of a tensor X
+   *  for Gaussian loss.  The input X currently must be a (sparse)
+   *  Sptensor.  The result is a Ktensor.
+   *
+   *  An initial guess of factor matrices must be provided, which must be
+   *  nonzero.
+   *
+   *  @param[in] x          Data tensor to be fit by the model.
+   *  @param[in,out] u      Input contains an initial guess for the factors.
+   *                        The size of each mode must match the corresponding
+   *                        mode of x, and the number of components determines
+   *                        how many will be in the result.
+   *                        Output contains resulting factorization Ktensor.
+   */
+  template<typename TensorT, typename ExecSpace>
+  void cp_opt_lbfgsb(const TensorT& x, KtensorT<ExecSpace>& u,
+                     const AlgParams& algParams);
 
-int main(int argc, char * argv[])
-{
-
-  Kokkos::initialize(argc, argv);
-
-  try {
-
-  // Level 0 is minimal output, 1 is more verbose.
-  int infolevel = 0;
-  if (argc == 2)
-  {
-    infolevel = atoi(argv[1]);
-    if (infolevel < 0)
-      infolevel = 0;
-  }
-
-  Genten_Test_TTM(infolevel);
-  Genten_Test_Array(infolevel);
-  Genten_Test_IndxArray(infolevel);
-  Genten_Test_FacMatrix(infolevel, "./data/");
-  Genten_Test_Sptensor(infolevel);
-  Genten_Test_Tensor(infolevel);
-  Genten_Test_Ktensor(infolevel);
-  Genten_Test_MixedFormats(infolevel);
-  Genten_Test_IO(infolevel, "./data/");
-  Genten_Test_CpAls(infolevel);
-#ifdef HAVE_LBFGSB
-  Genten_Test_CpOptLbfgsb(infolevel);
-#endif
-#ifdef HAVE_ROL
-  Genten_Test_CpOptRol(infolevel);
-#endif
-#ifdef HAVE_GCP
-// Don't test this because it doesn't work
-// #ifdef HAVE_ROL
-//   Genten_Test_GCP_Opt(infolevel);
-// #endif
-  Genten_Test_GCP_SGD(infolevel);
-#endif
-
-  cout << "Unit tests complete for " << Genten::getGentenVersion() << endl;
-
-  }
-  catch(std::string& s) {
-    std::cout << s << std::endl;
-  }
-
-  Kokkos::finalize();
-
-  return( 0 );
 }

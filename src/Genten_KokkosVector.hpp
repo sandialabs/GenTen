@@ -48,7 +48,6 @@
 #include "Kokkos_Random.hpp"
 
 namespace Genten {
-namespace GCP {
 
   // Treats a Ktensor as a vector
   template <typename ExecSpace>
@@ -156,6 +155,21 @@ namespace GCP {
       return dot(*this);
     }
 
+    ttb_real normInf() const
+    {
+      view_type my_v = v;
+      ttb_real result = 0.0;
+      Kokkos::parallel_reduce("Genten::KokkosVector::normInf",
+                              Kokkos::RangePolicy<exec_space>(0,v.extent(0)),
+                              KOKKOS_LAMBDA(const ttb_indx i, ttb_real& d)
+      {
+        using std::abs;
+        if (abs(my_v(i)) > d)
+          d = abs(my_v(i));
+      }, Kokkos::Max<ttb_real>(result));
+      return result;
+    }
+
     void axpy(const ttb_real alpha, const KokkosVector& x)
     {
       view_type my_v = v;
@@ -248,10 +262,9 @@ namespace GCP {
 
     unsigned nc;
     unsigned nd;
-    IndxArray sz;
+    IndxArray sz;  // this is on the host
     view_type v;
 
   };
 
-}
 }

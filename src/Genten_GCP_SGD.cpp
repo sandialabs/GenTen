@@ -48,7 +48,7 @@
 #include "Genten_GCP_SemiStratifiedSampler.hpp"
 #include "Genten_GCP_ValueKernels.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
-#include "Genten_GCP_KokkosVector.hpp"
+#include "Genten_KokkosVector.hpp"
 #include "Genten_GCP_SGD_Step.hpp"
 #include "Genten_GCP_SGD_Iter.hpp"
 #include "Genten_GCP_SGD_Iter_Async.hpp"
@@ -74,7 +74,7 @@ namespace Genten {
                       ttb_real& fest,
                       std::ostream& out)
     {
-      typedef GCP::KokkosVector<ExecSpace> VectorType;
+      typedef KokkosVector<ExecSpace> VectorType;
       typedef typename VectorType::view_type view_type;
       using std::sqrt;
       using std::pow;
