@@ -1,5 +1,6 @@
-include:
-  - template: Security/SAST.gitlab-ci.yml
+# Turning off SAST as it doesn't seem to work on the internal instance
+#include:
+#  - template: Security/SAST.gitlab-ci.yml
 
 # Only run pipelines for:
 #  - merge requests (to any target branch)
