@@ -429,6 +429,8 @@ IF(Kokkos_ENABLE_HIP)
   TARGET_LINK_LIBRARIES(gentenlib roc::rocblas)
   FIND_PACKAGE(rocsolver)
   TARGET_LINK_LIBRARIES(gentenlib roc::rocsolver)
+  FIND_PACKAGE(rocthrust)
+  TARGET_LINK_LIBRARIES(gentenlib roc::rocthrust)
 ENDIF()
 
 SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${ROL_LIBRARIES} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
