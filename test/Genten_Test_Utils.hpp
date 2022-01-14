@@ -39,8 +39,9 @@
 //@HEADER
 
 
-#include<string>
-#include<vector>
+#include <string>
+#include <vector>
+#include <cmath>
 #include "Genten_Util.hpp"
 
 
@@ -57,6 +58,16 @@ namespace Genten
        void gettime(timeval * timer);
        double timediff(timeval start, timeval end);
     */
+
+    inline ttb_real max_abs(const ttb_real a, const ttb_real b) {
+      return std::fabs(a) > std::fabs(b) ? std::fabs(a) : std::fabs(b);
+    }
+    inline ttb_real rel_diff(const ttb_real a, const ttb_real b) {
+      return std::fabs(a-b)/max_abs(ttb_real(1.0),max_abs(a,b));
+    }
+    inline bool float_eq(const ttb_real a, const ttb_real b) {
+      return rel_diff(a, b) < ttb_real(10.0)*MACHINE_EPSILON;
+    }
   }
 }
 
@@ -72,6 +83,6 @@ namespace Genten
 #define REENABLE_CERR std::cerr.rdbuf (strm_buffer);
 
 // For comparing real numbers
-#define MAXABS(a,b) ((fabs(a) > fabs(b)) ? fabs(a) : fabs(b))
-#define RELDIFF(a,b) (fabs(a-b)/MAXABS((ttb_real)1,MAXABS(a,b)))
-#define EQ(a,b) (RELDIFF((ttb_real)a, (ttb_real)b) < ttb_real(10.0)*MACHINE_EPSILON)
+#define MAXABS(a,b) (Genten::Test::max_abs(a,b))
+#define RELDIFF(a,b) (Genten::Test::rel_diff(a,b))
+#define EQ(a,b) (Genten::Test::float_eq(a,b))
