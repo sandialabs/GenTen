@@ -178,6 +178,8 @@ namespace Genten {
         return "threads";
       else if (is_cuda)
         return "cuda";
+      else if (is_hip)
+        return "hip";
       return "";
     }
 
@@ -191,6 +193,17 @@ namespace Genten {
           prop.name + ")";
       }
 #endif
+
+#ifdef KOKKOS_ENABLE_HIP
+      if (is_hip) {
+        auto prop = Kokkos::Experimental::HIP::hip_device_prop();
+        str +=
+          " (device " +
+          std::to_string(Kokkos::Experimental::HIP{}.hip_device()) +
+          ", " + prop.name + ")";
+      }
+#endif
+
       if (is_openmp || is_threads)
         str += " (" + std::to_string(concurrency()) + " threads)";
 
