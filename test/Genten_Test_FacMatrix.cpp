@@ -456,6 +456,9 @@ void Genten_Test_FacMatrix(int infolevel, const std::string & datadir) {
 #ifdef KOKKOS_ENABLE_CUDA
   Genten_Test_FacMatrix_Space<Kokkos::Cuda>(infolevel, datadir);
 #endif
+#ifdef KOKKOS_ENABLE_HIP
+  Genten_Test_FacMatrix_Space<Kokkos::Experimental::HIP>(infolevel, datadir);
+#endif
 #ifdef KOKKOS_ENABLE_OPENMP
   Genten_Test_FacMatrix_Space<Kokkos::OpenMP>(infolevel, datadir);
 #endif
