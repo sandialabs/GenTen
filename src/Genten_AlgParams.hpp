@@ -239,6 +239,9 @@ namespace Genten {
       else if (space_prop::is_cuda)
         mttkrp_method = MTTKRP_Method::Perm;
 
+      else if (space_prop::is_hip)
+        mttkrp_method = MTTKRP_Method::Atomic;
+
       // Otherwise use Perm or Duplicated on CPU depending on the method
       else {
         if (method == Solver_Method::GCP_SGD)
@@ -270,6 +273,9 @@ namespace Genten {
 
       else if (space_prop::is_cuda)
         mttkrp_all_method = MTTKRP_All_Method::Iterated;
+
+      else if (space_prop::is_hip)
+        mttkrp_all_method = MTTKRP_All_Method::Atomic;
 
       // Otherwise use Iterated or Duplicated depending on the method
       else {
@@ -315,6 +321,18 @@ namespace Genten {
         out << "Fused semi-stratified sampling/MTTKRP method requires atomic"
             << " on Cuda.  Changing MTTKRP-All method to atomic." << std::endl;
       }
+    }
+
+    if (space_prop::is_hip) {
+      mttkrp_method = MTTKRP_Method::Atomic;
+      out << "MTTKRP method " << MTTKRP_Method::names[mttkrp_method]
+          << " is invalid for HIP, changing to "
+          << MTTKRP_Method::names[mttkrp_method] << "." << std::endl;
+
+      mttkrp_all_method = MTTKRP_All_Method::Atomic;
+      out << "MTTKRP-All method " << MTTKRP_All_Method::names[mttkrp_all_method]
+          << " is invalid for HIP, changing to "
+          << MTTKRP_All_Method::names[mttkrp_all_method] << "." << std::endl;
     }
   }
 
