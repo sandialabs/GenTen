@@ -736,6 +736,7 @@ void mttkrp(const SptensorT<ExecSpace>& X,
   assert( v.nRows() == X.size(n) );
   assert( v.nCols() == nc );
 
+// TODO (STRZ) - done only temporarily!
 #if defined(KOKKOS_ENABLE_HIP)
     Impl::orig_kokkos_mttkrp(X,u,n,v);
 #else
