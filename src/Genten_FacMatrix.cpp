@@ -81,13 +81,11 @@ FacMatrixT(ttb_indx m, ttb_indx n)
   // Don't use padding if Cuda or HIP is the default execution space, so factor
   // matrices allocated on the host have the same shape.  We really need a
   // better way to do this.
-  if (Genten::is_gpu_space<DefaultExecutionSpace>::value){
+  if (Genten::is_gpu_space<DefaultExecutionSpace>::value)
     data = view_type("Genten::FacMatrix::data",m,n);
-  }
-  else{
+  else
     data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
                                         Kokkos::AllowPadding),m,n);
-  }
 }
 
 template <typename ExecSpace>
@@ -97,15 +95,13 @@ FacMatrixT(ttb_indx m, ttb_indx n, const ttb_real * cvec)
   // Don't use padding if Cuda or HIP is the default execution space, so factor
   // matrices allocated on the host have the same shape.  We really need a
   // better way to do this.
-  if (Genten::is_gpu_space<DefaultExecutionSpace>::value){
+  if (Genten::is_gpu_space<DefaultExecutionSpace>::value)
     data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
                                         Kokkos::WithoutInitializing),m,n);
-  }
-  else{
+  else
     data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
                                         Kokkos::WithoutInitializing,
                                         Kokkos::AllowPadding),m,n);
-  }
   this->convertFromCol(m,n,cvec);
 }
 
