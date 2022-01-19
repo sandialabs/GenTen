@@ -94,36 +94,25 @@ class TensorBlockSystem {
   void init_factors();
 
   void allReduceKT(KtensorT<ExecSpace> &g, bool divide_by_grid_size = true);
-  void iAllReduceKT(KtensorT<ExecSpace> &g, std::vector<MPI_Request> &Requests);
 
   template <typename Stepper, typename Loss>
   ElementType allReduceTrad(Loss const &loss);
-
   template <typename Loss> ElementType fedOpt(Loss const &loss);
-  template <typename Loss> ElementType elasticAvgOneSidedSGD(Loss const &loss);
   template <typename Loss> ElementType pickMethod(Loss const &loss);
 
   AlgParams setAlgParams() const;
 
-  void shardCenter();
-  void initMPIDatatypes();
-  void initMPIWindows();
-
-  enum class CenterOP { CenterRead, CenterAccumulate };
-
-  void doCenterOp(KtensorT<ExecSpace> &kt, CenterOP op);
-
 public:
   TensorBlockSystem(ptree const &tree);
-  ~TensorBlockSystem();
+  ~TensorBlockSystem() = default;
 
   // For now let's delete these so they aren't accidently used
   // Can come back and define them later if needed
-  TensorBlockSystem(TensorBlockSystem const&) = delete;
-  TensorBlockSystem& operator=(TensorBlockSystem const&) = delete;
+  TensorBlockSystem(TensorBlockSystem const &) = delete;
+  TensorBlockSystem &operator=(TensorBlockSystem const &) = delete;
 
   TensorBlockSystem(TensorBlockSystem &&) = delete;
-  TensorBlockSystem& operator=(TensorBlockSystem &&) = delete;
+  TensorBlockSystem &operator=(TensorBlockSystem &&) = delete;
 
   ElementType getTensorNorm() const;
 
@@ -150,22 +139,6 @@ private:
   bool dump_; // I don't love keeping this flag, but it's easy
   unsigned int seed_;
   small_vector<small_vector<int>> global_blocking_;
-
-  // Only used by the MPI Onesided methods
-  small_vector<MPI_Win> factor_shard_windows_;
-  small_vector<small_vector<std::uint64_t>> window_row_starts_;
-  small_vector<small_vector<std::uint64_t>> window_row_stops_;
-
-  // We can't just store datatypes for KFac_ because copies of KFac_ don't have
-  // the same stride :(
-  // small_vector<small_vector<MPI_Datatype>> factor_data_types_;
-
-  /* Instead we are going to just associate a datatype with each double* that
-   * arrives, this means that we always get a unique datatype, but that we
-   * don't continually allocate new ones every time we try to do an operation
-   */
-  std::unordered_map<double *, MPI_Datatype> mpi_datatype_map_;
-  small_vector<double *> window_ptrs_;
 };
 
 // Helper declerations
@@ -222,18 +195,6 @@ TensorBlockSystem<ElementType, ExecSpace>::TensorBlockSystem(ptree const &tree)
   const auto indexbase = input_.get<int>("indexbase", 0);
   const auto rank = input_.get<int>("rank", 5);
   init_distributed(file_name, indexbase);
-}
-
-template <typename ElementType, typename ExecSpace>
-TensorBlockSystem<ElementType, ExecSpace>::~TensorBlockSystem() {
-  // Have to delete the MPI types that don't automatically clean up :P
-  for (auto &win : factor_shard_windows_) {
-    MPI_Win_free(&win);
-  }
-
-  for (auto &pair : mpi_datatype_map_) {
-    MPI_Type_free(&(pair.second));
-  }
 }
 
 // We'll put this down here to save some space
@@ -293,7 +254,6 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
   DistContext::Barrier();
   auto t6 = MPI_Wtime();
 
-  const auto local_nnz = distributedData.size();
   for (auto i = 0; i < ndims; ++i) {
     auto coord = pmap_.gridCoord(i);
     range_.push_back({blocking[i][coord], blocking[i][coord + 1]});
@@ -305,6 +265,7 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
     indices[i] = rpair.upper - rpair.lower;
   }
 
+  const auto local_nnz = distributedData.size();
   std::vector<ttb_real> values(local_nnz);
   std::vector<std::vector<ttb_indx>> subs(local_nnz);
   for (auto i = 0; i < local_nnz; ++i) {
@@ -341,7 +302,7 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
 template <typename ElementType, typename ExecSpace>
 ElementType TensorBlockSystem<ElementType, ExecSpace>::getTensorNorm() const {
   auto const &values = sp_tensor_.getValArray();
-  static double norm2 = values.dot(values);
+  double norm2 = values.dot(values);
   MPI_Allreduce(MPI_IN_PLACE, &norm2, 1, MPI_DOUBLE, MPI_SUM,
                 pmap_ptr_->gridComm());
   return std::sqrt(ElementType(norm2));
@@ -406,32 +367,6 @@ void TensorBlockSystem<ElementType, ExecSpace>::allReduceKT(
 }
 
 template <typename ElementType, typename ExecSpace>
-void TensorBlockSystem<ElementType, ExecSpace>::iAllReduceKT(
-    KtensorT<ExecSpace> &g, std::vector<MPI_Request> &Requests) {
-  if (nprocs() == 1) {
-    return;
-  }
-
-  // Do the AllReduce for each gradient
-  const auto ndims = sp_tensor_.ndims();
-  auto const &gridSizes = pmap_ptr_->subCommSizes();
-  for (auto i = 0; i < ndims; ++i) {
-    if (gridSizes[i] == 1) {
-      // No need to AllReduce when one rank owns all the data
-      continue;
-    }
-
-    auto subComm = pmap_ptr_->subComm(i);
-
-    FacMatrixT<ExecSpace> const &fac_mat = g.factors()[i];
-    auto fac_ptr = fac_mat.view().data();
-    const auto fac_size = fac_mat.view().span();
-    MPI_Iallreduce(MPI_IN_PLACE, fac_ptr, fac_size, MPI_DOUBLE, MPI_SUM,
-                   subComm, &Requests[i]);
-  }
-}
-
-template <typename ElementType, typename ExecSpace>
 template <typename Loss>
 ElementType
 TensorBlockSystem<ElementType, ExecSpace>::pickMethod(Loss const &loss) {
@@ -448,8 +383,6 @@ TensorBlockSystem<ElementType, ExecSpace>::pickMethod(Loss const &loss) {
     return allReduceTrad<Impl::AdaGradStep<ExecSpace, Loss>>(loss);
   } else if (method == "demon") {
     return allReduceTrad<Impl::DEMON<ExecSpace, Loss>>(loss);
-  } else if (method == "elasticAvgOneSided") {
-    return elasticAvgOneSidedSGD(loss);
   }
   Genten::error("Your method for distributed SGD wasn't recognized.\n");
   return -1.0;
@@ -579,407 +512,6 @@ AlgParams TensorBlockSystem<ElementType, ExecSpace>::setAlgParams() const {
 }
 
 template <typename ElementType, typename ExecSpace>
-void TensorBlockSystem<ElementType, ExecSpace>::initMPIWindows() {
-  const auto ndims = this->ndims();
-  const auto nCols = Kfac_.ncomponents();
-
-  for (auto i = 0; i < ndims; ++i) {
-    const auto nranks_in_dim = pmap_ptr_->subCommSize(i);
-    if (nranks_in_dim == 1) {
-      window_row_starts_.push_back({});
-      window_row_stops_.push_back({});
-      factor_shard_windows_.push_back(nullptr);
-      window_ptrs_.push_back(nullptr);
-      continue;
-    }
-
-    const auto nRows_total = Kfac_.factors()[i].nRows();
-    const auto rows_per_rank = nRows_total / nranks_in_dim;
-    if (rows_per_rank == 0) {
-      if (pmap_ptr_->subCommRank(i) == 0) {
-        std::cout << "Dim " << i << " factor only has " << nRows_total
-                  << " rows, but it's distributed across: " << nranks_in_dim
-                  << " ranks.\nSuggestion: Try one of the AllReduce algorithms "
-                     "or use fewer mpi ranks."
-                  << std::endl;
-      }
-      MPI_Abort(pmap_ptr_->gridComm(), MPI_ERR_UNKNOWN);
-    }
-
-    const auto my_rank = pmap_ptr_->subCommRank(i);
-
-    const std::uint64_t start_row = my_rank * rows_per_rank;
-    const std::uint64_t stop_row = [&] {
-      if (my_rank < nranks_in_dim - 1) {
-        return (my_rank + 1) * rows_per_rank;
-      } else {
-        return nRows_total;
-      }
-    }();
-
-    auto comm = pmap_ptr_->subComm(i);
-    {
-      small_vector<std::uint64_t> starts(nranks_in_dim);
-      small_vector<std::uint64_t> stops(nranks_in_dim);
-
-      MPI_Allgather(&start_row, 1, MPI_UNSIGNED_LONG_LONG, &starts[0], 1,
-                    MPI_UNSIGNED_LONG_LONG, comm);
-      MPI_Allgather(&stop_row, 1, MPI_UNSIGNED_LONG_LONG, &stops[0], 1,
-                    MPI_UNSIGNED_LONG_LONG, comm);
-
-      window_row_starts_.push_back(std::move(starts));
-      window_row_stops_.push_back(std::move(stops));
-    }
-
-    // Compute local window size
-    const std::uint64_t local_rows = stop_row - start_row;
-    const auto local_elements = local_rows * nCols;
-    MPI_Win win;
-
-    double *window_data = nullptr;
-    MPI_Win_allocate(local_elements * sizeof(double), sizeof(double),
-                     MPI_INFO_NULL, comm, &window_data, &win);
-    factor_shard_windows_.push_back(win);
-    window_ptrs_.push_back(window_data);
-  }
-}
-
-template <typename ElementType, typename ExecSpace>
-void TensorBlockSystem<ElementType, ExecSpace>::initMPIDatatypes() {
-  if (factor_shard_windows_.empty() || window_row_starts_.empty() ||
-      window_row_stops_.empty()) {
-    throw std::runtime_error(
-        "Windows must be initialized before datatypes can be.");
-  }
-
-  const auto ndims = this->ndims();
-  const auto nCols = Kfac_.ncomponents();
-
-  for (auto i = 0; i < ndims; ++i) {
-    if (DistContext::isDebug() && pmap_ptr_->gridRank() == 0) {
-      std::cout << "Dim " << i << " datatypes:\n";
-    }
-    const auto dim_size = pmap_ptr_->subCommSize(i);
-    if (dim_size == 1) {
-      continue;
-    }
-
-    auto const &dim_starts = window_row_starts_[i];
-    auto const &dim_stops = window_row_stops_[i];
-    FacMatrixT<ExecSpace> const &fac = Kfac_.factors()[i];
-    const auto dim_stride = fac.view().stride_0();
-
-    small_vector<MPI_Datatype> dim_types;
-    for (auto r = 0; r < dim_size; ++r) {
-      const auto start_row = dim_starts[r];
-      const auto stop_row = dim_stops[r];
-      const auto dim_nrows = stop_row - start_row;
-
-      auto *data_ptr = fac.rowptr(start_row);
-
-      MPI_Datatype factor_type;
-      MPI_Type_vector(dim_nrows, nCols, dim_stride, MPI_DOUBLE, &factor_type);
-      MPI_Type_commit(&factor_type);
-
-      mpi_datatype_map_[data_ptr] = factor_type;
-
-      if (DistContext::isDebug() && pmap_ptr_->gridRank() == 0) {
-        std::cout << "\tNrows: " << dim_nrows << ", blocksize: " << nCols
-                  << ", stride: " << dim_stride << std::endl;
-      }
-    }
-  }
-}
-
-template <typename ElementType, typename ExecSpace>
-void TensorBlockSystem<ElementType, ExecSpace>::doCenterOp(
-    KtensorT<ExecSpace> &kt, CenterOP op) {
-  if (factor_shard_windows_.empty() || window_row_starts_.empty() ||
-      window_row_stops_.empty()) {
-    throw std::runtime_error(
-        "Windows must be initialized before they can be read.");
-  }
-
-  const auto ndims = this->ndims();
-  const auto nCols = Kfac_.ncomponents();
-  auto win_elements = [&](auto const &starts, auto const &stops, int rank) {
-    return nCols * (stops[rank] - starts[rank]);
-  };
-
-  for (auto d = 0; d < ndims; ++d) {
-    MPI_Win &win = factor_shard_windows_[d];
-    if (win == nullptr) {
-      continue; // This dimension doesn't have a window since its exclusively
-                // owned
-    }
-
-    const auto windows_to_read = pmap_ptr_->subCommSize(d);
-    auto const &starts = window_row_starts_[d];
-    auto const &stops = window_row_stops_[d];
-    auto const window_offset = 0;
-    FacMatrixT<ExecSpace> const &fac = kt.factors()[d];
-
-    auto getDataType = [&, this](FacMatrixT<ExecSpace> const &fac,
-                                 auto start_row, int window) {
-      auto *data_ptr = fac.rowptr(start_row);
-      if (mpi_datatype_map_.count(data_ptr) == 0) {
-        MPI_Datatype type;
-        MPI_Type_vector(stops[window] - starts[window], nCols,
-                        fac.view().stride_0(), MPI_DOUBLE, &type);
-        MPI_Type_commit(&type);
-        mpi_datatype_map_.insert({data_ptr, type});
-      }
-
-      return mpi_datatype_map_[data_ptr];
-    };
-
-    MPI_Win_lock_all(0, win);
-    for (auto w = 0; w < windows_to_read; ++w) {
-      const auto nelements = win_elements(starts, stops, w);
-      const auto first_row = starts[w];
-      auto type = getDataType(fac, first_row, w);
-
-      auto *fac_ptr = fac.rowptr(first_row);
-      if (op == CenterOP::CenterRead) {
-        MPI_Get_accumulate(nullptr, 0, MPI_DOUBLE, fac_ptr, 1, type, w,
-                           window_offset, nelements, MPI_DOUBLE, MPI_NO_OP,
-                           win);
-      } else if (op == CenterOP::CenterAccumulate) {
-        MPI_Accumulate(fac_ptr, 1, type, w, window_offset, nelements,
-                       MPI_DOUBLE, MPI_SUM, win);
-      }
-    }
-    MPI_Win_unlock_all(win);
-  }
-}
-
-// Goal for this function is to shard parts of the factor matrices over the
-// nodes that need them.  These shards will form the "parameter" server used as
-// the source of truth for the elastic centers. For now we are going to just try
-// to spread the data out equally and not get fancy with who owns what
-template <typename ElementType, typename ExecSpace>
-void TensorBlockSystem<ElementType, ExecSpace>::shardCenter() {
-  initMPIWindows();
-  initMPIDatatypes();
-
-  // Write out local data to each window
-  const auto ndims = this->ndims();
-  const auto nCols = Kfac_.ncomponents();
-  for (auto i = 0; i < ndims; ++i) {
-    MPI_Win win = factor_shard_windows_[i];
-    if (win == nullptr) {
-      continue;
-    }
-
-    const auto dim_rank = pmap_ptr_->subCommRank(i);
-    const std::uint64_t row_start = window_row_starts_[i][dim_rank];
-    const auto row_stop = window_row_stops_[i][dim_rank];
-    const auto rows_to_write = row_stop - row_start;
-    const std::uint64_t elements_to_write = rows_to_write * nCols;
-    if (elements_to_write == 0) {
-      std::cout << pmap_ptr_->gridRank() << " tried to write: " << 0
-                << " elements for dim(" << i << ")\n";
-      MPI_Abort(pmap_ptr_->gridComm(), MPI_ERR_UNKNOWN);
-    }
-
-    FacMatrixT<ExecSpace> const &fac = Kfac_.factors()[i];
-    auto *start_row_ptr = fac.rowptr(row_start);
-
-    MPI_Datatype type_to_write = mpi_datatype_map_[start_row_ptr];
-
-    MPI_Win_fence(0, win);
-    MPI_Put(start_row_ptr, 1, type_to_write, dim_rank, 0, elements_to_write,
-            MPI_DOUBLE, win);
-    MPI_Win_fence(0, win);
-  }
-};
-
-template <typename ElementType, typename ExecSpace>
-template <typename Loss>
-ElementType TensorBlockSystem<ElementType, ExecSpace>::elasticAvgOneSidedSGD(
-    Loss const &loss) {
-  // At this point we know our local factors are initialized so we can shard
-  shardCenter();
-  using VectorType = GCP::KokkosVector<ExecSpace>;
-  auto u = VectorType(Kfac_);
-  u.copyFromKtensor(Kfac_);
-  KtensorT<ExecSpace> ut = u.getKtensor();
-
-  VectorType g = u.clone(); // Gradient Ktensor
-  g.zero();
-  decltype(Kfac_) gfac = g.getKtensor();
-
-  VectorType center = VectorType(Kfac_); // Center Tensor for elastic avg
-  center.copyFromKtensor(Kfac_);
-  KtensorT<ExecSpace> cfac = center.getKtensor();
-
-  VectorType diff = u.clone(); // Center Tensor for elastic avg
-  diff.zero();
-  KtensorT<ExecSpace> dfac = diff.getKtensor();
-
-  const auto nprocs = this->nprocs();
-  const auto my_rank = gridRank();
-
-  auto algParams = setAlgParams();
-
-  auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(sp_tensor_, algParams);
-
-  Impl::DEMON<ExecSpace, Loss> stepper(algParams, u);
-
-  Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed_);
-  std::stringstream ss;
-  sampler.initialize(rand_pool, ss);
-  if (nprocs < 41) {
-    std::cout << ss.str();
-  }
-
-  SptensorT<ExecSpace> X_val;
-  ArrayT<ExecSpace> w_val;
-  sampler.sampleTensor(false, ut, loss, X_val, w_val);
-
-  // Stuff for the timer that we can'g avoid providing
-  SystemTimer timer;
-  int tnzs = 0;
-  int tzs = 0;
-
-  // Fit stuff
-  auto fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
-
-  auto fest_prev = fest;
-  const auto maxEpochs = algParams.maxiters;
-  const auto epochIters = algParams.epoch_iters;
-  const auto dp_iters = input_.get<int>("downpour_iters", 4);
-
-  // CosineAnnealer annealer(input_);
-  auto annealer_ptr = getAnnealer(input_);
-  auto &annealer = *annealer_ptr;
-
-  for (auto e = 0; e < maxEpochs; ++e) { // Epochs
-    pmap_ptr_->gridBarrier();
-    auto t0 = MPI_Wtime();
-    auto epoch_lr = annealer(e);
-    auto times_centering = 0;
-    stepper.setStep(epoch_lr);
-
-    auto tgrad = 0.0;
-    auto teval = 0.0;
-    auto tcomm = 0.0;
-    auto do_epoch_iter = [&]() {
-      g.zero();
-      auto t0 = MPI_Wtime();
-      sampler.fusedGradient(ut, loss, gfac, timer, tnzs, tzs);
-      auto t1 = MPI_Wtime();
-      stepper.eval(g, u);
-      auto te = MPI_Wtime();
-      tgrad += t1 - t0;
-      teval += te - t1;
-    };
-
-    const auto alpha = 0.9 / nprocs;
-    for (auto i = 0; i < epochIters; ++i) {
-      if (nprocs > 1 && (i + 1) % dp_iters == 0) {
-        auto tc0 = MPI_Wtime();
-        doCenterOp(cfac, CenterOP::CenterRead);
-        for (auto d = 0; d < ndims(); ++d) {
-          if (factor_shard_windows_[d] == nullptr) {
-            deep_copy(cfac.factors()[d], ut.factors()[d]);
-          }
-        }
-
-        u.elastic_difference(diff, center, 1.0);
-        diff.scale(alpha);
-        u.plus(diff, -1.0);
-        doCenterOp(dfac, CenterOP::CenterAccumulate);
-        ++times_centering;
-        tcomm += MPI_Wtime() - tc0;
-      }
-
-      do_epoch_iter();
-    }
-
-    doCenterOp(cfac, CenterOP::CenterRead);
-    for (auto d = 0; d < ndims(); ++d) {
-      if (factor_shard_windows_[d] == nullptr) {
-        deep_copy(cfac.factors()[d], ut.factors()[d]);
-      }
-    }
-    fest = pmap_ptr_->gridAllReduce(Impl::gcp_value(X_val, cfac, w_val, loss));
-    pmap_ptr_->gridBarrier();
-    auto t1 = MPI_Wtime();
-
-    const auto fest_diff = fest_prev - fest;
-
-    std::vector<double> gradient_times;
-    std::vector<double> all_reduce_times;
-    std::vector<double> eval_times;
-    if (my_rank == 0) {
-      gradient_times.resize(nprocs);
-      all_reduce_times.resize(nprocs);
-      eval_times.resize(nprocs);
-      MPI_Gather(&tgrad, 1, MPI_DOUBLE, &gradient_times[0], 1, MPI_DOUBLE, 0,
-                 pmap_ptr_->gridComm());
-      MPI_Gather(&tcomm, 1, MPI_DOUBLE, &all_reduce_times[0], 1, MPI_DOUBLE, 0,
-                 pmap_ptr_->gridComm());
-      MPI_Gather(&teval, 1, MPI_DOUBLE, &eval_times[0], 1, MPI_DOUBLE, 0,
-                 pmap_ptr_->gridComm());
-    } else {
-      MPI_Gather(&tgrad, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
-                 pmap_ptr_->gridComm());
-      MPI_Gather(&tcomm, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
-                 pmap_ptr_->gridComm());
-      MPI_Gather(&teval, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
-                 pmap_ptr_->gridComm());
-    }
-
-    if (my_rank == 0) {
-      auto min_max_gradient =
-          std::minmax_element(gradient_times.begin(), gradient_times.end());
-      auto grad_avg =
-          std::accumulate(gradient_times.begin(), gradient_times.end(), 0.0) /
-          double(nprocs);
-
-      auto min_max_allreduce =
-          std::minmax_element(all_reduce_times.begin(), all_reduce_times.end());
-      auto ar_avg = std::accumulate(all_reduce_times.begin(),
-                                    all_reduce_times.end(), 0.0) /
-                    double(nprocs);
-
-      auto min_max_evals =
-          std::minmax_element(eval_times.begin(), eval_times.end());
-      auto eval_avg =
-          std::accumulate(eval_times.begin(), eval_times.end(), 0.0) /
-          double(nprocs);
-
-      std::cout << "Fit(" << e << "): " << fest
-                << "\n\tchange in fit: " << fest_diff
-                << "\n\tlr:            " << epoch_lr
-                << "\n\tnSync steps:   " << times_centering
-                << "\n\tSeconds:       " << (t1 - t0)
-                << "\n\t\tGradient(avg, min, max):  " << grad_avg << ", "
-                << *min_max_gradient.first << ", " << *min_max_gradient.second
-                << "\n\t\tElastic(avg, min, max): " << ar_avg << ", "
-                << *min_max_allreduce.first << ", " << *min_max_allreduce.second
-                << "\n\t\tEval(avg, min, max):      " << eval_avg << ", "
-                << *min_max_evals.first << ", " << *min_max_evals.second
-                << "\n";
-      std::cout << std::flush;
-    }
-
-    if (fest_diff > -0.005 * fest_prev) {
-      stepper.setPassed();
-      fest_prev = fest;
-      annealer.success();
-    } else {
-      annealer.failed();
-      stepper.setFailed();
-      return fest_prev;
-    }
-  }
-
-  return fest;
-}
-
-template <typename ElementType, typename ExecSpace>
 template <typename Loss>
 ElementType
 TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
@@ -1017,10 +549,7 @@ TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(sp_tensor_, algParams);
 
   Impl::SGDStep<ExecSpace, Loss> stepper;
-  // Impl::DEMON<ExecSpace, Loss> stepper(algParams, u);
-  // Impl::SGDMomentumStep<ExecSpace, Loss> stepper(algParams, u);
   Impl::AdamStep<ExecSpace, Loss> meta_stepper(algParams, meta_u);
-  // Impl::AdaGradStep<ExecSpace, Loss> meta_stepper(algParams, meta_u);
   Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed_);
 
   std::stringstream ss;
@@ -1053,7 +582,8 @@ TensorBlockSystem<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
   auto fedavg = input_.get<bool>("fedavg", false);
   auto meta_lr = input_.get<ElementType>("meta_lr", 1e-3);
 
-  double t0 = 0, t1 = 0;
+  double t0 = 0;
+  double t1 = 0;
   for (auto e = 0; e < maxEpochs; ++e) { // Epochs
     t0 = MPI_Wtime();
     auto epoch_lr = annealer(e);

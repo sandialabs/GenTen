@@ -287,6 +287,8 @@ redistributeTensor(std::vector<MPI_IO::TDatatype<double>> const &Tvec,
     }
   }
 
+  // Let's leave this onesided because IMO it makes life easier. This is self
+  // contained so won't impact TBS
   MPI_IO::TDatatype<double> *data;
   MPI_Win window;
   constexpr auto DataElemSize = sizeof(MPI_IO::TDatatype<double>);
