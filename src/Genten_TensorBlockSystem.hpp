@@ -63,10 +63,14 @@
 namespace Genten {
 
 namespace detail {
+void printGrids(ProcessorMap const &pmap);
+void printBlocking(ProcessorMap const &pmap,
+                   std::vector<small_vector<int>> const &blocking);
+
 std::vector<small_vector<int>>
 generateUniformBlocking(std::vector<std::uint32_t> const &ModeLengths,
                         small_vector<int> const &ProcGridSizes);
-}
+} // namespace detail
 
 struct RangePair {
   int64_t lower;
@@ -84,11 +88,7 @@ class TensorBlockSystem {
       "point type.");
 
   /// The normal initialization method, inializes in parallel
-  void init_distributed(std::string const &file_name, int indexbase,
-                        int tensor_rank);
-
-  // Initialization for creating the tensor block system all on all ranks
-  void init_independent(std::string const &file_name, int indexbase, int rank);
+  void init_distributed(std::string const &file_name, int indexbase);
 
   /// Initialize the factor matrices
   void init_factors();
@@ -129,6 +129,9 @@ public:
   void exportKTensor(std::string const &file_name);
 
 private:
+  boost::optional<std::pair<MPI_IO::SptnFileHeader, MPI_File>>
+  readHeader(std::string const &file_name, int indexbase);
+
   ptree input_;
   small_vector<RangePair> range_;
   SptensorT<ExecSpace> sp_tensor_;
@@ -209,22 +212,7 @@ TensorBlockSystem<ElementType, ExecSpace>::TensorBlockSystem(ptree const &tree)
   const auto file_name = input_.get<std::string>("file");
   const auto indexbase = input_.get<int>("indexbase", 0);
   const auto rank = input_.get<int>("rank", 5);
-
-  const auto init_strategy =
-      input_.get<std::string>("tensor.initialization", "distributed");
-  if (init_strategy == "distributed") {
-    init_distributed(file_name, indexbase, rank);
-  } else if (init_strategy == "replicated") {
-    // TODO This should really do single then bcast
-    init_independent(file_name, indexbase, rank);
-  } else if (init_strategy == "single") {
-    if (DistContext::rank() == 0) {
-      init_independent(file_name, indexbase, rank);
-    }
-  } else {
-    throw std::logic_error("Tensor initialization must be one of of "
-                           "{distributed, replicated, or single}\n");
-  }
+  init_distributed(file_name, indexbase);
 }
 
 template <typename ElementType, typename ExecSpace>
@@ -239,128 +227,63 @@ TensorBlockSystem<ElementType, ExecSpace>::~TensorBlockSystem() {
   }
 }
 
-template <typename ElementType, typename ExecSpace>
-void TensorBlockSystem<ElementType, ExecSpace>::init_independent(
-    std::string const &file_name, int indexbase, int rank) {
-  if (detail::fileFormatIsBinary(file_name)) {
-    throw std::logic_error(
-        "I can't quite read the binary format just yet, sorry.");
-  }
-
-  typename SptensorT<ExecSpace>::HostMirror sp_tensor_host;
-  import_sptensor(file_name, sp_tensor_host, indexbase, false, false);
-  std::cout << "The size of the sp_tensor is: " << sp_tensor_host.size()
-            << "\n";
-  sp_tensor_ = create_mirror_view(ExecSpace{}, sp_tensor_host);
-  deep_copy(sp_tensor_, sp_tensor_host);
-
-  auto const &index_view = sp_tensor_host.size();
-  const auto ndims = index_view.size();
-  range_.reserve(ndims);
-  for (auto i = 0; i < ndims; ++i) {
-    range_.push_back({0ll, int64_t(index_view[i])});
-  }
-
-  Kfac_ = KtensorT<ExecSpace>(rank, ndims,
-                              detail::rangesToIndexArray<ExecSpace>(range_));
-  Kfac_.setMatrices(0.0);
-}
-
 // We'll put this down here to save some space
 template <typename ElementType, typename ExecSpace>
 void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
-    std::string const &file_name, int indexbase, int tensor_rank) {
-  bool is_binary = detail::fileFormatIsBinary(file_name);
-  if (is_binary && indexbase != 0) {
-    throw std::logic_error(
-        "The binary format only supports zero based indexing\n");
-  }
+    std::string const &file_name, int indexbase) {
 
-  auto t0 = MPI_Wtime();
-  std::ifstream tensor_file;
-  MPI_File mpi_fh;
-  MPI_IO::SptnFileHeader binary_header;
-  if (!is_binary) {
-    tensor_file.open(file_name);
-    Ti_ = read_sptensor_header(tensor_file);
-  } else {
-    mpi_fh = MPI_IO::openFile(DistContext::commWorld(), file_name);
-    binary_header = MPI_IO::readHeader(DistContext::commWorld(), mpi_fh);
-    Ti_ = binary_header.toTensorInfo();
-  }
+  auto binary_header = readHeader(file_name, indexbase);
+
   const auto ndims = Ti_.dim_sizes.size();
   pmap_ptr_ = std::unique_ptr<ProcessorMap>(
       new ProcessorMap(DistContext::input(), Ti_.dim_sizes));
   auto &pmap_ = *pmap_ptr_;
 
-  if (DistContext::isDebug()) {
-    if (this->gridRank() == 0) {
-      std::cout << "Pmap initalization complete with grid: ";
-      for (auto p : pmap_ptr_->gridDims()) {
-        std::cout << p << " ";
-      }
-      std::cout << std::endl;
-    }
-    pmap_ptr_->gridBarrier();
-  }
+  detail::printGrids(pmap_);
 
-  // TODO blocking could be better
   const auto blocking =
       detail::generateUniformBlocking(Ti_.dim_sizes, pmap_.gridDims());
 
-  if (DistContext::isDebug()) {
-    if (this->gridRank() == 0) {
-      std::cout << "With blocking:\n";
-      auto dim = 0;
-      for (auto const &inner : blocking) {
-        std::cout << "\tdim(" << dim << "): ";
-        ++dim;
-        for (auto i : inner) {
-          std::cout << i << " ";
-        }
-        std::cout << "\n";
-      }
-      std::cout << std::endl;
-    }
-    pmap_ptr_->gridBarrier();
-  }
-  pmap_ptr_->gridBarrier();
-  auto t1 = MPI_Wtime();
-  if (pmap_ptr_->gridRank() == 0) {
-    std::cout << "Read tensor header in: " << t1 - t0 << "s" << std::endl;
-  }
+  detail::printBlocking(pmap_, blocking);
+  DistContext::Barrier();
 
-  // Evenly distribute the tensor around the world
-  pmap_ptr_->gridBarrier();
   auto t2 = MPI_Wtime();
-  std::vector<MPI_IO::TDatatype<double>> Tvec;
-  if (!is_binary) {
-    Tvec = detail::distributeTensorToVectors(tensor_file, Ti_.nnz, indexbase,
-                                             pmap_.gridComm(), pmap_.gridRank(),
-                                             pmap_.gridSize());
-  } else {
-    Tvec = MPI_IO::parallelReadElements(DistContext::commWorld(), mpi_fh,
-                                        binary_header);
-  }
-  pmap_ptr_->gridBarrier();
+  auto Tvec = [&] {
+    if (binary_header) {
+      return MPI_IO::parallelReadElements(DistContext::commWorld(),
+                                          binary_header->second,
+                                          binary_header->first);
+    } else {
+      auto tensor_file = std::ifstream(file_name);
+      return detail::distributeTensorToVectors(
+          tensor_file, Ti_.nnz, indexbase, pmap_.gridComm(), pmap_.gridRank(),
+          pmap_.gridSize());
+    }
+  }();
+  DistContext::Barrier();
   auto t3 = MPI_Wtime();
-  if (pmap_ptr_->gridRank() == 0) {
+
+  if (gridRank() == 0) {
     std::cout << "Read in file in: " << t3 - t2 << "s" << std::endl;
   }
 
-  pmap_ptr_->gridBarrier();
+  DistContext::Barrier();
   auto t4 = MPI_Wtime();
-  // Now redistribute to medium grain format
+
+  // Now redistribute to final format
   auto distributedData =
       detail::redistributeTensor(Tvec, Ti_.dim_sizes, blocking, pmap_);
-  pmap_ptr_->gridBarrier();
+
+  DistContext::Barrier();
   auto t5 = MPI_Wtime();
-  if (pmap_ptr_->gridRank() == 0) {
+
+  if (gridRank() == 0) {
     std::cout << "Redistributied file in: " << t5 - t4 << "s" << std::endl;
   }
 
-  pmap_ptr_->gridBarrier();
+  DistContext::Barrier();
   auto t6 = MPI_Wtime();
+
   const auto local_nnz = distributedData.size();
   for (auto i = 0; i < ndims; ++i) {
     auto coord = pmap_.gridCoord(i);
@@ -385,21 +308,24 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_distributed(
   }
 
   sp_tensor_ = SptensorT<ExecSpace>(indices, values, subs);
-  if (DistContext::input().get<bool>("debug", false)) {
-    if (this->gridRank() == 0) {
+  if (DistContext::isDebug()) {
+    if (gridRank() == 0) {
       std::cout << "MPI Ranks in each dimension: ";
-      for (auto p : pmap_ptr_->subCommSizes()) {
+      for (auto p : pmap_.subCommSizes()) {
         std::cout << p << " ";
       }
       std::cout << std::endl;
     }
-    pmap_ptr_->gridBarrier();
+    DistContext::Barrier();
   }
-  pmap_ptr_->gridBarrier();
+
+  DistContext::Barrier();
   auto t7 = MPI_Wtime();
-  if (pmap_ptr_->gridRank() == 0) {
+
+  if (gridRank() == 0) {
     std::cout << "Copied to data struct in: " << t7 - t6 << "s" << std::endl;
   }
+
   init_factors();
 }
 
@@ -423,13 +349,10 @@ void TensorBlockSystem<ElementType, ExecSpace>::init_factors() {
   // Init KFac_ randomly on each node
   Kfac_ = KtensorT<ExecSpace>(rank, nd, sp_tensor_.size());
   Genten::RandomMT cRMT(std::random_device{}());
-  Kfac_.setWeights(1.0); // Matlab cp_als always sets the weights to one.
+  Kfac_.setWeights(1.0);
   Kfac_.setMatricesScatter(false, true, cRMT);
 
-  // Specifically don't get full norm so that all norms are local
   const auto norm_x = sp_tensor_.norm();
-  auto norm_k = std::sqrt(Kfac_.normFsq());
-  // Kfac_.weights().times(norm_x / norm_k);
   Kfac_.weights().times(1.0 / norm_x);
   Kfac_.distribute();
 
@@ -1478,6 +1401,29 @@ void TensorBlockSystem<ElementType, ExecSpace>::exportKTensor(
       std::cout << s << " ";
     }
     std::cout << std::endl;
+  }
+}
+
+template <typename ElementType, typename ExecSpace>
+boost::optional<std::pair<MPI_IO::SptnFileHeader, MPI_File>>
+TensorBlockSystem<ElementType, ExecSpace>::readHeader(
+    std::string const &file_name, int indexbase) {
+
+  bool is_binary = detail::fileFormatIsBinary(file_name);
+  if (is_binary && indexbase != 0) {
+    throw std::logic_error(
+        "The binary format only supports zero based indexing\n");
+  }
+
+  if (!is_binary) {
+    std::ifstream tensor_file(file_name);
+    Ti_ = read_sptensor_header(tensor_file);
+    return boost::none;
+  } else {
+    auto mpi_fh = MPI_IO::openFile(DistContext::commWorld(), file_name);
+    auto binary_header = MPI_IO::readHeader(DistContext::commWorld(), mpi_fh);
+    Ti_ = binary_header.toTensorInfo();
+    return std::make_pair(std::move(binary_header), mpi_fh);
   }
 }
 

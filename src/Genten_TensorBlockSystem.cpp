@@ -44,10 +44,44 @@
 namespace Genten {
 namespace detail {
 
+void printGrids(ProcessorMap const &pmap) {
+  if (DistContext::isDebug()) {
+    if (pmap.gridRank() == 0) {
+      std::cout << "Pmap initalization complete with grid: ";
+      for (auto p : pmap.gridDims()) {
+        std::cout << p << " ";
+      }
+      std::cout << std::endl;
+    }
+    pmap.gridBarrier();
+  }
+}
+
+void printBlocking(ProcessorMap const &pmap,
+                   std::vector<small_vector<int>> const &blocking) {
+  if (DistContext::isDebug()) {
+    if (pmap.gridRank() == 0) {
+      std::cout << "With blocking:\n";
+      auto dim = 0;
+      for (auto const &inner : blocking) {
+        std::cout << "\tdim(" << dim << "): ";
+        ++dim;
+        for (auto i : inner) {
+          std::cout << i << " ";
+        }
+        std::cout << "\n";
+      }
+      std::cout << std::endl;
+    }
+    pmap.gridBarrier();
+  }
+}
+
 bool fileFormatIsBinary(std::string const &file_name) {
   std::ifstream tensor_file(file_name, std::ios::binary);
   std::string header;
   header.resize(4);
+
   try {
     tensor_file.read(&header[0], 4);
   } catch (...) {
@@ -66,9 +100,9 @@ small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode) {
   const auto FibersPerBlock = ModeLength / ProcsInMode;
   auto Remainder = ModeLength % ProcsInMode;
 
-  // We ended up with more processors than rows in the fiber :O Just return all
-  // fibers in the same block. It seems easier to handle this here than to try
-  // to make the while loop logic do something smart
+  // We ended up with more processors than rows in the fiber :O Just return
+  // all fibers in the same block. It seems easier to handle this here than to
+  // try to make the while loop logic do something smart
   if (FibersPerBlock == 0) {
     Range.push_back(ModeLength);
   }
@@ -264,8 +298,8 @@ redistributeTensor(std::vector<MPI_IO::TDatatype<double>> const &Tvec,
   MPI_Type_contiguous(DataElemSize, MPI_BYTE, &element_type);
   MPI_Type_commit(&element_type);
 
-  // Jonathan L. told me for AllToAll Fences are probably better than locking if
-  // communications don't conflict
+  // Jonathan L. told me for AllToAll Fences are probably better than locking
+  // if communications don't conflict
   MPI_Win_fence(0, window);
   for (auto i = 0; i < nprocs; ++i) {
     MPI_Put(
@@ -282,7 +316,6 @@ redistributeTensor(std::vector<MPI_IO::TDatatype<double>> const &Tvec,
   // Copy data to the output vector
   std::vector<MPI_IO::TDatatype<double>> redistributedData(
       data, data + amount_to_allocate_for_window);
-
 
   // Free the MPI window and the buffer that it was allocated in
   MPI_Win_free(&window);
