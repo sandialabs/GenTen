@@ -116,6 +116,15 @@ class TensorBlockSystem {
 public:
   TensorBlockSystem(ptree const &tree);
   ~TensorBlockSystem();
+
+  // For now let's delete these so they aren't accidently used
+  // Can come back and define them later if needed
+  TensorBlockSystem(TensorBlockSystem const&) = delete;
+  TensorBlockSystem& operator=(TensorBlockSystem const&) = delete;
+
+  TensorBlockSystem(TensorBlockSystem &&) = delete;
+  TensorBlockSystem& operator=(TensorBlockSystem &&) = delete;
+
   ElementType getTensorNorm() const;
 
   std::uint64_t globalNNZ() const { return Ti_.nnz; }
