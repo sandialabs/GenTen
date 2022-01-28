@@ -240,7 +240,7 @@ namespace Genten {
         mttkrp_method = MTTKRP_Method::Perm;
 
       else if (space_prop::is_hip)
-        mttkrp_method = MTTKRP_Method::Atomic;
+        mttkrp_method = MTTKRP_Method::Perm;
 
       // Otherwise use Perm or Duplicated on CPU depending on the method
       else {
@@ -275,7 +275,7 @@ namespace Genten {
         mttkrp_all_method = MTTKRP_All_Method::Iterated;
 
       else if (space_prop::is_hip)
-        mttkrp_all_method = MTTKRP_All_Method::Atomic;
+        mttkrp_all_method = MTTKRP_All_Method::Iterated;
 
       // Otherwise use Iterated or Duplicated depending on the method
       else {
