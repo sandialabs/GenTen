@@ -322,18 +322,6 @@ namespace Genten {
             << " on Cuda.  Changing MTTKRP-All method to atomic." << std::endl;
       }
     }
-
-    if (space_prop::is_hip) {
-      mttkrp_method = MTTKRP_Method::Atomic;
-      out << "MTTKRP method " << MTTKRP_Method::names[mttkrp_method]
-          << " is invalid for HIP, changing to "
-          << MTTKRP_Method::names[mttkrp_method] << "." << std::endl;
-
-      mttkrp_all_method = MTTKRP_All_Method::Atomic;
-      out << "MTTKRP-All method " << MTTKRP_All_Method::names[mttkrp_all_method]
-          << " is invalid for HIP, changing to "
-          << MTTKRP_All_Method::names[mttkrp_all_method] << "." << std::endl;
-    }
   }
 
 }
