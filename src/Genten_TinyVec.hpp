@@ -54,10 +54,6 @@
 #endif
 #endif
 
-#if defined (KOKKOS_ENABLE_HIP)
-#define KOKKOS_DEFAULTED_DEVICE_FUNCTION __device__ inline
-#endif
-
 namespace Genten {
 
   namespace Impl {
@@ -67,15 +63,6 @@ namespace Genten {
     template <typename T, typename Ordinal>
      __device__ inline T warpReduce(T y, const Ordinal warp_size) {
       Kokkos::Impl::CudaTeamMember::vector_reduce(Kokkos::Sum<T>(y));
-      return y;
-    }
-#endif
-
-#if defined (__HIP_ARCH__)
-    // Reduce y across the warp and broadcast to all lanes
-    template <typename T, typename Ordinal>
-     __device__ inline T warpReduce(T y, const Ordinal warp_size) {
-      Kokkos::Impl::HIPTeamMember::vector_reduce(Kokkos::Sum<T>(y));
       return y;
     }
 #endif
@@ -102,7 +89,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     TinyVec(const ordinal_type size, const scalar_type x) :
-#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
+#ifdef __CUDA_ARCH__
       sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
 #else
       sz(size)
@@ -113,7 +100,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     TinyVec(const ordinal_type size, const scalar_type* x) :
-#if defined (__CUDA_ARCH__) || defined(__HIP_ARCH__)
+#ifdef __CUDA_ARCH__
       sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
 #else
       sz(size)
@@ -167,7 +154,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     void load(const scalar_type* x) {
-#if defined (__CUDA_ARCH__) || defined(__HIP_ARCH__)
+#ifdef __CUDA_ARCH__
       for (ordinal_type i=0; i<sz.value; ++i)
         v[i] = x[i*WarpDim+threadIdx.x];
 #else
@@ -178,7 +165,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     void store(scalar_type* x) const {
-#if defined (__CUDA_ARCH__) || defined(__HIP_ARCH__)
+#ifdef __CUDA_ARCH__
       for (ordinal_type i=0; i<sz.value; ++i)
         x[i*WarpDim+threadIdx.x] = v[i];
 #else
@@ -189,7 +176,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     void store_plus(scalar_type* x) const {
-#if defined (__CUDA_ARCH__) || defined(__HIP_ARCH__)
+#ifdef __CUDA_ARCH__
       for (ordinal_type i=0; i<sz.value; ++i)
         x[i*WarpDim+threadIdx.x] += v[i];
 #else
@@ -200,7 +187,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     void atomic_store_plus(volatile scalar_type* x) const {
-#if defined (__CUDA_ARCH__) || defined(__HIP_ARCH__)
+#ifdef __CUDA_ARCH__
       for (ordinal_type i=0; i<sz.value; ++i)
         Kokkos::atomic_add(x+i*WarpDim+threadIdx.x, v[i]);
 #else
@@ -212,7 +199,7 @@ namespace Genten {
     KOKKOS_INLINE_FUNCTION
     TinyVec atomic_exchange(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-#if defined (__CUDA_ARCH__) || defined(__HIP_ARCH__)
+#ifdef __CUDA_ARCH__
       for (ordinal_type i=0; i<sz.value; ++i)
         c.v[i] = Kokkos::atomic_exchange(x+i*WarpDim+threadIdx.x, v[i]);
 #else
@@ -225,7 +212,7 @@ namespace Genten {
     KOKKOS_INLINE_FUNCTION
     TinyVec atomic_fetch_max(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-#if defined (__CUDA_ARCH__) || defined(__HIP_ARCH__)
+#ifdef __CUDA_ARCH__
       for (ordinal_type i=0; i<sz.value; ++i)
         c.v[i] = Kokkos::atomic_fetch_max(x+i*WarpDim+threadIdx.x, v[i]);
 #else
@@ -238,7 +225,7 @@ namespace Genten {
     KOKKOS_INLINE_FUNCTION
     TinyVec atomic_fetch_min(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-#if defined (__CUDA_ARCH__) || defined(__HIP_ARCH__)
+#ifdef __CUDA_ARCH__
       for (ordinal_type i=0; i<sz.value; ++i)
         c.v[i] = Kokkos::atomic_fetch_min(x+i*WarpDim+threadIdx.x, v[i]);
 #else
@@ -252,7 +239,7 @@ namespace Genten {
     KOKKOS_INLINE_FUNCTION
     TinyVec atomic_oper_fetch(const Oper& op, volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
+#ifdef __CUDA_ARCH__
       for (ordinal_type i=0; i<sz.value; ++i)
         c.v[i] = Genten::atomic_oper_fetch(op, x+i*WarpDim+threadIdx.x, v[i]);
 #else
@@ -363,7 +350,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     TinyVec& operator+=(const scalar_type* x) {
-#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
+#ifdef __CUDA_ARCH__
       for (ordinal_type i=0; i<sz.value; ++i)
         v[i] += x[i*WarpDim+threadIdx.x];
 #else
@@ -375,7 +362,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     TinyVec& operator-=(const scalar_type* x) {
-#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
+#ifdef __CUDA_ARCH__
       for (ordinal_type i=0; i<sz.value; ++i)
         v[i] -= x[i*WarpDim+threadIdx.x];
 #else
@@ -387,7 +374,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     TinyVec& operator*=(const scalar_type* x) {
-#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
+#ifdef __CUDA_ARCH__
       for (ordinal_type i=0; i<sz.value; ++i)
         v[i] *= x[i*WarpDim+threadIdx.x];
 #else
@@ -399,7 +386,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     TinyVec& operator/=(const scalar_type* x) {
-#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
+#ifdef __CUDA_ARCH__
       for (ordinal_type i=0; i<sz.value; ++i)
         v[i] /= x[i*WarpDim+threadIdx.x];
 #else
@@ -414,7 +401,7 @@ namespace Genten {
       scalar_type s = 0.0;
       for (ordinal_type i=0; i<sz.value; ++i)
         s += v[i];
-#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
+#ifdef __CUDA_ARCH__
       s = Impl::warpReduce(s, WarpDim);
 #endif
       return s;
