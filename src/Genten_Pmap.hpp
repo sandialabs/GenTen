@@ -88,31 +88,35 @@ public:
     static_assert(std::is_arithmetic<T>::value,
                   "gridAllReduce requires something like a double, or int");
 
+    auto mpiType = [] {
+      if (std::is_same<T, double>::value)
+        return MPI_DOUBLE;
+      if (std::is_same<T, float>::value)
+        return MPI_FLOAT;
+      if (std::is_same<T, unsigned long>::value)
+        return MPI_UNSIGNED_LONG;
+      if (std::is_same<T, int>::value)
+        return MPI_INT;
+      if (std::is_same<T, long>::value)
+        return MPI_LONG;
+
+      throw std::logic_error("gridAllReduce only handles {double, float, "
+                             "unsigned long, int, long} as input types.");
+    }();
+
     if (grid_nprocs_ > 1) {
-      MPI_Allreduce(MPI_IN_PLACE, &element, 1, convertType(element), op,
-                    cart_comm_);
+      MPI_Allreduce(MPI_IN_PLACE, &element, 1, mpiType, op, cart_comm_);
     }
     return element;
   }
-
-private:
-  MPI_Datatype convertType(double) const { return MPI_DOUBLE; }
-
-  MPI_Datatype convertType(float) const { return MPI_FLOAT; }
-
-  MPI_Datatype convertType(unsigned long) const { return MPI_UNSIGNED_LONG; }
-
-  MPI_Datatype convertType(int) const { return MPI_INT; }
-
-  MPI_Datatype convertType(long) const { return MPI_LONG; }
 
 private:
   /*
    * FieldDecls
    */
   MPI_Comm cart_comm_ = MPI_COMM_NULL;
-  int grid_nprocs_;
-  int grid_rank_;
+  int grid_nprocs_ = 0;
+  int grid_rank_ = -1;
   small_vector<int> coord_;
   small_vector<int> dimension_sizes_;
 

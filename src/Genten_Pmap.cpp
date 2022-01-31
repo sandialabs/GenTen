@@ -149,9 +149,6 @@ auto minFactorSpaceGrid(int nprocs,
   return grid;
 }
 
-small_vector<int> CartGrid(int nprocs,
-                           std::vector<std::uint32_t> const &tensor_dims);
-
 small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode) {
   small_vector<int> Range{0};
   const auto FibersPerBlock = ModeLength / ProcsInMode;
@@ -195,101 +192,6 @@ generateUniformBlocking(std::vector<std::uint32_t> const &ModeLengths,
   }
 
   return blocking;
-}
-
-small_vector<double>
-testPmapGrid(ProcessorMap const &pmap, int factor_rank,
-             std::vector<std::uint32_t> const &tensor_dims) {
-  small_vector<std::vector<double>> test_factors;
-  auto blocking = generateUniformBlocking(tensor_dims, pmap.gridDims());
-
-  const auto ndims = tensor_dims.size();
-  for (auto i = 0; i < ndims; ++i) {
-    auto const &blocking_dim = blocking[i];
-    const int grid_cord = pmap.gridCoord(i);
-    const int nrows_dim = blocking_dim[grid_cord + 1] - blocking_dim[grid_cord];
-
-    test_factors.emplace_back(nrows_dim * factor_rank, 0.0);
-  }
-
-  small_vector<double> times(ndims, 0.0);
-  auto run_allreduce = [&] {
-    for (auto i = 0; i < ndims; ++i) {
-      if (pmap.subCommSize(i) == 1) { // Don't Allreduce when not replicated
-        continue;
-      }
-
-      auto t0 = MPI_Wtime();
-      MPI_Allreduce(MPI_IN_PLACE, &test_factors[i][0], test_factors[i].size(),
-                    MPI_DOUBLE, MPI_SUM, pmap.subComm(i));
-
-      times[i] += MPI_Wtime() - t0;
-    }
-  };
-
-  // Time 5 iterations of AllReduce to try and get something reasonable
-  for (auto i = 0; i < 20; ++i) {
-    run_allreduce();
-  }
-
-  MPI_Allreduce(MPI_IN_PLACE, &times[0], ndims, MPI_DOUBLE, MPI_SUM,
-                pmap.gridComm());
-
-  return times;
-}
-
-void updateGuessGrid(small_vector<int> &grid,
-                     small_vector<double> const &scores) {
-  const auto ndim = scores.size();
-  auto min_max = std::minmax_element(scores.begin(), scores.end());
-  auto min_idx = std::distance(scores.begin(), min_max.first);
-  auto max_idx = std::distance(scores.begin(), min_max.second);
-
-  auto divisors_min = divisors(grid[min_idx]);
-  if (divisors_min.size() >= 2) {
-    auto scale = divisors_min[1];
-    grid[max_idx] *= scale;
-    grid[min_idx] /= scale;
-  }
-}
-
-auto minAllReduceComm(int nprocs, int factor_rank,
-                      std::vector<std::uint32_t> const &tensor_dims) {
-  auto guess_grid = minFactorSpaceGrid(nprocs, tensor_dims);
-  small_vector<int> chosen_grid(guess_grid.size());
-  bool decided = false;
-  auto score = std::numeric_limits<double>::max();
-  while (!decided) {
-    if (DistContext::rank() == 0 && DistContext::isDebug()) {
-      std::cout << "Testing processor grid: ";
-      for (auto i : guess_grid) {
-        std::cout << i << " ";
-      }
-      std::cout << std::endl;
-    }
-    DistContext::Barrier();
-    ProcessorMap pmap({}, tensor_dims, guess_grid);
-    auto guess_scores = testPmapGrid(pmap, factor_rank, tensor_dims);
-    auto guess_score =
-        std::accumulate(guess_scores.begin(), guess_scores.end(), 0.0);
-    if (DistContext::rank() == 0 && DistContext::isDebug()) {
-      std::cout << "\tGrid scored: " << guess_score << ", ";
-      for (auto s : guess_scores) {
-        std::cout << s << " ";
-      }
-      std::cout << std::endl;
-    }
-    DistContext::Barrier();
-    if (guess_score < score) {
-      chosen_grid = guess_grid;
-      score = guess_score;
-      updateGuessGrid(guess_grid, guess_scores);
-    } else {
-      decided = true;
-    }
-  }
-
-  return chosen_grid;
 }
 
 small_vector<int> CartGrid(int nprocs,
