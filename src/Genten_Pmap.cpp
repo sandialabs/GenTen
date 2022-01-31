@@ -149,11 +149,8 @@ auto minFactorSpaceGrid(int nprocs,
   return grid;
 }
 
-enum class CartGridStratagy { MinAllReduceComm, MinFactorSpace };
-small_vector<int>
-CartGrid(int nprocs, std::vector<std::uint32_t> const &tensor_dims,
-         int factor_rank,
-         CartGridStratagy strat = CartGridStratagy::MinAllReduceComm);
+small_vector<int> CartGrid(int nprocs,
+                           std::vector<std::uint32_t> const &tensor_dims);
 
 small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode) {
   small_vector<int> Range{0};
@@ -253,7 +250,7 @@ void updateGuessGrid(small_vector<int> &grid,
     auto scale = divisors_min[1];
     grid[max_idx] *= scale;
     grid[min_idx] /= scale;
-  } 
+  }
 }
 
 auto minAllReduceComm(int nprocs, int factor_rank,
@@ -277,7 +274,7 @@ auto minAllReduceComm(int nprocs, int factor_rank,
         std::accumulate(guess_scores.begin(), guess_scores.end(), 0.0);
     if (DistContext::rank() == 0 && DistContext::isDebug()) {
       std::cout << "\tGrid scored: " << guess_score << ", ";
-      for(auto s : guess_scores){
+      for (auto s : guess_scores) {
         std::cout << s << " ";
       }
       std::cout << std::endl;
@@ -296,35 +293,9 @@ auto minAllReduceComm(int nprocs, int factor_rank,
 }
 
 small_vector<int> CartGrid(int nprocs,
-                           std::vector<std::uint32_t> const &tensor_dims,
-                           int factor_rank, CartGridStratagy strat) {
-  switch (strat) {
-  case CartGridStratagy::MinAllReduceComm:
-    return minAllReduceComm(nprocs, factor_rank, tensor_dims);
-  case CartGridStratagy::MinFactorSpace:
-    return minFactorSpaceGrid(nprocs, tensor_dims);
-  default:
-    return minFactorSpaceGrid(nprocs, tensor_dims);
-  }
+                           std::vector<std::uint32_t> const &tensor_dims) {
+  return minFactorSpaceGrid(nprocs, tensor_dims);
 }
-
-CartGridStratagy readGridStrat(ptree const &tree) {
-  auto strat_str = tree.get("pmap.strategy", "reduce_space");
-  if (strat_str == "reduce_comm") {
-    return CartGridStratagy::MinAllReduceComm;
-  } else if (strat_str == "reduce_space") {
-    return CartGridStratagy::MinFactorSpace;
-  }
-
-  if (DistContext::rank() == 0) {
-    std::cout << "Didn't reconize grid strategy: " << strat_str
-              << " accepted options are reduce_comm and reduce_space. "
-                 "Defaulting to reduce_space."
-              << std::endl;
-  }
-  return CartGridStratagy::MinFactorSpace;
-}
-
 } // namespace
 
 ProcessorMap::ProcessorMap(ptree const &input_tree,
@@ -364,9 +335,7 @@ ProcessorMap::ProcessorMap(ptree const &input_tree,
 ProcessorMap::ProcessorMap(ptree const &input_tree,
                            std::vector<std::uint32_t> const &tensor_dims)
     : ProcessorMap(input_tree, tensor_dims,
-                   CartGrid(DistContext::nranks(), tensor_dims,
-                            input_tree.get<int>("tensor.rank"),
-                            readGridStrat(input_tree))) {}
+                   CartGrid(DistContext::nranks(), tensor_dims)) {}
 
 void ProcessorMap::gridBarrier() const {
   if (grid_nprocs_ > 1) {

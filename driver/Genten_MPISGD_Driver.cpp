@@ -42,7 +42,7 @@
 #include "Genten_DistSpTensor.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_Pmap.hpp"
-#include "Genten_TensorBlockSystem.hpp"
+#include "Genten_DistGCP.hpp"
 
 #include <Kokkos_Core.hpp>
 #include <iostream>
@@ -99,7 +99,7 @@ int main(int argc, char **argv) {
 }
 
 void check_input() {
-  auto &in = GT::DistContext::input();
+  auto const &in = GT::DistContext::input();
   if (GT::DistContext::rank() == 0) {
     if (in.get_optional<std::string>("tensor.file") == boost::none) {
       throw std::logic_error{"Input must contain tensor.file"};
@@ -119,7 +119,7 @@ void real_main(int argc, char **argv) {
                 << GT::DistContext::input().get<std::string>("tensor.file")
                 << "\n";
       std::cout << "\tusing method: "
-                << GT::DistContext::input().get<std::string>("tensor.method")
+                << GT::DistContext::input().get<std::string>("gcp.method")
                 << std::endl;
 
       if (GT::DistContext::isDebug()) {
@@ -129,10 +129,10 @@ void real_main(int argc, char **argv) {
       }
     }
     GT::DistContext::Barrier();
-
-    GT::TensorBlockSystem<double, Kokkos::OpenMP> tbs(GT::DistContext::input());
-    tbs.SGD();
-    // tbs.exportKTensor("out.txt");
+    GT::DistSpTensor<double, Kokkos::OpenMP> spTensor(GT::DistContext::input());
+    GT::DistGCP<double, Kokkos::OpenMP> gcp(std::move(spTensor),
+                                            GT::DistContext::input());
+    gcp.compute();
   } catch (std::exception &e) {
     auto rank = GT::DistContext::rank();
     std::cerr << "Rank: " << rank << " " << e.what() << "\n";

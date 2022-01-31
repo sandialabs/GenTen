@@ -494,7 +494,6 @@ if(MPI_FOUND AND BOOST_FOUND)
   add_library(DistContextLib 
     ${Genten_SOURCE_DIR}/src/Genten_DistContext.cpp
     ${Genten_SOURCE_DIR}/src/Genten_Pmap.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_TensorBlockSystem.cpp
     ${Genten_SOURCE_DIR}/src/Genten_DistSpTensor.cpp
     )
   target_link_libraries(DistContextLib Kokkos::kokkos MPI::MPI_C 
