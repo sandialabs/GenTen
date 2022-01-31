@@ -51,7 +51,7 @@
 namespace Genten {
 namespace detail {
 
-// TODO We probably want to make a DistSpSystem base class that provides these
+// TODO We probably want to make a DistSpTensor base class that provides these
 // methods independent of the element type and ExecSpace that way they aren't
 // just chilling in this detail namespace passing the same things back over and
 // over. But for the POC stage let's just do it this way.
@@ -87,10 +87,10 @@ int rankInGridThatOwns(small_vector<int> const &COO, ProcessorMap const &pmap,
 } // namespace detail
 
 template <typename ElementType, typename ExecSpace = DefaultExecutionSpace>
-class DistSpSystem {
+class DistSpTensor {
 
   static_assert(std::is_floating_point<ElementType>::value,
-                "DistSpSystem Requires that the element type be a floating "
+                "DistSpTensor Requires that the element type be a floating "
                 "point type.");
 
 public:
@@ -98,8 +98,8 @@ public:
   /*
    * Constructors
    */
-  DistSpSystem() = default;
-  DistSpSystem(ptree const &tree)
+  DistSpTensor() = default;
+  DistSpTensor(ptree const &tree)
       : tensor_info_(detail::readTensorHeader(
             tree.get_optional<std::string>("tensor.file"))),
         pmap_(tree, tensor_info_),

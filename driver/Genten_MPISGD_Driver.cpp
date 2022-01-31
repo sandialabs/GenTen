@@ -39,7 +39,7 @@
 //@HEADER
 
 #include "Genten_DistContext.hpp"
-#include "Genten_DistSpSystem.hpp"
+#include "Genten_DistSpTensor.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_Pmap.hpp"
 #include "Genten_TensorBlockSystem.hpp"

@@ -38,7 +38,7 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_DistSpSystem.hpp"
+#include "Genten_DistSpTensor.hpp"
 #include "Genten_IOtext.hpp"
 
 #include <algorithm>
