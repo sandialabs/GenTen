@@ -42,6 +42,7 @@
 #include "Genten_FacMatrix.hpp"
 
 Genten::AlgParams::AlgParams() :
+  exec_space(Execution_Space::default_type),
   method(Solver_Method::default_type),
   rank(16),
   seed(12345),
@@ -61,10 +62,19 @@ Genten::AlgParams::AlgParams() :
   mttkrp_nnz_tile_size(128),
   mttkrp_duplicated_factor_matrix_tile_size(0),
   mttkrp_duplicated_threshold(-1.0),
+  warmup(false),
+  ttm_method(TTM_Method::default_type),
+  opt_method(Opt_Method::default_type),
+  lower(-DOUBLE_MAX),
+  upper(DOUBLE_MAX),
+  rolfilename(""),
+  factr(1e7),
+  pgtol(1e-5),
+  memory(5),
+  max_total_iters(5000),
   loss_function_type(Genten::GCP_LossFunction::default_type),
   loss_eps(1.0e-10),
   gcp_tol(-DOUBLE_MAX),
-  rolfilename(""),
   sampling_type(Genten::GCP_Sampling::default_type),
   rate(1.0e-3),
   decay(0.1),
@@ -101,6 +111,10 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   // Parse options from command-line, using default values set above as defaults
 
   // Generic options
+  exec_space = parse_ttb_enum(args, "--exec-space", exec_space,
+                              Genten::Execution_Space::num_types,
+                              Genten::Execution_Space::types,
+                              Genten::Execution_Space::names);
   method = parse_ttb_enum(args, "--method", method,
                           Genten::Solver_Method::num_types,
                           Genten::Solver_Method::types,
@@ -141,6 +155,25 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                    mttkrp_duplicated_factor_matrix_tile_size, -1.0, DOUBLE_MAX);
   warmup = parse_ttb_bool(args, "--warmup", "--no-warmup", warmup);
 
+  // TTM options
+  ttm_method = parse_ttb_enum(args, "--ttm-method", ttm_method,
+                                 Genten::TTM_Method::num_types,
+                                 Genten::TTM_Method::types,
+                                 Genten::TTM_Method::names);
+
+  // CP-Opt options
+  opt_method = parse_ttb_enum(args, "--opt", opt_method,
+                                 Genten::Opt_Method::num_types,
+                                 Genten::Opt_Method::types,
+                                 Genten::Opt_Method::names);
+  lower = parse_ttb_real(args, "--lower", lower, -DOUBLE_MAX, DOUBLE_MAX);
+  upper = parse_ttb_real(args, "--upper", upper, -DOUBLE_MAX, DOUBLE_MAX);
+  rolfilename = parse_string(args, "--rol", rolfilename.c_str());
+  factr = parse_ttb_real(args, "--factr", factr, 0.0, DOUBLE_MAX);
+  pgtol = parse_ttb_real(args, "--pgtol", pgtol, 0.0, DOUBLE_MAX);
+  memory = parse_ttb_indx(args, "--memory", memory, 0, INT_MAX);
+  max_total_iters = parse_ttb_indx(args, "--total-iters", max_total_iters, 0, INT_MAX);
+
   // GCP options
   loss_function_type = parse_ttb_enum(args, "--type", loss_function_type,
                                       Genten::GCP_LossFunction::num_types,
@@ -148,9 +181,6 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                                       Genten::GCP_LossFunction::names);
   loss_eps = parse_ttb_real(args, "--eps", loss_eps, 0.0, 1.0);
   gcp_tol = parse_ttb_real(args, "--gcp-tol", gcp_tol, -DOUBLE_MAX, DOUBLE_MAX);
-
-  // GCP-Opt options
-  rolfilename = parse_string(args, "--rol", rolfilename.c_str());
 
   // GCP-SGD options
   sampling_type = parse_ttb_enum(args, "--sampling",
@@ -203,6 +233,13 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
 void Genten::AlgParams::print_help(std::ostream& out)
 {
   out << "Generic options: " << std::endl;
+  out << "  --exec-space <space> execution space to run on: ";
+  for (unsigned i=0; i<Genten::Execution_Space::num_types; ++i) {
+    out << Genten::Execution_Space::names[i];
+    if (i != Genten::Execution_Space::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
   out << "  --method <method>  decomposition method: ";
   for (unsigned i=0; i<Genten::Solver_Method::num_types; ++i) {
     out << Genten::Solver_Method::names[i];
@@ -247,6 +284,30 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --warmup           do an iteration of mttkrp to warmup (useful for generating accurate timing information)" << std::endl;
 
   out << std::endl;
+  out << "TTM options:" << std::endl;
+  out << "  --ttm-method <method> TTM algorithm: ";
+  for (unsigned i=0; i<Genten::TTM_Method::num_types; ++i) {
+    out << Genten::TTM_Method::names[i];
+    if (i != Genten::TTM_Method::num_types-1)
+      out << ", ";
+  } out << std::endl;
+  out << std::endl;
+  out << "CP-Opt options:" << std::endl;
+  out << "  --opt <method> optimization method: ";
+  for (unsigned i=0; i<Genten::Opt_Method::num_types; ++i) {
+    out << Genten::Opt_Method::names[i];
+    if (i != Genten::Opt_Method::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
+  out << "  --lower <float>    lower bound of factorization" << std::endl;
+  out << "  --upper <float>    upper bound of factorization" << std::endl;
+  out << "  --rol <string>     path to ROL optimization settings file for CP-Opt method" << std::endl;
+  out << "  --factr <float>    factr parameter for L-BFGS-B" << std::endl;
+  out << "  --pgtol <float>    pgtol parameter for L-BFGS-B" << std::endl;
+  out << "  --memory <int>     memory parameter for L-BFGS-B" << std::endl;
+  out << "  --total-iters <int>  max total iterations for L-BFGS-B" << std::endl;
+  out << std::endl;
   out << "GCP options:" << std::endl;
   out << "  --type <type>      loss function type for GCP: ";
   for (unsigned i=0; i<Genten::GCP_LossFunction::num_types; ++i) {
@@ -257,10 +318,6 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << std::endl;
   out << "  --eps <float>      perturbation of loss functions for entries near 0" << std::endl;
   out << "  --gcp-tol <float> GCP solver tolerance" << std::endl;
-
-  out << std::endl;
-  out << "GCP-Opt options:" << std::endl;
-  out << "  --rol <string>     path to ROL optimization settings file for GCP method" << std::endl;
 
   out << std::endl;
   out << "GCP-SGD options:" << std::endl;
@@ -308,6 +365,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
 void Genten::AlgParams::print(std::ostream& out)
 {
   out << "Generic options: " << std::endl;
+  out << "  exec-space = " << Genten::Execution_Space::names[exec_space] << std::endl;
   out << "  method = " << Genten::Solver_Method::names[method] << std::endl;
   out << "  rank = " << rank << std::endl;
   out << "  seed = " << seed << std::endl;
@@ -335,6 +393,22 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  warmup = " << (warmup ? "true" : "false") << std::endl;
 
   out << std::endl;
+  out << "TTM options:" << std::endl;
+  out << "  ttm-method = " << Genten::TTM_Method::names[ttm_method]
+      << std::endl;
+
+  out << std::endl;
+  out << "CP-Opt options:" << std::endl;
+  out << "  opt = " << Genten::Opt_Method::names[opt_method] << std::endl;
+  out << "  lower = " << lower << std::endl;
+  out << "  upper = " << upper << std::endl;
+  out << "  rol = " << rolfilename << std::endl;
+  out <<   "factr = " << factr << std::endl;
+  out <<   "pgtol = " << pgtol << std::endl;
+  out <<   "memory = " << memory << std::endl;
+  out <<   "total-iters = " << max_total_iters << std::endl;
+
+  out << std::endl;
   out << "GCP options:" << std::endl;
   out << "  type = " << Genten::GCP_LossFunction::names[loss_function_type]
       << std::endl;
@@ -342,10 +416,6 @@ void Genten::AlgParams::print(std::ostream& out)
   out <<   "gcp-tol = " << gcp_tol << std::endl;
 
   out << std::endl;
-  out << "GCP-Opt options:" << std::endl;
-  out << "  rol = " << rolfilename << std::endl;
-
-   out << std::endl;
   out << "GCP-SGD options:" << std::endl;
   out << "  sampling = " << Genten::GCP_Sampling::names[sampling_type]
       << std::endl;

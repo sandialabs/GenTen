@@ -49,27 +49,6 @@
 //----------------------------------------------------------------------------
 
 namespace Kokkos {
-
-/* For backward compatibility */
-
-struct ViewAllocateWithoutInitializing {
-  const std::string label;
-
-  ViewAllocateWithoutInitializing() : label() {}
-
-  explicit ViewAllocateWithoutInitializing(const std::string &arg_label)
-      : label(arg_label) {}
-
-  explicit ViewAllocateWithoutInitializing(const char *const arg_label)
-      : label(arg_label) {}
-};
-
-} /* namespace Kokkos */
-
-//----------------------------------------------------------------------------
-//----------------------------------------------------------------------------
-
-namespace Kokkos {
 namespace Impl {
 
 struct WithoutInitializing_t {};
@@ -165,10 +144,10 @@ struct ViewCtorProp<typename std::enable_if<is_view_label<Label>::value>::type,
 };
 
 template <typename Space>
-struct ViewCtorProp<typename std::enable_if<
-                        Kokkos::Impl::is_memory_space<Space>::value ||
-                        Kokkos::Impl::is_execution_space<Space>::value>::type,
-                    Space> {
+struct ViewCtorProp<
+    typename std::enable_if<Kokkos::is_memory_space<Space>::value ||
+                            Kokkos::is_execution_space<Space>::value>::type,
+    Space> {
   ViewCtorProp()                     = default;
   ViewCtorProp(const ViewCtorProp &) = default;
   ViewCtorProp &operator=(const ViewCtorProp &) = default;
@@ -207,7 +186,7 @@ struct ViewCtorProp<T *> {
   KOKKOS_INLINE_FUNCTION
   ViewCtorProp(const type arg) : value(arg) {}
 
-  enum { has_pointer = true };
+  enum : bool { has_pointer = true };
   using pointer_type = type;
   type value;
 };
@@ -228,10 +207,10 @@ template <typename... P>
 struct ViewCtorProp : public ViewCtorProp<void, P>... {
  private:
   using var_memory_space =
-      Kokkos::Impl::has_condition<void, Kokkos::Impl::is_memory_space, P...>;
+      Kokkos::Impl::has_condition<void, Kokkos::is_memory_space, P...>;
 
   using var_execution_space =
-      Kokkos::Impl::has_condition<void, Kokkos::Impl::is_execution_space, P...>;
+      Kokkos::Impl::has_condition<void, Kokkos::is_execution_space, P...>;
 
   struct VOIDDUMMY {};
 
@@ -284,6 +263,37 @@ struct ViewCtorProp : public ViewCtorProp<void, P>... {
 };
 
 } /* namespace Impl */
+} /* namespace Kokkos */
+
+//----------------------------------------------------------------------------
+//----------------------------------------------------------------------------
+
+namespace Kokkos {
+
+namespace Impl {
+struct ViewAllocateWithoutInitializingBackwardCompat {};
+
+template <>
+struct ViewCtorProp<void, ViewAllocateWithoutInitializingBackwardCompat> {};
+
+// NOTE This specialization is meant to be used as the
+// ViewAllocateWithoutInitializing alias below. All it does is add a
+// constructor that takes the label as single argument.
+template <>
+struct ViewCtorProp<WithoutInitializing_t, std::string,
+                    ViewAllocateWithoutInitializingBackwardCompat>
+    : ViewCtorProp<WithoutInitializing_t, std::string>,
+      ViewCtorProp<void, ViewAllocateWithoutInitializingBackwardCompat> {
+  ViewCtorProp(std::string label)
+      : ViewCtorProp<WithoutInitializing_t, std::string>(
+            WithoutInitializing_t(), std::move(label)) {}
+};
+} /* namespace Impl */
+
+using ViewAllocateWithoutInitializing =
+    Impl::ViewCtorProp<Impl::WithoutInitializing_t, std::string,
+                       Impl::ViewAllocateWithoutInitializingBackwardCompat>;
+
 } /* namespace Kokkos */
 
 //----------------------------------------------------------------------------

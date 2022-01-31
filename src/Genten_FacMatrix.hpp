@@ -338,6 +338,15 @@ public:
                       const ArrayT<ExecSpace> &  x,
                             ArrayT<ExecSpace> &  y) const;
 
+    //! Perform matrix-matrix multiply
+    /*!
+     * Commputes C <- alpha * op(A) * op(B) + beta*C where C is *this
+     * and op() may be a transpose or not.
+     */
+    void gemm(const bool trans_a, const bool trans_b, const ttb_real alpha,
+              const FacMatrixT<ExecSpace>& A, const FacMatrixT<ExecSpace>& B,
+              const ttb_real beta) const;
+
     //! Solve AX = B' where B is this matrix.
     /*!
      * A must be N by N, symmetric, and nonsingular. Treat this matrix as a

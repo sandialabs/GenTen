@@ -56,11 +56,11 @@
 #include <Kokkos_OpenMPTargetSpace.hpp>
 #include <Kokkos_ScratchSpace.hpp>
 #include <Kokkos_Parallel.hpp>
-#include <Kokkos_TaskPolicy.hpp>
+#include <Kokkos_TaskScheduler.hpp>
 #include <Kokkos_Layout.hpp>
-#include <impl/Kokkos_Tags.hpp>
 #include <impl/Kokkos_Profiling_Interface.hpp>
 #include <KokkosExp_MDRangePolicy.hpp>
+#include <impl/Kokkos_ExecSpaceInitializer.hpp>
 /*--------------------------------------------------------------------------*/
 
 namespace Kokkos {
@@ -91,7 +91,10 @@ class OpenMPTarget {
   inline static bool in_parallel() { return omp_in_parallel(); }
 
   static void fence();
+  static void fence(const std::string&);
 
+  static void impl_static_fence();
+  static void impl_static_fence(const std::string&);
   /** \brief  Return the maximum amount of concurrency.  */
   static int concurrency();
 
@@ -114,7 +117,7 @@ class OpenMPTarget {
   }
 
   OpenMPTarget();
-  uint32_t impl_instance_id() const noexcept { return 0; }
+  uint32_t impl_instance_id() const noexcept;
 
  private:
   Impl::OpenMPTargetInternal* m_space_instance;
@@ -130,21 +133,18 @@ struct DeviceTypeTraits<::Kokkos::Experimental::OpenMPTarget> {
 };
 }  // namespace Experimental
 }  // namespace Tools
-}  // namespace Kokkos
 
-/*--------------------------------------------------------------------------*/
-/*--------------------------------------------------------------------------*/
-
-namespace Kokkos {
 namespace Impl {
 
-template <>
-struct VerifyExecutionCanAccessMemorySpace<
-    Kokkos::Experimental::OpenMPTarget::memory_space,
-    Kokkos::Experimental::OpenMPTarget::scratch_memory_space> {
-  enum { value = true };
-  inline static void verify(void) {}
-  inline static void verify(const void*) {}
+class OpenMPTargetSpaceInitializer : public ExecSpaceInitializerBase {
+ public:
+  OpenMPTargetSpaceInitializer()  = default;
+  ~OpenMPTargetSpaceInitializer() = default;
+  void initialize(const InitArguments& args) final;
+  void finalize(const bool) final;
+  void fence() final;
+  void fence(const std::string&) final;
+  void print_configuration(std::ostream& msg, const bool detail) final;
 };
 
 }  // namespace Impl

@@ -146,6 +146,21 @@ struct DefaultContribution<Kokkos::Cuda, Kokkos::Experimental::ScatterDuplicated
 };
 #endif
 
+#ifdef KOKKOS_ENABLE_HIP
+template <>
+struct DefaultDuplication<Kokkos::Experimental::HIP> {
+  enum : int { value = Kokkos::Experimental::ScatterNonDuplicated };
+};
+template <>
+struct DefaultContribution<Kokkos::Experimental::HIP, Kokkos::Experimental::ScatterNonDuplicated> {
+  enum : int { value = Kokkos::Experimental::ScatterAtomic };
+};
+template <>
+struct DefaultContribution<Kokkos::Experimental::HIP, Kokkos::Experimental::ScatterDuplicated> {
+  enum : int { value = Kokkos::Experimental::ScatterAtomic };
+};
+#endif
+
 /* ScatterValue is the object returned by the access operator() of ScatterAccess,
    similar to that returned by an Atomic View, it wraps Kokkos::atomic_add with convenient
    operator+=, etc. */
@@ -453,9 +468,9 @@ public:
         typename dest_type::array_layout,
         Layout>::value,
         "ScatterView contribute destination has different layout");
-    static_assert(Kokkos::Impl::VerifyExecutionCanAccessMemorySpace<
-        typename ExecSpace::memory_space,
-        typename dest_type::memory_space>::value,
+    static_assert(Kokkos::Impl::SpaceAccessibility<
+        ExecSpace,
+        typename dest_type::memory_space>::accessible,
         "ScatterView contribute destination memory space not accessible");
     if (dest.data() == internal_view.data()) return;
     Kokkos::Impl::Experimental::ReduceDuplicates<internal_view_type, dest_type, Op>(
@@ -643,9 +658,9 @@ public:
         typename dest_type::array_layout,
         Kokkos::LayoutRight>::value,
         "ScatterView deep_copy destination has different layout");
-    static_assert(Kokkos::Impl::VerifyExecutionCanAccessMemorySpace<
-        typename ExecSpace::memory_space,
-        typename dest_type::memory_space>::value,
+    static_assert(Kokkos::Impl::SpaceAccessibility<
+        ExecSpace,
+        typename dest_type::memory_space>::accessible,
         "ScatterView deep_copy destination memory space not accessible");
     bool is_equal = (dest.data() == internal_view.data());
     size_t start = is_equal ? 1 : 0;
@@ -790,9 +805,9 @@ public:
         typename dest_type::array_layout,
         Kokkos::LayoutLeft>::value,
         "ScatterView deep_copy destination has different layout");
-    static_assert(Kokkos::Impl::VerifyExecutionCanAccessMemorySpace<
-        typename ExecSpace::memory_space,
-        typename dest_type::memory_space>::value,
+    static_assert(Kokkos::Impl::SpaceAccessibility<
+        ExecSpace,
+        typename dest_type::memory_space>::accessible,
         "ScatterView deep_copy destination memory space not accessible");
     auto extent = internal_view.extent(
         internal_view_type::rank - 1);
@@ -941,7 +956,7 @@ private:
 public:
   // do need to allow moves though, for the common
   // auto b = a.access();
-  // that assignments turns into a move constructor call 
+  // that assignments turns into a move constructor call
   KOKKOS_INLINE_FUNCTION
   ScatterAccess(ScatterAccess&& other)
     : view(other.view)

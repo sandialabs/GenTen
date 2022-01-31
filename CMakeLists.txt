@@ -39,13 +39,13 @@
 #@HEADER
 
 
-#---- Specify the CMake version required.  Kokkos requires 3.10
-CMAKE_MINIMUM_REQUIRED (VERSION 3.13)
+#---- Specify the CMake version required.  Kokkos requires 3.16
+CMAKE_MINIMUM_REQUIRED (VERSION 3.16)
 
 #---- Declaring the project name will define ${Genten_SOURCE_DIR} to be
 #---- the path to this source file, and ${Genten_BINARY_DIR} to be the path
 #---- to the directory where cmake has been invoked.
-PROJECT (Genten)
+project(Genten VERSION "0.0.0")
 
 #---- Require C++14 without GNU extensions
 SET(CMAKE_CXX_STANDARD 14)
@@ -54,9 +54,9 @@ SET(CMAKE_CXX_EXTENSIONS OFF)
 #------------------------------------------------------------
 #---- Package OPTIONS
 #------------------------------------------------------------
+# Note: OPTION is a binary thing and can't have string in them
 OPTION(BUILD_SHARED_LIBS "Build shared libraries." OFF)
-OPTION(KOKKOS_PATH "Path to Kokkos installation for external Kokkos builds.  Setting this turns off the inline build with the bundled Kokkos source.")
-OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files and json input" ON)
+OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files" OFF)
 OPTION(ENABLE_CALIPER "Enable Caliper for application profiling" OFF)
 OPTION(ENABLE_MATLAB "Enable MATLAB linkage to Tensor Toolbox" OFF)
 OPTION(FLOAT_TYPE "C++ data type used for floating-point values" OFF)
@@ -75,6 +75,7 @@ ELSE()
   SET(GENTEN_INDEX_TYPE "size_t")
 ENDIF()
 
+# if the kokkos path is provided use the installation
 IF(KOKKOS_PATH)
   SET(KOKKOS_INLINE_BUILD OFF)
 ELSE()
@@ -122,6 +123,12 @@ IF (ENABLE_CALIPER)
     SET(GENTEN_LIBS "${GENTEN_LIBS} -L${LIBUNWIND_PATH}/lib -lunwind")
   ENDIF()
   SET(HAVE_CALIPER ${ENABLE_CALIPER})
+ENDIF()
+
+# L-BFGS-B requires ttb_real == double
+IF (GENTEN_FLOAT_TYPE STREQUAL "double")
+  SET(ENABLE_LBFGSB ON)
+  SET(HAVE_LBFGSB ON)
 ENDIF()
 
 SET(ROL_LIBRARIES "")
@@ -199,6 +206,8 @@ SET (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${Genten_BINARY_DIR}/bin)
 SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${Genten_BINARY_DIR}/lib)
 SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${Genten_BINARY_DIR}/lib)
 
+#--- Use standard GNU installation directories
+INCLUDE(GNUInstallDirs)
 
 #------------------------------------------------------------
 #---- INCLUDE Directories
@@ -227,19 +236,23 @@ INCLUDE_DIRECTORIES (
   ${Genten_SOURCE_DIR}/src/
   ${Genten_SOURCE_DIR}/src/mathlib/
   ${Genten_SOURCE_DIR}/src/rol/
+  ${Genten_SOURCE_DIR}/src/lbfgsb/
   ${Genten_BINARY_DIR}/CMakeInclude/
   ${Genten_SOURCE_DIR}/driver/
+  ${Genten_SOURCE_DIR}/tpls/lbfgsb/
   )
 FILE (GLOB genten_headers
   ${Genten_SOURCE_DIR}/src/*.h
-  ${Genten_SOURCE_DIR}/src/*.hp/
+  ${Genten_SOURCE_DIR}/src/*.hpp
   ${Genten_SOURCE_DIR}/src/mathlib/*.h
   ${Genten_SOURCE_DIR}/src/mathlib/*.hpp
-  ${Genten_SOURCE_DIR}/src/rol*.hpp
+  ${Genten_SOURCE_DIR}/src/rol/*.hpp
+  ${Genten_SOURCE_DIR}/src/lbfgsb/*.hpp
+  ${Genten_SOURCE_DIR}/tpls/lbfgsb/*.h
   )
 INSTALL (
   FILES ${genten_headers}
-  DESTINATION include
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/genten
   PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
   )
 
@@ -257,7 +270,7 @@ ADD_CUSTOM_COMMAND (
   )
 INSTALL (
   DIRECTORY ${Genten_SOURCE_DIR}/data
-  DESTINATION .
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/genten
   DIRECTORY_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
                         GROUP_READ GROUP_EXECUTE
                         WORLD_READ WORLD_EXECUTE
@@ -295,7 +308,8 @@ TARGET_LINK_LIBRARIES(
   )
 INSTALL (
   TARGETS genten_mathlibs_c
-  DESTINATION lib
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  EXPORT genten
   )
 SET(GENTEN_MATHLIBS
   genten_mathlibs_c
@@ -304,6 +318,32 @@ TARGET_LINK_LIBRARIES(
   ${GENTEN_MATHLIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
   )
 
+#------------------------------------------------------------
+#---- L-BFGS-B library
+#------------------------------------------------------------
+IF (ENABLE_LBFGSB)
+  ADD_LIBRARY (genten_lbfgsb_c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/lbfgsb.c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/linesearch.c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/subalgorithms.c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/print.c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/linpack.c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/miniCBLAS.c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/timer.c
+    )
+  TARGET_LINK_LIBRARIES(
+    genten_lbfgsb_c
+    ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
+    )
+  INSTALL (
+    TARGETS genten_lbfgsb_c
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    EXPORT genten
+    )
+  SET(GENTEN_MATHLIBS ${GENTEN_MATHLIBS}
+    genten_lbfgsb_c
+    )
+ENDIF()
 
 #------------------------------------------------------------
 #---- Genten Library
@@ -325,12 +365,25 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_IOtext.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Ktensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_MixedFormatOps.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_TTM.cpp
   ${Genten_SOURCE_DIR}/src/Genten_MathLibs_Wpr.cpp
   ${Genten_SOURCE_DIR}/src/Genten_portability.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Sptensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Tensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
   )
+
+IF (ENABLE_LBFGSB)
+  SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+    ${Genten_SOURCE_DIR}/src/lbfgsb/Genten_CP_Opt_Lbfgsb.cpp
+    )
+ENDIF()
+
+IF (ENABLE_ROL)
+  SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+    ${Genten_SOURCE_DIR}/src/rol/Genten_CP_Opt_Rol.cpp
+    )
+ENDIF()
 
 IF (ENABLE_GCP)
   SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
@@ -350,30 +403,59 @@ IF (ENABLE_GCP)
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Bernoulli.cpp
     )
 
-  IF (ENABLE_ROL)
-    SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
-      ${Genten_SOURCE_DIR}/src/rol/Genten_GCP_Opt.cpp
-      )
-  ENDIF()
+  # Disable gcp_opt because it doesn't work
+  # IF (ENABLE_ROL)
+  #   SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+  #     ${Genten_SOURCE_DIR}/src/rol/Genten_GCP_Opt.cpp
+  #     )
+  # ENDIF()
 ENDIF()
+
 
 #---- Tell CMake to build the library.
 ADD_LIBRARY (gentenlib ${Genten_SOURCE_LIST})
 TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkos)
+
+IF(Kokkos_ENABLE_HIP)
+  IF(ROCM_SEARCH_PATH)
+    LIST(APPEND CMAKE_PREFIX_PATH ${ROCM_SEARCH_PATH})
+  ENDIF()
+
+  FIND_PACKAGE(rocblas)
+  TARGET_LINK_LIBRARIES(gentenlib roc::rocblas)
+  FIND_PACKAGE(rocsolver)
+  TARGET_LINK_LIBRARIES(gentenlib roc::rocsolver)
+ENDIF()
+
 SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${ROL_LIBRARIES} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
 TARGET_LINK_LIBRARIES(${GENTEN_LINK_LIBS})
 INSTALL (
   TARGETS gentenlib
-  DESTINATION lib
+  EXPORT genten
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}
   )
 
+#---- Adding the higher moment interface to the Library sources
+#---- Must be a better way to do this. Inside an IF??
+ADD_SUBDIRECTORY(joint_moments)
+
+# FIND_PACKAGE(GTest REQUIRED)
+# IF (${GTest_FOUND})
+#   MESSAGE(STATUS "FOUND GTEST")
+#   MESSAGE(STATUS "GTEST_INCLUDE_DIR: " ${GTEST_INCLUDE_DIR})
+# ELSE (${GTest_FOUND})
+#   MESSAGE(STATUS "DID NOT FIND GTEST")
+# ENDIF (${GTest_FOUND})
+# include_directories(${GTEST_INCLUDE_DIR})
+
 #------------------------------------------------------------
-#---- Unit Test Executables
+#---- Unit Test Executables (not installed)
 #------------------------------------------------------------
 
 #---- Specifications for building unit_tests.
 
 SET(UNIT_TEST_SRCS
+  ${Genten_SOURCE_DIR}/test/Genten_Test_TTM.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_Array.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_CpAls.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_FacMatrix.cpp
@@ -386,15 +468,25 @@ SET(UNIT_TEST_SRCS
   ${Genten_SOURCE_DIR}/test/Genten_Test_UnitTests.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_Utils.cpp
   )
+IF(ENABLE_LBFGSB)
+  SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
+    ${Genten_SOURCE_DIR}/test/Genten_Test_CpOptLbfgsb.cpp
+    )
+ENDIF()
+IF(ENABLE_ROL)
+  SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
+    ${Genten_SOURCE_DIR}/test/Genten_Test_CpOptRol.cpp
+    )
+ENDIF()
 IF (ENABLE_GCP)
    SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
      ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_SGD.cpp
      )
-  IF(ENABLE_ROL)
-    SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
-      ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_Opt.cpp
-      )
-  ENDIF()
+  # IF(ENABLE_ROL)
+  #   SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
+  #     ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_Opt.cpp
+  #     )
+  # ENDIF()
 ENDIF()
 
 ADD_EXECUTABLE (
@@ -402,28 +494,17 @@ ADD_EXECUTABLE (
   ${UNIT_TEST_SRCS}
   )
 TARGET_LINK_LIBRARIES (unit_tests ${GENTEN_LINK_LIBS})
-INSTALL (
-  TARGETS unit_tests
-  DESTINATION test
-  )
 
 
 #------------------------------------------------------------
-#---- Performance Test Executables
+#---- Performance Test Executables (not installed)
 #------------------------------------------------------------
-
-#---- Specifications for building each performance test.
-#---- In each case specify the executable and its link library dependencies.
 
 ADD_EXECUTABLE (
   perf_CpAlsAminoAcid
   ${Genten_SOURCE_DIR}/performance/Genten_CpAlsAminoAcid.cpp
   )
 TARGET_LINK_LIBRARIES (perf_CpAlsAminoAcid ${GENTEN_LINK_LIBS})
-INSTALL (
-  TARGETS perf_CpAlsAminoAcid
-  DESTINATION test
-  )
 
 ADD_EXECUTABLE (
   perf_CpAlsRandomKtensor
@@ -432,10 +513,6 @@ ADD_EXECUTABLE (
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   )
 TARGET_LINK_LIBRARIES (perf_CpAlsRandomKtensor ${GENTEN_LINK_LIBS})
-INSTALL (
-  TARGETS perf_CpAlsRandomKtensor
-  DESTINATION test
-  )
 
 ADD_EXECUTABLE (
   perf_CpAlsRandomKtensor_Sweep
@@ -444,10 +521,6 @@ ADD_EXECUTABLE (
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   )
 TARGET_LINK_LIBRARIES (perf_CpAlsRandomKtensor_Sweep ${GENTEN_LINK_LIBS})
-INSTALL (
-  TARGETS perf_CpAlsRandomKtensor_Sweep
-  DESTINATION test
-  )
 
 ADD_EXECUTABLE (
   perf_MTTKRP
@@ -456,10 +529,6 @@ ADD_EXECUTABLE (
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   )
 TARGET_LINK_LIBRARIES (perf_MTTKRP ${GENTEN_LINK_LIBS})
-INSTALL (
-  TARGETS perf_MTTKRP
-  DESTINATION test
-  )
 
 ADD_EXECUTABLE (
   perf_MTTKRP_Sweep
@@ -468,10 +537,6 @@ ADD_EXECUTABLE (
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   )
 TARGET_LINK_LIBRARIES (perf_MTTKRP_Sweep ${GENTEN_LINK_LIBS})
-INSTALL (
-  TARGETS perf_MTTKRP_Sweep
-  DESTINATION test
-  )
 
 #------------------------------------------------------------
 #---- Drivers
@@ -487,7 +552,8 @@ ADD_EXECUTABLE (
 TARGET_LINK_LIBRARIES (genten ${GENTEN_LINK_LIBS})
 INSTALL (
   TARGETS genten
-  DESTINATION drivers
+  EXPORT genten
+  DESTINATION ${CMAKE_INSTALL_BINDIR}
   )
 
 if(MPI_FOUND AND BOOST_FOUND)
@@ -583,10 +649,10 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
   INSTALL(
     TARGETS gt_matlab gt_cp_driver gt_initialize gt_finalize gt_mttkrp_driver
       gt_innerprod_driver
-    DESTINATION matlab)
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/genten/matlab)
   INSTALL(
     TARGETS gt_compute_perm_driver
-    DESTINATION matlab/@sptensor_gt/private)
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/genten/matlab/@sptensor_gt/private)
   SET_PROPERTY(
     TARGET gt_matlab gt_cp_driver gt_initialize gt_finalize gt_mttkrp_driver
       gt_innerprod_driver
@@ -613,7 +679,7 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
   # Hint:  Use trailing slash in directory name to remove it from install tree
   INSTALL (
     DIRECTORY ${Genten_SOURCE_DIR}/matlab/matlab_src/
-    DESTINATION matlab)
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/genten/matlab)
 
 ENDIF()
 
@@ -628,11 +694,39 @@ enable_testing()
 add_test(Genten_Unit_Tests ${Genten_BINARY_DIR}/bin/unit_tests)
 SET_TESTS_PROPERTIES(Genten_Unit_Tests PROPERTIES FAIL_REGULAR_EXPRESSION "Error")
 
-# mttkrp -- returns nonzero on failure
-add_test(Genten_MTTKRP_random_atomic ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method atomic)
-add_test(Genten_MTTKRP_random_dupl ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method duplicated)
-add_test(Genten_MTTKRP_random_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method perm)
-add_test(Genten_MTTKRP_aminoacid_atomic ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method atomic)
-add_test(Genten_MTTKRP_aminoacid_dupl ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method duplicated)
-add_test(Genten_MTTKRP_aminoacid_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method perm)
-add_test(Genten_MTTKRP_random_dense ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [30,40,50] --dense)
+function(add_mttkrp_tests name cmd args spaces)
+  foreach(space ${spaces})
+    string(CONCAT test_name ${name} "_" ${space})
+    string(CONCAT test_args ${args} " --exec-space " ${space})
+    separate_arguments(test_args)
+    add_test(${test_name} ${cmd} ${test_args})
+  endforeach()
+endfunction(add_mttkrp_tests)
+
+set(kokkos_devices "")
+if (Kokkos_ENABLE_SERIAL)
+  list(APPEND kokkos_devices "serial")
+endif()
+if (Kokkos_ENABLE_OPENMP)
+  list(APPEND kokkos_devices "openmp")
+endif()
+if (Kokkos_ENABLE_THREADS)
+  list(APPEND kokkos_devices "threads")
+endif()
+if (Kokkos_ENABLE_CUDA)
+  list(APPEND kokkos_devices "cuda")
+endif()
+
+add_mttkrp_tests(Genten_MTTKRP_random_atomic "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method atomic" "${kokkos_devices}")
+add_mttkrp_tests(Genten_MTTKRP_random_dupl "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method duplicated" "${kokkos_devices}")
+add_mttkrp_tests(Genten_MTTKRP_random_perm "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method perm" "${kokkos_devices}")
+add_mttkrp_tests(Genten_MTTKRP_aminoacid_atomic "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method atomic" "${kokkos_devices}")
+add_mttkrp_tests(Genten_MTTKRP_aminoacid_dupl "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method duplicated" "${kokkos_devices}")
+add_mttkrp_tests(Genten_MTTKRP_aminoacid_perm "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method perm" "${kokkos_devices}")
+add_mttkrp_tests(Genten_MTTKRP_random_dense "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [30,40,50] --dense" "${kokkos_devices}")
+
+#------------------------------------------------------------
+#---- Config
+#------------------------------------------------------------
+add_subdirectory(config)
+install(EXPORT genten DESTINATION lib64/cmake/${PROJECT_NAME})

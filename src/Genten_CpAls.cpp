@@ -166,7 +166,9 @@ namespace Genten {
         out << "full-gram";
       else
         out << "symmetric-gram";
-      out << " formulation):" << std::endl;
+      out << " formulation, "
+          << Genten::SpaceProperties<ExecSpace>::verbose_name()
+          << "):" << std::endl;
     }
 
     // Initialize CpAlsPerfInfo.
@@ -227,7 +229,7 @@ namespace Genten {
       // Compute residual norm and fit of the initial guess.
       // Fit can be a huge negative number for bad start points,
       // so bound it at zero.
-      ttb_real  dUnorm = u.normFsq();
+      ttb_real  dUnorm = sqrt(u.normFsq());
       ttb_real  dXtU = innerprod (x, u, lambda);
       perfInfo[nNextPerf].dResNorm = computeResNorm(xNorm, dUnorm, dXtU);
       fit = 1.0 - (perfInfo[nNextPerf].dResNorm / xNorm);

@@ -222,12 +222,12 @@ class BinSort {
         "Kokkos::SortImpl::BinSortFunctor::bin_count", bin_op.max_bins());
     bin_count_const = bin_count_atomic;
     bin_offsets =
-        offset_type(ViewAllocateWithoutInitializing(
-                        "Kokkos::SortImpl::BinSortFunctor::bin_offsets"),
+        offset_type(view_alloc(WithoutInitializing,
+                               "Kokkos::SortImpl::BinSortFunctor::bin_offsets"),
                     bin_op.max_bins());
     sort_order =
-        offset_type(ViewAllocateWithoutInitializing(
-                        "Kokkos::SortImpl::BinSortFunctor::sort_order"),
+        offset_type(view_alloc(WithoutInitializing,
+                               "Kokkos::SortImpl::BinSortFunctor::sort_order"),
                     range_end - range_begin);
   }
 
@@ -279,8 +279,8 @@ class BinSort {
     }
 
     scratch_view_type sorted_values(
-        ViewAllocateWithoutInitializing(
-            "Kokkos::SortImpl::BinSortFunctor::sorted_values"),
+        view_alloc(WithoutInitializing,
+                   "Kokkos::SortImpl::BinSortFunctor::sorted_values"),
         values.rank_dynamic > 0 ? len : KOKKOS_IMPL_CTOR_DEFAULT_ARG,
         values.rank_dynamic > 1 ? values.extent(1)
                                 : KOKKOS_IMPL_CTOR_DEFAULT_ARG,
@@ -319,7 +319,7 @@ class BinSort {
                    Kokkos::RangePolicy<execution_space>(0, len), functor);
     }
 
-    execution_space().fence();
+    execution_space().fence("Kokkos::Sort: fence after sorting");
   }
 
   template <class ValuesViewType>
@@ -492,7 +492,8 @@ bool try_std_sort(ViewType view) {
                       view.stride_3(), view.stride_4(), view.stride_5(),
                       view.stride_6(), view.stride_7()};
   possible         = possible &&
-             std::is_same<typename ViewType::memory_space, HostSpace>::value;
+             SpaceAccessibility<HostSpace,
+                                typename ViewType::memory_space>::accessible;
   possible = possible && (ViewType::Rank == 1);
   possible = possible && (stride[0] == 1);
   if (possible) {

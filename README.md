@@ -8,7 +8,7 @@ DE-NA0003525.
 
 Copyright 2017 National Technology & Engineering Solutions of Sandia, LLC
 (NTESS). Under the terms of Contract DE-NA0003525 with NTESS, the U.S.
-Government retains certain rights in this software.
+Government retains certain rights in this software. 
 
 [[_TOC_]]
 
@@ -24,7 +24,7 @@ Genten requires the following components in order to build and run:
   * Clang 9
 * BLAS and LAPACK for CPU (OpenMP and/or pThreads) builds.
 * The Cuda toolkit for Nvidia Cuda builds.  In principle any version of Cuda supported by Kokkos should work.  Currently this is Cuda versions 9 and 10.
-* CMake for configure/build.  Any version of CMake supported by Kokkos should work.  Currently this is version 3.10 or later.
+* CMake for configure/build.  Any version of CMake supported by Kokkos should work.  Currently this is version 3.16 or later.
 
 ## Optional Dependencies
 

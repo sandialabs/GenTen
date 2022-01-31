@@ -768,8 +768,8 @@ void test_view_mapping() {
 
     ASSERT_EQ(vr1.extent(0), N);
 
-    if (Kokkos::Impl::SpaceAccessibility<
-            Kokkos::HostSpace, typename Space::memory_space>::accessible) {
+    if (Kokkos::SpaceAccessibility<Kokkos::HostSpace,
+                                   typename Space::memory_space>::accessible) {
       for (int i = 0; i < N; ++i) data[i] = i + 1;
       for (int i = 0; i < N; ++i) ASSERT_EQ(vr1[i], i + 1);
       for (int i = 0; i < N; ++i) ASSERT_EQ(cr1[i], i + 1);
@@ -815,8 +815,8 @@ void test_view_mapping() {
 
     ASSERT_EQ(vr1.extent(0), N);
 
-    if (Kokkos::Impl::SpaceAccessibility<
-            Kokkos::HostSpace, typename Space::memory_space>::accessible) {
+    if (Kokkos::SpaceAccessibility<Kokkos::HostSpace,
+                                   typename Space::memory_space>::accessible) {
       for (int i = 0; i < N; ++i) vr1(i) = i + 1;
       for (int i = 0; i < N; ++i) ASSERT_EQ(vr1[i], i + 1);
       for (int i = 0; i < N; ++i) ASSERT_EQ(cr1[i], i + 1);
@@ -1070,7 +1070,7 @@ void test_view_mapping() {
 
 // TODO: a.use_count() and x.use_count() are 0 with the asynchronous HPX
 // backend. Why?
-#if !defined(KOKKOS_ENABLE_CUDA_LAMBDA) && !defined(KOKKOS_ENABLE_ROCM) && \
+#if !defined(KOKKOS_ENABLE_CUDA_LAMBDA) && \
     !(defined(KOKKOS_ENABLE_HPX) && defined(KOKKOS_ENABLE_HPX_ASYNC_DISPATCH))
     // Cannot launch host lambda when CUDA lambda is enabled.
 

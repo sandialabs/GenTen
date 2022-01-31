@@ -48,7 +48,6 @@
 #include <cstddef>
 #include <Kokkos_Core_fwd.hpp>
 #include <impl/Kokkos_Traits.hpp>
-#include <impl/Kokkos_Tags.hpp>
 
 //----------------------------------------------------------------------------
 //----------------------------------------------------------------------------
@@ -104,14 +103,14 @@ struct FunctorAnalysis {
   template <typename T, typename = std::false_type>
   struct has_execution_space {
     using type = void;
-    enum { value = false };
+    enum : bool { value = false };
   };
 
   template <typename T>
   struct has_execution_space<
       T, typename std::is_same<typename T::execution_space, void>::type> {
     using type = typename T::execution_space;
-    enum { value = true };
+    enum : bool { value = true };
   };
 
   using policy_has_space  = has_execution_space<Policy>;
@@ -479,7 +478,7 @@ struct FunctorAnalysis {
 
   template <class F = Functor, INTERFACE = DEDUCED, typename = void>
   struct DeduceJoin {
-    enum { value = false };
+    enum : bool { value = false };
 
     KOKKOS_INLINE_FUNCTION static void join(F const* const f,
                                             ValueType volatile* dst,
@@ -491,7 +490,7 @@ struct FunctorAnalysis {
 
   template <class F>
   struct DeduceJoin<F, DISABLE, void> {
-    enum { value = false };
+    enum : bool { value = false };
 
     KOKKOS_INLINE_FUNCTION static void join(F const* const, ValueType volatile*,
                                             ValueType volatile const*) {}
@@ -501,7 +500,7 @@ struct FunctorAnalysis {
   struct DeduceJoin<F, I,
                     decltype(has_join_function<F, I>::enable_if(&F::join))>
       : public has_join_function<F, I> {
-    enum { value = true };
+    enum : bool { value = true };
   };
 
   //----------------------------------------
@@ -569,7 +568,7 @@ struct FunctorAnalysis {
 
   template <class F = Functor, INTERFACE = DEDUCED, typename = void>
   struct DeduceInit {
-    enum { value = false };
+    enum : bool { value = false };
 
     KOKKOS_INLINE_FUNCTION static void init(F const* const, ValueType* dst) {
       new (dst) ValueType();
@@ -578,7 +577,7 @@ struct FunctorAnalysis {
 
   template <class F>
   struct DeduceInit<F, DISABLE, void> {
-    enum { value = false };
+    enum : bool { value = false };
 
     KOKKOS_INLINE_FUNCTION static void init(F const* const, ValueType*) {}
   };
@@ -587,7 +586,7 @@ struct FunctorAnalysis {
   struct DeduceInit<F, I,
                     decltype(has_init_function<F, I>::enable_if(&F::init))>
       : public has_init_function<F, I> {
-    enum { value = true };
+    enum : bool { value = true };
   };
 
   //----------------------------------------
@@ -659,7 +658,7 @@ struct FunctorAnalysis {
 
   template <class F = Functor, INTERFACE = DEDUCED, typename = void>
   struct DeduceFinal {
-    enum { value = false };
+    enum : bool { value = false };
 
     KOKKOS_INLINE_FUNCTION
     static void final(F const* const, ValueType*) {}
@@ -669,14 +668,14 @@ struct FunctorAnalysis {
   struct DeduceFinal<F, I,
                      decltype(has_final_function<F, I>::enable_if(&F::final))>
       : public has_final_function<F, I> {
-    enum { value = true };
+    enum : bool { value = true };
   };
 
   //----------------------------------------
 
   template <class F = Functor, typename = void>
   struct DeduceTeamShmem {
-    enum { value = false };
+    enum : bool { value = false };
 
     static size_t team_shmem_size(F const&, int) { return 0; }
   };
@@ -684,7 +683,7 @@ struct FunctorAnalysis {
   template <class F>
   struct DeduceTeamShmem<
       F, typename std::enable_if<0 < sizeof(&F::team_shmem_size)>::type> {
-    enum { value = true };
+    enum : bool { value = true };
 
     static size_t team_shmem_size(F const* const f, int team_size) {
       return f->team_shmem_size(team_size);
@@ -694,7 +693,7 @@ struct FunctorAnalysis {
   template <class F>
   struct DeduceTeamShmem<
       F, typename std::enable_if<0 < sizeof(&F::shmem_size)>::type> {
-    enum { value = true };
+    enum : bool { value = true };
 
     static size_t team_shmem_size(F const* const f, int team_size) {
       return f->shmem_size(team_size);
@@ -722,14 +721,16 @@ struct FunctorAnalysis {
 
     template <bool IsArray>
     KOKKOS_INLINE_FUNCTION constexpr
-        typename std::enable_if<IsArray, FunctorAnalysis::ValueType*>::type
+        typename std::enable_if<IsArray,
+                                typename FunctorAnalysis::ValueType*>::type
         ref() const noexcept {
       return m_result;
     }
 
     template <bool IsArray>
     KOKKOS_INLINE_FUNCTION constexpr
-        typename std::enable_if<!IsArray, FunctorAnalysis::ValueType&>::type
+        typename std::enable_if<!IsArray,
+                                typename FunctorAnalysis::ValueType&>::type
         ref() const noexcept {
       return *m_result;
     }

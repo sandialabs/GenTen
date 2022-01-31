@@ -1412,6 +1412,161 @@ multByVector(bool bTranspose,
 }
 
 namespace Genten {
+namespace Impl {
+
+template <typename ExecSpace,
+          typename AT, typename ... AP,
+          typename BT, typename ... BP,
+          typename CT, typename ... CP>
+typename std::enable_if< is_host_space<ExecSpace>::value >::type
+gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
+         const Kokkos::View<AT,AP...>& A, const Kokkos::View<BT,BP...>& B,
+         const ttb_real beta, const Kokkos::View<CT,CP...>& C)
+{
+  // gemm() assumes LayoutLeft for A, B, and C, but they are stored
+  // LayoutRight, so we compute C' = alpha * op(B') * op(A') + beta * C'.
+  const char ta = trans_a ? 'T' : 'N';
+  const char tb = trans_b ? 'T' : 'N';
+  const ttb_indx m = C.extent(1);
+  const ttb_indx n = C.extent(0);
+  const ttb_indx k = trans_b ? B.extent(1) : B.extent(0);
+  const ttb_indx lda = A.stride(0);
+  const ttb_indx ldb = B.stride(0);
+  const ttb_indx ldc = C.stride(0);
+  Genten::gemm(tb, ta, m, n, k, alpha, B.data(), ldb, A.data(), lda, beta,
+               C.data(), ldc);
+}
+
+#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+template <typename ExecSpace,
+          typename AT, typename ... AP,
+          typename BT, typename ... BP,
+          typename CT, typename ... CP>
+typename std::enable_if<
+  ( is_cuda_space<ExecSpace>::value &&
+    std::is_same<typename Kokkos::View<AT,AP...>::non_const_value_type,
+                 double>::value )
+  >::type
+gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
+         const Kokkos::View<AT,AP...>& A, const Kokkos::View<BT,BP...>& B,
+         const ttb_real beta, const Kokkos::View<CT,CP...>& C)
+{
+  // gemm() assumes LayoutLeft for A, B, and C, but they are stored
+  // LayoutRight, so we compute C' = alpha * op(B') * op(A') + beta * C'.
+  const cublasOperation_t ta = trans_a ? CUBLAS_OP_T : CUBLAS_OP_N;
+  const cublasOperation_t tb = trans_b ? CUBLAS_OP_T : CUBLAS_OP_N;
+  const ttb_indx m = C.extent(1);
+  const ttb_indx n = C.extent(0);
+  const ttb_indx k = trans_b ? B.extent(1) : B.extent(0);
+  const ttb_indx lda = A.stride(0);
+  const ttb_indx ldb = B.stride(0);
+  const ttb_indx ldc = C.stride(0);
+
+  static cublasHandle_t handle = 0;
+  cublasStatus_t status;
+  if (handle == 0) {
+    status = cublasCreate(&handle);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+      std::stringstream ss;
+      ss << "Error!  cublasCreate() failed with status "
+         << status;
+      std::cerr << ss.str() << std::endl;
+      throw ss.str();
+    }
+  }
+
+  status = cublasDgemm(
+    handle, tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
+    &beta, C.data(), ldc);
+  if (status != CUBLAS_STATUS_SUCCESS) {
+    std::stringstream ss;
+    ss << "Error!  cublasDgemm() failed with status "
+       << status;
+    std::cerr << ss.str() << std::endl;
+    throw ss.str();
+  }
+}
+
+template <typename ExecSpace,
+          typename AT, typename ... AP,
+          typename BT, typename ... BP,
+          typename CT, typename ... CP>
+typename std::enable_if<
+  ( is_cuda_space<ExecSpace>::value &&
+    std::is_same<typename Kokkos::View<AT,AP...>::non_const_value_type,
+                 float>::value )
+  >::type
+gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
+         const Kokkos::View<AT,AP...>& A, const Kokkos::View<BT,BP...>& B,
+         const ttb_real beta, const Kokkos::View<CT,CP...>& C)
+{
+  // gemm() assumes LayoutLeft for A, B, and C, but they are stored
+  // LayoutRight, so we compute C' = alpha * op(B') * op(A') + beta * C'.
+  const cublasOperation_t ta = trans_a ? CUBLAS_OP_T : CUBLAS_OP_N;
+  const cublasOperation_t tb = trans_b ? CUBLAS_OP_T : CUBLAS_OP_N;
+  const ttb_indx m = C.extent(1);
+  const ttb_indx n = C.extent(0);
+  const ttb_indx k = trans_b ? B.extent(1) : B.extent(0);
+  const ttb_indx lda = A.stride(0);
+  const ttb_indx ldb = B.stride(0);
+  const ttb_indx ldc = C.stride(0);
+
+  static cublasHandle_t handle = 0;
+  cublasStatus_t status;
+  if (handle == 0) {
+    status = cublasCreate(&handle);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+      std::stringstream ss;
+      ss << "Error!  cublasCreate() failed with status "
+         << status;
+      std::cerr << ss.str() << std::endl;
+      throw ss.str();
+    }
+  }
+
+  status = cublasSgemm(
+    handle, tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
+    &beta, C.data(), ldc);
+  if (status != CUBLAS_STATUS_SUCCESS) {
+    std::stringstream ss;
+    ss << "Error!  cublasDgemm() failed with status "
+       << status;
+    std::cerr << ss.str() << std::endl;
+    throw ss.str();
+  }
+}
+
+#endif
+
+}
+}
+
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+gemm(const bool trans_a, const bool trans_b, const ttb_real alpha,
+     const FacMatrixT<ExecSpace>& A, const FacMatrixT<ExecSpace>& B,
+     const ttb_real beta) const
+{
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::FacMatrix::gemm");
+#endif
+
+  const ttb_indx m = data.extent(0);
+  const ttb_indx n = data.extent(1);
+  const ttb_indx rows_op_a = trans_a ? A.data.extent(1) : A.data.extent(0);
+  const ttb_indx cols_op_a = trans_a ? A.data.extent(0) : A.data.extent(1);
+  const ttb_indx rows_op_b = trans_b ? B.data.extent(1) : B.data.extent(0);
+  const ttb_indx cols_op_b = trans_b ? B.data.extent(0) : B.data.extent(1);
+
+  assert(rows_op_a == m);
+  assert(cols_op_a == rows_op_b);
+  assert(cols_op_b == n);
+
+  Genten::Impl::gemmImpl<ExecSpace>(
+    trans_a,trans_b,alpha,A.data,B.data,beta,data);
+}
+
+namespace Genten {
   namespace Impl {
 
     template <typename ViewA, typename ViewB>

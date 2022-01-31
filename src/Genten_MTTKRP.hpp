@@ -327,6 +327,9 @@ struct MTTKRP_Kernel {
     }
     else if (method == MTTKRP_Method::Perm)
       mttkrp_kernel_perm<FBS,VS>(X,u,n,v,algParams);
+    else
+      Genten::error(std::string("Invalid mttkrp-method:  ") +
+                    MTTKRP_Method::names[method]);
   }
 };
 
@@ -797,6 +800,9 @@ void mttkrp_all(const SptensorT<ExecSpace>& X,
     Impl::MTTKRP_All_Kernel<ScatterDuplicated,ScatterNonAtomic,ExecSpace> kernel(X,u,v,algParams);
     Impl::run_row_simd_kernel(kernel, nc);
   }
+  else
+    Genten::error(std::string("Invalid mttkrp-all-method:  ") +
+                  MTTKRP_All_Method::names[algParams.mttkrp_all_method]);
 }
 
 }

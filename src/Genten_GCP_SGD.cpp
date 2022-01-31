@@ -48,7 +48,7 @@
 #include "Genten_GCP_SemiStratifiedSampler.hpp"
 #include "Genten_GCP_ValueKernels.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
-#include "Genten_GCP_KokkosVector.hpp"
+#include "Genten_KokkosVector.hpp"
 #include "Genten_GCP_SGD_Step.hpp"
 #include "Genten_GCP_SGD_Iter.hpp"
 #include "Genten_GCP_SGD_Iter_Async.hpp"
@@ -74,7 +74,7 @@ namespace Genten {
                       ttb_real& fest,
                       std::ostream& out)
     {
-      typedef GCP::KokkosVector<ExecSpace> VectorType;
+      typedef KokkosVector<ExecSpace> VectorType;
       typedef typename VectorType::view_type view_type;
       using std::sqrt;
       using std::pow;
@@ -327,9 +327,6 @@ namespace Genten {
         timer.start(timer_fest);
         fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
         if (compute_fit) {
-          // ttb_real u_norm = sqrt(ut.normFsq());
-          // ttb_real dot = innerprod(X, ut);
-          // fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
           fit = fitter();
         }
         timer.stop(timer_fest);

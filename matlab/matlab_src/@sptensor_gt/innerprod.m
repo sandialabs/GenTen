@@ -1,4 +1,4 @@
-function res = innerprod(X,Y)
+function res = innerprod(X,Y,varargin)
 %INNERPROD Efficient inner product with a sparse tensor.
 %
 %   R = INNERPROD(X,Y) efficiently computes the inner product between
@@ -58,7 +58,8 @@ switch class(Y)
 
     case {'ktensor'}
         % Call MEX driver
-        res = gt_innerprod_driver(X,Y);
+        args = { X.alg_params{:}, varargin{:} };
+        res = gt_innerprod_driver(X,Y,args{:});
         return;
 
     otherwise

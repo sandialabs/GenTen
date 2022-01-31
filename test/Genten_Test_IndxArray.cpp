@@ -44,6 +44,7 @@
 
 using namespace Genten::Test;
 
+// These tests are just on the host, so not templated on the space
 void Genten_Test_IndxArray(int infolevel)
 {
   //SETUP_DISABLE_CERR;

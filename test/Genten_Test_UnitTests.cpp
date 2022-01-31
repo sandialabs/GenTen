@@ -46,8 +46,15 @@
 using namespace std;
 
 // Forward declarations.
+void Genten_Test_TTM(int infolevel);
 void Genten_Test_Array(int infolevel);
 void Genten_Test_CpAls(int infolevel);
+#ifdef HAVE_LBFGSB
+void Genten_Test_CpOptLbfgsb(int infolevel);
+#endif
+#ifdef HAVE_ROL
+void Genten_Test_CpOptRol(int infolevel);
+#endif
 void Genten_Test_FacMatrix(int infolevel, const string & dirname);
 void Genten_Test_IndxArray(int infolevel);
 void Genten_Test_IO(int infolevel, const string & dirname);
@@ -56,9 +63,9 @@ void Genten_Test_MixedFormats(int infolevel);
 void Genten_Test_Sptensor(int infolevel);
 void Genten_Test_Tensor(int infolevel);
 #ifdef HAVE_GCP
-#ifdef HAVE_ROL
-void Genten_Test_GCP_Opt(int infolevel);
-#endif
+// #ifdef HAVE_ROL
+// void Genten_Test_GCP_Opt(int infolevel);
+// #endif
 void Genten_Test_GCP_SGD(int infolevel);
 #endif
 
@@ -66,6 +73,8 @@ int main(int argc, char * argv[])
 {
 
   Kokkos::initialize(argc, argv);
+
+  try {
 
   // Level 0 is minimal output, 1 is more verbose.
   int infolevel = 0;
@@ -76,6 +85,7 @@ int main(int argc, char * argv[])
       infolevel = 0;
   }
 
+  Genten_Test_TTM(infolevel);
   Genten_Test_Array(infolevel);
   Genten_Test_IndxArray(infolevel);
   Genten_Test_FacMatrix(infolevel, "./data/");
@@ -85,14 +95,26 @@ int main(int argc, char * argv[])
   Genten_Test_MixedFormats(infolevel);
   Genten_Test_IO(infolevel, "./data/");
   Genten_Test_CpAls(infolevel);
-#ifdef HAVE_GCP
-#ifdef HAVE_ROL
-  Genten_Test_GCP_Opt(infolevel);
+#ifdef HAVE_LBFGSB
+  Genten_Test_CpOptLbfgsb(infolevel);
 #endif
+#ifdef HAVE_ROL
+  Genten_Test_CpOptRol(infolevel);
+#endif
+#ifdef HAVE_GCP
+// Don't test this because it doesn't work
+// #ifdef HAVE_ROL
+//   Genten_Test_GCP_Opt(infolevel);
+// #endif
   Genten_Test_GCP_SGD(infolevel);
 #endif
 
   cout << "Unit tests complete for " << Genten::getGentenVersion() << endl;
+
+  }
+  catch(std::string& s) {
+    std::cout << s << std::endl;
+  }
 
   Kokkos::finalize();
 

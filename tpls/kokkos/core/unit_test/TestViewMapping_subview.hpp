@@ -70,7 +70,9 @@ struct TestViewMappingSubview {
 
   enum { CN0 = 10, CN1 = 11, CN2 = 12 };
   using CT = Kokkos::View<int** * [13][14], ExecSpace>;
-  using CS = Kokkos::Subview<CT, range, range, range, int, int>;
+  // changing CS to CTS here because when compiling with nvshmem, there is a
+  // define for CS that makes this fail...
+  using CTS = Kokkos::Subview<CT, range, range, range, int, int>;
 
   enum { DN0 = 10, DN1 = 11, DN2 = 12, DN3 = 13, DN4 = 14 };
   using DT = Kokkos::View<int** * [DN3][DN4], ExecSpace>;
@@ -79,7 +81,7 @@ struct TestViewMappingSubview {
   using DLT  = Kokkos::View<int** * [13][14], Kokkos::LayoutLeft, ExecSpace>;
   using DLS1 = Kokkos::Subview<DLT, range, int, int, int, int>;
 
-#if !defined(KOKKOS_IMPL_CUDA_VERSION_9_WORKAROUND)
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1000
   static_assert(
       DLS1::rank == 1 &&
           std::is_same<typename DLS1::array_layout, Kokkos::LayoutLeft>::value,
@@ -90,7 +92,7 @@ struct TestViewMappingSubview {
   using DRT  = Kokkos::View<int** * [13][14], Kokkos::LayoutRight, ExecSpace>;
   using DRS1 = Kokkos::Subview<DRT, int, int, int, int, range>;
 
-#if !defined(KOKKOS_IMPL_CUDA_VERSION_9_WORKAROUND)
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1000
   static_assert(
       DRS1::rank == 1 &&
           std::is_same<typename DRS1::array_layout, Kokkos::LayoutRight>::value,
@@ -104,7 +106,7 @@ struct TestViewMappingSubview {
   BT Ba;
   BS Bb;
   CT Ca;
-  CS Cb;
+  CTS Cb;
   DT Da;
   DS Db;
 

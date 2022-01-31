@@ -45,13 +45,56 @@
 #include "Genten_Util.hpp"
 #include "Genten_SystemTimer.hpp"
 
+template <typename ExecSpace>
+void matlab_driver(int nlhs, mxArray *plhs[],
+                   int nrhs, const mxArray *prhs[],
+                   Genten::AlgParams& algParams)
+{
+  // Get tensor
+  Genten::SystemTimer timer(1, algParams.timings);
+  timer.start(0);
+  Genten::SptensorT<ExecSpace> X =
+    mxGetSptensor<ExecSpace>(prhs[0], algParams.debug);
+  timer.stop(1);
+  if (algParams.timings)
+    std::cout << "Parsing tensor took " << timer.getTotalTime(0)
+              << " seconds" << std::endl;
+
+  // Get rank
+  algParams.rank = mxGetScalar(prhs[1]);
+
+  // Get initial guess
+  Genten::KtensorT<ExecSpace> u_init;
+  const mxArray *arg = prhs[2];
+  if (mxIsStruct(arg))
+    u_init = mxGetKtensor<ExecSpace>(arg, algParams.debug);
+  else if (mxIsChar(arg)) {
+    std::string str = mxGetStdString(arg);
+    // Just check string is a proper value since an empty u_init means a
+    // random one in Genten::driver() below
+    if (str != "random" && str != "random_gt")
+      throw std::string("Invalid random initial guess specification:  ") +
+        str;
+  }
+  else
+    throw std::string("Invalid type for initial guess specification.");
+
+  // Call driver
+  Genten::KtensorT<ExecSpace> u =
+    Genten::driver(X, u_init, algParams, std::cout);
+
+  // Return results
+  if (nlhs >= 1)
+    plhs[0] = mxSetKtensor(u, algParams.debug);
+  if (nlhs >= 2)
+    plhs[1] = mxSetKtensor(u_init);
+}
+
 extern "C" {
 
 DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
                                 int nrhs, const mxArray *prhs[])
 {
-  typedef Genten::DefaultExecutionSpace ExecSpace;
-
   GentenInitialize();
 
   try {
@@ -69,44 +112,28 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
       throw std::string("Invalid command line arguments.");
     }
 
-    // Get tensor
-    Genten::SystemTimer timer(1, algParams.timings);
-    timer.start(0);
-    Genten::SptensorT<ExecSpace> X =
-      mxGetSptensor<ExecSpace>(prhs[0], algParams.debug);
-    timer.stop(1);
-    if (algParams.timings)
-      std::cout << "Parsing tensor took " << timer.getTotalTime(0)
-                << " seconds" << std::endl;
-
-    // Get rank
-    algParams.rank = mxGetScalar(prhs[1]);
-
-    // Get initial guess
-    Genten::KtensorT<ExecSpace> u_init;
-    const mxArray *arg = prhs[2];
-    if (mxIsStruct(arg))
-      u_init = mxGetKtensor<ExecSpace>(arg, algParams.debug);
-    else if (mxIsChar(arg)) {
-      std::string str = mxGetStdString(arg);
-      // Just check string is a proper value since an empty u_init means a
-      // random one in Genten::driver() below
-      if (str != "random" && str != "random_gt")
-        throw std::string("Invalid random initial guess specification:  ") +
-          str;
-    }
+    // Parse execution space and run
+    if (algParams.exec_space == Genten::Execution_Space::Default)
+      matlab_driver<Genten::DefaultExecutionSpace>(nlhs, plhs, nrhs, prhs,
+                                                   algParams);
+#ifdef KOKKOS_ENABLE_CUDA
+    else if (algParams.exec_space == Genten::Execution_Space::Cuda)
+      matlab_driver<Kokkos::Cuda>(nlhs, plhs, nrhs, prhs, algParams);
+#endif
+#ifdef KOKKOS_ENABLE_OPENMP
+    else if (algParams.exec_space == Genten::Execution_Space::OpenMP)
+      matlab_driver<Kokkos::OpenMP>(nlhs, plhs, nrhs, prhs, algParams);
+#endif
+#ifdef KOKKOS_ENABLE_THREADS
+    else if (algParams.exec_space == Genten::Execution_Space::Threads)
+      matlab_driver<Kokkos::Threads>(nlhs, plhs, nrhs, prhs, algParams);
+#endif
+#ifdef KOKKOS_ENABLE_SERIAL
+    else if (algParams.exec_space == Genten::Execution_Space::Serial)
+      matlab_driver<Kokkos::Serial>(nlhs, plhs, nrhs, prhs, algParams);
+#endif
     else
-      throw std::string("Invalid type for initial guess specification.");
-
-    // Call driver
-    Genten::KtensorT<ExecSpace> u =
-      Genten::driver(X, u_init, algParams, std::cout);
-
-    // Return results
-    if (nlhs >= 1)
-      plhs[0] = mxSetKtensor(u, algParams.debug);
-    if (nlhs >= 2)
-      plhs[1] = mxSetKtensor(u_init);
+      Genten::error("Invalid execution space: " + std::string(Genten::Execution_Space::names[algParams.exec_space]));
   }
 
   catch(std::string sExc)

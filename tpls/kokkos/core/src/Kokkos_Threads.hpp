@@ -57,13 +57,14 @@
 #include <Kokkos_Layout.hpp>
 #include <Kokkos_MemoryTraits.hpp>
 #include <impl/Kokkos_Profiling_Interface.hpp>
-#include <impl/Kokkos_Tags.hpp>
+#include <impl/Kokkos_ExecSpaceInitializer.hpp>
 
 /*--------------------------------------------------------------------------*/
 
 namespace Kokkos {
 namespace Impl {
 class ThreadsExec;
+enum class fence_is_static { yes, no };
 }  // namespace Impl
 }  // namespace Kokkos
 
@@ -107,8 +108,10 @@ class Threads {
   /// method does not return until all dispatched functors on this
   /// device have completed.
   static void impl_static_fence();
+  static void impl_static_fence(const std::string& name);
 
   void fence() const;
+  void fence(const std::string&) const;
 
   /** \brief  Return the maximum amount of concurrency.  */
   static int concurrency();
@@ -166,7 +169,7 @@ class Threads {
     return impl_thread_pool_rank();
   }
 
-  uint32_t impl_instance_id() const noexcept { return 0; }
+  uint32_t impl_instance_id() const noexcept { return 1; }
 
   static const char* name();
   //@}
@@ -181,6 +184,21 @@ struct DeviceTypeTraits<Threads> {
 };
 }  // namespace Experimental
 }  // namespace Tools
+
+namespace Impl {
+
+class ThreadsSpaceInitializer : public ExecSpaceInitializerBase {
+ public:
+  ThreadsSpaceInitializer()  = default;
+  ~ThreadsSpaceInitializer() = default;
+  void initialize(const InitArguments& args) final;
+  void finalize(const bool) final;
+  void fence() final;
+  void fence(const std::string&) final;
+  void print_configuration(std::ostream& msg, const bool detail) final;
+};
+
+}  // namespace Impl
 }  // namespace Kokkos
 
 /*--------------------------------------------------------------------------*/
@@ -191,17 +209,9 @@ namespace Impl {
 template <>
 struct MemorySpaceAccess<Kokkos::Threads::memory_space,
                          Kokkos::Threads::scratch_memory_space> {
-  enum { assignable = false };
-  enum { accessible = true };
-  enum { deepcopy = false };
-};
-
-template <>
-struct VerifyExecutionCanAccessMemorySpace<
-    Kokkos::Threads::memory_space, Kokkos::Threads::scratch_memory_space> {
-  enum { value = true };
-  inline static void verify(void) {}
-  inline static void verify(const void*) {}
+  enum : bool { assignable = false };
+  enum : bool { accessible = true };
+  enum : bool { deepcopy = false };
 };
 
 }  // namespace Impl

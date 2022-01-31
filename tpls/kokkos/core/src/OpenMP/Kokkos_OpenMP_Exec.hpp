@@ -48,7 +48,8 @@
 #include <Kokkos_Macros.hpp>
 #if defined(KOKKOS_ENABLE_OPENMP)
 
-#if !defined(_OPENMP) && !defined(__CUDA_ARCH__)
+#if !defined(_OPENMP) && !defined(__CUDA_ARCH__) && \
+    !defined(__HIP_DEVICE_COMPILE__) && !defined(__SYCL_DEVICE_ONLY__)
 #error \
     "You enabled Kokkos OpenMP support without enabling OpenMP in the compiler!"
 #endif
@@ -150,7 +151,14 @@ int OpenMP::impl_thread_pool_rank() noexcept {
 #endif
 }
 
-inline void OpenMP::impl_static_fence(OpenMP const& /*instance*/) noexcept {}
+inline void OpenMP::impl_static_fence(OpenMP const& /**instance*/,
+                                      const std::string& name) noexcept {
+  Kokkos::Tools::Experimental::Impl::profile_fence_event<Kokkos::OpenMP>(
+      name,
+      Kokkos::Tools::Experimental::SpecialSynchronizationCases::
+          GlobalDeviceSynchronization,
+      []() {});
+}
 
 inline bool OpenMP::is_asynchronous(OpenMP const& /*instance*/) noexcept {
   return false;
@@ -212,8 +220,9 @@ void OpenMP::partition_master(F const& f, int num_partitions,
 
 namespace Experimental {
 
+#ifdef KOKKOS_ENABLE_DEPRECATED_CODE_3
 template <>
-class MasterLock<OpenMP> {
+class KOKKOS_DEPRECATED MasterLock<OpenMP> {
  public:
   void lock() { omp_set_lock(&m_lock); }
   void unlock() { omp_unset_lock(&m_lock); }
@@ -230,6 +239,7 @@ class MasterLock<OpenMP> {
  private:
   omp_lock_t m_lock;
 };
+#endif
 
 template <>
 class UniqueToken<OpenMP, UniqueTokenScope::Instance> {

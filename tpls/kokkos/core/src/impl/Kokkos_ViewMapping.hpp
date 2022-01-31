@@ -49,6 +49,7 @@
 #include <initializer_list>
 
 #include <Kokkos_Core_fwd.hpp>
+#include <Kokkos_DetectionIdiom.hpp>
 #include <Kokkos_Pair.hpp>
 #include <Kokkos_Layout.hpp>
 #include <Kokkos_Extents.hpp>
@@ -96,22 +97,28 @@ struct rank_dynamic<Val, Args...> {
 #define KOKKOS_IMPL_VIEW_DIMENSION(R)                                       \
   template <size_t V, unsigned>                                             \
   struct ViewDimension##R {                                                 \
-    enum : size_t { ArgN##R = (V != KOKKOS_INVALID_INDEX ? V : 1) };        \
-    enum : size_t { N##R = (V != KOKKOS_INVALID_INDEX ? V : 1) };           \
+    static constexpr size_t ArgN##R = (V != KOKKOS_INVALID_INDEX ? V : 1);  \
+    static constexpr size_t N##R    = (V != KOKKOS_INVALID_INDEX ? V : 1);  \
     KOKKOS_INLINE_FUNCTION explicit ViewDimension##R(size_t) {}             \
     ViewDimension##R()                        = default;                    \
     ViewDimension##R(const ViewDimension##R&) = default;                    \
     ViewDimension##R& operator=(const ViewDimension##R&) = default;         \
   };                                                                        \
+  template <size_t V, unsigned RD>                                          \
+  constexpr size_t ViewDimension##R<V, RD>::ArgN##R;                        \
+  template <size_t V, unsigned RD>                                          \
+  constexpr size_t ViewDimension##R<V, RD>::N##R;                           \
   template <unsigned RD>                                                    \
   struct ViewDimension##R<0u, RD> {                                         \
-    enum : size_t { ArgN##R = 0 };                                          \
+    static constexpr size_t ArgN##R = 0;                                    \
     typename std::conditional<(RD < 3), size_t, unsigned>::type N##R;       \
     ViewDimension##R()                        = default;                    \
     ViewDimension##R(const ViewDimension##R&) = default;                    \
     ViewDimension##R& operator=(const ViewDimension##R&) = default;         \
     KOKKOS_INLINE_FUNCTION explicit ViewDimension##R(size_t V) : N##R(V) {} \
-  };
+  };                                                                        \
+  template <unsigned RD>                                                    \
+  constexpr size_t ViewDimension##R<0u, RD>::ArgN##R;
 
 KOKKOS_IMPL_VIEW_DIMENSION(0)
 KOKKOS_IMPL_VIEW_DIMENSION(1)
@@ -317,23 +324,23 @@ namespace Impl {
 
 template <class T>
 struct is_integral_extent_type {
-  enum { value = std::is_same<T, Kokkos::Impl::ALL_t>::value ? 1 : 0 };
+  enum : bool { value = std::is_same<T, Kokkos::Impl::ALL_t>::value ? 1 : 0 };
 };
 
 template <class iType>
 struct is_integral_extent_type<std::pair<iType, iType>> {
-  enum { value = std::is_integral<iType>::value ? 1 : 0 };
+  enum : bool { value = std::is_integral<iType>::value ? 1 : 0 };
 };
 
 template <class iType>
 struct is_integral_extent_type<Kokkos::pair<iType, iType>> {
-  enum { value = std::is_integral<iType>::value ? 1 : 0 };
+  enum : bool { value = std::is_integral<iType>::value ? 1 : 0 };
 };
 
 // Assuming '2 == initializer_list<iType>::size()'
 template <class iType>
 struct is_integral_extent_type<std::initializer_list<iType>> {
-  enum { value = std::is_integral<iType>::value ? 1 : 0 };
+  enum : bool { value = std::is_integral<iType>::value ? 1 : 0 };
 };
 
 template <unsigned I, class... Args>
@@ -342,7 +349,7 @@ struct is_integral_extent {
   using type = typename std::remove_cv<typename std::remove_reference<
       typename Kokkos::Impl::get_type<I, Args...>::type>::type>::type;
 
-  enum { value = is_integral_extent_type<type>::value };
+  enum : bool { value = is_integral_extent_type<type>::value };
 
   static_assert(value || std::is_integral<type>::value ||
                     std::is_same<type, void>::value,
@@ -420,21 +427,21 @@ template <int RankDest, int RankSrc, int CurrentArg, class... SubViewArgs>
 struct SubviewLegalArgsCompileTime<Kokkos::LayoutStride, Kokkos::LayoutLeft,
                                    RankDest, RankSrc, CurrentArg,
                                    SubViewArgs...> {
-  enum { value = true };
+  enum : bool { value = true };
 };
 
 template <int RankDest, int RankSrc, int CurrentArg, class... SubViewArgs>
 struct SubviewLegalArgsCompileTime<Kokkos::LayoutStride, Kokkos::LayoutRight,
                                    RankDest, RankSrc, CurrentArg,
                                    SubViewArgs...> {
-  enum { value = true };
+  enum : bool { value = true };
 };
 
 template <int RankDest, int RankSrc, int CurrentArg, class... SubViewArgs>
 struct SubviewLegalArgsCompileTime<Kokkos::LayoutStride, Kokkos::LayoutStride,
                                    RankDest, RankSrc, CurrentArg,
                                    SubViewArgs...> {
-  enum { value = true };
+  enum : bool { value = true };
 };
 
 template <unsigned DomainRank, unsigned RangeRank>
@@ -856,7 +863,7 @@ struct ViewDataAnalysis {
 namespace Kokkos {
 namespace Impl {
 
-template <class Dimension, class Layout, typename Enable = void>
+template <class Dimension, class Layout, class Enable = void>
 struct ViewOffset {
   using is_mapping_plugin = std::false_type;
 };
@@ -1383,7 +1390,8 @@ struct ViewOffset<
     KOKKOS_INLINE_FUNCTION
     static constexpr size_t stride(size_t const N) {
       return ((align != 0) &&
-              ((Kokkos::Impl::MEMORY_ALIGNMENT_THRESHOLD * align) < N) &&
+              ((static_cast<int>(Kokkos::Impl::MEMORY_ALIGNMENT_THRESHOLD) *
+                static_cast<int>(align)) < N) &&
               ((N % div_ok) != 0))
                  ? N + align - (N % div_ok)
                  : N;
@@ -2016,7 +2024,8 @@ struct ViewOffset<
     KOKKOS_INLINE_FUNCTION
     static constexpr size_t stride(size_t const N) {
       return ((align != 0) &&
-              ((Kokkos::Impl::MEMORY_ALIGNMENT_THRESHOLD * align) < N) &&
+              ((static_cast<int>(Kokkos::Impl::MEMORY_ALIGNMENT_THRESHOLD) *
+                static_cast<int>(align)) < N) &&
               ((N % div_ok) != 0))
                  ? N + align - (N % div_ok)
                  : N;
@@ -2678,7 +2687,7 @@ struct ViewDataHandle<
   template <class SrcHandleType>
   KOKKOS_INLINE_FUNCTION static handle_type assign(
       const SrcHandleType& arg_handle, size_t offset) {
-    return handle_type(arg_handle.ptr + offset);
+    return handle_type(arg_handle + offset);
   }
 };
 
@@ -2696,8 +2705,8 @@ struct ViewDataHandle<
 #endif
                 && (!Traits::memory_traits::is_atomic))>::type> {
   using value_type  = typename Traits::value_type;
-  using handle_type = typename Traits::value_type*;
-  using return_type = typename Traits::value_type&;
+  using handle_type = typename Traits::value_type* KOKKOS_RESTRICT;
+  using return_type = typename Traits::value_type& KOKKOS_RESTRICT;
   using track_type  = Kokkos::Impl::SharedAllocationTracker;
 
   KOKKOS_INLINE_FUNCTION
@@ -2725,8 +2734,12 @@ struct ViewDataHandle<
                                    Kokkos::CudaUVMSpace>::value))
 #endif
                 && (!Traits::memory_traits::is_atomic))>::type> {
-  using value_type  = typename Traits::value_type;
-  using handle_type = typename Traits::value_type*;
+  using value_type = typename Traits::value_type;
+  // typedef work-around for intel compilers error #3186: expected typedef
+  // declaration
+  // NOLINTNEXTLINE(modernize-use-using)
+  typedef value_type* KOKKOS_IMPL_ALIGN_PTR(KOKKOS_MEMORY_ALIGNMENT)
+      handle_type;
   using return_type = typename Traits::value_type&;
   using track_type  = Kokkos::Impl::SharedAllocationTracker;
 
@@ -2766,9 +2779,13 @@ struct ViewDataHandle<
                            Kokkos::CudaUVMSpace>::value))
 #endif
         && (!Traits::memory_traits::is_atomic))>::type> {
-  using value_type  = typename Traits::value_type;
-  using handle_type = typename Traits::value_type*;
-  using return_type = typename Traits::value_type&;
+  using value_type = typename Traits::value_type;
+  // typedef work-around for intel compilers error #3186: expected typedef
+  // declaration
+  // NOLINTNEXTLINE(modernize-use-using)
+  typedef value_type* KOKKOS_IMPL_ALIGN_PTR(KOKKOS_MEMORY_ALIGNMENT)
+      handle_type;
+  using return_type = typename Traits::value_type& KOKKOS_RESTRICT;
   using track_type  = Kokkos::Impl::SharedAllocationTracker;
 
   KOKKOS_INLINE_FUNCTION
@@ -2802,6 +2819,22 @@ struct ViewDataHandle<
 namespace Kokkos {
 namespace Impl {
 
+template <typename T>
+inline bool is_zero_byte(const T& t) {
+  using comparison_type = std::conditional_t<
+      sizeof(T) % sizeof(long long int) == 0, long long int,
+      std::conditional_t<
+          sizeof(T) % sizeof(long int) == 0, long int,
+          std::conditional_t<
+              sizeof(T) % sizeof(int) == 0, int,
+              std::conditional_t<sizeof(T) % sizeof(short int) == 0, short int,
+                                 char>>>>;
+  const auto* const ptr = reinterpret_cast<const comparison_type*>(&t);
+  for (std::size_t i = 0; i < sizeof(T) / sizeof(comparison_type); ++i)
+    if (ptr[i] != 0) return false;
+  return true;
+}
+
 //----------------------------------------------------------------------------
 
 /*
@@ -2812,16 +2845,16 @@ namespace Impl {
  *  called from the shared memory tracking destruction.
  *  Secondarily to have two fewer partial specializations.
  */
-template <class ExecSpace, class ValueType,
+template <class DeviceType, class ValueType,
           bool IsScalar = std::is_scalar<ValueType>::value>
 struct ViewValueFunctor;
 
-template <class ExecSpace, class ValueType>
-struct ViewValueFunctor<ExecSpace, ValueType, false /* is_scalar */> {
+template <class DeviceType, class ValueType>
+struct ViewValueFunctor<DeviceType, ValueType, false /* is_scalar */> {
+  using ExecSpace  = typename DeviceType::execution_space;
   using PolicyType = Kokkos::RangePolicy<ExecSpace, Kokkos::IndexType<int64_t>>;
-  using Exec       = typename ExecSpace::execution_space;
 
-  Exec space;
+  ExecSpace space;
   ValueType* ptr;
   size_t n;
   bool destroy;
@@ -2850,16 +2883,59 @@ struct ViewValueFunctor<ExecSpace, ValueType, false /* is_scalar */> {
         destroy(false),
         name(std::move(arg_name)) {}
 
-  void execute(bool arg) {
-    destroy = arg;
-    if (!space.in_parallel()) {
+  template <typename Dummy = ValueType>
+  std::enable_if_t<std::is_trivial<Dummy>::value &&
+                   std::is_trivially_copy_assignable<ValueType>::value>
+  construct_dispatch() {
+    ValueType value{};
+    if (Impl::is_zero_byte(value)) {
       uint64_t kpID = 0;
       if (Kokkos::Profiling::profileLibraryLoaded()) {
-        auto functor_name =
+        // We are not really using parallel_for here but using beginParallelFor
+        // instead of begin_parallel_for (and adding "via memset") is the best
+        // we can do to indicate that this is not supposed to be tunable (and
+        // doesn't really execute a parallel_for).
+        Kokkos::Profiling::beginParallelFor(
+            "Kokkos::View::initialization [" + name + "] via memset",
+            Kokkos::Profiling::Experimental::device_id(space), &kpID);
+      }
+
+      (void)ZeroMemset<ExecSpace, ValueType*, typename DeviceType::memory_space,
+                       Kokkos::MemoryTraits<Kokkos::Unmanaged>>(
+          space,
+          Kokkos::View<ValueType*, typename DeviceType::memory_space,
+                       Kokkos::MemoryTraits<Kokkos::Unmanaged>>(ptr, n),
+          value);
+
+      if (Kokkos::Profiling::profileLibraryLoaded()) {
+        Kokkos::Profiling::endParallelFor(kpID);
+      }
+    } else {
+      parallel_for_implementation(false);
+    }
+  }
+
+  template <typename Dummy = ValueType>
+  std::enable_if_t<!(std::is_trivial<Dummy>::value &&
+                     std::is_trivially_copy_assignable<ValueType>::value)>
+  construct_dispatch() {
+    parallel_for_implementation(false);
+  }
+
+  void parallel_for_implementation(bool arg) {
+    destroy = arg;
+    if (!space.in_parallel()) {
+      PolicyType policy(0, n);
+      std::string functor_name;
+      uint64_t kpID = 0;
+      if (Kokkos::Profiling::profileLibraryLoaded()) {
+        functor_name =
             (destroy ? "Kokkos::View::destruction [" + name + "]"
                      : "Kokkos::View::initialization [" + name + "]");
-        Kokkos::Profiling::beginParallelFor(functor_name.c_str(), 0, &kpID);
+        Kokkos::Tools::Impl::begin_parallel_for(policy, *this, functor_name,
+                                                kpID);
       }
+
 #ifdef KOKKOS_ENABLE_CUDA
       if (std::is_same<ExecSpace, Kokkos::Cuda>::value) {
         Kokkos::Impl::cuda_prefetch_pointer(space, ptr, sizeof(ValueType) * n,
@@ -2867,24 +2943,26 @@ struct ViewValueFunctor<ExecSpace, ValueType, false /* is_scalar */> {
       }
 #endif
       const Kokkos::Impl::ParallelFor<ViewValueFunctor, PolicyType> closure(
-          *this, PolicyType(0, n));
+          *this, policy);
       closure.execute();
-      space.fence();
+      space.fence("Kokkos::Impl::ViewValueFunctor: View init/destroy fence");
       if (Kokkos::Profiling::profileLibraryLoaded()) {
-        Kokkos::Profiling::endParallelFor(kpID);
+        Kokkos::Tools::Impl::end_parallel_for(policy, *this, functor_name,
+                                              kpID);
       }
     } else {
       for (size_t i = 0; i < n; ++i) operator()(i);
     }
   }
 
-  void construct_shared_allocation() { execute(false); }
+  void construct_shared_allocation() { construct_dispatch(); }
 
-  void destroy_shared_allocation() { execute(true); }
+  void destroy_shared_allocation() { parallel_for_implementation(true); }
 };
 
-template <class ExecSpace, class ValueType>
-struct ViewValueFunctor<ExecSpace, ValueType, true /* is_scalar */> {
+template <class DeviceType, class ValueType>
+struct ViewValueFunctor<DeviceType, ValueType, true /* is_scalar */> {
+  using ExecSpace  = typename DeviceType::execution_space;
   using PolicyType = Kokkos::RangePolicy<ExecSpace, Kokkos::IndexType<int64_t>>;
 
   ExecSpace space;
@@ -2903,12 +2981,54 @@ struct ViewValueFunctor<ExecSpace, ValueType, true /* is_scalar */> {
                    size_t const arg_n, std::string arg_name)
       : space(arg_space), ptr(arg_ptr), n(arg_n), name(std::move(arg_name)) {}
 
-  void construct_shared_allocation() {
-    if (!space.in_parallel()) {
+  template <typename Dummy = ValueType>
+  std::enable_if_t<std::is_trivial<Dummy>::value &&
+                   std::is_trivially_copy_assignable<Dummy>::value>
+  construct_shared_allocation() {
+    // Shortcut for zero initialization
+    ValueType value{};
+    if (Impl::is_zero_byte(value)) {
       uint64_t kpID = 0;
       if (Kokkos::Profiling::profileLibraryLoaded()) {
+        // We are not really using parallel_for here but using beginParallelFor
+        // instead of begin_parallel_for (and adding "via memset") is the best
+        // we can do to indicate that this is not supposed to be tunable (and
+        // doesn't really execute a parallel_for).
         Kokkos::Profiling::beginParallelFor(
-            "Kokkos::View::initialization [" + name + "]", 0, &kpID);
+            "Kokkos::View::initialization [" + name + "] via memset",
+            Kokkos::Profiling::Experimental::device_id(space), &kpID);
+      }
+
+      (void)ZeroMemset<ExecSpace, ValueType*, typename DeviceType::memory_space,
+                       Kokkos::MemoryTraits<Kokkos::Unmanaged>>(
+          space,
+          Kokkos::View<ValueType*, typename DeviceType::memory_space,
+                       Kokkos::MemoryTraits<Kokkos::Unmanaged>>(ptr, n),
+          value);
+
+      if (Kokkos::Profiling::profileLibraryLoaded()) {
+        Kokkos::Profiling::endParallelFor(kpID);
+      }
+    } else {
+      parallel_for_implementation();
+    }
+  }
+
+  template <typename Dummy = ValueType>
+  std::enable_if_t<!(std::is_trivial<Dummy>::value &&
+                     std::is_trivially_copy_assignable<Dummy>::value)>
+  construct_shared_allocation() {
+    parallel_for_implementation();
+  }
+
+  void parallel_for_implementation() {
+    if (!space.in_parallel()) {
+      PolicyType policy(0, n);
+      std::string functor_name = "Kokkos::View::initialization [" + name + "]";
+      uint64_t kpID            = 0;
+      if (Kokkos::Profiling::profileLibraryLoaded()) {
+        Kokkos::Tools::Impl::begin_parallel_for(policy, *this, functor_name,
+                                                kpID);
       }
 #ifdef KOKKOS_ENABLE_CUDA
       if (std::is_same<ExecSpace, Kokkos::Cuda>::value) {
@@ -2919,9 +3039,11 @@ struct ViewValueFunctor<ExecSpace, ValueType, true /* is_scalar */> {
       const Kokkos::Impl::ParallelFor<ViewValueFunctor, PolicyType> closure(
           *this, PolicyType(0, n));
       closure.execute();
-      space.fence();
+      space.fence(
+          "Kokkos::Impl::ViewValueFunctor: Fence after setting values in view");
       if (Kokkos::Profiling::profileLibraryLoaded()) {
-        Kokkos::Profiling::endParallelFor(kpID);
+        Kokkos::Tools::Impl::end_parallel_for(policy, *this, functor_name,
+                                              kpID);
       }
     } else {
       for (size_t i = 0; i < n; ++i) operator()(i);
@@ -3214,7 +3336,9 @@ class ViewMapping<
     using execution_space = typename alloc_prop::execution_space;
     using memory_space    = typename Traits::memory_space;
     using value_type      = typename Traits::value_type;
-    using functor_type    = ViewValueFunctor<execution_space, value_type>;
+    using functor_type =
+        ViewValueFunctor<Kokkos::Device<execution_space, memory_space>,
+                         value_type>;
     using record_type =
         Kokkos::Impl::SharedAllocationRecord<memory_space, functor_type>;
 
@@ -3296,17 +3420,10 @@ class ViewMapping<
                            Kokkos::LayoutStride>::value))))>::type> {
  private:
   enum {
-    is_assignable_space =
-#if 1
-        Kokkos::Impl::MemorySpaceAccess<
-            typename DstTraits::memory_space,
-            typename SrcTraits::memory_space>::assignable
+    is_assignable_space = Kokkos::Impl::MemorySpaceAccess<
+        typename DstTraits::memory_space,
+        typename SrcTraits::memory_space>::assignable
   };
-#else
-        std::is_same<typename DstTraits::memory_space,
-                     typename SrcTraits::memory_space>::value
-  };
-#endif
 
   enum {
     is_assignable_value_type =
@@ -3616,7 +3733,7 @@ struct SubViewDataType : SubViewDataTypeImpl<void, ValueType, Exts, Args...> {};
 //----------------------------------------------------------------------------
 
 template <class SrcTraits, class... Args>
-struct ViewMapping<
+class ViewMapping<
     typename std::enable_if<(
         std::is_same<typename SrcTraits::specialize, void>::value &&
         (std::is_same<typename SrcTraits::array_layout,
@@ -3710,7 +3827,7 @@ struct ViewMapping<
 
   template <class MemoryTraits>
   struct apply {
-    static_assert(Kokkos::Impl::is_memory_traits<MemoryTraits>::value, "");
+    static_assert(Kokkos::is_memory_traits<MemoryTraits>::value, "");
 
     using traits_type =
         Kokkos::ViewTraits<data_type, array_layout,
@@ -3824,24 +3941,21 @@ struct OperatorBoundsErrorOnDevice<MapType, true> {
    this defined by default.
    The existence of this alias indicates the existence of MapType::is_managed
  */
-template <class T, class Enable = void>
-struct has_printable_label_typedef : public std::false_type {};
-
 template <class T>
-struct has_printable_label_typedef<
-    T, typename enable_if_type<typename T::printable_label_typedef>::type>
-    : public std::true_type {};
+using printable_label_typedef_t = typename T::printable_label_typedef;
 
-template <class MapType>
-KOKKOS_INLINE_FUNCTION void operator_bounds_error_on_device(MapType const&,
-                                                            std::false_type) {
+template <class Map>
+KOKKOS_FUNCTION
+    std::enable_if_t<!is_detected<printable_label_typedef_t, Map>::value>
+    operator_bounds_error_on_device(Map const&) {
   Kokkos::abort("View bounds error");
 }
 
-template <class MapType>
-KOKKOS_INLINE_FUNCTION void operator_bounds_error_on_device(MapType const& map,
-                                                            std::true_type) {
-  OperatorBoundsErrorOnDevice<MapType>::run(map);
+template <class Map>
+KOKKOS_FUNCTION
+    std::enable_if_t<is_detected<printable_label_typedef_t, Map>::value>
+    operator_bounds_error_on_device(Map const& map) {
+  OperatorBoundsErrorOnDevice<Map>::run(map);
 }
 
 #endif  // ! defined( KOKKOS_ACTIVE_EXECUTION_MEMORY_SPACE_HOST )
@@ -3867,8 +3981,7 @@ KOKKOS_INLINE_FUNCTION void view_verify_operator_bounds(
        This check should cover the case of Views that don't
        have the Unmanaged trait but were initialized by pointer. */
     if (tracker.m_tracker.has_record()) {
-      operator_bounds_error_on_device<MapType>(
-          map, has_printable_label_typedef<MapType>());
+      operator_bounds_error_on_device(map);
     } else {
       Kokkos::abort("View bounds error");
     }

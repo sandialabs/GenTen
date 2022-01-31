@@ -196,10 +196,11 @@ static void  evaluateResult (const int             infolevel,
  * the factor matrix columns shown above.  This is consistent with what the code
  * produces.
  */
+template <typename ExecSpace>
 void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
                              int infolevel, const std::string& label)
 {
-  typedef Genten::DefaultExecutionSpace exec_space;
+  typedef ExecSpace exec_space;
   typedef Genten::DefaultHostExecutionSpace host_exec_space;
   typedef Genten::SptensorT<exec_space> Sptensor_type;
   typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
@@ -208,7 +209,8 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
 
   SETUP_DISABLE_CERR;
 
-  initialize("Test of Genten::CpAls ("+label+")", infolevel);
+  std::string space_name = Genten::SpaceProperties<exec_space>::name();
+  initialize("Test of Genten::CpAls ("+label+", "+space_name+")", infolevel);
 
   MESSAGE("Creating a sparse tensor with data to model");
   Genten::IndxArray  dims(3);
@@ -383,16 +385,31 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
   return;
 }
 
-void Genten_Test_CpAls (int infolevel)
+template <typename ExecSpace>
+void Genten_Test_CpAls_Space (int infolevel)
 {
-  typedef Genten::DefaultExecutionSpace exec_space;
-  typedef Genten::SpaceProperties<exec_space> space_prop;
+  typedef Genten::SpaceProperties<ExecSpace> space_prop;
 
-  Genten_Test_CpAls_Type(Genten::MTTKRP_Method::Atomic,infolevel,
-                         "Atomic");
+  Genten_Test_CpAls_Type<ExecSpace>(Genten::MTTKRP_Method::Atomic,infolevel,
+                                    "Atomic");
   if (!space_prop::is_cuda)
-    Genten_Test_CpAls_Type(Genten::MTTKRP_Method::Duplicated,infolevel,
-                           "Duplicated");
-  Genten_Test_CpAls_Type(Genten::MTTKRP_Method::Perm,infolevel,
-                         "Perm");
+    Genten_Test_CpAls_Type<ExecSpace>(
+      Genten::MTTKRP_Method::Duplicated,infolevel, "Duplicated");
+  Genten_Test_CpAls_Type<ExecSpace>(Genten::MTTKRP_Method::Perm,infolevel,
+                                    "Perm");
+}
+
+void Genten_Test_CpAls(int infolevel) {
+#ifdef KOKKOS_ENABLE_CUDA
+  Genten_Test_CpAls_Space<Kokkos::Cuda>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_OPENMP
+  Genten_Test_CpAls_Space<Kokkos::OpenMP>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_THREADS
+  Genten_Test_CpAls_Space<Kokkos::Threads>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_SERIAL
+  Genten_Test_CpAls_Space<Kokkos::Serial>(infolevel);
+#endif
 }
