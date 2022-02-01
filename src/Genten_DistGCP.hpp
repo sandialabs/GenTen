@@ -371,7 +371,7 @@ ElementType DistGCP<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
   }
 
   // This is a lot of copies :/ but accept it for now
-  using VectorType = GCP::KokkosVector<ExecSpace>;
+  using VectorType = KokkosVector<ExecSpace>;
   auto u = VectorType(Kfac_);
   u.copyFromKtensor(Kfac_);
   KtensorT<ExecSpace> ut = u.getKtensor();
@@ -587,7 +587,7 @@ ElementType DistGCP<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
 
   auto algParams = setAlgParams();
 
-  using VectorType = GCP::KokkosVector<ExecSpace>;
+  using VectorType = KokkosVector<ExecSpace>;
   auto u = VectorType(Kfac_);
   u.copyFromKtensor(Kfac_);
   KtensorT<ExecSpace> ut = u.getKtensor();
