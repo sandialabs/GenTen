@@ -181,6 +181,7 @@ bool InitializeGenten(int *argc, char ***argv) {
 }
 
 bool FinalizeGenten() {
+  MPI_Barrier(DistContext::commWorld());
   DistContext::instance_ = nullptr;
   return true;
 }

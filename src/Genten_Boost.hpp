@@ -45,6 +45,7 @@
 #include <boost/container/small_vector.hpp>
 #include <boost/optional.hpp>
 #include <boost/property_tree/ptree.hpp>
+#include <boost/core/demangle.hpp>
 
 namespace Genten {
 
