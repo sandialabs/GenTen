@@ -98,6 +98,7 @@ private:
   ProcessorMap const &pmap() const { return spTensor_.pmap(); }
 
   DistSpTensor<ElementType, ExecSpace> spTensor_;
+  MPI_Datatype mpiElemType_ = DistContext::toMpiType<ElementType>();
   ptree input_;
   KtensorT<ExecSpace> Kfac_;
   bool dump_; // I don't love keeping this flag, but it's easy
@@ -203,13 +204,13 @@ void DistGCP<ElementType, ExecSpace>::allReduceKT(KtensorT<ExecSpace> &g,
     FacMatrixT<ExecSpace> const &fac_mat = g.factors()[i];
     auto fac_ptr = fac_mat.view().data();
     const auto fac_size = fac_mat.view().span();
-    MPI_Allreduce(MPI_IN_PLACE, fac_ptr, fac_size, MPI_DOUBLE, MPI_SUM,
+    MPI_Allreduce(MPI_IN_PLACE, fac_ptr, fac_size, DistContext::toMpiType<ElementType>(), MPI_SUM,
                   subComm);
   }
 
   if (divide_by_grid_size) {
     for (auto d = 0; d < ndims; ++d) {
-      const ttb_real scale = double(1.0 / gridSizes[d]);
+      const ttb_real scale = ttb_real(1.0 / gridSizes[d]);
       g.factors()[d].times(scale);
     }
   }
@@ -491,21 +492,21 @@ ElementType DistGCP<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
       elastic_times.resize(nprocs);
       eval_times.resize(nprocs);
 
-      MPI_Gather(&gradient_time, 1, MPI_DOUBLE, &gradient_times[0], 1,
-                 MPI_DOUBLE, 0, pmap().gridComm());
-      MPI_Gather(&evaluation_time, 1, MPI_DOUBLE, &eval_times[0], 1, MPI_DOUBLE,
+      MPI_Gather(&gradient_time, 1, mpiElemType_, &gradient_times[0], 1,
+                 mpiElemType_, 0, pmap().gridComm());
+      MPI_Gather(&evaluation_time, 1, mpiElemType_, &eval_times[0], 1, mpiElemType_,
                  0, pmap().gridComm());
-      MPI_Gather(&sync_time, 1, MPI_DOUBLE, &elastic_times[0], 1, MPI_DOUBLE, 0,
+      MPI_Gather(&sync_time, 1, mpiElemType_, &elastic_times[0], 1, mpiElemType_, 0,
                  pmap().gridComm());
     } else {
       if (std::isnan(fest)) {
         return fest_best;
       }
-      MPI_Gather(&gradient_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
+      MPI_Gather(&gradient_time, 1, mpiElemType_, nullptr, 1, mpiElemType_, 0,
                  pmap().gridComm());
-      MPI_Gather(&evaluation_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
+      MPI_Gather(&evaluation_time, 1, mpiElemType_, nullptr, 1, mpiElemType_, 0,
                  pmap().gridComm());
-      MPI_Gather(&sync_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
+      MPI_Gather(&sync_time, 1, mpiElemType_, nullptr, 1, mpiElemType_, 0,
                  pmap().gridComm());
     }
 
@@ -678,18 +679,18 @@ ElementType DistGCP<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
       gradient_times.resize(nprocs);
       all_reduce_times.resize(nprocs);
       eval_times.resize(nprocs);
-      MPI_Gather(&gradient_time, 1, MPI_DOUBLE, &gradient_times[0], 1,
-                 MPI_DOUBLE, 0, pmap().gridComm());
-      MPI_Gather(&allreduce_time, 1, MPI_DOUBLE, &all_reduce_times[0], 1,
-                 MPI_DOUBLE, 0, pmap().gridComm());
-      MPI_Gather(&eval_time, 1, MPI_DOUBLE, &eval_times[0], 1, MPI_DOUBLE, 0,
+      MPI_Gather(&gradient_time, 1, mpiElemType_, &gradient_times[0], 1,
+                 mpiElemType_, 0, pmap().gridComm());
+      MPI_Gather(&allreduce_time, 1, mpiElemType_, &all_reduce_times[0], 1,
+                 mpiElemType_, 0, pmap().gridComm());
+      MPI_Gather(&eval_time, 1, mpiElemType_, &eval_times[0], 1, mpiElemType_, 0,
                  pmap().gridComm());
     } else {
-      MPI_Gather(&gradient_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
+      MPI_Gather(&gradient_time, 1, mpiElemType_, nullptr, 1, mpiElemType_, 0,
                  pmap().gridComm());
-      MPI_Gather(&allreduce_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
+      MPI_Gather(&allreduce_time, 1, mpiElemType_, nullptr, 1, mpiElemType_, 0,
                  pmap().gridComm());
-      MPI_Gather(&eval_time, 1, MPI_DOUBLE, nullptr, 1, MPI_DOUBLE, 0,
+      MPI_Gather(&eval_time, 1, mpiElemType_, nullptr, 1, mpiElemType_, 0,
                  pmap().gridComm());
     }
 

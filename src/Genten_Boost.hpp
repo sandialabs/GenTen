@@ -51,6 +51,7 @@ namespace Genten {
 using ptree = boost::property_tree::ptree;
 
 namespace detail {
+// Attempt to fill one 64 byte cacheline with the small_vector
 template <typename T, int Guess = (64 / sizeof(T))>
 constexpr auto default_small_vector_size() {
   namespace bc = boost::container;

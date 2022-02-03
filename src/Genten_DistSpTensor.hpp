@@ -111,6 +111,7 @@ private:
   boost::optional<std::pair<MPI_IO::SptnFileHeader, MPI_File>>
   readHeader(std::string const &file_name, int indexbase);
 
+  MPI_Datatype mpiElemType_ = DistContext::toMpiType<ElementType>();
   ptree input_;
   small_vector<RangePair> range_;
   SptensorT<ExecSpace> sp_tensor_;
@@ -146,15 +147,13 @@ void printRandomElements(SptensorT<ExecSpace> const &tensor,
 
 template <typename ElementType, typename ExecSpace>
 DistSpTensor<ElementType, ExecSpace>::DistSpTensor(ptree const &tree)
-    : input_(tree.get_child("tensor")), dump_(tree.get<bool>("dump", false))
-      {
+    : input_(tree.get_child("tensor")), dump_(tree.get<bool>("dump", false)) {
 
   if (dump_) {
     if (DistContext::rank() == 0) {
-      std::cout
-          << "tensor:\n"
-             "\tfile: The input file\n"
-             "\tindexbase: Value that indices start at (defaults to 0)\n";
+      std::cout << "tensor:\n"
+                   "\tfile: The input file\n"
+                   "\tindexbase: Value that indices start at (defaults to 0)\n";
     }
     return;
   }
@@ -266,9 +265,9 @@ void DistSpTensor<ElementType, ExecSpace>::init_distributed(
 template <typename ElementType, typename ExecSpace>
 ElementType DistSpTensor<ElementType, ExecSpace>::getTensorNorm() const {
   auto const &values = sp_tensor_.getValArray();
-  double norm2 = values.dot(values);
-  MPI_Allreduce(MPI_IN_PLACE, &norm2, 1, MPI_DOUBLE, MPI_SUM,
-                pmap_ptr_->gridComm());
+  ElementType norm2 = values.dot(values);
+  MPI_Allreduce(MPI_IN_PLACE, &norm2, 1, DistContext::toMpiType<ElementType>(),
+                MPI_SUM, pmap_ptr_->gridComm());
   return std::sqrt(ElementType(norm2));
 }
 
@@ -287,7 +286,7 @@ DistSpTensor<ElementType, ExecSpace>::readHeader(std::string const &file_name,
     std::ifstream tensor_file(file_name);
     Ti_ = read_sptensor_header(tensor_file);
     return boost::none;
-  } 
+  }
 
   auto *mpi_fh = MPI_IO::openFile(DistContext::commWorld(), file_name);
   auto binary_header = MPI_IO::readHeader(DistContext::commWorld(), mpi_fh);

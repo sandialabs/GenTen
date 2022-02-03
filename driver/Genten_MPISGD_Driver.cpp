@@ -39,10 +39,10 @@
 //@HEADER
 
 #include "Genten_DistContext.hpp"
+#include "Genten_DistGCP.hpp"
 #include "Genten_DistSpTensor.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_Pmap.hpp"
-#include "Genten_DistGCP.hpp"
 
 #include <Kokkos_Core.hpp>
 #include <iostream>
@@ -129,9 +129,10 @@ void real_main(int argc, char **argv) {
       }
     }
     GT::DistContext::Barrier();
-    GT::DistSpTensor<double, Kokkos::OpenMP> spTensor(GT::DistContext::input());
-    GT::DistGCP<double, Kokkos::OpenMP> gcp(std::move(spTensor),
-                                            GT::DistContext::input());
+    GT::DistSpTensor<ttb_real, Kokkos::DefaultHostExecutionSpace> spTensor(
+        GT::DistContext::input());
+    GT::DistGCP<ttb_real, Kokkos::DefaultHostExecutionSpace> gcp(
+        std::move(spTensor), GT::DistContext::input());
     gcp.compute();
   } catch (std::exception &e) {
     auto rank = GT::DistContext::rank();

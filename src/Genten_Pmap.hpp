@@ -88,24 +88,8 @@ public:
     static_assert(std::is_arithmetic<T>::value,
                   "gridAllReduce requires something like a double, or int");
 
-    auto mpiType = [] {
-      if (std::is_same<T, double>::value)
-        return MPI_DOUBLE;
-      if (std::is_same<T, float>::value)
-        return MPI_FLOAT;
-      if (std::is_same<T, unsigned long>::value)
-        return MPI_UNSIGNED_LONG;
-      if (std::is_same<T, int>::value)
-        return MPI_INT;
-      if (std::is_same<T, long>::value)
-        return MPI_LONG;
-
-      throw std::logic_error("gridAllReduce only handles {double, float, "
-                             "unsigned long, int, long} as input types.");
-    }();
-
     if (grid_nprocs_ > 1) {
-      MPI_Allreduce(MPI_IN_PLACE, &element, 1, mpiType, op, cart_comm_);
+      MPI_Allreduce(MPI_IN_PLACE, &element, 1, DistContext::toMpiType<T>(), op, cart_comm_);
     }
     return element;
   }

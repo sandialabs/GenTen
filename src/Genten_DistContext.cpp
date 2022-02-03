@@ -113,7 +113,7 @@ template <> int DistContext::Bcast(std::size_t &t, int root) {
   }
 
   MPI_Datatype size_t_data_type;
-  if constexpr (std::is_same<std::size_t, unsigned long long>::value) {
+  if (std::is_same<std::size_t, unsigned long long>::value) {
     size_t_data_type = MPI_UNSIGNED_LONG_LONG;
   } else {
     size_t_data_type = MPI_UNSIGNED_LONG;

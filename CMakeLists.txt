@@ -56,7 +56,8 @@ SET(CMAKE_CXX_EXTENSIONS OFF)
 #------------------------------------------------------------
 # Note: OPTION is a binary thing and can't have string in them
 OPTION(BUILD_SHARED_LIBS "Build shared libraries." OFF)
-OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files" OFF)
+OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files and distributed memory functionality" OFF)
+OPTION(ENABLE_MPI "Enable MPI distributed memory functionality" OFF)
 OPTION(ENABLE_CALIPER "Enable Caliper for application profiling" OFF)
 OPTION(ENABLE_MATLAB "Enable MATLAB linkage to Tensor Toolbox" OFF)
 OPTION(FLOAT_TYPE "C++ data type used for floating-point values" OFF)
@@ -107,8 +108,14 @@ ENDIF()
 SET(HAVE_KOKKOS ON)
 
 SET(GENTEN_LIBS "")
-find_package(MPI)
-find_package(Boost COMPONENTS serialization)
+
+if(ENABLE_MPI)
+  find_package(MPI REQUIRED)
+endif()
+
+if(ENABLE_BOOST)
+  find_package(Boost REQUIRED COMPONENTS serialization)
+endif()
 
 IF (ENABLE_CALIPER)
   OPTION(CALIPER_PATH "Path to Caliper installation")

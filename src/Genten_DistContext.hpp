@@ -100,6 +100,45 @@ struct DistContext {
     MPI_Barrier(instance_->commWorld());
   }
 
+  // This would be better with some if constexprs but I'll leave them out for
+  // now
+  template <typename T>
+  static MPI_Datatype toMpiType(){
+    if(std::is_same<T, double>::value){
+      return MPI_DOUBLE;
+    }
+
+    if(std::is_same<T, float>::value){
+      return MPI_FLOAT;
+    }
+
+    if(std::is_same<T, int>::value){
+      return MPI_INT;
+    }
+
+    if(std::is_same<T, long>::value){
+      return MPI_LONG;
+    }
+
+    if(std::is_same<T, long long>::value){
+      return MPI_LONG_LONG;
+    }
+
+    if(std::is_same<T, unsigned int>::value){
+      return MPI_UNSIGNED;
+    }
+
+    if(std::is_same<T, unsigned long long>::value){
+      return MPI_UNSIGNED_LONG_LONG;
+    }
+
+    if(std::is_same<T, char>::value){
+      return MPI_CHAR;
+    }
+
+    throw std::logic_error("Not able to convert type T to an MPI_Datatype");
+  }
+
   // TODO we might want to specialize this function to be more efficent for
   // specific types, like say a Kokkos View ...
   template <typename T> static int Bcast(T &t, int root) {
