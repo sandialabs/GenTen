@@ -751,10 +751,12 @@ ElementType DistGCP<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
   return fest_prev;
 }
 
+// TODO, ran out of time to finish this sorry :/, I'll leave this stub here so
+// there is something with which to get started.
+#if 0
 template <typename ElementType, typename ExecSpace>
 void DistGCP<ElementType, ExecSpace>::exportKTensor(
     std::string const &file_name) {
-#if 0
   const auto blocking =
       detail::generateUniformBlocking(Ti_.dim_sizes, pmap().gridDims());
 
@@ -790,7 +792,7 @@ void DistGCP<ElementType, ExecSpace>::exportKTensor(
     }
     std::cout << std::endl;
   }
-#endif
 }
+#endif
 
 } // namespace Genten
