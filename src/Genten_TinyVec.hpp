@@ -54,6 +54,11 @@
 #endif
 #endif
 
+#if defined (KOKKOS_ENABLE_HIP)
+#include "HIP/Kokkos_HIP_Team.hpp"
+#define KOKKOS_DEFAULTED_DEVICE_FUNCTION __device__ inline
+#endif
+
 namespace Genten {
 
   namespace Impl {
@@ -63,6 +68,15 @@ namespace Genten {
     template <typename T, typename Ordinal>
      __device__ inline T warpReduce(T y, const Ordinal warp_size) {
       Kokkos::Impl::CudaTeamMember::vector_reduce(Kokkos::Sum<T>(y));
+      return y;
+    }
+#endif
+
+#if defined (__HIP_ARCH__)
+    // Reduce y across the warp and broadcast to all lanes
+    template <typename T, typename Ordinal>
+     __device__ inline T warpReduce(T y, const Ordinal warp_size) {
+      Kokkos::Impl::HIPTeamMember::vector_reduce(Kokkos::Sum<T>(y));
       return y;
     }
 #endif
@@ -89,7 +103,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     TinyVec(const ordinal_type size, const scalar_type x) :
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
       sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
 #else
       sz(size)
@@ -100,7 +114,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     TinyVec(const ordinal_type size, const scalar_type* x) :
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
       sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
 #else
       sz(size)
@@ -154,7 +168,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     void load(const scalar_type* x) {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
       for (ordinal_type i=0; i<sz.value; ++i)
         v[i] = x[i*WarpDim+threadIdx.x];
 #else
@@ -165,7 +179,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     void store(scalar_type* x) const {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
       for (ordinal_type i=0; i<sz.value; ++i)
         x[i*WarpDim+threadIdx.x] = v[i];
 #else
@@ -176,7 +190,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     void store_plus(scalar_type* x) const {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
       for (ordinal_type i=0; i<sz.value; ++i)
         x[i*WarpDim+threadIdx.x] += v[i];
 #else
@@ -187,7 +201,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     void atomic_store_plus(volatile scalar_type* x) const {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
       for (ordinal_type i=0; i<sz.value; ++i)
         Kokkos::atomic_add(x+i*WarpDim+threadIdx.x, v[i]);
 #else
@@ -199,7 +213,7 @@ namespace Genten {
     KOKKOS_INLINE_FUNCTION
     TinyVec atomic_exchange(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
       for (ordinal_type i=0; i<sz.value; ++i)
         c.v[i] = Kokkos::atomic_exchange(x+i*WarpDim+threadIdx.x, v[i]);
 #else
@@ -212,7 +226,7 @@ namespace Genten {
     KOKKOS_INLINE_FUNCTION
     TinyVec atomic_fetch_max(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
       for (ordinal_type i=0; i<sz.value; ++i)
         c.v[i] = Kokkos::atomic_fetch_max(x+i*WarpDim+threadIdx.x, v[i]);
 #else
@@ -225,7 +239,7 @@ namespace Genten {
     KOKKOS_INLINE_FUNCTION
     TinyVec atomic_fetch_min(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
       for (ordinal_type i=0; i<sz.value; ++i)
         c.v[i] = Kokkos::atomic_fetch_min(x+i*WarpDim+threadIdx.x, v[i]);
 #else
@@ -239,7 +253,7 @@ namespace Genten {
     KOKKOS_INLINE_FUNCTION
     TinyVec atomic_oper_fetch(const Oper& op, volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
       for (ordinal_type i=0; i<sz.value; ++i)
         c.v[i] = Genten::atomic_oper_fetch(op, x+i*WarpDim+threadIdx.x, v[i]);
 #else
@@ -350,7 +364,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     TinyVec& operator+=(const scalar_type* x) {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
       for (ordinal_type i=0; i<sz.value; ++i)
         v[i] += x[i*WarpDim+threadIdx.x];
 #else
@@ -362,7 +376,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     TinyVec& operator-=(const scalar_type* x) {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
       for (ordinal_type i=0; i<sz.value; ++i)
         v[i] -= x[i*WarpDim+threadIdx.x];
 #else
@@ -374,7 +388,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     TinyVec& operator*=(const scalar_type* x) {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
       for (ordinal_type i=0; i<sz.value; ++i)
         v[i] *= x[i*WarpDim+threadIdx.x];
 #else
@@ -386,7 +400,7 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     TinyVec& operator/=(const scalar_type* x) {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
       for (ordinal_type i=0; i<sz.value; ++i)
         v[i] /= x[i*WarpDim+threadIdx.x];
 #else
@@ -401,7 +415,7 @@ namespace Genten {
       scalar_type s = 0.0;
       for (ordinal_type i=0; i<sz.value; ++i)
         s += v[i];
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_ARCH__)
       s = Impl::warpReduce(s, WarpDim);
 #endif
       return s;
@@ -416,19 +430,20 @@ namespace Genten {
 
   };
 
-#if defined(KOKKOS_ENABLE_CUDA) && defined(__CUDA_ARCH__)
+#if (defined(KOKKOS_ENABLE_CUDA) && defined(__CUDA_ARCH__)) || \
+    (defined(KOKKOS_ENABLE_HIP) && defined(__HIP_ARCH__))
 
-  // Specialization for Cuda where Length / WarpDim == 1.  Store the vector
-  // components in register space since Cuda may store them in global memory
+  // Specialization for Cuda or HIP where Length / WarpDim == 1.  Store the vector
+  // components in register space since Cuda or HIP may store them in global memory
   // (especially in the dynamically sized case).
   template <typename Scalar, typename Ordinal,
             unsigned Length, unsigned Size, unsigned WarpDim>
-  class TinyVec< Kokkos::Cuda,Scalar,Ordinal,Length,Size,WarpDim,
+  class TinyVec< Kokkos_GPU_Space,Scalar,Ordinal,Length,Size,WarpDim,
                  typename std::enable_if<Length/WarpDim == 1>::type >
   {
   public:
 
-    typedef Kokkos::Cuda exec_space;
+    typedef Kokkos_GPU_Space exec_space;
     typedef Scalar scalar_type;
     typedef Ordinal ordinal_type;
 
@@ -656,17 +671,17 @@ namespace Genten {
 
   };
 
-  // Specialization for Cuda where Length / WarpDim == 2.  Store the vector
-  // components in register space since Cuda may store them in global memory
+  // Specialization for Cuda or HIP where Length / WarpDim == 2.  Store the vector
+  // components in register space since Cuda or HIP may store them in global memory
   // (especially in the dynamically sized case).
   template <typename Scalar, typename Ordinal,
             unsigned Length, unsigned Size, unsigned WarpDim>
-  class TinyVec< Kokkos::Cuda,Scalar,Ordinal,Length,Size,WarpDim,
+  class TinyVec< Kokkos_GPU_Space,Scalar,Ordinal,Length,Size,WarpDim,
                  typename std::enable_if<Length/WarpDim == 2>::type >
   {
   public:
 
-    typedef Kokkos::Cuda exec_space;
+    typedef Kokkos_GPU_Space exec_space;
     typedef Scalar scalar_type;
     typedef Ordinal ordinal_type;
 
@@ -928,17 +943,17 @@ namespace Genten {
 
   };
 
-  // Specialization for Cuda where Length / WarpDim == 3.  Store the vector
-  // components in register space since Cuda may store them in global memory
+  // Specialization for Cuda or HIP where Length / WarpDim == 3.  Store the vector
+  // components in register space since Cuda or HIP may store them in global memory
   // (especially in the dynamically sized case).
   template <typename Scalar, typename Ordinal,
             unsigned Length, unsigned Size, unsigned WarpDim>
-  class TinyVec< Kokkos::Cuda,Scalar,Ordinal,Length,Size,WarpDim,
+  class TinyVec< Kokkos_GPU_Space,Scalar,Ordinal,Length,Size,WarpDim,
                  typename std::enable_if<Length/WarpDim == 3>::type >
   {
   public:
 
-    typedef Kokkos::Cuda exec_space;
+    typedef Kokkos_GPU_Space exec_space;
     typedef Scalar scalar_type;
     typedef Ordinal ordinal_type;
 
@@ -1230,17 +1245,17 @@ namespace Genten {
 
   };
 
-  // Specialization for Cuda where Length / WarpDim == 4.  Store the vector
-  // components in register space since Cuda may store them in global memory
+  // Specialization for Cuda or HIP where Length / WarpDim == 4.  Store the vector
+  // components in register space since Cuda or HIP may store them in global memory
   // (especially in the dynamically sized case).
   template <typename Scalar, typename Ordinal,
             unsigned Length, unsigned Size, unsigned WarpDim>
-  class TinyVec< Kokkos::Cuda,Scalar,Ordinal,Length,Size,WarpDim,
+  class TinyVec< Kokkos_GPU_Space,Scalar,Ordinal,Length,Size,WarpDim,
                  typename std::enable_if<Length/WarpDim == 4>::type >
   {
   public:
 
-    typedef Kokkos::Cuda exec_space;
+    typedef Kokkos_GPU_Space exec_space;
     typedef Scalar scalar_type;
     typedef Ordinal ordinal_type;
 
