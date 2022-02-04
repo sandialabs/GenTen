@@ -392,7 +392,7 @@ void Genten_Test_CpAls_Space (int infolevel)
 
   Genten_Test_CpAls_Type<ExecSpace>(Genten::MTTKRP_Method::Atomic,infolevel,
                                     "Atomic");
-  if (!space_prop::is_cuda)
+  if (!space_prop::is_gpu)
     Genten_Test_CpAls_Type<ExecSpace>(
       Genten::MTTKRP_Method::Duplicated,infolevel, "Duplicated");
   Genten_Test_CpAls_Type<ExecSpace>(Genten::MTTKRP_Method::Perm,infolevel,
