@@ -311,7 +311,7 @@ void Genten_Test_FacMatrix_Space(int infolevel, const std::string & datadir)
 
   // Symmetric, indefinite solver currently doesn't work on GPU
   // (solver not fully implemented in cuSOLVER)
-  if (!Genten::is_cuda_space<exec_space>::value) {
+  if (!Genten::is_gpu_space<exec_space>::value) {
     Genten::FacMatrixT<exec_space> b2_dev( b.nRows(), b.nCols() );
     deep_copy( b2_dev, b );
     b2_dev.solveTransposeRHS (a_dev, false, Genten::Upper, true);
