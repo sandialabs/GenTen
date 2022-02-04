@@ -321,6 +321,29 @@ namespace Genten {
         out << "Fused semi-stratified sampling/MTTKRP method requires atomic"
             << " on Cuda.  Changing MTTKRP-All method to atomic." << std::endl;
       }
+    } else if (space_prop::is_hip) {
+      if (mttkrp_method == MTTKRP_Method::Single ||
+          mttkrp_method == MTTKRP_Method::Duplicated) {
+        out << "MTTKRP method " << MTTKRP_Method::names[mttkrp_method]
+            << " is invalid for HIP, changing to ";
+        mttkrp_method = MTTKRP_Method::Perm;
+        out << MTTKRP_Method::names[mttkrp_method] << "." << std::endl;
+      }
+      if (mttkrp_all_method == MTTKRP_All_Method::Single ||
+          mttkrp_all_method == MTTKRP_All_Method::Duplicated) {
+        out << "MTTKRP-All method "
+            << MTTKRP_All_Method::names[mttkrp_all_method]
+            << " is invalid for HIP, changing to ";
+        mttkrp_all_method = MTTKRP_All_Method::Iterated;
+        out << MTTKRP_All_Method::names[mttkrp_all_method] << "." << std::endl;
+      }
+      if (method == Solver_Method::GCP_SGD &&
+          sampling_type == GCP_Sampling::SemiStratified &&
+          fuse && mttkrp_all_method != MTTKRP_All_Method::Atomic) {
+        mttkrp_all_method = MTTKRP_All_Method::Atomic;
+        out << "Fused semi-stratified sampling/MTTKRP method requires atomic"
+            << " on HIP.  Changing MTTKRP-All method to atomic." << std::endl;
+      }
     }
   }
 
