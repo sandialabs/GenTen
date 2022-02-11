@@ -248,7 +248,9 @@ namespace Genten {
           out << ", fit: "
               << std::setw(10) << std::setprecision(3) << std::scientific
               << fit;
-        out << "Norm of X: " << x_norm;
+        out << ", tensor norm: "
+            << std::setw(10) << std::setprecision(3) << std::scientific
+            << x_norm;
         out << std::endl;
       }
 
