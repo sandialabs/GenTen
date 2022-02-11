@@ -242,10 +242,6 @@ void Genten_Test_CpOptRol_Type (Genten::MTTKRP_All_Method::type mttkrp_method,
   ttb_indx  nNumComponents = 2;
   Genten::Ktensor  initialBasis (nNumComponents, dims.size(), dims);
   initialBasis.setWeights(1.0);
-
-  // Genten::RandomMT cRMT(12345);
-  // initialBasis.setMatricesScatter(false, false, cRMT);
-
   initialBasis.setMatrices(0.0);
   initialBasis[0].entry(0,0) = 0.8;
   initialBasis[0].entry(1,0) = 0.2;
