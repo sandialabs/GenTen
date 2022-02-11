@@ -259,6 +259,7 @@ AlgParams DistGCP<ElementType, ExecSpace>::setAlgParams() const {
   const auto np = spTensor_.nprocs();
   const auto lnz = spTensor_.localNNZ();
   const auto gnz = spTensor_.globalNNZ();
+  const auto lz = spTensor_.localNumel() - lnz;
 
   AlgParams algParams;
   algParams.maxiters = input_.get<int>("max_epochs", 1000);
@@ -266,15 +267,22 @@ AlgParams DistGCP<ElementType, ExecSpace>::setAlgParams() const {
   auto global_batch_size_nz = input_.get<int>("batch_size_nz", 128);
   auto global_batch_size_z =
       input_.get<int>("batch_size_zero", global_batch_size_nz);
+  auto global_value_size_nz =
+    input_.get<int>("value_size_nz", 100000);
+  auto global_value_size_z =
+      input_.get<int>("value_size_zero", global_value_size_nz);
 
   // If we have fewer nnz than the batch size don't over sample them
   algParams.num_samples_nonzeros_grad =
-      std::min(lnz, global_batch_size_nz / np);
-  algParams.num_samples_zeros_grad = global_batch_size_z / np;
+    std::min(lnz, global_batch_size_nz / np);
+  algParams.num_samples_zeros_grad =
+    std::min<decltype(lz)>(lz, global_batch_size_z / np);
 
   // No point in sampling more nonzeros than we actually have
-  algParams.num_samples_nonzeros_value = std::min(lnz, 100000 / np);
-  algParams.num_samples_zeros_value = 100000 / np;
+  algParams.num_samples_nonzeros_value =
+    std::min(lnz, global_value_size_nz / np);
+  algParams.num_samples_zeros_value =
+    std::min<decltype(lz)>(lz, global_value_size_z / np);
 
   algParams.sampling_type = Genten::GCP_Sampling::SemiStratified;
   algParams.mttkrp_method = Genten::MTTKRP_Method::Default;
@@ -305,7 +313,12 @@ AlgParams DistGCP<ElementType, ExecSpace>::setAlgParams() const {
 
   const int local_batch_size = algParams.num_samples_nonzeros_grad;
   const int local_batch_sizez = algParams.num_samples_zeros_grad;
+  const int local_value_size = algParams.num_samples_nonzeros_value;
+  const int local_value_sizez = algParams.num_samples_zeros_value;
+  const int global_nzg = pmap().gridAllReduce(local_batch_size);
+  const int global_nzf = pmap().gridAllReduce(local_value_size);
   const int global_zg = pmap().gridAllReduce(local_batch_sizez);
+  const int global_zf = pmap().gridAllReduce(local_value_sizez);
 
   const auto percent_nz_batch =
       double(global_batch_size_nz) / double(gnz) * 100.0;
@@ -320,18 +333,30 @@ AlgParams DistGCP<ElementType, ExecSpace>::setAlgParams() const {
                pmap().gridComm());
     MPI_Gather(&local_batch_sizez, 1, MPI_INT, nullptr, 1, MPI_INT, 0,
                pmap().gridComm());
+    MPI_Gather(&local_value_size, 1, MPI_INT, nullptr, 1, MPI_INT, 0,
+               pmap().gridComm());
+    MPI_Gather(&local_value_sizez, 1, MPI_INT, nullptr, 1, MPI_INT, 0,
+               pmap().gridComm());
   } else {
     std::vector<int> lnzs(np, 0);
     std::vector<int> bs_nz(np, 0);
     std::vector<int> bs_z(np, 0);
+    std::vector<int> val_nz(np, 0);
+    std::vector<int> val_z(np, 0);
     MPI_Gather(&lnz, 1, MPI_INT, lnzs.data(), 1, MPI_INT, 0, pmap().gridComm());
     MPI_Gather(&local_batch_size, 1, MPI_INT, bs_nz.data(), 1, MPI_INT, 0,
                pmap().gridComm());
     MPI_Gather(&local_batch_sizez, 1, MPI_INT, bs_z.data(), 1, MPI_INT, 0,
                pmap().gridComm());
+    MPI_Gather(&local_value_size, 1, MPI_INT, val_nz.data(), 1, MPI_INT, 0,
+               pmap().gridComm());
+    MPI_Gather(&local_value_sizez, 1, MPI_INT, val_z.data(), 1, MPI_INT, 0,
+               pmap().gridComm());
 
     std::cout << "Iters/epoch:           " << algParams.epoch_iters << "\n";
-    std::cout << "batch size nz:         " << global_batch_size_nz << "\n";
+    std::cout << "value size nz:         " << global_nzf << "\n";
+    std::cout << "value size zeros:      " << global_zf << "\n";
+    std::cout << "batch size nz:         " << global_nzg << "\n";
     std::cout << "batch size zeros:      " << global_zg << "\n";
     std::cout << "NZ percent per epoch : " << percent_nz_epoch << "\n";
     std::cout << "MTTKRP_All_Method :    ";
@@ -345,11 +370,16 @@ AlgParams DistGCP<ElementType, ExecSpace>::setAlgParams() const {
       std::cout << "method(" << algParams.mttkrp_all_method << ")\n";
     }
     if (np < 41) {
-      std::cout << "Node Specific info: {local_nnz, local_batch_size_nz, "
-                   "local_batch_size_z}\n";
+      std::cout << "Node Specific info: {local_nnz, local_value_size_nz, "
+                << "local_value_size_z, local_batch_size_nz, "
+                << "local_batch_size_z}\n";
       for (auto i = 0; i < np; ++i) {
-        std::cout << "\tNode(" << i << "): " << lnzs[i] << ", " << bs_nz[i]
-                  << ", " << bs_z[i] << "\n";
+        std::cout << "\tNode(" << i << "): "
+                  << lnzs[i] << ", "
+                  << val_nz[i] << ", "
+                  << val_z[i] << ", "
+                  << bs_nz[i] << ", "
+                  << bs_z[i] << "\n";
       }
     }
     std::cout << std::endl;

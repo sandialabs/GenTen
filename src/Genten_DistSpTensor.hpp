@@ -99,6 +99,7 @@ public:
 
   std::uint64_t globalNNZ() const { return Ti_.nnz; }
   std::int64_t localNNZ() const { return sp_tensor_.nnz(); }
+  ElementType localNumel() const { return sp_tensor_.numel_float(); }
   std::int32_t ndims() const { return sp_tensor_.ndims(); }
   std::vector<std::uint32_t> const &dims() const { return Ti_.dim_sizes; }
   std::int64_t nprocs() const { return pmap_ptr_->gridSize(); }
