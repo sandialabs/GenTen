@@ -818,13 +818,10 @@ void DistGCP<ElementType, ExecSpace>::exportKTensor(
       if (print)
         std::cout << owner << "\n";
       recvcounts[owner] =
-        Kfac_.ncomponents()*(blocking[d][b+1]-blocking[d][b]);
+        Kfac_[d].view().stride(0)*(blocking[d][b+1]-blocking[d][b]);
+      displs[owner] = Kfac_[d].view().stride(0)*blocking[d][b];
       grid_pos[d] = 0;
     }
-
-    displs[0] = 0;
-    for (auto i=1; i<spTensor_.pmap().gridSize(); ++i)
-      displs[i] = displs[i-1] + recvcounts[i-1];
 
     const bool is_sub_root = spTensor_.pmap().subCommRank(d) == 0;
     std::size_t send_size = is_sub_root ? Kfac_[d].view().span() : 0;
