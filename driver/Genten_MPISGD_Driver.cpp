@@ -134,6 +134,11 @@ void real_main(int argc, char **argv) {
     GT::DistGCP<ttb_real, Kokkos::DefaultHostExecutionSpace> gcp(
         std::move(spTensor), GT::DistContext::input());
     gcp.compute();
+
+    std::string output =
+      GT::DistContext::input().get<std::string>("tensor.output", "");
+    if (output != "")
+      gcp.exportKTensor(output);
   } catch (std::exception &e) {
     auto rank = GT::DistContext::rank();
     std::cerr << "Rank: " << rank << " " << e.what() << "\n";

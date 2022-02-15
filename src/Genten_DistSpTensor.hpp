@@ -108,6 +108,8 @@ public:
   SptensorT<ExecSpace> const &LocalSpTensor() const { return sp_tensor_; }
   ProcessorMap const &pmap() const { return *pmap_ptr_; }
 
+  TensorInfo const &getTensorInfo() const { return Ti_; }
+
 private:
   boost::optional<std::pair<MPI_IO::SptnFileHeader, MPI_File>>
   readHeader(std::string const &file_name, int indexbase);

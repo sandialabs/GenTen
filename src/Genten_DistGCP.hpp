@@ -781,48 +781,78 @@ ElementType DistGCP<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
   return fest_prev;
 }
 
-// TODO, ran out of time to finish this sorry :/, I'll leave this stub here so
-// there is something with which to get started.
-#if 0
 template <typename ElementType, typename ExecSpace>
 void DistGCP<ElementType, ExecSpace>::exportKTensor(
     std::string const &file_name) {
+  const bool print =
+    DistContext::isDebug() && (spTensor_.pmap().gridRank() == 0);
   const auto blocking =
-      detail::generateUniformBlocking(Ti_.dim_sizes, pmap().gridDims());
+    detail::generateUniformBlocking(spTensor_.getTensorInfo().dim_sizes, pmap().gridDims());
 
-  if (this->gridRank() == 0) { // I am the chosen one
-    auto const &sizes = Ti_.dim_sizes;
-    IndxArrayT<ExecSpace> sizes_idx(sizes.size());
-    for (auto i = 0; i < sizes.size(); ++i) {
-      sizes_idx[i] = sizes[i];
-    }
-    KtensorT<ExecSpace> out(Kfac_.ncomponents(), Kfac_.ndims(), sizes_idx);
+  KtensorT<ExecSpace> out;
+  auto const &sizes = spTensor_.getTensorInfo().dim_sizes;
+  IndxArrayT<ExecSpace> sizes_idx(sizes.size());
+  for (auto i = 0; i < sizes.size(); ++i) {
+    sizes_idx[i] = sizes[i];
+  }
+  out = KtensorT<ExecSpace>(Kfac_.ncomponents(), Kfac_.ndims(), sizes_idx);
 
+  if (print)
     std::cout << "Blocking:\n";
-    const auto ndims = blocking.size();
-    small_vector<int> grid_pos(ndims, 0);
-    for (auto d = 0; d < ndims; ++d) {
-      const auto nblocks = blocking[d].size() - 1;
+
+  const auto ndims = blocking.size();
+  small_vector<int> grid_pos(ndims, 0);
+  for (auto d = 0; d < ndims; ++d) {
+    std::vector<int> recvcounts(spTensor_.pmap().gridSize(), 0);
+    std::vector<int> displs(spTensor_.pmap().gridSize(), 0);
+    const auto nblocks = blocking[d].size() - 1;
+    if (print)
       std::cout << "\tDim(" << d << ")\n";
-      for (auto b = 0; b < nblocks; ++b) {
+    for (auto b = 0; b < nblocks; ++b) {
+      if (print)
         std::cout << "\t\t{" << blocking[d][b] << ", " << blocking[d][b + 1]
                   << "} owned by ";
-        grid_pos[d] = b;
-        int owner = 0;
-        MPI_Cart_rank(pmap().gridComm(), grid_pos.data(), &owner);
+      grid_pos[d] = b;
+      int owner = 0;
+      MPI_Cart_rank(pmap().gridComm(), grid_pos.data(), &owner);
+      if (print)
         std::cout << owner << "\n";
-        grid_pos[d] = 0;
-      }
+      recvcounts[owner] =
+        Kfac_.ncomponents()*(blocking[d][b+1]-blocking[d][b]);
+      grid_pos[d] = 0;
     }
-    std::cout << std::endl;
 
+    displs[0] = 0;
+    for (auto i=1; i<spTensor_.pmap().gridSize(); ++i)
+      displs[i] = displs[i-1] + recvcounts[i-1];
+
+    const bool is_sub_root = spTensor_.pmap().subCommRank(d) == 0;
+    std::size_t send_size = is_sub_root ? Kfac_[d].view().span() : 0;
+    MPI_Gatherv(Kfac_[d].view().data(), send_size,
+                DistContext::toMpiType<ElementType>(),
+                out[d].view().data(), recvcounts.data(), displs.data(),
+                DistContext::toMpiType<ElementType>(), 0,
+                spTensor_.pmap().gridComm());
+    spTensor_.pmap().gridBarrier();
+  }
+
+  if (print) {
+    std::cout << std::endl;
     std::cout << "Subcomm sizes: ";
     for (auto s : pmap().subCommSizes()) {
       std::cout << s << " ";
     }
     std::cout << std::endl;
   }
+
+  if (spTensor_.pmap().gridRank() == 0) {
+    // Normalize Ktensor u before writing out
+    out.normalize(Genten::NormTwo);
+    out.arrange();
+
+    std::cout << "Saving final Ktensor to " << file_name << std::endl;
+    Genten::export_ktensor(file_name, out);
+  }
 }
-#endif
 
 } // namespace Genten
