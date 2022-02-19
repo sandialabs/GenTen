@@ -48,6 +48,7 @@
 #include "Genten_Util.hpp"
 #include "Genten_TinyVec.hpp"
 #include "Genten_SimdKernel.hpp"
+#include "Genten_Pmap.hpp"
 
 namespace Genten
 {
@@ -71,15 +72,17 @@ public:
 
   // Constructor with number of components and dimensions, but
   // factor matrix sizes are still undetermined.
-  KtensorT(ttb_indx nc, ttb_indx nd);
+  KtensorT(ttb_indx nc, ttb_indx nd, const ProcessorMap* pmap_ = nullptr);
 
   // Constructor with number of components, dimensions and factor matrix sizes
-  KtensorT(ttb_indx nc, ttb_indx nd, const IndxArrayT<ExecSpace> & sz);
+  KtensorT(ttb_indx nc, ttb_indx nd, const IndxArrayT<ExecSpace> & sz,
+             const ProcessorMap* pmap_ = nullptr);
 
   // Create Ktensor from supplied weights and values
   KOKKOS_INLINE_FUNCTION
-  KtensorT(const ArrayT<ExecSpace>& w, const FacMatArrayT<ExecSpace>& vals) :
-    lambda(w), data(vals) {}
+  KtensorT(const ArrayT<ExecSpace>& w, const FacMatArrayT<ExecSpace>& vals,
+             const ProcessorMap* pmap_ = nullptr) :
+    lambda(w), data(vals), pmap(pmap_) {}
 
   // Destructor
   KOKKOS_DEFAULTED_FUNCTION
@@ -169,6 +172,9 @@ public:
   // For large column sizes and good RNGs, there may be no difference.
   // For small column sizes, inappropriate fractions may generate a warning.
   void scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise) const;
+
+  void setProcessorMap(const ProcessorMap* pmap_);
+  const ProcessorMap* getProcessorMap() const { return pmap; }
 
 
   // ----- PROPERTIES -----
@@ -311,6 +317,8 @@ private:
   // See comments for access method operator[].
   FacMatArrayT<ExecSpace> data;
 
+  const ProcessorMap* pmap;
+
 };
 
 template <typename ExecSpace>
@@ -319,7 +327,8 @@ create_mirror_view(const KtensorT<ExecSpace>& a)
 {
   typedef typename KtensorT<ExecSpace>::HostMirror HostMirror;
   return HostMirror( create_mirror_view(a.weights()),
-                     create_mirror_view(a.factors()) );
+                     create_mirror_view(a.factors()),
+                     a.getProcessorMap() );
 }
 
 template <typename Space, typename ExecSpace>
@@ -327,7 +336,8 @@ KtensorT<Space>
 create_mirror_view(const Space& s, const KtensorT<ExecSpace>& a)
 {
   return KtensorT<Space>( create_mirror_view(s, a.weights()),
-                          create_mirror_view(s, a.factors()) );
+                          create_mirror_view(s, a.factors()),
+                          a.getProcessorMap() );
 }
 
 template <typename E1, typename E2>

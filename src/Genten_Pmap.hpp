@@ -40,6 +40,9 @@
 
 #pragma once
 
+#include "CMakeInclude.h"
+#if defined(HAVE_DIST)
+
 #include "Genten_Boost.hpp"
 #include "Genten_DistContext.hpp"
 #include "Genten_Util.hpp"
@@ -84,15 +87,92 @@ public:
 
   void gridBarrier() const;
 
-  template <typename T> T gridAllReduce(T element, MPI_Op op = MPI_SUM) const {
+  enum MpiOp {
+    Sum,
+    Max
+  };
+  static MPI_Op convertOp(MpiOp op) { return op == Sum ? MPI_SUM : MPI_MAX; }
+
+  template <typename T> T gridAllReduce(T element, MpiOp op = Sum) const {
     static_assert(std::is_arithmetic<T>::value,
                   "gridAllReduce requires something like a double, or int");
 
     if (grid_nprocs_ > 1) {
-      MPI_Allreduce(MPI_IN_PLACE, &element, 1, DistContext::toMpiType<T>(), op, cart_comm_);
+      MPI_Allreduce(MPI_IN_PLACE, &element, 1, DistContext::toMpiType<T>(),
+                    convertOp(op), cart_comm_);
     }
     return element;
   }
+
+  template <typename T> void gridAllReduce(T* element, int n, MpiOp op = Sum) const {
+    static_assert(std::is_arithmetic<T>::value,
+                  "gridAllReduce requires something like a double, or int");
+
+    if (grid_nprocs_ > 1) {
+      MPI_Allreduce(MPI_IN_PLACE, element, n, DistContext::toMpiType<T>(),
+                    convertOp(op), cart_comm_);
+    }
+  }
+
+  template <typename T> void subGridAllReduce(int i, T* element, int n, MpiOp op = Sum) const {
+    static_assert(std::is_arithmetic<T>::value,
+                  "gridAllReduce requires something like a double, or int");
+
+    if (sub_comm_sizes_[i] > 1) {
+      MPI_Allreduce(MPI_IN_PLACE, element, n, DistContext::toMpiType<T>(),
+                    convertOp(op), sub_maps_[i]);
+    }
+  }
+
+  template <typename T> void gridBcast(T* element, int n, int root) const {
+    static_assert(std::is_arithmetic<T>::value,
+                  "gridBcast requires something like a double, or int");
+
+    if (grid_nprocs_ > 1) {
+      MPI_Bcast(element, n, DistContext::toMpiType<T>(), root, cart_comm_);
+    }
+  }
+
+  class FacMap {
+  public:
+    FacMap() = default;
+    FacMap(const FacMap&) = default;
+    FacMap(FacMap&&) = default;
+    FacMap& operator=(const FacMap&) = default;
+
+    FacMap(MPI_Comm comm) : comm_(comm), size_(0), rank_(0) {
+      MPI_Comm_size(comm_, &size_);
+      MPI_Comm_rank(comm_, &rank_);
+    }
+    int size() const { return size_; }
+    int rank() const { return rank_; }
+    template <typename T> T allReduce(T element, MpiOp op = Sum) const {
+      static_assert(std::is_arithmetic<T>::value,
+                    "allReduce requires something like a double, or int");
+
+      if (size_ > 1) {
+        MPI_Allreduce(MPI_IN_PLACE, &element, 1, DistContext::toMpiType<T>(),
+                      convertOp(op), comm_);
+      }
+      return element;
+    }
+
+    template <typename T> void allReduce(T* element, int n, MpiOp op = Sum) const {
+      static_assert(std::is_arithmetic<T>::value,
+                    "allReduce requires something like a double, or int");
+
+      if (size_ > 1) {
+        MPI_Allreduce(MPI_IN_PLACE, element, n, DistContext::toMpiType<T>(),
+                      convertOp(op), comm_);
+      }
+    }
+  private:
+    MPI_Comm comm_;
+    int size_;
+    int rank_;
+  };
+
+  const FacMap* facMap(int i) const { return &fac_maps_[i]; }
 
 private:
   /*
@@ -108,7 +188,63 @@ private:
   small_vector<int> sub_comm_sizes_;
   small_vector<MPI_Comm> sub_maps_; // N-1 D sub comms
 
+  small_vector<FacMap> fac_maps_; // 1 D sub comms
+
   ptree pmap_tree_;
 };
+
+#else
+
+namespace Genten {
+
+class ProcessorMap {
+public:
+  ProcessorMap() : facMap_() {}
+  ~ProcessorMap() = default;
+
+  ProcessorMap(ProcessorMap const &) = delete;
+  ProcessorMap &operator=(ProcessorMap const &) = delete;
+
+  ProcessorMap(ProcessorMap &&) = delete;
+  ProcessorMap &operator=(ProcessorMap &&) = delete;
+
+  int gridSize() const { return 1; }
+  int gridRank() const { return 0; }
+
+  int subCommSize(int dim) const { return 1; }
+  int subCommRank(int dim) const { return 0; }
+
+  void gridBarrier() const {}
+
+  enum MpiOp {
+    Sum,
+    Max
+  };
+
+  template <typename T> T gridAllReduce(T element, MpiOp op = Sum) const { return element; }
+  template <typename T> void gridAllReduce(T* element, int n, MpiOp op = Sum) const {}
+  template <typename T> void subGridAllReduce(int i, T* element, int n, MpiOp op = Sum) const {}
+  template <typename T> void gridBcast(T* element, int n, int root) const {}
+
+  class FacMap {
+  public:
+    FacMap() = default;
+    FacMap(const FacMap&) = default;
+    FacMap(FacMap&&) = default;
+    FacMap& operator=(const FacMap&) = default;
+
+    int size() const { return 1; }
+    int rank() const { return 0; }
+    template <typename T> T allReduce(T element, MpiOp op = Sum) const { return element; }
+    template <typename T> void allReduce(T* element, int n, MpiOp op = Sum) const {}
+  };
+
+  const FacMap* facMap(int i) const { return &facMap_; }
+
+private:
+  FacMap facMap_;
+};
+
+#endif
 
 } // namespace Genten

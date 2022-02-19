@@ -318,6 +318,11 @@ ttb_real Genten::innerprod(const Genten::SptensorT<ExecSpace>& s,
   else
     d = Impl::innerprod_kernel<ExecSpace,64>(s,u,lambda);
 
+  if (u.getProcessorMap() != nullptr) {
+    Kokkos::fence();
+    d = u.getProcessorMap()->gridAllReduce(d);
+  }
+
   return d;
 }
 
@@ -396,6 +401,11 @@ ttb_real Genten::innerprod(const Genten::TensorT<ExecSpace>& x,
     Kokkos::single(Kokkos::PerTeam(team), [&]() { t += dt; });
 
   }, d);
+
+  if (u.getProcessorMap() != nullptr) {
+    Kokkos::fence();
+    d = u.getProcessorMap()->gridAllReduce(d);
+  }
 
   return d;
 }

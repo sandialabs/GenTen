@@ -50,6 +50,7 @@
 #include "Genten_Boost.hpp"
 #include "Genten_DistContext.hpp"
 #include "Genten_DistSpTensor.hpp"
+#include "Genten_DistKtensor.hpp"
 #include "Genten_Pmap.hpp"
 #include "Genten_SpTn_Util.h"
 
@@ -67,9 +68,6 @@ class DistGCP {
                 "DistGCP Requires that the element type be a floating "
                 "point type.");
 
-  void init_factors();
-  void allReduceKT(KtensorT<ExecSpace> &g, bool divide_by_grid_size = true);
-
   template <typename Stepper, typename Loss>
   ElementType allReduceTrad(Loss const &loss);
   template <typename Loss> ElementType fedOpt(Loss const &loss);
@@ -78,8 +76,9 @@ class DistGCP {
   AlgParams setAlgParams() const;
 
 public:
-  DistGCP(ptree const &tree);
-  DistGCP(DistSpTensor<ElementType, ExecSpace> &&spTensor, ptree const &tree);
+  DistGCP(const DistSpTensor<ElementType, ExecSpace>& spTensor,
+          const DistKtensor<ElementType, ExecSpace>& kTensor,
+          const ptree& tree);
   ~DistGCP() = default;
 
   // For now let's delete these so they aren't accidently used
@@ -91,55 +90,30 @@ public:
   DistGCP &operator=(DistGCP &&) = delete;
 
   ElementType compute();
-  void exportKTensor(std::string const &file_name);
 
 private:
   std::int32_t ndims() const { return spTensor_.ndims(); }
   ProcessorMap const &pmap() const { return spTensor_.pmap(); }
 
   DistSpTensor<ElementType, ExecSpace> spTensor_;
-  MPI_Datatype mpiElemType_ = DistContext::toMpiType<ElementType>();
-  ptree input_;
+  DistKtensor<ElementType, ExecSpace> kTensor_;
   KtensorT<ExecSpace> Kfac_;
+  ptree input_;
   bool dump_; // I don't love keeping this flag, but it's easy
   unsigned int seed_;
+  MPI_Datatype mpiElemType_ = DistContext::toMpiType<ElementType>();
 };
 
 template <typename ElementType, typename ExecSpace>
-DistGCP<ElementType, ExecSpace>::DistGCP(ptree const &tree)
-    : spTensor_(DistSpTensor<ElementType, ExecSpace>(tree)),
-      input_(tree.get_child("gcp")), dump_(tree.get<bool>("dump", false)),
-      seed_(input_.get<unsigned int>("seed", std::random_device{}())) {
-
-  if (dump_) {
-    if (DistContext::rank() == 0) {
-      std::cout
-          << "tensor:\n"
-             "\tfile: The input file\n"
-             "\tindexbase: Value that indices start at (defaults to 0)\n"
-             "\trank: rank at which to decompose the tensor\n"
-             "\tloss: Loss function options are {guassian, poisson, "
-             "bernoulli}\n"
-             "\tmethod: The SGD method to use (default: adam), options {adam, "
-             "fedopt, sgd, sgdm, adagrad, demon}\n"
-             "\tmax_epochs: the number of epochs to run.\n"
-             "\tbatch_size_nz: the number of non-zeros to sample per batch.\n"
-             "\tbatch_size_zero: the number of zeros to sample per batch.\n"
-             "\tepoch_size: the number of `epoch_iters` to run, defaults to "
-             "number of "
-             "non-zeros  divided by the number of non-zeros per batch.\n"
-             "\tseed: Random seed default(std::random_device{}()).\n";
-    }
-  }
-  init_factors();
-}
-
-template <typename ElementType, typename ExecSpace>
 DistGCP<ElementType, ExecSpace>::DistGCP(
-    DistSpTensor<ElementType, ExecSpace> &&spTensor, ptree const &tree)
-    : spTensor_(std::move(spTensor)), input_(tree.get_child("gcp")),
-      dump_(tree.get<bool>("dump", false)),
-      seed_(input_.get<unsigned int>("seed", std::random_device{}())) {
+    const DistSpTensor<ElementType, ExecSpace>& spTensor,
+    const DistKtensor<ElementType, ExecSpace>& kTensor,
+    const ptree& tree) :
+  spTensor_(spTensor), kTensor_(kTensor), Kfac_(kTensor_.localKtensor()),
+  input_(tree.get_child("gcp")),
+  dump_(tree.get<bool>("dump", false)),
+  seed_(input_.get<unsigned int>("seed", std::random_device{}()))
+{
   if (dump_) {
     if (DistContext::rank() == 0) {
       std::cout
@@ -156,62 +130,6 @@ DistGCP<ElementType, ExecSpace>::DistGCP(
              "number of "
              "non-zeros  divided by the number of non-zeros per batch.\n"
              "\tseed: Random seed default(std::random_device{}()).\n";
-    }
-  }
-  init_factors();
-}
-
-template <typename ElementType, typename ExecSpace>
-void DistGCP<ElementType, ExecSpace>::init_factors() {
-  const auto rank = input_.get<int>("rank");
-  const auto nd = ndims();
-
-  // Init KFac_ randomly on each node
-  Kfac_ = KtensorT<ExecSpace>(rank, nd, spTensor_.LocalSpTensor().size());
-  Genten::RandomMT cRMT(std::random_device{}());
-  Kfac_.setWeights(1.0);
-  Kfac_.setMatricesScatter(false, true, cRMT);
-
-  const auto norm_x = spTensor_.LocalSpTensor().norm();
-  Kfac_.weights().times(1.0 / norm_x);
-  Kfac_.distribute();
-
-  if (pmap().gridSize() > 1) {
-    allReduceKT(Kfac_);
-  }
-}
-
-template <typename ElementType, typename ExecSpace>
-void DistGCP<ElementType, ExecSpace>::allReduceKT(KtensorT<ExecSpace> &g,
-                                                  bool divide_by_grid_size) {
-  if (spTensor_.nprocs() == 1) {
-    return;
-  }
-
-  // Do the AllReduce for each gradient
-  const auto ndims = this->ndims();
-  auto const &gridSizes = pmap().subCommSizes();
-
-  for (auto i = 0; i < ndims; ++i) {
-    if (gridSizes[i] == 1) {
-      // No need to AllReduce when one rank owns all the data
-      continue;
-    }
-
-    auto subComm = pmap().subComm(i);
-
-    // MPI_SUM doesn't support user defined types for AllReduce BOO
-    FacMatrixT<ExecSpace> const &fac_mat = g.factors()[i];
-    auto fac_ptr = fac_mat.view().data();
-    const auto fac_size = fac_mat.view().span();
-    MPI_Allreduce(MPI_IN_PLACE, fac_ptr, fac_size, DistContext::toMpiType<ElementType>(), MPI_SUM,
-                  subComm);
-  }
-
-  if (divide_by_grid_size) {
-    for (auto d = 0; d < ndims; ++d) {
-      const ttb_real scale = ttb_real(1.0 / gridSizes[d]);
-      g.factors()[d].times(scale);
     }
   }
 }
@@ -406,7 +324,7 @@ ElementType DistGCP<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
   auto u = VectorType(Kfac_);
   u.copyFromKtensor(Kfac_);
   KtensorT<ExecSpace> ut = u.getKtensor();
-  allReduceKT(ut);
+  kTensor_.allReduce(ut);
 
   VectorType u_best = u.clone();
   u_best.set(u);
@@ -424,7 +342,7 @@ ElementType DistGCP<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
   KtensorT<ExecSpace> Dfac = diff.getKtensor();
 
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(
-      spTensor_.LocalSpTensor(), algParams);
+      spTensor_.localSpTensor(), algParams);
 
   Impl::SGDStep<ExecSpace, Loss> stepper;
   Impl::AdamStep<ExecSpace, Loss> meta_stepper(algParams, meta_u);
@@ -489,11 +407,11 @@ ElementType DistGCP<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
       if ((i + 1) % dp_iters == 0 || i == (epochIters - 1)) {
         auto s0 = MPI_Wtime();
         if (fedavg) {
-          allReduceKT(ut, true);
+          kTensor_.allReduce(ut, true);
         } else {
           diff.set(meta_u);
           diff.plus(u, -1.0); // Subtract u from meta_u to get Meta grad
-          allReduceKT(Dfac, true);
+          kTensor_.allReduce(Dfac, true);
 
           meta_stepper.update();
           meta_stepper.setStep(meta_lr);
@@ -631,7 +549,7 @@ ElementType DistGCP<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
   decltype(Kfac_) GFac = g.getKtensor();
 
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(
-      spTensor_.LocalSpTensor(), algParams);
+      spTensor_.localSpTensor(), algParams);
 
   Stepper stepper(algParams, u);
 
@@ -684,7 +602,7 @@ ElementType DistGCP<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
       auto ze = MPI_Wtime();
       sampler.fusedGradient(ut, loss, GFac, timer, tnzs, tzs);
       auto ge = MPI_Wtime();
-      allReduceKT(GFac, false /* don't average */);
+      kTensor_.allReduce(GFac, false /* don't average */);
       auto are = MPI_Wtime();
       stepper.eval(g, u);
       auto ee = MPI_Wtime();
@@ -779,77 +697,6 @@ ElementType DistGCP<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
   deep_copy(Kfac_, ut);
 
   return fest_prev;
-}
-
-template <typename ElementType, typename ExecSpace>
-void DistGCP<ElementType, ExecSpace>::exportKTensor(
-    std::string const &file_name) {
-  const bool print =
-    DistContext::isDebug() && (spTensor_.pmap().gridRank() == 0);
-  const auto blocking =
-    detail::generateUniformBlocking(spTensor_.getTensorInfo().dim_sizes, pmap().gridDims());
-
-  KtensorT<ExecSpace> out;
-  auto const &sizes = spTensor_.getTensorInfo().dim_sizes;
-  IndxArrayT<ExecSpace> sizes_idx(sizes.size());
-  for (auto i = 0; i < sizes.size(); ++i) {
-    sizes_idx[i] = sizes[i];
-  }
-  out = KtensorT<ExecSpace>(Kfac_.ncomponents(), Kfac_.ndims(), sizes_idx);
-
-  if (print)
-    std::cout << "Blocking:\n";
-
-  const auto ndims = blocking.size();
-  small_vector<int> grid_pos(ndims, 0);
-  for (auto d = 0; d < ndims; ++d) {
-    std::vector<int> recvcounts(spTensor_.pmap().gridSize(), 0);
-    std::vector<int> displs(spTensor_.pmap().gridSize(), 0);
-    const auto nblocks = blocking[d].size() - 1;
-    if (print)
-      std::cout << "\tDim(" << d << ")\n";
-    for (auto b = 0; b < nblocks; ++b) {
-      if (print)
-        std::cout << "\t\t{" << blocking[d][b] << ", " << blocking[d][b + 1]
-                  << "} owned by ";
-      grid_pos[d] = b;
-      int owner = 0;
-      MPI_Cart_rank(pmap().gridComm(), grid_pos.data(), &owner);
-      if (print)
-        std::cout << owner << "\n";
-      recvcounts[owner] =
-        Kfac_[d].view().stride(0)*(blocking[d][b+1]-blocking[d][b]);
-      displs[owner] = Kfac_[d].view().stride(0)*blocking[d][b];
-      grid_pos[d] = 0;
-    }
-
-    const bool is_sub_root = spTensor_.pmap().subCommRank(d) == 0;
-    std::size_t send_size = is_sub_root ? Kfac_[d].view().span() : 0;
-    MPI_Gatherv(Kfac_[d].view().data(), send_size,
-                DistContext::toMpiType<ElementType>(),
-                out[d].view().data(), recvcounts.data(), displs.data(),
-                DistContext::toMpiType<ElementType>(), 0,
-                spTensor_.pmap().gridComm());
-    spTensor_.pmap().gridBarrier();
-  }
-
-  if (print) {
-    std::cout << std::endl;
-    std::cout << "Subcomm sizes: ";
-    for (auto s : pmap().subCommSizes()) {
-      std::cout << s << " ";
-    }
-    std::cout << std::endl;
-  }
-
-  if (spTensor_.pmap().gridRank() == 0) {
-    // Normalize Ktensor u before writing out
-    out.normalize(Genten::NormTwo);
-    out.arrange();
-
-    std::cout << "Saving final Ktensor to " << file_name << std::endl;
-    Genten::export_ktensor(file_name, out);
-  }
 }
 
 } // namespace Genten

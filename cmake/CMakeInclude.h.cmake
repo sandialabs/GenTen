@@ -85,6 +85,9 @@
 //---- DEFINED IF LBFGSB IS ENABLED.
 #cmakedefine HAVE_LBFGSB
 
+//---- DEFINED IF DISTRIBUTED CODE IS ENABLED.
+#cmakedefine HAVE_DIST
+
 #include <cstddef>
 
 // Floating-point type

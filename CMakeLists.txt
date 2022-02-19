@@ -47,8 +47,8 @@ CMAKE_MINIMUM_REQUIRED (VERSION 3.16)
 #---- to the directory where cmake has been invoked.
 project(Genten VERSION "0.0.0")
 
-#---- Require C++14 without GNU extensions
-SET(CMAKE_CXX_STANDARD 14)
+#---- Require C++17 without GNU extensions
+SET(CMAKE_CXX_STANDARD 17)
 SET(CMAKE_CXX_EXTENSIONS OFF)
 
 #------------------------------------------------------------
@@ -115,6 +115,10 @@ endif()
 
 if(ENABLE_BOOST)
   find_package(Boost REQUIRED COMPONENTS serialization)
+endif()
+
+if(MPI_FOUND AND BOOST_FOUND)
+  set(HAVE_DIST ON)
 endif()
 
 IF (ENABLE_CALIPER)
@@ -563,7 +567,7 @@ INSTALL (
   DESTINATION ${CMAKE_INSTALL_BINDIR}
   )
 
-if(MPI_FOUND AND BOOST_FOUND)
+if(HAVE_DIST)
   add_library(DistContextLib 
     ${Genten_SOURCE_DIR}/src/Genten_DistContext.cpp
     ${Genten_SOURCE_DIR}/src/Genten_Pmap.cpp

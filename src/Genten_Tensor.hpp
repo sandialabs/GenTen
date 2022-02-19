@@ -231,9 +231,11 @@ public:
   // We don't actually look at the values, and assume all are nonzero.
   KOKKOS_INLINE_FUNCTION
   ttb_indx nnz() const { return values.size(); }
+  ttb_indx global_nnz() const { return values.size(); }
 
   // Return the norm (sqrt of the sum of the squares of all entries).
   ttb_real norm() const { return values.norm(NormTwo); }
+  ttb_real global_norm() const { return values.norm(NormTwo); }
 
   // Return const reference to values array
   KOKKOS_INLINE_FUNCTION

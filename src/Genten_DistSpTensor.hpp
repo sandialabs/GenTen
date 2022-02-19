@@ -89,11 +89,8 @@ public:
 
   DistSpTensor(DistSpTensor &&) = default;
   DistSpTensor &operator=(DistSpTensor &&) = default;
-
-  // For now let's delete these so they aren't accidently used
-  // Can come back and define them later if needed
-  DistSpTensor(DistSpTensor const &) = delete;
-  DistSpTensor &operator=(DistSpTensor const &) = delete;
+  DistSpTensor(DistSpTensor const &) = default;
+  DistSpTensor &operator=(DistSpTensor const &) = default;
 
   ElementType getTensorNorm() const;
 
@@ -105,10 +102,14 @@ public:
   std::int64_t nprocs() const { return pmap_ptr_->gridSize(); }
   std::int64_t gridRank() const { return pmap_ptr_->gridRank(); }
 
-  SptensorT<ExecSpace> const &LocalSpTensor() const { return sp_tensor_; }
+  SptensorT<ExecSpace>& localSpTensor() { return sp_tensor_; }
+  SptensorT<ExecSpace> const &localSpTensor() const { return sp_tensor_; }
   ProcessorMap const &pmap() const { return *pmap_ptr_; }
+  std::shared_ptr<const ProcessorMap> pmap_ptr() const { return pmap_ptr_; }
 
   TensorInfo const &getTensorInfo() const { return Ti_; }
+
+  std::vector<small_vector<int>> getBlocking() const { return global_blocking_; }
 
 private:
   boost::optional<std::pair<MPI_IO::SptnFileHeader, MPI_File>>
@@ -118,10 +119,10 @@ private:
   ptree input_;
   small_vector<RangePair> range_;
   SptensorT<ExecSpace> sp_tensor_;
-  std::unique_ptr<ProcessorMap> pmap_ptr_;
+  std::shared_ptr<ProcessorMap> pmap_ptr_;
   TensorInfo Ti_;
   bool dump_; // I don't love keeping this flag, but it's easy
-  small_vector<small_vector<int>> global_blocking_;
+  std::vector<small_vector<int>> global_blocking_;
 };
 
 // Helper declerations
@@ -173,7 +174,7 @@ void DistSpTensor<ElementType, ExecSpace>::init_distributed(
   auto binary_header = readHeader(file_name, indexbase);
 
   const auto ndims = Ti_.dim_sizes.size();
-  pmap_ptr_ = std::unique_ptr<ProcessorMap>(
+  pmap_ptr_ = std::shared_ptr<ProcessorMap>(
       new ProcessorMap(DistContext::input(), Ti_.dim_sizes));
   auto &pmap_ = *pmap_ptr_;
 
@@ -263,6 +264,8 @@ void DistSpTensor<ElementType, ExecSpace>::init_distributed(
   if (gridRank() == 0) {
     std::cout << "Copied to data struct in: " << t7 - t6 << "s" << std::endl;
   }
+
+  global_blocking_ = blocking;
 }
 
 template <typename ElementType, typename ExecSpace>

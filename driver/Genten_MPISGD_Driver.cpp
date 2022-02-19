@@ -40,6 +40,7 @@
 
 #include "Genten_DistContext.hpp"
 #include "Genten_DistGCP.hpp"
+#include "Genten_DistCpAls.hpp"
 #include "Genten_DistSpTensor.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_Pmap.hpp"
@@ -113,13 +114,15 @@ void real_main(int argc, char **argv) {
     const auto size = GT::DistContext::nranks();
     const auto rank = GT::DistContext::rank();
 
+    std::string solver_method = GT::DistContext::input().get<std::string>("solver-method","gcp");
+
     if (rank == 0) {
       std::cout << "Running Geten-MPI-SGD with: " << size << " mpi-ranks\n";
       std::cout << "\tdecomposing file: "
                 << GT::DistContext::input().get<std::string>("tensor.file")
                 << "\n";
-      std::cout << "\tusing method: "
-                << GT::DistContext::input().get<std::string>("gcp.method")
+      std::cout << "\tusing solution method: "
+                << solver_method
                 << std::endl;
 
       if (GT::DistContext::isDebug()) {
@@ -129,16 +132,30 @@ void real_main(int argc, char **argv) {
       }
     }
     GT::DistContext::Barrier();
+
     GT::DistSpTensor<ttb_real, Kokkos::DefaultHostExecutionSpace> spTensor(
-        GT::DistContext::input());
-    GT::DistGCP<ttb_real, Kokkos::DefaultHostExecutionSpace> gcp(
-        std::move(spTensor), GT::DistContext::input());
-    gcp.compute();
+      GT::DistContext::input());
+    GT::DistKtensor<ttb_real, Kokkos::DefaultHostExecutionSpace> kTensor(
+      spTensor, GT::DistContext::input());
+
+    if (solver_method == "cp-als") {
+      GT::DistCpAls<ttb_real, Kokkos::DefaultHostExecutionSpace> cpals(
+        spTensor, kTensor, GT::DistContext::input());
+      cpals.compute();
+    }
+    else if (solver_method == "gcp") {
+      GT::DistGCP<ttb_real, Kokkos::DefaultHostExecutionSpace> gcp(
+        spTensor, kTensor, GT::DistContext::input());
+      gcp.compute();
+    }
+    else
+      Genten::error("Unknown solver-method: " + solver_method);
 
     std::string output =
-      GT::DistContext::input().get<std::string>("tensor.output", "");
+      GT::DistContext::input().get<std::string>("k-tensor.output", "");
     if (output != "")
-      gcp.exportKTensor(output);
+      kTensor.export_ktensor(output);
+
   } catch (std::exception &e) {
     auto rank = GT::DistContext::rank();
     std::cerr << "Rank: " << rank << " " << e.what() << "\n";

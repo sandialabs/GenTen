@@ -66,7 +66,8 @@
 
 template <typename ExecSpace>
 Genten::FacMatrixT<ExecSpace>::
-FacMatrixT(ttb_indx m, ttb_indx n)
+FacMatrixT(ttb_indx m, ttb_indx n, const ProcessorMap::FacMap* pmap_) :
+  pmap(pmap_)
 {
   // Don't use padding if Cuda is the default execution space, so factor
   // matrices allocated on the host have the same shape.  We really need a
@@ -80,7 +81,8 @@ FacMatrixT(ttb_indx m, ttb_indx n)
 
 template <typename ExecSpace>
 Genten::FacMatrixT<ExecSpace>::
-FacMatrixT(ttb_indx m, ttb_indx n, const ttb_real * cvec)
+FacMatrixT(ttb_indx m, ttb_indx n, const ttb_real * cvec,
+           const ProcessorMap::FacMap* pmap_) : pmap(pmap_)
 {
   // Don't use padding if Cuda is the default execution space, so factor
   // matrices allocated on the host have the same shape.  We really need a
@@ -558,6 +560,11 @@ gramian(const Genten::FacMatrixT<ExecSpace> & v, const bool full,
   assert(data.extent(1) == n);
 
   Genten::Impl::gramianImpl<ExecSpace>(data,v.data,full,uplo);
+
+  if (pmap != nullptr) {
+    Kokkos::fence();
+    pmap->allReduce(data.data(), data.span());
+  }
 }
 
 // return the index of the first entry, s, such that entry(s,c) > r.
@@ -883,7 +890,8 @@ template <typename ExecSpace, unsigned ColBlockSize,
           typename ViewType, typename NormT>
 void colNorms_kernel(
   const ViewType& data, Genten::NormType normtype,
-  const NormT& norms, ttb_real minval)
+  const NormT& norms, ttb_real minval,
+  const ProcessorMap::FacMap* pmap = nullptr)
 {
   // Compute team and vector sizes, depending on the architecture
   const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
@@ -916,6 +924,10 @@ void colNorms_kernel(
           kernel.template run<0>(j_block, n-j_block);
       }
     }, "Genten::FacMatrix::colNorms_inf_kernel");
+    if (pmap != nullptr) {
+      Kokkos::fence();
+      pmap->allReduce(norms.data(), norms.size(), ProcessorMap::Max);
+    }
     deep_copy(norms_host, norms);
     break;
   }
@@ -935,6 +947,10 @@ void colNorms_kernel(
           kernel.template run<0>(j_block, n-j_block);
       }
     }, "Genten::FacMatrix::colNorms_1_kernel");
+    if (pmap != nullptr) {
+      Kokkos::fence();
+      pmap->allReduce(norms.data(), norms.size());
+    }
     deep_copy(norms_host, norms);
     break;
   }
@@ -953,6 +969,10 @@ void colNorms_kernel(
           kernel.template run<0>(j_block, n-j_block);
       }
     }, "Genten::FacMatrix::colNorms_2_kernel");
+    if (pmap != nullptr) {
+      Kokkos::fence();
+      pmap->allReduce(norms.data(), norms.size());
+    }
     deep_copy(norms_host, norms);
     for (unsigned j=0; j<n; ++j)
       norms_host[j] = std::sqrt(norms_host[j]);
@@ -992,17 +1012,23 @@ colNorms(Genten::NormType normtype, Genten::ArrayT<ExecSpace> & norms, ttb_real 
 
   const ttb_indx nc = data.extent(1);
   if (nc < 2)
-    Impl::colNorms_kernel<ExecSpace,1>(data, normtype, norms.values(), minval);
+    Impl::colNorms_kernel<ExecSpace,1>(data, normtype, norms.values(), minval,
+                                       pmap);
   else if (nc < 4)
-    Impl::colNorms_kernel<ExecSpace,2>(data, normtype, norms.values(), minval);
+    Impl::colNorms_kernel<ExecSpace,2>(data, normtype, norms.values(), minval,
+                                       pmap);
   else if (nc < 8)
-    Impl::colNorms_kernel<ExecSpace,4>(data, normtype, norms.values(), minval);
+    Impl::colNorms_kernel<ExecSpace,4>(data, normtype, norms.values(), minval,
+                                       pmap);
   else if (nc < 16)
-    Impl::colNorms_kernel<ExecSpace,8>(data, normtype, norms.values(), minval);
+    Impl::colNorms_kernel<ExecSpace,8>(data, normtype, norms.values(), minval,
+                                       pmap);
   else if (nc < 32)
-    Impl::colNorms_kernel<ExecSpace,16>(data, normtype, norms.values(), minval);
+    Impl::colNorms_kernel<ExecSpace,16>(data, normtype, norms.values(), minval,
+                                        pmap);
   else
-    Impl::colNorms_kernel<ExecSpace,32>(data, normtype, norms.values(), minval);
+    Impl::colNorms_kernel<ExecSpace,32>(data, normtype, norms.values(), minval,
+                                        pmap);
 }
 
 namespace Genten {
@@ -1212,6 +1238,9 @@ sum() const
       s += d(i,j);
   }, sum);
   Kokkos::fence();
+  // if (pmap != nullptr) {
+  //   sum = pmap->gridAllReduce(sum);
+  // }
 
   return sum;
 }
@@ -1240,6 +1269,9 @@ norm() const
       s += d(i,j) * d(i,j);
   }, sum);
   Kokkos::fence();
+  if (pmap != nullptr) {
+    sum = pmap->allReduce(sum);
+  }
 
   return std::sqrt(sum);
 }
@@ -1279,6 +1311,9 @@ sum(const UploType uplo) const
     }, sum);
   }
   Kokkos::fence();
+  // if (pmap != nullptr) 
+  //   sum = pmap->gridAllReduce(sum);
+  // }
 
   return sum;
 }
@@ -2457,6 +2492,11 @@ innerprod(const Genten::FacMatrixT<ExecSpace>& A,
     ret = Impl::mat_innerprod_kernel<ExecSpace,16>(data, A.data, lambda.values());
   else
     ret = Impl::mat_innerprod_kernel<ExecSpace,32>(data, A.data, lambda.values());
+
+  if (pmap != nullptr) {
+    Kokkos::fence();
+    ret = pmap->allReduce(ret);
+  }
 
   return ret;
 }

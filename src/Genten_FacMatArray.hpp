@@ -165,6 +165,16 @@ public:
       return host_data[n];
   }
 
+  // Return n-th factor matrix
+  KOKKOS_INLINE_FUNCTION
+  FacMatrixT<ExecSpace>& operator[](ttb_indx n)
+  {
+    if (Kokkos::Impl::MemorySpaceAccess< typename Kokkos::Impl::ActiveExecutionMemorySpace::memory_space, typename ExecSpace::memory_space >::accessible)
+      return data[n];
+    else
+      return host_data[n];
+  }
+
   KOKKOS_INLINE_FUNCTION
   view_type values() const { return data; }
 

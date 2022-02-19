@@ -50,6 +50,7 @@
 #include "Genten_RandomMT.hpp"
 #include "Genten_Util.hpp"
 #include "Genten_AlgParams.hpp"
+#include "Genten_Pmap.hpp"
 #include <assert.h>
 
 namespace Genten
@@ -106,22 +107,26 @@ public:
      *  @param[in] n  Number of columns, should equal the number of components
      *                in the Ktensor.
      */
-    FacMatrixT(ttb_indx m, ttb_indx n);
+    FacMatrixT(ttb_indx m, ttb_indx n, const ProcessorMap::FacMap* pmap_ = nullptr);
 
     //! Constructor to create a Factor Matrix of Size M x N using the
     // given view
     template <typename T, typename ... P>
-    FacMatrixT(ttb_indx m, ttb_indx n, const Kokkos::View<T,P...>& v) :
-      data(v) {}
+    FacMatrixT(ttb_indx m, ttb_indx n, const Kokkos::View<T,P...>& v,
+               const ProcessorMap::FacMap* pmap_ = nullptr) :
+      data(v), pmap(pmap_) {}
 
     // Constructor to create a Factor Matrix of Size M x N using the
     // given data vector CVEC which is assumed to be stored *columnwise*.
     // Not currently used; therefore not part of doxygen API.
-    FacMatrixT(ttb_indx m, ttb_indx n, const ttb_real * cvec);
+    FacMatrixT(ttb_indx m, ttb_indx n, const ttb_real * cvec,
+               const ProcessorMap::FacMap* pmap_ = nullptr);
 
     //! @brief Create matrix from supplied view
     KOKKOS_INLINE_FUNCTION
-    FacMatrixT(const view_type& v) : data(v) {}
+    FacMatrixT(const view_type& v,
+               const ProcessorMap::FacMap* pmap_ = nullptr) :
+      data(v), pmap(pmap_) {}
 
     //! Copy Constructor.
     KOKKOS_DEFAULTED_FUNCTION
@@ -239,6 +244,9 @@ public:
     {
       return data.size();
     }
+
+    void setProcessorMap(const ProcessorMap::FacMap* pmap_) { pmap = pmap_; }
+    const ProcessorMap::FacMap* getProcessorMap() const { return pmap; }
 
     /** @} */
 
@@ -456,6 +464,8 @@ public:
     // Data array containing the entries of the matrix.
     view_type data;
 
+    const ProcessorMap::FacMap* pmap;
+
     // ----- Private Functions -----
     // These are private to hide implementation details of the factor matrix.
 
@@ -479,14 +489,15 @@ typename FacMatrixT<ExecSpace>::HostMirror
 create_mirror_view(const FacMatrixT<ExecSpace>& a)
 {
   typedef typename FacMatrixT<ExecSpace>::HostMirror HostMirror;
-  return HostMirror( create_mirror_view(a.view()) );
+  return HostMirror( create_mirror_view(a.view()), a.getProcessorMap() );
 }
 
 template <typename Space, typename ExecSpace>
 FacMatrixT<Space>
 create_mirror_view(const Space& s, const FacMatrixT<ExecSpace>& a)
 {
-  return FacMatrixT<Space>( create_mirror_view(s, a.view()) );
+  return FacMatrixT<Space>( create_mirror_view(s, a.view()),
+                            a.getProcessorMap() );
 }
 
 template <typename E1, typename E2>

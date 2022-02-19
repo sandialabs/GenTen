@@ -45,6 +45,7 @@
 #include "Genten_Array.hpp"
 #include "Genten_IndxArray.hpp"
 #include "Genten_Ktensor.hpp"
+#include "Genten_Pmap.hpp"
 
 namespace Genten
 {
@@ -73,13 +74,13 @@ public:
   /* Creates an empty tensor with an empty size. */
   KOKKOS_INLINE_FUNCTION
   SptensorT() : siz(),siz_host(),nNumDims(0),values(),subs(),perm(),
-                is_sorted(false) {}
+                is_sorted(false), pmap(nullptr) {}
 
   // Constructor for a given size and number of nonzeros
   SptensorT(const IndxArrayT<ExecSpace>& sz, ttb_indx nz) :
     siz(sz.clone()), nNumDims(sz.size()), values(nz),
     subs("Genten::Sptensor::subs",nz,sz.size()), perm(),
-    is_sorted(false) {
+    is_sorted(false), pmap(nullptr) {
     siz_host = create_mirror_view(siz);
     deep_copy(siz_host, siz);
   }
@@ -117,7 +118,7 @@ public:
             const subs_view_type& p = subs_view_type(),
             const bool sorted = false) :
     siz(d), nNumDims(d.size()), values(vals), subs(s), perm(p),
-    is_sorted(sorted) {
+    is_sorted(sorted), pmap(nullptr) {
     siz_host = create_mirror_view(siz);
     deep_copy(siz_host, siz);
   }
@@ -125,7 +126,7 @@ public:
   // Create tensor from supplied dimensions and subscripts, zero values
   SptensorT(const IndxArrayT<ExecSpace>& d, const subs_view_type& s) :
     siz(d), nNumDims(d.size()), values(s.extent(0),ttb_real(0.0)), subs(s),
-    perm(), is_sorted(false) {
+    perm(), is_sorted(false), pmap(nullptr) {
     siz_host = create_mirror_view(siz);
     deep_copy(siz_host, siz);
   }
@@ -187,6 +188,14 @@ public:
   ttb_indx nnz() const
   {
     return values.size();
+  }
+
+  ttb_indx global_nnz() const
+  {
+    ttb_indx nnz = values.size();
+    if (pmap != nullptr)
+      nnz = pmap->gridAllReduce(nnz);
+    return nnz;
   }
 
   // get count of ints and reals stored by implementation
@@ -261,6 +270,15 @@ public:
     return values.norm(NormTwo);
   }
 
+  // Return the norm (sqrt of the sum of the squares of all entries).
+  ttb_real global_norm() const
+  {
+    ttb_real nrm_sqrd = values.dot(values);
+    if (pmap != nullptr)
+      nrm_sqrd = pmap->gridAllReduce(nrm_sqrd);
+    return std::sqrt(nrm_sqrd);
+  }
+
   // Return the i-th linearly indexed element.
   KOKKOS_INLINE_FUNCTION
   ttb_real & operator[](ttb_indx i) const
@@ -331,6 +349,9 @@ public:
   KOKKOS_INLINE_FUNCTION
   bool isSubscriptEqual(const ttb_indx i, const sub_type& sub) const;
 
+  void setProcessorMap(const ProcessorMap* pmap_) { pmap = pmap_; }
+  const ProcessorMap* getProcessorMap() const { return pmap; }
+
 protected:
 
   // Size of the tensor
@@ -352,6 +373,8 @@ protected:
 
   // Whether tensor has been sorted
   bool is_sorted;
+
+  const ProcessorMap* pmap;
 
 };
 

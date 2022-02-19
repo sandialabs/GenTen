@@ -324,4 +324,14 @@ namespace Genten {
   // Connect executable to vtune for profiling
   void connect_vtune(const int p_rank = 0);
 
+  // A stream that drops all of its input (useful for parallel output)
+  class oblackholestream :
+    public virtual std::basic_ostream<char,std::char_traits<char> >
+  {
+    typedef std::basic_ostream<char,std::char_traits<char> > base;
+  public:
+    explicit oblackholestream() : base(nullptr) {}
+  };
+  extern oblackholestream bhcout;
+
 }

@@ -232,6 +232,18 @@ ProcessorMap::ProcessorMap(ptree const &input_tree,
     MPI_Comm_rank(sub_maps_[i], &sub_grid_rank_[i]);
     MPI_Comm_size(sub_maps_[i], &sub_comm_sizes_[i]);
   }
+
+  small_vector<int> dim_filter2(ndims, 0);
+  fac_maps_.resize(ndims);
+
+  // Get information for the MPI Subgrid for each Dimension
+  for (auto i = 0; i < ndims; ++i) {
+    dim_filter2[i] = 1; // Get only this dim
+    MPI_Comm lcl_comm;
+    MPI_Cart_sub(cart_comm_, dim_filter2.data(), &lcl_comm);
+    fac_maps_[i] = FacMap(lcl_comm);
+    dim_filter2[i] = 0; // Reset the dim_filter
+  }
 }
 
 ProcessorMap::ProcessorMap(ptree const &input_tree,
