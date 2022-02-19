@@ -64,6 +64,10 @@ OPTION(FLOAT_TYPE "C++ data type used for floating-point values" OFF)
 OPTION(INDEX_TYPE "C++ data type used for tensor indices" OFF)
 OPTION(ENABLE_GCP "Enable experimental GCP code" ON)
 
+IF(ENABLE_MPI AND NOT ENABLE_BOOST)
+  MESSAGE(FATAL_ERROR "ENABLE_MPI=ON but ENABLE_BOOST=OFF. Distributed MPI code also requires boost.  Please reconfigure with ENABLE_BOOST=ON (and set BOOST_ROOT if necessary if CMake cannot find it automatically).")
+ENDIF()
+
 IF(FLOAT_TYPE)
   SET(GENTEN_FLOAT_TYPE ${FLOAT_TYPE})
 ELSE()
