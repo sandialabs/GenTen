@@ -14,7 +14,8 @@ workflow:
     #  when: never
     - if: $CI_MERGE_REQUEST_IID
     - if: $CI_COMMIT_TAG
-    - if: $CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "questa"
+    # ETP:  comment this out to allow merge request pipelines from other branches
+    #- if: $CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "questa"
 
 variables:
   GIT_STRATEGY: clone
