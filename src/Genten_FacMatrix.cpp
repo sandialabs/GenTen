@@ -66,8 +66,13 @@
 #endif
 
 #if defined(KOKKOS_ENABLE_HIP)
+
 #include "rocblas.h"
+
+#if defined(HAVE_ROCSOLVER)
 #include "rocsolver.h"
+#endif
+
 #endif
 
 #ifdef HAVE_CALIPER
@@ -2384,7 +2389,7 @@ namespace Genten {
 
 #endif
 
-#if defined(KOKKOS_ENABLE_HIP)
+#if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCSOLVER)
 
     template <typename AT, typename ... AP,
               typename BT, typename ... BP>

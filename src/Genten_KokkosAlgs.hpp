@@ -52,7 +52,7 @@
 #include "parallel_stable_sort.hpp"
 #endif
 
-#if defined (KOKKOS_ENABLE_CUDA) || defined (KOKKOS_ENABLE_HIP)
+#if defined(KOKKOS_ENABLE_CUDA) || (defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCTHRUST))
 #include <thrust/sort.h>
 #include <thrust/device_ptr.h>
 #endif
@@ -90,7 +90,7 @@ void perm_sort_op(const PermType& perm, const Op& op)
     perm(i) = i;
   }, "Genten::perm_sort::perm_init");
 
-#if defined(KOKKOS_ENABLE_CUDA) || defined (KOKKOS_ENABLE_HIP)
+#if defined(KOKKOS_ENABLE_CUDA) || (defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCTHRUST))
   if (is_gpu_space<exec_space>::value) {
     thrust::stable_sort(thrust::device_ptr<perm_val_type>(perm.data()),
                         thrust::device_ptr<perm_val_type>(perm.data()+sz),
