@@ -40,28 +40,18 @@
 
 #pragma once
 
-#include <random>
-#include <cmath>
-#include <memory>
-
 #include "Genten_Boost.hpp"
-#include "Genten_DistContext.hpp"
-#include "Genten_DistSpTensor.hpp"
-#include "Genten_DistKtensor.hpp"
-#include "Genten_Pmap.hpp"
+#include "Genten_DistTensorContext.hpp"
 #include "Genten_CpAls.hpp"
 
 namespace Genten {
 
-template <typename ElementType, typename ExecSpace = DefaultExecutionSpace>
+template <typename ExecSpace>
 class DistCpAls {
-  static_assert(std::is_floating_point<ElementType>::value,
-                "DistCpAls Requires that the element type be a floating "
-                "point type.");
-
 public:
-  DistCpAls(const DistSpTensor<ElementType, ExecSpace>& spTensor,
-            const DistKtensor<ElementType, ExecSpace>& kTensor,
+  DistCpAls(const DistTensorContext& dtc,
+            const SptensorT<ExecSpace>& spTensor,
+            const KtensorT<ExecSpace>& kTensor,
             const ptree& tree);
   ~DistCpAls() = default;
 
@@ -73,54 +63,55 @@ public:
   DistCpAls(DistCpAls &&) = delete;
   DistCpAls &operator=(DistCpAls &&) = delete;
 
-  ElementType compute();
+  ttb_real compute();
 
 private:
   void setAlgParams();
 
+  DistTensorContext dtc_;
+  SptensorT<ExecSpace> spTensor_;
+  KtensorT<ExecSpace> Kfac_;
   ptree input_;
-  DistSpTensor<ElementType, ExecSpace> spTensor_;
-  DistKtensor<ElementType, ExecSpace> Kfac_;
   AlgParams algParams_;
   std::ostream& out;
 };
 
-template <typename ElementType, typename ExecSpace>
-DistCpAls<ElementType, ExecSpace>::
-DistCpAls(const DistSpTensor<ElementType, ExecSpace>& spTensor,
-          const DistKtensor<ElementType, ExecSpace>& kTensor,
+template <typename ExecSpace>
+DistCpAls<ExecSpace>::
+DistCpAls(const DistTensorContext& dtc,
+          const SptensorT<ExecSpace>& spTensor,
+          const KtensorT<ExecSpace>& kTensor,
           const ptree& tree) :
-  input_(tree.get_child("cp-als")),
+  dtc_(dtc),
   spTensor_(spTensor),
   Kfac_(kTensor),
-  out(spTensor_.pmap().gridRank() == 0 ? std::cout : Genten::bhcout)
+  input_(tree.get_child("cp-als")),
+  out(dtc_.pmap().gridRank() == 0 ? std::cout : Genten::bhcout)
 {
   setAlgParams();
 }
 
-template <typename ElementType, typename ExecSpace>
-ElementType DistCpAls<ElementType, ExecSpace>::compute()
+template <typename ExecSpace>
+ttb_real DistCpAls<ExecSpace>::compute()
 {
-  const ProcessorMap* pmap = spTensor_.pmap_ptr().get();
-  SptensorT<ExecSpace>& x = spTensor_.localSpTensor();
-  KtensorT<ExecSpace>& u = Kfac_.localKtensor();
-
-  u.setProcessorMap(pmap);
-  x.setProcessorMap(pmap);
+  const ProcessorMap* pmap = dtc_.pmap_ptr().get();
+  spTensor_.setProcessorMap(pmap);
+  Kfac_.setProcessorMap(pmap);
 
   ttb_indx numIters = 0;
   ttb_real resNorm = 0.0;
-  Genten::cpals_core(x, u, algParams_, numIters, resNorm, 0, nullptr, out);
+  Genten::cpals_core(spTensor_, Kfac_, algParams_, numIters, resNorm, 0,
+                     nullptr, out);
 
-  u.setProcessorMap(nullptr);
-  x.setProcessorMap(nullptr);
+  spTensor_.setProcessorMap(nullptr);
+  Kfac_.setProcessorMap(nullptr);
 
   return resNorm;
 }
 
-template <typename ElementType, typename ExecSpace>
+template <typename ExecSpace>
 void
-DistCpAls<ElementType, ExecSpace>::
+DistCpAls<ExecSpace>::
 setAlgParams() {
   algParams_.rank = input_.get<int>("rank", algParams_.rank);
   algParams_.maxiters = input_.get<int>("maxiters", algParams_.maxiters);

@@ -205,7 +205,8 @@ namespace Genten {
     for (ttb_indx n = 0; n < nd; n ++)
     {
       gamma.set_factor( n, FacMatrixT<ExecSpace>(u[n].nCols(), u[n].nCols()) );
-      gamma[n].setProcessorMap(pmap->facMap(n));
+      if (pmap != nullptr)
+        gamma[n].setProcessorMap(pmap->facMap(n));
     }
     for (ttb_indx n = 1; n < nd; n ++)
     {
@@ -221,7 +222,9 @@ namespace Genten {
 
     // Matrix to store the result of MTTKRP for the last mode
     // (Used to compute <x,u> using the trick described by Smith & Karypis)
-    Genten::FacMatrixT<ExecSpace> un(u[nd-1].nRows(), nc, pmap->facMap(nd-1));
+    Genten::FacMatrixT<ExecSpace> un(u[nd-1].nRows(), nc);
+    if (pmap != nullptr)
+      un.setProcessorMap(pmap->facMap(nd-1));
 
     // Pre-calculate the Frobenius norm of the tensor x.
     ttb_real xNorm = x.global_norm();

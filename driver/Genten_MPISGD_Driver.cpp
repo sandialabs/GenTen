@@ -39,14 +39,9 @@
 //@HEADER
 
 #include "Genten_DistContext.hpp"
+#include "Genten_DistTensorContext.hpp"
 #include "Genten_DistGCP.hpp"
 #include "Genten_DistCpAls.hpp"
-#include "Genten_DistSpTensor.hpp"
-#include "Genten_IOtext.hpp"
-#include "Genten_Pmap.hpp"
-
-#include <Kokkos_Core.hpp>
-#include <iostream>
 
 namespace GT = Genten;
 
@@ -133,19 +128,19 @@ void real_main(int argc, char **argv) {
     }
     GT::DistContext::Barrier();
 
-    GT::DistSpTensor<ttb_real, Kokkos::DefaultHostExecutionSpace> spTensor(
-      GT::DistContext::input());
-    GT::DistKtensor<ttb_real, Kokkos::DefaultHostExecutionSpace> kTensor(
-      spTensor, GT::DistContext::input());
+    using Space = Kokkos::DefaultHostExecutionSpace;
+    GT::DistTensorContext dtc;
+    GT::SptensorT<Space> X =
+      dtc.readTensorAndInit<Space>(GT::DistContext::input());
+    GT::KtensorT<Space> u =
+      dtc.computeInitialGuess<Space>(X, GT::DistContext::input());
 
     if (solver_method == "cp-als") {
-      GT::DistCpAls<ttb_real, Kokkos::DefaultHostExecutionSpace> cpals(
-        spTensor, kTensor, GT::DistContext::input());
+      GT::DistCpAls<Space> cpals(dtc, X, u, GT::DistContext::input());
       cpals.compute();
     }
     else if (solver_method == "gcp") {
-      GT::DistGCP<ttb_real, Kokkos::DefaultHostExecutionSpace> gcp(
-        spTensor, kTensor, GT::DistContext::input());
+      GT::DistGCP<Space> gcp(dtc, X, u, GT::DistContext::input());
       gcp.compute();
     }
     else
@@ -154,7 +149,7 @@ void real_main(int argc, char **argv) {
     std::string output =
       GT::DistContext::input().get<std::string>("k-tensor.output", "");
     if (output != "")
-      kTensor.export_ktensor(output);
+      dtc.exportToFile(u, output);
 
   } catch (std::exception &e) {
     auto rank = GT::DistContext::rank();

@@ -537,7 +537,7 @@ arrange(const Genten::IndxArray& permutation_indices) const
 
 template <typename ExecSpace>
 ttb_real Genten::KtensorT<ExecSpace>::
-normFsq() const
+normFsq(const ProcessorMap* proc_map) const
 {
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::Ktensor::normFsq");
@@ -555,9 +555,9 @@ normFsq() const
   for (ttb_indx  n = 0; n < ndims(); n++)
   {
     cG.gramian(data[n]);
-    if (pmap != nullptr) {
+    if (proc_map != nullptr) {
       Kokkos::fence();
-      pmap->facMap(n)->allReduce(cG.view().data(),cG.view().span());
+      proc_map->facMap(n)->allReduce(cG.view().data(),cG.view().span());
     }
     cH.times(cG);
   }
@@ -588,7 +588,7 @@ normFsq() const
 
 template <typename ExecSpace>
 ttb_real Genten::KtensorT<ExecSpace>::
-normFsq(const Genten::ArrayT<ExecSpace>& l) const
+normFsq(const ProcessorMap* proc_map, const Genten::ArrayT<ExecSpace>& l) const
 {
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::Ktensor::normFsq");
@@ -606,9 +606,9 @@ normFsq(const Genten::ArrayT<ExecSpace>& l) const
   for (ttb_indx  n = 0; n < ndims(); n++)
   {
     cG.gramian(data[n]);
-    if (pmap != nullptr) {
+    if (proc_map != nullptr) {
       Kokkos::fence();
-      pmap->facMap(n)->allReduce(cG.view().data(),cG.view().span());
+      proc_map->facMap(n)->allReduce(cG.view().data(),cG.view().span());
     }
     cH.times(cG);
   }

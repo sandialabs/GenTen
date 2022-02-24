@@ -44,40 +44,23 @@
 #include "Genten_GCP_SGD_Iter.hpp"
 #include "Genten_GCP_SemiStratifiedSampler.hpp"
 #include "Genten_GCP_ValueKernels.hpp"
-#include "Genten_IOtext.hpp"
 
 #include "Genten_Annealer.hpp"
 #include "Genten_Boost.hpp"
-#include "Genten_DistContext.hpp"
-#include "Genten_DistSpTensor.hpp"
-#include "Genten_DistKtensor.hpp"
-#include "Genten_Pmap.hpp"
-#include "Genten_SpTn_Util.h"
+#include "Genten_DistTensorContext.hpp"
+#include "Genten_Sptensor.hpp"
+#include "Genten_Ktensor.hpp"
 
 #include <cmath>
-#include <fstream>
-#include <memory>
-#include <random>
-#include <unordered_map>
 
 namespace Genten {
 
-template <typename ElementType, typename ExecSpace = DefaultExecutionSpace>
+template <typename ExecSpace>
 class DistGCP {
-  static_assert(std::is_floating_point<ElementType>::value,
-                "DistGCP Requires that the element type be a floating "
-                "point type.");
-
-  template <typename Stepper, typename Loss>
-  ElementType allReduceTrad(Loss const &loss);
-  template <typename Loss> ElementType fedOpt(Loss const &loss);
-  template <typename Loss> ElementType pickMethod(Loss const &loss);
-
-  AlgParams setAlgParams() const;
-
 public:
-  DistGCP(const DistSpTensor<ElementType, ExecSpace>& spTensor,
-          const DistKtensor<ElementType, ExecSpace>& kTensor,
+  DistGCP(const DistTensorContext& dtc,
+          const SptensorT<ExecSpace>& spTensor,
+          const KtensorT<ExecSpace>& kTensor,
           const ptree& tree);
   ~DistGCP() = default;
 
@@ -89,27 +72,34 @@ public:
   DistGCP(DistGCP &&) = delete;
   DistGCP &operator=(DistGCP &&) = delete;
 
-  ElementType compute();
+  ttb_real compute();
 
 private:
-  std::int32_t ndims() const { return spTensor_.ndims(); }
-  ProcessorMap const &pmap() const { return spTensor_.pmap(); }
+  std::int32_t ndims() const { return dtc_.ndims(); }
+  ProcessorMap const &pmap() const { return dtc_.pmap(); }
 
-  DistSpTensor<ElementType, ExecSpace> spTensor_;
-  DistKtensor<ElementType, ExecSpace> kTensor_;
+  template <typename Stepper, typename Loss>
+  ttb_real allReduceTrad(Loss const &loss);
+  template <typename Loss> ttb_real fedOpt(Loss const &loss);
+  template <typename Loss> ttb_real pickMethod(Loss const &loss);
+  AlgParams setAlgParams() const;
+
+  DistTensorContext dtc_;
+  SptensorT<ExecSpace> spTensor_;
   KtensorT<ExecSpace> Kfac_;
   ptree input_;
+
   bool dump_; // I don't love keeping this flag, but it's easy
   unsigned int seed_;
-  MPI_Datatype mpiElemType_ = DistContext::toMpiType<ElementType>();
+  MPI_Datatype mpiElemType_ = DistContext::toMpiType<ttb_real>();
 };
 
-template <typename ElementType, typename ExecSpace>
-DistGCP<ElementType, ExecSpace>::DistGCP(
-    const DistSpTensor<ElementType, ExecSpace>& spTensor,
-    const DistKtensor<ElementType, ExecSpace>& kTensor,
-    const ptree& tree) :
-  spTensor_(spTensor), kTensor_(kTensor), Kfac_(kTensor_.localKtensor()),
+template <typename ExecSpace>
+DistGCP<ExecSpace>::DistGCP(const DistTensorContext& dtc,
+                            const SptensorT<ExecSpace>& spTensor,
+                            const KtensorT<ExecSpace>& kTensor,
+                            const ptree& tree) :
+  dtc_(dtc), spTensor_(spTensor), Kfac_(kTensor),
   input_(tree.get_child("gcp")),
   dump_(tree.get<bool>("dump", false)),
   seed_(input_.get<unsigned int>("seed", std::random_device{}()))
@@ -134,9 +124,9 @@ DistGCP<ElementType, ExecSpace>::DistGCP(
   }
 }
 
-template <typename ElementType, typename ExecSpace>
+template <typename ExecSpace>
 template <typename Loss>
-ElementType DistGCP<ElementType, ExecSpace>::pickMethod(Loss const &loss) {
+ttb_real DistGCP<ExecSpace>::pickMethod(Loss const &loss) {
   auto method = input_.get<std::string>("method", "adam");
   if (method == "fedopt") {
     return fedOpt(loss);
@@ -155,8 +145,8 @@ ElementType DistGCP<ElementType, ExecSpace>::pickMethod(Loss const &loss) {
   return -1.0;
 }
 
-template <typename ElementType, typename ExecSpace>
-ElementType DistGCP<ElementType, ExecSpace>::compute() {
+template <typename ExecSpace>
+ttb_real DistGCP<ExecSpace>::compute() {
   auto loss = input_.get<std::string>("loss", "gaussian");
 
   // MAYBE one day decouple this so it's not N^2 but what ever
@@ -172,12 +162,12 @@ ElementType DistGCP<ElementType, ExecSpace>::compute() {
   return -1.0;
 }
 
-template <typename ElementType, typename ExecSpace>
-AlgParams DistGCP<ElementType, ExecSpace>::setAlgParams() const {
-  const auto np = spTensor_.nprocs();
-  const auto lnz = spTensor_.localNNZ();
-  const auto gnz = spTensor_.globalNNZ();
-  const auto lz = spTensor_.localNumel() - lnz;
+template <typename ExecSpace>
+AlgParams DistGCP<ExecSpace>::setAlgParams() const {
+  const std::uint64_t np = dtc_.nprocs();
+  const std::uint64_t lnz = spTensor_.nnz();
+  const std::uint64_t gnz = dtc_.globalNNZ(spTensor_);
+  const std::uint64_t lz = spTensor_.numel_float() - lnz;
 
   AlgParams algParams;
   algParams.maxiters = input_.get<int>("max_epochs", 1000);
@@ -194,13 +184,13 @@ AlgParams DistGCP<ElementType, ExecSpace>::setAlgParams() const {
   algParams.num_samples_nonzeros_grad =
     std::min(lnz, global_batch_size_nz / np);
   algParams.num_samples_zeros_grad =
-    std::min<decltype(lz)>(lz, global_batch_size_z / np);
+    std::min(lz, global_batch_size_z / np);
 
   // No point in sampling more nonzeros than we actually have
   algParams.num_samples_nonzeros_value =
     std::min(lnz, global_value_size_nz / np);
   algParams.num_samples_zeros_value =
-    std::min<decltype(lz)>(lz, global_value_size_z / np);
+    std::min(lz, global_value_size_z / np);
 
   algParams.sampling_type = Genten::GCP_Sampling::SemiStratified;
   algParams.mttkrp_method = Genten::MTTKRP_Method::Default;
@@ -307,15 +297,15 @@ AlgParams DistGCP<ElementType, ExecSpace>::setAlgParams() const {
   return algParams;
 }
 
-template <typename ElementType, typename ExecSpace>
+template <typename ExecSpace>
 template <typename Loss>
-ElementType DistGCP<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
+ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
   const auto start_time = MPI_Wtime();
-  const auto nprocs = spTensor_.nprocs();
+  const auto nprocs = dtc_.nprocs();
   const auto my_rank = pmap().gridRank();
 
   auto algParams = setAlgParams();
-  if (auto eps = input_.get_optional<ElementType>("eps")) {
+  if (auto eps = input_.get_optional<ttb_real>("eps")) {
     algParams.adam_eps = *eps;
   }
 
@@ -324,7 +314,7 @@ ElementType DistGCP<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
   auto u = VectorType(Kfac_);
   u.copyFromKtensor(Kfac_);
   KtensorT<ExecSpace> ut = u.getKtensor();
-  kTensor_.allReduce(ut);
+  dtc_.allReduce(ut, true);
 
   VectorType u_best = u.clone();
   u_best.set(u);
@@ -342,7 +332,7 @@ ElementType DistGCP<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
   KtensorT<ExecSpace> Dfac = diff.getKtensor();
 
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(
-      spTensor_.localSpTensor(), algParams);
+      spTensor_, algParams);
 
   Impl::SGDStep<ExecSpace, Loss> stepper;
   Impl::AdamStep<ExecSpace, Loss> meta_stepper(algParams, meta_u);
@@ -376,7 +366,7 @@ ElementType DistGCP<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
   auto &annealer = *annealer_ptr;
 
   auto fedavg = input_.get<bool>("fedavg", false);
-  auto meta_lr = input_.get<ElementType>("meta_lr", 1e-3);
+  auto meta_lr = input_.get<ttb_real>("meta_lr", 1e-3);
 
   double t0 = 0;
   double t1 = 0;
@@ -407,11 +397,11 @@ ElementType DistGCP<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
       if ((i + 1) % dp_iters == 0 || i == (epochIters - 1)) {
         auto s0 = MPI_Wtime();
         if (fedavg) {
-          kTensor_.allReduce(ut, true);
+          dtc_.allReduce(ut, true);
         } else {
           diff.set(meta_u);
           diff.plus(u, -1.0); // Subtract u from meta_u to get Meta grad
-          kTensor_.allReduce(Dfac, true);
+          dtc_.allReduce(Dfac, true);
 
           meta_stepper.update();
           meta_stepper.setStep(meta_lr);
@@ -513,9 +503,9 @@ ElementType DistGCP<ElementType, ExecSpace>::fedOpt(Loss const &loss) {
   return fest_prev;
 }
 
-template <typename ElementType, typename ExecSpace>
+template <typename ExecSpace>
 template <typename Stepper, typename Loss>
-ElementType DistGCP<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
+ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
   if (dump_) {
     std::cout
         << "Methods that use AllReduce(sgd, sgdm, adam, adagrad, demon) "
@@ -530,7 +520,7 @@ ElementType DistGCP<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
            "\t\tTi: IFF cosine annealer, is the cycle period default(10).\n";
     return -1.0;
   }
-  const auto nprocs = spTensor_.nprocs();
+  const auto nprocs = dtc_.nprocs();
   const auto my_rank = pmap().gridRank();
   const auto start_time = MPI_Wtime();
 
@@ -549,7 +539,7 @@ ElementType DistGCP<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
   decltype(Kfac_) GFac = g.getKtensor();
 
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(
-      spTensor_.localSpTensor(), algParams);
+      spTensor_, algParams);
 
   Stepper stepper(algParams, u);
 
@@ -602,7 +592,7 @@ ElementType DistGCP<ElementType, ExecSpace>::allReduceTrad(Loss const &loss) {
       auto ze = MPI_Wtime();
       sampler.fusedGradient(ut, loss, GFac, timer, tnzs, tzs);
       auto ge = MPI_Wtime();
-      kTensor_.allReduce(GFac, false /* don't average */);
+      dtc_.allReduce(GFac, false /* don't average */);
       auto are = MPI_Wtime();
       stepper.eval(g, u);
       auto ee = MPI_Wtime();

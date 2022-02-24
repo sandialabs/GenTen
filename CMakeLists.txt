@@ -572,16 +572,16 @@ INSTALL (
   )
 
 if(HAVE_DIST)
-  add_library(DistContextLib 
+  add_library(DistContextLib
     ${Genten_SOURCE_DIR}/src/Genten_DistContext.cpp
     ${Genten_SOURCE_DIR}/src/Genten_Pmap.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_DistSpTensor.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_DistTensorContext.cpp
     )
-  target_link_libraries(DistContextLib Kokkos::kokkos MPI::MPI_C 
+  target_link_libraries(DistContextLib Kokkos::kokkos MPI::MPI_C
                                        Boost::boost Boost::serialization
     )
 
-  add_library(GentenMpiIoLib 
+  add_library(GentenMpiIoLib
     ${Genten_SOURCE_DIR}/src/Genten_SpTn_Util.cpp
     ${Genten_SOURCE_DIR}/src/Genten_MPI_IO.cpp
     )
@@ -591,12 +591,12 @@ if(HAVE_DIST)
     genten_mpisgd
     ${Genten_SOURCE_DIR}/driver/Genten_MPISGD_Driver.cpp
     )
-  target_link_libraries(genten_mpisgd 
-    ${GENTEN_LINK_LIBS} 
-    DistContextLib 
+  target_link_libraries(genten_mpisgd
+    ${GENTEN_LINK_LIBS}
+    DistContextLib
     GentenMpiIoLib
-    MPI::MPI_C 
-    Boost::boost 
+    MPI::MPI_C
+    Boost::boost
     Boost::serialization
     )
 
