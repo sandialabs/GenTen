@@ -67,7 +67,9 @@
 
 #if defined(KOKKOS_ENABLE_HIP)
 
+#if defined(HAVE_ROCBLAS)
 #include "rocblas.h"
+#endif
 
 #if defined(HAVE_ROCSOLVER)
 #include "rocsolver.h"
@@ -556,7 +558,7 @@ void gramianImpl(const ViewC& C, const ViewA& A,
 
 #endif
 
-#if defined(KOKKOS_ENABLE_HIP)
+#if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
 
   // Gramian implementation for HIP and double precision using rocBLAS
   template <typename ExecSpace,
@@ -1644,7 +1646,7 @@ gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
 
 #endif
 
-#if defined(KOKKOS_ENABLE_HIP)
+#if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
 
 template <typename ExecSpace,
           typename AT, typename ... AP,
