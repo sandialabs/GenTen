@@ -581,7 +581,7 @@ void Genten_Test_MixedFormats_Space(int infolevel)
 
   Genten_Test_MTTKRP_Type<ExecSpace>(
     Genten::MTTKRP_Method::Atomic, infolevel, "Atomic");
-  if (!space_prop::is_cuda)
+  if (!space_prop::is_gpu)
     Genten_Test_MTTKRP_Type<ExecSpace>(
       Genten::MTTKRP_Method::Duplicated, infolevel, "Duplicated");
   Genten_Test_MTTKRP_Type<ExecSpace>(
@@ -591,7 +591,7 @@ void Genten_Test_MixedFormats_Space(int infolevel)
     Genten::MTTKRP_All_Method::Iterated, infolevel, "Iterated");
   Genten_Test_MTTKRP_All_Type<ExecSpace>(
     Genten::MTTKRP_All_Method::Atomic, infolevel, "Atomic");
-  if (!space_prop::is_cuda)
+  if (!space_prop::is_gpu)
     Genten_Test_MTTKRP_All_Type<ExecSpace>(
       Genten::MTTKRP_All_Method::Duplicated, infolevel, "Duplicated");
 }
@@ -599,6 +599,9 @@ void Genten_Test_MixedFormats_Space(int infolevel)
 void Genten_Test_MixedFormats(int infolevel) {
 #ifdef KOKKOS_ENABLE_CUDA
   Genten_Test_MixedFormats_Space<Kokkos::Cuda>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_HIP
+  Genten_Test_MixedFormats_Space<Kokkos::Experimental::HIP>(infolevel);
 #endif
 #ifdef KOKKOS_ENABLE_OPENMP
   Genten_Test_MixedFormats_Space<Kokkos::OpenMP>(infolevel);

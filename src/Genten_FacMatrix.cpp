@@ -53,11 +53,28 @@
 #include <assert.h>
 #include <cstring>
 
-#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUSOLVER)
+#if defined(KOKKOS_ENABLE_CUDA)
+
+#if defined(HAVE_CUSOLVER)
 #include "cusolverDn.h"
 #endif
-#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+
+#if defined(HAVE_CUBLAS)
 #include "cublas_v2.h"
+#endif
+
+#endif
+
+#if defined(KOKKOS_ENABLE_HIP)
+
+#if defined(HAVE_ROCBLAS)
+#include "rocblas.h"
+#endif
+
+#if defined(HAVE_ROCSOLVER)
+#include "rocsolver.h"
+#endif
+
 #endif
 
 #ifdef HAVE_CALIPER
@@ -68,10 +85,10 @@ template <typename ExecSpace>
 Genten::FacMatrixT<ExecSpace>::
 FacMatrixT(ttb_indx m, ttb_indx n)
 {
-  // Don't use padding if Cuda is the default execution space, so factor
+  // Don't use padding if Cuda or HIP is the default execution space, so factor
   // matrices allocated on the host have the same shape.  We really need a
   // better way to do this.
-  if (Genten::is_cuda_space<DefaultExecutionSpace>::value)
+  if (Genten::is_gpu_space<DefaultExecutionSpace>::value)
     data = view_type("Genten::FacMatrix::data",m,n);
   else
     data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
@@ -82,10 +99,10 @@ template <typename ExecSpace>
 Genten::FacMatrixT<ExecSpace>::
 FacMatrixT(ttb_indx m, ttb_indx n, const ttb_real * cvec)
 {
-  // Don't use padding if Cuda is the default execution space, so factor
+  // Don't use padding if Cuda or HIP is the default execution space, so factor
   // matrices allocated on the host have the same shape.  We really need a
   // better way to do this.
-  if (Genten::is_cuda_space<DefaultExecutionSpace>::value)
+  if (Genten::is_gpu_space<DefaultExecutionSpace>::value)
     data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
                                         Kokkos::WithoutInitializing),m,n);
   else
@@ -376,10 +393,10 @@ template <typename ExecSpace, unsigned ColBlockSize,
 void gramian_kernel(const ViewC& C, const ViewA& A)
 {
   // Compute team and vector sizes, depending on the architecture
-  const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+  const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
   const unsigned VectorSize =
-    is_cuda ? (ColBlockSize <= 16 ? ColBlockSize : 16) : 1;
-  const unsigned TeamSize = is_cuda ? 256/VectorSize : 1;
+    is_gpu ? (ColBlockSize <= 16 ? ColBlockSize : 16) : 1;
+  const unsigned TeamSize = is_gpu ? 256/VectorSize : 1;
   const unsigned RowBlockSize = 128;
   const unsigned m = A.extent(0);
   const unsigned n = A.extent(1);
@@ -426,6 +443,7 @@ void gramianImpl(const ViewC& C, const ViewA& A,
 #endif
 
 #if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+
   // Gramian implementation for CUDA and double precision using cuBLAS
   template <typename ExecSpace,
             typename CT, typename ... CP,
@@ -537,6 +555,123 @@ void gramianImpl(const ViewC& C, const ViewA& A,
       throw ss.str();
     }
   }
+
+#endif
+
+#if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
+
+  // Gramian implementation for HIP and double precision using rocBLAS
+  template <typename ExecSpace,
+            typename CT, typename ... CP,
+            typename AT, typename ... AP>
+  std::enable_if_t<
+    is_hip_space<ExecSpace>::value &&
+    std::is_same<typename Kokkos::View<AT, AP...>::non_const_value_type, double>::value
+  >
+  gramianImpl(const Kokkos::View<CT,CP...>& C, const Kokkos::View<AT,AP...>& A,
+              const bool full, const UploType uplo)
+  {
+    const int m = A.extent(0);
+    const int n = A.extent(1);
+    const int lda = A.stride_0();
+    const int ldc = C.stride_0();
+    const double alpha = 1.0;
+    const double beta = 0.0;
+    rocblas_status status;
+
+    // We compute C = A'*A.  But since A is LayoutRight, and GEMM/SYRK
+    // assumes layout left we compute this as C = A*A'.  Since SYRK writes
+    // C', uplo == Upper means we call SYRK with 'L', and vice versa.
+
+    static rocblas_handle handle = 0;
+    if (handle == 0) {
+      status = rocblas_create_handle(&handle);
+      if (status != rocblas_status_success) {
+        std::stringstream ss;
+        ss << "Error!  rocblas_create_handle() failed with status "
+           << status;
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+    }
+
+    if (full) {
+      status = rocblas_dgemm(handle, rocblas_operation_none, rocblas_operation_transpose, n, n, m,
+                           &alpha, A.data(), lda, A.data(), lda,
+                           &beta, C.data(), ldc);
+    }
+    else {
+      rocblas_fill roc_uplo =
+        uplo == Upper ? rocblas_fill_lower : rocblas_fill_upper;
+      status = rocblas_dsyrk(handle, roc_uplo, rocblas_operation_none, n, m,
+                           &alpha, A.data(), lda, &beta, C.data(), ldc);
+    }
+
+    if (status != rocblas_status_success) {
+      std::stringstream ss;
+      ss << "Error!  rocblas_dgemm()/rocblas_dsyrk() failed with status "
+         << status;
+      std::cerr << ss.str() << std::endl;
+      throw ss.str();
+    }
+  }
+
+  // Gramian implementation for HIP and single precision using rocBLAS
+  template <typename ExecSpace,
+            typename CT, typename ... CP,
+            typename AT, typename ... AP>
+  typename std::enable_if<
+    is_hip_space<ExecSpace>::value &&
+    std::is_same<typename Kokkos::View<AT, AP...>::non_const_value_type, float>::value
+  >::type
+  gramianImpl(const Kokkos::View<CT,CP...>& C, const Kokkos::View<AT,AP...>& A,
+              const bool full, const UploType uplo)
+  {
+    const int m = A.extent(0);
+    const int n = A.extent(1);
+    const int lda = A.stride_0();
+    const int ldc = C.stride_0();
+    const float alpha = 1.0;
+    const float beta = 0.0;
+    rocblas_status status;
+
+    // We compute C = A'*A.  But since A is LayoutRight, and GEMM/SYRK
+    // assumes layout left we compute this as C = A*A'.  Since SYRK writes
+    // C', uplo == Upper means we call SYRK with 'L', and vice versa.
+
+    static rocblas_handle handle = 0;
+    if (handle == 0) {
+      status = rocblas_create_handle(&handle);
+      if (status != rocblas_status_success) {
+        std::stringstream ss;
+        ss << "Error!  rocblas_create_handle() failed with status "
+           << status;
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+    }
+
+    if (full) {
+      status = rocblas_sgemm(handle, rocblas_operation_none, rocblas_operation_transpose, n, n, m,
+                           &alpha, A.data(), lda, A.data(), lda,
+                           &beta, C.data(), ldc);
+    }
+    else {
+      rocblas_fill roc_uplo =
+        uplo == Upper ? rocblas_fill_lower : rocblas_fill_upper;
+      status = rocblas_ssyrk(handle, roc_uplo, rocblas_operation_none, n, m,
+                           &alpha, A.data(), lda, &beta, C.data(), ldc);
+    }
+
+    if (status != rocblas_status_success) {
+      std::stringstream ss;
+      ss << "Error!  rocblas_sgemm()/rocblas_ssyrk() failed with status "
+         << status;
+      std::cerr << ss.str() << std::endl;
+      throw ss.str();
+    }
+  }
+
 #endif
 
 }
@@ -886,10 +1021,10 @@ void colNorms_kernel(
   const NormT& norms, ttb_real minval)
 {
   // Compute team and vector sizes, depending on the architecture
-  const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+  const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
   const unsigned VectorSize =
-    is_cuda ? (ColBlockSize <= 32 ? ColBlockSize : 32) : 1;
-  const unsigned TeamSize = is_cuda ? 256/VectorSize : 1;
+    is_gpu ? (ColBlockSize <= 32 ? ColBlockSize : 32) : 1;
+  const unsigned TeamSize = is_gpu ? 256/VectorSize : 1;
   const unsigned RowBlockSize = 128;
   const unsigned m = data.extent(0);
   const unsigned n = data.extent(1);
@@ -1067,10 +1202,10 @@ template <typename ExecSpace, unsigned ColBlockSize, typename ViewType>
 void colScale_kernel(const ViewType& data, const Genten::ArrayT<ExecSpace>& v)
 {
   // Compute team and vector sizes, depending on the architecture
-  const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+  const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
   const unsigned VectorSize =
-     is_cuda ? (ColBlockSize <= 32 ? ColBlockSize : 32) : 1;
-  const unsigned TeamSize = is_cuda ? 256/VectorSize : 1;
+     is_gpu ? (ColBlockSize <= 32 ? ColBlockSize : 32) : 1;
+  const unsigned TeamSize = is_gpu ? 256/VectorSize : 1;
   const unsigned RowBlockSize = 128;
   const unsigned m = data.extent(0);
   const unsigned n = data.extent(1);
@@ -1410,6 +1545,7 @@ gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
 }
 
 #if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+
 template <typename ExecSpace,
           typename AT, typename ... AP,
           typename BT, typename ... BP,
@@ -1502,6 +1638,106 @@ gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
   if (status != CUBLAS_STATUS_SUCCESS) {
     std::stringstream ss;
     ss << "Error!  cublasDgemm() failed with status "
+       << status;
+    std::cerr << ss.str() << std::endl;
+    throw ss.str();
+  }
+}
+
+#endif
+
+#if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
+
+template <typename ExecSpace,
+          typename AT, typename ... AP,
+          typename BT, typename ... BP,
+          typename CT, typename ... CP>
+std::enable_if_t<
+  is_hip_space<ExecSpace>::value &&
+  std::is_same<typename Kokkos::View<AT, AP...>::non_const_value_type, double>::value
+>
+gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
+         const Kokkos::View<AT, AP...>& A, const Kokkos::View<BT, BP...>& B,
+         const ttb_real beta, const Kokkos::View<CT, CP...>& C)
+{
+  // gemm() assumes LayoutLeft for A, B, and C, but they are stored
+  // LayoutRight, so we compute C' = alpha * op(B') * op(A') + beta * C'.
+  const rocblas_operation ta = trans_a ? rocblas_operation_transpose : rocblas_operation_none;
+  const rocblas_operation tb = trans_b ? rocblas_operation_transpose : rocblas_operation_none;
+  const ttb_indx m = C.extent(1);
+  const ttb_indx n = C.extent(0);
+  const ttb_indx k = trans_b ? B.extent(1) : B.extent(0);
+  const ttb_indx lda = A.stride(0);
+  const ttb_indx ldb = B.stride(0);
+  const ttb_indx ldc = C.stride(0);
+
+  static rocblas_handle handle = 0;
+  rocblas_status status;
+  if (handle == 0) {
+    status = rocblas_create_handle(&handle);
+    if (status != rocblas_status_success) {
+      std::stringstream ss;
+      ss << "Error!  rocblas_create_handle() failed with status "
+         << status;
+      std::cerr << ss.str() << std::endl;
+      throw ss.str();
+    }
+  }
+
+  status = rocblas_dgemm(
+    handle, tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
+    &beta, C.data(), ldc);
+  if (status != rocblas_status_success) {
+    std::stringstream ss;
+    ss << "Error!  rocblas_dgemm() failed with status "
+       << status;
+    std::cerr << ss.str() << std::endl;
+    throw ss.str();
+  }
+}
+
+template <typename ExecSpace,
+          typename AT, typename ... AP,
+          typename BT, typename ... BP,
+          typename CT, typename ... CP>
+std::enable_if_t<
+  is_hip_space<ExecSpace>::value &&
+  std::is_same<typename Kokkos::View<AT, AP...>::non_const_value_type, float>::value
+>
+gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
+         const Kokkos::View<AT, AP...>& A, const Kokkos::View<BT, BP...>& B,
+         const ttb_real beta, const Kokkos::View<CT, CP...>& C)
+{
+  // gemm() assumes LayoutLeft for A, B, and C, but they are stored
+  // LayoutRight, so we compute C' = alpha * op(B') * op(A') + beta * C'.
+  const rocblas_operation ta = trans_a ? rocblas_operation_transpose : rocblas_operation_none;
+  const rocblas_operation tb = trans_b ? rocblas_operation_transpose : rocblas_operation_none;
+  const ttb_indx m = C.extent(1);
+  const ttb_indx n = C.extent(0);
+  const ttb_indx k = trans_b ? B.extent(1) : B.extent(0);
+  const ttb_indx lda = A.stride(0);
+  const ttb_indx ldb = B.stride(0);
+  const ttb_indx ldc = C.stride(0);
+
+  static rocblas_handle handle = 0;
+  rocblas_status status;
+  if (handle == 0) {
+    status = rocblas_create_handle(&handle);
+    if (status != rocblas_status_success) {
+      std::stringstream ss;
+      ss << "Error!  rocblas_create_handle() failed with status "
+         << status;
+      std::cerr << ss.str() << std::endl;
+      throw ss.str();
+    }
+  }
+
+  status = rocblas_sgemm(
+    handle, tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
+    &beta, C.data(), ldc);
+  if (status != rocblas_status_success) {
+    std::stringstream ss;
+    ss << "Error!  rocblas_sgemm() failed with status "
        << status;
     std::cerr << ss.str() << std::endl;
     throw ss.str();
@@ -2152,6 +2388,321 @@ namespace Genten {
         throw ss.str();
       }
     }
+
+#endif
+
+#if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCSOLVER)
+
+    template <typename AT, typename ... AP,
+              typename BT, typename ... BP>
+    std::enable_if_t<
+      is_hip_space<typename Kokkos::View<AT, AP...>::execution_space>::value &&
+      is_hip_space<typename Kokkos::View<BT, BP...>::execution_space>::value &&
+      std::is_same<
+        typename Kokkos::View<AT, BP...>::non_const_value_type, double
+      >::value,
+      bool
+    >
+    solveTransposeRHSImpl_SPD(const Kokkos::View<AT,AP...>& A,
+                              const Kokkos::View<BT,BP...>& B,
+                              const UploType ul)
+    {
+      const int m = B.extent(0);
+      const int n = B.extent(1);
+      const int lda = A.stride_0();
+      const int ldb = B.stride_0();
+      const rocblas_fill uplo = ul == Upper ? rocblas_fill_lower : rocblas_fill_upper;
+      rocblas_status status;
+
+      assert(A.extent(0) == n);
+      assert(A.extent(1) == n);
+
+      static rocblas_handle handle = 0;
+      if (handle == 0) {
+        status = rocblas_create_handle(&handle);
+        if (status != rocblas_status_success) {
+          std::stringstream ss;
+          ss << "Error!  rocblas_create_handle() failed with status "
+             << status;
+          std::cerr << ss.str() << std::endl;
+          throw ss.str();
+        }
+      }
+
+      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Experimental::HIP> info("info");
+      status = rocsolver_dpotrf(handle, uplo, n, A.data(), lda, info.data());
+      if (status != rocblas_status_success) {
+        std::stringstream ss;
+        ss << "Error!  rocsolver_dpotrf() failed with status "
+           << status;
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+      auto info_host = create_mirror_view(info);
+      deep_copy(info_host, info);
+      if (info_host() < 0) {
+        std::stringstream ss;
+        ss << "Error!  rocsolver_dpotrf() info =  " << info_host();
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+      if (info_host() > 0)
+        return false;  // Matrix is not SPD
+
+      status = rocsolver_dpotrs(handle, uplo, n, m, A.data(), lda,
+                                B.data(), ldb);
+      if (status != rocblas_status_success) {
+        std::stringstream ss;
+        ss << "Error!  rocsolver_dpotrf() failed with status "
+           << status;
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+
+      return true;
+    }
+
+    template <typename AT, typename ... AP,
+              typename BT, typename ... BP>
+    std::enable_if_t<
+      is_hip_space<typename Kokkos::View<AT, AP...>::execution_space>::value &&
+      is_hip_space<typename Kokkos::View<BT, BP...>::execution_space>::value &&
+      std::is_same<
+        typename Kokkos::View<AT, BP...>::non_const_value_type, double
+      >::value
+    >
+    solveTransposeRHSImpl_SID(const Kokkos::View<AT,AP...>& A,
+                              const Kokkos::View<BT,BP...>& B,
+                              const UploType ul)
+    {
+      // rocsolver_dsytrs is not yet implemented in rocSOLVER
+      Genten::error("Symmetric, indefinite solve with HIP is not fully implemented in rocSOLVER.  Instead you must use the option '--full-gram' to enable the non-symmetric solver.");
+    }
+
+    template <typename AT, typename ... AP,
+              typename BT, typename ... BP>
+    std::enable_if_t<
+      is_hip_space<typename Kokkos::View<AT,AP...>::execution_space>::value &&
+      is_hip_space<typename Kokkos::View<BT,BP...>::execution_space>::value &&
+      std::is_same<
+        typename Kokkos::View<AT, BP...>::non_const_value_type, double
+      >::value
+    >
+    solveTransposeRHSImpl(const Kokkos::View<AT,AP...>& A,
+                          const Kokkos::View<BT,BP...>& B,
+                          const UploType uplo,
+                          const AlgParams& algParams)
+    {
+      if (algParams.rank_def_solver)
+        throw std::string("Rank-deficient solver not supported on the GPU!");
+
+      const int m = B.extent(0);
+      const int n = B.extent(1);
+      const int lda = A.stride_0();
+      const int ldb = B.stride_0();
+      rocblas_status status;
+
+      assert(A.extent(0) == n);
+      assert(A.extent(1) == n);
+
+      static rocblas_handle handle = 0;
+      if (handle == 0) {
+        status = rocblas_create_handle(&handle);
+        if (status != rocblas_status_success) {
+          std::stringstream ss;
+          ss << "Error!  rocblas_create_handle() failed with status "
+             << status;
+          std::cerr << ss.str() << std::endl;
+          throw ss.str();
+        }
+      }
+
+      Kokkos::View<int*,Kokkos::LayoutRight,Kokkos::Experimental::HIP> piv("piv",n);
+      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Experimental::HIP> info("info");
+      status = rocsolver_dgetrf(handle, n, n, A.data(), lda,
+                                piv.data(), info.data());
+      if (status != rocblas_status_success) {
+        std::stringstream ss;
+        ss << "Error!  rocsolver_dgetrf() failed with status "
+           << status;
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+      auto info_host = create_mirror_view(info);
+      deep_copy(info_host, info);
+      if (info_host() != 0) {
+        std::stringstream ss;
+        ss << "Error!  rocsolver_dgetrf() info =  " << info_host();
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+
+      status = rocsolver_dgetrs(handle, rocblas_operation_none, n, m, A.data(), lda,
+                                piv.data(), B.data(), ldb);
+      if (status != rocblas_status_success) {
+        std::stringstream ss;
+        ss << "Error!  rocsolver_dgetrs() failed with status "
+           << status;
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+    }
+
+    template <typename AT, typename ... AP,
+              typename BT, typename ... BP>
+    std::enable_if_t<
+      is_hip_space<typename Kokkos::View<AT,AP...>::execution_space>::value &&
+      is_hip_space<typename Kokkos::View<BT,BP...>::execution_space>::value &&
+      std::is_same<
+        typename Kokkos::View<AT, BP...>::non_const_value_type, float
+      >::value,
+      bool
+    >
+    solveTransposeRHSImpl_SPD(const Kokkos::View<AT,AP...>& A,
+                              const Kokkos::View<BT,BP...>& B,
+                              const UploType ul)
+    {
+      const int m = B.extent(0);
+      const int n = B.extent(1);
+      const int lda = A.stride_0();
+      const int ldb = B.stride_0();
+      const rocblas_fill uplo = ul == Upper ? rocblas_fill_lower : rocblas_fill_upper;
+      rocblas_status status;
+
+      assert(A.extent(0) == n);
+      assert(A.extent(1) == n);
+
+      static rocblas_handle handle = 0;
+      if (handle == 0) {
+        status = rocblas_create_handle(&handle);
+        if (status != rocblas_status_success) {
+          std::stringstream ss;
+          ss << "Error!  rocblas_create_handle() failed with status "
+             << status;
+          std::cerr << ss.str() << std::endl;
+          throw ss.str();
+        }
+      }
+
+      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Experimental::HIP> info("info");
+      status = rocsolver_spotrf(handle, uplo, n, A.data(), lda, info.data());
+      if (status != rocblas_status_success) {
+        std::stringstream ss;
+        ss << "Error!  rocsolver_spotrf() failed with status "
+           << status;
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+      auto info_host = create_mirror_view(info);
+      deep_copy(info_host, info);
+      if (info_host() < 0) {
+        std::stringstream ss;
+        ss << "Error!  rocsolver_spotrf() info =  " << info_host();
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+      if (info_host() > 0)
+        return false;  // Matrix is not SPD
+
+      status = rocsolver_spotrs(handle, uplo, n, m, A.data(), lda,
+                                B.data(), ldb);
+      if (status != rocblas_status_success) {
+        std::stringstream ss;
+        ss << "Error!  rocsolver_spotrs() failed with status "
+           << status;
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+
+      return true;
+    }
+
+    template <typename AT, typename ... AP,
+              typename BT, typename ... BP>
+    std::enable_if_t<
+      is_hip_space<typename Kokkos::View<AT,AP...>::execution_space>::value &&
+      is_hip_space<typename Kokkos::View<BT,BP...>::execution_space>::value &&
+      std::is_same<
+        typename Kokkos::View<AT, BP...>::non_const_value_type, float
+      >::value
+    >
+    solveTransposeRHSImpl_SID(const Kokkos::View<AT,AP...>& A,
+                              const Kokkos::View<BT,BP...>& B,
+                              const UploType ul)
+    {
+      // rocsolver_ssytrf is not yet implemented in rocSOLVER
+      Genten::error("Symmetric, indefinite solve with HIP is not fully implemented in rocSOLVER.  Instead you must use the option '--full-gram' to enable the non-symmetric solver.");
+    }
+
+    template <typename AT, typename ... AP,
+              typename BT, typename ... BP>
+    std::enable_if_t<
+      is_hip_space<typename Kokkos::View<AT,AP...>::execution_space>::value &&
+      is_hip_space<typename Kokkos::View<BT,BP...>::execution_space>::value &&
+      std::is_same<
+        typename Kokkos::View<AT,BP...>::non_const_value_type, float
+      >::value
+    >
+    solveTransposeRHSImpl(const Kokkos::View<AT,AP...>& A,
+                          const Kokkos::View<BT,BP...>& B,
+                          const UploType uplo,
+                          const AlgParams& algParams)
+    {
+      if (algParams.rank_def_solver)
+        throw std::string("Rank-deficient solver not supported on the GPU!");
+
+      const int m = B.extent(0);
+      const int n = B.extent(1);
+      const int lda = A.stride_0();
+      const int ldb = B.stride_0();
+      rocblas_status status;
+
+      assert(A.extent(0) == n);
+      assert(A.extent(1) == n);
+
+      static rocblas_handle handle = 0;
+      if (handle == 0) {
+        status = rocblas_create_handle(&handle);
+        if (status != rocblas_status_success) {
+          std::stringstream ss;
+          ss << "Error!  rocblas_create_handle() failed with status "
+             << status;
+          std::cerr << ss.str() << std::endl;
+          throw ss.str();
+        }
+      }
+
+      Kokkos::View<int*,Kokkos::LayoutRight,Kokkos::Experimental::HIP> piv("piv",n);
+      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Experimental::HIP> info("info");
+      status = rocsolver_sgetrf(handle, n, n, A.data(), lda,
+                                piv.data(), info.data());
+      if (status != rocblas_status_success) {
+        std::stringstream ss;
+        ss << "Error!  rocsolver_sgetrf() failed with status "
+           << status;
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+      auto info_host = create_mirror_view(info);
+      deep_copy(info_host, info);
+      if (info_host() != 0) {
+        std::stringstream ss;
+        ss << "Error!  rocsolver_sgetrf() info =  " << info_host();
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+
+      status = rocsolver_sgetrs(handle, rocblas_operation_none, n, m, A.data(), lda,
+                                piv.data(), B.data(), ldb);
+      if (status != rocblas_status_success) {
+        std::stringstream ss;
+        ss << "Error!  rocsolver_sgetrs() failed with status "
+           << status;
+        std::cerr << ss.str() << std::endl;
+        throw ss.str();
+      }
+    }
+
 #endif
 
   }
@@ -2374,10 +2925,10 @@ ttb_real mat_innerprod_kernel(const MatViewType& x, const MatViewType& y,
                               const WeightViewType& w)
 {
   // Compute team and vector sizes, depending on the architecture
-  const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+  const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
   const unsigned VectorSize =
-    is_cuda ? (ColBlockSize <= 32 ? ColBlockSize : 32) : 1;
-  const unsigned TeamSize = is_cuda ? 256/VectorSize : 1;
+    is_gpu ? (ColBlockSize <= 32 ? ColBlockSize : 32) : 1;
+  const unsigned TeamSize = is_gpu ? 256/VectorSize : 1;
   const unsigned RowBlockSize = 128;
   const unsigned m = x.extent(0);
   const unsigned n = x.extent(1);

@@ -87,6 +87,21 @@ namespace Genten {
     static typename ExecSpace::size_type eval() { return 0; }
   };
 
+  // A helper trait to determine whether an execution space is HIP or not,
+  // and his always defined, regardless if HIP is enabled.
+  template <typename ExecSpace>
+  struct is_hip_space {
+    static constexpr bool value = false;
+  };
+
+  // A helper trait to determine whether an execution space is GPU or not,
+  // and his always defined, regardless if any GPU is enabled.
+  template <typename ExecSpace>
+  struct is_gpu_space {
+    static constexpr bool value =
+      is_cuda_space<ExecSpace>::value || is_hip_space<ExecSpace>::value;
+  };
+
   template <typename ExecSpace>
   struct is_host_space {
     static constexpr bool value =
@@ -128,8 +143,18 @@ namespace Genten {
       return Kokkos::Cuda::device_arch();
     }
   };
+
+  using Kokkos_GPU_Space = Kokkos::Cuda;
 #endif
 
+#if defined (KOKKOS_ENABLE_HIP)
+  template <>
+  struct is_hip_space<Kokkos::Experimental::HIP> {
+    static constexpr bool value = true;
+  };
+
+  using Kokkos_GPU_Space = Kokkos::Experimental::HIP;
+#endif
 
   // Set of traits and functions for inquiring about the execution space
   template <typename ExecSpace>
@@ -141,6 +166,8 @@ namespace Genten {
     static constexpr bool is_openmp = is_openmp_space<exec_space>::value;
     static constexpr bool is_threads = is_threads_space<exec_space>::value;
     static constexpr bool is_cuda = is_cuda_space<exec_space>::value;
+    static constexpr bool is_hip = is_hip_space<exec_space>::value;
+    static constexpr bool is_gpu = is_cuda || is_hip;
 
     static std::string name() {
       if (is_serial)
@@ -151,6 +178,8 @@ namespace Genten {
         return "threads";
       else if (is_cuda)
         return "cuda";
+      else if (is_hip)
+        return "hip";
       return "";
     }
 
@@ -164,6 +193,17 @@ namespace Genten {
           prop.name + ")";
       }
 #endif
+
+#ifdef KOKKOS_ENABLE_HIP
+      if (is_hip) {
+        auto prop = Kokkos::Experimental::HIP::hip_device_prop();
+        str +=
+          " (device " +
+          std::to_string(Kokkos::Experimental::HIP{}.hip_device()) +
+          ", " + prop.name + ")";
+      }
+#endif
+
       if (is_openmp || is_threads)
         str += " (" + std::to_string(concurrency()) + " threads)";
 

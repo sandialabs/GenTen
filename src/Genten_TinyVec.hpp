@@ -54,6 +54,11 @@
 #endif
 #endif
 
+#if defined (KOKKOS_ENABLE_HIP)
+#include "HIP/Kokkos_HIP_Team.hpp"
+#define KOKKOS_DEFAULTED_DEVICE_FUNCTION __device__ inline
+#endif
+
 namespace Genten {
 
   namespace Impl {
@@ -67,11 +72,20 @@ namespace Genten {
     }
 #endif
 
+#ifdef __HIP_DEVICE_COMPILE__
+    // Reduce y across the wavefront and broadcast to all lanes
+    template <typename T, typename Ordinal>
+     __device__ inline T wavefrontReduce(T y, const Ordinal wavefront_size) {
+      Kokkos::Impl::HIPTeamMember::vector_reduce(Kokkos::Sum<T>(y));
+      return y;
+    }
+#endif
+
   }
 
   // A compile-time sized polymorphic array used in, e.g., MTTKRP
   template <typename ExecSpace, typename Scalar, typename Ordinal,
-            unsigned Length, unsigned Size, unsigned WarpDim,
+            unsigned Length, unsigned Size, unsigned WarpOrWavefrontDim,
             typename Enabled = void>
   class TinyVec {
   public:
@@ -80,8 +94,8 @@ namespace Genten {
     typedef Scalar scalar_type;
     typedef Ordinal ordinal_type;
 
-    static const ordinal_type len = Length / WarpDim;
-    Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpDim> sz;
+    static const ordinal_type len = Length / WarpOrWavefrontDim;
+    Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpOrWavefrontDim> sz;
     alignas(64) scalar_type v[len];
 
     KOKKOS_DEFAULTED_FUNCTION
@@ -89,8 +103,8 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     TinyVec(const ordinal_type size, const scalar_type x) :
-#ifdef __CUDA_ARCH__
-      sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
+      sz( (size+WarpOrWavefrontDim-1-threadIdx.x) / WarpOrWavefrontDim )
 #else
       sz(size)
 #endif
@@ -100,8 +114,8 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     TinyVec(const ordinal_type size, const scalar_type* x) :
-#ifdef __CUDA_ARCH__
-      sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
+      sz( (size+WarpOrWavefrontDim-1-threadIdx.x) / WarpOrWavefrontDim )
 #else
       sz(size)
 #endif
@@ -154,9 +168,9 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     void load(const scalar_type* x) {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
       for (ordinal_type i=0; i<sz.value; ++i)
-        v[i] = x[i*WarpDim+threadIdx.x];
+        v[i] = x[i*WarpOrWavefrontDim+threadIdx.x];
 #else
       for (ordinal_type i=0; i<sz.value; ++i)
         v[i] = x[i];
@@ -165,9 +179,9 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     void store(scalar_type* x) const {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
       for (ordinal_type i=0; i<sz.value; ++i)
-        x[i*WarpDim+threadIdx.x] = v[i];
+        x[i*WarpOrWavefrontDim+threadIdx.x] = v[i];
 #else
       for (ordinal_type i=0; i<sz.value; ++i)
         x[i] = v[i];
@@ -176,9 +190,9 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     void store_plus(scalar_type* x) const {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
       for (ordinal_type i=0; i<sz.value; ++i)
-        x[i*WarpDim+threadIdx.x] += v[i];
+        x[i*WarpOrWavefrontDim+threadIdx.x] += v[i];
 #else
       for (ordinal_type i=0; i<sz.value; ++i)
         x[i] += v[i];
@@ -187,9 +201,9 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     void atomic_store_plus(volatile scalar_type* x) const {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
       for (ordinal_type i=0; i<sz.value; ++i)
-        Kokkos::atomic_add(x+i*WarpDim+threadIdx.x, v[i]);
+        Kokkos::atomic_add(x+i*WarpOrWavefrontDim+threadIdx.x, v[i]);
 #else
       for (ordinal_type i=0; i<sz.value; ++i)
         Kokkos::atomic_add(x+i, v[i]);
@@ -199,9 +213,9 @@ namespace Genten {
     KOKKOS_INLINE_FUNCTION
     TinyVec atomic_exchange(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
       for (ordinal_type i=0; i<sz.value; ++i)
-        c.v[i] = Kokkos::atomic_exchange(x+i*WarpDim+threadIdx.x, v[i]);
+        c.v[i] = Kokkos::atomic_exchange(x+i*WarpOrWavefrontDim+threadIdx.x, v[i]);
 #else
       for (ordinal_type i=0; i<sz.value; ++i)
         c.v[i] = Kokkos::atomic_exchange(x+i, v[i]);
@@ -212,9 +226,9 @@ namespace Genten {
     KOKKOS_INLINE_FUNCTION
     TinyVec atomic_fetch_max(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
       for (ordinal_type i=0; i<sz.value; ++i)
-        c.v[i] = Kokkos::atomic_fetch_max(x+i*WarpDim+threadIdx.x, v[i]);
+        c.v[i] = Kokkos::atomic_fetch_max(x+i*WarpOrWavefrontDim+threadIdx.x, v[i]);
 #else
       for (ordinal_type i=0; i<sz.value; ++i)
         c.v[i] = Kokkos::atomic_fetch_max(x+i, v[i]);
@@ -225,9 +239,9 @@ namespace Genten {
     KOKKOS_INLINE_FUNCTION
     TinyVec atomic_fetch_min(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
       for (ordinal_type i=0; i<sz.value; ++i)
-        c.v[i] = Kokkos::atomic_fetch_min(x+i*WarpDim+threadIdx.x, v[i]);
+        c.v[i] = Kokkos::atomic_fetch_min(x+i*WarpOrWavefrontDim+threadIdx.x, v[i]);
 #else
       for (ordinal_type i=0; i<sz.value; ++i)
         c.v[i] = Kokkos::atomic_fetch_min(x+i, v[i]);
@@ -239,9 +253,9 @@ namespace Genten {
     KOKKOS_INLINE_FUNCTION
     TinyVec atomic_oper_fetch(const Oper& op, volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
       for (ordinal_type i=0; i<sz.value; ++i)
-        c.v[i] = Genten::atomic_oper_fetch(op, x+i*WarpDim+threadIdx.x, v[i]);
+        c.v[i] = Genten::atomic_oper_fetch(op, x+i*WarpOrWavefrontDim+threadIdx.x, v[i]);
 #else
       for (ordinal_type i=0; i<sz.value; ++i)
         c.v[i] = Genten::atomic_oper_fetch(op, x+i, v[i]);
@@ -315,7 +329,7 @@ namespace Genten {
     template <unsigned S>
     KOKKOS_INLINE_FUNCTION
     TinyVec& operator+=(
-      const TinyVec<ExecSpace,Scalar,Ordinal,Length,S,WarpDim,Enabled>& x) {
+      const TinyVec<ExecSpace,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,Enabled>& x) {
       for (ordinal_type i=0; i<x.sz.value; ++i)
         v[i] += x.v[i];
       return *this;
@@ -324,7 +338,7 @@ namespace Genten {
     template <unsigned S>
     KOKKOS_INLINE_FUNCTION
     TinyVec& operator-=(
-      const TinyVec<ExecSpace,Scalar,Ordinal,Length,S,WarpDim,Enabled>& x) {
+      const TinyVec<ExecSpace,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,Enabled>& x) {
       for (ordinal_type i=0; i<x.sz.value; ++i)
         v[i] -= x.v[i];
       return *this;
@@ -333,7 +347,7 @@ namespace Genten {
     template <unsigned S>
     KOKKOS_INLINE_FUNCTION
     TinyVec& operator*=(
-      const TinyVec<ExecSpace,Scalar,Ordinal,Length,S,WarpDim,Enabled>& x) {
+      const TinyVec<ExecSpace,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,Enabled>& x) {
       for (ordinal_type i=0; i<x.sz.value; ++i)
         v[i] *= x.v[i];
       return *this;
@@ -342,7 +356,7 @@ namespace Genten {
     template <unsigned S>
     KOKKOS_INLINE_FUNCTION
     TinyVec& operator/=(
-      const TinyVec<ExecSpace,Scalar,Ordinal,Length,S,WarpDim,Enabled>& x) {
+      const TinyVec<ExecSpace,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,Enabled>& x) {
       for (ordinal_type i=0; i<x.sz.value; ++i)
         v[i] /= x.v[i];
       return *this;
@@ -350,9 +364,9 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     TinyVec& operator+=(const scalar_type* x) {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
       for (ordinal_type i=0; i<sz.value; ++i)
-        v[i] += x[i*WarpDim+threadIdx.x];
+        v[i] += x[i*WarpOrWavefrontDim+threadIdx.x];
 #else
       for (ordinal_type i=0; i<sz.value; ++i)
         v[i] += x[i];
@@ -362,9 +376,9 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     TinyVec& operator-=(const scalar_type* x) {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
       for (ordinal_type i=0; i<sz.value; ++i)
-        v[i] -= x[i*WarpDim+threadIdx.x];
+        v[i] -= x[i*WarpOrWavefrontDim+threadIdx.x];
 #else
       for (ordinal_type i=0; i<sz.value; ++i)
         v[i] -= x[i];
@@ -374,9 +388,9 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     TinyVec& operator*=(const scalar_type* x) {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
       for (ordinal_type i=0; i<sz.value; ++i)
-        v[i] *= x[i*WarpDim+threadIdx.x];
+        v[i] *= x[i*WarpOrWavefrontDim+threadIdx.x];
 #else
       for (ordinal_type i=0; i<sz.value; ++i)
         v[i] *= x[i];
@@ -386,9 +400,9 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     TinyVec& operator/=(const scalar_type* x) {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
       for (ordinal_type i=0; i<sz.value; ++i)
-        v[i] /= x[i*WarpDim+threadIdx.x];
+        v[i] /= x[i*WarpOrWavefrontDim+threadIdx.x];
 #else
       for (ordinal_type i=0; i<sz.value; ++i)
         v[i] /= x[i];
@@ -401,8 +415,10 @@ namespace Genten {
       scalar_type s = 0.0;
       for (ordinal_type i=0; i<sz.value; ++i)
         s += v[i];
-#ifdef __CUDA_ARCH__
-      s = Impl::warpReduce(s, WarpDim);
+#if defined(__CUDA_ARCH__)
+      s = Impl::warpReduce(s, WarpOrWavefrontDim);
+#elif defined(__HIP_DEVICE_COMPILE__)
+      s = Impl::wavefrontReduce(s, WarpOrWavefrontDim);
 #endif
       return s;
     }
@@ -416,24 +432,25 @@ namespace Genten {
 
   };
 
-#if defined(KOKKOS_ENABLE_CUDA) && defined(__CUDA_ARCH__)
+#if (defined(KOKKOS_ENABLE_CUDA) && defined(__CUDA_ARCH__)) || \
+    (defined(KOKKOS_ENABLE_HIP) && defined(__HIP_DEVICE_COMPILE__))
 
-  // Specialization for Cuda where Length / WarpDim == 1.  Store the vector
-  // components in register space since Cuda may store them in global memory
+  // Specialization for Cuda or HIP where Length / WarpOrWavefrontDim == 1.  Store the vector
+  // components in register space since Cuda or HIP may store them in global memory
   // (especially in the dynamically sized case).
   template <typename Scalar, typename Ordinal,
-            unsigned Length, unsigned Size, unsigned WarpDim>
-  class TinyVec< Kokkos::Cuda,Scalar,Ordinal,Length,Size,WarpDim,
-                 typename std::enable_if<Length/WarpDim == 1>::type >
+            unsigned Length, unsigned Size, unsigned WarpOrWavefrontDim>
+  class TinyVec< Kokkos_GPU_Space,Scalar,Ordinal,Length,Size,WarpOrWavefrontDim,
+                 typename std::enable_if<Length/WarpOrWavefrontDim == 1>::type >
   {
   public:
 
-    typedef Kokkos::Cuda exec_space;
+    typedef Kokkos_GPU_Space exec_space;
     typedef Scalar scalar_type;
     typedef Ordinal ordinal_type;
 
-    static const ordinal_type len = 1; // = Length/WarpDim
-    Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpDim> sz;
+    static const ordinal_type len = 1; // = Length/WarpOrWavefrontDim
+    Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpOrWavefrontDim> sz;
     scalar_type v0;
 
     KOKKOS_DEFAULTED_DEVICE_FUNCTION
@@ -441,14 +458,14 @@ namespace Genten {
 
     __device__ inline
     TinyVec(const ordinal_type size, const scalar_type x)
-      : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
+      : sz( (size+WarpOrWavefrontDim-1-threadIdx.x) / WarpOrWavefrontDim )
     {
       broadcast(x);
     }
 
     __device__ inline
     TinyVec(const ordinal_type size, const scalar_type* x)
-      : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
+      : sz( (size+WarpOrWavefrontDim-1-threadIdx.x) / WarpOrWavefrontDim )
     {
       load(x);
     }
@@ -593,7 +610,7 @@ namespace Genten {
     template <unsigned S>
     __device__ inline
     TinyVec& operator+=(
-      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,void>& x) {
       if (x.sz.value > 0) v0 += x.v0;
       return *this;
     }
@@ -601,7 +618,7 @@ namespace Genten {
     template <unsigned S>
     __device__ inline
     TinyVec& operator-=(
-      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,void>& x) {
       if (x.sz.value > 0) v0 -= x.v0;
       return *this;
     }
@@ -609,7 +626,7 @@ namespace Genten {
     template <unsigned S>
     __device__ inline
     TinyVec& operator*=(
-      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,void>& x) {
       if (x.sz.value > 0) v0 *= x.v0;
       return *this;
     }
@@ -617,7 +634,7 @@ namespace Genten {
     template <unsigned S>
     __device__ inline
     TinyVec& operator/=(
-      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,void>& x) {
       if (x.sz.value > 0) v0 /= x.v0;
       return *this;
     }
@@ -650,28 +667,32 @@ namespace Genten {
     scalar_type sum() const {
       scalar_type s = 0.0;
       if (sz.value > 0) s += v0;
-      s = Impl::warpReduce(s, WarpDim);
+#if defined(__CUDA_ARCH__)
+      s = Impl::warpReduce(s, WarpOrWavefrontDim);
+#elif defined(__HIP_DEVICE_COMPILE__)
+      s = Impl::wavefrontReduce(s, WarpOrWavefrontDim);
+#endif
       return s;
     }
 
   };
 
-  // Specialization for Cuda where Length / WarpDim == 2.  Store the vector
-  // components in register space since Cuda may store them in global memory
+  // Specialization for Cuda or HIP where Length / WarpOrWavefrontDim == 2.  Store the vector
+  // components in register space since Cuda or HIP may store them in global memory
   // (especially in the dynamically sized case).
   template <typename Scalar, typename Ordinal,
-            unsigned Length, unsigned Size, unsigned WarpDim>
-  class TinyVec< Kokkos::Cuda,Scalar,Ordinal,Length,Size,WarpDim,
-                 typename std::enable_if<Length/WarpDim == 2>::type >
+            unsigned Length, unsigned Size, unsigned WarpOrWavefrontDim>
+  class TinyVec< Kokkos_GPU_Space,Scalar,Ordinal,Length,Size,WarpOrWavefrontDim,
+                 typename std::enable_if<Length/WarpOrWavefrontDim == 2>::type >
   {
   public:
 
-    typedef Kokkos::Cuda exec_space;
+    typedef Kokkos_GPU_Space exec_space;
     typedef Scalar scalar_type;
     typedef Ordinal ordinal_type;
 
-    static const ordinal_type len = 2;  // = Length/WarpDim
-    Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpDim> sz;
+    static const ordinal_type len = 2;  // = Length/WarpOrWavefrontDim
+    Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpOrWavefrontDim> sz;
     scalar_type v0, v1;
 
     KOKKOS_DEFAULTED_DEVICE_FUNCTION
@@ -679,14 +700,14 @@ namespace Genten {
 
     __device__ inline
     TinyVec(const ordinal_type size, const scalar_type x)
-      : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
+      : sz( (size+WarpOrWavefrontDim-1-threadIdx.x) / WarpOrWavefrontDim )
     {
       broadcast(x);
     }
 
     __device__ inline
     TinyVec(const ordinal_type size, const scalar_type* x)
-      : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
+      : sz( (size+WarpOrWavefrontDim-1-threadIdx.x) / WarpOrWavefrontDim )
     {
       load(x);
     }
@@ -728,25 +749,25 @@ namespace Genten {
     __device__ inline
     void load(const scalar_type* x) {
       if (sz.value > 0) v0 = x[threadIdx.x];
-      if (sz.value > 1) v1 = x[WarpDim + threadIdx.x];
+      if (sz.value > 1) v1 = x[WarpOrWavefrontDim + threadIdx.x];
     }
 
     __device__ inline
     void store(scalar_type* x) const {
       if (sz.value > 0) x[threadIdx.x] = v0;
-      if (sz.value > 1) x[WarpDim + threadIdx.x] = v1;
+      if (sz.value > 1) x[WarpOrWavefrontDim + threadIdx.x] = v1;
     }
 
     __device__ inline
     void store_plus(scalar_type* x) const {
       if (sz.value > 0) x[threadIdx.x] += v0;
-      if (sz.value > 1) x[WarpDim + threadIdx.x] += v1;
+      if (sz.value > 1) x[WarpOrWavefrontDim + threadIdx.x] += v1;
     }
 
     __device__ inline
     void atomic_store_plus(volatile scalar_type* x) const {
       if (sz.value > 0) Kokkos::atomic_add(x+threadIdx.x, v0);
-      if (sz.value > 1) Kokkos::atomic_add(x+WarpDim+threadIdx.x, v1);
+      if (sz.value > 1) Kokkos::atomic_add(x+WarpOrWavefrontDim+threadIdx.x, v1);
     }
 
     __device__ inline
@@ -755,7 +776,7 @@ namespace Genten {
       if (sz.value > 0)
         c.v0 = Kokkos::atomic_exchange(x+threadIdx.x, v0);
       if (sz.value > 1)
-        c.v1 = Kokkos::atomic_exchange(x+WarpDim+threadIdx.x, v1);
+        c.v1 = Kokkos::atomic_exchange(x+WarpOrWavefrontDim+threadIdx.x, v1);
       return c;
     }
 
@@ -765,7 +786,7 @@ namespace Genten {
       if (sz.value > 0)
         c.v0 = Kokkos::atomic_fetch_max(x+threadIdx.x, v0);
       if (sz.value > 1)
-        c.v1 = Kokkos::atomic_fetch_max(x+WarpDim+threadIdx.x, v1);
+        c.v1 = Kokkos::atomic_fetch_max(x+WarpOrWavefrontDim+threadIdx.x, v1);
       return c;
     }
 
@@ -775,7 +796,7 @@ namespace Genten {
       if (sz.value > 0)
         c.v0 = Kokkos::atomic_fetch_min(x+threadIdx.x, v0);
       if (sz.value > 1)
-        c.v1 = Kokkos::atomic_fetch_min(x+WarpDim+threadIdx.x, v1);
+        c.v1 = Kokkos::atomic_fetch_min(x+WarpOrWavefrontDim+threadIdx.x, v1);
       return c;
     }
 
@@ -786,7 +807,7 @@ namespace Genten {
       if (sz.value > 0)
         c.v0 = Genten::atomic_oper_fetch(op, x+threadIdx.x, v0);
       if (sz.value > 1)
-        c.v1 = Genten::atomic_oper_fetch(op, x+WarpDim+threadIdx.x, v1);
+        c.v1 = Genten::atomic_oper_fetch(op, x+WarpOrWavefrontDim+threadIdx.x, v1);
       return c;
     }
 
@@ -856,7 +877,7 @@ namespace Genten {
     template <unsigned S>
     __device__ inline
     TinyVec& operator+=(
-      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,void>& x) {
       if (x.sz.value > 0) v0 += x.v0;
       if (x.sz.value > 1) v1 += x.v1;
       return *this;
@@ -865,7 +886,7 @@ namespace Genten {
     template <unsigned S>
     __device__ inline
     TinyVec& operator-=(
-      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,void>& x) {
       if (x.sz.value > 0) v0 -= x.v0;
       if (x.sz.value > 1) v1 -= x.v1;
       return *this;
@@ -874,7 +895,7 @@ namespace Genten {
     template <unsigned S>
     __device__ inline
     TinyVec& operator*=(
-      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,void>& x) {
       if (x.sz.value > 0) v0 *= x.v0;
       if (x.sz.value > 1) v1 *= x.v1;
       return *this;
@@ -883,7 +904,7 @@ namespace Genten {
     template <unsigned S>
     __device__ inline
     TinyVec& operator/=(
-      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,void>& x) {
       if (x.sz.value > 0) v0 /= x.v0;
       if (x.sz.value > 1) v1 /= x.v1;
       return *this;
@@ -892,28 +913,28 @@ namespace Genten {
     __device__ inline
     TinyVec& operator+=(const scalar_type* x) {
       if (sz.value > 0) v0 += x[threadIdx.x];
-      if (sz.value > 1) v1 += x[WarpDim + threadIdx.x];
+      if (sz.value > 1) v1 += x[WarpOrWavefrontDim + threadIdx.x];
       return *this;
     }
 
     __device__ inline
     TinyVec& operator-=(const scalar_type* x) {
       if (sz.value > 0) v0 -= x[threadIdx.x];
-      if (sz.value > 1) v1 -= x[WarpDim + threadIdx.x];
+      if (sz.value > 1) v1 -= x[WarpOrWavefrontDim + threadIdx.x];
       return *this;
     }
 
    __device__ inline
     TinyVec& operator*=(const scalar_type* x) {
       if (sz.value > 0) v0 *= x[threadIdx.x];
-      if (sz.value > 1) v1 *= x[WarpDim + threadIdx.x];
+      if (sz.value > 1) v1 *= x[WarpOrWavefrontDim + threadIdx.x];
       return *this;
     }
 
     __device__ inline
     TinyVec& operator/=(const scalar_type* x) {
       if (sz.value > 0) v0 /= x[threadIdx.x];
-      if (sz.value > 1) v1 /= x[WarpDim + threadIdx.x];
+      if (sz.value > 1) v1 /= x[WarpOrWavefrontDim + threadIdx.x];
       return *this;
     }
 
@@ -922,28 +943,32 @@ namespace Genten {
       scalar_type s = 0.0;
       if (sz.value > 0) s += v0;
       if (sz.value > 1) s += v1;
-      s = Impl::warpReduce(s, WarpDim);
+#if defined(__CUDA_ARCH__)
+      s = Impl::warpReduce(s, WarpOrWavefrontDim);
+#elif defined(__HIP_DEVICE_COMPILE__)
+      s = Impl::wavefrontReduce(s, WarpOrWavefrontDim);
+#endif
       return s;
     }
 
   };
 
-  // Specialization for Cuda where Length / WarpDim == 3.  Store the vector
-  // components in register space since Cuda may store them in global memory
+  // Specialization for Cuda or HIP where Length / WarpOrWavefrontDim == 3.  Store the vector
+  // components in register space since Cuda or HIP may store them in global memory
   // (especially in the dynamically sized case).
   template <typename Scalar, typename Ordinal,
-            unsigned Length, unsigned Size, unsigned WarpDim>
-  class TinyVec< Kokkos::Cuda,Scalar,Ordinal,Length,Size,WarpDim,
-                 typename std::enable_if<Length/WarpDim == 3>::type >
+            unsigned Length, unsigned Size, unsigned WarpOrWavefrontDim>
+  class TinyVec< Kokkos_GPU_Space,Scalar,Ordinal,Length,Size,WarpOrWavefrontDim,
+                 typename std::enable_if<Length/WarpOrWavefrontDim == 3>::type >
   {
   public:
 
-    typedef Kokkos::Cuda exec_space;
+    typedef Kokkos_GPU_Space exec_space;
     typedef Scalar scalar_type;
     typedef Ordinal ordinal_type;
 
-    static const ordinal_type len = 3;  // = Length/WarpDim
-    Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpDim> sz;
+    static const ordinal_type len = 3;  // = Length/WarpOrWavefrontDim
+    Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpOrWavefrontDim> sz;
     scalar_type v0, v1, v2;
 
     KOKKOS_DEFAULTED_DEVICE_FUNCTION
@@ -951,14 +976,14 @@ namespace Genten {
 
     __device__ inline
     TinyVec(const ordinal_type size, const scalar_type x)
-      : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
+      : sz( (size+WarpOrWavefrontDim-1-threadIdx.x) / WarpOrWavefrontDim )
     {
       broadcast(x);
     }
 
     __device__ inline
     TinyVec(const ordinal_type size, const scalar_type* x)
-      : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
+      : sz( (size+WarpOrWavefrontDim-1-threadIdx.x) / WarpOrWavefrontDim )
     {
       load(x);
     }
@@ -1000,29 +1025,29 @@ namespace Genten {
     __device__ inline
     void load(const scalar_type* x) {
       if (sz.value > 0) v0 = x[threadIdx.x];
-      if (sz.value > 1) v1 = x[WarpDim + threadIdx.x];
-      if (sz.value > 2) v2 = x[2*WarpDim + threadIdx.x];
+      if (sz.value > 1) v1 = x[WarpOrWavefrontDim + threadIdx.x];
+      if (sz.value > 2) v2 = x[2*WarpOrWavefrontDim + threadIdx.x];
     }
 
     __device__ inline
     void store(scalar_type* x) const {
       if (sz.value > 0) x[threadIdx.x] = v0;
-      if (sz.value > 1) x[WarpDim + threadIdx.x] = v1;
-      if (sz.value > 2) x[2*WarpDim + threadIdx.x] = v2;
+      if (sz.value > 1) x[WarpOrWavefrontDim + threadIdx.x] = v1;
+      if (sz.value > 2) x[2*WarpOrWavefrontDim + threadIdx.x] = v2;
     }
 
     __device__ inline
     void store_plus(scalar_type* x) const {
       if (sz.value > 0) x[threadIdx.x] += v0;
-      if (sz.value > 1) x[WarpDim + threadIdx.x] += v1;
-      if (sz.value > 2) x[2*WarpDim + threadIdx.x] += v2;
+      if (sz.value > 1) x[WarpOrWavefrontDim + threadIdx.x] += v1;
+      if (sz.value > 2) x[2*WarpOrWavefrontDim + threadIdx.x] += v2;
     }
 
     __device__ inline
     void atomic_store_plus(volatile scalar_type* x) const {
       if (sz.value > 0) Kokkos::atomic_add(x+threadIdx.x, v0);
-      if (sz.value > 1) Kokkos::atomic_add(x+WarpDim+threadIdx.x, v1);
-      if (sz.value > 2) Kokkos::atomic_add(x+2*WarpDim+threadIdx.x, v2);
+      if (sz.value > 1) Kokkos::atomic_add(x+WarpOrWavefrontDim+threadIdx.x, v1);
+      if (sz.value > 2) Kokkos::atomic_add(x+2*WarpOrWavefrontDim+threadIdx.x, v2);
     }
 
     __device__ inline
@@ -1031,9 +1056,9 @@ namespace Genten {
       if (sz.value > 0)
         c.v0 = Kokkos::atomic_exchange(x+threadIdx.x, v0);
       if (sz.value > 1)
-        c.v1 = Kokkos::atomic_exchange(x+WarpDim+threadIdx.x, v1);
+        c.v1 = Kokkos::atomic_exchange(x+WarpOrWavefrontDim+threadIdx.x, v1);
       if (sz.value > 2)
-        c.v2 = Kokkos::atomic_exchange(x+2*WarpDim+threadIdx.x, v2);
+        c.v2 = Kokkos::atomic_exchange(x+2*WarpOrWavefrontDim+threadIdx.x, v2);
       return c;
     }
 
@@ -1043,9 +1068,9 @@ namespace Genten {
       if (sz.value > 0)
         c.v0 = Kokkos::atomic_fetch_max(x+threadIdx.x, v0);
       if (sz.value > 1)
-        c.v1 = Kokkos::atomic_fetch_max(x+WarpDim+threadIdx.x, v1);
+        c.v1 = Kokkos::atomic_fetch_max(x+WarpOrWavefrontDim+threadIdx.x, v1);
       if (sz.value > 2)
-        c.v2 = Kokkos::atomic_fetch_max(x+2*WarpDim+threadIdx.x, v2);
+        c.v2 = Kokkos::atomic_fetch_max(x+2*WarpOrWavefrontDim+threadIdx.x, v2);
       return c;
     }
 
@@ -1055,9 +1080,9 @@ namespace Genten {
       if (sz.value > 0)
         c.v0 = Kokkos::atomic_fetch_min(x+threadIdx.x, v0);
       if (sz.value > 1)
-        c.v1 = Kokkos::atomic_fetch_min(x+WarpDim+threadIdx.x, v1);
+        c.v1 = Kokkos::atomic_fetch_min(x+WarpOrWavefrontDim+threadIdx.x, v1);
       if (sz.value > 2)
-        c.v2 = Kokkos::atomic_fetch_min(x+2*WarpDim+threadIdx.x, v2);
+        c.v2 = Kokkos::atomic_fetch_min(x+2*WarpOrWavefrontDim+threadIdx.x, v2);
       return c;
     }
 
@@ -1068,9 +1093,9 @@ namespace Genten {
       if (sz.value > 0)
         c.v0 = Genten::atomic_oper_fetch(op, x+threadIdx.x, v0);
       if (sz.value > 1)
-        c.v1 = Genten::atomic_oper_fetch(op, x+WarpDim+threadIdx.x, v1);
+        c.v1 = Genten::atomic_oper_fetch(op, x+WarpOrWavefrontDim+threadIdx.x, v1);
       if (sz.value > 2)
-        c.v2 = Genten::atomic_oper_fetch(op, x+2*WarpDim+threadIdx.x, v2);
+        c.v2 = Genten::atomic_oper_fetch(op, x+2*WarpOrWavefrontDim+threadIdx.x, v2);
       return c;
     }
 
@@ -1149,7 +1174,7 @@ namespace Genten {
     template <unsigned S>
     __device__ inline
     TinyVec& operator+=(
-      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,void>& x) {
       if (x.sz.value > 0) v0 += x.v0;
       if (x.sz.value > 1) v1 += x.v1;
       if (x.sz.value > 2) v2 += x.v2;
@@ -1159,7 +1184,7 @@ namespace Genten {
     template <unsigned S>
     __device__ inline
     TinyVec& operator-=(
-      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,void>& x) {
       if (x.sz.value > 0) v0 -= x.v0;
       if (x.sz.value > 1) v1 -= x.v1;
       if (x.sz.value > 2) v2 -= x.v2;
@@ -1169,7 +1194,7 @@ namespace Genten {
     template <unsigned S>
     __device__ inline
     TinyVec& operator*=(
-      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,void>& x) {
       if (x.sz.value > 0) v0 *= x.v0;
       if (x.sz.value > 1) v1 *= x.v1;
       if (x.sz.value > 2) v2 *= x.v2;
@@ -1179,7 +1204,7 @@ namespace Genten {
     template <unsigned S>
     __device__ inline
     TinyVec& operator/=(
-      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,void>& x) {
       if (x.sz.value > 0) v0 /= x.v0;
       if (x.sz.value > 1) v1 /= x.v1;
       if (x.sz.value > 2) v2 /= x.v2;
@@ -1189,32 +1214,32 @@ namespace Genten {
     __device__ inline
     TinyVec& operator+=(const scalar_type* x) {
       if (sz.value > 0) v0 += x[threadIdx.x];
-      if (sz.value > 1) v1 += x[WarpDim + threadIdx.x];
-      if (sz.value > 2) v2 += x[2*WarpDim + threadIdx.x];
+      if (sz.value > 1) v1 += x[WarpOrWavefrontDim + threadIdx.x];
+      if (sz.value > 2) v2 += x[2*WarpOrWavefrontDim + threadIdx.x];
       return *this;
     }
 
     __device__ inline
     TinyVec& operator-=(const scalar_type* x) {
       if (sz.value > 0) v0 -= x[threadIdx.x];
-      if (sz.value > 1) v1 -= x[WarpDim + threadIdx.x];
-      if (sz.value > 2) v2 -= x[2*WarpDim + threadIdx.x];
+      if (sz.value > 1) v1 -= x[WarpOrWavefrontDim + threadIdx.x];
+      if (sz.value > 2) v2 -= x[2*WarpOrWavefrontDim + threadIdx.x];
       return *this;
     }
 
     __device__ inline
     TinyVec& operator*=(const scalar_type* x) {
       if (sz.value > 0) v0 *= x[threadIdx.x];
-      if (sz.value > 1) v1 *= x[WarpDim + threadIdx.x];
-      if (sz.value > 2) v2 *= x[2*WarpDim + threadIdx.x];
+      if (sz.value > 1) v1 *= x[WarpOrWavefrontDim + threadIdx.x];
+      if (sz.value > 2) v2 *= x[2*WarpOrWavefrontDim + threadIdx.x];
       return *this;
     }
 
     __device__ inline
     TinyVec& operator/=(const scalar_type* x) {
       if (sz.value > 0) v0 /= x[threadIdx.x];
-      if (sz.value > 1) v1 /= x[WarpDim + threadIdx.x];
-      if (sz.value > 2) v2 /= x[2*WarpDim + threadIdx.x];
+      if (sz.value > 1) v1 /= x[WarpOrWavefrontDim + threadIdx.x];
+      if (sz.value > 2) v2 /= x[2*WarpOrWavefrontDim + threadIdx.x];
       return *this;
     }
 
@@ -1224,28 +1249,32 @@ namespace Genten {
       if (sz.value > 0) s += v0;
       if (sz.value > 1) s += v1;
       if (sz.value > 2) s += v2;
-      s = Impl::warpReduce(s, WarpDim);
+#if defined(__CUDA_ARCH__)
+      s = Impl::warpReduce(s, WarpOrWavefrontDim);
+#elif defined(__HIP_DEVICE_COMPILE__)
+      s = Impl::wavefrontReduce(s, WarpOrWavefrontDim);
+#endif
       return s;
     }
 
   };
 
-  // Specialization for Cuda where Length / WarpDim == 4.  Store the vector
-  // components in register space since Cuda may store them in global memory
+  // Specialization for Cuda or HIP where Length / WarpOrWavefrontDim == 4.  Store the vector
+  // components in register space since Cuda or HIP may store them in global memory
   // (especially in the dynamically sized case).
   template <typename Scalar, typename Ordinal,
-            unsigned Length, unsigned Size, unsigned WarpDim>
-  class TinyVec< Kokkos::Cuda,Scalar,Ordinal,Length,Size,WarpDim,
-                 typename std::enable_if<Length/WarpDim == 4>::type >
+            unsigned Length, unsigned Size, unsigned WarpOrWavefrontDim>
+  class TinyVec< Kokkos_GPU_Space,Scalar,Ordinal,Length,Size,WarpOrWavefrontDim,
+                 typename std::enable_if<Length/WarpOrWavefrontDim == 4>::type >
   {
   public:
 
-    typedef Kokkos::Cuda exec_space;
+    typedef Kokkos_GPU_Space exec_space;
     typedef Scalar scalar_type;
     typedef Ordinal ordinal_type;
 
-    static const ordinal_type len = 4;  // = Length/WarpDim
-    Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpDim> sz;
+    static const ordinal_type len = 4;  // = Length/WarpOrWavefrontDim
+    Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/WarpOrWavefrontDim> sz;
     scalar_type v0, v1, v2, v3;
 
     KOKKOS_DEFAULTED_DEVICE_FUNCTION
@@ -1253,14 +1282,14 @@ namespace Genten {
 
     __device__ inline
     TinyVec(const ordinal_type size, const scalar_type x)
-      : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
+      : sz( (size+WarpOrWavefrontDim-1-threadIdx.x) / WarpOrWavefrontDim )
     {
       broadcast(x);
     }
 
     __device__ inline
     TinyVec(const ordinal_type size, const scalar_type* x)
-      : sz( (size+WarpDim-1-threadIdx.x) / WarpDim )
+      : sz( (size+WarpOrWavefrontDim-1-threadIdx.x) / WarpOrWavefrontDim )
     {
       load(x);
     }
@@ -1302,33 +1331,33 @@ namespace Genten {
     __device__ inline
     void load(const scalar_type* x) {
       if (sz.value > 0) v0 = x[threadIdx.x];
-      if (sz.value > 1) v1 = x[WarpDim + threadIdx.x];
-      if (sz.value > 2) v2 = x[2*WarpDim + threadIdx.x];
-      if (sz.value > 3) v3 = x[3*WarpDim + threadIdx.x];
+      if (sz.value > 1) v1 = x[WarpOrWavefrontDim + threadIdx.x];
+      if (sz.value > 2) v2 = x[2*WarpOrWavefrontDim + threadIdx.x];
+      if (sz.value > 3) v3 = x[3*WarpOrWavefrontDim + threadIdx.x];
     }
 
     __device__ inline
     void store(scalar_type* x) const {
       if (sz.value > 0) x[threadIdx.x] = v0;
-      if (sz.value > 1) x[WarpDim + threadIdx.x] = v1;
-      if (sz.value > 2) x[2*WarpDim + threadIdx.x] = v2;
-      if (sz.value > 3) x[3*WarpDim + threadIdx.x] = v3;
+      if (sz.value > 1) x[WarpOrWavefrontDim + threadIdx.x] = v1;
+      if (sz.value > 2) x[2*WarpOrWavefrontDim + threadIdx.x] = v2;
+      if (sz.value > 3) x[3*WarpOrWavefrontDim + threadIdx.x] = v3;
     }
 
     __device__ inline
     void store_plus(scalar_type* x) const {
       if (sz.value > 0) x[threadIdx.x] += v0;
-      if (sz.value > 1) x[WarpDim + threadIdx.x] += v1;
-      if (sz.value > 2) x[2*WarpDim + threadIdx.x] += v2;
-      if (sz.value > 3) x[3*WarpDim + threadIdx.x] += v3;
+      if (sz.value > 1) x[WarpOrWavefrontDim + threadIdx.x] += v1;
+      if (sz.value > 2) x[2*WarpOrWavefrontDim + threadIdx.x] += v2;
+      if (sz.value > 3) x[3*WarpOrWavefrontDim + threadIdx.x] += v3;
     }
 
     __device__ inline
     void atomic_store_plus(volatile scalar_type* x) const {
       if (sz.value > 0) Kokkos::atomic_add(x+threadIdx.x, v0);
-      if (sz.value > 1) Kokkos::atomic_add(x+WarpDim+threadIdx.x, v1);
-      if (sz.value > 2) Kokkos::atomic_add(x+2*WarpDim+threadIdx.x, v2);
-      if (sz.value > 3) Kokkos::atomic_add(x+3*WarpDim+threadIdx.x, v3);
+      if (sz.value > 1) Kokkos::atomic_add(x+WarpOrWavefrontDim+threadIdx.x, v1);
+      if (sz.value > 2) Kokkos::atomic_add(x+2*WarpOrWavefrontDim+threadIdx.x, v2);
+      if (sz.value > 3) Kokkos::atomic_add(x+3*WarpOrWavefrontDim+threadIdx.x, v3);
     }
 
     __device__ inline
@@ -1337,11 +1366,11 @@ namespace Genten {
       if (sz.value > 0)
         c.v0 = Kokkos::atomic_exchange(x+threadIdx.x, v0);
       if (sz.value > 1)
-        c.v1 = Kokkos::atomic_exchange(x+WarpDim+threadIdx.x, v1);
+        c.v1 = Kokkos::atomic_exchange(x+WarpOrWavefrontDim+threadIdx.x, v1);
       if (sz.value > 2)
-        c.v2 = Kokkos::atomic_exchange(x+2*WarpDim+threadIdx.x, v2);
+        c.v2 = Kokkos::atomic_exchange(x+2*WarpOrWavefrontDim+threadIdx.x, v2);
       if (sz.value > 3)
-        c.v3 = Kokkos::atomic_exchange(x+3*WarpDim+threadIdx.x, v3);
+        c.v3 = Kokkos::atomic_exchange(x+3*WarpOrWavefrontDim+threadIdx.x, v3);
       return c;
     }
 
@@ -1351,11 +1380,11 @@ namespace Genten {
       if (sz.value > 0)
         c.v0 = Kokkos::atomic_fetch_max(x+threadIdx.x, v0);
       if (sz.value > 1)
-        c.v1 = Kokkos::atomic_fetch_max(x+WarpDim+threadIdx.x, v1);
+        c.v1 = Kokkos::atomic_fetch_max(x+WarpOrWavefrontDim+threadIdx.x, v1);
       if (sz.value > 2)
-        c.v2 = Kokkos::atomic_fetch_max(x+2*WarpDim+threadIdx.x, v2);
+        c.v2 = Kokkos::atomic_fetch_max(x+2*WarpOrWavefrontDim+threadIdx.x, v2);
       if (sz.value > 3)
-        c.v3 = Kokkos::atomic_fetch_max(x+3*WarpDim+threadIdx.x, v3);
+        c.v3 = Kokkos::atomic_fetch_max(x+3*WarpOrWavefrontDim+threadIdx.x, v3);
       return c;
     }
 
@@ -1365,11 +1394,11 @@ namespace Genten {
       if (sz.value > 0)
         c.v0 = Kokkos::atomic_fetch_min(x+threadIdx.x, v0);
       if (sz.value > 1)
-        c.v1 = Kokkos::atomic_fetch_min(x+WarpDim+threadIdx.x, v1);
+        c.v1 = Kokkos::atomic_fetch_min(x+WarpOrWavefrontDim+threadIdx.x, v1);
       if (sz.value > 2)
-        c.v2 = Kokkos::atomic_fetch_min(x+2*WarpDim+threadIdx.x, v2);
+        c.v2 = Kokkos::atomic_fetch_min(x+2*WarpOrWavefrontDim+threadIdx.x, v2);
       if (sz.value > 3)
-        c.v3 = Kokkos::atomic_fetch_min(x+3*WarpDim+threadIdx.x, v3);
+        c.v3 = Kokkos::atomic_fetch_min(x+3*WarpOrWavefrontDim+threadIdx.x, v3);
       return c;
     }
 
@@ -1380,11 +1409,11 @@ namespace Genten {
       if (sz.value > 0)
         c.v0 = Genten::atomic_oper_fetch(op, x+threadIdx.x, v0);
       if (sz.value > 1)
-        c.v1 = Genten::atomic_oper_fetch(op, x+WarpDim+threadIdx.x, v1);
+        c.v1 = Genten::atomic_oper_fetch(op, x+WarpOrWavefrontDim+threadIdx.x, v1);
       if (sz.value > 2)
-        c.v2 = Genten::atomic_oper_fetch(op, x+2*WarpDim+threadIdx.x, v2);
+        c.v2 = Genten::atomic_oper_fetch(op, x+2*WarpOrWavefrontDim+threadIdx.x, v2);
       if (sz.value > 3)
-        c.v3 = Genten::atomic_oper_fetch(op, x+3*WarpDim+threadIdx.x, v3);
+        c.v3 = Genten::atomic_oper_fetch(op, x+3*WarpOrWavefrontDim+threadIdx.x, v3);
       return c;
     }
 
@@ -1472,7 +1501,7 @@ namespace Genten {
     template <unsigned S>
     __device__ inline
     TinyVec& operator+=(
-      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,void>& x) {
       if (x.sz.value > 0) v0 += x.v0;
       if (x.sz.value > 1) v1 += x.v1;
       if (x.sz.value > 2) v2 += x.v2;
@@ -1483,7 +1512,7 @@ namespace Genten {
     template <unsigned S>
     __device__ inline
     TinyVec& operator-=(
-      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,void>& x) {
       if (x.sz.value > 0) v0 -= x.v0;
       if (x.sz.value > 1) v1 -= x.v1;
       if (x.sz.value > 2) v2 -= x.v2;
@@ -1494,7 +1523,7 @@ namespace Genten {
     template <unsigned S>
     __device__ inline
     TinyVec& operator*=(
-      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,void>& x) {
       if (x.sz.value > 0) v0 *= x.v0;
       if (x.sz.value > 1) v1 *= x.v1;
       if (x.sz.value > 2) v2 *= x.v2;
@@ -1505,7 +1534,7 @@ namespace Genten {
     template <unsigned S>
     __device__ inline
     TinyVec& operator/=(
-      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpDim,void>& x) {
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,WarpOrWavefrontDim,void>& x) {
       if (x.sz.value > 0) v0 /= x.v0;
       if (x.sz.value > 1) v1 /= x.v1;
       if (x.sz.value > 2) v2 /= x.v2;
@@ -1516,36 +1545,36 @@ namespace Genten {
     __device__ inline
     TinyVec& operator+=(const scalar_type* x) {
       if (sz.value > 0) v0 += x[threadIdx.x];
-      if (sz.value > 1) v1 += x[WarpDim + threadIdx.x];
-      if (sz.value > 2) v2 += x[2*WarpDim + threadIdx.x];
-      if (sz.value > 3) v3 += x[3*WarpDim + threadIdx.x];
+      if (sz.value > 1) v1 += x[WarpOrWavefrontDim + threadIdx.x];
+      if (sz.value > 2) v2 += x[2*WarpOrWavefrontDim + threadIdx.x];
+      if (sz.value > 3) v3 += x[3*WarpOrWavefrontDim + threadIdx.x];
       return *this;
     }
 
     __device__ inline
     TinyVec& operator-=(const scalar_type* x) {
       if (sz.value > 0) v0 -= x[threadIdx.x];
-      if (sz.value > 1) v1 -= x[WarpDim + threadIdx.x];
-      if (sz.value > 2) v2 -= x[2*WarpDim + threadIdx.x];
-      if (sz.value > 3) v3 -= x[3*WarpDim + threadIdx.x];
+      if (sz.value > 1) v1 -= x[WarpOrWavefrontDim + threadIdx.x];
+      if (sz.value > 2) v2 -= x[2*WarpOrWavefrontDim + threadIdx.x];
+      if (sz.value > 3) v3 -= x[3*WarpOrWavefrontDim + threadIdx.x];
       return *this;
     }
 
     __device__ inline
     TinyVec& operator*=(const scalar_type* x) {
       if (sz.value > 0) v0 *= x[threadIdx.x];
-      if (sz.value > 1) v1 *= x[WarpDim + threadIdx.x];
-      if (sz.value > 2) v2 *= x[2*WarpDim + threadIdx.x];
-      if (sz.value > 3) v3 *= x[3*WarpDim + threadIdx.x];
+      if (sz.value > 1) v1 *= x[WarpOrWavefrontDim + threadIdx.x];
+      if (sz.value > 2) v2 *= x[2*WarpOrWavefrontDim + threadIdx.x];
+      if (sz.value > 3) v3 *= x[3*WarpOrWavefrontDim + threadIdx.x];
       return *this;
     }
 
     __device__ inline
     TinyVec& operator/=(const scalar_type* x) {
       if (sz.value > 0) v0 /= x[threadIdx.x];
-      if (sz.value > 1) v1 /= x[WarpDim + threadIdx.x];
-      if (sz.value > 2) v2 /= x[2*WarpDim + threadIdx.x];
-      if (sz.value > 3) v3 /= x[3*WarpDim + threadIdx.x];
+      if (sz.value > 1) v1 /= x[WarpOrWavefrontDim + threadIdx.x];
+      if (sz.value > 2) v2 /= x[2*WarpOrWavefrontDim + threadIdx.x];
+      if (sz.value > 3) v3 /= x[3*WarpOrWavefrontDim + threadIdx.x];
       return *this;
     }
 
@@ -1556,7 +1585,11 @@ namespace Genten {
       if (sz.value > 1) s += v1;
       if (sz.value > 2) s += v2;
       if (sz.value > 3) s += v3;
-      s = Impl::warpReduce(s, WarpDim);
+#if defined(__CUDA_ARCH__)
+      s = Impl::warpReduce(s, WarpOrWavefrontDim);
+#elif defined(__HIP_DEVICE_COMPILE__)
+      s = Impl::wavefrontReduce(s, WarpOrWavefrontDim);
+#endif
       return s;
     }
 
