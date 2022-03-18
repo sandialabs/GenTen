@@ -84,11 +84,11 @@ namespace Genten {
         const loss_type f = ff;
         const tensor_type Y = YY;
 
-        static const bool is_cuda = Genten::is_cuda_space<exec_space>::value;
+        static const bool is_gpu = Genten::is_gpu_space<exec_space>::value;
         static const unsigned RowBlockSize = 128;
         static const unsigned FacBlockSize = FBS;
-        static const unsigned VectorSize = is_cuda ? VS : 1;
-        static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+        static const unsigned VectorSize = is_gpu ? VS : 1;
+        static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
 
         const ttb_indx nnz = X.nnz();
         const ttb_indx N = (nnz+RowBlockSize-1)/RowBlockSize;
@@ -144,10 +144,10 @@ namespace Genten {
 
         MTTKRP_Method::type method = algParams.mttkrp_method;
 
-        if (space_prop::is_cuda &&
+        if (space_prop::is_gpu &&
             (method == MTTKRP_Method::Single ||
              method == MTTKRP_Method::Duplicated))
-          Genten::error("Single and duplicated MTTKRP-All methods are invalid on Cuda!");
+          Genten::error("Single and duplicated MTTKRP-All methods are invalid on Cuda and HIP!");
 
         GCP_GradTensor<tensor_type,loss_type,FBS,VS> XX(X, M, w, f);
         const unsigned nd = M.ndims();
@@ -185,11 +185,11 @@ namespace Genten {
       using Kokkos::Experimental::ScatterView;
       using Kokkos::Experimental::ScatterSum;
 
-      static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+      static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
       static const unsigned RowBlockSize = 128;
       static const unsigned FacBlockSize = FBS;
-      static const unsigned VectorSize = is_cuda ? VS : 1;
-      static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+      static const unsigned VectorSize = is_gpu ? VS : 1;
+      static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
       /*const*/ unsigned nd = M.ndims();
@@ -223,7 +223,7 @@ namespace Genten {
           // by Jaijai Li.
           ttb_indx offset;
           ttb_indx stride;
-          if (is_cuda) {
+          if (is_gpu) {
             offset = team.league_rank()*TeamSize+team.team_rank();
             stride = team.league_size()*TeamSize;
           }
@@ -289,11 +289,11 @@ namespace Genten {
     {
       Gn = ttb_real(0.0);
 
-      static const bool is_cuda = Genten::is_cuda_space<exec_space>::value;
+      static const bool is_gpu = Genten::is_gpu_space<exec_space>::value;
       static const unsigned RowBlockSize = 128;
       static const unsigned FacBlockSize = FBS;
-      static const unsigned VectorSize = is_cuda ? VS : 1;
-      static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+      static const unsigned VectorSize = is_gpu ? VS : 1;
+      static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
       /*const*/ unsigned nd = M.ndims();
@@ -426,8 +426,8 @@ namespace Genten {
                           method == MTTKRP_Method::Atomic))
           method = MTTKRP_Method::Single;
 
-        // Never use Duplicated for Cuda, use Atomic instead
-        if (space_prop::is_cuda && method == MTTKRP_Duplicated)
+        // Never use Duplicated for Cuda or HIP, use Atomic instead
+        if (space_prop::is_gpu && method == MTTKRP_Duplicated)
           method = MTTKRP_Method::Atomic;
 
         GCP_GradTensor<tensor_type,loss_type,FBS,VS> XX(X, M, w, f);
