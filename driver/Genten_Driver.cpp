@@ -38,10 +38,17 @@
 // ************************************************************************
 //@HEADER
 
+#include "Genten_DistContext.hpp"
+#include "Genten_DistTensorContext.hpp"
 #include "Genten_Driver.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_FacTestSetGenerator.hpp"
+#ifdef HAVE_BOOST
+#include "Genten_Boost.hpp"
+#define BOOST_BIND_GLOBAL_PLACEHOLDERS
+#include <boost/property_tree/json_parser.hpp>
+#endif
 
 void usage(char **argv)
 {
@@ -82,14 +89,14 @@ int main_driver(Genten::AlgParams& algParams,
   typedef Genten::TensorT<Genten::DefaultHostExecutionSpace> Tensor_host_type;
   typedef Genten::KtensorT<Space> Ktensor_type;
   typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
+  typedef Genten::DistContext DC;
+
+  Genten::DistTensorContext dtc;
 
   // Read in initial guess if provided
   Ktensor_type u_init;
   if (initfilename != "") {
-    Ktensor_host_type u_init_host;
-    Genten::import_ktensor(initfilename, u_init_host);
-    u_init = create_mirror_view(Space(), u_init_host);
-    deep_copy(u_init, u_init_host);
+    u_init = dtc.readInitialGuess<Space>(initfilename);
   }
 
   Ktensor_type u;
@@ -99,24 +106,29 @@ int main_driver(Genten::AlgParams& algParams,
     Sptensor_type x;
     if (inputfilename != "") {
       timer.start(0);
-      Genten::import_sptensor(inputfilename, x_host, index_base, gz, true);
-      x = create_mirror_view( Space(), x_host );
-      deep_copy( x, x_host );
+      x = dtc.readTensorAndInit<Space>(inputfilename, index_base);
       timer.stop(0);
-      printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
+      DC::Barrier();
+      if (dtc.gridRank() == 0)
+        printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
     }
     else {
+      if (dtc.nprocs() > 1)
+        Genten::error("Random tensor not implemented for > 1 MPI procs");
+
       Genten::IndxArrayT<Space> facDims =
         create_mirror_view( Space(), facDims_h );
       deep_copy( facDims, facDims_h );
 
-      std::cout << "Will construct a random Ktensor/Sptensor pair:\n";
-      std::cout << "  Ndims = " << facDims_h.size() << ",  Size = [ ";
-      for (ttb_indx  n = 0; n < facDims_h.size(); n++)
-        std::cout << facDims_h[n] << ' ';
-      std::cout << "]\n";
-      std::cout << "  Ncomps = " << algParams.rank << "\n";
-      std::cout << "  Maximum nnz = " << nnz << "\n";
+      if (dtc.gridRank() == 0) {
+        std::cout << "Will construct a random Ktensor/Sptensor pair:\n";
+        std::cout << "  Ndims = " << facDims_h.size() << ",  Size = [ ";
+        for (ttb_indx  n = 0; n < facDims_h.size(); n++)
+          std::cout << facDims_h[n] << ' ';
+        std::cout << "]\n";
+        std::cout << "  Ncomps = " << algParams.rank << "\n";
+        std::cout << "  Maximum nnz = " << nnz << "\n";
+      }
 
       // Generate a random Ktensor, and from it a representative sparse
       // data tensor.
@@ -131,22 +143,33 @@ int main_driver(Genten::AlgParams& algParams,
       x = create_mirror_view( Space(), x_host );
       deep_copy( x, x_host );
       timer.stop(0);
-      printf ("Data generation took %6.3f seconds\n", timer.getTotalTime(0));
-      std::cout << "  Actual nnz  = " << x_host.nnz() << "\n";
+      DC::Barrier();
+      if (dtc.gridRank() == 0) {
+        printf ("Data generation took %6.3f seconds\n", timer.getTotalTime(0));
+        std::cout << "  Actual nnz  = " << x_host.nnz() << "\n";
+      }
     }
     if (algParams.debug) Genten::print_sptensor(x_host, std::cout, "tensor");
 
     // Compute decomposition
-    u = Genten::driver(x, u_init, algParams, std::cout);
+    u = Genten::driver(dtc, x, u_init, algParams, std::cout);
 
     if (tensor_outputfilename != "") {
+      if (dtc.nprocs() > 1)
+        Genten::error("Tensor export not implemented for > 1 MPI procs");
+
       timer.start(1);
       Genten::export_sptensor(tensor_outputfilename, x_host, index_base == 0);
       timer.stop(1);
-      printf("Sptensor export took %6.3f seconds\n", timer.getTotalTime(1));
+      DC::Barrier();
+      if (dtc.gridRank() == 0)
+        printf("Sptensor export took %6.3f seconds\n", timer.getTotalTime(1));
     }
   }
   else {
+    if (dtc.nprocs() > 1)
+        Genten::error("Dense tensor not implemented for > 1 MPI procs");
+
     Tensor_host_type x_host;
     Tensor_type x;
     // Read in tensor data
@@ -188,12 +211,11 @@ int main_driver(Genten::AlgParams& algParams,
   if (outputfilename != "")
   {
     timer.start(1);
-    Ktensor_host_type u_host =
-      create_mirror_view(Genten::DefaultHostExecutionSpace(), u);
-    deep_copy( u_host, u );
-    Genten::export_ktensor(outputfilename, u_host);
+    dtc.exportToFile(u, outputfilename);
     timer.stop(1);
-    printf("Ktensor export took %6.3f seconds\n", timer.getTotalTime(1));
+    DC::Barrier();
+    if (dtc.gridRank() == 0)
+      printf("Ktensor export took %6.3f seconds\n", timer.getTotalTime(1));
   }
 
   return ret;
@@ -201,7 +223,7 @@ int main_driver(Genten::AlgParams& algParams,
 
 int main(int argc, char* argv[])
 {
-  Kokkos::initialize(argc, argv);
+  Genten::InitializeGenten(&argc, &argv);
   int ret = 0;
 
   try {
@@ -217,37 +239,79 @@ int main(int argc, char* argv[])
       return 0;
     }
 
-    // Driver options
-    const std::string inputfilename =
-      Genten::parse_string(args, "--input", "");
-    const std::string outputfilename =
-      Genten::parse_string(args, "--output", "");
-    const ttb_bool sparse =
-      Genten::parse_ttb_bool(args, "--sparse", "--dense", true);
-    const std::string initfilename =
-      Genten::parse_string(args, "--init", "");
-    const ttb_indx index_base =
-      Genten::parse_ttb_indx(args, "--index-base", 0, 0, INT_MAX);
-    const ttb_bool gz =
-      Genten::parse_ttb_bool(args, "--gz", "--no-gz", false);
-    const ttb_bool vtune =
-      Genten::parse_ttb_bool(args, "--vtune", "--no-vtune", false);
+    Genten::AlgParams algParams;
 
-    // for random tensor when inputfilename == ""
-    Genten::IndxArray facDims_h;
-    if (sparse)
-      facDims_h = { 3000, 4000, 5000 };
-    else
-      facDims_h = { 30, 40, 50 };
+    // Driver options
+    ttb_bool vtune = false;
+    std::string inputfilename = "";
+    ttb_indx index_base = 0;
+    ttb_bool gz = false;
+    ttb_bool sparse = true;
+    std::string tensor_outputfilename = "";
+    ttb_indx nnz = 1 * 1000 * 1000;
+    Genten::IndxArray facDims_h = { 30, 40, 50 };
+    std::string init = "";
+    std::string outputfilename = "";
+
+#ifdef HAVE_BOOST
+    // Parse a json file if given before command-line arguments, that way
+    // command line will override what is in the file
+    Genten::ptree json_input;
+    const std::string json_file =
+      Genten::parse_string(args, "--json", "");
+    if (json_file != "") {
+      boost::property_tree::read_json(json_file, json_input);
+      algParams.parse(json_input);
+      Genten::parse_ptree_value(json_input, "vtune", vtune);
+
+      // Tensor
+      auto tensor_input_o = json_input.get_child_optional("tensor");
+      if (tensor_input_o) {
+        auto& tensor_input = *tensor_input_o;
+        Genten::parse_ptree_value(tensor_input, "input-file", inputfilename);
+        Genten::parse_ptree_value(tensor_input, "index-base", index_base, 0, INT_MAX);
+        Genten::parse_ptree_value(tensor_input, "compressed", gz);
+        Genten::parse_ptree_value(tensor_input, "sparse", sparse);
+        Genten::parse_ptree_value(tensor_input, "output-file", tensor_outputfilename);
+        Genten::parse_ptree_value(tensor_input, "rand-nnz", nnz, 1, INT_MAX);
+        if (tensor_input.get_child_optional("rand-dims")) {
+          std::vector<ttb_real> dims;
+          Genten::parse_ptree_value(tensor_input, "rand-dims", dims, 1, INT_MAX);
+          facDims_h = Genten::IndxArray(dims.size(), dims.data());
+        }
+      }
+
+      // K-tensor
+      auto ktensor_input_o = json_input.get_child_optional("k-tensor");
+      if (ktensor_input_o) {
+        auto& ktensor_input = *ktensor_input_o;
+        Genten::parse_ptree_value(ktensor_input, "init", init);
+        Genten::parse_ptree_value(ktensor_input, "output", outputfilename);
+      }
+    }
+#endif
+    vtune =
+      Genten::parse_ttb_bool(args, "--vtune", "--no-vtune", vtune);
+    inputfilename =
+      Genten::parse_string(args, "--input", inputfilename);
+    index_base =
+      Genten::parse_ttb_indx(args, "--index-base", index_base, 0, INT_MAX);
+    gz =
+      Genten::parse_ttb_bool(args, "--gz", "--no-gz", gz);
+    sparse =
+      Genten::parse_ttb_bool(args, "--sparse", "--dense", sparse);
+    tensor_outputfilename =
+      Genten::parse_string(args, "--save-tensor", "");
+    nnz =
+      Genten::parse_ttb_indx(args, "--nnz", 1 * 1000 * 1000, 1, INT_MAX);
     facDims_h =
       Genten::parse_ttb_indx_array(args, "--dims", facDims_h, 1, INT_MAX);
-    const ttb_indx nnz =
-      Genten::parse_ttb_indx(args, "--nnz", 1 * 1000 * 1000, 1, INT_MAX);
-    const std::string tensor_outputfilename =
-      Genten::parse_string(args, "--save-tensor", "");
+    init =
+      Genten::parse_string(args, "--init", init);
+    outputfilename =
+      Genten::parse_string(args, "--output", outputfilename);
 
     // Everything else
-    Genten::AlgParams algParams;
     algParams.parse(args);
 
     // Check for unrecognized arguments
@@ -271,8 +335,8 @@ int main(int argc, char* argv[])
         std::cout << "]" << std::endl;
         std::cout << "  nnz = " << nnz << std::endl;
       }
-      if (initfilename != "")
-        std::cout << "  init = " << initfilename << std::endl;
+      if (init != "")
+        std::cout << "  init = " << init << std::endl;
       if (tensor_outputfilename != "")
         std::cout << "  save_tensor = " << tensor_outputfilename << std::endl;
       std::cout << "  output = " << outputfilename << std::endl;
@@ -292,7 +356,7 @@ int main(int argc, char* argv[])
                                                        inputfilename,
                                                        outputfilename,
                                                        sparse,
-                                                       initfilename,
+                                                       init,
                                                        index_base,
                                                        gz,
                                                        facDims_h,
@@ -304,7 +368,7 @@ int main(int argc, char* argv[])
                                       inputfilename,
                                       outputfilename,
                                       sparse,
-                                      initfilename,
+                                      init,
                                       index_base,
                                       gz,
                                       facDims_h,
@@ -317,7 +381,7 @@ int main(int argc, char* argv[])
                                         inputfilename,
                                         outputfilename,
                                         sparse,
-                                        initfilename,
+                                        init,
                                         index_base,
                                         gz,
                                         facDims_h,
@@ -330,7 +394,7 @@ int main(int argc, char* argv[])
                                          inputfilename,
                                          outputfilename,
                                          sparse,
-                                         initfilename,
+                                         init,
                                          index_base,
                                          gz,
                                          facDims_h,
@@ -343,7 +407,7 @@ int main(int argc, char* argv[])
                                         inputfilename,
                                         outputfilename,
                                         sparse,
-                                        initfilename,
+                                        init,
                                         index_base,
                                         gz,
                                         facDims_h,
@@ -361,6 +425,6 @@ int main(int argc, char* argv[])
     ret = 0;
   }
 
-  Kokkos::finalize();
+  Genten::FinalizeGenten();
   return ret;
 }

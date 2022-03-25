@@ -116,7 +116,7 @@ setAlgParams() {
   algParams_.rank = input_.get<int>("rank", algParams_.rank);
   algParams_.maxiters = input_.get<int>("maxiters", algParams_.maxiters);
   algParams_.maxsecs = input_.get<double>("maxsecs", algParams_.maxsecs);
-  algParams_.tol = input_.get<double>("tol", algParams_.rank);
+  algParams_.tol = input_.get<double>("tol", algParams_.tol);
   algParams_.printitn = input_.get<int>("printitn", algParams_.printitn);
   algParams_.timings = input_.get<bool>("timings", algParams_.timings);
   algParams_.full_gram = input_.get<int>("full-gram", algParams_.full_gram);

@@ -57,6 +57,7 @@
 
 #include "CMakeInclude.h"
 #ifdef HAVE_BOOST
+#define BOOST_BIND_GLOBAL_PLACEHOLDERS
 #include <boost/iostreams/filtering_stream.hpp>
 #include <boost/iostreams/copy.hpp>
 #include <boost/iostreams/filter/gzip.hpp>

@@ -43,10 +43,14 @@
 #include "Genten_Boost.hpp"
 #include "Genten_DistContext.hpp"
 #include "Genten_IOtext.hpp"
-#include "Genten_MPI_IO.h"
 #include "Genten_Pmap.hpp"
-#include "Genten_SpTn_Util.h"
 #include "Genten_Sptensor.hpp"
+
+#include "CMakeInclude.h"
+#if defined(HAVE_DIST)
+
+#include "Genten_MPI_IO.h"
+#include "Genten_SpTn_Util.h"
 
 #include <cmath>
 #include <fstream>
@@ -78,6 +82,9 @@ public:
 
   template <typename ExecSpace>
   SptensorT<ExecSpace> readTensorAndInit(const ptree& tree);
+  template <typename ExecSpace>
+  SptensorT<ExecSpace> readTensorAndInit(const std::string& file,
+                                         const ttb_indx index_base);
 
   // Parallel info
   std::int32_t ndims() const { return global_dims_.size(); }
@@ -109,6 +116,15 @@ public:
   template <typename ExecSpace>
   void exportToFile(const KtensorT<ExecSpace>& u,
                     const std::string& file_name) const;
+
+  template <typename ExecSpace>
+  KtensorT<ExecSpace> readInitialGuess(const std::string& file_name) const;
+  template <typename ExecSpace>
+  KtensorT<ExecSpace> randomInitialGuess(const SptensorT<ExecSpace>& X,
+                                         const int rank,
+                                         const int seed,
+                                         const bool prng,
+                                         const std::string& dist_method) const;
   template <typename ExecSpace>
   KtensorT<ExecSpace> computeInitialGuess(const SptensorT<ExecSpace>& X,
                                           const ptree& input) const;
@@ -332,71 +348,96 @@ exportToFile(const KtensorT<ExecSpace>& u, const std::string& file_name) const
 template <typename ExecSpace>
 KtensorT<ExecSpace>
 DistTensorContext::
+readInitialGuess(const std::string& file_name) const
+{
+  KtensorT<DefaultHostExecutionSpace> u_host;
+  import_ktensor(file_name, u_host);
+  KtensorT<ExecSpace> u = create_mirror_view(ExecSpace(), u_host);
+  deep_copy(u, u_host);
+  return exportFromRoot(u);
+}
+
+template <typename ExecSpace>
+KtensorT<ExecSpace>
+DistTensorContext::
+randomInitialGuess(const SptensorT<ExecSpace>& X,
+                   const int rank,
+                   const int seed,
+                   const bool prng,
+                   const std::string& dist_method) const
+{
+  const ttb_indx nd = X.ndims();
+  const ttb_real norm_x = globalNorm(X);
+  RandomMT cRMT(seed);
+
+  if (dist_method == "serial") {
+    // Compute random ktensor on rank 0 and broadcast to all proc's
+    IndxArrayT<ExecSpace> sz(nd);
+    auto hsz = create_mirror_view(sz);
+    for (int i=0; i<nd; ++i)
+      hsz[i] = global_dims_[i];
+    deep_copy(sz,hsz);
+    Genten::KtensorT<ExecSpace> u(rank, nd, sz);
+    if (pmap_->gridRank() == 0) {
+      u.setWeights(1.0);
+      u.setMatricesScatter(false, prng, cRMT);
+      const auto norm_k = std::sqrt(u.normFsq());
+      u.weights().times(norm_x / norm_k);
+      u.distribute();
+    }
+    return exportFromRoot(u);
+  }
+  else if (dist_method == "parallel") {
+    // Compute random ktensor on each node
+    KtensorT<ExecSpace> u(rank, nd, X.size());
+    u.setWeights(1.0);
+    u.setMatricesScatter(false, prng, cRMT);
+    const ttb_real norm_k = globalNorm(u);
+    u.weights().times(norm_x / norm_k);
+    u.distribute();
+    return u;
+  }
+  else if (dist_method == "parallel-drew") {
+    // Drew's funky random ktensor that I don't understand
+    KtensorT<ExecSpace> u(rank, nd, X.size());
+    u.setWeights(1.0);
+    u.setMatricesScatter(false, prng, cRMT);
+    u.weights().times(1.0 / norm_x);
+    u.distribute();
+    allReduce(u, true);
+    return u;
+  }
+  else
+    Genten::error("Unknown distributed-guess method: " + dist_method);
+
+  return Genten::KtensorT<ExecSpace>();
+}
+
+template <typename ExecSpace>
+KtensorT<ExecSpace>
+DistTensorContext::
 computeInitialGuess(const SptensorT<ExecSpace>& X, const ptree& input) const
 {
+  KtensorT<ExecSpace> u;
+
   auto kt_input = input.get_child("k-tensor");
   std::string init_method = kt_input.get<std::string>("initial-guess", "rand");
   if (init_method == "file") {
     std::string file_name = kt_input.get<std::string>("initial-file");
-    KtensorT<DefaultHostExecutionSpace> u_host;
-    import_ktensor(file_name, u_host);
-    KtensorT<ExecSpace> u = create_mirror_view(ExecSpace(), u_host);
-    deep_copy(u, u_host);
-    return exportFromRoot(u);
+    u = readInitialGuess<ExecSpace>(file_name);
   }
   else if (init_method == "rand") {
     const int seed = kt_input.get<int>("seed",std::random_device{}());
     const bool prng = kt_input.get<bool>("prng",true);
-    const auto nc = kt_input.get<int>("rank");
-    const auto nd = ndims();
-    const auto norm_x = globalNorm(X);
-    RandomMT cRMT(seed);
-    std::string dist_method =
+    const int nc = kt_input.get<int>("rank");
+    const std::string dist_method =
       kt_input.get<std::string>("distributed-guess", "serial");
-    if (dist_method == "serial") {
-      // Compute random ktensor on rank 0 and broadcast to all proc's
-      IndxArrayT<ExecSpace> sz(nd);
-      auto hsz = create_mirror_view(sz);
-      for (int i=0; i<nd; ++i)
-        hsz[i] = global_dims_[i];
-      deep_copy(sz,hsz);
-      Genten::KtensorT<ExecSpace> u(nc, nd, sz);
-      if (pmap_->gridRank() == 0) {
-        u.setWeights(1.0);
-        u.setMatricesScatter(false, prng, cRMT);
-        const auto norm_k = std::sqrt(u.normFsq());
-        u.weights().times(norm_x / norm_k);
-        u.distribute();
-      }
-      return exportFromRoot(u);
-    }
-    else if (dist_method == "parallel") {
-      // Compute random ktensor on each node
-      KtensorT<ExecSpace> u(nc, nd, X.size());
-      u.setWeights(1.0);
-      u.setMatricesScatter(false, prng, cRMT);
-      const ttb_real norm_k = globalNorm(u);
-      u.weights().times(norm_x / norm_k);
-      u.distribute();
-      return u;
-    }
-    else if (dist_method == "parallel-drew") {
-      // Drew's funky random ktensor that I don't understand
-      KtensorT<ExecSpace> u(nc, nd, X.size());
-      u.setWeights(1.0);
-      u.setMatricesScatter(false, prng, cRMT);
-      u.weights().times(1.0 / norm_x);
-      u.distribute();
-      allReduce(u, true);
-      return u;
-    }
-    else
-      Genten::error("Unknown distributed-guess method: " + dist_method);
+    u = randomInitialGuess(X, nc, seed, prng, dist_method);
   }
   else
     Genten::error("Unknown initial-guess method: " + init_method);
 
-  return KtensorT<ExecSpace>();
+  return u;
 }
 
 template <typename ExecSpace>
@@ -419,6 +460,14 @@ readTensorAndInit(const ptree& tree)
 template <typename ExecSpace>
 SptensorT<ExecSpace>
 DistTensorContext::
+readTensorAndInit(const std::string& file, const ttb_indx index_base)
+{
+  return init_distributed<ExecSpace>(file, index_base);
+}
+
+template <typename ExecSpace>
+SptensorT<ExecSpace>
+DistTensorContext::
 init_distributed(const std::string& file_name, int indexbase)
 {
   std::uint64_t nnz = 0;
@@ -426,7 +475,7 @@ init_distributed(const std::string& file_name, int indexbase)
 
   const auto ndims = global_dims_.size();
   pmap_ = std::shared_ptr<ProcessorMap>(
-    new ProcessorMap(DistContext::input(), global_dims_));
+    new ProcessorMap(global_dims_));
 
   detail::printGrids(*pmap_);
 
@@ -624,3 +673,141 @@ rangesToIndexArray(const small_vector<RangePair>& ranges)
 } // namespace detail
 
 } // namespace Genten
+
+#else
+
+namespace Genten {
+
+class DistTensorContext {
+public:
+  DistTensorContext() = default;
+  ~DistTensorContext() = default;
+
+  DistTensorContext(DistTensorContext&&) = default;
+  DistTensorContext(const DistTensorContext&) = default;
+  DistTensorContext& operator=(DistTensorContext&&) = default;
+  DistTensorContext& operator=(const DistTensorContext&) = default;
+
+  template <typename ExecSpace>
+  SptensorT<ExecSpace> readTensorAndInit(const std::string& file,
+                                         const ttb_indx index_base) {
+    Sptensor x_host;
+    Genten::import_sptensor(file, x_host, index_base, false, true);
+    SptensorT<ExecSpace> x = create_mirror_view( ExecSpace(), x_host );
+    deep_copy( x, x_host );
+
+    auto sz = x_host.size();
+    const int nd = x_host.ndims();
+    global_dims_.resize(nd);
+    for (int i=0; i<nd; ++i)
+      global_dims_[i] = sz[i];
+
+    return x;
+  }
+
+  // Parallel info
+  std::int32_t ndims() const { return global_dims_.size(); }
+  const std::vector<std::uint32_t>& dims() const { return global_dims_; }
+  std::int64_t nprocs() const { return pmap_->gridSize(); }
+  std::int64_t gridRank() const { return pmap_->gridRank(); }
+
+  // Processor map for communication
+  const ProcessorMap& pmap() const { return *pmap_; }
+  std::shared_ptr<const ProcessorMap> pmap_ptr() const { return pmap_; }
+
+  // Sptensor operations
+  template <typename ExecSpace>
+  ttb_real globalNorm(const SptensorT<ExecSpace>& X) const { return X.norm(); }
+  template <typename ExecSpace>
+  std::uint64_t globalNNZ(const SptensorT<ExecSpace>& X) const { return X.nnz(); }
+
+  // Ktensor operations
+  template <typename ExecSpace>
+  ttb_real globalNorm(const KtensorT<ExecSpace>& u) const { return std::sqrt(u.normFsq()); }
+  template <typename ExecSpace>
+  KtensorT<ExecSpace> exportFromRoot(const KtensorT<ExecSpace>& u) const {}
+  template <typename ExecSpace>
+  KtensorT<ExecSpace> importToRoot(const KtensorT<ExecSpace>& u) const {}
+  template <typename ExecSpace>
+  void allReduce(KtensorT<ExecSpace>& u,
+                 const bool divide_by_grid_size = false) const {}
+  template <typename ExecSpace>
+  void exportToFile(const KtensorT<ExecSpace>& out,
+                    const std::string& file_name) const {
+    out.normalize(Genten::NormTwo);
+    out.arrange();
+
+    std::cout << "Saving final Ktensor to " << file_name << std::endl;
+    auto out_h = create_mirror_view(out);
+    deep_copy(out_h, out);
+    Genten::export_ktensor(file_name, out_h);
+  }
+
+  template <typename ExecSpace>
+  KtensorT<ExecSpace> readInitialGuess(const std::string& file_name) const {
+    KtensorT<DefaultHostExecutionSpace> u_host;
+    import_ktensor(file_name, u_host);
+    KtensorT<ExecSpace> u = create_mirror_view(ExecSpace(), u_host);
+    deep_copy(u, u_host);
+    return u;
+  }
+  template <typename ExecSpace>
+  KtensorT<ExecSpace> randomInitialGuess(const SptensorT<ExecSpace>& X,
+                                         const int rank,
+                                         const int seed,
+                                         const bool prng,
+                                         const std::string& dist_method) const {
+    const ttb_indx nd = X.ndims();
+    const ttb_real norm_x = globalNorm(X);
+    RandomMT cRMT(seed);
+
+    if (dist_method == "serial") {
+      // Compute random ktensor on rank 0 and broadcast to all proc's
+      IndxArrayT<ExecSpace> sz(nd);
+      auto hsz = create_mirror_view(sz);
+      for (int i=0; i<nd; ++i)
+        hsz[i] = global_dims_[i];
+      deep_copy(sz,hsz);
+      Genten::KtensorT<ExecSpace> u(rank, nd, sz);
+      if (pmap_->gridRank() == 0) {
+        u.setWeights(1.0);
+        u.setMatricesScatter(false, prng, cRMT);
+        const auto norm_k = std::sqrt(u.normFsq());
+        u.weights().times(norm_x / norm_k);
+        u.distribute();
+      }
+      return u;
+    }
+    else if (dist_method == "parallel") {
+      // Compute random ktensor on each node
+      KtensorT<ExecSpace> u(rank, nd, X.size());
+      u.setWeights(1.0);
+      u.setMatricesScatter(false, prng, cRMT);
+      const ttb_real norm_k = globalNorm(u);
+      u.weights().times(norm_x / norm_k);
+      u.distribute();
+      return u;
+    }
+    else if (dist_method == "parallel-drew") {
+      // Drew's funky random ktensor that I don't understand
+      KtensorT<ExecSpace> u(rank, nd, X.size());
+      u.setWeights(1.0);
+      u.setMatricesScatter(false, prng, cRMT);
+      u.weights().times(1.0 / norm_x);
+      u.distribute();
+      allReduce(u, true);
+      return u;
+    }
+    else
+      Genten::error("Unknown distributed-guess method: " + dist_method);
+    return Genten::KtensorT<ExecSpace>();
+  }
+
+private:
+  std::vector<std::uint32_t> global_dims_;
+  std::shared_ptr<ProcessorMap> pmap_;
+};
+
+} // namespace Genten
+
+#endif

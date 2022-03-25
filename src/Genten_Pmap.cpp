@@ -39,6 +39,9 @@
 //@header
 
 #include "Genten_Pmap.hpp"
+
+#ifdef HAVE_DIST
+
 #include "Genten_DistContext.hpp"
 #include "Genten_IOtext.hpp"
 
@@ -200,11 +203,9 @@ small_vector<int> CartGrid(int nprocs,
 }
 } // namespace
 
-ProcessorMap::ProcessorMap(ptree const &input_tree,
-                           std::vector<std::uint32_t> const &tensor_dims,
+ProcessorMap::ProcessorMap(std::vector<std::uint32_t> const &tensor_dims,
                            small_vector<int> const &predetermined_grid)
-    : dimension_sizes_(predetermined_grid),
-      pmap_tree_(input_tree.get_child("pmap", ptree{})) {
+    : dimension_sizes_(predetermined_grid) {
   const auto ndims = dimension_sizes_.size();
 
   // I don't think we need to be periodic
@@ -246,9 +247,8 @@ ProcessorMap::ProcessorMap(ptree const &input_tree,
   }
 }
 
-ProcessorMap::ProcessorMap(ptree const &input_tree,
-                           std::vector<std::uint32_t> const &tensor_dims)
-    : ProcessorMap(input_tree, tensor_dims,
+ProcessorMap::ProcessorMap(std::vector<std::uint32_t> const &tensor_dims)
+    : ProcessorMap(tensor_dims,
                    CartGrid(DistContext::nranks(), tensor_dims)) {}
 
 void ProcessorMap::gridBarrier() const {
@@ -270,3 +270,5 @@ ProcessorMap::~ProcessorMap() {
   }
 }
 } // namespace Genten
+
+#endif

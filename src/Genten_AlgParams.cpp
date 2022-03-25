@@ -57,6 +57,7 @@ Genten::AlgParams::AlgParams() :
   rank_def_solver(false),
   rcond(1e-8),
   penalty(0.0),
+  dist_guess_method("serial"),
   mttkrp_method(MTTKRP_Method::default_type),
   mttkrp_all_method(MTTKRP_All_Method::default_type),
   mttkrp_nnz_tile_size(128),
@@ -133,6 +134,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                                    "--no-rank-def-solver", rank_def_solver);
   rcond = parse_ttb_real(args, "--rcond", rcond, 0.0, DOUBLE_MAX);
   penalty = parse_ttb_real(args, "--penalty", penalty, 0.0, DOUBLE_MAX);
+  dist_guess_method = parse_string(args, "--dist-guess", dist_guess_method);
 
   // MTTKRP options
   mttkrp_method = parse_ttb_enum(args, "--mttkrp-method", mttkrp_method,
@@ -230,6 +232,121 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   anneal_max_lr = parse_ttb_real(args, "--anneal-max-lr", anneal_max_lr, 0.0, 1.0);
 }
 
+#ifdef HAVE_BOOST
+
+void Genten::AlgParams::parse(const ptree& input)
+{
+  // Generic options
+  parse_ptree_enum<Execution_Space>(input, "exec-space", exec_space);
+
+  // mttkrp tree may appear in multiple places, so make a lambda to parse it
+  auto parse_mttkrp = [&](const ptree& tree) {
+    auto mttkrp_input_o = tree.get_child_optional("mttkrp");
+    if (mttkrp_input_o) {
+      auto& mttkrp_input = *mttkrp_input_o;
+      parse_ptree_enum<MTTKRP_Method>(mttkrp_input, "method", mttkrp_method);
+      parse_ptree_enum<MTTKRP_All_Method>(mttkrp_input, "all-method", mttkrp_all_method);
+      parse_ptree_value(mttkrp_input, "nnz-tile-size", mttkrp_nnz_tile_size,
+                        1, INT_MAX);
+      parse_ptree_value(mttkrp_input, "duplicated-tile-size",
+                        mttkrp_duplicated_factor_matrix_tile_size, 0, INT_MAX);
+      parse_ptree_value(mttkrp_input, "duplicated-threshold",
+                        mttkrp_duplicated_threshold, -1.0, DOUBLE_MAX);
+      parse_ptree_value(mttkrp_input, "warmup", warmup);
+    }
+  };
+
+  // ktensor
+  auto ktensor_input_o = input.get_child_optional("k-tensor");
+  if (ktensor_input_o) {
+    auto& ktensor_input = *ktensor_input_o;
+    parse_ptree_value(ktensor_input, "rank", rank, 1, INT_MAX);
+    parse_ptree_value(ktensor_input, "seed", seed, 0, INT_MAX);
+    parse_ptree_value(ktensor_input, "prng", prng);
+    parse_ptree_value(ktensor_input, "distributed-guess", dist_guess_method);
+  }
+
+  // CP-ALS
+  auto cpals_input_o = input.get_child_optional("cp-als");
+  if (cpals_input_o) {
+    auto& cpals_input = *cpals_input_o;
+    parse_ptree_value(cpals_input, "maxiters", maxiters, 1, INT_MAX);
+    parse_ptree_value(cpals_input, "maxsecs", maxsecs, -1.0, DOUBLE_MAX);
+    parse_ptree_value(cpals_input, "tol", tol, 0.0, DOUBLE_MAX);
+    parse_ptree_value(cpals_input, "printitn", printitn, 0, INT_MAX);
+    parse_ptree_value(cpals_input, "debug", debug);
+    parse_ptree_value(cpals_input, "timings", timings);
+    parse_ptree_value(cpals_input, "full-gram", full_gram);
+    parse_ptree_value(cpals_input, "rank-def-solver", rank_def_solver);
+    parse_ptree_value(cpals_input, "rcond", rcond, 0.0, DOUBLE_MAX);
+    parse_ptree_value(cpals_input, "penalty", penalty, 0.0, DOUBLE_MAX);
+    parse_mttkrp(cpals_input);
+  }
+
+  // TTM
+  auto ttm_input_o = input.get_child_optional("ttm");
+  if (ttm_input_o) {
+    auto& ttm_input = *ttm_input_o;
+    parse_ptree_enum<TTM_Method>(ttm_input, "method", ttm_method);
+  }
+
+  // CP-OPT
+  auto cpopt_input_o = input.get_child_optional("cp-opt");
+  if (cpopt_input_o) {
+    auto& cpopt_input = *cpopt_input_o;
+    parse_ptree_enum<Opt_Method>(cpopt_input, "method", opt_method);
+    parse_ptree_value(cpopt_input, "lower", lower, -DOUBLE_MAX, DOUBLE_MAX);
+    parse_ptree_value(cpopt_input, "upper", upper, -DOUBLE_MAX, DOUBLE_MAX);
+    parse_ptree_value(cpopt_input, "rol", rolfilename);
+    parse_ptree_value(cpopt_input, "factr", factr, 0.0, DOUBLE_MAX);
+    parse_ptree_value(cpopt_input, "pgtol", pgtol, 0.0, DOUBLE_MAX);
+    parse_ptree_value(cpopt_input, "memory", memory, 0, INT_MAX);
+    parse_ptree_value(cpopt_input, "total-iters", max_total_iters, 0, INT_MAX);
+  }
+
+  // GCP
+  auto gcp_input_o = input.get_child_optional("gcp");
+  if (gcp_input_o) {
+    auto& gcp_input = *gcp_input_o;
+    parse_ptree_enum<GCP_LossFunction>(gcp_input, "type", loss_function_type);
+    parse_ptree_value(gcp_input, "eps", loss_eps, 0.0, 1.0);
+    parse_ptree_value(gcp_input, "tol", gcp_tol, -DOUBLE_MAX, DOUBLE_MAX);
+
+    // GCP-SGD
+    parse_ptree_enum<GCP_Sampling>(gcp_input, "sampling", sampling_type);
+    parse_ptree_value(gcp_input, "rate", rate, 0.0, DOUBLE_MAX);
+    parse_ptree_value(gcp_input, "decay", decay, 0.0, 1.0);
+    parse_ptree_value(gcp_input, "fails", max_fails, 0, INT_MAX);
+    parse_ptree_value(gcp_input, "epochiters", epoch_iters, 1, INT_MAX);
+    parse_ptree_value(gcp_input, "frozeniters", frozen_iters, 1, INT_MAX);
+    parse_ptree_value(gcp_input, "rngiters", rng_iters, 1, INT_MAX);
+    parse_ptree_value(gcp_input, "fnzs", num_samples_nonzeros_value, 0, INT_MAX);
+    parse_ptree_value(gcp_input, "fzs", num_samples_zeros_value, 0, INT_MAX);
+    parse_ptree_value(gcp_input, "gnzs", num_samples_nonzeros_grad, 0, INT_MAX);
+    parse_ptree_value(gcp_input, "gzs", num_samples_zeros_grad, 0, INT_MAX);
+    parse_ptree_value(gcp_input, "oversample", oversample_factor, 1.0, DOUBLE_MAX);
+    parse_ptree_value(gcp_input, "bulk-factor", bulk_factor, 1, INT_MAX);
+    parse_ptree_value(gcp_input, "fnzw", w_f_nz, -1.0, DOUBLE_MAX);
+    parse_ptree_value(gcp_input, "fzw", w_f_z, -1.0, DOUBLE_MAX);
+    parse_ptree_value(gcp_input, "gnzw", w_g_nz, -1.0, DOUBLE_MAX);
+    parse_ptree_value(gcp_input, "gzw", w_g_z, -1.0, DOUBLE_MAX);
+    parse_ptree_value(gcp_input, "hash", hash);
+    parse_ptree_value(gcp_input, "fuse", fuse);
+    parse_ptree_value(gcp_input, "fuse-sa", fuse_sa);
+    parse_ptree_value(gcp_input, "fit", compute_fit);
+    parse_ptree_enum<GCP_Step>(gcp_input, "step", step_type);
+    parse_ptree_value(gcp_input, "adam-beta1", adam_beta1, 0.0, 1.0);
+    parse_ptree_value(gcp_input, "adam-beta2", adam_beta2, 0.0, 1.0);
+    parse_ptree_value(gcp_input, "adam-eps", adam_eps, 0.0, 1.0);
+    parse_ptree_value(gcp_input, "async", async);
+    parse_ptree_value(gcp_input, "anneal", anneal);
+    parse_ptree_value(gcp_input, "anneal-min-lr", anneal_min_lr, 0.0, 1.0);
+    parse_ptree_value(gcp_input, "anneal-max-lr", anneal_max_lr, 0.0, 1.0);
+  }
+}
+
+#endif
+
 void Genten::AlgParams::print_help(std::ostream& out)
 {
   out << "Generic options: " << std::endl;
@@ -260,6 +377,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --rank-def-solver  use rank-deficient least-squares solver (GELSY) with full-gram formluation (useful when gram matrix is singular)" << std::endl;
   out << "  --rcond <float>    truncation parameter for rank-deficient solver" << std::endl;
   out << "  --penalty <float>  penalty term for regularization (useful if gram matrix is singular)" << std::endl;
+  out << "  --dist-guess <string> method for distributed initial guess" << std::endl;
 
   out << std::endl;
   out << "MTTKRP options:" << std::endl;
@@ -380,6 +498,7 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  rank-def-solver = " << (rank_def_solver ? "true" : "false") << std::endl;
   out << "  rcond = " << rcond << std::endl;
   out << "  penalty = " << penalty << std::endl;
+  out << "  dist-guess = " << dist_guess_method << std::endl;
 
   out << std::endl;
   out << "MTTKRP options:" << std::endl;
@@ -669,6 +788,22 @@ Genten::parse_ttb_indx_array(std::vector<std::string>& args,
   // return default value if not specified on command line
   return default_value;
 }
+
+#ifdef HAVE_BOOST
+void
+Genten::parse_ptree_value(const Genten::ptree& input, const std::string& name,
+                          bool& val)
+{
+  val = input.get<bool>(name, val);
+}
+
+void
+Genten::parse_ptree_value(const Genten::ptree& input, const std::string& name,
+                          std::string& val)
+{
+  val = input.get<std::string>(name, val);
+}
+#endif
 
 std::vector<std::string>
 Genten::build_arg_list(int argc, char** argv)

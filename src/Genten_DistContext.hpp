@@ -39,6 +39,15 @@
 //@HEADER
 
 #pragma once
+
+namespace Genten {
+bool InitializeGenten(int *argc, char ***argv);
+bool FinalizeGenten();
+}
+
+#include "CMakeInclude.h"
+#if defined(HAVE_DIST)
+
 #include "Genten_Boost.hpp"
 #include <Kokkos_Core.hpp>
 #include <mpi.h>
@@ -50,8 +59,6 @@
 #include <typeinfo>
 
 namespace Genten {
-bool InitializeGenten(int *argc, char ***argv);
-bool FinalizeGenten();
 std::stringstream debugInput();
 
 namespace detail {
@@ -201,3 +208,32 @@ template <> int DistContext::Bcast(small_vector<int> &t, int root);
 template <> int DistContext::Bcast(std::size_t &t, int root);
 
 } // namespace Genten
+
+#else
+
+namespace Genten {
+
+struct DistContext {
+  DistContext(DistContext const &) = delete;
+  DistContext(DistContext &&) = delete;
+  DistContext &operator=(DistContext const &) = delete;
+  DistContext &operator=(DistContext &&) = delete;
+  ~DistContext() = default;
+
+  static int rank() { return 0; }
+
+  static int nranks() { return 1; }
+
+  static bool initialized() { return true; }
+
+  static bool isDebug() { return false; }
+
+  static void Barrier() {}
+
+  template <typename T> static int Bcast(T &t, int root) {}
+
+};
+
+} // namespace Genten
+
+#endif

@@ -41,6 +41,8 @@
 #include "Genten_DistTensorContext.hpp"
 #include <string>
 
+#ifdef HAVE_DIST
+
 namespace Genten {
 namespace detail {
 
@@ -327,3 +329,5 @@ redistributeTensor(const std::vector<MPI_IO::TDatatype<ttb_real>>& Tvec,
 
 } // namespace detail
 } // namespace Genten
+
+#endif

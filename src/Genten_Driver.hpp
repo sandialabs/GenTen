@@ -49,6 +49,7 @@
 #include <string>
 #include <ostream>
 
+#include "Genten_DistTensorContext.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_Tensor.hpp"
 #include "Genten_Ktensor.hpp"
@@ -58,7 +59,8 @@ namespace Genten {
 
   template<typename ExecSpace>
   KtensorT<ExecSpace>
-  driver(SptensorT<ExecSpace>& x,
+  driver(const DistTensorContext& dtc,
+         SptensorT<ExecSpace>& x,
          KtensorT<ExecSpace>& u_init,
          AlgParams& algParams,
          std::ostream& out);

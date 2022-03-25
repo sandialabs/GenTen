@@ -40,6 +40,9 @@
 
 #pragma once
 
+#include "CMakeInclude.h"
+#ifdef HAVE_BOOST
+
 #include <boost/archive/binary_iarchive.hpp>
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/container/small_vector.hpp>
@@ -74,3 +77,16 @@ template <typename T, int N = detail::default_small_vector_size<T>()>
 using small_vector = boost::container::small_vector<T, N>;
 
 } // namespace Genten
+
+#else
+
+#include <vector>
+
+namespace Genten {
+
+template <typename T, int N = 0>
+using small_vector = std::vector<T>;
+
+}
+
+#endif

@@ -39,6 +39,10 @@
 //@HEADER
 //
 #include "Genten_DistContext.hpp"
+
+#if defined(HAVE_DIST)
+
+#define BOOST_BIND_GLOBAL_PLACEHOLDERS
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree_serialization.hpp>
 
@@ -194,3 +198,22 @@ DistContext::~DistContext() {
 
 std::unique_ptr<DistContext> DistContext::instance_ = nullptr;
 } // namespace Genten
+
+#else
+
+#include <Kokkos_Core.hpp>
+
+namespace Genten {
+
+bool InitializeGenten(int *argc, char ***argv) {
+  Kokkos::initialize(*argc, *argv);
+  return true;
+}
+
+bool FinalizeGenten() {
+  Kokkos::finalize();
+}
+
+}
+
+#endif

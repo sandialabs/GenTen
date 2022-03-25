@@ -79,9 +79,12 @@ void matlab_driver(int nlhs, mxArray *plhs[],
   else
     throw std::string("Invalid type for initial guess specification.");
 
+  // To do:  initialize this
+  Genten::DistTensorContext dtc;
+
   // Call driver
   Genten::KtensorT<ExecSpace> u =
-    Genten::driver(X, u_init, algParams, std::cout);
+    Genten::driver(dtc, X, u_init, algParams, std::cout);
 
   // Return results
   if (nlhs >= 1)

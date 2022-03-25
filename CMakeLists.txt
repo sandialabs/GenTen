@@ -433,12 +433,30 @@ IF (ENABLE_GCP)
   # ENDIF()
 ENDIF()
 
-
 #---- Tell CMake to build the library.
 ADD_LIBRARY (gentenlib ${Genten_SOURCE_LIST})
 TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkos)
 IF(HAVE_BOOST)
   TARGET_LINK_LIBRARIES(gentenlib Boost::iostreams ZLIB::ZLIB)
+ENDIF()
+
+ADD_LIBRARY(DistContextLib
+    ${Genten_SOURCE_DIR}/src/Genten_DistContext.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_Pmap.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_DistTensorContext.cpp
+    )
+TARGET_LINK_LIBRARIES(DistContextLib Kokkos::kokkos)
+TARGET_LINK_LIBRARIES(gentenlib DistContextLib )
+IF(HAVE_DIST)
+  TARGET_LINK_LIBRARIES(DistContextLib MPI::MPI_C
+                                       Boost::boost Boost::serialization
+    )
+  ADD_LIBRARY(GentenMpiIoLib
+    ${Genten_SOURCE_DIR}/src/Genten_SpTn_Util.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_MPI_IO.cpp
+    )
+  TARGET_LINK_LIBRARIES(GentenMpiIoLib MPI::MPI_C Boost::boost)
+  TARGET_LINK_LIBRARIES(gentenlib GentenMpiIoLib)
 ENDIF()
 
 IF(Kokkos_ENABLE_HIP)
@@ -455,10 +473,17 @@ ENDIF()
 SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${ROL_LIBRARIES} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
 TARGET_LINK_LIBRARIES(${GENTEN_LINK_LIBS})
 INSTALL (
-  TARGETS gentenlib
+  TARGETS gentenlib DistContextLib 
   EXPORT genten
   DESTINATION ${CMAKE_INSTALL_LIBDIR}
   )
+IF(HAVE_DIST)
+  INSTALL (
+    TARGETS GentenMpiIoLib
+    EXPORT genten
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  )
+ENDIF()
 
 #---- Adding the higher moment interface to the Library sources
 #---- Must be a better way to do this. Inside an IF??
@@ -581,27 +606,12 @@ INSTALL (
   DESTINATION ${CMAKE_INSTALL_BINDIR}
   )
 
-if(HAVE_DIST)
-  add_library(DistContextLib
-    ${Genten_SOURCE_DIR}/src/Genten_DistContext.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_Pmap.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_DistTensorContext.cpp
-    )
-  target_link_libraries(DistContextLib Kokkos::kokkos MPI::MPI_C
-                                       Boost::boost Boost::serialization
-    )
-
-  add_library(GentenMpiIoLib
-    ${Genten_SOURCE_DIR}/src/Genten_SpTn_Util.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_MPI_IO.cpp
-    )
-  target_link_libraries(GentenMpiIoLib MPI::MPI_C Boost::boost)
-
-  add_executable(
+IF(HAVE_DIST)
+  ADD_EXECUTABLE(
     genten_mpisgd
     ${Genten_SOURCE_DIR}/driver/Genten_MPISGD_Driver.cpp
     )
-  target_link_libraries(genten_mpisgd
+  TARGET_LINK_LIBRARIES(genten_mpisgd
     ${GENTEN_LINK_LIBS}
     DistContextLib
     GentenMpiIoLib
@@ -610,11 +620,11 @@ if(HAVE_DIST)
     Boost::serialization
     )
 
-  install(
+  INSTALL(
     TARGETS genten_mpisgd
     DESTINATION drivers
     )
-endif()
+ENDIF()
 
 #------------------------------------------------------------
 #---- Matlab

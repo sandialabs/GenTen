@@ -53,10 +53,8 @@ namespace Genten {
 
 class ProcessorMap {
 public:
-  ProcessorMap(ptree const &input_tree,
-               std::vector<std::uint32_t> const &tensor_dims);
-  ProcessorMap(ptree const &input_tree,
-               std::vector<std::uint32_t> const &tensor_dims,
+  ProcessorMap(std::vector<std::uint32_t> const &tensor_dims);
+  ProcessorMap(std::vector<std::uint32_t> const &tensor_dims,
                small_vector<int> const &predetermined_grid);
   ~ProcessorMap();
 
@@ -189,8 +187,6 @@ private:
   small_vector<MPI_Comm> sub_maps_; // N-1 D sub comms
 
   small_vector<FacMap> fac_maps_; // 1 D sub comms
-
-  ptree pmap_tree_;
 };
 
 #else
