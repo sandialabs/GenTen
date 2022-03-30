@@ -2118,10 +2118,7 @@ void KOKKOS_INLINE_FUNCTION local_deep_copy(
 template <class TeamType, class DT, class... DP>
 void KOKKOS_INLINE_FUNCTION local_deep_copy_contiguous(
     const TeamType& team, const View<DT, DP...>& dst,
-    typename ViewTraits<DT, DP...>::const_value_type& value,
-    typename std::enable_if<std::is_same<
-        typename ViewTraits<DT, DP...>::specialize, void>::value>::type* =
-        nullptr) {
+    typename ViewTraits<DT, DP...>::const_value_type& value) {
   Kokkos::parallel_for(Kokkos::TeamThreadRange(team, dst.span()),
                        [&](const int& i) { dst.data()[i] = value; });
 }
@@ -2129,10 +2126,7 @@ void KOKKOS_INLINE_FUNCTION local_deep_copy_contiguous(
 template <class DT, class... DP>
 void KOKKOS_INLINE_FUNCTION local_deep_copy_contiguous(
     const View<DT, DP...>& dst,
-    typename ViewTraits<DT, DP...>::const_value_type& value,
-    typename std::enable_if<std::is_same<
-        typename ViewTraits<DT, DP...>::specialize, void>::value>::type* =
-        nullptr) {
+    typename ViewTraits<DT, DP...>::const_value_type& value) {
   for (size_t i = 0; i < dst.span(); ++i) {
     dst.data()[i] = value;
   }

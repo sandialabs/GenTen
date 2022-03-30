@@ -173,9 +173,7 @@ struct ChunkedArrayManager {
     void execute() {
       // Destroy the array of chunk pointers.
       // Two entries beyond the max chunks are allocation counters.
-      uintptr_t const len =
-          *reinterpret_cast<uintptr_t*>(m_chunks + m_chunk_max);
-      for (unsigned i = 0; i < len; i++) {
+      for (unsigned i = 0; i < m_chunk_max; i++) {
         Space().deallocate(m_label.c_str(), m_chunks[i],
                            sizeof(value_type) * m_chunk_size);
       }
