@@ -392,7 +392,7 @@ void Genten_Test_CpAls_Space (int infolevel)
 
   Genten_Test_CpAls_Type<ExecSpace>(Genten::MTTKRP_Method::Atomic,infolevel,
                                     "Atomic");
-  if (!space_prop::is_cuda)
+  if (!space_prop::is_gpu)
     Genten_Test_CpAls_Type<ExecSpace>(
       Genten::MTTKRP_Method::Duplicated,infolevel, "Duplicated");
   Genten_Test_CpAls_Type<ExecSpace>(Genten::MTTKRP_Method::Perm,infolevel,
@@ -402,6 +402,9 @@ void Genten_Test_CpAls_Space (int infolevel)
 void Genten_Test_CpAls(int infolevel) {
 #ifdef KOKKOS_ENABLE_CUDA
   Genten_Test_CpAls_Space<Kokkos::Cuda>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_HIP
+  Genten_Test_CpAls_Space<Kokkos::Experimental::HIP>(infolevel);
 #endif
 #ifdef KOKKOS_ENABLE_OPENMP
   Genten_Test_CpAls_Space<Kokkos::OpenMP>(infolevel);

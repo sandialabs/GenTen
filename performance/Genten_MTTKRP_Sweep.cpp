@@ -320,6 +320,13 @@ int main(int argc, char* argv[])
         cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
         nMaxNonzeroes, nRNGseed, nIters, algParams);
 #endif
+#ifdef KOKKOS_ENABLE_HIP
+    else if (exec_space == Genten::Execution_Space::HIP)
+      run_mttkrp< Kokkos::Experimental::HIP >(
+        inputfilename, index_base, gz,
+        cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
+        nMaxNonzeroes, nRNGseed, nIters, algParams);
+#endif
 #ifdef KOKKOS_ENABLE_OPENMP
     else if (exec_space == Genten::Execution_Space::OpenMP)
       run_mttkrp< Kokkos::OpenMP >(

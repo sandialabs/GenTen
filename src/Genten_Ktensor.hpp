@@ -355,13 +355,13 @@ void deep_copy(const KtensorT<E1>& dst, const KtensorT<E2>& src)
 template <typename ExecSpace> class SptensorT;
 
 // Compute Ktensor value using Sptensor subscripts
-// Len and WarpSize are for nested parallelism using TinyVec
-template <typename ExecSpace, unsigned Len, unsigned WarpSize>
+// Len and WarpOrWavefrontSize are for nested parallelism using TinyVec
+template <typename ExecSpace, unsigned Len, unsigned WarpOrWavefrontSize>
 KOKKOS_INLINE_FUNCTION
 ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
                                const SptensorT<ExecSpace>& X,
                                const ttb_indx i) {
-  typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Len, WarpSize> TV1;
+  typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Len, WarpOrWavefrontSize> TV1;
 
   /*const*/ unsigned nd = M.ndims();
   /*const*/ unsigned nc = M.ncomponents();
@@ -369,7 +369,7 @@ ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
   TV1 m_val(Len,0.0);
 
   auto row_func = [&](auto j, auto nj, auto Nj) {
-    typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Nj(), WarpSize> TV2;
+    typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Nj(), WarpOrWavefrontSize> TV2;
     TV2 tmp(nj, 0.0);
     tmp.load(&(M.weights(j)));
     for (unsigned m=0; m<nd; ++m) {
@@ -393,13 +393,13 @@ ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
 }
 
 // Compute Ktensor value using Sptensor subscripts
-// Len and WarpSize are for nested parallelism using TinyVec
-template <typename ExecSpace, unsigned Len, unsigned WarpSize,
+// Len and WarpOrWavefrontSize are for nested parallelism using TinyVec
+template <typename ExecSpace, unsigned Len, unsigned WarpOrWavefrontSize,
           typename IndexArray>
 KOKKOS_INLINE_FUNCTION
 ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
                                const IndexArray& ind) {
-  typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Len, WarpSize> TV1;
+  typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Len, WarpOrWavefrontSize> TV1;
 
   /*const*/ unsigned nd = M.ndims();
   /*const*/ unsigned nc = M.ncomponents();
@@ -407,7 +407,7 @@ ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
   TV1 m_val(Len,0.0);
 
   auto row_func = [&](auto j, auto nj, auto Nj) {
-    typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Nj(), WarpSize> TV2;
+    typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Nj(), WarpOrWavefrontSize> TV2;
     TV2 tmp(nj, 0.0);
     tmp.load(&(M.weights(j)));
     for (unsigned m=0; m<nd; ++m) {

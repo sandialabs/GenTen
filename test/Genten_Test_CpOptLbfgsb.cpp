@@ -239,31 +239,27 @@ void Genten_Test_CpOptLbfgsb_Type (
   MESSAGE("Creating a ktensor with initial guess of lin indep basis vectors");
   ttb_indx  nNumComponents = 2;
   Genten::Ktensor  initialBasis (nNumComponents, dims.size(), dims);
-
-  const ttb_real val = 0.707;
+  initialBasis.setWeights(1.0);
   initialBasis.setMatrices(0.0);
-  initialBasis[0].entry(0,0) = 1.0;
-  initialBasis[0].entry(1,0) = 0.0;
-  initialBasis[0].entry(0,1) = val;
-  initialBasis[0].entry(1,1) = val;
-
-  initialBasis[1].entry(0,0) = val;
-  initialBasis[1].entry(1,0) = 0.0;
-  initialBasis[1].entry(2,0) = val;
-  initialBasis[1].entry(0,1) = val;
-  initialBasis[1].entry(1,1) = val;
-  initialBasis[1].entry(2,1) = 0.0;
-
-  initialBasis[2].entry(0,0) = val;
-  initialBasis[2].entry(1,0) = val;
-  initialBasis[2].entry(2,0) = 0.0;
-  initialBasis[2].entry(3,0) = 0.0;
-  initialBasis[2].entry(0,1) = val;
-  initialBasis[2].entry(1,1) = 0.0;
-  initialBasis[2].entry(2,1) = 0.0;
-  initialBasis[2].entry(3,1) = val;
+  initialBasis[0].entry(0,0) = 0.8;
+  initialBasis[0].entry(1,0) = 0.2;
+  initialBasis[0].entry(0,1) = 0.5;
+  initialBasis[0].entry(1,1) = 0.5;
+  initialBasis[1].entry(0,0) = 0.5;
+  initialBasis[1].entry(1,0) = 0.1;
+  initialBasis[1].entry(2,0) = 0.5;
+  initialBasis[1].entry(0,1) = 0.5;
+  initialBasis[1].entry(1,1) = 0.5;
+  initialBasis[1].entry(2,1) = 0.1;
+  initialBasis[2].entry(0,0) = 0.7;
+  initialBasis[2].entry(1,0) = 0.7;
+  initialBasis[2].entry(2,0) = 0.1;
+  initialBasis[2].entry(3,0) = 0.1;
+  initialBasis[2].entry(0,1) = 0.7;
+  initialBasis[2].entry(1,1) = 0.1;
+  initialBasis[2].entry(2,1) = 0.1;
+  initialBasis[2].entry(3,1) = 0.7;
   initialBasis.weights(0) = 2.0; // Test with weights different from one.
-  initialBasis.weights(1) = 2.828;
   if (infolevel == 1)
     print_ktensor(initialBasis,std::cout,"Initial guess for CpOpt");
 
@@ -340,6 +336,9 @@ void Genten_Test_CpOptLbfgsb_Space (int infolevel)
 void Genten_Test_CpOptLbfgsb(int infolevel) {
 #ifdef KOKKOS_ENABLE_CUDA
   Genten_Test_CpOptLbfgsb_Space<Kokkos::Cuda>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_HIP
+  Genten_Test_CpOptLbfgsb_Space<Kokkos::Experimental::HIP>(infolevel);
 #endif
 #ifdef KOKKOS_ENABLE_OPENMP
   Genten_Test_CpOptLbfgsb_Space<Kokkos::OpenMP>(infolevel);

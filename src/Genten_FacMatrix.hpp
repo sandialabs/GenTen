@@ -89,7 +89,7 @@ public:
     // Default for whether to use full or symmetric Gram matrix.  Currently
     // use full only on GPU, symmetric everywhere else.  Todo:  check KNL
     static constexpr bool full_gram_default =
-      Genten::is_cuda_space<ExecSpace>::value;
+      Genten::is_gpu_space<ExecSpace>::value;
 
     /** ----------------------------------------------------------------
      *  @name Constructors and Destructors
@@ -563,9 +563,9 @@ void FacMatrixT<ExecSpace>::apply_func(const Func& f) const
 
   const unsigned block_size = 128;
   const unsigned team_size =
-    Genten::is_cuda_space<ExecSpace>::value ? 16 : 1;
+    Genten::is_gpu_space<ExecSpace>::value ? 16 : 1;
   const unsigned vector_size =
-    Genten::is_cuda_space<ExecSpace>::value ? 256/team_size : 1;
+    Genten::is_gpu_space<ExecSpace>::value ? 256/team_size : 1;
   const ttb_indx nr = data.extent(0);
   const unsigned nc = data.extent(1);
   const ttb_indx N = (nr+block_size-1)/block_size;
@@ -596,9 +596,9 @@ void FacMatrixT<ExecSpace>::reduce_func(const Func& f, const Reducer& r) const
 
   const unsigned block_size = 128;
   const unsigned team_size =
-    Genten::is_cuda_space<ExecSpace>::value ? 16 : 1;
+    Genten::is_gpu_space<ExecSpace>::value ? 16 : 1;
   const unsigned vector_size =
-    Genten::is_cuda_space<ExecSpace>::value ? 256/team_size : 1;
+    Genten::is_gpu_space<ExecSpace>::value ? 256/team_size : 1;
   const ttb_indx nr = data.extent(0);
   const unsigned nc = data.extent(1);
   const ttb_indx N = (nr+block_size-1)/block_size;

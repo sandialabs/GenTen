@@ -315,6 +315,7 @@ namespace Genten {
     }
 
     // Normalize Ktensor u
+    z.copyToKtensor(u);
     u.normalize(Genten::NormTwo);
     u.arrange();
 

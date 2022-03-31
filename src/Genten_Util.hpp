@@ -57,30 +57,35 @@ namespace Genten {
   typedef Kokkos::DefaultExecutionSpace DefaultExecutionSpace;
   typedef Kokkos::DefaultHostExecutionSpace DefaultHostExecutionSpace;
 }
+
 #ifdef KOKKOS_ENABLE_CUDA
 #define GENTEN_INST_CUDA(INSTMACRO) \
   INSTMACRO(Kokkos::Cuda)
 #else
 #define GENTEN_INST_CUDA(INSTMACRO) /* */
 #endif
+
 #ifdef KOKKOS_ENABLE_HIP
 #define GENTEN_INST_HIP(INSTMACRO) \
   INSTMACRO(Kokkos::Experimental::HIP)
 #else
 #define GENTEN_INST_HIP(INSTMACRO) /* */
 #endif
+
 #ifdef KOKKOS_ENABLE_OPENMP
 #define GENTEN_INST_OPENMP(INSTMACRO) \
   INSTMACRO(Kokkos::OpenMP)
 #else
 #define GENTEN_INST_OPENMP(INSTMACRO) /* */
 #endif
+
 #ifdef KOKKOS_ENABLE_THREADS
 #define GENTEN_INST_THREADS(INSTMACRO) \
   INSTMACRO(Kokkos::Threads)
 #else
 #define GENTEN_INST_THREADS(INSTMACRO) /* */
 #endif
+
 #ifdef KOKKOS_ENABLE_SERIAL
 #define GENTEN_INST_SERIAL(INSTMACRO) \
   INSTMACRO(Kokkos::Serial)
@@ -123,17 +128,18 @@ namespace Genten {
   struct Execution_Space {
     enum type {
       Cuda,
+      HIP,
       OpenMP,
       Threads,
       Serial,
       Default
     };
-    static constexpr unsigned num_types = 5;
     static constexpr type types[] = {
-      Cuda, OpenMP, Threads, Serial, Default
+      Cuda, HIP, OpenMP, Threads, Serial, Default
     };
+    static constexpr unsigned num_types = sizeof(types) / sizeof(types[0]);
     static constexpr const char* names[] = {
-      "cuda", "openmp", "threads", "serial", "default"
+      "cuda", "hip", "openmp", "threads", "serial", "default"
     };
     static constexpr type default_type = Default;
   };

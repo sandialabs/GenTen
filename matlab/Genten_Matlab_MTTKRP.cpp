@@ -106,6 +106,10 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
     else if (algParams.exec_space == Genten::Execution_Space::Cuda)
       matlab_driver<Kokkos::Cuda>(nlhs, plhs, nrhs, prhs, algParams);
 #endif
+#ifdef KOKKOS_ENABLE_HIP
+    else if (algParams.exec_space == Genten::Execution_Space::HIP)
+      matlab_driver<Kokkos::Experimental::HIP>(nlhs, plhs, nrhs, prhs, algParams);
+#endif
 #ifdef KOKKOS_ENABLE_OPENMP
     else if (algParams.exec_space == Genten::Execution_Space::OpenMP)
       matlab_driver<Kokkos::OpenMP>(nlhs, plhs, nrhs, prhs, algParams);

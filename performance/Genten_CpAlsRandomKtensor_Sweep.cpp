@@ -309,6 +309,12 @@ int main(int argc, char* argv[])
         cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
         nMaxNonzeroes, algParams);
 #endif
+#ifdef KOKKOS_ENABLE_HIP
+    else if (exec_space == Genten::Execution_Space::HIP)
+      ret = run_cpals< Kokkos::Experimental::HIP >(
+        cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
+        nMaxNonzeroes, algParams);
+#endif
 #ifdef KOKKOS_ENABLE_OPENMP
     else if (exec_space == Genten::Execution_Space::OpenMP)
       ret = run_cpals< Kokkos::OpenMP >(

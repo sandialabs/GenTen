@@ -227,10 +227,12 @@ isConsistent(const Genten::IndxArrayT<ExecSpace> & sz) const
     return false;
   }
 
+  auto sz_host = create_mirror_view(sz);
+  deep_copy(sz_host, sz);
   ttb_indx nc = lambda.size();
   for (ttb_indx n = 0; n < data.size(); n ++)
   {
-    if ((data[n].nCols() != nc) || (data[n].nRows() != sz[n]))
+    if ((data[n].nCols() != nc) || (data[n].nRows() != sz_host[n]))
     {
       return false;
     }

@@ -51,15 +51,15 @@ if length(args) == 1 && isa(args{1}, 'struct')
 end
 
 % Initial guess
-Uinit = 'random';
+Uinit = 'randn';
 n = length(args);
 for i=1:n
   if isa(args{i}, 'char') && strcmp(args{i}, 'init')
-    if i+1<=n && isa(args{i+1}, 'char') && strcmp(args{i+1}, 'random')
-      Uinit = 'random';
+    if i+1<=n && isa(args{i+1}, 'char') && (strcmpi(args{i+1}, 'random') || strcmpi(args{i+1}, 'randn') || strcmpi(args{i+1}, 'rand') || strcmpi(args{i+1}, 'zeros'))
+      Uinit = args{i+1};
       args(i:i+1) = [];
       break;
-    elseif i+1<=n && isa(args{i+1}, 'char') && strcmp(args{i+1}, 'nvecs')
+    elseif i+1<=n && isa(args{i+1}, 'char') && strcmpi(args{i+1}, 'nvecs')
       Uinit = cell(N,1);
       for j = 1:N
         Uinit{j} = nvecs(X,j,R);
@@ -82,10 +82,11 @@ for i=1:n
     end
   end
 end
-if isa(Uinit, 'char') && strcmp(Uinit, 'random')
+if isa(Uinit, 'char') && (strcmpi(Uinit, 'random') || strcmpi(Uinit, 'randn') || strcmpi(Uinit, 'rand') || strcmpi(Uinit, 'zeros'))
+  init = Uinit;
   Uinit = cell(N,1);
   for j = 1:N
-    Uinit{j} = rand(size(X,j),R);
+    Uinit{j} = matrandnorm(feval(init,size(X,j),R));
   end
   Uinit = ktensor(Uinit);
 end
