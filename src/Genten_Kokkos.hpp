@@ -226,9 +226,13 @@ namespace Genten {
 #endif
 
 #ifdef KOKKOS_ENABLE_SYCL
-      // TODO (STRZ) - SYCL implementation
       if (is_sycl) {
-        str += " (device SYCL)";
+        Kokkos::Experimental::SYCL sycl;
+        auto sycl_device = sycl.impl_internal_space_instance()->m_queue->get_device();
+        str +=
+          " (device " +
+          std::to_string(sycl.sycl_device()) +
+          ", " + sycl_device.get_info<sycl::info::device::name>() + ")";
       }
 #endif
 
