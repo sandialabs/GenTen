@@ -243,14 +243,14 @@ ttb_real innerprod_kernel(const Genten::SptensorT<ExecSpace>& s,
                           const Genten::ArrayT<ExecSpace>& lambda)
 {
   // Compute team and vector sizes, depending on the architecture
-  const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+  const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
 
   const unsigned VectorSize =
-    is_cuda ? (FacBlockSize <= 16 ? FacBlockSize : 16) : 1;
+    is_gpu ? (FacBlockSize <= 16 ? FacBlockSize : 16) : 1;
   const unsigned TeamSize =
-    is_cuda ? 128/VectorSize : 1;
+    is_gpu ? 128/VectorSize : 1;
   const unsigned RowBlockSize =
-    is_cuda ? TeamSize : 32;
+    is_gpu ? TeamSize : 32;
 
   typedef InnerProductKernel<ExecSpace,RowBlockSize,FacBlockSize,TeamSize,VectorSize> Kernel;
   typedef typename Kernel::TeamMember TeamMember;
@@ -291,7 +291,7 @@ ttb_real Genten::innerprod(const Genten::SptensorT<ExecSpace>& s,
   cali::Function cali_func("Genten::innerprod");
 #endif
 
-  const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+  const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
 
   const ttb_indx nc = u.ncomponents();               // Number of components
   const ttb_indx nd = u.ndims();                     // Number of dimensions
@@ -313,7 +313,7 @@ ttb_real Genten::innerprod(const Genten::SptensorT<ExecSpace>& s,
     d = Impl::innerprod_kernel<ExecSpace,8>(s,u,lambda);
   else if (nc <= 16)
     d = Impl::innerprod_kernel<ExecSpace,16>(s,u,lambda);
-  else if (nc < 64 || !is_cuda)
+  else if (nc < 64 || !is_gpu)
     d = Impl::innerprod_kernel<ExecSpace,32>(s,u,lambda);
   else
     d = Impl::innerprod_kernel<ExecSpace,64>(s,u,lambda);
@@ -338,10 +338,10 @@ ttb_real Genten::innerprod(const Genten::TensorT<ExecSpace>& x,
   /*const*/ unsigned nd = u.ndims();
   /*const*/ unsigned nc = u.ncomponents();
 
-  // Make VectorSize*TeamSize ~= 256 on Cuda
-  static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
-  const unsigned VectorSize = is_cuda ? nc : 1;
-  const unsigned TeamSize = is_cuda ? (256+nc-1)/nc : 1;
+  // Make VectorSize*TeamSize ~= 256 on Cuda or HIP
+  static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+  const unsigned VectorSize = is_gpu ? nc : 1;
+  const unsigned TeamSize = is_gpu ? (256+nc-1)/nc : 1;
   const ttb_indx N = (ne+TeamSize-1)/TeamSize;
 
   // Check on sizes
