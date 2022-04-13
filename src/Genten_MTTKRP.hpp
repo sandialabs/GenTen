@@ -134,7 +134,7 @@ mttkrp_kernel(const SptensorT<ExecSpace>& X,
       }
 
       auto row_func = [&](auto j, auto nj, auto Nj) {
-        typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+        typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
         for (unsigned ii=0; ii<RowBlockSize; ++ii) {
           const ttb_indx i = offset + ii*stride;
           if (i >= nnz)
@@ -144,7 +144,7 @@ mttkrp_kernel(const SptensorT<ExecSpace>& X,
           const ttb_real x_val = X.value(i);
 
           // MTTKRP for dimension n
-          TV tmp(nj, x_val);
+          auto tmp = TVM::make(team, nj, x_val);
           tmp *= &(u.weights(nc_beg+j));
           for (unsigned m=0; m<nd; ++m) {
             if (m != n)
@@ -205,8 +205,9 @@ mttkrp_kernel_perm(const SptensorT<ExecSpace>& X,
       (team.league_rank()*TeamSize + team.team_rank())*RowBlockSize;
 
     auto row_func = [&](auto j, auto nj, auto Nj) {
-      typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
-      TV val(nj, 0.0), tmp(nj, 0.0);
+      typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
+      auto val = TVM::make(team, nj, 0.0);
+      auto tmp = TVM::make(team, nj, 0.0);
 
       ttb_indx row_prev = invalid_row;
       ttb_indx row = invalid_row;
@@ -431,7 +432,7 @@ struct MTTKRP_All_Kernel {
         }
 
         auto row_func = [&](auto j, auto nj, auto Nj) {
-          typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+          typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
           for (unsigned ii=0; ii<RowBlockSize; ++ii) {
             const ttb_indx i = offset + ii*stride;
             if (i >= nnz)
@@ -443,7 +444,7 @@ struct MTTKRP_All_Kernel {
             for (unsigned n=0; n<nm; ++n) {
               const ttb_indx k = X.subscript(i,n+mb);
               auto va = sa[n].access();
-              TV tmp(nj, x_val);
+              auto tmp = TVM::make(team, nj, x_val);
               tmp *= &(u.weights(nc_beg+j));
               for (unsigned m=0; m<nd; ++m) {
                 if (m != n+mb)
@@ -542,7 +543,7 @@ struct MTTKRP_All_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
       ttb_indx stride = team.league_size()*TeamSize;
 
       auto row_func = [&](auto j, auto nj, auto Nj) {
-        typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+        typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
         for (unsigned ii=0; ii<RowBlockSize; ++ii) {
           const ttb_indx i = offset + ii*stride;
           if (i >= nnz)
@@ -553,7 +554,7 @@ struct MTTKRP_All_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
           // MTTKRP for dimension n
           for (unsigned n=0; n<nm; ++n) {
             const ttb_indx k = X.subscript(i,n+mb);
-            TV tmp(nj, x_val);
+            auto tmp = TVM::make(team, nj, x_val);
             tmp *= &(u.weights(j));
             for (unsigned m=0; m<nd; ++m) {
               if (m != n+mb)

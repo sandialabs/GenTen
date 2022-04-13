@@ -458,7 +458,7 @@ struct MTTKRP_Dense_Kernel {
 
       // lambda function for MTTKRP for block of size nj
       auto row_func = [&](auto j, auto nj, auto Nj) {
-        typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+        typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
 
         // Work around internal-compiler errors in recent Intel compilers
         unsigned nd_ = nd;
@@ -473,12 +473,12 @@ struct MTTKRP_Dense_Kernel {
           sub[n_] = i;
         });
 
-        TV val(nj, 0.0);
+        auto val = TVM::make(team, nj, 0.0);
         int done = 0;
         while (!done) {  // Would like to get some parallelism in this loop
           const ttb_indx k = X.sub2ind(sub);
           const ttb_real x_val = X[k];
-          TV tmp(nj, x_val);
+          auto tmp = TVM::make(team, nj, x_val);
           tmp *= &(u.weights(j));
           for (unsigned m=0; m<nd_; ++m) {
             if (m != n_)

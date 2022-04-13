@@ -137,7 +137,7 @@ namespace Genten {
 
           // Compute Ktensor value
           const ttb_real m_val =
-            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(M, ind);
+            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, M, ind);
 
           // Compute Y value
           const ttb_real y_val =
@@ -146,9 +146,9 @@ namespace Genten {
 
           auto row_func = [&](auto j, auto nj, auto Nj, auto k, auto n, auto& ga)
           {
-            typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+            typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
 
-            TV tmp(nj, y_val);
+            auto tmp = TVM::make(team, nj, y_val);
             for (unsigned m=0; m<nd; ++m) {
               if (m != n)
                 tmp *= &(M[m].entry(ind[m],j));
@@ -205,16 +205,16 @@ namespace Genten {
 
           // Compute Ktensor value
           const ttb_real m_val =
-            compute_Ktensor_value<ExecSpace, FacBlockSize, VectorSize>(M, ind);
+            compute_Ktensor_value<ExecSpace, FacBlockSize, VectorSize>(team, M, ind);
 
           // Compute Y value
           const ttb_real y_val = weight_zeros * f.deriv(ttb_real(0.0), m_val);
 
           auto row_func = [&](auto j, auto nj, auto Nj, auto k, auto n, auto& ga)
           {
-            typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+            typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
 
-            TV tmp(nj, y_val);
+            auto tmp = TVM::make(team, nj, y_val);
             for (unsigned m=0; m<nd; ++m) {
               if (m != n)
                 tmp *= &(M[m].entry(ind[m],j));
@@ -320,7 +320,7 @@ namespace Genten {
 
           // Compute Ktensor value
           const ttb_real m_val =
-            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(M, ind);
+            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, M, ind);
 
           // Compute Y value
           const ttb_real y_val =
@@ -328,9 +328,9 @@ namespace Genten {
                                 f.deriv(ttb_real(0.0), m_val) );
 
           auto row_func = [&](auto j, auto nj, auto Nj, auto k, auto n) {
-            typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+            typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
 
-            TV tmp(nj, y_val);
+            auto tmp = TVM::make(team, nj, y_val);
             for (unsigned m=0; m<nd; ++m) {
               if (m != n)
                 tmp *= &(M[m].entry(ind[m],j));
@@ -385,15 +385,16 @@ namespace Genten {
 
           // Compute Ktensor value
           const ttb_real m_val =
-            compute_Ktensor_value<ExecSpace, FacBlockSize, VectorSize>(M, ind);
+            compute_Ktensor_value<ExecSpace, FacBlockSize, VectorSize>(team, M, ind);
 
           // Compute Y value
           const ttb_real y_val = weight_zeros * f.deriv(ttb_real(0.0), m_val);
 
           auto row_func = [&](auto j, auto nj, auto Nj, auto k, auto n) {
-            typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+            typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
 
-            TV tmp(nj, y_val);
+            auto tmp = TVM::make(team, nj, y_val);
+
             for (unsigned m=0; m<nd; ++m) {
               if (m != n)
                 tmp *= &(M[m].entry(ind[m],j));

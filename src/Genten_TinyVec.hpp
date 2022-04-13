@@ -44,8 +44,6 @@
 #include <cmath>
 #include <ostream>
 
-// TODO (STRZ) - SYCL implementation
-
 #include "Genten_Kokkos.hpp"
 #if defined(KOKKOS_ENABLE_CUDA)
 #include "Cuda/Kokkos_Cuda_Team.hpp"
@@ -61,24 +59,43 @@
 #define KOKKOS_DEFAULTED_DEVICE_FUNCTION __device__ inline
 #endif
 
+#if defined (KOKKOS_ENABLE_SYCL)
+#include "SYCL/Kokkos_SYCL_Team.hpp"
+// According to SYCL documentation no qualifiers are needed for SYCL.
+#define KOKKOS_DEFAULTED_DEVICE_FUNCTION inline
+#endif
+
 namespace Genten {
 
   namespace Impl {
 
-#ifdef __CUDA_ARCH__
-    // Reduce y across the warp and broadcast to all lanes
+#if defined(__CUDA_ARCH__)
+  // Reduce y across the warp and broadcast to all lanes
+  template <typename T, typename Ordinal>
+  __device__ inline T warpReduce(T y, const Ordinal warp_size) {
+    Kokkos::Impl::CudaTeamMember::vector_reduce(Kokkos::Sum<T>(y));
+    return y;
+  }
+#endif
+
+#if defined(__HIP_DEVICE_COMPILE__)
+    // Reduce y across the wavefront and broadcast to all lanes
     template <typename T, typename Ordinal>
-     __device__ inline T warpReduce(T y, const Ordinal warp_size) {
-      Kokkos::Impl::CudaTeamMember::vector_reduce(Kokkos::Sum<T>(y));
+    __device__ inline T wavefrontReduce(T y, const Ordinal wavefront_size) {
+      Kokkos::Impl::HIPTeamMember::vector_reduce(Kokkos::Sum<T>(y));
       return y;
     }
 #endif
 
-#ifdef __HIP_DEVICE_COMPILE__
-    // Reduce y across the wavefront and broadcast to all lanes
+#if defined(ENABLE_SYCL_WITH_CUDA) && defined(__SYCL_DEVICE_ONLY__)
+    using SYCL_team_policy_member_type =
+      Kokkos::TeamPolicy<Kokkos::Experimental::SYCL>::member_type;
+
+    // Reduce y across the warp and broadcast to all lanes
     template <typename T, typename Ordinal>
-     __device__ inline T wavefrontReduce(T y, const Ordinal wavefront_size) {
-      Kokkos::Impl::HIPTeamMember::vector_reduce(Kokkos::Sum<T>(y));
+    inline T warpReduce(T y, const Ordinal warp_size,
+                        const SYCL_team_policy_member_type& member) {
+      member.vector_reduce(Kokkos::Sum<T>(y));
       return y;
     }
 #endif
@@ -1599,6 +1616,1146 @@ namespace Genten {
 
 #endif
 
+#if defined(ENABLE_SYCL_WITH_CUDA) && defined(__SYCL_DEVICE_ONLY__)
+
+  // Specialization for SYCL where Length / Warp == 1.  Store the vector
+  // components in register space since SYCL may store them in global memory
+  // (especially in the dynamically sized case).
+  template <typename Scalar, typename Ordinal,
+            unsigned Length, unsigned Size, unsigned Warp>
+  class TinyVec<Kokkos::Experimental::SYCL,Scalar,Ordinal,Length,Size,Warp,
+                 typename std::enable_if<Length/Warp == 1>::type >
+  {
+  public:
+
+    typedef Kokkos::Experimental::SYCL exec_space;
+    typedef Scalar scalar_type;
+    typedef Ordinal ordinal_type;
+    typedef Kokkos::TeamPolicy<exec_space>::member_type policy_member_type;
+
+    const policy_member_type team_member;
+    const int threadIDx;
+    static const ordinal_type len = 1;
+    Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/Warp> sz;
+    scalar_type v0;
+
+    inline
+    TinyVec() = default;
+
+    inline
+    TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type x) :
+      team_member(team),
+      threadIDx(team_member.item().get_local_id(0)),
+      sz( (size+Warp-1-threadIDx) / Warp )
+    {
+      broadcast(x);
+    }
+
+    inline
+    TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type* x) :
+      team_member(team),
+      threadIDx(team_member.item().get_local_id(0)),
+      sz( (size+Warp-1-threadIDx) / Warp )
+    {
+      load(x);
+    }
+
+    inline
+    TinyVec(const TinyVec& x) : team_member(x.team_member), threadIDx(x.threadIDx), sz(x.sz.value) {
+      v0 = x.v0;
+    }
+
+    inline
+    ~TinyVec() = default;
+
+    inline
+    TinyVec& operator=(const TinyVec& x) {
+      v0 = x.v0;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator=(const scalar_type x) {
+      broadcast(x);
+      return *this;
+    }
+
+    inline
+    TinyVec& operator=(const scalar_type* x) {
+      load(x);
+      return *this;
+    }
+
+    inline
+    constexpr ordinal_type size() const { return sz.value; }
+
+    inline
+    void broadcast(const scalar_type x) {
+      v0 = x;
+    }
+
+    inline
+    void load(const scalar_type* x) {
+      if (sz.value > 0) v0 = x[threadIDx];
+    }
+
+    inline
+    void store(scalar_type* x) const {
+      if (sz.value > 0) x[threadIDx] = v0;
+    }
+
+    inline
+    void store_plus(scalar_type* x) const {
+      if (sz.value > 0) x[threadIDx] += v0;
+    }
+
+    inline
+    void atomic_store_plus(volatile scalar_type* x) const {
+      if (sz.value > 0) Kokkos::atomic_add(x+threadIDx, v0);
+    }
+
+    inline
+    TinyVec atomic_exchange(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_exchange(x+threadIDx, v0);
+      return c;
+    }
+
+    inline
+    TinyVec atomic_fetch_max(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_max(x+threadIDx, v0);
+      return c;
+    }
+
+    inline
+    TinyVec atomic_fetch_min(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_min(x+threadIDx, v0);
+      return c;
+    }
+
+    template <typename Oper>
+    inline
+    TinyVec atomic_oper_fetch(const Oper& op, volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Genten::atomic_oper_fetch(op, x+threadIDx, v0);
+      return c;
+    }
+
+    inline
+    TinyVec& operator+=(const TinyVec& x) {
+      v0 += x.v0;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator-=(const TinyVec& x) {
+      v0 -= x.v0;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator*=(const TinyVec& x) {
+      v0 *= x.v0;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator/=(const TinyVec& x) {
+      v0 /= x.v0;
+      return *this;
+    }
+
+    template <typename Op>
+    inline
+    void apply_unary(const Op& op, const TinyVec& x) {
+      v0 = op(x.v0);
+    }
+
+    inline
+    TinyVec& operator+=(const scalar_type x) {
+      v0 += x;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator-=(const scalar_type x) {
+      v0 -= x;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator*=(const scalar_type x) {
+      v0 *= x;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator/=(const scalar_type x) {
+      v0 /= x;
+      return *this;
+    }
+
+    template <unsigned S>
+    inline
+    TinyVec& operator+=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,Warp,void>& x) {
+      if (x.sz.value > 0) v0 += x.v0;
+      return *this;
+    }
+
+    template <unsigned S>
+    inline
+    TinyVec& operator-=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,Warp,void>& x) {
+      if (x.sz.value > 0) v0 -= x.v0;
+      return *this;
+    }
+
+    template <unsigned S>
+    inline
+    TinyVec& operator*=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,Warp,void>& x) {
+      if (x.sz.value > 0) v0 *= x.v0;
+      return *this;
+    }
+
+    template <unsigned S>
+    inline
+    TinyVec& operator/=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,Warp,void>& x) {
+      if (x.sz.value > 0) v0 /= x.v0;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator+=(const scalar_type* x) {
+      if (sz.value > 0) v0 += x[threadIDx];
+      return *this;
+    }
+
+    inline
+    TinyVec& operator-=(const scalar_type* x) {
+      if (sz.value > 0) v0 -= x[threadIDx];
+      return *this;
+    }
+
+    inline
+    TinyVec& operator*=(const scalar_type* x) {
+      if (sz.value > 0) v0 *= x[threadIDx];
+      return *this;
+    }
+
+    inline
+    TinyVec& operator/=(const scalar_type* x) {
+      if (sz.value > 0) v0 /= x[threadIDx];
+      return *this;
+    }
+
+    inline
+    scalar_type sum() const {
+      scalar_type s = 0.0;
+      if (sz.value > 0) s += v0;
+      s = Impl::warpReduce(s, Warp, team_member);
+      return s;
+    }
+
+  };
+
+  // Specialization for SYCL where Length / Warp == 2.  Store the vector
+  // components in register space since SYCL may store them in global memory
+  // (especially in the dynamically sized case).
+  template <typename Scalar, typename Ordinal,
+            unsigned Length, unsigned Size, unsigned Warp>
+  class TinyVec<Kokkos::Experimental::SYCL,Scalar,Ordinal,Length,Size,Warp,
+                 typename std::enable_if<Length/Warp == 2>::type >
+  {
+  public:
+
+    typedef Kokkos::Experimental::SYCL exec_space;
+    typedef Scalar scalar_type;
+    typedef Ordinal ordinal_type;
+    typedef Kokkos::TeamPolicy<exec_space>::member_type policy_member_type;
+
+    const policy_member_type team_member;
+    const int threadIDx;
+    static const ordinal_type len = 2;
+    Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/Warp> sz;
+    scalar_type v0, v1;
+
+    inline
+    TinyVec() = default;
+
+    inline
+    TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type x) :
+      team_member(team),
+      threadIDx(team_member.item().get_local_id(0)),
+      sz( (size+Warp-1-threadIDx) / Warp )
+    {
+      broadcast(x);
+    }
+
+    inline
+    TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type* x) :
+      team_member(team),
+      threadIDx(team_member.item().get_local_id(0)),
+      sz( (size+Warp-1-threadIDx) / Warp )
+    {
+      load(x);
+    }
+
+    inline
+    TinyVec(const TinyVec& x) : team_member(x.team_member), threadIDx(x.threadIDx), sz(x.sz.value) {
+      v0 = x.v0; v1 = x.v1;
+    }
+
+    inline
+    ~TinyVec() = default;
+
+    inline
+    TinyVec& operator=(const TinyVec& x) {
+      v0 = x.v0; v1 = x.v1;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator=(const scalar_type x) {
+      broadcast(x);
+      return *this;
+    }
+
+    inline
+    TinyVec& operator=(const scalar_type* x) {
+      load(x);
+      return *this;
+    }
+
+    inline
+    constexpr ordinal_type size() const { return sz.value; }
+
+    inline
+    void broadcast(const scalar_type x) {
+      v0 = v1 = x;
+    }
+
+    inline
+    void load(const scalar_type* x) {
+      if (sz.value > 0) v0 = x[threadIDx];
+      if (sz.value > 1) v1 = x[Warp + threadIDx];
+    }
+
+    inline
+    void store(scalar_type* x) const {
+      if (sz.value > 0) x[threadIDx] = v0;
+      if (sz.value > 1) x[Warp + threadIDx] = v1;
+    }
+
+    inline
+    void store_plus(scalar_type* x) const {
+      if (sz.value > 0) x[threadIDx] += v0;
+      if (sz.value > 1) x[Warp + threadIDx] += v1;
+    }
+
+    inline
+    void atomic_store_plus(volatile scalar_type* x) const {
+      if (sz.value > 0) Kokkos::atomic_add(x+threadIDx, v0);
+      if (sz.value > 1) Kokkos::atomic_add(x+Warp+threadIDx, v1);
+    }
+
+    inline
+    TinyVec atomic_exchange(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_exchange(x+threadIDx, v0);
+      if (sz.value > 1) c.v1 = Kokkos::atomic_exchange(x+Warp+threadIDx, v1);
+      return c;
+    }
+
+    inline
+    TinyVec atomic_fetch_max(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_max(x+threadIDx, v0);
+      if (sz.value > 1) c.v1 = Kokkos::atomic_fetch_max(x+Warp+threadIDx, v1);
+      return c;
+    }
+
+    inline
+    TinyVec atomic_fetch_min(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_min(x+threadIDx, v0);
+      if (sz.value > 1) c.v1 = Kokkos::atomic_fetch_min(x+Warp+threadIDx, v1);
+      return c;
+    }
+
+    template <typename Oper>
+    inline
+    TinyVec atomic_oper_fetch(const Oper& op, volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Genten::atomic_oper_fetch(op, x+threadIDx, v0);
+      if (sz.value > 1) c.v1 = Genten::atomic_oper_fetch(op, x+Warp+threadIDx, v1);
+      return c;
+    }
+
+    inline
+    TinyVec& operator+=(const TinyVec& x) {
+      v0 += x.v0;
+      v1 += x.v1;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator-=(const TinyVec& x) {
+      v0 -= x.v0;
+      v1 -= x.v1;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator*=(const TinyVec& x) {
+      v0 *= x.v0;
+      v1 *= x.v1;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator/=(const TinyVec& x) {
+      v0 /= x.v0;
+      v1 /= x.v1;
+      return *this;
+    }
+
+    template <typename Op>
+    inline
+    void apply_unary(const Op& op, const TinyVec& x) {
+      v0 = op(x.v0);
+      v1 = op(x.v1);
+    }
+
+    inline
+    TinyVec& operator+=(const scalar_type x) {
+      v0 += x;
+      v1 += x;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator-=(const scalar_type x) {
+      v0 -= x;
+      v1 -= x;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator*=(const scalar_type x) {
+      v0 *= x;
+      v1 *= x;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator/=(const scalar_type x) {
+      v0 /= x;
+      v1 /= x;
+      return *this;
+    }
+
+    template <unsigned S>
+    inline
+    TinyVec& operator+=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,Warp,void>& x) {
+      if (x.sz.value > 0) v0 += x.v0;
+      if (x.sz.value > 1) v1 += x.v1;
+      return *this;
+    }
+
+    template <unsigned S>
+    inline
+    TinyVec& operator-=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,Warp,void>& x) {
+      if (x.sz.value > 0) v0 -= x.v0;
+      if (x.sz.value > 1) v1 -= x.v1;
+      return *this;
+    }
+
+    template <unsigned S>
+    inline
+    TinyVec& operator*=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,Warp,void>& x) {
+      if (x.sz.value > 0) v0 *= x.v0;
+      if (x.sz.value > 1) v1 *= x.v1;
+      return *this;
+    }
+
+    template <unsigned S>
+    inline
+    TinyVec& operator/=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,Warp,void>& x) {
+      if (x.sz.value > 0) v0 /= x.v0;
+      if (x.sz.value > 1) v1 /= x.v1;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator+=(const scalar_type* x) {
+      if (sz.value > 0) v0 += x[threadIDx];
+      if (sz.value > 1) v1 += x[Warp + threadIDx];
+      return *this;
+    }
+
+    inline
+    TinyVec& operator-=(const scalar_type* x) {
+      if (sz.value > 0) v0 -= x[threadIDx];
+      if (sz.value > 1) v1 -= x[Warp + threadIDx];
+      return *this;
+    }
+
+    inline
+    TinyVec& operator*=(const scalar_type* x) {
+      if (sz.value > 0) v0 *= x[threadIDx];
+      if (sz.value > 1) v1 *= x[Warp + threadIDx];
+      return *this;
+    }
+
+    inline
+    TinyVec& operator/=(const scalar_type* x) {
+      if (sz.value > 0) v0 /= x[threadIDx];
+      if (sz.value > 1) v1 /= x[Warp + threadIDx];
+      return *this;
+    }
+
+    inline
+    scalar_type sum() const {
+      scalar_type s = 0.0;
+      if (sz.value > 0) s += v0;
+      if (sz.value > 1) s += v1;
+      s = Impl::warpReduce(s, Warp, team_member);
+      return s;
+    }
+
+  };
+
+  // Specialization for SYCL where Length / Warp == 3.  Store the vector
+  // components in register space since SYCL may store them in global memory
+  // (especially in the dynamically sized case).
+  template <typename Scalar, typename Ordinal,
+            unsigned Length, unsigned Size, unsigned Warp>
+  class TinyVec<Kokkos::Experimental::SYCL,Scalar,Ordinal,Length,Size,Warp,
+                 typename std::enable_if<Length/Warp == 3>::type >
+  {
+  public:
+
+    typedef Kokkos::Experimental::SYCL exec_space;
+    typedef Scalar scalar_type;
+    typedef Ordinal ordinal_type;
+    typedef Kokkos::TeamPolicy<exec_space>::member_type policy_member_type;
+
+    const policy_member_type team_member;
+    const int threadIDx;
+    static const ordinal_type len = 3;
+    Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/Warp> sz;
+    scalar_type v0, v1, v2;
+
+    inline
+    TinyVec() = default;
+
+    inline
+    TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type x) :
+      team_member(team),
+      threadIDx(team_member.item().get_local_id(0)),
+      sz( (size+Warp-1-threadIDx) / Warp )
+    {
+      broadcast(x);
+    }
+
+    inline
+    TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type* x) :
+      team_member(team),
+      threadIDx(team_member.item().get_local_id(0)),
+      sz( (size+Warp-1-threadIDx) / Warp )
+    {
+      load(x);
+    }
+
+    inline
+    TinyVec(const TinyVec& x) : team_member(x.team_member), threadIDx(x.threadIDx), sz(x.sz.value) {
+      v0 = x.v0; v1 = x.v1; v2 = x.v2;
+    }
+
+    inline
+    ~TinyVec() = default;
+
+    inline
+    TinyVec& operator=(const TinyVec& x) {
+      v0 = x.v0; v1 = x.v1; v2 = x.v2;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator=(const scalar_type x) {
+      broadcast(x);
+      return *this;
+    }
+
+    inline
+    TinyVec& operator=(const scalar_type* x) {
+      load(x);
+      return *this;
+    }
+
+    inline
+    constexpr ordinal_type size() const { return sz.value; }
+
+    inline
+    void broadcast(const scalar_type x) {
+      v0 = v1 = v2 = x;
+    }
+
+    inline
+    void load(const scalar_type* x) {
+      if (sz.value > 0) v0 = x[threadIDx];
+      if (sz.value > 1) v1 = x[Warp + threadIDx];
+      if (sz.value > 2) v2 = x[2*Warp + threadIDx];
+    }
+
+    inline
+    void store(scalar_type* x) const {
+      if (sz.value > 0) x[threadIDx] = v0;
+      if (sz.value > 1) x[Warp + threadIDx] = v1;
+      if (sz.value > 2) x[2*Warp + threadIDx] = v2;
+    }
+
+    inline
+    void store_plus(scalar_type* x) const {
+      if (sz.value > 0) x[threadIDx] += v0;
+      if (sz.value > 1) x[Warp + threadIDx] += v1;
+      if (sz.value > 2) x[2*Warp + threadIDx] += v2;
+    }
+
+    inline
+    void atomic_store_plus(volatile scalar_type* x) const {
+      if (sz.value > 0) Kokkos::atomic_add(x+threadIDx, v0);
+      if (sz.value > 1) Kokkos::atomic_add(x+Warp+threadIDx, v1);
+      if (sz.value > 2) Kokkos::atomic_add(x+2*Warp+threadIDx, v2);
+    }
+
+    inline
+    TinyVec atomic_exchange(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_exchange(x+threadIDx, v0);
+      if (sz.value > 1) c.v1 = Kokkos::atomic_exchange(x+Warp+threadIDx, v1);
+      if (sz.value > 2) c.v2 = Kokkos::atomic_exchange(x+2*Warp+threadIDx, v2);
+      return c;
+    }
+
+    inline
+    TinyVec atomic_fetch_max(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_max(x+threadIDx, v0);
+      if (sz.value > 1) c.v1 = Kokkos::atomic_fetch_max(x+Warp+threadIDx, v1);
+      if (sz.value > 2) c.v2 = Kokkos::atomic_fetch_max(x+2*Warp+threadIDx, v2);
+      return c;
+    }
+
+    inline
+    TinyVec atomic_fetch_min(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_min(x+threadIDx, v0);
+      if (sz.value > 1) c.v1 = Kokkos::atomic_fetch_min(x+Warp+threadIDx, v1);
+      if (sz.value > 2) c.v2 = Kokkos::atomic_fetch_min(x+2*Warp+threadIDx, v2);
+      return c;
+    }
+
+    template <typename Oper>
+    inline
+    TinyVec atomic_oper_fetch(const Oper& op, volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Genten::atomic_oper_fetch(op, x+threadIDx, v0);
+      if (sz.value > 1) c.v1 = Genten::atomic_oper_fetch(op, x+Warp+threadIDx, v1);
+      if (sz.value > 2) c.v2 = Genten::atomic_oper_fetch(op, x+2*Warp+threadIDx, v2);
+      return c;
+    }
+
+    inline
+    TinyVec& operator+=(const TinyVec& x) {
+      v0 += x.v0;
+      v1 += x.v1;
+      v2 += x.v2;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator-=(const TinyVec& x) {
+      v0 -= x.v0;
+      v1 -= x.v1;
+      v2 -= x.v2;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator*=(const TinyVec& x) {
+      v0 *= x.v0;
+      v1 *= x.v1;
+      v2 *= x.v2;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator/=(const TinyVec& x) {
+      v0 /= x.v0;
+      v1 /= x.v1;
+      v2 /= x.v2;
+      return *this;
+    }
+
+    template <typename Op>
+    inline
+    void apply_unary(const Op& op, const TinyVec& x) {
+      v0 = op(x.v0);
+      v1 = op(x.v1);
+      v2 = op(x.v2);
+    }
+
+    inline
+    TinyVec& operator+=(const scalar_type x) {
+      v0 += x;
+      v1 += x;
+      v2 += x;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator-=(const scalar_type x) {
+      v0 -= x;
+      v1 -= x;
+      v2 -= x;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator*=(const scalar_type x) {
+      v0 *= x;
+      v1 *= x;
+      v2 *= x;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator/=(const scalar_type x) {
+      v0 /= x;
+      v1 /= x;
+      v2 /= x;
+      return *this;
+    }
+
+    template <unsigned S>
+    inline
+    TinyVec& operator+=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,Warp,void>& x) {
+      if (x.sz.value > 0) v0 += x.v0;
+      if (x.sz.value > 1) v1 += x.v1;
+      if (x.sz.value > 2) v2 += x.v2;
+      return *this;
+    }
+
+    template <unsigned S>
+    inline
+    TinyVec& operator-=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,Warp,void>& x) {
+      if (x.sz.value > 0) v0 -= x.v0;
+      if (x.sz.value > 1) v1 -= x.v1;
+      if (x.sz.value > 2) v2 -= x.v2;
+      return *this;
+    }
+
+    template <unsigned S>
+    inline
+    TinyVec& operator*=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,Warp,void>& x) {
+      if (x.sz.value > 0) v0 *= x.v0;
+      if (x.sz.value > 1) v1 *= x.v1;
+      if (x.sz.value > 2) v2 *= x.v2;
+      return *this;
+    }
+
+    template <unsigned S>
+    inline
+    TinyVec& operator/=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,Warp,void>& x) {
+      if (x.sz.value > 0) v0 /= x.v0;
+      if (x.sz.value > 1) v1 /= x.v1;
+      if (x.sz.value > 2) v2 /= x.v2;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator+=(const scalar_type* x) {
+      if (sz.value > 0) v0 += x[threadIDx];
+      if (sz.value > 1) v1 += x[Warp + threadIDx];
+      if (sz.value > 2) v2 += x[2*Warp + threadIDx];
+      return *this;
+    }
+
+    inline
+    TinyVec& operator-=(const scalar_type* x) {
+      if (sz.value > 0) v0 -= x[threadIDx];
+      if (sz.value > 1) v1 -= x[Warp + threadIDx];
+      if (sz.value > 2) v2 -= x[2*Warp + threadIDx];
+      return *this;
+    }
+
+    inline
+    TinyVec& operator*=(const scalar_type* x) {
+      if (sz.value > 0) v0 *= x[threadIDx];
+      if (sz.value > 1) v1 *= x[Warp + threadIDx];
+      if (sz.value > 2) v2 *= x[2*Warp + threadIDx];
+      return *this;
+    }
+
+    inline
+    TinyVec& operator/=(const scalar_type* x) {
+      if (sz.value > 0) v0 /= x[threadIDx];
+      if (sz.value > 1) v1 /= x[Warp + threadIDx];
+      if (sz.value > 2) v2 /= x[2*Warp + threadIDx];
+      return *this;
+    }
+
+    inline
+    scalar_type sum() const {
+      scalar_type s = 0.0;
+      if (sz.value > 0) s += v0;
+      if (sz.value > 1) s += v1;
+      if (sz.value > 2) s += v2;
+      s = Impl::warpReduce(s, Warp, team_member);
+      return s;
+    }
+
+  };
+
+  // Specialization for SYCL where Length / Warp == 4.  Store the vector
+  // components in register space since SYCL may store them in global memory
+  // (especially in the dynamically sized case).
+  template <typename Scalar, typename Ordinal,
+            unsigned Length, unsigned Size, unsigned Warp>
+  class TinyVec<Kokkos::Experimental::SYCL,Scalar,Ordinal,Length,Size,Warp,
+                 typename std::enable_if<Length/Warp == 4>::type >
+  {
+  public:
+
+    typedef Kokkos::Experimental::SYCL exec_space;
+    typedef Scalar scalar_type;
+    typedef Ordinal ordinal_type;
+    typedef Kokkos::TeamPolicy<exec_space>::member_type policy_member_type;
+
+    const policy_member_type team_member;
+    const int threadIDx;
+    static const ordinal_type len = 4;
+    Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/Warp> sz;
+    scalar_type v0, v1, v2, v3;
+
+    inline
+    TinyVec() = default;
+
+    inline
+    TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type x) :
+      team_member(team),
+      threadIDx(team_member.item().get_local_id(0)),
+      sz( (size+Warp-1-threadIDx) / Warp )
+    {
+      broadcast(x);
+    }
+
+    inline
+    TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type* x) :
+      team_member(team),
+      threadIDx(team_member.item().get_local_id(0)),
+      sz( (size+Warp-1-threadIDx) / Warp )
+    {
+      load(x);
+    }
+
+    inline
+    TinyVec(const TinyVec& x) : team_member(x.team_member), threadIDx(x.threadIDx), sz(x.sz.value) {
+      v0 = x.v0; v1 = x.v1; v2 = x.v2; v3 = x.v3;
+    }
+
+    inline
+    ~TinyVec() = default;
+
+    inline
+    TinyVec& operator=(const TinyVec& x) {
+      v0 = x.v0; v1 = x.v1; v2 = x.v2; v3 = x.v3;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator=(const scalar_type x) {
+      broadcast(x);
+      return *this;
+    }
+
+    inline
+    TinyVec& operator=(const scalar_type* x) {
+      load(x);
+      return *this;
+    }
+
+    inline
+    constexpr ordinal_type size() const { return sz.value; }
+
+    inline
+    void broadcast(const scalar_type x) {
+      v0 = v1 = v2 = v3 = x;
+    }
+
+    inline
+    void load(const scalar_type* x) {
+      if (sz.value > 0) v0 = x[threadIDx];
+      if (sz.value > 1) v1 = x[Warp + threadIDx];
+      if (sz.value > 2) v2 = x[2*Warp + threadIDx];
+      if (sz.value > 3) v3 = x[3*Warp + threadIDx];
+    }
+
+    inline
+    void store(scalar_type* x) const {
+      if (sz.value > 0) x[threadIDx] = v0;
+      if (sz.value > 1) x[Warp + threadIDx] = v1;
+      if (sz.value > 2) x[2*Warp + threadIDx] = v2;
+      if (sz.value > 3) x[3*Warp + threadIDx] = v3;
+    }
+
+    inline
+    void store_plus(scalar_type* x) const {
+      if (sz.value > 0) x[threadIDx] += v0;
+      if (sz.value > 1) x[Warp + threadIDx] += v1;
+      if (sz.value > 2) x[2*Warp + threadIDx] += v2;
+      if (sz.value > 3) x[3*Warp + threadIDx] += v3;
+    }
+
+    inline
+    void atomic_store_plus(volatile scalar_type* x) const {
+      if (sz.value > 0) Kokkos::atomic_add(x+threadIDx, v0);
+      if (sz.value > 1) Kokkos::atomic_add(x+Warp+threadIDx, v1);
+      if (sz.value > 2) Kokkos::atomic_add(x+2*Warp+threadIDx, v2);
+      if (sz.value > 3) Kokkos::atomic_add(x+3*Warp+threadIDx, v3);
+    }
+
+    inline
+    TinyVec atomic_exchange(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_exchange(x+threadIDx, v0);
+      if (sz.value > 1) c.v1 = Kokkos::atomic_exchange(x+Warp+threadIDx, v1);
+      if (sz.value > 2) c.v2 = Kokkos::atomic_exchange(x+2*Warp+threadIDx, v2);
+      if (sz.value > 3) c.v3 = Kokkos::atomic_exchange(x+3*Warp+threadIDx, v3);
+      return c;
+    }
+
+    inline
+    TinyVec atomic_fetch_max(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_max(x+threadIDx, v0);
+      if (sz.value > 1) c.v1 = Kokkos::atomic_fetch_max(x+Warp+threadIDx, v1);
+      if (sz.value > 2) c.v2 = Kokkos::atomic_fetch_max(x+2*Warp+threadIDx, v2);
+      if (sz.value > 3) c.v3 = Kokkos::atomic_fetch_max(x+3*Warp+threadIDx, v3);
+      return c;
+    }
+
+    inline
+    TinyVec atomic_fetch_min(volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_min(x+threadIDx, v0);
+      if (sz.value > 1) c.v1 = Kokkos::atomic_fetch_min(x+Warp+threadIDx, v1);
+      if (sz.value > 2) c.v2 = Kokkos::atomic_fetch_min(x+2*Warp+threadIDx, v2);
+      if (sz.value > 3) c.v3 = Kokkos::atomic_fetch_min(x+3*Warp+threadIDx, v3);
+      return c;
+    }
+
+    template <typename Oper>
+    inline
+    TinyVec atomic_oper_fetch(const Oper& op, volatile scalar_type* x) const {
+      TinyVec c(sz.value, 0.0);
+      if (sz.value > 0) c.v0 = Genten::atomic_oper_fetch(op, x+threadIDx, v0);
+      if (sz.value > 1) c.v1 = Genten::atomic_oper_fetch(op, x+Warp+threadIDx, v1);
+      if (sz.value > 2) c.v2 = Genten::atomic_oper_fetch(op, x+2*Warp+threadIDx, v2);
+      if (sz.value > 3) c.v3 = Genten::atomic_oper_fetch(op, x+3*Warp+threadIDx, v3);
+      return c;
+    }
+
+    inline
+    TinyVec& operator+=(const TinyVec& x) {
+      v0 += x.v0;
+      v1 += x.v1;
+      v2 += x.v2;
+      v3 += x.v3;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator-=(const TinyVec& x) {
+      v0 -= x.v0;
+      v1 -= x.v1;
+      v2 -= x.v2;
+      v3 -= x.v3;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator*=(const TinyVec& x) {
+      v0 *= x.v0;
+      v1 *= x.v1;
+      v2 *= x.v2;
+      v3 *= x.v3;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator/=(const TinyVec& x) {
+      v0 /= x.v0;
+      v1 /= x.v1;
+      v2 /= x.v2;
+      v3 /= x.v3;
+      return *this;
+    }
+
+    template <typename Op>
+    inline
+    void apply_unary(const Op& op, const TinyVec& x) {
+      v0 = op(x.v0);
+      v1 = op(x.v1);
+      v2 = op(x.v2);
+      v3 = op(x.v3);
+    }
+
+    inline
+    TinyVec& operator+=(const scalar_type x) {
+      v0 += x;
+      v1 += x;
+      v2 += x;
+      v3 += x;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator-=(const scalar_type x) {
+      v0 -= x;
+      v1 -= x;
+      v2 -= x;
+      v3 -= x;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator*=(const scalar_type x) {
+      v0 *= x;
+      v1 *= x;
+      v2 *= x;
+      v3 *= x;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator/=(const scalar_type x) {
+      v0 /= x;
+      v1 /= x;
+      v2 /= x;
+      v3 /= x;
+      return *this;
+    }
+
+    template <unsigned S>
+    inline
+    TinyVec& operator+=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,Warp,void>& x) {
+      if (x.sz.value > 0) v0 += x.v0;
+      if (x.sz.value > 1) v1 += x.v1;
+      if (x.sz.value > 2) v2 += x.v2;
+      if (x.sz.value > 3) v3 += x.v3;
+      return *this;
+    }
+
+    template <unsigned S>
+    inline
+    TinyVec& operator-=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,Warp,void>& x) {
+      if (x.sz.value > 0) v0 -= x.v0;
+      if (x.sz.value > 1) v1 -= x.v1;
+      if (x.sz.value > 2) v2 -= x.v2;
+      if (x.sz.value > 3) v3 -= x.v3;
+      return *this;
+    }
+
+    template <unsigned S>
+    inline
+    TinyVec& operator*=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,Warp,void>& x) {
+      if (x.sz.value > 0) v0 *= x.v0;
+      if (x.sz.value > 1) v1 *= x.v1;
+      if (x.sz.value > 2) v2 *= x.v2;
+      if (x.sz.value > 3) v3 *= x.v3;
+      return *this;
+    }
+
+    template <unsigned S>
+    inline
+    TinyVec& operator/=(
+      const TinyVec<exec_space,Scalar,Ordinal,Length,S,Warp,void>& x) {
+      if (x.sz.value > 0) v0 /= x.v0;
+      if (x.sz.value > 1) v1 /= x.v1;
+      if (x.sz.value > 2) v2 /= x.v2;
+      if (x.sz.value > 3) v3 /= x.v3;
+      return *this;
+    }
+
+    inline
+    TinyVec& operator+=(const scalar_type* x) {
+      if (sz.value > 0) v0 += x[threadIDx];
+      if (sz.value > 1) v1 += x[Warp + threadIDx];
+      if (sz.value > 2) v2 += x[2*Warp + threadIDx];
+      if (sz.value > 3) v3 += x[3*Warp + threadIDx];
+      return *this;
+    }
+
+    inline
+    TinyVec& operator-=(const scalar_type* x) {
+      if (sz.value > 0) v0 -= x[threadIDx];
+      if (sz.value > 1) v1 -= x[Warp + threadIDx];
+      if (sz.value > 2) v2 -= x[2*Warp + threadIDx];
+      if (sz.value > 3) v3 -= x[3*Warp + threadIDx];
+      return *this;
+    }
+
+    inline
+    TinyVec& operator*=(const scalar_type* x) {
+      if (sz.value > 0) v0 *= x[threadIDx];
+      if (sz.value > 1) v1 *= x[Warp + threadIDx];
+      if (sz.value > 2) v2 *= x[2*Warp + threadIDx];
+      if (sz.value > 3) v3 *= x[3*Warp + threadIDx];
+      return *this;
+    }
+
+    inline
+    TinyVec& operator/=(const scalar_type* x) {
+      if (sz.value > 0) v0 /= x[threadIDx];
+      if (sz.value > 1) v1 /= x[Warp + threadIDx];
+      if (sz.value > 2) v2 /= x[2*Warp + threadIDx];
+      if (sz.value > 3) v3 /= x[3*Warp + threadIDx];
+      return *this;
+    }
+
+    inline
+    scalar_type sum() const {
+      scalar_type s = 0.0;
+      if (sz.value > 0) s += v0;
+      if (sz.value > 1) s += v1;
+      if (sz.value > 2) s += v2;
+      if (sz.value > 3) s += v3;
+      s = Impl::warpReduce(s, Warp, team_member);
+      return s;
+    }
+
+  };
+
+#endif
+
   template <typename E, typename Sc, typename O,
             unsigned L, unsigned S, unsigned W>
   KOKKOS_INLINE_FUNCTION
@@ -1761,6 +2918,46 @@ namespace Genten {
   {
     return tv.atomic_oper_fetch(op, x);
   }
+
+  template <typename ExecSpace, typename Scalar, typename Ordinal,
+            unsigned Length, unsigned Size, unsigned WarpOrWavefrontDim>
+  struct TinyVecMaker {
+    using TV =
+      TinyVec<ExecSpace, Scalar, Ordinal, Length, Size, WarpOrWavefrontDim>;
+    using team_policy_member_type =
+      typename Kokkos::TeamPolicy<ExecSpace>::member_type;
+
+    static TV make(const team_policy_member_type&,
+                   const Ordinal size, const Scalar* x) {
+      return TV{size, x};
+    }
+
+    static TV make(const team_policy_member_type&,
+                   const Ordinal size, const Scalar x) {
+      return TV{size, x};
+    }
+  };
+
+#if defined(ENABLE_SYCL_WITH_CUDA) && defined(__SYCL_DEVICE_ONLY__)
+  template <typename Scalar, typename Ordinal,
+            unsigned Length, unsigned Size, unsigned Warp>
+  struct TinyVecMaker<Kokkos::Experimental::SYCL, Scalar, Ordinal, Length, Size, Warp> {
+    using TV =
+      TinyVec<Kokkos::Experimental::SYCL, Scalar, Ordinal, Length, Size, Warp>;
+    using SYCL_team_policy_member_type =
+      Kokkos::TeamPolicy<Kokkos::Experimental::SYCL>::member_type;
+
+    static TV make(const SYCL_team_policy_member_type& team,
+                   const Ordinal size, const Scalar* x) {
+      return TV{team, size, x};
+    }
+
+    static TV make(const SYCL_team_policy_member_type& team,
+                   const Ordinal size, const Scalar x) {
+      return TV{team, size, x};
+    }
+  };
+#endif
 
 }
 

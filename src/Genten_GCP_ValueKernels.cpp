@@ -97,7 +97,7 @@ namespace Genten {
             // Compute Ktensor value
             ttb_real m_val =
               compute_Ktensor_value<exec_space, FacBlockSize, VectorSize>(
-                M, X, i);
+                team, M, X, i);
 
             // Evaluate link function
             d += w[i] * f.value(X.value(i), m_val);
