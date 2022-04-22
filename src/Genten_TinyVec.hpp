@@ -1639,7 +1639,7 @@ namespace Genten {
     Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/Warp> sz;
     scalar_type v0;
 
-    inline
+    KOKKOS_DEFAULTED_DEVICE_FUNCTION
     TinyVec() = default;
 
     inline
@@ -1665,7 +1665,7 @@ namespace Genten {
       v0 = x.v0;
     }
 
-    inline
+    KOKKOS_DEFAULTED_DEVICE_FUNCTION
     ~TinyVec() = default;
 
     inline
@@ -1884,7 +1884,7 @@ namespace Genten {
     Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/Warp> sz;
     scalar_type v0, v1;
 
-    inline
+    KOKKOS_DEFAULTED_DEVICE_FUNCTION
     TinyVec() = default;
 
     inline
@@ -1910,7 +1910,7 @@ namespace Genten {
       v0 = x.v0; v1 = x.v1;
     }
 
-    inline
+    KOKKOS_DEFAULTED_DEVICE_FUNCTION
     ~TinyVec() = default;
 
     inline
@@ -2155,7 +2155,7 @@ namespace Genten {
     Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/Warp> sz;
     scalar_type v0, v1, v2;
 
-    inline
+    KOKKOS_DEFAULTED_DEVICE_FUNCTION
     TinyVec() = default;
 
     inline
@@ -2181,7 +2181,7 @@ namespace Genten {
       v0 = x.v0; v1 = x.v1; v2 = x.v2;
     }
 
-    inline
+    KOKKOS_DEFAULTED_DEVICE_FUNCTION
     ~TinyVec() = default;
 
     inline
@@ -2452,7 +2452,7 @@ namespace Genten {
     Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/Warp> sz;
     scalar_type v0, v1, v2, v3;
 
-    inline
+    KOKKOS_DEFAULTED_DEVICE_FUNCTION
     TinyVec() = default;
 
     inline
@@ -2478,7 +2478,7 @@ namespace Genten {
       v0 = x.v0; v1 = x.v1; v2 = x.v2; v3 = x.v3;
     }
 
-    inline
+    KOKKOS_DEFAULTED_DEVICE_FUNCTION
     ~TinyVec() = default;
 
     inline
@@ -2927,11 +2927,13 @@ namespace Genten {
     using team_policy_member_type =
       typename Kokkos::TeamPolicy<ExecSpace>::member_type;
 
+    KOKKOS_INLINE_FUNCTION
     static TV make(const team_policy_member_type&,
                    const Ordinal size, const Scalar* x) {
       return TV{size, x};
     }
 
+    KOKKOS_INLINE_FUNCTION
     static TV make(const team_policy_member_type&,
                    const Ordinal size, const Scalar x) {
       return TV{size, x};
@@ -2947,11 +2949,13 @@ namespace Genten {
     using SYCL_team_policy_member_type =
       Kokkos::TeamPolicy<Kokkos::Experimental::SYCL>::member_type;
 
+    KOKKOS_INLINE_FUNCTION
     static TV make(const SYCL_team_policy_member_type& team,
                    const Ordinal size, const Scalar* x) {
       return TV{team, size, x};
     }
 
+    KOKKOS_INLINE_FUNCTION
     static TV make(const SYCL_team_policy_member_type& team,
                    const Ordinal size, const Scalar x) {
       return TV{team, size, x};
