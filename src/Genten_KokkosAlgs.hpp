@@ -52,7 +52,6 @@
 #include "parallel_stable_sort.hpp"
 #endif
 
-// TODO (STRZ) - SYCL implementation (if possible)
 #if defined(KOKKOS_ENABLE_CUDA) || (defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCTHRUST))
 #include <thrust/sort.h>
 #include <thrust/device_ptr.h>
@@ -60,6 +59,10 @@
 
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
+#endif
+
+#if defined(KOKKOS_ENABLE_SYCL)
+#include <execution>
 #endif
 
 // Various utility algorithms using Kokkos
@@ -91,24 +94,30 @@ void perm_sort_op(const PermType& perm, const Op& op)
     perm(i) = i;
   }, "Genten::perm_sort::perm_init");
 
-// TODO (STRZ) - SYCL implementation (if possible)
 #if defined(KOKKOS_ENABLE_CUDA) || (defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCTHRUST))
   if (is_gpu_space<exec_space>::value) {
     thrust::stable_sort(thrust::device_ptr<perm_val_type>(perm.data()),
                         thrust::device_ptr<perm_val_type>(perm.data()+sz),
                         op);
-    }
-    else
+  }
+  else
+#endif
+
+#if defined(KOKKOS_ENABLE_SYCL)
+  if (is_sycl_space<exec_space>::value) {
+    std::stable_sort(std::execution::par, perm.data(), perm.data()+sz, op);
+  }
+  else
 #endif
 
 #if defined(KOKKOS_ENABLE_OPENMP)
-    if (std::is_same<exec_space, Kokkos::OpenMP>::value) {
-      pss::parallel_stable_sort(perm.data(), perm.data()+sz, op);
-    }
-    else
+  if (std::is_same<exec_space, Kokkos::OpenMP>::value) {
+    pss::parallel_stable_sort(perm.data(), perm.data()+sz, op);
+  }
+  else
 #endif
 
-      std::stable_sort(perm.data(), perm.data()+sz, op);
+    std::stable_sort(perm.data(), perm.data()+sz, op);
 }
 
 // Sort an array by computing permutation vector to sorted order using
