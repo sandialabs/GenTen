@@ -374,6 +374,7 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_portability.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Sptensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Tensor.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_HessVec.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
   )
 
@@ -488,6 +489,7 @@ SET(UNIT_TEST_SRCS
   ${Genten_SOURCE_DIR}/test/Genten_Test_MixedFormats.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_Sptensor.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_Tensor.cpp
+  ${Genten_SOURCE_DIR}/test/Genten_Test_HessVec.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_UnitTests.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_Utils.cpp
   )
