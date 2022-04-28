@@ -353,6 +353,8 @@ mxGetIndxArray(const mxArray* ptr, const bool subtract_one = false) {
   return w;
 }
 
+mxArray* mxSetHistory(const std::vector<std::vector<ttb_real> >& h);
+
 std::string mxGetStdString(const mxArray* ptr);
 
 std::vector<std::string>

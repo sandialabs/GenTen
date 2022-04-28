@@ -137,7 +137,8 @@ int main_driver(Genten::AlgParams& algParams,
     if (algParams.debug) Genten::print_sptensor(x_host, std::cout, "tensor");
 
     // Compute decomposition
-    u = Genten::driver(x, u_init, algParams, std::cout);
+    std::vector<std::vector<ttb_real> > history;
+    u = Genten::driver(x, u_init, algParams, history, std::cout);
 
     if (tensor_outputfilename != "") {
       timer.start(1);

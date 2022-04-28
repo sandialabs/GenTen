@@ -48,6 +48,7 @@
 
 #include <string>
 #include <ostream>
+#include <vector>
 
 #include "Genten_Sptensor.hpp"
 #include "Genten_Tensor.hpp"
@@ -61,6 +62,7 @@ namespace Genten {
   driver(SptensorT<ExecSpace>& x,
          KtensorT<ExecSpace>& u_init,
          AlgParams& algParams,
+         std::vector<std::vector<ttb_real> >& history,
          std::ostream& out);
 
   template<typename ExecSpace>

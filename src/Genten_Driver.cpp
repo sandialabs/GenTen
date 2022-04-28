@@ -68,6 +68,7 @@ KtensorT<ExecSpace>
 driver(SptensorT<ExecSpace>& x,
        KtensorT<ExecSpace>& u_init,
        AlgParams& algParams,
+       std::vector<std::vector<ttb_real> >& history,
        std::ostream& out)
 {
   typedef Genten::SptensorT<ExecSpace> Sptensor_type;
@@ -155,7 +156,7 @@ driver(SptensorT<ExecSpace>& x,
     if (algParams.opt_method == Genten::Opt_Method::LBFGSB) {
 #ifdef HAVE_LBFGSB
       // Run CP-OPT using L-BFGS-B
-      cp_opt_lbfgsb(x, u, algParams);
+      cp_opt_lbfgsb(x, u, algParams, history);
 #else
       Genten::error("L-BFGS-B requested but not available!");
 #endif
@@ -318,6 +319,7 @@ driver(TensorT<ExecSpace>& x,
     SptensorT<SPACE>& x,                                                \
     KtensorT<SPACE>& u_init,                                            \
     AlgParams& algParams,                                               \
+    std::vector<std::vector<ttb_real> >& history,                       \
     std::ostream& os);                                                  \
                                                                         \
   template KtensorT<SPACE>                                              \

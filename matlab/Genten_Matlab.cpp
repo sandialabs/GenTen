@@ -42,6 +42,18 @@
 
 #include "Genten_Matlab.hpp"
 
+mxArray* mxSetHistory(const std::vector<std::vector<ttb_real> >& h)
+{
+  const ttb_indx m = h.size();
+  const ttb_indx n = m > 0 ? h[0].size() : 0;
+  mxArray *mx_w_ptr = mxCreateDoubleMatrix( (mwSize) m, (mwSize) n,  mxREAL );
+  ttb_real *mx_w = mxGetDoubles(mx_w_ptr);
+  for (ttb_indx j=0; j<n; ++j)
+    for (ttb_indx i=0; i<m; ++i)
+      mx_w[i+j*m] = h[i][j];
+  return mx_w_ptr;
+}
+
 std::string
 mxGetStdString(const mxArray* ptr) {
   const mwSize str_len = mxGetNumberOfElements(ptr);

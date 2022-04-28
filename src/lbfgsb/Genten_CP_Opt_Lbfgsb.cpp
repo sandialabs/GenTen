@@ -54,6 +54,7 @@
 #include "Genten_KokkosVector.hpp"
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_IOtext.hpp"
+#include "Genten_SystemTimer.hpp"
 
 extern "C" {
 #include "lbfgsb.h"
@@ -192,7 +193,8 @@ namespace Genten {
 
   template<typename TensorT, typename ExecSpace>
   void cp_opt_lbfgsb(const TensorT& X, KtensorT<ExecSpace>& u,
-                     const AlgParams& algParams)
+                     const AlgParams& algParams,
+                     std::vector<std::vector<ttb_real> >& history)
   {
     typedef KokkosVector<ExecSpace> kokkos_vector;
 #ifdef HAVE_CALIPER
@@ -209,6 +211,9 @@ namespace Genten {
       if (X.size(i) != u[i].nRows())
         Genten::error("Genten::cp_opt - u and x have different size");
     }
+
+    Genten::SystemTimer timer(1);
+    timer.start(0);
 
     // Distribute the initial guess to have weights of one since the objective
     // does not include gradients w.r.t. weights
@@ -271,11 +276,13 @@ namespace Genten {
     const ttb_real nrm_X = X.norm();
     const ttb_real nrm_X_sq = nrm_X*nrm_X;
 
+    history.push_back(std::vector<ttb_real>(3));
+
     // Run CP-OPT
-    ttb_indx iters = 1;
-    ttb_indx total_iters = 1;
+    ttb_indx iters = 0;
+    ttb_indx total_iters = 0;
     ttb_indx print_iter = 0;
-    while (iters <= iterMax && total_iters <= total_iterMax) {
+    while (iters < iterMax && total_iters < total_iterMax) {
       ++total_iters;
 
       setulb(&n,&m,z_host.data(),lower.data(),upper.data(),nbd.data(),
@@ -289,19 +296,31 @@ namespace Genten {
         Impl::cp_opt_lbfgsb_fg(X,M,nrm_X_sq,algParams,f,G,gram,hada,ones);
         deep_copy(g_host, g.getView());
 
+        const ttb_real nrmg = g.normInf();
+        const ttb_real time = timer.getTotalTime(0);
+
+        if (history.size() < iters+1)
+          history.resize(iters+1);
+        history[iters].resize(3);
+        history[iters][0] = f;
+        history[iters][1] = nrmg;
+        history[iters][2] = time;
+
         // Suppress printing of inner iterations by only printing when the
         // the outer iterations increments
-        if (algParams.printitn > 0 && iters % algParams.printitn == 0 &&
-            iters > print_iter) {
+        if (iters > print_iter) {
+          if (algParams.printitn > 0 && (print_iter+1) % algParams.printitn == 0) {
+            const std::vector<ttb_real>& h = history[print_iter];
+            std::cout << "Iter " << std::setw(5) << print_iter+1
+                      << ", f(x) = "
+                      << std::setprecision(6) << std::scientific << h[0]
+                      << ", ||grad||_infty = "
+                      << std::setprecision(2) << std::scientific << h[1]
+                      << ", t = "
+                      << std::setprecision(2) << std::scientific << h[2]
+                      << std::endl;
+          }
           print_iter = iters;
-
-          const ttb_real nrmg = g.normInf();
-          std::cout << "Iter " << std::setw(5) << iters
-                    << ", f(x) = "
-                    << std::setprecision(6) << std::scientific << f
-                    << ", ||grad||_infty = "
-                    << std::setprecision(2) << std::scientific << nrmg
-                    << std::endl;
         }
         continue;
       }
@@ -314,10 +333,25 @@ namespace Genten {
         break;
     }
 
+    // Print last iteration
+    if (algParams.printitn > 0) {
+      const std::vector<ttb_real>& h = history[print_iter];
+      std::cout << "Iter " << std::setw(5) << print_iter+1
+                << ", f(x) = "
+                << std::setprecision(6) << std::scientific << h[0]
+                << ", ||grad||_infty = "
+                << std::setprecision(2) << std::scientific << h[1]
+                << ", t = "
+                << std::setprecision(2) << std::scientific << h[2]
+                << std::endl;
+          }
+
     // Normalize Ktensor u
     z.copyToKtensor(u);
     u.normalize(Genten::NormTwo);
     u.arrange();
+
+    timer.stop(0);
 
     // Compute final fit
     if (algParams.printitn > 0) {
@@ -329,6 +363,7 @@ namespace Genten {
         std::cout << Impl::findTaskString(task) << std::endl;
       const ttb_real fit = ttb_real(1.0) - f / (ttb_real(0.5)*nrm_X_sq);
       std::cout << "Final fit = " << fit << std::endl;
+      std::cout << "Total time = " << timer.getTotalTime(0) << std::endl;
     }
   }
 
@@ -338,11 +373,13 @@ namespace Genten {
   template void cp_opt_lbfgsb<SptensorT<SPACE>,SPACE>(                  \
     const SptensorT<SPACE>& x,                                          \
     KtensorT<SPACE>& u,                                                 \
-    const AlgParams& algParms);                                         \
+    const AlgParams& algParms,                                          \
+    std::vector<std::vector<ttb_real> >& history);                      \
                                                                         \
   template void cp_opt_lbfgsb<TensorT<SPACE>,SPACE>(                    \
     const TensorT<SPACE>& x,                                            \
     KtensorT<SPACE>& u,                                                 \
-    const AlgParams& algParms);
+    const AlgParams& algParms,                                          \
+    std::vector<std::vector<ttb_real> >& history);
 
 GENTEN_INST(INST_MACRO)
