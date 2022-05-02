@@ -44,8 +44,7 @@
 #include "Genten_IOtext.hpp"             // In case debug lines are uncommented
 #include "Genten_Ktensor.hpp"
 #include "Genten_Sptensor.hpp"
-#include "Genten_MixedFormatOps.hpp"
-#include "Genten_HessVec.hpp"
+#include "Genten_CP_Model.hpp"
 #include "Genten_Test_Utils.hpp"
 #include "Genten_Util.hpp"
 #include "Genten_FacTestSetGenerator.hpp"
@@ -55,40 +54,6 @@ using namespace Genten::Test;
 
 /* This file contains unit tests for Hessian-vector product operations.
  */
-
-template <typename TensorT, typename ExecSpace>
-void cp_grad(const TensorT& X, const Genten::KtensorT<ExecSpace>& M,
-             const Genten::AlgParams& algParams,
-             Genten::KtensorT<ExecSpace>& G)
-{
-  const ttb_indx nd = M.ndims();
-  const ttb_indx nc = M.ncomponents();
-
-  // Gram matrix for each mode
-  std::vector< Genten::FacMatrixT<ExecSpace> > gram(nd);
-  for (ttb_indx n=0; n<nd; ++n) {
-    gram[n] = Genten::FacMatrixT<ExecSpace>(nc,nc);
-    gram[n].gramian(M[n], true, Genten::Upper);
-  }
-
-  // Hadamard product of gram matrices
-  std::vector< Genten::FacMatrixT<ExecSpace> > hada(nd);
-  for (ttb_indx n=0; n<nd; ++n) {
-    hada[n] = Genten::FacMatrixT<ExecSpace>(nc,nc);
-    hada[n].oprod(M.weights());
-    for (ttb_indx m=0; m<nd; ++m) {
-      if (n != m)
-        hada[n].times(gram[m]);
-    }
-  }
-
-  // MTTKRP
-  Genten::mttkrp_all(X, M, G, algParams);
-
-  // Compute gradient
-  for (ttb_indx n=0; n<nd; ++n)
-    G[n].gemm(false, false, ttb_real(1.0), M[n], hada[n], ttb_real(-1.0));
-}
 
 template <typename ExecSpace>
 void Genten_Test_HessVec_Type(Genten::MTTKRP_All_Method::type mttkrp_method,
@@ -127,9 +92,12 @@ void Genten_Test_HessVec_Type(Genten::MTTKRP_All_Method::type mttkrp_method,
   algParams.mttkrp_all_method = mttkrp_method;
   algParams.mttkrp_method = Genten::MTTKRP_Method::Atomic;
 
+  Genten::CP_Model<Genten::SptensorT<ExecSpace> >  cp_model(x, a, algParams);
+
   // Compute hess-vec
   Genten::KtensorT<ExecSpace> u(nc, nd, x.size());
-  Genten::hess_vec(x, a, v, u, algParams);
+  cp_model.update(a);
+  cp_model.hess_vec(u, a, v);
 
   // Compute finite-difference approximation to hess-vec
   const ttb_real h = 1.0e-7;
@@ -144,8 +112,9 @@ void Genten_Test_HessVec_Type(Genten::MTTKRP_All_Method::type mttkrp_method,
     }
   }
   deep_copy(ap, ap_host);
-  cp_grad(x, a, algParams, u_fd);
-  cp_grad(x, ap, algParams, up);
+  cp_model.gradient(u_fd, a);
+  cp_model.update(ap);
+  cp_model.gradient(up, ap);
   auto u_fd_host = create_mirror_view(u_fd);
   auto up_host = create_mirror_view(up);
   deep_copy(u_fd_host, u_fd);

@@ -43,7 +43,7 @@
 #include "ROL_Objective.hpp"
 #include "Genten_RolKokkosVector.hpp"
 #include "Genten_RolKtensorVector.hpp"
-#include "Genten_MixedFormatOps.hpp"
+#include "Genten_CP_Model.hpp"
 
 #include "Teuchos_TimeMonitor.hpp"
 
@@ -96,15 +96,8 @@ namespace Genten {
 
   protected:
 
-    tensor_type X;
-    ktensor_type M;
-    ktensor_type G;
-    AlgParams algParams;
-
-    ttb_real nrm_X_sq;
-    std::vector< FacMatrixT<exec_space> > gram;
-    std::vector< FacMatrixT<exec_space> > hada;
-    ArrayT<exec_space> ones;
+    ktensor_type M, G;
+    CP_Model<tensor_type> cp_model;
 
   };
 
@@ -112,8 +105,7 @@ namespace Genten {
   CP_RolObjective<Tensor>::
   CP_RolObjective(const tensor_type& x,
                   const ktensor_type& m,
-                  const AlgParams& algParms) :
-      X(x), M(m), algParams(algParms)
+                  const AlgParams& algParams) : M(m), cp_model(x, m, algParams)
     {
       const ttb_indx nc = M.ncomponents();
       const ttb_indx nd = M.ndims();
@@ -122,17 +114,6 @@ namespace Genten {
       for (ttb_indx i=0; i<nd; ++i)
         G.set_factor(i, FacMatrixT<exec_space>(M[i].nRows(), nc));
 #endif
-
-      const ttb_real nrm_X = X.norm();
-      nrm_X_sq = nrm_X*nrm_X;
-
-      gram.resize(nd);
-      hada.resize(nd);
-      for (ttb_indx i=0; i<nd; ++i) {
-        gram[i] = FacMatrixT<exec_space>(nc,nc);
-        hada[i] = FacMatrixT<exec_space>(nc,nc);
-      }
-      ones = ArrayT<exec_space>(nc, 1.0);
     }
 
   // Compute information that is common to both value() and gradient()
@@ -152,19 +133,7 @@ namespace Genten {
     x.copyToKtensor(M);
 #endif
 
-    // Gram matrix for each mode
-    const ttb_indx nd = M.ndims();
-    for (ttb_indx n=0; n<nd; ++n)
-      gram[n].gramian(M[n], true, Upper);
-
-    // Hadamard product of gram matrices
-    for (ttb_indx n=0; n<nd; ++n) {
-      hada[n].oprod(M.weights());
-      for (ttb_indx m=0; m<nd; ++m) {
-        if (n != m)
-          hada[n].times(gram[m]);
-      }
-    }
+    cp_model.update(M);
 
   }
 
@@ -193,15 +162,7 @@ namespace Genten {
     x.copyToKtensor(M);
 #endif
 
-    // ||M||^2 = <M,M>
-    const ttb_indx nd = M.ndims();
-    const ttb_real nrm_M_sq = gram[nd-1].innerprod(hada[nd-1], ones);
-
-    // <X,M>.  Unfortunately can't use MTTKRP trick since we don't want to
-    // compute MTTKRP in update()
-    const ttb_real ip = innerprod(X,M);
-
-    return ttb_real(0.5)*(nrm_X_sq + nrm_M_sq) - ip;
+    return cp_model.value(M);
   }
 
   // Compute gradient of objective function:
@@ -224,10 +185,7 @@ namespace Genten {
     x.copyToKtensor(M);
 #endif
 
-    const ttb_indx nd = M.ndims();
-    mttkrp_all(X, M, G, algParams);
-    for (ttb_indx n=0; n<nd; ++n)
-      G[n].gemm(false, false, ttb_real(1.0), M[n], hada[n], ttb_real(-1.0));
+    cp_model.gradient(G, M);
 
     // Convert Ktensor to vector
 #if COPY_KTENSOR
