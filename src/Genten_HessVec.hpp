@@ -60,4 +60,11 @@ namespace Genten
                 const KtensorT<ExecSpace>& v,
                 const KtensorT<ExecSpace>& u,
                 const AlgParams& algParams);
+
+  template <typename TensorType>
+  void gauss_newton_hess_vec(const TensorType& X,
+                             const KtensorT<typename TensorType::exec_space>& a,
+                             const KtensorT<typename TensorType::exec_space>& v,
+                             const KtensorT<typename TensorType::exec_space>& u,
+                             const AlgParams& algParams);
 }

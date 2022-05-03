@@ -299,6 +299,193 @@ struct HessVec_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
 };
 #endif
 
+// This is a very poor implementation of hess_vec for dense tensors, using
+// the same (bad) parallelism strategy as for dense MTTKRP
+template <typename ExecSpace>
+struct HessVec_Dense_Kernel {
+  const TensorT<ExecSpace> XX;
+  const KtensorT<ExecSpace> aa;
+  const KtensorT<ExecSpace> vv;
+  const KtensorT<ExecSpace> uu;
+  const AlgParams algParams;
+
+  HessVec_Dense_Kernel(const TensorT<ExecSpace>& X_,
+                       const KtensorT<ExecSpace>& a_,
+                       const KtensorT<ExecSpace>& v_,
+                       const KtensorT<ExecSpace>& u_,
+                       const AlgParams& algParams_) :
+    XX(X_), aa(a_), vv(v_), uu(u_), algParams(algParams_) {}
+
+  template <unsigned FBS, unsigned VS>
+  void run() const {
+    const TensorT<ExecSpace> X = XX;
+    const KtensorT<ExecSpace> a = aa;
+    const KtensorT<ExecSpace> v = vv;
+    const KtensorT<ExecSpace> u = uu;
+
+    typedef Kokkos::TeamPolicy<ExecSpace> Policy;
+    typedef typename Policy::member_type TeamMember;
+    typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+    u.setMatrices(0.0);
+
+    static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+    static const unsigned FacBlockSize = FBS;
+    static const unsigned VectorSize = is_gpu ? VS : 1;
+    static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
+
+    /*const*/ unsigned nd = a.ndims();
+    /*const*/ unsigned nc = a.ncomponents();
+    const size_t bytes = TmpScratchSpace::shmem_size(TeamSize, nd);
+
+    for (unsigned k=0; k<nd; ++k) {
+      /*const*/ ttb_indx ns = X.size(k);
+      const ttb_indx N = (ns+TeamSize-1)/TeamSize;
+      Policy policy(N, TeamSize, VectorSize);
+      Kokkos::parallel_for(policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+                           KOKKOS_LAMBDA(const TeamMember& team)
+      {
+        // Row of u we write to
+        const unsigned team_rank = team.team_rank();
+        const unsigned team_size = team.team_size();
+        /*const*/ ttb_indx i = team.league_rank()*team_size + team_rank;
+        if (i >= ns)
+          return;
+
+        // Scratch space for storing tensor subscripts
+        TmpScratchSpace scratch(team.team_scratch(0), team_size, nd);
+        ttb_indx *sub = &scratch(team_rank, 0);
+
+        auto row_func = [&](auto j, auto nj, auto Nj) {
+          typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+
+          // Work around internal-compiler errors in recent Intel compilers
+          unsigned nd_ = nd;
+          unsigned k_ = k;
+          TensorT<ExecSpace> X_ = X;
+
+          // Initialize our subscript array for row i of mode n
+          Kokkos::single(Kokkos::PerThread(team), [&]()
+          {
+            for (unsigned l=0; l<nd_; ++l)
+              sub[l] = 0;
+            sub[k_] = i;
+          });
+
+          TV val(nj, 0.0);
+          int done = 0;
+          while (!done) {  // Would like to get some parallelism in this loop
+            const ttb_indx l = X.sub2ind(sub);
+            const ttb_real x_val = X[l];
+            TV tmp2(nj, 0.0);
+            for (unsigned s=0; s<nd; ++s) {
+              if (s != k) {
+                TV tmp(nj, x_val);
+                tmp *= &(a.weights(j));
+                for (unsigned n=0; n<nd; ++n) {
+                  if (n != k && n != s)
+                    tmp *= &(a[n].entry(sub[n],j));
+                }
+                tmp *= &(v[s].entry(sub[s],j));
+                tmp2 += tmp;
+              }
+            }
+            val += tmp2;
+
+            Kokkos::single(Kokkos::PerThread(team), [&](int& dn)
+            {
+              dn = !X_.increment_sub(sub,k_);
+            }, done);
+          }
+          val.store_plus(&u[k].entry(i,j));
+        };
+
+        for (unsigned j=0; j<nc; j+=FacBlockSize) {
+          if (j+FacBlockSize <= nc) {
+            const unsigned nj = FacBlockSize;
+            row_func(j, nj, std::integral_constant<unsigned,nj>());
+          }
+          else {
+            const unsigned nj = nc-j;
+            row_func(j, nj, std::integral_constant<unsigned,0>());
+          }
+        }
+      }, "hessvec_kernel");
+    }
+  }
+};
+
+// This computes the ktensor-only contribution to the Hessian, which
+// doesn't depend on the tensor
+template <typename ExecSpace>
+void hess_vec_ktensor_term(const KtensorT<ExecSpace>& a,
+                           const KtensorT<ExecSpace>& v,
+                           const KtensorT<ExecSpace>& u)
+{
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::hess_vec_ktensor_term");
+#endif
+
+  const ttb_indx nc = a.ncomponents();     // Number of components
+  const ttb_indx nd = a.ndims();           // Number of dimensions
+  IndxArrayT<ExecSpace> nrow(nd, nc);
+  FacMatArrayT<ExecSpace> Z(nd, nrow, nc);
+  for (unsigned n=0; n<nd; ++n)
+    Z[n].gramian(a[n], true); // full gram
+
+  for (unsigned k=0; k<nd; ++k) {
+    const ttb_indx I_k = a[k].nRows();
+    Kokkos::RangePolicy<ExecSpace> policy(0,I_k);
+    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ttb_indx i)
+    {
+      for (unsigned j=0; j<nc; ++j) {
+        for (unsigned s=0; s<nd; ++s) {
+          const ttb_indx I_s = a[s].nRows();
+          if (s == k) {
+            for (unsigned p=0; p<nc; ++p) {
+              ttb_real tmp = 1.0;
+              for (unsigned n=0; n<nd; ++n) {
+                if (n != k)
+                  tmp *= Z[n].entry(p,j);
+              } // n
+              u[k].entry(i,j) += tmp * v[s].entry(i,p);
+            } // p
+          }
+          else {
+            for (ttb_indx t=0; t<I_s; ++t) {
+              for (unsigned p=0; p<nc; ++p) {
+                if (p != j) {
+                  ttb_real tmp = a[k].entry(i,p)*a[s].entry(t,j);
+                  for (unsigned n=0; n<nd; ++n) {
+                    if (n != k && n != s)
+                      tmp *= Z[n].entry(p,j);
+                  }
+                  u[k].entry(i,j) += tmp * v[s].entry(t,p);
+                }
+                else {
+                  ttb_real tmp2 = 0.0;
+                  for (unsigned q=0; q<nc; ++q) {
+                    ttb_real tmp = a[k].entry(i,q)*a[s].entry(t,q);
+                    if (q == j)
+                      tmp *= 2.0;
+                    for (unsigned n=0; n<nd; ++n) {
+                      if (n != k && n != s)
+                        tmp *= Z[n].entry(q,j);
+                    } // n
+                    tmp2 += tmp;
+                  } // q
+                  u[k].entry(i,j) += tmp2 * v[s].entry(t,p);
+                }
+              } // p
+            } // t
+          }
+        } // s
+
+      } // j
+    }, "hessvec_ktensor_kernel");
+  }
+}
+
 }
 
 template <typename ExecSpace>
@@ -309,7 +496,7 @@ void hess_vec(const SptensorT<ExecSpace>& X,
               const AlgParams& algParams)
 {
 #ifdef HAVE_CALIPER
-  cali::Function cali_func("Genten::mttkrp_all");
+  cali::Function cali_func("Genten::hess_vec");
 #endif
 
   const ttb_indx nc = a.ncomponents();     // Number of components
@@ -362,6 +549,73 @@ void hess_vec(const SptensorT<ExecSpace>& X,
     u[n].times(-1.0);
 
   // Add in the second (ktensor) term
+  Impl::hess_vec_ktensor_term(a, v, u);
+}
+
+template <typename ExecSpace>
+void hess_vec(const TensorT<ExecSpace>& X,
+              const KtensorT<ExecSpace>& a,
+              const KtensorT<ExecSpace>& v,
+              const KtensorT<ExecSpace>& u,
+              const AlgParams& algParams)
+{
+  #ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::hess_vec");
+#endif
+
+  const ttb_indx nc = a.ncomponents();     // Number of components
+  const ttb_indx nd = a.ndims();           // Number of dimensions
+
+  assert(X.ndims() == nd);
+  assert(v.ndims() == nd);
+  assert(v.ncomponents() == nc);
+  assert(u.ndims() == nd);
+  assert(u.ncomponents() == nc);
+  assert(v.isConsistent());
+  assert(u.isConsistent());
+  for (ttb_indx i=0; i<nd; ++i) {
+    assert(a[i].nRows() == X.size(i));
+    assert(v[i].nRows() == X.size(i));
+    assert(u[i].nRows() == X.size(i));
+  }
+
+  // Compute first (tensor) term
+  Impl::HessVec_Dense_Kernel<ExecSpace> kernel(X,a,v,u,algParams);
+  Impl::run_row_simd_kernel(kernel, nc);
+
+  // Scale first term by -1
+  for (unsigned n=0; n<nd; ++n)
+    u[n].times(-1.0);
+
+  // Add in the second (ktensor) term
+  Impl::hess_vec_ktensor_term(a, v, u);
+}
+
+template <typename TensorType>
+void gauss_newton_hess_vec(const TensorType& X,
+                           const KtensorT<typename TensorType::exec_space>& a,
+                           const KtensorT<typename TensorType::exec_space>& v,
+                           const KtensorT<typename TensorType::exec_space>& u,
+                           const AlgParams& algParams)
+{
+  typedef typename TensorType::exec_space ExecSpace;
+
+  const ttb_indx nc = a.ncomponents();     // Number of components
+  const ttb_indx nd = a.ndims();           // Number of dimensions
+
+  assert(X.ndims() == nd);
+  assert(v.ndims() == nd);
+  assert(v.ncomponents() == nc);
+  assert(u.ndims() == nd);
+  assert(u.ncomponents() == nc);
+  assert(v.isConsistent());
+  assert(u.isConsistent());
+  for (ttb_indx i=0; i<nd; ++i) {
+    assert(a[i].nRows() == X.size(i));
+    assert(v[i].nRows() == X.size(i));
+    assert(u[i].nRows() == X.size(i));
+  }
+
   IndxArrayT<ExecSpace> nrow(nd, nc);
   FacMatArrayT<ExecSpace> Z(nd, nrow, nc);
   for (unsigned n=0; n<nd; ++n)
@@ -388,28 +642,12 @@ void hess_vec(const SptensorT<ExecSpace>& X,
           else {
             for (ttb_indx t=0; t<I_s; ++t) {
               for (unsigned p=0; p<nc; ++p) {
-                if (p != j) {
-                  ttb_real tmp = a[k].entry(i,p)*a[s].entry(t,j);
-                  for (unsigned n=0; n<nd; ++n) {
-                    if (n != k && n != s)
-                      tmp *= Z[n].entry(p,j);
-                  }
-                  u[k].entry(i,j) += tmp * v[s].entry(t,p);
+                ttb_real tmp = a[k].entry(i,p)*a[s].entry(t,j);
+                for (unsigned n=0; n<nd; ++n) {
+                  if (n != k && n != s)
+                    tmp *= Z[n].entry(p,j);
                 }
-                else {
-                  ttb_real tmp2 = 0.0;
-                  for (unsigned q=0; q<nc; ++q) {
-                    ttb_real tmp = a[k].entry(i,q)*a[s].entry(t,q);
-                    if (q == j)
-                      tmp *= 2.0;
-                    for (unsigned n=0; n<nd; ++n) {
-                      if (n != k && n != s)
-                        tmp *= Z[n].entry(q,j);
-                    } // n
-                    tmp2 += tmp;
-                  } // q
-                  u[k].entry(i,j) += tmp2 * v[s].entry(t,p);
-                }
+                u[k].entry(i,j) += tmp * v[s].entry(t,p);
               } // p
             } // t
           }
@@ -418,16 +656,6 @@ void hess_vec(const SptensorT<ExecSpace>& X,
       } // j
     }, "hessvec_ktensor_kernel");
   }
-}
-
-template <typename ExecSpace>
-void hess_vec(const TensorT<ExecSpace>& X,
-              const KtensorT<ExecSpace>& a,
-              const KtensorT<ExecSpace>& v,
-              const KtensorT<ExecSpace>& u,
-              const AlgParams& algParams)
-{
-  Genten::error("hess_vec for dense tensor is not implemented");
 }
 
 }
@@ -442,6 +670,20 @@ void hess_vec(const TensorT<ExecSpace>& X,
                                                                         \
   template                                                              \
   void hess_vec(const TensorT<SPACE>& X,                                \
+    const KtensorT<SPACE>& a,                                           \
+    const KtensorT<SPACE>& v,                                           \
+    const KtensorT<SPACE>& u,                                           \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template                                                              \
+  void gauss_newton_hess_vec(const SptensorT<SPACE>& X,                 \
+    const KtensorT<SPACE>& a,                                           \
+    const KtensorT<SPACE>& v,                                           \
+    const KtensorT<SPACE>& u,                                           \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template                                                              \
+  void gauss_newton_hess_vec(const TensorT<SPACE>& X,                   \
     const KtensorT<SPACE>& a,                                           \
     const KtensorT<SPACE>& v,                                           \
     const KtensorT<SPACE>& u,                                           \

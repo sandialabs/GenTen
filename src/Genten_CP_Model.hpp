@@ -196,7 +196,7 @@ namespace Genten {
     if (algParams.hess_vec_method == Hess_Vec_Method::Full)
       Genten::hess_vec(X, M, V, U, algParams);
     else if (algParams.hess_vec_method == Hess_Vec_Method::GaussNewton)
-      Genten::error("Gauss-Newton Hessian approximation not implemented");
+      gauss_newton_hess_vec(X, M, V, U, algParams);
     else if (algParams.hess_vec_method == Hess_Vec_Method::FiniteDifference)
     {
       const ttb_real h = 1.0e-7;
