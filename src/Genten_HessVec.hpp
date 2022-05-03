@@ -41,6 +41,7 @@
 #pragma once
 
 #include "Genten_Sptensor.hpp"
+#include "Genten_Tensor.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_AlgParams.hpp"
 
@@ -48,6 +49,13 @@ namespace Genten
 {
   template <typename ExecSpace>
   void hess_vec(const SptensorT<ExecSpace>& X,
+                const KtensorT<ExecSpace>& a,
+                const KtensorT<ExecSpace>& v,
+                const KtensorT<ExecSpace>& u,
+                const AlgParams& algParams);
+
+  template <typename ExecSpace>
+  void hess_vec(const TensorT<ExecSpace>& X,
                 const KtensorT<ExecSpace>& a,
                 const KtensorT<ExecSpace>& v,
                 const KtensorT<ExecSpace>& u,

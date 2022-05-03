@@ -226,6 +226,23 @@ namespace Genten {
     static constexpr type default_type = Default;
   };
 
+  // Sampling functions supported by GCP
+  struct Hess_Vec_Method {
+    enum type {
+      Full,
+      GaussNewton,
+      FiniteDifference
+    };
+    static constexpr unsigned num_types = 3;
+    static constexpr type types[] = {
+      Full, GaussNewton, FiniteDifference
+    };
+    static constexpr const char* names[] = {
+      "full", "gauss-newton", "finite-difference"
+    };
+    static constexpr type default_type = FiniteDifference;
+  };
+
   // TTM algorithm
   struct TTM_Method {
     enum type {

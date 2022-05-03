@@ -268,6 +268,10 @@ public:
     /* accumulate y into x */
     void plus(const FacMatrixT & y) const;
 
+    // x = a*y + b*x
+    /* accumulate y into x */
+    void update(const ttb_real a, const FacMatrixT& y, const ttb_real b) const;
+
     // x += yi forall yi in ya
     void plusAll(const FacMatArrayT<ExecSpace> & ya) const;
 

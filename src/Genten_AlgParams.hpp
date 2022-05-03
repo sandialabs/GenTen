@@ -89,6 +89,7 @@ namespace Genten {
     ttb_real pgtol;              // pgtol parameter for L-BFGS-B
     ttb_indx memory;             // memory parameter for L-BFGS-B
     ttb_indx max_total_iters;    // maximum total iterations for L-BFGS-B
+    Hess_Vec_Method::type hess_vec_method; // Hessian-vector product method
 
     // GCP options
     GCP_LossFunction::type loss_function_type; // Loss function for GCP

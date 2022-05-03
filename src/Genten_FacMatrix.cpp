@@ -215,6 +215,17 @@ plus(const Genten::FacMatrixT<ExecSpace> & y) const
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
+update(const ttb_real a, const Genten::FacMatrixT<ExecSpace> & y,
+       const ttb_real b) const
+{
+  // TODO: check size compatibility, parallelize
+  auto data_1d = make_data_1d();
+  auto y_data_1d = y.make_data_1d();
+  data_1d.update(a, y_data_1d, b);
+}
+
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
 plusAll(const Genten::FacMatArrayT<ExecSpace> & ya) const
 {
   // TODO: check size compatibility

@@ -420,11 +420,28 @@ void hess_vec(const SptensorT<ExecSpace>& X,
   }
 }
 
+template <typename ExecSpace>
+void hess_vec(const TensorT<ExecSpace>& X,
+              const KtensorT<ExecSpace>& a,
+              const KtensorT<ExecSpace>& v,
+              const KtensorT<ExecSpace>& u,
+              const AlgParams& algParams)
+{
+  Genten::error("hess_vec for dense tensor is not implemented");
+}
+
 }
 
 #define INST_MACRO(SPACE)                                               \
   template                                                              \
   void hess_vec(const SptensorT<SPACE>& X,                              \
+    const KtensorT<SPACE>& a,                                           \
+    const KtensorT<SPACE>& v,                                           \
+    const KtensorT<SPACE>& u,                                           \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template                                                              \
+  void hess_vec(const TensorT<SPACE>& X,                                \
     const KtensorT<SPACE>& a,                                           \
     const KtensorT<SPACE>& v,                                           \
     const KtensorT<SPACE>& u,                                           \

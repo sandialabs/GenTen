@@ -63,10 +63,10 @@ void Genten_Test_HessVec_Type(Genten::MTTKRP_All_Method::type mttkrp_method,
   initialize("HessVec tests ("+label+", "+space_name+")", infolevel);
 
   // Create random sparse tensor
-  const ttb_indx nd = 4;
+  const ttb_indx nd = 3;
   const ttb_indx nc = 3;
-  const ttb_indx nnz = 20;
-  Genten::IndxArray dims = { 3, 4, 5, 6 };
+  const ttb_indx nnz = 10;
+  Genten::IndxArray dims = { 3, 4, 5 };
   Genten::RandomMT rng (12345);
   Genten::Ktensor sol_host;
   Genten::Sptensor x_host;
@@ -92,45 +92,28 @@ void Genten_Test_HessVec_Type(Genten::MTTKRP_All_Method::type mttkrp_method,
   algParams.mttkrp_all_method = mttkrp_method;
   algParams.mttkrp_method = Genten::MTTKRP_Method::Atomic;
 
-  Genten::CP_Model<Genten::SptensorT<ExecSpace> >  cp_model(x, a, algParams);
-
-  // Compute hess-vec
+  // Compute full hess-vec
+  algParams.hess_vec_method = Genten::Hess_Vec_Method::Full;
+  Genten::CP_Model<Genten::SptensorT<ExecSpace> >
+    cp_model_full(x, a, algParams);
   Genten::KtensorT<ExecSpace> u(nc, nd, x.size());
-  cp_model.update(a);
-  cp_model.hess_vec(u, a, v);
+  cp_model_full.update(a);
+  cp_model_full.hess_vec(u, a, v);
 
   // Compute finite-difference approximation to hess-vec
-  const ttb_real h = 1.0e-7;
-  Genten::KtensorT<ExecSpace> ap(nc, nd, x.size()), u_fd(nc, nd, x.size()),
-    up(nc, nd, x.size());
-  auto ap_host = create_mirror_view(ap);
-  deep_copy(ap_host, a_host);
-  for (ttb_indx n=0; n<nd; ++n) {
-    for (ttb_indx i=0; i<x.size(n); ++i) {
-      for (ttb_indx j=0; j<nc; ++j)
-        ap_host[n].entry(i,j) += h*v_host[n].entry(i,j);
-    }
-  }
-  deep_copy(ap, ap_host);
-  cp_model.gradient(u_fd, a);
-  cp_model.update(ap);
-  cp_model.gradient(up, ap);
-  auto u_fd_host = create_mirror_view(u_fd);
-  auto up_host = create_mirror_view(up);
-  deep_copy(u_fd_host, u_fd);
-  deep_copy(up_host, up);
-  for (ttb_indx n=0; n<nd; ++n) {
-    for (ttb_indx i=0; i<x.size(n); ++i) {
-      for (ttb_indx j=0; j<nc; ++j)
-        u_fd_host[n].entry(i,j) =
-          (up_host[n].entry(i,j)-u_fd_host[n].entry(i,j)) / h;
-    }
-  }
+  algParams.hess_vec_method = Genten::Hess_Vec_Method::FiniteDifference;
+  Genten::CP_Model<Genten::SptensorT<ExecSpace> >
+    cp_model_fd(x, a, algParams);
+  Genten::KtensorT<ExecSpace> u_fd(nc, nd, x.size());
+  cp_model_fd.update(a);
+  cp_model_fd.hess_vec(u_fd, a, v);
 
   // Check values
   const ttb_real tol = 1e-6;
   auto u_host = create_mirror_view(u);
+  auto u_fd_host = create_mirror_view(u_fd);
   deep_copy(u_host, u);
+  deep_copy(u_fd_host, u);
   //print_ktensor(u_host, std::cout, "u");
   //print_ktensor(u_fd_host, std::cout, "u_fd");
   for (ttb_indx n=0; n<nd; ++n) {

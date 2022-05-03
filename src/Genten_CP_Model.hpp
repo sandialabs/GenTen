@@ -79,8 +79,10 @@ namespace Genten {
     ttb_real value_and_gradient(ktensor_type& G, const ktensor_type& M) const;
 
     // Compute Hessian-vector product
+    /* This method is not const because it may call a finite-difference
+       approximation, which requires calling update() */
     void hess_vec(ktensor_type& U, const ktensor_type& M,
-                  const ktensor_type& V) const;
+                  const ktensor_type& V);
 
   protected:
 
@@ -189,9 +191,36 @@ namespace Genten {
   template <typename Tensor>
   void
   CP_Model<Tensor>::
-  hess_vec(ktensor_type& U, const ktensor_type& M, const ktensor_type& V) const
+  hess_vec(ktensor_type& U, const ktensor_type& M, const ktensor_type& V)
   {
-    Genten::hess_vec(X, M, V, U, algParams);
+    if (algParams.hess_vec_method == Hess_Vec_Method::Full)
+      Genten::hess_vec(X, M, V, U, algParams);
+    else if (algParams.hess_vec_method == Hess_Vec_Method::GaussNewton)
+      Genten::error("Gauss-Newton Hessian approximation not implemented");
+    else if (algParams.hess_vec_method == Hess_Vec_Method::FiniteDifference)
+    {
+      const ttb_real h = 1.0e-7;
+      const ttb_indx nc = M.ncomponents();
+      const ttb_indx nd = M.ndims();
+
+      KtensorT<exec_space> Mp(nc, nd, X.size()), Up(nc, nd, X.size());
+      Mp.setWeights(1.0);
+      U.setWeights(1.0);
+      for (ttb_indx n=0; n<nd; ++n) {
+        deep_copy(Mp[n], M[n]);
+        Mp[n].update(h, V[n], 1.0);
+      }
+
+      update(M);
+      gradient(U, M);
+      update(Mp);
+      gradient(Up, Mp);
+
+      for (ttb_indx n=0; n<nd; ++n)
+        U[n].update(1.0/h, Up[n], -1.0/h);
+    }
+    else
+      Genten::error("Unknown Hessian method");
   }
 
 }

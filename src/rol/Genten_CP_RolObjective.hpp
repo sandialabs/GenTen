@@ -89,6 +89,11 @@ namespace Genten {
                           const ROL::Vector<ttb_real>& x,
                           ttb_real &tol) override;
 
+    virtual void hessVec(ROL::Vector<ttb_real>& hv,
+                         const ROL::Vector<ttb_real>& v,
+                         const ROL::Vector<ttb_real>& x,
+                         ttb_real& tol ) override;
+
     ROL::Ptr<vector_type> createDesignVector() const
     {
       return ROL::makePtr<vector_type>(M, false);
@@ -96,7 +101,7 @@ namespace Genten {
 
   protected:
 
-    ktensor_type M, G;
+    ktensor_type M, V, G;
     CP_Model<tensor_type> cp_model;
 
   };
@@ -110,9 +115,8 @@ namespace Genten {
       const ttb_indx nc = M.ncomponents();
       const ttb_indx nd = M.ndims();
 #if COPY_KTENSOR
-      G = ktensor_type(nc, nd);
-      for (ttb_indx i=0; i<nd; ++i)
-        G.set_factor(i, FacMatrixT<exec_space>(M[i].nRows(), nc));
+      V = ktensor_type(nc, nd, x.size());
+      G = ktensor_type(nc, nd, x.size());
 #endif
     }
 
@@ -190,6 +194,35 @@ namespace Genten {
     // Convert Ktensor to vector
 #if COPY_KTENSOR
     g.copyFromKtensor(G);
+#endif
+  }
+
+  template <typename Tensor>
+  void
+  CP_RolObjective<Tensor>::
+  hessVec(ROL::Vector<ttb_real>& hhv, const ROL::Vector<ttb_real>& vv,
+          const ROL::Vector<ttb_real>& xx, ttb_real &tol)
+  {
+    TEUCHOS_FUNC_TIME_MONITOR("CP_RolObjective::hessVec");
+
+    const vector_type& x = dynamic_cast<const vector_type&>(xx);
+    const vector_type& v = dynamic_cast<const vector_type&>(vv);
+    vector_type& hv = dynamic_cast<vector_type&>(hhv);
+
+    // Convert input vector to a Ktensor
+    M = x.getKtensor();
+    V = v.getKtensor();
+    G = hv.getKtensor();
+#if COPY_KTENSOR
+    x.copyToKtensor(M);
+    v.copyToKtensor(V);
+#endif
+
+    cp_model.hess_vec(G, M, V);
+
+    // Convert Ktensor to vector
+#if COPY_KTENSOR
+    hv.copyFromKtensor(G);
 #endif
   }
 
