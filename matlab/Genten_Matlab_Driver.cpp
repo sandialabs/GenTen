@@ -53,8 +53,19 @@ void matlab_driver(int nlhs, mxArray *plhs[],
   // Get tensor
   Genten::SystemTimer timer(1, algParams.timings);
   timer.start(0);
-  Genten::SptensorT<ExecSpace> X =
-    mxGetSptensor<ExecSpace>(prhs[0], algParams.debug);
+  Genten::SptensorT<ExecSpace> X_sparse;
+  Genten::TensorT<ExecSpace> X_dense;
+  bool sparse = true;
+  if (mxIsClass(prhs[0], "sptensor") || mxIsClass(prhs[0], "sptensor_gt")) {
+    X_sparse = mxGetSptensor<ExecSpace>(prhs[0], algParams.debug);
+    sparse = true;
+  }
+  else if (mxIsClass(prhs[0], "tensor")) {
+    X_dense = mxGetTensor<ExecSpace>(prhs[0], algParams.debug);
+    sparse = false;
+  }
+  else
+    Genten::error("First arg is not a tensor or sptensor!");
   timer.stop(1);
   if (algParams.timings)
     std::cout << "Parsing tensor took " << timer.getTotalTime(0)
@@ -81,8 +92,11 @@ void matlab_driver(int nlhs, mxArray *plhs[],
 
   // Call driver
   Genten::PerfHistory history;
-  Genten::KtensorT<ExecSpace> u =
-    Genten::driver(X, u_init, algParams, history, std::cout);
+  Genten::KtensorT<ExecSpace> u;
+  if (sparse)
+    u = Genten::driver(X_sparse, u_init, algParams, history, std::cout);
+  else
+    u = Genten::driver(X_dense, u_init, algParams, history, std::cout);
 
   // Return results
   if (nlhs >= 1)
