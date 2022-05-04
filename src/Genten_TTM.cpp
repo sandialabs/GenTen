@@ -51,6 +51,10 @@
 #include "cublas_v2.h"
 #endif
 
+#if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
+#include "rocblas.h"
+#endif
+
 //-----------------------------------------------------------------------------
 //  Method:  TTM, Tensor Y, Matrix V, output to Tensor Z
 //-----------------------------------------------------------------------------
@@ -479,6 +483,180 @@ namespace Genten
 #endif
     }
 
+    template <typename ExecSpace>
+    void genten_ttm_batched_rocblas(const TensorT<ExecSpace> &Y,
+                                   const TensorT<ExecSpace> &V,
+                                   const ttb_indx mode,
+                                   TensorT<ExecSpace> &Z)
+    {
+#if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
+      if ((mode + 1 > 0) && (mode < Y.ndims()))
+      {
+        if (Y.size(mode) != V.size(1))
+        {
+          std::stringstream dim_error;
+          dim_error << "From genten_ttm_batched_cublas, tensor dimension " << mode << " of size " << Y.size(mode) << " does not match number of columns, " << V.size(1) << ", of input matrix";
+          std::cerr << dim_error.str() << std::endl;
+          throw dim_error.str();
+        }
+
+        typedef typename Kokkos::View<ttb_real *, ExecSpace> sub_view_type;
+        typedef typename sub_view_type::device_type device_type;
+
+        IndxArrayT<DefaultHostExecutionSpace> Y_size_host = create_mirror_view(DefaultHostExecutionSpace(), Y.size());
+        deep_copy(Y_size_host, Y.size());
+
+        //Get the numbers (rows, cols, num_matrices) for sub matrices of unfolded tensor
+        ttb_indx ncols = Y_size_host.prod(0, mode, 1);             // Y.size().prod(0,mode,1);
+        ttb_indx nmats = Y_size_host.prod(mode + 1, Y.ndims(), 1); //Y.size().prod(mode+1, Y.ndims(), 1);
+        ttb_indx nrows = Y_size_host[mode];                        //Y.size(mode);
+
+
+        //Get nrows, ncols for the V_matrix
+        IndxArrayT<DefaultHostExecutionSpace> V_size_host = create_mirror_view(DefaultHostExecutionSpace(), V.size());
+        deep_copy(V_size_host, V.size());
+
+        ttb_indx Vmat_nrows = V_size_host[0]; //V.size(0);
+        ttb_indx Vmat_ncols = V_size_host[1]; //V.size(1);
+
+        //Setting up parameters for rocblas_dgemm_strided_batched
+        const int m = ncols;
+        const int k = nrows;
+        const int n = Vmat_nrows;
+        const int lda = ncols;
+        const int strideA = nrows * ncols;
+        const int ldb = Vmat_nrows;
+        const int strideB = 0;
+        const int ldc = ncols;
+        const int strideC = Vmat_nrows * ncols;
+        const ttb_real alpha = ttb_real(1.0);
+        const ttb_real beta = ttb_real(0.0);
+        rocblas_status status;
+
+        static rocblas_handle handle = 0;
+        if (handle == 0)
+        {
+          status = rocblas_create_handle(&handle);
+          if (status != rocblas_status_success)
+          {
+            std::stringstream rocblas_create_handle_error;
+            rocblas_create_handle_error << "Error!  rocblas_create_handle() failed with status "
+                               << status;
+            std::cerr << rocblas_create_handle_error.str() << std::endl;
+            throw rocblas_create_handle_error.str();
+          }
+        }
+
+        // We need Z = V*Y, where Z/Y are matricised tensors, and V is input matrix.
+        // But since Z and Y (matricised) are logically LayoutRight, we instead seek Z'=Y'*V'
+        // This way, Y' is LayoutLeft. V, naturally LayoutLeft needs the transpose flag.
+        // The result Z' also comes out LayoutLeft, as desired. All LayoutLeft is what Gemm expects
+        status = rocblas_dgemm_strided_batched(handle, rocblas_operation_none, rocblas_operation_transpose,
+                                           m, n, k,
+                                           &alpha,
+                                           Y.getValues().values().data(), lda, strideA,
+                                           V.getValues().values().data(), ldb, strideB,
+                                           &beta,
+                                           Z.getValues().values().data(), ldc, strideC,
+                                           nmats);
+
+        if (status != rocblas_status_success)
+        {
+          std::stringstream rocblas_dgemm_strided_batched_error;
+          rocblas_dgemm_strided_batched_error << "Error!  rocblas_dgemm_strided_batched() failed with status "
+                                          << status;
+          std::cerr << rocblas_dgemm_strided_batched_error.str() << std::endl;
+          throw rocblas_dgemm_strided_batched_error.str();
+        }
+      }
+      else
+      {
+        std::stringstream mode_error;
+        mode_error << "From genten_ttm_batched_rocblas, mode: " << mode << " is invalid. Please provide valid mode";
+        std::cerr << mode_error.str() << std::endl;
+        throw mode_error.str();
+      }
+#else
+      std::stringstream no_hip_error;
+      no_hip_error << "Error!  genten_ttm_batched_rocblas function called, but HIP not enabled";
+      std::cerr << no_hip_error.str() << std::endl;
+      throw no_hip_error.str();
+#endif
+
+    }
+
+    template <typename ExecSpace>
+    void genten_ttm_last_mode_rocblas(const TensorT<ExecSpace> &Y,
+                                     const TensorT<ExecSpace> &V,
+                                     const ttb_indx mode,
+                                     TensorT<ExecSpace> &Z)
+    {
+#if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
+
+      typedef typename Kokkos::View<ttb_real *, ExecSpace> sub_view_type;
+      typedef typename sub_view_type::device_type device_type;
+
+      IndxArrayT<DefaultHostExecutionSpace> Y_size_host = create_mirror_view(DefaultHostExecutionSpace(), Y.size());
+      deep_copy(Y_size_host, Y.size());
+
+      //Get the numbers (rows, cols, num_matrices) for sub matrices of unfolded tensor
+      ttb_indx ncols = Y_size_host.prod(0, mode, 1); // Y.size().prod(0,n,1);
+      ttb_indx nrows = Y_size_host[mode];            //Y.size(n);
+
+      //Get nrows, ncols for the V_matrix
+      IndxArrayT<DefaultHostExecutionSpace> V_size_host = create_mirror_view(DefaultHostExecutionSpace(), V.size());
+      deep_copy(V_size_host, V.size());
+
+      ttb_indx Vmat_nrows = V_size_host[0]; //V.size(0);
+      ttb_indx Vmat_ncols = V_size_host[1]; //V.size(1);
+
+      const int m = ncols;
+      const int k = nrows;
+      const int n = Vmat_nrows;
+      const int lda = ncols;
+      const int ldb = Vmat_nrows;
+      const int ldc = ncols;
+      const double alpha = 1.0;
+      const double beta = 0.0;
+      rocblas_status status;
+
+      static rocblas_handle handle = 0;
+      if (handle == 0)
+      {
+        status = rocblas_create_handle(&handle);
+        if (status != rocblas_status_success)
+        {
+          std::stringstream rocblas_create_handle_error;
+          rocblas_create_handle_error << "Error!  rocblas_create_handle() failed with status "
+                             << status;
+          std::cerr << rocblas_create_handle_error.str() << std::endl;
+          throw rocblas_create_handle_error.str();
+        }
+      }
+
+      // We need Z = V*Y, where Z/Y are matricised tensors, and V is input matrix.
+      // But since Z and Y (matricised) are logically LayoutRight, we instead seek Z'=Y'*V'
+      // This way, Y' is LayoutLeft. V, naturally LayoutLeft needs the transpose flag.
+      // The result Z' also comes out LayoutLeft, as desired. All LayoutLeft is what Gemm expects
+      status = rocblas_dgemm(handle, rocblas_operation_none, rocblas_operation_transpose, m, n, k,
+                           &alpha, Y.getValues().values().data(), lda, V.getValues().values().data(), ldb,
+                           &beta, Z.getValues().values().data(), ldc);
+
+      if (status != rocblas_status_success)
+      {
+        std::stringstream rocblas_dgemm_error;
+        rocblas_dgemm_error << "Error!  rocblas_dgemm() failed with status "
+                          << status;
+        std::cerr << rocblas_dgemm_error.str() << std::endl;
+        throw rocblas_dgemm_error.str();
+      }
+#else
+      std::stringstream no_hip_error;
+      no_hip_error << "Error!  genten_ttm_last_mode_rocblas function called, but HIP not enabled";
+      std::cerr << no_hip_error.str() << std::endl;
+      throw no_hip_error.str();
+#endif
+    }
   } // namespace Impl
 
   template <typename ExecSpace>
@@ -505,6 +683,17 @@ namespace Genten
           Impl::genten_ttm_batched_cublas(Y, V, n, Z);
         }
       }
+      else if (Genten::is_hip_space<ExecSpace>::value)
+      {
+        if (n == nd - 1)
+        {
+          Impl::genten_ttm_last_mode_rocblas(Y, V, n, Z);
+        }
+        else
+        {
+          Impl::genten_ttm_batched_rocblas(Y, V, n, Z);
+        }
+      }
       else
       {
         Impl::genten_ttm_serial_dgemm(n, Y, V, Z);
@@ -512,7 +701,6 @@ namespace Genten
     }
     else
     {
-
       if (Genten::is_cuda_space<ExecSpace>::value)
       {
         if (n == nd - 1)
@@ -522,6 +710,17 @@ namespace Genten
         else
         {
           Impl::genten_ttm_batched_cublas(Y, V, n, Z);
+        }
+      }
+      else if (Genten::is_hip_space<ExecSpace>::value)
+      {
+        if (n == nd - 1)
+        {
+          Impl::genten_ttm_last_mode_rocblas(Y, V, n, Z);
+        }
+        else
+        {
+          Impl::genten_ttm_batched_rocblas(Y, V, n, Z);
         }
       }
       else

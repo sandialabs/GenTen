@@ -78,8 +78,8 @@ public:
   KOKKOS_INLINE_FUNCTION
   ttb_real value(ttb_indx i) const
   {
-    static const bool is_cuda = Genten::is_cuda_space<exec_space>::value;
-    static const unsigned WarpSize = is_cuda ? VectorSize : 1;
+    static const bool is_gpu = Genten::is_gpu_space<exec_space>::value;
+    static const unsigned WarpSize = is_gpu ? VectorSize : 1;
     const ttb_real m_val =
       compute_Ktensor_value<exec_space, FacBlockSize, WarpSize>(M, *this, i);
     return w[i] * f.deriv(Tensor::value(i), m_val);
