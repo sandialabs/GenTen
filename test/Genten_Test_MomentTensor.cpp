@@ -38,21 +38,57 @@
 // ************************************************************************
 //@HEADER
 
-//#include "Genten_Kokkos.hpp"
-//#include "Genten_Tensor.hpp"
-//#include "Genten_IOtext.hpp"
 
-#ifndef GENTEN_HIGHER_ORDER_MOMENT_HPP_
-#define GENTEN_HIGHER_ORDER_MOMENT_HPP_
+#include <iostream>
+#include <cmath>
+#include "Genten_Array.hpp"
+#include "Genten_Test_Utils.hpp"
+#include "Genten_Util.hpp"
+#include "Genten_HigherMoments.hpp"
 
-namespace Genten {
+using namespace Genten::Test;
 
-template<class ExeSpace>
-auto cokurtosis_moment_tensor(Kokkos::View<ttb_real**, Kokkos::LayoutLeft, ExeSpace> rawData);
+template <typename ExecSpace>
+void Genten_Test_MomentTensorImpl(int infolevel)
+{
+  //using exec_space = ExecSpace;;
+  using host_exec_space = Genten::DefaultHostExecutionSpace;
+  //SETUP_DISABLE_CERR;
 
-double * create_and_compute_raw_moment_tensor(double *raw_data_ptr, int nsamples,
-					      int nvars, const int order= 4);
+  std::string space_name = Genten::SpaceProperties<ExecSpace>::name();
+  initialize("Tests on Genten::MomentTensor (" + space_name + ")", infolevel);
 
+  const int numRows = 10;
+  const int numCols = 4;
+  std::vector<ttb_real> a(numRows*numCols);
+  int count=0;
+  // this loop order matters because the data must be in layoutleft order
+  for(int j=0; j<numCols; j++){
+    for (int i=0; i<numRows; i++){
+      a[count++] = static_cast <double> (i*numCols+j);
+    }
+  }
+
+  auto r = Genten::create_and_compute_raw_moment_tensor(a.data(), numRows, numCols);
+
+  finalize();
 }
 
-#endif
+void Genten_MomentTensor(int infolevel) {
+
+// #ifdef KOKKOS_ENABLE_CUDA
+//   Genten_Test_MomentTensorImpl<Kokkos::Cuda>(infolevel);
+// #endif
+// #ifdef KOKKOS_ENABLE_HIP
+//   Genten_Test_MomentTensorImpl<Kokkos::Experimental::HIP>(infolevel);
+// #endif
+// #ifdef KOKKOS_ENABLE_OPENMP
+  Genten_Test_MomentTensorImpl<Kokkos::OpenMP>(infolevel);
+// #endif
+// #ifdef KOKKOS_ENABLE_THREADS
+//   Genten_Test_MomentTensorImpl<Kokkos::Threads>(infolevel);
+// #endif
+// #ifdef KOKKOS_ENABLE_SERIAL
+//   Genten_Test_MomentTensorImpl<Kokkos::Serial>(infolevel);
+// #endif
+}
