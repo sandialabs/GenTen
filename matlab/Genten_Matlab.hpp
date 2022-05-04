@@ -49,6 +49,7 @@
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_IOtext.hpp"
+#include "Genten_PerfHistory.hpp"
 
 extern "C" {
 #include "mex.h"
@@ -353,7 +354,7 @@ mxGetIndxArray(const mxArray* ptr, const bool subtract_one = false) {
   return w;
 }
 
-mxArray* mxSetHistory(const std::vector<std::vector<ttb_real> >& h);
+mxArray* mxSetHistory(const Genten::PerfHistory& h);
 
 std::string mxGetStdString(const mxArray* ptr);
 

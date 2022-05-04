@@ -218,10 +218,22 @@ void Genten::FacMatrixT<ExecSpace>::
 update(const ttb_real a, const Genten::FacMatrixT<ExecSpace> & y,
        const ttb_real b) const
 {
-  // TODO: check size compatibility, parallelize
-  auto data_1d = make_data_1d();
-  auto y_data_1d = y.make_data_1d();
-  data_1d.update(a, y_data_1d, b);
+  if (data.span() == y.data.span()) { // matrices have the same padding
+    auto data_1d = make_data_1d();
+    auto y_data_1d = y.make_data_1d();
+    data_1d.update(a, y_data_1d, b);
+  }
+  else { // matrices might not have the same padding
+    assert(data.extent(0) == y.data.extent(0));
+    assert(data.extent(1) == y.data.extent(1));
+    auto d = data;
+    Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,d.extent(0)),
+                         KOKKOS_LAMBDA(const ttb_indx i)
+    {
+      for (ttb_indx j=0; j<d.extent(1); ++j)
+        d(i,j) = a*y.data(i,j) + b*d(i,j);
+    }, "FacMatrix::update");
+  }
 }
 
 template <typename ExecSpace>

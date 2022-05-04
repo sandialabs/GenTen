@@ -155,7 +155,7 @@ namespace Genten {
   template<typename TensorT, typename ExecSpace>
   void cp_opt_lbfgsb(const TensorT& X, KtensorT<ExecSpace>& u,
                      const AlgParams& algParams,
-                     std::vector<std::vector<ttb_real> >& history)
+                     PerfHistory& history)
   {
     typedef KokkosVector<ExecSpace> kokkos_vector;
 #ifdef HAVE_CALIPER
@@ -228,7 +228,7 @@ namespace Genten {
     const ttb_real nrm_X = X.norm();
     const ttb_real nrm_X_sq = nrm_X*nrm_X;
 
-    history.push_back(std::vector<ttb_real>(3));
+    history.addEmpty();
     CP_Model<TensorT> cp_model(X, u, algParams);
 
     // Run CP-OPT
@@ -255,23 +255,24 @@ namespace Genten {
 
         if (history.size() < iters+1)
           history.resize(iters+1);
-        history[iters].resize(3);
-        history[iters][0] = f;
-        history[iters][1] = nrmg;
-        history[iters][2] = time;
+        history[iters].iteration = iters;
+        history[iters].residual = f;
+        history[iters].fit = ttb_real(1.0) - f / (ttb_real(0.5)*nrm_X_sq);
+        history[iters].grad_norm = nrmg;
+        history[iters].cum_time = time;
 
         // Suppress printing of inner iterations by only printing when the
         // the outer iterations increments
         if (iters > print_iter) {
           if (algParams.printitn > 0 && (print_iter+1) % algParams.printitn == 0) {
-            const std::vector<ttb_real>& h = history[print_iter];
+            const auto& h = history[print_iter];
             std::cout << "Iter " << std::setw(5) << print_iter+1
                       << ", f(x) = "
-                      << std::setprecision(6) << std::scientific << h[0]
+                      << std::setprecision(6) << std::scientific << h.residual
                       << ", ||grad||_infty = "
-                      << std::setprecision(2) << std::scientific << h[1]
+                      << std::setprecision(2) << std::scientific << h.grad_norm
                       << ", t = "
-                      << std::setprecision(2) << std::scientific << h[2]
+                      << std::setprecision(2) << std::scientific << h.cum_time
                       << std::endl;
           }
           print_iter = iters;
@@ -289,14 +290,14 @@ namespace Genten {
 
     // Print last iteration
     if (algParams.printitn > 0) {
-      const std::vector<ttb_real>& h = history[print_iter];
+      const auto& h = history.lastEntry();
       std::cout << "Iter " << std::setw(5) << print_iter+1
                 << ", f(x) = "
-                << std::setprecision(6) << std::scientific << h[0]
+                << std::setprecision(6) << std::scientific << h.residual
                 << ", ||grad||_infty = "
-                << std::setprecision(2) << std::scientific << h[1]
+                << std::setprecision(2) << std::scientific << h.grad_norm
                 << ", t = "
-                << std::setprecision(2) << std::scientific << h[2]
+                << std::setprecision(2) << std::scientific << h.cum_time
                 << std::endl;
           }
 
@@ -328,12 +329,12 @@ namespace Genten {
     const SptensorT<SPACE>& x,                                          \
     KtensorT<SPACE>& u,                                                 \
     const AlgParams& algParms,                                          \
-    std::vector<std::vector<ttb_real> >& history);                      \
+    PerfHistory& history);                                              \
                                                                         \
   template void cp_opt_lbfgsb<TensorT<SPACE>,SPACE>(                    \
     const TensorT<SPACE>& x,                                            \
     KtensorT<SPACE>& u,                                                 \
     const AlgParams& algParms,                                          \
-    std::vector<std::vector<ttb_real> >& history);
+    PerfHistory& history);
 
 GENTEN_INST(INST_MACRO)

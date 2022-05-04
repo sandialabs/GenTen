@@ -180,16 +180,12 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
 
     ttb_indx  nItersCompleted;
     ttb_real  dResNorm;
-    ttb_indx  nMaxPerfSize = 2 + algParams.maxiters;
-    Genten::CpAlsPerfInfo * perfInfo = new Genten::CpAlsPerfInfo[nMaxPerfSize];
+    Genten::PerfHistory perfInfo;
     algParams.rank = R;
     Genten::cpals_core (cData, cResult, algParams, nItersCompleted, dResNorm,
                         1, perfInfo);
-    ttb_indx last_perf =
-      nItersCompleted > algParams.maxiters ? algParams.maxiters+1 : nItersCompleted+1;
-    ttb_real mttkrp_gflops = perfInfo[last_perf].dmttkrp_gflops;
+    ttb_real mttkrp_gflops = perfInfo.lastEntry().mttkrp_throughput;
     printf("\t%3d\t    %.3f\n", int(R), mttkrp_gflops);
-    delete[] perfInfo;
   }
 
   return 0;

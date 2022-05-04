@@ -80,7 +80,7 @@ void matlab_driver(int nlhs, mxArray *plhs[],
     throw std::string("Invalid type for initial guess specification.");
 
   // Call driver
-  std::vector<std::vector<ttb_real> > history;
+  Genten::PerfHistory history;
   Genten::KtensorT<ExecSpace> u =
     Genten::driver(X, u_init, algParams, history, std::cout);
 

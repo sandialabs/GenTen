@@ -44,6 +44,7 @@
 
 #include "Genten_Ktensor.hpp"
 #include "Genten_AlgParams.hpp"
+#include "Genten_PerfHistory.hpp"
 
 #include "Teuchos_ParameterList.hpp"
 
@@ -70,6 +71,7 @@ namespace Genten {
   template<typename TensorT, typename ExecSpace>
   void cp_opt_rol(const TensorT& x, KtensorT<ExecSpace>& u,
                   const AlgParams& algParams,
+                  PerfHistory& history,
                   Teuchos::ParameterList& rol_params,
                   std::ostream& stream = std::cout);
 
@@ -98,6 +100,7 @@ namespace Genten {
   template<typename TensorT, typename ExecSpace>
   void cp_opt_rol(const TensorT& x, KtensorT<ExecSpace>& u,
                   const AlgParams& algParams,
+                  PerfHistory& history,
                   std::ostream& stream = std::cout)
   {
     // Setup ROL to do optimization algorithm similar to L-BFGS-B
@@ -118,7 +121,7 @@ namespace Genten {
       general_params.set("Output Level", 1);
     }
 
-    cp_opt_rol(x, u, algParams, params, stream);
+    cp_opt_rol(x, u, algParams, history, params, stream);
   }
 
 }

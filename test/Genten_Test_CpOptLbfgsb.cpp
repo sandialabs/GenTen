@@ -278,7 +278,7 @@ void Genten_Test_CpOptLbfgsb_Type (
   Genten::Ktensor result(nNumComponents, dims.size(), dims);
   Genten::KtensorT<exec_space> result_dev =
     create_mirror_view( exec_space(), result );
-  std::vector<std::vector<ttb_real> > history;
+  Genten::PerfHistory history;
   try
   {
     deep_copy(result_dev, initialBasis_dev);

@@ -40,33 +40,56 @@
 
 #pragma once
 
-#include <ostream>
-
-#include "Genten_Ktensor.hpp"
-#include "Genten_AlgParams.hpp"
-#include "Genten_PerfHistory.hpp"
+#include <vector>
+#include "Genten_Util.hpp"
 
 namespace Genten {
 
-  //! Compute the CP decomposition of a tensor using L-BFSG-B.
-  /*!
-   *  Compute an estimate of the best rank-R CP model of a tensor X
-   *  for Gaussian loss.  The input X currently must be a (sparse)
-   *  Sptensor.  The result is a Ktensor.
-   *
-   *  An initial guess of factor matrices must be provided, which must be
-   *  nonzero.
-   *
-   *  @param[in] x          Data tensor to be fit by the model.
-   *  @param[in,out] u      Input contains an initial guess for the factors.
-   *                        The size of each mode must match the corresponding
-   *                        mode of x, and the number of components determines
-   *                        how many will be in the result.
-   *                        Output contains resulting factorization Ktensor.
-   */
-  template<typename TensorT, typename ExecSpace>
-  void cp_opt_lbfgsb(const TensorT& x, KtensorT<ExecSpace>& u,
-                     const AlgParams& algParams,
-                     PerfHistory& history);
+  // Captures and stores tensor decomposition performance information across
+  // solver iterations
+  class PerfHistory {
+  public:
+
+    // Stores performance history for a single iteration.  Not all methods
+    // capture all values
+    struct Entry {
+      ttb_indx iteration;          // Completed solver iteration
+      ttb_real residual;           // Residual of tensor approximation
+      ttb_real fit;                // Tensor fit
+      ttb_real grad_norm;          // Norm of gradient
+      ttb_real cum_time;           // Cumulative time including this iteration
+      ttb_real mttkrp_throughput;  // Floating-point throughput of MTTKRP
+
+      Entry() : iteration(0), residual(0.0), fit(0.0), grad_norm(0.0),
+                cum_time(0.0), mttkrp_throughput(0.0) {}
+    };
+
+    PerfHistory() = default;
+
+    // Add a new entry
+    void addEntry(const Entry& entry) { entries.push_back(entry); }
+
+    // Add an empty entry
+    void addEmpty() { entries.push_back(Entry()); }
+
+    // Get a given entry
+    Entry& getEntry(const ttb_indx i) { return entries[i]; }
+    const Entry& getEntry(const ttb_indx i) const { return entries[i]; }
+    Entry& operator[](const ttb_indx i) { return entries[i]; }
+    const Entry& operator[](const ttb_indx i) const { return entries[i]; }
+
+    // Get the last entry
+    Entry& lastEntry() { return entries[entries.size()-1]; }
+    const Entry& lastEntry() const { return entries[entries.size()-1]; }
+
+    // The number of entries
+    ttb_indx size() const { return entries.size(); }
+
+    // Resize to given size
+    void resize(const ttb_indx new_size) { entries.resize(new_size); }
+
+  private:
+    std::vector<Entry> entries;
+  };
 
 }

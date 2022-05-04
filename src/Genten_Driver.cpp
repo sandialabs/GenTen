@@ -68,7 +68,7 @@ KtensorT<ExecSpace>
 driver(SptensorT<ExecSpace>& x,
        KtensorT<ExecSpace>& u_init,
        AlgParams& algParams,
-       std::vector<std::vector<ttb_real> >& history,
+       PerfHistory& history,
        std::ostream& out)
 {
   typedef Genten::SptensorT<ExecSpace> Sptensor_type;
@@ -149,7 +149,7 @@ driver(SptensorT<ExecSpace>& x,
     // Run CP-ALS
     ttb_indx iter;
     ttb_real resNorm;
-    cpals_core(x, u, algParams, iter, resNorm, 0, NULL, out);
+    cpals_core(x, u, algParams, iter, resNorm, 1, history, out);
   }
   else if (algParams.method == Genten::Solver_Method::CP_OPT) {
     timer.start(2);
@@ -168,9 +168,9 @@ driver(SptensorT<ExecSpace>& x,
       if (algParams.rolfilename != "")
         rol_params = Teuchos::getParametersFromXmlFile(algParams.rolfilename);
       if (rol_params != Teuchos::null)
-        cp_opt_rol(x, u, algParams, *rol_params, out);
+        cp_opt_rol(x, u, algParams, history, *rol_params, out);
       else
-        cp_opt_rol(x, u, algParams, out);
+        cp_opt_rol(x, u, algParams, history, out);
 #else
       Genten::error("ROL requested but not available!");
 #endif
@@ -233,6 +233,7 @@ KtensorT<ExecSpace>
 driver(TensorT<ExecSpace>& x,
        KtensorT<ExecSpace>& u_init,
        AlgParams& algParams,
+       PerfHistory& history,
        std::ostream& out)
 {
   typedef Genten::TensorT<ExecSpace> Tensor_type;
@@ -299,7 +300,37 @@ driver(TensorT<ExecSpace>& x,
     // Run CP-ALS
     ttb_indx iter;
     ttb_real resNorm;
-    cpals_core(x, u, algParams, iter, resNorm, 0, NULL, out);
+    cpals_core(x, u, algParams, iter, resNorm, 1, history, out);
+  }
+  else if (algParams.method == Genten::Solver_Method::CP_OPT) {
+    timer.start(2);
+    if (algParams.opt_method == Genten::Opt_Method::LBFGSB) {
+#ifdef HAVE_LBFGSB
+      // Run CP-OPT using L-BFGS-B
+      cp_opt_lbfgsb(x, u, algParams, history);
+#else
+      Genten::error("L-BFGS-B requested but not available!");
+#endif
+    }
+    else if (algParams.opt_method == Genten::Opt_Method::ROL) {
+#ifdef HAVE_ROL
+      // Run CP-OPT using ROL
+      Teuchos::RCP<Teuchos::ParameterList> rol_params;
+      if (algParams.rolfilename != "")
+        rol_params = Teuchos::getParametersFromXmlFile(algParams.rolfilename);
+      if (rol_params != Teuchos::null)
+        cp_opt_rol(x, u, algParams, history, *rol_params, out);
+      else
+        cp_opt_rol(x, u, algParams, history, out);
+#else
+      Genten::error("ROL requested but not available!");
+#endif
+    }
+    else
+      Genten::error("Invalid opt method!");
+    timer.stop(2);
+    if (algParams.timings)
+      out << "CP-OPT took " << timer.getTotalTime(2) << " seconds\n";
   }
   else {
     Genten::error(std::string("Unknown decomposition method:  ") +
@@ -319,7 +350,7 @@ driver(TensorT<ExecSpace>& x,
     SptensorT<SPACE>& x,                                                \
     KtensorT<SPACE>& u_init,                                            \
     AlgParams& algParams,                                               \
-    std::vector<std::vector<ttb_real> >& history,                       \
+    PerfHistory& history,                                               \
     std::ostream& os);                                                  \
                                                                         \
   template KtensorT<SPACE>                                              \
@@ -327,6 +358,7 @@ driver(TensorT<ExecSpace>& x,
     TensorT<SPACE>& x,                                                  \
     KtensorT<SPACE>& u_init,                                            \
     AlgParams& algParams,                                               \
+    PerfHistory& history,                                               \
     std::ostream& os);
 
 GENTEN_INST(INST_MACRO)

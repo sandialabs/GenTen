@@ -44,6 +44,8 @@
 #include "Genten_RolKokkosVector.hpp"
 #include "Genten_RolKtensorVector.hpp"
 #include "Genten_CP_Model.hpp"
+#include "Genten_PerfHistory.hpp"
+#include "Genten_SystemTimer.hpp"
 
 #include "Teuchos_TimeMonitor.hpp"
 
@@ -73,7 +75,7 @@ namespace Genten {
 #endif
 
     CP_RolObjective(const tensor_type& x, const ktensor_type& m,
-                    const AlgParams& algParms);
+                    const AlgParams& algParms, PerfHistory& history);
 
     virtual ~CP_RolObjective() {}
 
@@ -103,6 +105,9 @@ namespace Genten {
 
     ktensor_type M, V, G;
     CP_Model<tensor_type> cp_model;
+    PerfHistory& history;
+    SystemTimer timer;
+    ttb_real nrm_X_sq;
 
   };
 
@@ -110,7 +115,9 @@ namespace Genten {
   CP_RolObjective<Tensor>::
   CP_RolObjective(const tensor_type& x,
                   const ktensor_type& m,
-                  const AlgParams& algParams) : M(m), cp_model(x, m, algParams)
+                  const AlgParams& algParams,
+                  PerfHistory& h) : M(m), cp_model(x, m, algParams), history(h),
+                                    timer(1)
     {
       const ttb_indx nc = M.ncomponents();
       const ttb_indx nd = M.ndims();
@@ -118,6 +125,13 @@ namespace Genten {
       V = ktensor_type(nc, nd, x.size());
       G = ktensor_type(nc, nd, x.size());
 #endif
+
+      timer.start(0);
+      nrm_X_sq = x.norm();
+      nrm_X_sq = nrm_X_sq*nrm_X_sq;
+
+      history.addEmpty();
+      history.lastEntry().iteration = 0;
     }
 
   // Compute information that is common to both value() and gradient()
@@ -137,8 +151,28 @@ namespace Genten {
     x.copyToKtensor(M);
 #endif
 
+    // std::cout << "calling update with type == ";
+    // if (type == ROL::UpdateType::Initial)
+    //   std::cout << "initial";
+    // else if (type == ROL::UpdateType::Accept)
+    //   std::cout << "accept";
+    // else if (type == ROL::UpdateType::Revert)
+    //   std::cout << "revert";
+    // else if (type == ROL::UpdateType::Trial)
+    //   std::cout << "trial";
+    // else if (type == ROL::UpdateType::Temp)
+    //   std::cout << "temp";
+    // std::cout << std::endl;
+
     cp_model.update(M);
 
+    // If the step was accepted, record the time and add a new working entry
+    if (type == ROL::UpdateType::Accept) {
+      const ttb_indx iter = history.lastEntry().iteration;
+      history.lastEntry().cum_time = timer.getTotalTime(0);
+      history.addEmpty();
+      history.lastEntry().iteration = iter+1;
+    }
   }
 
   template <typename Tensor>
@@ -166,7 +200,12 @@ namespace Genten {
     x.copyToKtensor(M);
 #endif
 
-    return cp_model.value(M);
+    ttb_real res = cp_model.value(M);
+
+    history.lastEntry().residual = res;
+    history.lastEntry().fit = ttb_real(1.0) - res / (ttb_real(0.5)*nrm_X_sq);
+
+    return res;
   }
 
   // Compute gradient of objective function:
@@ -195,6 +234,8 @@ namespace Genten {
 #if COPY_KTENSOR
     g.copyFromKtensor(G);
 #endif
+
+    history.lastEntry().grad_norm = g.normInf();
   }
 
   template <typename Tensor>
