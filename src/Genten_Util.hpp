@@ -354,5 +354,4 @@ namespace Genten {
 
   // Connect executable to vtune for profiling
   void connect_vtune(const int p_rank = 0);
-
 }

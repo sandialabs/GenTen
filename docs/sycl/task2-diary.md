@@ -1,4 +1,4 @@
-# Porting GenTen to SYCL - Developer diary
+# Porting GenTen to SYCL - Developer's diary
 
 ## Compilation with CUDA Thrust
 1. I didn't find any example of Nvidia Thrust and SYCL combination
@@ -54,8 +54,7 @@ make -j"$(nproc)"
 7. Both Kokkos and GenTen compiled on AWS with CUDA work just fine.
 8. For SYCL compiler installation on AWS cloud, `python` and `ninja-build` are required.
 9. Installation can be done with `docs/sycl/install-dpc++.sh <dpc++-version>` script. Available versions can be found here -> https://github.com/intel/llvm/releases. For example, to install version `DPC++ daily 2022-05-10`: `./install-dpc++.sh 20220510`.
-10. After installation do `export LD_LIBRARY_PATH=/opt/sycl/lib/`
-11. Configuring Kokkos + SYCL:
+10. Configuring Kokkos + SYCL:
 ```bash
 cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_C_COMPILER=/opt/sycl/bin/clang -D CMAKE_CXX_COMPILER=/opt/sycl/bin/clang++ -D CMAKE_CXX_FLAGS="-Wno-unknown-cuda-version -Wno-gnu-zero-variadic-macro-arguments -Wno-deprecated-declarations -Wno-linker-warnings" -D CMAKE_CXX_STANDARD=17 -D CMAKE_INSTALL_PREFIX=../install_kokkos_sycl -D Kokkos_ARCH_TURING75=ON -D Kokkos_ENABLE_COMPILER_WARNINGS=ON -D Kokkos_ENABLE_DEPRECATED_CODE_3=ON -D Kokkos_ENABLE_DEPRECATION_WARNINGS=OFF -D Kokkos_ENABLE_EXAMPLES=OFF -D Kokkos_ENABLE_SYCL=ON -D Kokkos_ENABLE_TESTS=ON -D Kokkos_ENABLE_UNSUPPORTED_ARCHS=ON ../kokkos
 ```
@@ -64,6 +63,9 @@ cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_C_COMPILER=/opt/sycl/bin/clang -D CMA
 ```bash
 cmake -D BUILD_SHARED_LIBS=ON -D CMAKE_BUILD_TYPE=Release -D CMAKE_C_COMPILER=/opt/sycl/bin/clang -D CMAKE_CXX_COMPILER=/opt/sycl/bin/clang++ -D CMAKE_CXX_FLAGS="-Wno-unknown-cuda-version -Wno-gnu-zero-variadic-macro-arguments -Wno-deprecated-declarations -Wno-linker-warnings" -D GENTEN_ENABLE_SYCL_WITH_CUDA=ON -D Kokkos_ARCH_PASCAL61=ON -D Kokkos_ENABLE_DEPRECATED_CODE_3=ON -D Kokkos_ENABLE_DEPRECATION_WARNINGS=OFF -D Kokkos_ENABLE_SYCL=ON -D Kokkos_ENABLE_UNSUPPORTED_ARCHS=ON -D LIBCUBLAS_PATH=/usr/local/cuda-11.6/lib64 -D LIBCUSOLVER_PATH=/usr/local/cuda-11.6/lib64 ../genten
 ```
+14. If there's an error `error while loading shared libraries: libsycl.so.5: cannot open shared object file: No such file or directory` when running genten, try to `export LD_LIBRARY_PATH=/opt/sycl/lib/`
+15. On AWS including `<execution>` cause compilation error.
+16. In case of error `FATAL ERROR: Genten::sysv - not found, must link with an LAPACK library.` install LAPACK package `liblapack-dev`.
 
 ## Failing GenTen's unit tests
 1. GenTen unit tests fail just at the beginning
@@ -134,3 +136,8 @@ Segmentation fault (core dumped)
 ```
 
 Segfault comes from a second call to `dsysv()` from `Genten::sysv()`.
+
+2. About cuBLAS functions - it seems to be a problem with synchronization. Making cuBLAS handle local (instead of static, as it was originaly), and correctly destroying it, fixes the problem. cuBLAS documentation says:
+```
+(...) calling cublasDestroy() will implicitly call cublasDeviceSynchronize() (...)
+```
