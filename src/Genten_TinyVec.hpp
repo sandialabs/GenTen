@@ -1634,7 +1634,7 @@ namespace Genten {
     typedef Kokkos::TeamPolicy<exec_space>::member_type policy_member_type;
 
     const policy_member_type team_member;
-    const int threadIDx;
+    const int threadIdxx;
     static const ordinal_type len = 1;
     Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/Warp> sz;
     scalar_type v0;
@@ -1645,8 +1645,8 @@ namespace Genten {
     inline
     TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type x) :
       team_member(team),
-      threadIDx(team_member.item().get_local_id(0)),
-      sz( (size+Warp-1-threadIDx) / Warp )
+      threadIdxx(team_member.item().get_local_id(0)),
+      sz( (size+Warp-1-threadIdxx) / Warp )
     {
       broadcast(x);
     }
@@ -1654,14 +1654,14 @@ namespace Genten {
     inline
     TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type* x) :
       team_member(team),
-      threadIDx(team_member.item().get_local_id(0)),
-      sz( (size+Warp-1-threadIDx) / Warp )
+      threadIdxx(team_member.item().get_local_id(0)),
+      sz( (size+Warp-1-threadIdxx) / Warp )
     {
       load(x);
     }
 
     inline
-    TinyVec(const TinyVec& x) : team_member(x.team_member), threadIDx(x.threadIDx), sz(x.sz.value) {
+    TinyVec(const TinyVec& x) : team_member(x.team_member), threadIdxx(x.threadIdxx), sz(x.sz.value) {
       v0 = x.v0;
     }
 
@@ -1696,42 +1696,42 @@ namespace Genten {
 
     inline
     void load(const scalar_type* x) {
-      if (sz.value > 0) v0 = x[threadIDx];
+      if (sz.value > 0) v0 = x[threadIdxx];
     }
 
     inline
     void store(scalar_type* x) const {
-      if (sz.value > 0) x[threadIDx] = v0;
+      if (sz.value > 0) x[threadIdxx] = v0;
     }
 
     inline
     void store_plus(scalar_type* x) const {
-      if (sz.value > 0) x[threadIDx] += v0;
+      if (sz.value > 0) x[threadIdxx] += v0;
     }
 
     inline
     void atomic_store_plus(volatile scalar_type* x) const {
-      if (sz.value > 0) Kokkos::atomic_add(x+threadIDx, v0);
+      if (sz.value > 0) Kokkos::atomic_add(x+threadIdxx, v0);
     }
 
     inline
     TinyVec atomic_exchange(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-      if (sz.value > 0) c.v0 = Kokkos::atomic_exchange(x+threadIDx, v0);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_exchange(x+threadIdxx, v0);
       return c;
     }
 
     inline
     TinyVec atomic_fetch_max(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_max(x+threadIDx, v0);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_max(x+threadIdxx, v0);
       return c;
     }
 
     inline
     TinyVec atomic_fetch_min(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_min(x+threadIDx, v0);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_min(x+threadIdxx, v0);
       return c;
     }
 
@@ -1739,7 +1739,7 @@ namespace Genten {
     inline
     TinyVec atomic_oper_fetch(const Oper& op, volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-      if (sz.value > 0) c.v0 = Genten::atomic_oper_fetch(op, x+threadIDx, v0);
+      if (sz.value > 0) c.v0 = Genten::atomic_oper_fetch(op, x+threadIdxx, v0);
       return c;
     }
 
@@ -1831,25 +1831,25 @@ namespace Genten {
 
     inline
     TinyVec& operator+=(const scalar_type* x) {
-      if (sz.value > 0) v0 += x[threadIDx];
+      if (sz.value > 0) v0 += x[threadIdxx];
       return *this;
     }
 
     inline
     TinyVec& operator-=(const scalar_type* x) {
-      if (sz.value > 0) v0 -= x[threadIDx];
+      if (sz.value > 0) v0 -= x[threadIdxx];
       return *this;
     }
 
     inline
     TinyVec& operator*=(const scalar_type* x) {
-      if (sz.value > 0) v0 *= x[threadIDx];
+      if (sz.value > 0) v0 *= x[threadIdxx];
       return *this;
     }
 
     inline
     TinyVec& operator/=(const scalar_type* x) {
-      if (sz.value > 0) v0 /= x[threadIDx];
+      if (sz.value > 0) v0 /= x[threadIdxx];
       return *this;
     }
 
@@ -1879,7 +1879,7 @@ namespace Genten {
     typedef Kokkos::TeamPolicy<exec_space>::member_type policy_member_type;
 
     const policy_member_type team_member;
-    const int threadIDx;
+    const int threadIdxx;
     static const ordinal_type len = 2;
     Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/Warp> sz;
     scalar_type v0, v1;
@@ -1890,8 +1890,8 @@ namespace Genten {
     inline
     TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type x) :
       team_member(team),
-      threadIDx(team_member.item().get_local_id(0)),
-      sz( (size+Warp-1-threadIDx) / Warp )
+      threadIdxx(team_member.item().get_local_id(0)),
+      sz( (size+Warp-1-threadIdxx) / Warp )
     {
       broadcast(x);
     }
@@ -1899,14 +1899,14 @@ namespace Genten {
     inline
     TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type* x) :
       team_member(team),
-      threadIDx(team_member.item().get_local_id(0)),
-      sz( (size+Warp-1-threadIDx) / Warp )
+      threadIdxx(team_member.item().get_local_id(0)),
+      sz( (size+Warp-1-threadIdxx) / Warp )
     {
       load(x);
     }
 
     inline
-    TinyVec(const TinyVec& x) : team_member(x.team_member), threadIDx(x.threadIDx), sz(x.sz.value) {
+    TinyVec(const TinyVec& x) : team_member(x.team_member), threadIdxx(x.threadIdxx), sz(x.sz.value) {
       v0 = x.v0; v1 = x.v1;
     }
 
@@ -1941,49 +1941,49 @@ namespace Genten {
 
     inline
     void load(const scalar_type* x) {
-      if (sz.value > 0) v0 = x[threadIDx];
-      if (sz.value > 1) v1 = x[Warp + threadIDx];
+      if (sz.value > 0) v0 = x[threadIdxx];
+      if (sz.value > 1) v1 = x[Warp + threadIdxx];
     }
 
     inline
     void store(scalar_type* x) const {
-      if (sz.value > 0) x[threadIDx] = v0;
-      if (sz.value > 1) x[Warp + threadIDx] = v1;
+      if (sz.value > 0) x[threadIdxx] = v0;
+      if (sz.value > 1) x[Warp + threadIdxx] = v1;
     }
 
     inline
     void store_plus(scalar_type* x) const {
-      if (sz.value > 0) x[threadIDx] += v0;
-      if (sz.value > 1) x[Warp + threadIDx] += v1;
+      if (sz.value > 0) x[threadIdxx] += v0;
+      if (sz.value > 1) x[Warp + threadIdxx] += v1;
     }
 
     inline
     void atomic_store_plus(volatile scalar_type* x) const {
-      if (sz.value > 0) Kokkos::atomic_add(x+threadIDx, v0);
-      if (sz.value > 1) Kokkos::atomic_add(x+Warp+threadIDx, v1);
+      if (sz.value > 0) Kokkos::atomic_add(x+threadIdxx, v0);
+      if (sz.value > 1) Kokkos::atomic_add(x+Warp+threadIdxx, v1);
     }
 
     inline
     TinyVec atomic_exchange(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-      if (sz.value > 0) c.v0 = Kokkos::atomic_exchange(x+threadIDx, v0);
-      if (sz.value > 1) c.v1 = Kokkos::atomic_exchange(x+Warp+threadIDx, v1);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_exchange(x+threadIdxx, v0);
+      if (sz.value > 1) c.v1 = Kokkos::atomic_exchange(x+Warp+threadIdxx, v1);
       return c;
     }
 
     inline
     TinyVec atomic_fetch_max(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_max(x+threadIDx, v0);
-      if (sz.value > 1) c.v1 = Kokkos::atomic_fetch_max(x+Warp+threadIDx, v1);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_max(x+threadIdxx, v0);
+      if (sz.value > 1) c.v1 = Kokkos::atomic_fetch_max(x+Warp+threadIdxx, v1);
       return c;
     }
 
     inline
     TinyVec atomic_fetch_min(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_min(x+threadIDx, v0);
-      if (sz.value > 1) c.v1 = Kokkos::atomic_fetch_min(x+Warp+threadIDx, v1);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_min(x+threadIdxx, v0);
+      if (sz.value > 1) c.v1 = Kokkos::atomic_fetch_min(x+Warp+threadIdxx, v1);
       return c;
     }
 
@@ -1991,8 +1991,8 @@ namespace Genten {
     inline
     TinyVec atomic_oper_fetch(const Oper& op, volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-      if (sz.value > 0) c.v0 = Genten::atomic_oper_fetch(op, x+threadIDx, v0);
-      if (sz.value > 1) c.v1 = Genten::atomic_oper_fetch(op, x+Warp+threadIDx, v1);
+      if (sz.value > 0) c.v0 = Genten::atomic_oper_fetch(op, x+threadIdxx, v0);
+      if (sz.value > 1) c.v1 = Genten::atomic_oper_fetch(op, x+Warp+threadIdxx, v1);
       return c;
     }
 
@@ -2097,29 +2097,29 @@ namespace Genten {
 
     inline
     TinyVec& operator+=(const scalar_type* x) {
-      if (sz.value > 0) v0 += x[threadIDx];
-      if (sz.value > 1) v1 += x[Warp + threadIDx];
+      if (sz.value > 0) v0 += x[threadIdxx];
+      if (sz.value > 1) v1 += x[Warp + threadIdxx];
       return *this;
     }
 
     inline
     TinyVec& operator-=(const scalar_type* x) {
-      if (sz.value > 0) v0 -= x[threadIDx];
-      if (sz.value > 1) v1 -= x[Warp + threadIDx];
+      if (sz.value > 0) v0 -= x[threadIdxx];
+      if (sz.value > 1) v1 -= x[Warp + threadIdxx];
       return *this;
     }
 
     inline
     TinyVec& operator*=(const scalar_type* x) {
-      if (sz.value > 0) v0 *= x[threadIDx];
-      if (sz.value > 1) v1 *= x[Warp + threadIDx];
+      if (sz.value > 0) v0 *= x[threadIdxx];
+      if (sz.value > 1) v1 *= x[Warp + threadIdxx];
       return *this;
     }
 
     inline
     TinyVec& operator/=(const scalar_type* x) {
-      if (sz.value > 0) v0 /= x[threadIDx];
-      if (sz.value > 1) v1 /= x[Warp + threadIDx];
+      if (sz.value > 0) v0 /= x[threadIdxx];
+      if (sz.value > 1) v1 /= x[Warp + threadIdxx];
       return *this;
     }
 
@@ -2150,7 +2150,7 @@ namespace Genten {
     typedef Kokkos::TeamPolicy<exec_space>::member_type policy_member_type;
 
     const policy_member_type team_member;
-    const int threadIDx;
+    const int threadIdxx;
     static const ordinal_type len = 3;
     Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/Warp> sz;
     scalar_type v0, v1, v2;
@@ -2161,8 +2161,8 @@ namespace Genten {
     inline
     TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type x) :
       team_member(team),
-      threadIDx(team_member.item().get_local_id(0)),
-      sz( (size+Warp-1-threadIDx) / Warp )
+      threadIdxx(team_member.item().get_local_id(0)),
+      sz( (size+Warp-1-threadIdxx) / Warp )
     {
       broadcast(x);
     }
@@ -2170,14 +2170,14 @@ namespace Genten {
     inline
     TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type* x) :
       team_member(team),
-      threadIDx(team_member.item().get_local_id(0)),
-      sz( (size+Warp-1-threadIDx) / Warp )
+      threadIdxx(team_member.item().get_local_id(0)),
+      sz( (size+Warp-1-threadIdxx) / Warp )
     {
       load(x);
     }
 
     inline
-    TinyVec(const TinyVec& x) : team_member(x.team_member), threadIDx(x.threadIDx), sz(x.sz.value) {
+    TinyVec(const TinyVec& x) : team_member(x.team_member), threadIdxx(x.threadIdxx), sz(x.sz.value) {
       v0 = x.v0; v1 = x.v1; v2 = x.v2;
     }
 
@@ -2212,56 +2212,56 @@ namespace Genten {
 
     inline
     void load(const scalar_type* x) {
-      if (sz.value > 0) v0 = x[threadIDx];
-      if (sz.value > 1) v1 = x[Warp + threadIDx];
-      if (sz.value > 2) v2 = x[2*Warp + threadIDx];
+      if (sz.value > 0) v0 = x[threadIdxx];
+      if (sz.value > 1) v1 = x[Warp + threadIdxx];
+      if (sz.value > 2) v2 = x[2*Warp + threadIdxx];
     }
 
     inline
     void store(scalar_type* x) const {
-      if (sz.value > 0) x[threadIDx] = v0;
-      if (sz.value > 1) x[Warp + threadIDx] = v1;
-      if (sz.value > 2) x[2*Warp + threadIDx] = v2;
+      if (sz.value > 0) x[threadIdxx] = v0;
+      if (sz.value > 1) x[Warp + threadIdxx] = v1;
+      if (sz.value > 2) x[2*Warp + threadIdxx] = v2;
     }
 
     inline
     void store_plus(scalar_type* x) const {
-      if (sz.value > 0) x[threadIDx] += v0;
-      if (sz.value > 1) x[Warp + threadIDx] += v1;
-      if (sz.value > 2) x[2*Warp + threadIDx] += v2;
+      if (sz.value > 0) x[threadIdxx] += v0;
+      if (sz.value > 1) x[Warp + threadIdxx] += v1;
+      if (sz.value > 2) x[2*Warp + threadIdxx] += v2;
     }
 
     inline
     void atomic_store_plus(volatile scalar_type* x) const {
-      if (sz.value > 0) Kokkos::atomic_add(x+threadIDx, v0);
-      if (sz.value > 1) Kokkos::atomic_add(x+Warp+threadIDx, v1);
-      if (sz.value > 2) Kokkos::atomic_add(x+2*Warp+threadIDx, v2);
+      if (sz.value > 0) Kokkos::atomic_add(x+threadIdxx, v0);
+      if (sz.value > 1) Kokkos::atomic_add(x+Warp+threadIdxx, v1);
+      if (sz.value > 2) Kokkos::atomic_add(x+2*Warp+threadIdxx, v2);
     }
 
     inline
     TinyVec atomic_exchange(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-      if (sz.value > 0) c.v0 = Kokkos::atomic_exchange(x+threadIDx, v0);
-      if (sz.value > 1) c.v1 = Kokkos::atomic_exchange(x+Warp+threadIDx, v1);
-      if (sz.value > 2) c.v2 = Kokkos::atomic_exchange(x+2*Warp+threadIDx, v2);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_exchange(x+threadIdxx, v0);
+      if (sz.value > 1) c.v1 = Kokkos::atomic_exchange(x+Warp+threadIdxx, v1);
+      if (sz.value > 2) c.v2 = Kokkos::atomic_exchange(x+2*Warp+threadIdxx, v2);
       return c;
     }
 
     inline
     TinyVec atomic_fetch_max(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_max(x+threadIDx, v0);
-      if (sz.value > 1) c.v1 = Kokkos::atomic_fetch_max(x+Warp+threadIDx, v1);
-      if (sz.value > 2) c.v2 = Kokkos::atomic_fetch_max(x+2*Warp+threadIDx, v2);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_max(x+threadIdxx, v0);
+      if (sz.value > 1) c.v1 = Kokkos::atomic_fetch_max(x+Warp+threadIdxx, v1);
+      if (sz.value > 2) c.v2 = Kokkos::atomic_fetch_max(x+2*Warp+threadIdxx, v2);
       return c;
     }
 
     inline
     TinyVec atomic_fetch_min(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_min(x+threadIDx, v0);
-      if (sz.value > 1) c.v1 = Kokkos::atomic_fetch_min(x+Warp+threadIDx, v1);
-      if (sz.value > 2) c.v2 = Kokkos::atomic_fetch_min(x+2*Warp+threadIDx, v2);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_min(x+threadIdxx, v0);
+      if (sz.value > 1) c.v1 = Kokkos::atomic_fetch_min(x+Warp+threadIdxx, v1);
+      if (sz.value > 2) c.v2 = Kokkos::atomic_fetch_min(x+2*Warp+threadIdxx, v2);
       return c;
     }
 
@@ -2269,9 +2269,9 @@ namespace Genten {
     inline
     TinyVec atomic_oper_fetch(const Oper& op, volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-      if (sz.value > 0) c.v0 = Genten::atomic_oper_fetch(op, x+threadIDx, v0);
-      if (sz.value > 1) c.v1 = Genten::atomic_oper_fetch(op, x+Warp+threadIDx, v1);
-      if (sz.value > 2) c.v2 = Genten::atomic_oper_fetch(op, x+2*Warp+threadIDx, v2);
+      if (sz.value > 0) c.v0 = Genten::atomic_oper_fetch(op, x+threadIdxx, v0);
+      if (sz.value > 1) c.v1 = Genten::atomic_oper_fetch(op, x+Warp+threadIdxx, v1);
+      if (sz.value > 2) c.v2 = Genten::atomic_oper_fetch(op, x+2*Warp+threadIdxx, v2);
       return c;
     }
 
@@ -2389,33 +2389,33 @@ namespace Genten {
 
     inline
     TinyVec& operator+=(const scalar_type* x) {
-      if (sz.value > 0) v0 += x[threadIDx];
-      if (sz.value > 1) v1 += x[Warp + threadIDx];
-      if (sz.value > 2) v2 += x[2*Warp + threadIDx];
+      if (sz.value > 0) v0 += x[threadIdxx];
+      if (sz.value > 1) v1 += x[Warp + threadIdxx];
+      if (sz.value > 2) v2 += x[2*Warp + threadIdxx];
       return *this;
     }
 
     inline
     TinyVec& operator-=(const scalar_type* x) {
-      if (sz.value > 0) v0 -= x[threadIDx];
-      if (sz.value > 1) v1 -= x[Warp + threadIDx];
-      if (sz.value > 2) v2 -= x[2*Warp + threadIDx];
+      if (sz.value > 0) v0 -= x[threadIdxx];
+      if (sz.value > 1) v1 -= x[Warp + threadIdxx];
+      if (sz.value > 2) v2 -= x[2*Warp + threadIdxx];
       return *this;
     }
 
     inline
     TinyVec& operator*=(const scalar_type* x) {
-      if (sz.value > 0) v0 *= x[threadIDx];
-      if (sz.value > 1) v1 *= x[Warp + threadIDx];
-      if (sz.value > 2) v2 *= x[2*Warp + threadIDx];
+      if (sz.value > 0) v0 *= x[threadIdxx];
+      if (sz.value > 1) v1 *= x[Warp + threadIdxx];
+      if (sz.value > 2) v2 *= x[2*Warp + threadIdxx];
       return *this;
     }
 
     inline
     TinyVec& operator/=(const scalar_type* x) {
-      if (sz.value > 0) v0 /= x[threadIDx];
-      if (sz.value > 1) v1 /= x[Warp + threadIDx];
-      if (sz.value > 2) v2 /= x[2*Warp + threadIDx];
+      if (sz.value > 0) v0 /= x[threadIdxx];
+      if (sz.value > 1) v1 /= x[Warp + threadIdxx];
+      if (sz.value > 2) v2 /= x[2*Warp + threadIdxx];
       return *this;
     }
 
@@ -2447,7 +2447,7 @@ namespace Genten {
     typedef Kokkos::TeamPolicy<exec_space>::member_type policy_member_type;
 
     const policy_member_type team_member;
-    const int threadIDx;
+    const int threadIdxx;
     static const ordinal_type len = 4;
     Kokkos::Impl::integral_nonzero_constant<ordinal_type,Size/Warp> sz;
     scalar_type v0, v1, v2, v3;
@@ -2458,8 +2458,8 @@ namespace Genten {
     inline
     TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type x) :
       team_member(team),
-      threadIDx(team_member.item().get_local_id(0)),
-      sz( (size+Warp-1-threadIDx) / Warp )
+      threadIdxx(team_member.item().get_local_id(0)),
+      sz( (size+Warp-1-threadIdxx) / Warp )
     {
       broadcast(x);
     }
@@ -2467,14 +2467,14 @@ namespace Genten {
     inline
     TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type* x) :
       team_member(team),
-      threadIDx(team_member.item().get_local_id(0)),
-      sz( (size+Warp-1-threadIDx) / Warp )
+      threadIdxx(team_member.item().get_local_id(0)),
+      sz( (size+Warp-1-threadIdxx) / Warp )
     {
       load(x);
     }
 
     inline
-    TinyVec(const TinyVec& x) : team_member(x.team_member), threadIDx(x.threadIDx), sz(x.sz.value) {
+    TinyVec(const TinyVec& x) : team_member(x.team_member), threadIdxx(x.threadIdxx), sz(x.sz.value) {
       v0 = x.v0; v1 = x.v1; v2 = x.v2; v3 = x.v3;
     }
 
@@ -2509,63 +2509,63 @@ namespace Genten {
 
     inline
     void load(const scalar_type* x) {
-      if (sz.value > 0) v0 = x[threadIDx];
-      if (sz.value > 1) v1 = x[Warp + threadIDx];
-      if (sz.value > 2) v2 = x[2*Warp + threadIDx];
-      if (sz.value > 3) v3 = x[3*Warp + threadIDx];
+      if (sz.value > 0) v0 = x[threadIdxx];
+      if (sz.value > 1) v1 = x[Warp + threadIdxx];
+      if (sz.value > 2) v2 = x[2*Warp + threadIdxx];
+      if (sz.value > 3) v3 = x[3*Warp + threadIdxx];
     }
 
     inline
     void store(scalar_type* x) const {
-      if (sz.value > 0) x[threadIDx] = v0;
-      if (sz.value > 1) x[Warp + threadIDx] = v1;
-      if (sz.value > 2) x[2*Warp + threadIDx] = v2;
-      if (sz.value > 3) x[3*Warp + threadIDx] = v3;
+      if (sz.value > 0) x[threadIdxx] = v0;
+      if (sz.value > 1) x[Warp + threadIdxx] = v1;
+      if (sz.value > 2) x[2*Warp + threadIdxx] = v2;
+      if (sz.value > 3) x[3*Warp + threadIdxx] = v3;
     }
 
     inline
     void store_plus(scalar_type* x) const {
-      if (sz.value > 0) x[threadIDx] += v0;
-      if (sz.value > 1) x[Warp + threadIDx] += v1;
-      if (sz.value > 2) x[2*Warp + threadIDx] += v2;
-      if (sz.value > 3) x[3*Warp + threadIDx] += v3;
+      if (sz.value > 0) x[threadIdxx] += v0;
+      if (sz.value > 1) x[Warp + threadIdxx] += v1;
+      if (sz.value > 2) x[2*Warp + threadIdxx] += v2;
+      if (sz.value > 3) x[3*Warp + threadIdxx] += v3;
     }
 
     inline
     void atomic_store_plus(volatile scalar_type* x) const {
-      if (sz.value > 0) Kokkos::atomic_add(x+threadIDx, v0);
-      if (sz.value > 1) Kokkos::atomic_add(x+Warp+threadIDx, v1);
-      if (sz.value > 2) Kokkos::atomic_add(x+2*Warp+threadIDx, v2);
-      if (sz.value > 3) Kokkos::atomic_add(x+3*Warp+threadIDx, v3);
+      if (sz.value > 0) Kokkos::atomic_add(x+threadIdxx, v0);
+      if (sz.value > 1) Kokkos::atomic_add(x+Warp+threadIdxx, v1);
+      if (sz.value > 2) Kokkos::atomic_add(x+2*Warp+threadIdxx, v2);
+      if (sz.value > 3) Kokkos::atomic_add(x+3*Warp+threadIdxx, v3);
     }
 
     inline
     TinyVec atomic_exchange(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-      if (sz.value > 0) c.v0 = Kokkos::atomic_exchange(x+threadIDx, v0);
-      if (sz.value > 1) c.v1 = Kokkos::atomic_exchange(x+Warp+threadIDx, v1);
-      if (sz.value > 2) c.v2 = Kokkos::atomic_exchange(x+2*Warp+threadIDx, v2);
-      if (sz.value > 3) c.v3 = Kokkos::atomic_exchange(x+3*Warp+threadIDx, v3);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_exchange(x+threadIdxx, v0);
+      if (sz.value > 1) c.v1 = Kokkos::atomic_exchange(x+Warp+threadIdxx, v1);
+      if (sz.value > 2) c.v2 = Kokkos::atomic_exchange(x+2*Warp+threadIdxx, v2);
+      if (sz.value > 3) c.v3 = Kokkos::atomic_exchange(x+3*Warp+threadIdxx, v3);
       return c;
     }
 
     inline
     TinyVec atomic_fetch_max(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_max(x+threadIDx, v0);
-      if (sz.value > 1) c.v1 = Kokkos::atomic_fetch_max(x+Warp+threadIDx, v1);
-      if (sz.value > 2) c.v2 = Kokkos::atomic_fetch_max(x+2*Warp+threadIDx, v2);
-      if (sz.value > 3) c.v3 = Kokkos::atomic_fetch_max(x+3*Warp+threadIDx, v3);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_max(x+threadIdxx, v0);
+      if (sz.value > 1) c.v1 = Kokkos::atomic_fetch_max(x+Warp+threadIdxx, v1);
+      if (sz.value > 2) c.v2 = Kokkos::atomic_fetch_max(x+2*Warp+threadIdxx, v2);
+      if (sz.value > 3) c.v3 = Kokkos::atomic_fetch_max(x+3*Warp+threadIdxx, v3);
       return c;
     }
 
     inline
     TinyVec atomic_fetch_min(volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_min(x+threadIDx, v0);
-      if (sz.value > 1) c.v1 = Kokkos::atomic_fetch_min(x+Warp+threadIDx, v1);
-      if (sz.value > 2) c.v2 = Kokkos::atomic_fetch_min(x+2*Warp+threadIDx, v2);
-      if (sz.value > 3) c.v3 = Kokkos::atomic_fetch_min(x+3*Warp+threadIDx, v3);
+      if (sz.value > 0) c.v0 = Kokkos::atomic_fetch_min(x+threadIdxx, v0);
+      if (sz.value > 1) c.v1 = Kokkos::atomic_fetch_min(x+Warp+threadIdxx, v1);
+      if (sz.value > 2) c.v2 = Kokkos::atomic_fetch_min(x+2*Warp+threadIdxx, v2);
+      if (sz.value > 3) c.v3 = Kokkos::atomic_fetch_min(x+3*Warp+threadIdxx, v3);
       return c;
     }
 
@@ -2573,10 +2573,10 @@ namespace Genten {
     inline
     TinyVec atomic_oper_fetch(const Oper& op, volatile scalar_type* x) const {
       TinyVec c(sz.value, 0.0);
-      if (sz.value > 0) c.v0 = Genten::atomic_oper_fetch(op, x+threadIDx, v0);
-      if (sz.value > 1) c.v1 = Genten::atomic_oper_fetch(op, x+Warp+threadIDx, v1);
-      if (sz.value > 2) c.v2 = Genten::atomic_oper_fetch(op, x+2*Warp+threadIDx, v2);
-      if (sz.value > 3) c.v3 = Genten::atomic_oper_fetch(op, x+3*Warp+threadIDx, v3);
+      if (sz.value > 0) c.v0 = Genten::atomic_oper_fetch(op, x+threadIdxx, v0);
+      if (sz.value > 1) c.v1 = Genten::atomic_oper_fetch(op, x+Warp+threadIdxx, v1);
+      if (sz.value > 2) c.v2 = Genten::atomic_oper_fetch(op, x+2*Warp+threadIdxx, v2);
+      if (sz.value > 3) c.v3 = Genten::atomic_oper_fetch(op, x+3*Warp+threadIdxx, v3);
       return c;
     }
 
@@ -2707,37 +2707,37 @@ namespace Genten {
 
     inline
     TinyVec& operator+=(const scalar_type* x) {
-      if (sz.value > 0) v0 += x[threadIDx];
-      if (sz.value > 1) v1 += x[Warp + threadIDx];
-      if (sz.value > 2) v2 += x[2*Warp + threadIDx];
-      if (sz.value > 3) v3 += x[3*Warp + threadIDx];
+      if (sz.value > 0) v0 += x[threadIdxx];
+      if (sz.value > 1) v1 += x[Warp + threadIdxx];
+      if (sz.value > 2) v2 += x[2*Warp + threadIdxx];
+      if (sz.value > 3) v3 += x[3*Warp + threadIdxx];
       return *this;
     }
 
     inline
     TinyVec& operator-=(const scalar_type* x) {
-      if (sz.value > 0) v0 -= x[threadIDx];
-      if (sz.value > 1) v1 -= x[Warp + threadIDx];
-      if (sz.value > 2) v2 -= x[2*Warp + threadIDx];
-      if (sz.value > 3) v3 -= x[3*Warp + threadIDx];
+      if (sz.value > 0) v0 -= x[threadIdxx];
+      if (sz.value > 1) v1 -= x[Warp + threadIdxx];
+      if (sz.value > 2) v2 -= x[2*Warp + threadIdxx];
+      if (sz.value > 3) v3 -= x[3*Warp + threadIdxx];
       return *this;
     }
 
     inline
     TinyVec& operator*=(const scalar_type* x) {
-      if (sz.value > 0) v0 *= x[threadIDx];
-      if (sz.value > 1) v1 *= x[Warp + threadIDx];
-      if (sz.value > 2) v2 *= x[2*Warp + threadIDx];
-      if (sz.value > 3) v3 *= x[3*Warp + threadIDx];
+      if (sz.value > 0) v0 *= x[threadIdxx];
+      if (sz.value > 1) v1 *= x[Warp + threadIdxx];
+      if (sz.value > 2) v2 *= x[2*Warp + threadIdxx];
+      if (sz.value > 3) v3 *= x[3*Warp + threadIdxx];
       return *this;
     }
 
     inline
     TinyVec& operator/=(const scalar_type* x) {
-      if (sz.value > 0) v0 /= x[threadIDx];
-      if (sz.value > 1) v1 /= x[Warp + threadIDx];
-      if (sz.value > 2) v2 /= x[2*Warp + threadIDx];
-      if (sz.value > 3) v3 /= x[3*Warp + threadIDx];
+      if (sz.value > 0) v0 /= x[threadIdxx];
+      if (sz.value > 1) v1 /= x[Warp + threadIdxx];
+      if (sz.value > 2) v2 /= x[2*Warp + threadIdxx];
+      if (sz.value > 3) v3 /= x[3*Warp + threadIdxx];
       return *this;
     }
 
