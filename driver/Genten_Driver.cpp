@@ -326,7 +326,7 @@ int main(int argc, char* argv[])
                                       nnz,
                                       tensor_outputfilename);
 #endif
-#ifdef KOKKOS_ENABLE_SYCL
+#ifdef ENABLE_SYCL_FOR_CUDA
     else if (algParams.exec_space == Genten::Execution_Space::SYCL)
       ret = main_driver<Kokkos::Experimental::SYCL>(algParams,
                                       inputfilename,

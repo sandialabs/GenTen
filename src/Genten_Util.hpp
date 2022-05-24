@@ -72,7 +72,7 @@ namespace Genten {
 #define GENTEN_INST_HIP(INSTMACRO) /* */
 #endif
 
-#ifdef KOKKOS_ENABLE_SYCL
+#ifdef ENABLE_SYCL_FOR_CUDA
 #define GENTEN_INST_SYCL(INSTMACRO) \
   INSTMACRO(Kokkos::Experimental::SYCL)
 #else

@@ -145,7 +145,7 @@ void Genten_Test_Tensor(int infolevel) {
 #ifdef KOKKOS_ENABLE_HIP
   Genten_Test_Tensor_Space<Kokkos::Experimental::HIP>(infolevel);
 #endif
-#ifdef KOKKOS_ENABLE_SYCL
+#ifdef ENABLE_SYCL_FOR_CUDA
   Genten_Test_Tensor_Space<Kokkos::Experimental::SYCL>(infolevel);
 #endif
 #ifdef KOKKOS_ENABLE_OPENMP

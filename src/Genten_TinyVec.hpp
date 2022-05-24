@@ -54,12 +54,12 @@
 #endif
 #endif
 
-#if defined (KOKKOS_ENABLE_HIP)
+#if defined(KOKKOS_ENABLE_HIP)
 #include "HIP/Kokkos_HIP_Team.hpp"
 #define KOKKOS_DEFAULTED_DEVICE_FUNCTION __device__ inline
 #endif
 
-#if defined (KOKKOS_ENABLE_SYCL)
+#if defined(ENABLE_SYCL_FOR_CUDA)
 #include "SYCL/Kokkos_SYCL_Team.hpp"
 // According to SYCL documentation no qualifiers are needed for SYCL.
 #define KOKKOS_DEFAULTED_DEVICE_FUNCTION inline
@@ -87,7 +87,7 @@ namespace Genten {
     }
 #endif
 
-#if defined(ENABLE_SYCL_WITH_CUDA) && defined(__SYCL_DEVICE_ONLY__)
+#if defined(ENABLE_SYCL_FOR_CUDA) && defined(__SYCL_DEVICE_ONLY__)
     using SYCL_team_policy_member_type =
       Kokkos::TeamPolicy<Kokkos::Experimental::SYCL>::member_type;
 
@@ -2940,7 +2940,7 @@ namespace Genten {
     }
   };
 
-#if defined(ENABLE_SYCL_WITH_CUDA) && defined(__SYCL_DEVICE_ONLY__)
+#if defined(ENABLE_SYCL_FOR_CUDA) && defined(__SYCL_DEVICE_ONLY__)
   template <typename Scalar, typename Ordinal,
             unsigned Length, unsigned Size, unsigned Warp>
   struct TinyVecMaker<Kokkos::Experimental::SYCL, Scalar, Ordinal, Length, Size, Warp> {

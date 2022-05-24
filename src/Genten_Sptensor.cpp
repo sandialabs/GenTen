@@ -396,13 +396,12 @@ sortImpl(vals_type& vals, subs_type& subs)
 #endif
 
 #if defined(KOKKOS_ENABLE_OPENMP)
-    if (std::is_same<ExecSpace, Kokkos::OpenMP>::value) {
-      pss::parallel_stable_sort(tmp.data(), tmp.data()+sz, cmp);
-    }
-    else
+  if (std::is_same<ExecSpace, Kokkos::OpenMP>::value) {
+    pss::parallel_stable_sort(tmp.data(), tmp.data()+sz, cmp);
+  }
+  else
 #endif
-      std::stable_sort(tmp.data(), tmp.data()+sz, cmp);
-
+  std::stable_sort(tmp.data(), tmp.data() + sz, cmp);
 
   // Now copy vals and subs to sorted order
   typename vals_type::view_type sorted_vals(

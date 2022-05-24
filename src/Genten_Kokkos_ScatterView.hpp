@@ -161,7 +161,7 @@ struct DefaultContribution<Kokkos::Experimental::HIP, Kokkos::Experimental::Scat
 };
 #endif
 
-#ifdef KOKKOS_ENABLE_SYCL
+#ifdef ENABLE_SYCL_FOR_CUDA
 template <>
 struct DefaultDuplication<Kokkos::Experimental::SYCL> {
   enum : int { value = Kokkos::Experimental::ScatterNonDuplicated };

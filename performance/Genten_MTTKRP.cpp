@@ -672,7 +672,7 @@ int main(int argc, char* argv[])
           check, warmup, algParams);
     }
 #endif
-#ifdef KOKKOS_ENABLE_SYCL
+#ifdef ENABLE_SYCL_FOR_CUDA
     else if (exec_space == Genten::Execution_Space::SYCL) {
       if (sparse)
         ret = run_sparse_mttkrp< Kokkos::Experimental::SYCL >(

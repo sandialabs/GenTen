@@ -477,7 +477,7 @@ struct MTTKRP_All_Kernel {
   }
 };
 
-#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || defined(KOKKOS_ENABLE_SYCL)
+#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || defined(ENABLE_SYCL_FOR_CUDA)
 // Specialization for Cuda, HIP or SYCL that always uses atomics and doesn't call
 // mttkrp_all_kernel, which won't run on the GPU
 template <int Dupl, int Cont>

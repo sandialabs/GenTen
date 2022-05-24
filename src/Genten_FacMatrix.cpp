@@ -53,7 +53,7 @@
 #include <assert.h>
 #include <cstring>
 
-#if defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_WITH_CUDA)
+#if defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)
 
 #if defined(HAVE_CUSOLVER)
 #include "cusolverDn.h"
@@ -85,7 +85,7 @@ template <typename ExecSpace>
 Genten::FacMatrixT<ExecSpace>::
 FacMatrixT(ttb_indx m, ttb_indx n)
 {
-  // Don't use padding if Cuda or HIP is the default execution space, so factor
+  // Don't use padding if Cuda, HIP or SYCL is the default execution space, so factor
   // matrices allocated on the host have the same shape.  We really need a
   // better way to do this.
   if (Genten::is_gpu_space<DefaultExecutionSpace>::value)
@@ -99,7 +99,7 @@ template <typename ExecSpace>
 Genten::FacMatrixT<ExecSpace>::
 FacMatrixT(ttb_indx m, ttb_indx n, const ttb_real * cvec)
 {
-  // Don't use padding if Cuda or HIP is the default execution space, so factor
+  // Don't use padding if Cuda, HIP or SYCL is the default execution space, so factor
   // matrices allocated on the host have the same shape.  We really need a
   // better way to do this.
   if (Genten::is_gpu_space<DefaultExecutionSpace>::value)
@@ -473,7 +473,7 @@ void gramianImpl(const ViewC& C, const ViewA& A,
 
 #endif
 
-#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_WITH_CUDA)) && defined(HAVE_CUBLAS)
+#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) && defined(HAVE_CUBLAS)
 
   // Gramian implementation for CUDA and double precision using cuBLAS
   template <typename ExecSpace,
@@ -1655,7 +1655,7 @@ gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
                C.data(), ldc);
 }
 
-#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_WITH_CUDA)) && defined(HAVE_CUBLAS)
+#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) && defined(HAVE_CUBLAS)
 template <typename ExecSpace,
           typename AT, typename ... AP,
           typename BT, typename ... BP,
@@ -1937,7 +1937,7 @@ namespace Genten {
       }
     }
 
-#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUSOLVER)
+#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) && defined(HAVE_CUSOLVER)
 
     template <typename AT, typename ... AP,
               typename BT, typename ... BP>
@@ -1955,6 +1955,8 @@ namespace Genten {
                               const Kokkos::View<BT,BP...>& B,
                               const UploType ul)
     {
+      using exec_space = typename Kokkos::View<AT, AP...>::execution_space;
+
       const int m = B.extent(0);
       const int n = B.extent(1);
       const int lda = A.stride_0();
@@ -1988,8 +1990,8 @@ namespace Genten {
         throw ss.str();
       }
 
-      Kokkos::View<double*,Kokkos::LayoutRight,Kokkos::Cuda> work("work",lwork);
-      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Cuda> info("info");
+      Kokkos::View<double *, Kokkos::LayoutRight, exec_space> work("work", lwork);
+      Kokkos::View<int, Kokkos::LayoutRight, exec_space> info("info");
       status = cusolverDnDpotrf(handle, uplo, n, A.data(), lda, work.data(),
                                 lwork, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
@@ -2151,6 +2153,8 @@ namespace Genten {
       if (algParams.rank_def_solver)
         throw std::string("Rank-deficient solver not supported on the GPU!");
 
+      using exec_space = typename Kokkos::View<AT, AP...>::execution_space;
+
       const int m = B.extent(0);
       const int n = B.extent(1);
       const int lda = A.stride_0();
@@ -2183,9 +2187,9 @@ namespace Genten {
         throw ss.str();
       }
 
-      Kokkos::View<double*,Kokkos::LayoutRight,Kokkos::Cuda> work("work",lwork);
-      Kokkos::View<int*,Kokkos::LayoutRight,Kokkos::Cuda> piv("piv",n);
-      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Cuda> info("info");
+      Kokkos::View<double *, Kokkos::LayoutRight, exec_space> work("work", lwork);
+      Kokkos::View<int *, Kokkos::LayoutRight, exec_space> piv("piv", n);
+      Kokkos::View<int, Kokkos::LayoutRight, exec_space> info("info");
       status = cusolverDnDgetrf(handle, n, n, A.data(), lda, work.data(),
                                 piv.data(), info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
@@ -2238,6 +2242,8 @@ namespace Genten {
                               const Kokkos::View<BT,BP...>& B,
                               const UploType ul)
     {
+      using exec_space = typename Kokkos::View<AT, AP...>::execution_space;
+
       const int m = B.extent(0);
       const int n = B.extent(1);
       const int lda = A.stride_0();
@@ -2271,8 +2277,8 @@ namespace Genten {
         throw ss.str();
       }
 
-      Kokkos::View<float*,Kokkos::LayoutRight,Kokkos::Cuda> work("work",lwork);
-      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Cuda> info("info");
+      Kokkos::View<float *, Kokkos::LayoutRight, exec_space> work("work", lwork);
+      Kokkos::View<int, Kokkos::LayoutRight, exec_space> info("info");
       status = cusolverDnSpotrf(handle, uplo, n, A.data(), lda, work.data(),
                                 lwork, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
@@ -2431,6 +2437,8 @@ namespace Genten {
                           const UploType uplo,
                           const AlgParams& algParams)
     {
+      using exec_space = typename Kokkos::View<AT, AP...>::execution_space;
+
       if (algParams.rank_def_solver)
         throw std::string("Rank-deficient solver not supported on the GPU!");
 
@@ -2466,9 +2474,9 @@ namespace Genten {
         throw ss.str();
       }
 
-      Kokkos::View<float*,Kokkos::LayoutRight,Kokkos::Cuda> work("work",lwork);
-      Kokkos::View<int*,Kokkos::LayoutRight,Kokkos::Cuda> piv("piv",n);
-      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Cuda> info("info");
+      Kokkos::View<float *, Kokkos::LayoutRight, exec_space> work("work", lwork);
+      Kokkos::View<int *, Kokkos::LayoutRight, exec_space> piv("piv", n);
+      Kokkos::View<int, Kokkos::LayoutRight, exec_space> info("info");
       status = cusolverDnSgetrf(handle, n, n, A.data(), lda, work.data(),
                                 piv.data(), info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {

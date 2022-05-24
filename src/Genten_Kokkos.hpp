@@ -165,7 +165,7 @@ namespace Genten {
   using Kokkos_GPU_Space = Kokkos::Experimental::HIP;
 #endif
 
-#if defined(KOKKOS_ENABLE_SYCL)
+#if defined(ENABLE_SYCL_FOR_CUDA)
   template <>
   struct is_sycl_space<Kokkos::Experimental::SYCL> {
     static constexpr bool value = true;
@@ -225,7 +225,7 @@ namespace Genten {
       }
 #endif
 
-#ifdef KOKKOS_ENABLE_SYCL
+#ifdef ENABLE_SYCL_FOR_CUDA
       if (is_sycl) {
         Kokkos::Experimental::SYCL sycl;
         auto sycl_device = sycl.impl_internal_space_instance()->m_queue->get_device();

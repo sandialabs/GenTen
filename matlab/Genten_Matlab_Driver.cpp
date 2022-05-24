@@ -141,7 +141,7 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
     else if (algParams.exec_space == Genten::Execution_Space::HIP)
       matlab_driver<Kokkos::Experimental::HIP>(nlhs, plhs, nrhs, prhs, algParams);
 #endif
-#ifdef KOKKOS_ENABLE_SYCL
+#ifdef ENABLE_SYCL_FOR_CUDA
     else if (algParams.exec_space == Genten::Execution_Space::SYCL)
       matlab_driver<Kokkos::Experimental::SYCL>(nlhs, plhs, nrhs, prhs, algParams);
 #endif

@@ -311,7 +311,7 @@ int main(int argc, char* argv[])
         cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
         nMaxNonzeroes, algParams);
 #endif
-#ifdef KOKKOS_ENABLE_SYCL
+#ifdef ENABLE_SYCL_FOR_CUDA
     else if (exec_space == Genten::Execution_Space::SYCL)
       ret = run_cpals< Kokkos::Experimental::SYCL >(
         cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
