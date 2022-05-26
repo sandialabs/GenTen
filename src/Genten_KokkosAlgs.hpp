@@ -61,7 +61,7 @@
 #include <caliper/cali.h>
 #endif
 
-#if defined(KOKKOS_ENABLE_SYCL)
+#if defined(ENABLE_SYCL_FOR_CUDA)
 #include <execution>
 #endif
 
@@ -103,9 +103,12 @@ void perm_sort_op(const PermType& perm, const Op& op)
   else
 #endif
 
-#if defined(KOKKOS_ENABLE_SYCL)
+#if defined(ENABLE_SYCL_FOR_CUDA)
   if (is_sycl_space<exec_space>::value) {
-    std::stable_sort(std::execution::par, perm.data(), perm.data()+sz, op);
+    auto perm_mir = create_mirror_view(perm);
+    deep_copy(perm_mir, perm);
+    std::stable_sort(std::execution::par, perm_mir.data(), perm_mir.data()+sz, op);
+    deep_copy(perm, perm_mir);
   }
   else
 #endif

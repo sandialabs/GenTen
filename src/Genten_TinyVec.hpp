@@ -1616,7 +1616,7 @@ namespace Genten {
 
 #endif
 
-#if defined(ENABLE_SYCL_WITH_CUDA) && defined(__SYCL_DEVICE_ONLY__)
+#if defined(ENABLE_SYCL_FOR_CUDA) && defined(__SYCL_DEVICE_ONLY__)
 
   // Specialization for SYCL where Length / Warp == 1.  Store the vector
   // components in register space since SYCL may store them in global memory

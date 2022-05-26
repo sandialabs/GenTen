@@ -55,11 +55,8 @@
 #include <caliper/cali.h>
 #endif
 
-#if defined(KOKKOS_ENABLE_SYCL)
+#if defined(ENABLE_SYCL_FOR_CUDA)
 #include <execution>
-
-#include <thrust/sort.h>
-#include <thrust/device_ptr.h>
 #endif
 
 namespace Genten {
@@ -256,17 +253,20 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
 // Whether to sort using Kokkos or device specific approaches
 // The Kokkos sort seems slower
 #define USE_KOKKOS_SORT 0
-#if USE_KOKKOS_SORT
+#if USE_KOKKOS_SORT || defined(ENABLE_SYCL_FOR_CUDA)
+
+    auto siz_mir = create_mirror_view(siz);
+    deep_copy(siz_mir, siz);
 
     typedef Kokkos::BinOp1D<ViewType> CompType;
     // Kokkos::sort doesn't allow supplying a custom comparator, so we
     // have to use its implementation to get the permutation vector
-    deep_copy( tmp, Kokkos::subview(subs, Kokkos::ALL(), n));
+    deep_copy(tmp, Kokkos::subview(subs, Kokkos::ALL(), n));
     Kokkos::BinSort<ViewType, CompType> bin_sort(
-      tmp,CompType(sz/2,0,siz[n]),true);
+      tmp, CompType(sz / 2, 0, siz_mir[n]), true);
     bin_sort.create_permute_vector();
-    deep_copy( Kokkos::subview(perm, Kokkos::ALL(), n),
-               bin_sort.get_permute_vector() );
+    deep_copy(
+      Kokkos::subview(perm, Kokkos::ALL(), n), bin_sort.get_permute_vector());
 
 #else
 
@@ -287,17 +287,6 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
       });
     }
     else
-#endif
-
-#if defined(KOKKOS_ENABLE_SYCL)
-  if (is_sycl_space<ExecSpace>::value) {
-    std::stable_sort(std::execution::par, tmp.data(), tmp.data()+sz,
-                     [&](const ttb_indx& a, const ttb_indx& b)
-    {
-      return (subs(a,n) < subs(b,n));
-    });
-  }
-  else
 #endif
 
 #if defined(KOKKOS_ENABLE_OPENMP)
@@ -388,9 +377,25 @@ sortImpl(vals_type& vals, subs_type& subs)
   else
 #endif
 
-#if defined(KOKKOS_ENABLE_SYCL)
+#if defined(ENABLE_SYCL_FOR_CUDA)
   if (is_sycl_space<ExecSpace>::value) {
-    std::stable_sort(std::execution::par, tmp.data(), tmp.data()+sz, cmp);
+    auto subs_mir = create_mirror_view(subs);
+    deep_copy(subs_mir, subs);
+
+    auto tmp_mir = create_mirror_view(tmp);
+    deep_copy(tmp_mir, tmp);
+
+    std::stable_sort(
+      std::execution::par, tmp_mir.data(), tmp_mir.data() + sz,
+      KOKKOS_LAMBDA(const ttb_indx& a, const ttb_indx& b) {
+        unsigned n = 0;
+        while ((n < nd) && (subs_mir(a,n) == subs_mir(b,n))) ++n;
+        if (n == nd || subs_mir(a,n) >= subs_mir(b,n)) return false;
+        return true;
+      }
+    );
+
+    deep_copy(tmp, tmp_mir);
   }
   else
 #endif
