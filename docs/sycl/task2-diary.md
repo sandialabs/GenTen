@@ -39,6 +39,7 @@
 3. As an alternative to the Thrust, we could use SYCL Parallel STL (https://github.com/KhronosGroup/SyclParallelSTL), but at the moment, it doesn't implement `stable_sort`. How to use it - https://www.khronos.org/assets/uploads/developers/library/2016-supercomputing/SYCL_ParallelSTL-Ruyman-Reyes_Nov16.pdf
 4. Also, it's possible to use `std::execution::parallel_policy` for STL algorithms.
 5. For now, I'm going to use Kokkos::sort.
+6. After having random fails from `perf_MTTKRP`, I got back to `std::stable_sort`.
 
 ## Building GenTen + SYCL on AWS
 1. EC2 instance type - G4dn.xlarge, Ubuntu 20.04
@@ -66,78 +67,3 @@ cmake -D BUILD_SHARED_LIBS=ON -D CMAKE_BUILD_TYPE=Release -D CMAKE_C_COMPILER=/o
 14. If there's an error `error while loading shared libraries: libsycl.so.5: cannot open shared object file: No such file or directory` when running genten, try to `export LD_LIBRARY_PATH=/opt/sycl/lib/`
 15. On AWS including `<execution>` cause compilation error.
 16. In case of error `FATAL ERROR: Genten::sysv - not found, must link with an LAPACK library.` install LAPACK package `liblapack-dev`.
-
-## Failing GenTen's unit tests
-1. GenTen unit tests fail just at the beginning
-```bash
-❯ ./unit_tests 1
-----------------------------------------------------
-Tests on Genten::TTM (sycl)
-----------------------------------------------------
-INFO: preparing to calculate ttm:  5x2 * 3x4x2x2 along mode 0 (File: ../../test/Genten_Test_TTM.cpp, Line: 162)
-INFO: Testing default DGEMM ttm along mode: 0 (File: ../../test/Genten_Test_TTM.cpp, Line: 89)
-genten_ttm_batched_cublas
-PASS: DGEMM (File: ../../test/Genten_Test_TTM.cpp, Line: 93)
-INFO: Testing Parfor_DGEMM ttm along mode: 0 (File: ../../test/Genten_Test_TTM.cpp, Line: 94)
-PASS: Parfor_DGEMM (File: ../../test/Genten_Test_TTM.cpp, Line: 99)
-INFO: Testing parfor dgemm along mode: 0 (File: ../../test/Genten_Test_TTM.cpp, Line: 102)
-PASS: parfor_dgemm (File: ../../test/Genten_Test_TTM.cpp, Line: 111)
-INFO: Testing serial dgemm along mode: 0 (File: ../../test/Genten_Test_TTM.cpp, Line: 113)
-PASS: parfor_dgemm (File: ../../test/Genten_Test_TTM.cpp, Line: 118)
-INFO: preparing to calculate ttm:  5x4 * 3x4x2x2 along mode 1 (File: ../../test/Genten_Test_TTM.cpp, Line: 212)
-INFO: Testing default DGEMM ttm along mode: 1 (File: ../../test/Genten_Test_TTM.cpp, Line: 89)
-genten_ttm_batched_cublas
-Z[0]: 0   unit_test: 210
-Z[0]: 0   unit_test: 210
-```
-
-After some digging and print debugging, it turns out that printing tensor at the end of the `genten_ttm_batched_cublas()` makes a test passing. It seems like a problem with compiler and machine code generation.
-
-Next problematic test - `Tests on Genten::FacMatrix (sycl)` - ends with segfault:
-```bash
-----------------------------------------------------
-Tests on Genten::FacMatrix (sycl)
-----------------------------------------------------
-INFO: Testing empty constructor (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 62)
-PASS: Empty constructor works as expected (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 64)
-INFO: Testing size constructor (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 67)
-PASS: Size constructor works as expected (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 69)
-INFO: Testing data constructor (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 72)
-PASS: Data constructor works as expected (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 89)
-INFO: Copy constructor not tested explicitly (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 92)
-INFO: Destructor is not tested explicitly (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 95)
-PASS: Entry for const works as expected (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 101)
-INFO: Entry for non-const not tested explicitly (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 105)
-PASS: Resize works as expected (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 109)
-PASS: Resize works as expected (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 110)
-PASS: Operator= for scalar works as expected (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 114)
-PASS: Operator= for scalar works as expected (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 115)
-PASS: Operator= for scalar works as expected (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 116)
-PASS: Operator= for scalar works as expected (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 117)
-PASS: Reset works as expected (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 122)
-PASS: Reset works as expected (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 123)
-PASS: Reset works as expected (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 124)
-PASS: Gramian works (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 137)
-PASS: Gramian works (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 138)
-FAIL: Gramian yields expected answer (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 157)
-INFO: Checking error on wrong sized matrices (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 160)
-PASS: Expected exception is caught (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 172)
-INFO: Now checking actual correctness (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 174)
-PASS: Hadamard works (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 181)
-PASS: Hadamard works (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 182)
-PASS: Hadamard works as expected (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 202)
-PASS: Transpose # columns ok (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 207)
-PASS: Transpose # rows ok (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 208)
-PASS: Transpose works as expected (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 226)
-PASS: Oprod # rows ok (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 238)
-PASS: Oprod # cols ok (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 239)
-PASS: Oprod works as expected (File: ../../test/Genten_Test_FacMatrix.cpp, Line: 258)
-Segmentation fault (core dumped)
-```
-
-Segfault comes from a second call to `dsysv()` from `Genten::sysv()`.
-
-2. About cuBLAS functions - it seems to be a problem with synchronization. Making cuBLAS handle local (instead of static, as it was originaly), and correctly destroying it, fixes the problem. cuBLAS documentation says:
-```
-(...) calling cublasDestroy() will implicitly call cublasDeviceSynchronize() (...)
-```

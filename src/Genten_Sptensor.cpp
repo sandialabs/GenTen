@@ -253,20 +253,18 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
 // Whether to sort using Kokkos or device specific approaches
 // The Kokkos sort seems slower
 #define USE_KOKKOS_SORT 0
-#if USE_KOKKOS_SORT || defined(ENABLE_SYCL_FOR_CUDA)
-
-    auto siz_mir = create_mirror_view(siz);
-    deep_copy(siz_mir, siz);
+#if USE_KOKKOS_SORT
 
     typedef Kokkos::BinOp1D<ViewType> CompType;
     // Kokkos::sort doesn't allow supplying a custom comparator, so we
     // have to use its implementation to get the permutation vector
-    deep_copy(tmp, Kokkos::subview(subs, Kokkos::ALL(), n));
+    deep_copy( tmp, Kokkos::subview(subs, Kokkos::ALL(), n));
     Kokkos::BinSort<ViewType, CompType> bin_sort(
-      tmp, CompType(sz / 2, 0, siz_mir[n]), true);
+      tmp,CompType(sz/2,0,siz[n]),true);
     bin_sort.create_permute_vector();
-    deep_copy(
-      Kokkos::subview(perm, Kokkos::ALL(), n), bin_sort.get_permute_vector());
+    deep_copy( Kokkos::subview(perm, Kokkos::ALL(), n),
+               bin_sort.get_permute_vector() );
+
 
 #else
 
@@ -287,6 +285,26 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
       });
     }
     else
+#endif
+
+#if defined(ENABLE_SYCL_FOR_CUDA)
+  if (is_sycl_space<ExecSpace>::value) {
+    auto subs_mir = create_mirror_view(subs);
+    deep_copy(subs_mir, subs);
+
+    auto tmp_mir = create_mirror_view(tmp);
+    deep_copy(tmp_mir, tmp);
+
+    std::stable_sort(
+      std::execution::par, tmp_mir.data(), tmp_mir.data() + sz,
+      KOKKOS_LAMBDA(const ttb_indx& a, const ttb_indx& b) {
+        return (subs_mir(a,n) < subs_mir(b,n));
+      }
+    );
+
+    deep_copy(tmp, tmp_mir);
+  }
+  else
 #endif
 
 #if defined(KOKKOS_ENABLE_OPENMP)
