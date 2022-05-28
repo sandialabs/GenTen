@@ -1645,7 +1645,7 @@ namespace Genten {
     inline
     TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type x) :
       team_member(team),
-      threadIdxx(team_member.item().get_local_id(0)),
+      threadIdxx(team_member.item().get_local_id(1)),
       sz( (size+Warp-1-threadIdxx) / Warp )
     {
       broadcast(x);
@@ -1654,7 +1654,7 @@ namespace Genten {
     inline
     TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type* x) :
       team_member(team),
-      threadIdxx(team_member.item().get_local_id(0)),
+      threadIdxx(team_member.item().get_local_id(1)),
       sz( (size+Warp-1-threadIdxx) / Warp )
     {
       load(x);
@@ -1890,7 +1890,7 @@ namespace Genten {
     inline
     TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type x) :
       team_member(team),
-      threadIdxx(team_member.item().get_local_id(0)),
+      threadIdxx(team_member.item().get_local_id(1)),
       sz( (size+Warp-1-threadIdxx) / Warp )
     {
       broadcast(x);
@@ -1899,7 +1899,7 @@ namespace Genten {
     inline
     TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type* x) :
       team_member(team),
-      threadIdxx(team_member.item().get_local_id(0)),
+      threadIdxx(team_member.item().get_local_id(1)),
       sz( (size+Warp-1-threadIdxx) / Warp )
     {
       load(x);
@@ -2161,7 +2161,7 @@ namespace Genten {
     inline
     TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type x) :
       team_member(team),
-      threadIdxx(team_member.item().get_local_id(0)),
+      threadIdxx(team_member.item().get_local_id(1)),
       sz( (size+Warp-1-threadIdxx) / Warp )
     {
       broadcast(x);
@@ -2170,7 +2170,7 @@ namespace Genten {
     inline
     TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type* x) :
       team_member(team),
-      threadIdxx(team_member.item().get_local_id(0)),
+      threadIdxx(team_member.item().get_local_id(1)),
       sz( (size+Warp-1-threadIdxx) / Warp )
     {
       load(x);
@@ -2458,7 +2458,7 @@ namespace Genten {
     inline
     TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type x) :
       team_member(team),
-      threadIdxx(team_member.item().get_local_id(0)),
+      threadIdxx(team_member.item().get_local_id(1)),
       sz( (size+Warp-1-threadIdxx) / Warp )
     {
       broadcast(x);
@@ -2467,7 +2467,7 @@ namespace Genten {
     inline
     TinyVec(const policy_member_type& team, const ordinal_type size, const scalar_type* x) :
       team_member(team),
-      threadIdxx(team_member.item().get_local_id(0)),
+      threadIdxx(team_member.item().get_local_id(1)),
       sz( (size+Warp-1-threadIdxx) / Warp )
     {
       load(x);
