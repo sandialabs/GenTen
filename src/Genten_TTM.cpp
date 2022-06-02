@@ -672,10 +672,8 @@ namespace Genten
     assert(Y.size(n) == V.size(1));
     if (al.ttm_method == Genten::TTM_Method::DGEMM)
     {
-      if (Genten::is_cuda_space<ExecSpace>::value
-#if defined(ENABLE_SYCL_FOR_CUDA)
-       || Genten::is_sycl_space<ExecSpace>::value
-#endif
+      if (Genten::is_cuda_space<ExecSpace>::value ||
+          Genten::is_sycl_space<ExecSpace>::value
          )
       {
         if (n == nd - 1)
@@ -705,10 +703,8 @@ namespace Genten
     }
     else
     {
-      if (Genten::is_cuda_space<ExecSpace>::value
-#if defined(ENABLE_SYCL_FOR_CUDA)
-       || Genten::is_sycl_space<ExecSpace>::value
-#endif
+      if (Genten::is_cuda_space<ExecSpace>::value ||
+          Genten::is_sycl_space<ExecSpace>::value
          )
       {
         if (n == nd - 1)

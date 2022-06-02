@@ -2050,6 +2050,8 @@ namespace Genten {
       // cusolverDnDsytrs does not appear to work yet, so error out
       Genten::error("Symmetric, indefinite solve with Cuda is not fully implemented in cuSOLVER.  Instead you must use the option '--full-gram' to enable the non-symmetric solver.");
 #if 0
+      using exec_space = typename Kokkos::View<AT, AP...>::execution_space;
+
       const int m = B.extent(0);
       const int n = B.extent(1);
       const int lda = A.stride_0();
@@ -2083,9 +2085,9 @@ namespace Genten {
         throw ss.str();
       }
 
-      Kokkos::View<double*,Kokkos::LayoutRight,Kokkos::Cuda> work("work",lwork);
-      Kokkos::View<int*,Kokkos::LayoutRight,Kokkos::Cuda> piv("piv",n);
-      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Cuda> info("info");
+      Kokkos::View<double*,Kokkos::LayoutRight,exec_space> work("work",lwork);
+      Kokkos::View<int*,Kokkos::LayoutRight,exec_space> piv("piv",n);
+      Kokkos::View<int,Kokkos::LayoutRight,exec_space> info("info");
       status = cusolverDnDsytrf(handle, uplo, n, A.data(), lda, piv.data(),
                                 work.data(), lwork, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
@@ -2113,7 +2115,7 @@ namespace Genten {
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
-      Kokkos::View<double*,Kokkos::LayoutRight,Kokkos::Cuda> work2("work2",lwork);
+      Kokkos::View<double*,Kokkos::LayoutRight,exec_space> work2("work2",lwork);
       status = cusolverDnDsytrs(handle, uplo, n, m, A.data(), lda,
                                 piv.data(), B.data(), ldb, work2.data(), lwork,
                                 info.data());
@@ -2370,9 +2372,9 @@ namespace Genten {
         throw ss.str();
       }
 
-      Kokkos::View<float*,Kokkos::LayoutRight,Kokkos::Cuda> work("work",lwork);
-      Kokkos::View<int*,Kokkos::LayoutRight,Kokkos::Cuda> piv("piv",n);
-      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Cuda> info("info");
+      Kokkos::View<float*,Kokkos::LayoutRight,exec_space> work("work",lwork);
+      Kokkos::View<int*,Kokkos::LayoutRight,exec_space> piv("piv",n);
+      Kokkos::View<int,Kokkos::LayoutRight,exec_space> info("info");
       status = cusolverDnSsytrf(handle, uplo, n, A.data(), lda, piv.data(),
                                 work.data(), lwork, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
@@ -2400,7 +2402,7 @@ namespace Genten {
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
-      Kokkos::View<float*,Kokkos::LayoutRight,Kokkos::Cuda> work2("work2",lwork);
+      Kokkos::View<float*,Kokkos::LayoutRight,exec_space> work2("work2",lwork);
       status = cusolverDnSsytrs(handle, uplo, n, m, A.data(), lda,
                                 piv.data(), B.data(), ldb, work2.data(), lwork,
                                 info.data());

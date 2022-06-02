@@ -265,7 +265,6 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
     deep_copy( Kokkos::subview(perm, Kokkos::ALL(), n),
                bin_sort.get_permute_vector() );
 
-
 #else
 
     // Sort tmp=[1:sz] using subs(:,n) as a comparator

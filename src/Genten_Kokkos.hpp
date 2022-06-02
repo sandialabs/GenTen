@@ -228,11 +228,10 @@ namespace Genten {
 #ifdef ENABLE_SYCL_FOR_CUDA
       if (is_sycl) {
         Kokkos::Experimental::SYCL sycl;
-        auto sycl_device = sycl.impl_internal_space_instance()->m_queue->get_device();
+        auto sycl_device =
+          sycl.impl_internal_space_instance()->m_queue->get_device();
         str +=
-          " (device " +
-          std::to_string(sycl.sycl_device()) +
-          ", " + sycl_device.get_info<sycl::info::device::name>() + ")";
+          " (device " + sycl_device.get_info<sycl::info::device::name>() + ")";
       }
 #endif
 
