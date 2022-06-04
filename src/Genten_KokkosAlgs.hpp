@@ -52,7 +52,7 @@
 #include "parallel_stable_sort.hpp"
 #endif
 
-#ifdef KOKKOS_ENABLE_CUDA
+#if defined(KOKKOS_ENABLE_CUDA) || (defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCTHRUST))
 #include <thrust/sort.h>
 #include <thrust/device_ptr.h>
 #endif
@@ -90,8 +90,8 @@ void perm_sort_op(const PermType& perm, const Op& op)
     perm(i) = i;
   }, "Genten::perm_sort::perm_init");
 
-#if defined(KOKKOS_ENABLE_CUDA)
-  if (std::is_same<exec_space, Kokkos::Cuda>::value) {
+#if defined(KOKKOS_ENABLE_CUDA) || (defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCTHRUST))
+  if (is_gpu_space<exec_space>::value) {
     thrust::stable_sort(thrust::device_ptr<perm_val_type>(perm.data()),
                         thrust::device_ptr<perm_val_type>(perm.data()+sz),
                         op);
@@ -118,7 +118,7 @@ void perm_sort(const PermType& perm, const ViewType& v)
   // We see a massive slowdown on the CPU if this lambda does capture-by-value,
   // which is what KOKKOS_LAMBDA always does.  It seems that the view is
   // copied each time the op is executed!
-#if defined(KOKKOS_ENABLE_CUDA)
+#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP)
   perm_sort_op(perm, KOKKOS_LAMBDA(const size_type& a, const size_type& b)
 #else
   perm_sort_op(perm, [&](const size_type& a, const size_type& b)
@@ -148,7 +148,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
   const size_type r = vals.extent(1);
   size_type block_size, num_blocks, block_threshold, league_size, team_size,
     vector_size;
-  if (Prop::is_cuda) {
+  if (Prop::is_gpu) {
     vector_size = r;
     team_size = 256 / vector_size;
     block_size = 32;
@@ -424,7 +424,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
   const size_type r = vals.extent(1);
   size_type block_size, num_blocks, block_threshold, league_size, team_size,
     vector_size;
-  if (Prop::is_cuda) {
+  if (Prop::is_gpu) {
     vector_size = r;
     team_size = 256 / vector_size;
     block_size = 32;
@@ -706,7 +706,7 @@ void seg_scan(const ValViewType& vals, const FlagViewType& flags,
   const size_type r = vals.extent(1);
   size_type block_size, num_blocks, block_threshold, league_size, team_size,
     vector_size;
-  if (Prop::is_cuda) {
+  if (Prop::is_gpu) {
     vector_size = r;
     team_size = 256 / vector_size;
     block_size = 32;

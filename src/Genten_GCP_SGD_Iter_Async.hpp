@@ -82,11 +82,11 @@ namespace Genten {
       /*const*/ unsigned nd = u.ndims();
       /*const*/ unsigned nc = u.ncomponents();
 
-      static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+      static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
       const unsigned RowBlockSize = algParams.mttkrp_nnz_tile_size;
       const unsigned VectorSize =
-        is_cuda ? min(unsigned(128), unsigned(pow(2.0, floor(log2(nc))))) : 1;
-      const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+        is_gpu ? min(unsigned(128), unsigned(pow(2.0, floor(log2(nc))))) : 1;
+      const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       const unsigned RowsPerTeam = TeamSize * RowBlockSize;
       const ttb_indx N = (num_samples+RowsPerTeam-1)/RowsPerTeam;
       const size_t bytes =

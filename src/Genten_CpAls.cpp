@@ -97,22 +97,19 @@ namespace Genten {
    *  @param[out] resNorm   Square root of Frobenius norm of the residual.
    *  @param[in] perfIter   Add performance information every n iterations.
    *                        If zero, do not collect info.
-   *  @param[out] perfInfo  Performance information array.  Must allocate
-   *                        (maxIters / perfIter) + 2 elements of type
-   *                        CpAlsPerfInfo.
-   *                        Can be NULL if perfIter is zero.
+   *  @param[out] perfInfo  Performance information array.
    *
    *  @throws string        if internal linear solve detects singularity,
    *                        or tensor arguments are incompatible.
    */
   template<typename TensorT, typename ExecSpace>
   void cpals_core (const TensorT& x,
-                   Genten::KtensorT<ExecSpace>& u,
+                   KtensorT<ExecSpace>& u,
                    const AlgParams& algParams,
                    ttb_indx& numIters,
                    ttb_real& resNorm,
                    const ttb_indx perfIter,
-                   CpAlsPerfInfo perfInfo[],
+                   PerfHistory& perfInfo,
                    std::ostream& out)
   {
 #ifdef HAVE_CALIPER
@@ -166,26 +163,9 @@ namespace Genten {
         out << "full-gram";
       else
         out << "symmetric-gram";
-      out << " formulation):" << std::endl;
-    }
-
-    // Initialize CpAlsPerfInfo.
-    if ((perfIter > 0) && (perfInfo == NULL))
-    {
-      Genten::error("Genten::cpals_core - perfInfo requested but needs to be allocated");
-    }
-    int  nNextPerf = 0;
-    if (perfIter > 0)
-    {
-      ttb_indx  nPossibleInfo = 2 + (maxIters / perfIter);
-      for (ttb_indx  i = 0; i < nPossibleInfo; i++)
-      {
-        perfInfo[i].nIter = -1;
-        perfInfo[i].dResNorm = -1.0;
-        perfInfo[i].dFit = -1.0;
-        perfInfo[i].dCumTime = -1.0;
-        perfInfo[i].dmttkrp_gflops = -1.0;
-      }
+      out << " formulation, "
+          << Genten::SpaceProperties<ExecSpace>::verbose_name()
+          << "):" << std::endl;
     }
 
     // Distribute the initial guess to have weights of one.
@@ -222,29 +202,23 @@ namespace Genten {
 
     ttb_real fit;
     ttb_real fitold;
-    if (perfInfo != nullptr)
-    {
-      // Compute residual norm and fit of the initial guess.
-      // Fit can be a huge negative number for bad start points,
-      // so bound it at zero.
-      ttb_real  dUnorm = u.normFsq();
-      ttb_real  dXtU = innerprod (x, u, lambda);
-      perfInfo[nNextPerf].dResNorm = computeResNorm(xNorm, dUnorm, dXtU);
-      fit = 1.0 - (perfInfo[nNextPerf].dResNorm / xNorm);
+    // Compute residual norm and fit of the initial guess.
+    // Fit can be a huge negative number for bad start points,
+    // so bound it at zero.
+    if (perfIter > 0) {
+      perfInfo.addEmpty();
+      ttb_real dUnorm = sqrt(u.normFsq());
+      ttb_real dXtU = innerprod (x, u, lambda);
+      ttb_real dRes = computeResNorm(xNorm, dUnorm, dXtU);
+      fit = 1.0 - (dRes / xNorm);
       if (fit < 0.0)
         fit = 0.0;
-      perfInfo[nNextPerf].dFit = fit;
-
-      perfInfo[nNextPerf].nIter = 0;
-      perfInfo[nNextPerf].dCumTime = timer.getTotalTime(timer_cpals);
-      nNextPerf++;
+      auto& p = perfInfo.lastEntry();
+      p.iteration = 0;
+      p.residual = dRes;
+      p.fit = fit;
+      p.cum_time = timer.getTotalTime(timer_cpals);
     }
-    else
-    {
-      // Initial fit is unknown, assume the worst case.
-      fit = 0.0;
-    }
-
 
     //--------------------------------------------------
     // Main algorithm loop.
@@ -356,13 +330,14 @@ namespace Genten {
       }
 
       // Fill in performance information if requested.
-      if ((perfIter > 0) && ((numIters + 1) % perfIter == 0))
+      if (perfIter > 0 && ((numIters + 1) % perfIter == 0))
       {
-        perfInfo[nNextPerf].nIter = (int) (numIters + 1);
-        perfInfo[nNextPerf].dResNorm = resNorm;
-        perfInfo[nNextPerf].dFit = fit;
-        perfInfo[nNextPerf].dCumTime = timer.getTotalTime(timer_cpals);
-        nNextPerf++;
+        perfInfo.addEmpty();
+        auto& p = perfInfo.lastEntry();
+        p.iteration = numIters + 1;
+        p.residual = resNorm;
+        p.fit = fit;
+        p.cum_time = timer.getTotalTime(timer_cpals);
       }
 
       // Check for convergence.
@@ -407,11 +382,13 @@ namespace Genten {
     // Fill in performance information if requested.
     if (perfIter > 0)
     {
-      perfInfo[nNextPerf].nIter = (int) numIters;
-      perfInfo[nNextPerf].dResNorm = resNorm;
-      perfInfo[nNextPerf].dFit = fit;
-      perfInfo[nNextPerf].dCumTime = timer.getTotalTime(timer_cpals);
-      perfInfo[nNextPerf].dmttkrp_gflops = mttkrp_tput;
+      perfInfo.addEmpty();
+      auto& p = perfInfo.lastEntry();
+      p.iteration = numIters;
+      p.residual = resNorm;
+      p.fit = fit;
+      p.cum_time = timer.getTotalTime(timer_cpals);
+      p.mttkrp_throughput = mttkrp_tput;
     }
 
     if (printIter > 0 && algParams.timings)
@@ -509,7 +486,7 @@ namespace Genten {
     ttb_indx& numIters,                                                 \
     ttb_real& resNorm,                                                  \
     const ttb_indx perfIter,                                            \
-    CpAlsPerfInfo perfInfo[],                                           \
+    PerfHistory& perfInfo,                                              \
     std::ostream& out);                                                 \
                                                                         \
   template void cpals_core<TensorT<SPACE>,SPACE>(                       \
@@ -519,7 +496,7 @@ namespace Genten {
     ttb_indx& numIters,                                                 \
     ttb_real& resNorm,                                                  \
     const ttb_indx perfIter,                                            \
-    CpAlsPerfInfo perfInfo[],                                           \
+    PerfHistory& perfInfo,                                              \
     std::ostream& out);
 
 GENTEN_INST(INST_MACRO)

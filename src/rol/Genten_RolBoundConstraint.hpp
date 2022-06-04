@@ -136,6 +136,24 @@ namespace Genten {
       });
     }
 
+    void pruneLowerActive(ROL::Vector<ttb_real>& v,
+                          const ROL::Vector<ttb_real>& g,
+                          const ROL::Vector<ttb_real>& x,
+                          ttb_real xeps,
+                          ttb_real geps)
+    {
+      view_type V = dynamic_cast<vector_type&>(v).getView();
+      view_type G = dynamic_cast<const vector_type&>(g).getView();
+      view_type X = dynamic_cast<const vector_type&>(x).getView();
+      view_type U = u;
+      ttb_real epsn = std::min(s*xeps, min_diff);
+      Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ttb_indx i)
+      {
+        if (X(i) <= U(i)-epsn && G(i) > geps)
+          V(i) = 0.0;
+      });
+    }
+
     void pruneUpperActive(ROL::Vector<ttb_real>& v,
                           const ROL::Vector<ttb_real>& x,
                           ttb_real eps)
@@ -147,6 +165,24 @@ namespace Genten {
       Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ttb_indx i)
       {
         if (X(i) >= U(i)-epsn)
+          V(i) = 0.0;
+      });
+    }
+
+    void pruneUpperActive(ROL::Vector<ttb_real>& v,
+                          const ROL::Vector<ttb_real>& g,
+                          const ROL::Vector<ttb_real>& x,
+                          ttb_real xeps,
+                          ttb_real geps)
+    {
+      view_type V = dynamic_cast<vector_type&>(v).getView();
+      view_type G = dynamic_cast<const vector_type&>(g).getView();
+      view_type X = dynamic_cast<const vector_type&>(x).getView();
+      view_type U = u;
+      ttb_real epsn = std::min(s*xeps, min_diff);
+      Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ttb_indx i)
+      {
+        if (X(i) >= U(i)-epsn && G(i) < -geps)
           V(i) = 0.0;
       });
     }

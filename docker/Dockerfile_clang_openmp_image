@@ -4,7 +4,8 @@
 # This is intended to be run from the top-level genten source tree
 
 # Base image -- Need to using testing for newer CMake
-FROM debian:testing
+#FROM debian:testing
+FROM debian:stable
 MAINTAINER Eric Phipps <etphipp@sandia.gov>
 
 # Change to bash so we have, e.g., -o pipefail
@@ -13,11 +14,13 @@ SHELL ["/bin/bash", "-c"]
 # Install GenTen dependencies
 RUN \
   apt-get update --yes && \
+  apt-get dist-upgrade --yes && \
   apt-get install --yes \
     cmake \
     libblas-dev \
     liblapack-dev \
     libboost-iostreams-dev \
+    libomp-dev \
     clang \
     && \
   rm -rf /var/lib/apt/lists/*

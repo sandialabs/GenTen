@@ -135,7 +135,7 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
   // Sptensor mttkrp and do this before createPermutation() so that
   // createPermutation() timings are not polluted by UVM transfers
   Ktensor_type  tmp (algParams.rank, cFacDims.size(), cFacDims);
-  Genten::SptensorT<Genten::DefaultExecutionSpace>& cData_tmp = cData;
+  Genten::SptensorT<Space>& cData_tmp = cData;
   Genten::AlgParams ap = algParams;
   ap.mttkrp_method = Genten::MTTKRP_Method::Atomic;
   for (ttb_indx  n = 0; n < cFacDims.size(); n++)
@@ -159,19 +159,17 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
 
   // Request performance information on every iteration.
   // Allocation adds two more for start and stop states of the algorithm.
-  ttb_indx  nMaxPerfSize = 2 + algParams.maxiters;
-  Genten::CpAlsPerfInfo *  perfInfo = new Genten::CpAlsPerfInfo[nMaxPerfSize];
+  Genten::PerfHistory perfInfo;
   cResult = cInitialGuess;
   Genten::cpals_core (cData, cResult, algParams, nItersCompleted, dResNorm,
                       1, perfInfo);
   printf ("Performance information per iteration:\n");
-  for (ttb_indx  i = 0; i <= nItersCompleted; i++)
+  for (ttb_indx i = 0; i < perfInfo.size(); i++)
   {
     printf (" %2d: fit = %.6e, resnorm = %.2e, time = %.3f secs\n",
-            perfInfo[i].nIter, perfInfo[i].dFit,
-            perfInfo[i].dResNorm, perfInfo[i].dCumTime);
+            perfInfo[i].iteration, perfInfo[i].fit,
+            perfInfo[i].residual, perfInfo[i].cum_time);
   }
-  delete[] perfInfo;
 
   printf ("  Final residual norm = %10.3e\n", dResNorm);
   printf ("  Weights (lambda):\n");
@@ -191,6 +189,13 @@ void usage(char **argv)
 {
   std::cout << "Usage: "<< argv[0]<<" [options]" << std::endl;
   std::cout << "options: " << std::endl;
+  std::cout << "  --exec-space <space> execution space to run on: ";
+  for (unsigned i=0; i<Genten::Execution_Space::num_types; ++i) {
+    std::cout << Genten::Execution_Space::names[i];
+    if (i != Genten::Execution_Space::num_types-1)
+      std::cout << ", ";
+  }
+  std::cout << std::endl;
   std::cout << "  --dims <[n1,n2,...]> tensor dimensions" << std::endl;
   std::cout << "  --nc <int>           number of factor components" << std::endl;
   std::cout << "  --nnz <int>          maximum number of tensor nonzeros" << std::endl;
@@ -250,6 +255,12 @@ int main(int argc, char* argv[])
     // Choose parameters: ndims, dim sizes, ncomps.
     // Values below match those in matlab_CpAlsRandomKTensor.m,
     // solves in just a few seconds.
+    Genten::Execution_Space::type exec_space =
+      parse_ttb_enum(args, "--exec-space",
+                     Genten::Execution_Space::default_type,
+                     Genten::Execution_Space::num_types,
+                     Genten::Execution_Space::types,
+                     Genten::Execution_Space::names);
     Genten::IndxArray  cFacDims = { 3000, 4000, 5000 };
     cFacDims =
       Genten::parse_ttb_indx_array(args, "--dims", cFacDims, 1, INT_MAX);
@@ -289,8 +300,35 @@ int main(int argc, char* argv[])
     algParams.mttkrp_method = mttkrp_method;
     algParams.mttkrp_duplicated_factor_matrix_tile_size = mttkrp_tile_size;
 
-    ret = run_cpals< Genten::DefaultExecutionSpace >(
+    if (exec_space == Genten::Execution_Space::Default)
+      ret = run_cpals< Genten::DefaultExecutionSpace >(
         cFacDims, nMaxNonzeroes, algParams);
+#ifdef KOKKOS_ENABLE_CUDA
+    else if (exec_space == Genten::Execution_Space::Cuda)
+      ret = run_cpals< Kokkos::Cuda >(
+        cFacDims, nMaxNonzeroes, algParams);
+#endif
+#ifdef KOKKOS_ENABLE_HIP
+    else if (exec_space == Genten::Execution_Space::HIP)
+      ret = run_cpals< Kokkos::Experimental::HIP >(
+        cFacDims, nMaxNonzeroes, algParams);
+#endif
+#ifdef KOKKOS_ENABLE_OPENMP
+    else if (exec_space == Genten::Execution_Space::OpenMP)
+      ret = run_cpals< Kokkos::OpenMP >(
+        cFacDims, nMaxNonzeroes, algParams);
+#endif
+#ifdef KOKKOS_ENABLE_THREADS
+    else if (exec_space == Genten::Execution_Space::Threads)
+      ret = run_cpals< Kokkos::Threads >(
+        cFacDims, nMaxNonzeroes, algParams);
+#endif
+#ifdef KOKKOS_ENABLE_SERIAL
+    else if (exec_space == Genten::Execution_Space::Serial)
+      ret = run_cpals< Kokkos::Serial >(
+        cFacDims, nMaxNonzeroes, algParams);
+
+#endif
 
   }
   catch(std::string sExc)

@@ -49,9 +49,10 @@
 
 using namespace Genten::Test;
 
-void Genten_Test_Tensor(int infolevel)
+template <typename ExecSpace>
+void Genten_Test_Tensor_Space(int infolevel)
 {
-  typedef Genten::DefaultExecutionSpace exec_space;
+  typedef ExecSpace exec_space;
   typedef Genten::DefaultHostExecutionSpace host_exec_space;
   typedef Genten::SptensorT<exec_space> Sptensor_type;
   typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
@@ -60,7 +61,8 @@ void Genten_Test_Tensor(int infolevel)
   typedef Genten::KtensorT<exec_space> Ktensor_type;
   typedef Genten::KtensorT<host_exec_space> Ktensor_host_type;
 
-  initialize("Tests on Genten::Tensor", infolevel);
+  std::string space_name = Genten::SpaceProperties<exec_space>::name();
+  initialize("Tests on Genten::Tensor (" + space_name + ")", infolevel);
 
   // Empty constructor, equivalent to Matlab:  a = [].
   MESSAGE("Creating empty tensor");
@@ -134,4 +136,22 @@ void Genten_Test_Tensor(int infolevel)
 
   finalize();
   return;
+}
+
+void Genten_Test_Tensor(int infolevel) {
+#ifdef KOKKOS_ENABLE_CUDA
+  Genten_Test_Tensor_Space<Kokkos::Cuda>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_HIP
+  Genten_Test_Tensor_Space<Kokkos::Experimental::HIP>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_OPENMP
+  Genten_Test_Tensor_Space<Kokkos::OpenMP>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_THREADS
+  Genten_Test_Tensor_Space<Kokkos::Threads>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_SERIAL
+  Genten_Test_Tensor_Space<Kokkos::Serial>(infolevel);
+#endif
 }

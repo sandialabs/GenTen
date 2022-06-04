@@ -44,12 +44,11 @@
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_SystemTimer.hpp"
 
-extern "C" {
-
-DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
-                                int nrhs, const mxArray *prhs[])
+template <typename ExecSpace>
+void matlab_driver(int nlhs, mxArray *plhs[],
+                   int nrhs, const mxArray *prhs[],
+                   Genten::AlgParams& algParams)
 {
-  typedef Genten::DefaultExecutionSpace ExecSpace;
   typedef Genten::SptensorT<ExecSpace> Sptensor_type;
   typedef Genten::KtensorT<ExecSpace> Ktensor_type;
   typedef Genten::FacMatrixT<ExecSpace> FacMatrix_type;
@@ -57,24 +56,68 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
   typedef typename Sptensor_type::subs_view_type subs_type;
   typedef typename Sptensor_host_type::subs_view_type host_subs_type;
 
+  algParams.fixup<ExecSpace>(std::cout);
+
+  // Parse inputs
+  Sptensor_type X = mxGetSptensor<ExecSpace>(prhs[0]);
+  Ktensor_type u = mxGetKtensor<ExecSpace>(prhs[1]);
+
+  // Perform innerprod
+  ttb_real v = Genten::innerprod(X, u);
+
+  // Set output
+  plhs[0] = mxCreateDoubleScalar(static_cast<double>(v));
+}
+
+extern "C" {
+
+DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
+                                int nrhs, const mxArray *prhs[])
+{
   GentenInitialize();
 
   try {
-    if (nrhs != 2 || nlhs != 1) {
-      std::cout << "Expected exactly 2 input and 1 output arguments"
+    if (nrhs < 2 || nlhs != 1) {
+      std::cout << "Expected at least 2 input and 1 output arguments"
                 << std::endl;
       return;
     }
 
     // Parse inputs
-    Sptensor_type X = mxGetSptensor<ExecSpace>(prhs[0]);
-    Ktensor_type u = mxGetKtensor<ExecSpace>(prhs[1]);
+    auto args = mxBuildArgList(nrhs, 2, prhs);
+    Genten::AlgParams algParams;
+    algParams.parse(args);
+    if (Genten::check_and_print_unused_args(args, std::cout)) {
+      algParams.print_help(std::cout);
+      throw std::string("Invalid command line arguments.");
+    }
 
-    // Perform innerprod
-    ttb_real v = Genten::innerprod(X, u);
-
-    // Set output
-    plhs[0] = mxCreateDoubleScalar(static_cast<double>(v));
+    // Parse execution space and run
+    if (algParams.exec_space == Genten::Execution_Space::Default)
+      matlab_driver<Genten::DefaultExecutionSpace>(nlhs, plhs, nrhs, prhs,
+                                                   algParams);
+#ifdef KOKKOS_ENABLE_CUDA
+    else if (algParams.exec_space == Genten::Execution_Space::Cuda)
+      matlab_driver<Kokkos::Cuda>(nlhs, plhs, nrhs, prhs, algParams);
+#endif
+#ifdef KOKKOS_ENABLE_HIP
+    else if (algParams.exec_space == Genten::Execution_Space::HIP)
+      matlab_driver<Kokkos::Experimental::HIP>(nlhs, plhs, nrhs, prhs, algParams);
+#endif
+#ifdef KOKKOS_ENABLE_OPENMP
+    else if (algParams.exec_space == Genten::Execution_Space::OpenMP)
+      matlab_driver<Kokkos::OpenMP>(nlhs, plhs, nrhs, prhs, algParams);
+#endif
+#ifdef KOKKOS_ENABLE_THREADS
+    else if (algParams.exec_space == Genten::Execution_Space::Threads)
+      matlab_driver<Kokkos::Threads>(nlhs, plhs, nrhs, prhs, algParams);
+#endif
+#ifdef KOKKOS_ENABLE_SERIAL
+    else if (algParams.exec_space == Genten::Execution_Space::Serial)
+      matlab_driver<Kokkos::Serial>(nlhs, plhs, nrhs, prhs, algParams);
+#endif
+    else
+      Genten::error("Invalid execution space: " + std::string(Genten::Execution_Space::names[algParams.exec_space]));
   }
 
   catch(std::string sExc)

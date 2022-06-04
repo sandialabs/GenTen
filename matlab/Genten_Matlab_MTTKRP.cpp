@@ -44,12 +44,11 @@
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_SystemTimer.hpp"
 
-extern "C" {
-
-DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
-                                int nrhs, const mxArray *prhs[])
+template <typename ExecSpace>
+void matlab_driver(int nlhs, mxArray *plhs[],
+                   int nrhs, const mxArray *prhs[],
+                   Genten::AlgParams& algParams)
 {
-  typedef Genten::DefaultExecutionSpace ExecSpace;
   typedef Genten::SptensorT<ExecSpace> Sptensor_type;
   typedef Genten::KtensorT<ExecSpace> Ktensor_type;
   typedef Genten::FacMatrixT<ExecSpace> FacMatrix_type;
@@ -57,6 +56,30 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
   typedef typename Sptensor_type::subs_view_type subs_type;
   typedef typename Sptensor_host_type::subs_view_type host_subs_type;
 
+  algParams.fixup<ExecSpace>(std::cout);
+
+  Sptensor_type X = mxGetSptensor<ExecSpace>(prhs[0]);
+  const Ktensor_type u = mxGetKtensor<ExecSpace>(prhs[1]);
+  const ttb_indx n = static_cast<ttb_indx>(mxGetScalar(prhs[2]))-1;
+
+  if (algParams.mttkrp_method == Genten::MTTKRP_Method::Perm &&
+      !X.havePerm()) {
+    X.createPermutation();
+  }
+
+  // Perform MTTKRP
+  FacMatrix_type v(u[n].nRows(), u[n].nCols());
+  Genten::mttkrp(X, u, n, v, algParams);
+
+  // Set output
+  plhs[0] = mxSetFacMatrix(v);
+}
+
+extern "C" {
+
+DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
+                                int nrhs, const mxArray *prhs[])
+{
   GentenInitialize();
 
   try {
@@ -66,31 +89,42 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
       return;
     }
 
-    Genten::AlgParams algParams;
-    algParams.fixup<ExecSpace>(std::cout);
-
     // Parse inputs
-    Sptensor_type X = mxGetSptensor<ExecSpace>(prhs[0]);
-    const Ktensor_type u = mxGetKtensor<ExecSpace>(prhs[1]);
-    const ttb_indx n = static_cast<ttb_indx>(mxGetScalar(prhs[2]))-1;
     auto args = mxBuildArgList(nrhs, 3, prhs);
+    Genten::AlgParams algParams;
     algParams.parse(args);
     if (Genten::check_and_print_unused_args(args, std::cout)) {
       algParams.print_help(std::cout);
       throw std::string("Invalid command line arguments.");
     }
 
-    if (algParams.mttkrp_method == Genten::MTTKRP_Method::Perm &&
-        !X.havePerm()) {
-      X.createPermutation();
-    }
+    // Parse execution space and run
+    if (algParams.exec_space == Genten::Execution_Space::Default)
+      matlab_driver<Genten::DefaultExecutionSpace>(nlhs, plhs, nrhs, prhs,
+                                                   algParams);
+#ifdef KOKKOS_ENABLE_CUDA
+    else if (algParams.exec_space == Genten::Execution_Space::Cuda)
+      matlab_driver<Kokkos::Cuda>(nlhs, plhs, nrhs, prhs, algParams);
+#endif
+#ifdef KOKKOS_ENABLE_HIP
+    else if (algParams.exec_space == Genten::Execution_Space::HIP)
+      matlab_driver<Kokkos::Experimental::HIP>(nlhs, plhs, nrhs, prhs, algParams);
+#endif
+#ifdef KOKKOS_ENABLE_OPENMP
+    else if (algParams.exec_space == Genten::Execution_Space::OpenMP)
+      matlab_driver<Kokkos::OpenMP>(nlhs, plhs, nrhs, prhs, algParams);
+#endif
+#ifdef KOKKOS_ENABLE_THREADS
+    else if (algParams.exec_space == Genten::Execution_Space::Threads)
+      matlab_driver<Kokkos::Threads>(nlhs, plhs, nrhs, prhs, algParams);
+#endif
+#ifdef KOKKOS_ENABLE_SERIAL
+    else if (algParams.exec_space == Genten::Execution_Space::Serial)
+      matlab_driver<Kokkos::Serial>(nlhs, plhs, nrhs, prhs, algParams);
+#endif
+    else
+      Genten::error("Invalid execution space: " + std::string(Genten::Execution_Space::names[algParams.exec_space]));
 
-    // Perform MTTKRP
-    FacMatrix_type v(u[n].nRows(), u[n].nCols());
-    Genten::mttkrp(X, u, n, v, algParams);
-
-    // Set output
-    plhs[0] = mxSetFacMatrix(v);
   }
 
   catch(std::string sExc)

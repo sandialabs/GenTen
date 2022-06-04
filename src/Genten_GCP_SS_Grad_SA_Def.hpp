@@ -81,11 +81,11 @@ namespace Genten {
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
       typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
-      static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+      static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
       static const unsigned RowBlockSize = 1;
       static const unsigned FacBlockSize = FBS;
-      static const unsigned VectorSize = is_cuda ? VS : 1;
-      static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+      static const unsigned VectorSize = is_gpu ? VS : 1;
+      static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
       /*const*/ unsigned nd = M.ndims();
@@ -287,18 +287,18 @@ namespace Genten {
     template <typename ExecSpace, typename loss_type>
     void gcp_sgd_ss_grad_sa(
       const SptensorT<ExecSpace>& X,
-      const GCP::KokkosVector<ExecSpace>& M,
+      const KokkosVector<ExecSpace>& M,
       const loss_type& f,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
-      const GCP::KokkosVector<ExecSpace>& G,
+      const KokkosVector<ExecSpace>& G,
       const Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,ExecSpace>& Gind,
       const Kokkos::View<ttb_indx*,ExecSpace>& perm,
       const bool use_adam,
-      const GCP::KokkosVector<ExecSpace>& adam_m,
-      const GCP::KokkosVector<ExecSpace>& adam_v,
+      const KokkosVector<ExecSpace>& adam_m,
+      const KokkosVector<ExecSpace>& adam_v,
       const ttb_real beta1,
       const ttb_real beta2,
       const ttb_real eps,
@@ -347,8 +347,8 @@ namespace Genten {
         timer.start(timer_step);
         typedef Genten::SpaceProperties<ExecSpace> Prop;
         const unsigned R = Mt.ncomponents();
-        const unsigned vector_size = Prop::is_cuda ? R : 1;
-        const unsigned team_size = Prop::is_cuda ? 256/vector_size : 1;
+        const unsigned vector_size = Prop::is_gpu ? R : 1;
+        const unsigned team_size = Prop::is_gpu ? 256/vector_size : 1;
         const ttb_indx league_size = (ns+team_size-1)/team_size;
         typedef Kokkos::TeamPolicy<ExecSpace> Policy;
         typedef typename Policy::member_type TeamMember;
@@ -401,18 +401,18 @@ namespace Genten {
 #define LOSS_INST_MACRO(SPACE,LOSS)                                     \
   template void Impl::gcp_sgd_ss_grad_sa(                               \
     const SptensorT<SPACE>& X,                                          \
-    const GCP::KokkosVector<SPACE>& M,                                  \
+    const KokkosVector<SPACE>& M,                                       \
     const LOSS& f,                                                      \
     const ttb_indx num_samples_nonzeros,                                \
     const ttb_indx num_samples_zeros,                                   \
     const ttb_real weight_nonzeros,                                     \
     const ttb_real weight_zeros,                                        \
-    const GCP::KokkosVector<SPACE>& G,                                  \
+    const KokkosVector<SPACE>& G,                                       \
     const Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,SPACE>& Gind,      \
     const Kokkos::View<ttb_indx*,SPACE>& perm,                          \
     const bool use_adam,                                                \
-    const GCP::KokkosVector<SPACE>& adam_m,                             \
-    const GCP::KokkosVector<SPACE>& adam_v,                             \
+    const KokkosVector<SPACE>& adam_m,                                  \
+    const KokkosVector<SPACE>& adam_v,                                  \
     const ttb_real beta1,                                               \
     const ttb_real beta2,                                               \
     const ttb_real eps,                                                 \
