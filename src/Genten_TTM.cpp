@@ -48,7 +48,7 @@
 #include "Genten_MathLibs.hpp"
 
 #if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) && defined(HAVE_CUBLAS)
-#include "cublas_v2.h"
+#include "Genten_CublasHandle.h"
 #endif
 
 #if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
@@ -357,26 +357,13 @@ namespace Genten
         const ttb_real alpha = ttb_real(1.0);
         const ttb_real beta = ttb_real(0.0);
         cublasStatus_t status;
-
-        static cublasHandle_t handle = 0;
-        if (handle == 0)
-        {
-          status = cublasCreate(&handle);
-          if (status != CUBLAS_STATUS_SUCCESS)
-          {
-            std::stringstream cublasCreate_error;
-            cublasCreate_error << "Error!  cublasCreate() failed with status "
-                               << status;
-            std::cerr << cublasCreate_error.str() << std::endl;
-            throw cublasCreate_error.str();
-          }
-        }
+        CublasHandle handle;
 
         // We need Z = V*Y, where Z/Y are matricised tensors, and V is input matrix.
         // But since Z and Y (matricised) are logically LayoutRight, we instead seek Z'=Y'*V'
         // This way, Y' is LayoutLeft. V, naturally LayoutLeft needs the transpose flag.
         // The result Z' also comes out LayoutLeft, as desired. All LayoutLeft is what Gemm expects
-        status = cublasDgemmStridedBatched(handle, CUBLAS_OP_N, CUBLAS_OP_T,
+        status = cublasDgemmStridedBatched(handle.get(), CUBLAS_OP_N, CUBLAS_OP_T,
                                            m, n, k,
                                            &alpha,
                                            Y.getValues().values().data(), lda, strideA,
@@ -444,26 +431,13 @@ namespace Genten
       const double alpha = 1.0;
       const double beta = 0.0;
       cublasStatus_t status;
-
-      static cublasHandle_t handle = 0;
-      if (handle == 0)
-      {
-        status = cublasCreate(&handle);
-        if (status != CUBLAS_STATUS_SUCCESS)
-        {
-          std::stringstream cublasCreate_error;
-          cublasCreate_error << "Error!  cublasCreate() failed with status "
-                             << status;
-          std::cerr << cublasCreate_error.str() << std::endl;
-          throw cublasCreate_error.str();
-        }
-      }
+      CublasHandle handle;
 
       // We need Z = V*Y, where Z/Y are matricised tensors, and V is input matrix.
       // But since Z and Y (matricised) are logically LayoutRight, we instead seek Z'=Y'*V'
       // This way, Y' is LayoutLeft. V, naturally LayoutLeft needs the transpose flag.
       // The result Z' also comes out LayoutLeft, as desired. All LayoutLeft is what Gemm expects
-      status = cublasDgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, m, n, k,
+      status = cublasDgemm(handle.get(), CUBLAS_OP_N, CUBLAS_OP_T, m, n, k,
                            &alpha, Y.getValues().values().data(), lda, V.getValues().values().data(), ldb,
                            &beta, Z.getValues().values().data(), ldc);
 
