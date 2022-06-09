@@ -48,6 +48,8 @@
 
 using namespace Genten::Test;
 
+
+
 template <typename ExecSpace>
 void Genten_Test_MomentTensorImpl(int infolevel)
 {
@@ -79,16 +81,16 @@ void Genten_MomentTensor(int infolevel) {
 // #ifdef KOKKOS_ENABLE_CUDA
 //   Genten_Test_MomentTensorImpl<Kokkos::Cuda>(infolevel);
 // #endif
-// #ifdef KOKKOS_ENABLE_HIP
-//   Genten_Test_MomentTensorImpl<Kokkos::Experimental::HIP>(infolevel);
-// #endif
-// #ifdef KOKKOS_ENABLE_OPENMP
+#ifdef KOKKOS_ENABLE_HIP
+  Genten_Test_MomentTensorImpl<Kokkos::Experimental::HIP>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_OPENMP
   Genten_Test_MomentTensorImpl<Kokkos::OpenMP>(infolevel);
-// #endif
-// #ifdef KOKKOS_ENABLE_THREADS
-//   Genten_Test_MomentTensorImpl<Kokkos::Threads>(infolevel);
-// #endif
-// #ifdef KOKKOS_ENABLE_SERIAL
-//   Genten_Test_MomentTensorImpl<Kokkos::Serial>(infolevel);
-// #endif
+#endif
+#ifdef KOKKOS_ENABLE_THREADS
+  Genten_Test_MomentTensorImpl<Kokkos::Threads>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_SERIAL
+  Genten_Test_MomentTensorImpl<Kokkos::Serial>(infolevel);
+#endif
 }

@@ -62,20 +62,20 @@ void khatri_rao_product(const MemberType & teamMember,
 			MatrixViewType X,
 			ScratchMatrixViewType result)
 {
-
   const int resultNCol = result.extent_int(1);
-  Kokkos::parallel_for(Kokkos::TeamThreadRange(teamMember, resultNCol),
-		       [&](int i){
-			 const int block1ColPos = i / block2Size;
-			 const int block2ColPos = i % block2Size;
-			 const int block1BaseColInd = blockIndex1*stdBlockSize;
-			 const int block2BaseColInd = blockIndex2*stdBlockSize;
-			 Kokkos::parallel_for(Kokkos::ThreadVectorRange(teamMember, currentTileSize),
-					      [&](int j){
-						result(j, i) = X(baseRowIndex+j, block1BaseColInd+block1ColPos) *
-						  X(baseRowIndex+j, block2BaseColInd+block2ColPos);
-					      });
-		       });
+  Kokkos::parallel_for(
+      Kokkos::TeamThreadRange(teamMember, resultNCol), [&](int i) {
+        const int block1ColPos = i / block2Size;
+        const int block2ColPos = i % block2Size;
+        const int block1BaseColInd = blockIndex1 * stdBlockSize;
+        const int block2BaseColInd = blockIndex2 * stdBlockSize;
+        Kokkos::parallel_for(
+            Kokkos::ThreadVectorRange(teamMember, currentTileSize), [&](int j) {
+              result(j, i) =
+                  X(baseRowIndex + j, block1BaseColInd + block1ColPos) *
+                  X(baseRowIndex + j, block2BaseColInd + block2ColPos);
+            });
+      });
 }
 
 //We want to create a matrix where each row contains the 4d index of each of the unique
@@ -291,6 +291,46 @@ void cokurtosis_impl(Kokkos::View<ttb_real**, Properties...> dataMatrix,
 // }
 }// namespace impl
 
+template<class T>
+void naive(T X)
+{
+  const auto c = X.extent(1);
+  Kokkos::View<double****> moment("mm", c, c, c, c);
+
+  constexpr auto one = static_cast<double>(1);
+  const double factor = one/X.extent(0);
+  for (std::size_t i=0; i<c; ++i){
+    for (std::size_t j=0; j<c; ++j){
+      for (std::size_t k=0; k<c; ++k){
+	    for (std::size_t l=0; l<c; ++l)
+	    {
+	      for (std::size_t m=0; m<X.extent(0); ++m){
+	        moment(i,j,k,l) += X(m,i)*X(m,j)*X(m,k)*X(m,l);
+	      }
+	      moment(i,j,k,l) *= factor;
+	    }
+      }
+    }
+  }
+
+  int count=0;
+  for (std::size_t i=0; i<c; ++i){
+    for (std::size_t j=0; j<c; ++j){
+      for (std::size_t k=0; k<c; ++k){
+	    for (std::size_t l=0; l<c; ++l){
+	      std::cout << count++ << ' '
+		    << i << ' '
+		    << j << ' '
+		    << k << ' '
+		    << l << ' '
+		    << moment(i,j,k,l)
+		    << '\n';
+	    }
+      }
+    }
+  }
+}
+
 ttb_real * create_and_compute_raw_moment_tensor(ttb_real *rawDataPtr,
 						int nsamples,
 						int nvars,
@@ -308,6 +348,8 @@ ttb_real * create_and_compute_raw_moment_tensor(ttb_real *rawDataPtr,
 
   auto dataMatrix = Kokkos::create_mirror_view(exe_space(), dataMatrixHost);
   Kokkos::deep_copy(dataMatrix, dataMatrixHost);
+
+  naive(dataMatrix);
 
   // these need to be moved
   int targetBlockSize = 1;
