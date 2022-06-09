@@ -254,6 +254,9 @@ void Genten_Test_HessVec(int infolevel) {
 #ifdef KOKKOS_ENABLE_CUDA
   Genten_Test_HessVec_Space<Kokkos::Cuda>(infolevel);
 #endif
+#ifdef ENABLE_SYCL_FOR_CUDA
+  Genten_Test_HessVec_Space<Kokkos::Experimental::SYCL>(infolevel);
+#endif
 #ifdef KOKKOS_ENABLE_HIP
   Genten_Test_HessVec_Space<Kokkos::Experimental::HIP>(infolevel);
 #endif
