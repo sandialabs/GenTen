@@ -3,7 +3,7 @@
 #include "cublas_v2.h"
 #include <cusolverDn.h>
 #else
-#include <lapacke.h>
+#include <lapack.h>
 #endif
 
 typedef typename Kokkos::View<double**, Kokkos::LayoutLeft, Kokkos::DefaultExecutionSpace> gram_view_type;
@@ -54,7 +54,7 @@ void perform_eigen_decomp(int nRows, gram_view_type& gram_matrix, eig_view_type&
     cudaStat = cudaDeviceSynchronize();
     assert(CUSOLVER_STATUS_SUCCESS == cusolver_status);
     assert(cudaSuccess == cudaStat);
-#else
+#elif defined (LAPACK_FOUND)
     int lwork = 0, info;
     double *d_work = NULL;
 
