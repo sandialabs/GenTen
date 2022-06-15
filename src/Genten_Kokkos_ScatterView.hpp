@@ -146,6 +146,21 @@ struct DefaultContribution<Kokkos::Cuda, Kokkos::Experimental::ScatterDuplicated
 };
 #endif
 
+#ifdef KOKKOS_ENABLE_HIP
+template <>
+struct DefaultDuplication<Kokkos::Experimental::HIP> {
+  enum : int { value = Kokkos::Experimental::ScatterNonDuplicated };
+};
+template <>
+struct DefaultContribution<Kokkos::Experimental::HIP, Kokkos::Experimental::ScatterNonDuplicated> {
+  enum : int { value = Kokkos::Experimental::ScatterAtomic };
+};
+template <>
+struct DefaultContribution<Kokkos::Experimental::HIP, Kokkos::Experimental::ScatterDuplicated> {
+  enum : int { value = Kokkos::Experimental::ScatterAtomic };
+};
+#endif
+
 /* ScatterValue is the object returned by the access operator() of ScatterAccess,
    similar to that returned by an Atomic View, it wraps Kokkos::atomic_add with convenient
    operator+=, etc. */
@@ -941,7 +956,7 @@ private:
 public:
   // do need to allow moves though, for the common
   // auto b = a.access();
-  // that assignments turns into a move constructor call 
+  // that assignments turns into a move constructor call
   KOKKOS_INLINE_FUNCTION
   ScatterAccess(ScatterAccess&& other)
     : view(other.view)
@@ -1061,14 +1076,14 @@ struct ReduceDuplicates<
     typedef TeamPolicy<ExecSpace, size_t> policy_type;
     typedef typename policy_type::member_type member_type;
 
-    const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+    const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
 
     const size_t n0 = src.extent(0);
     const size_t n1 = src.extent(1);
     const size_t n2 = src.extent(2);
 
-    const size_t vector_size = is_cuda ? 16 : 1;
-    const size_t team_size = is_cuda ? 256/vector_size : 1;
+    const size_t vector_size = is_gpu ? 16 : 1;
+    const size_t team_size = is_gpu ? 256/vector_size : 1;
     const size_t row_block_size = 128;
     const size_t N1 = (n1+row_block_size-1) / row_block_size;
     policy_type policy(N1,team_size,vector_size);

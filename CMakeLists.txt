@@ -129,6 +129,12 @@ IF (ENABLE_CALIPER)
   SET(HAVE_CALIPER ${ENABLE_CALIPER})
 ENDIF()
 
+# L-BFGS-B requires ttb_real == double
+IF (GENTEN_FLOAT_TYPE STREQUAL "double")
+  SET(ENABLE_LBFGSB ON)
+  SET(HAVE_LBFGSB ON)
+ENDIF()
+
 SET(ROL_LIBRARIES "")
 SET(ROL_TPL_LIBRARIES "")
 IF (ENABLE_GCP)
@@ -234,15 +240,19 @@ INCLUDE_DIRECTORIES (
   ${Genten_SOURCE_DIR}/src/
   ${Genten_SOURCE_DIR}/src/mathlib/
   ${Genten_SOURCE_DIR}/src/rol/
+  ${Genten_SOURCE_DIR}/src/lbfgsb/
   ${Genten_BINARY_DIR}/CMakeInclude/
   ${Genten_SOURCE_DIR}/driver/
+  ${Genten_SOURCE_DIR}/tpls/lbfgsb/
   )
 FILE (GLOB genten_headers
   ${Genten_SOURCE_DIR}/src/*.h
   ${Genten_SOURCE_DIR}/src/*.hpp
   ${Genten_SOURCE_DIR}/src/mathlib/*.h
   ${Genten_SOURCE_DIR}/src/mathlib/*.hpp
-  ${Genten_SOURCE_DIR}/src/rol*.hpp
+  ${Genten_SOURCE_DIR}/src/rol/*.hpp
+  ${Genten_SOURCE_DIR}/src/lbfgsb/*.hpp
+  ${Genten_SOURCE_DIR}/tpls/lbfgsb/*.h
   )
 INSTALL (
   FILES ${genten_headers}
@@ -282,7 +292,7 @@ INSTALL (
 # Separate pure c code from c++ code so CMake doesn't add Kokkos CXX flags
 # to compile of c code (since the c code can't depend on kokkos)
 #------------------------------------------------------------
-OPTION(ENABLE_LAPACK "Enable BLAS/LAPACK.  Only required for CPU (cuBLAS/cuSolver are used on GPU)." ON)
+OPTION(ENABLE_LAPACK "Enable BLAS/LAPACK.  Only required for CPU (cuBLAS/cuSolver are used on Cuda and rocBLAS/rocSolver on HIP)." ON)
 INCLUDE (cmake/ConfigureLapack.cmake)
 IF (LAPACK_FOUND)
   ADD_DEFINITIONS (-DLAPACK_FOUND)
@@ -312,6 +322,32 @@ TARGET_LINK_LIBRARIES(
   ${GENTEN_MATHLIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
   )
 
+#------------------------------------------------------------
+#---- L-BFGS-B library
+#------------------------------------------------------------
+IF (ENABLE_LBFGSB)
+  ADD_LIBRARY (genten_lbfgsb_c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/lbfgsb.c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/linesearch.c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/subalgorithms.c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/print.c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/linpack.c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/miniCBLAS.c
+    ${Genten_SOURCE_DIR}/tpls/lbfgsb/timer.c
+    )
+  TARGET_LINK_LIBRARIES(
+    genten_lbfgsb_c
+    ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
+    )
+  INSTALL (
+    TARGETS genten_lbfgsb_c
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    EXPORT genten
+    )
+  SET(GENTEN_MATHLIBS ${GENTEN_MATHLIBS}
+    genten_lbfgsb_c
+    )
+ENDIF()
 
 #------------------------------------------------------------
 #---- Genten Library
@@ -338,8 +374,21 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_portability.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Sptensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Tensor.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_HessVec.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
   )
+
+IF (ENABLE_LBFGSB)
+  SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+    ${Genten_SOURCE_DIR}/src/lbfgsb/Genten_CP_Opt_Lbfgsb.cpp
+    )
+ENDIF()
+
+IF (ENABLE_ROL)
+  SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+    ${Genten_SOURCE_DIR}/src/rol/Genten_CP_Opt_Rol.cpp
+    )
+ENDIF()
 
 IF (ENABLE_GCP)
   SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
@@ -359,17 +408,49 @@ IF (ENABLE_GCP)
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Bernoulli.cpp
     )
 
-  IF (ENABLE_ROL)
-    SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
-      ${Genten_SOURCE_DIR}/src/rol/Genten_GCP_Opt.cpp
-      )
-  ENDIF()
+  # Disable gcp_opt because it doesn't work
+  # IF (ENABLE_ROL)
+  #   SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+  #     ${Genten_SOURCE_DIR}/src/rol/Genten_GCP_Opt.cpp
+  #     )
+  # ENDIF()
 ENDIF()
 
 
 #---- Tell CMake to build the library.
 ADD_LIBRARY (gentenlib ${Genten_SOURCE_LIST})
 TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkos)
+
+IF(Kokkos_ENABLE_HIP)
+  IF(ROCM_SEARCH_PATH)
+    LIST(APPEND CMAKE_PREFIX_PATH ${ROCM_SEARCH_PATH})
+  ENDIF()
+
+  OPTION(ENABLE_ROCBLAS "Flag to enable rocBLAS for Kokkos with HIP" ON)
+  IF(ENABLE_ROCBLAS)
+    FIND_PACKAGE(rocblas)
+    TARGET_LINK_LIBRARIES(gentenlib roc::rocblas)
+    TARGET_COMPILE_DEFINITIONS(gentenlib PUBLIC HAVE_ROCBLAS)
+    MESSAGE(STATUS "GenTen: Using rocBLAS")
+  ENDIF()
+
+  OPTION(ENABLE_ROCSOLVER "Flag to enable rocSOLVER for Kokkos with HIP" ON)
+  IF(ENABLE_ROCSOLVER)
+    FIND_PACKAGE(rocsolver)
+    TARGET_LINK_LIBRARIES(gentenlib roc::rocsolver)
+    TARGET_COMPILE_DEFINITIONS(gentenlib PUBLIC HAVE_ROCSOLVER)
+    MESSAGE(STATUS "GenTen: Using rocSOLVER")
+  ENDIF()
+
+  OPTION(ENABLE_ROCTHRUST "Flag to enable rocTHRUST for Kokkos with HIP" ON)
+  IF(ENABLE_ROCTHRUST)
+    FIND_PACKAGE(rocthrust)
+    TARGET_LINK_LIBRARIES(gentenlib roc::rocthrust)
+    TARGET_COMPILE_DEFINITIONS(gentenlib PUBLIC HAVE_ROCTHRUST)
+    MESSAGE(STATUS "GenTen: Using rocTHRUST")
+  ENDIF()
+ENDIF()
+
 SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${ROL_LIBRARIES} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
 TARGET_LINK_LIBRARIES(${GENTEN_LINK_LIBS})
 INSTALL (
@@ -408,18 +489,29 @@ SET(UNIT_TEST_SRCS
   ${Genten_SOURCE_DIR}/test/Genten_Test_MixedFormats.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_Sptensor.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_Tensor.cpp
+  ${Genten_SOURCE_DIR}/test/Genten_Test_HessVec.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_UnitTests.cpp
   ${Genten_SOURCE_DIR}/test/Genten_Test_Utils.cpp
   )
+IF(ENABLE_LBFGSB)
+  SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
+    ${Genten_SOURCE_DIR}/test/Genten_Test_CpOptLbfgsb.cpp
+    )
+ENDIF()
+IF(ENABLE_ROL)
+  SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
+    ${Genten_SOURCE_DIR}/test/Genten_Test_CpOptRol.cpp
+    )
+ENDIF()
 IF (ENABLE_GCP)
    SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
      ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_SGD.cpp
      )
-  IF(ENABLE_ROL)
-    SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
-      ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_Opt.cpp
-      )
-  ENDIF()
+  # IF(ENABLE_ROL)
+  #   SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
+  #     ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_Opt.cpp
+  #     )
+  # ENDIF()
 ENDIF()
 
 ADD_EXECUTABLE (
@@ -609,14 +701,39 @@ enable_testing()
 add_test(Genten_Unit_Tests ${Genten_BINARY_DIR}/bin/unit_tests)
 SET_TESTS_PROPERTIES(Genten_Unit_Tests PROPERTIES FAIL_REGULAR_EXPRESSION "Error")
 
-# mttkrp -- returns nonzero on failure
-add_test(Genten_MTTKRP_random_atomic ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method atomic)
-add_test(Genten_MTTKRP_random_dupl ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method duplicated)
-add_test(Genten_MTTKRP_random_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method perm)
-add_test(Genten_MTTKRP_aminoacid_atomic ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method atomic)
-add_test(Genten_MTTKRP_aminoacid_dupl ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method duplicated)
-add_test(Genten_MTTKRP_aminoacid_perm ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method perm)
-add_test(Genten_MTTKRP_random_dense ${Genten_BINARY_DIR}/bin/perf_MTTKRP --nc 16 --dims [30,40,50] --dense)
+function(add_mttkrp_tests name cmd args spaces)
+  foreach(space ${spaces})
+    string(CONCAT test_name ${name} "_" ${space})
+    string(CONCAT test_args ${args} " --exec-space " ${space})
+    separate_arguments(test_args)
+    add_test(${test_name} ${cmd} ${test_args})
+  endforeach()
+endfunction(add_mttkrp_tests)
+
+set(kokkos_devices "")
+if (Kokkos_ENABLE_SERIAL)
+  list(APPEND kokkos_devices "serial")
+endif()
+if (Kokkos_ENABLE_OPENMP)
+  list(APPEND kokkos_devices "openmp")
+endif()
+if (Kokkos_ENABLE_THREADS)
+  list(APPEND kokkos_devices "threads")
+endif()
+if (Kokkos_ENABLE_CUDA)
+  list(APPEND kokkos_devices "cuda")
+endif()
+if (Kokkos_ENABLE_HIP)
+  list(APPEND kokkos_devices "hip")
+endif()
+
+add_mttkrp_tests(Genten_MTTKRP_random_atomic "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method atomic" "${kokkos_devices}")
+add_mttkrp_tests(Genten_MTTKRP_random_dupl "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method duplicated" "${kokkos_devices}")
+add_mttkrp_tests(Genten_MTTKRP_random_perm "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method perm" "${kokkos_devices}")
+add_mttkrp_tests(Genten_MTTKRP_aminoacid_atomic "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method atomic" "${kokkos_devices}")
+add_mttkrp_tests(Genten_MTTKRP_aminoacid_dupl "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method duplicated" "${kokkos_devices}")
+add_mttkrp_tests(Genten_MTTKRP_aminoacid_perm "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method perm" "${kokkos_devices}")
+add_mttkrp_tests(Genten_MTTKRP_random_dense "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [30,40,50] --dense" "${kokkos_devices}")
 
 #------------------------------------------------------------
 #---- Config

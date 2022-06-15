@@ -77,6 +77,10 @@ void run_mttkrp(const std::string& inputfilename,
   // Construct a random number generator that matches Matlab.
   Genten::RandomMT cRNG(nRNGseed);
 
+  std::cout << "Genten sparse MTTKRP running on "
+            << Genten::SpaceProperties<Space>::verbose_name()
+            << std::endl;
+
   Sptensor_host_type cData_host;
   Sptensor_type cData;
   Genten::IndxArray cFacDims_host;
@@ -198,6 +202,13 @@ void usage(char **argv)
 {
   std::cout << "Usage: "<< argv[0]<<" [options]" << std::endl;
   std::cout << "options: " << std::endl;
+  std::cout << "  --exec-space <space> execution space to run on: ";
+  for (unsigned i=0; i<Genten::Execution_Space::num_types; ++i) {
+    std::cout << Genten::Execution_Space::names[i];
+    if (i != Genten::Execution_Space::num_types-1)
+      std::cout << ", ";
+  }
+  std::cout << std::endl;
   std::cout << "  --input <string>     path to input sptensor data" << std::endl;
   std::cout << "  --index-base <int>   starting index for tensor nonzeros" << std::endl;
   std::cout << "  --gz                 read tensor in gzip compressed format" << std::endl;
@@ -250,6 +261,12 @@ int main(int argc, char* argv[])
       Genten::connect_vtune();
 
     // Choose parameters: ndims, dim sizes, ncomps.
+     Genten::Execution_Space::type exec_space =
+      parse_ttb_enum(args, "--exec-space",
+                     Genten::Execution_Space::default_type,
+                     Genten::Execution_Space::num_types,
+                     Genten::Execution_Space::types,
+                     Genten::Execution_Space::names);
     std::string inputfilename =
       Genten::parse_string(args,"--input","");
     ttb_indx index_base =
@@ -291,11 +308,48 @@ int main(int argc, char* argv[])
     algParams.mttkrp_method = mttkrp_method;
     algParams.mttkrp_duplicated_factor_matrix_tile_size = mttkrp_tile_size;
 
-    run_mttkrp< Genten::DefaultExecutionSpace >(
-      inputfilename, index_base, gz,
-      cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
-      nMaxNonzeroes, nRNGseed, nIters, algParams);
+    if (exec_space == Genten::Execution_Space::Default)
+      run_mttkrp< Genten::DefaultExecutionSpace >(
+        inputfilename, index_base, gz,
+        cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
+        nMaxNonzeroes, nRNGseed, nIters, algParams);
+#ifdef KOKKOS_ENABLE_CUDA
+    else if (exec_space == Genten::Execution_Space::Cuda)
+      run_mttkrp< Kokkos::Cuda >(
+        inputfilename, index_base, gz,
+        cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
+        nMaxNonzeroes, nRNGseed, nIters, algParams);
+#endif
+#ifdef KOKKOS_ENABLE_HIP
+    else if (exec_space == Genten::Execution_Space::HIP)
+      run_mttkrp< Kokkos::Experimental::HIP >(
+        inputfilename, index_base, gz,
+        cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
+        nMaxNonzeroes, nRNGseed, nIters, algParams);
+#endif
+#ifdef KOKKOS_ENABLE_OPENMP
+    else if (exec_space == Genten::Execution_Space::OpenMP)
+      run_mttkrp< Kokkos::OpenMP >(
+        inputfilename, index_base, gz,
+        cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
+        nMaxNonzeroes, nRNGseed, nIters, algParams);
 
+#endif
+#ifdef KOKKOS_ENABLE_THREADS
+    else if (exec_space == Genten::Execution_Space::Threads)
+      run_mttkrp< Kokkos::Threads >(
+        inputfilename, index_base, gz,
+        cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
+        nMaxNonzeroes, nRNGseed, nIters, algParams);
+
+#endif
+#ifdef KOKKOS_ENABLE_SERIAL
+    else if (exec_space == Genten::Execution_Space::Serial)
+      run_mttkrp< Kokkos::Serial >(
+        inputfilename, index_base, gz,
+        cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
+        nMaxNonzeroes, nRNGseed, nIters, algParams);
+#endif
   }
   catch(std::string sExc)
   {

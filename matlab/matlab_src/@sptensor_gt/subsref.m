@@ -1,4 +1,4 @@
-function a = subsref(t,s)
+function varargout = subsref(t,s)
 %SUBSREF Subscripted reference for a sparse tensor.
 %
 %   We can extract elements or subtensors from a sparse tensor in the
@@ -56,15 +56,24 @@ switch s(1).type
     case '.'
         switch s(1).subs
             case {'subs','indices'}
-                a = tt_subsubsref(double(t.subs'+1), s);
+                varargout{1} = tt_subsubsref(double(t.subs'+1), s);
             case {'vals','values'}
-                a = tt_subsubsref(t.vals, s);
+                varargout{1} = tt_subsubsref(t.vals, s);
             case 'size'
-                a = tt_subsubsref(double(t.size), s);
+                varargout{1} = tt_subsubsref(double(t.size), s);
             case {'perm','perms'}
-                a = tt_subsubsref(double(t.perm'+1), s);
+                varargout{1} = tt_subsubsref(double(t.perm'+1), s);
             case {'alg_params','params'}
-                a = tt_subsubsref(t.alg_params, s);
+                %a = tt_subsubsref(t.alg_params, s);
+                if length(s) == 1
+                  varargout{1} = t.alg_params;
+                else
+                  % Provide support for t.alg_params{:}.
+                  % It isn't clear to me if this correctly supports other uses
+                  n = builtin('numArgumentsFromSubscript', t.alg_params, s(2:end), matlab.mixin.util.IndexingContext.Assignment);
+                  varargout = cell(n,1);
+                  [varargout{:}] = builtin('subsref', t.alg_params, s(2:end));
+                end
             otherwise
                 error(['No such field: ', s(1).subs]);
         end
@@ -114,6 +123,7 @@ switch s(1).type
                 else
                     a = vals;
                 end
+                varargout{1} = a;
                 return;
             end
 
@@ -125,6 +135,7 @@ switch s(1).type
                 a = sptensor_gt(subs(:,kpdims), vals, sz(kpdims));
                 a.alg_params = t.alg_params;
             end
+            varargout{1} = a;
             return;
         end
 
@@ -156,6 +167,7 @@ switch s(1).type
 
         a = extract(t,srchsubs);
         a = tt_subsubsref(a,s);
+        varargout{1} = a;
 
         return;
 

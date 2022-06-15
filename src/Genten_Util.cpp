@@ -99,14 +99,23 @@ void Genten::connect_vtune(const int p_rank) {
   system("sleep 10");
 }
 
+constexpr const Genten::Execution_Space::type Genten::Execution_Space::types[];
+constexpr const char*const Genten::Execution_Space::names[];
+
 constexpr const Genten::Solver_Method::type Genten::Solver_Method::types[];
 constexpr const char*const Genten::Solver_Method::names[];
+
+constexpr const Genten::Opt_Method::type Genten::Opt_Method::types[];
+constexpr const char*const Genten::Opt_Method::names[];
 
 constexpr const Genten::MTTKRP_Method::type Genten::MTTKRP_Method::types[];
 constexpr const char*const Genten::MTTKRP_Method::names[];
 
 constexpr const Genten::MTTKRP_All_Method::type Genten::MTTKRP_All_Method::types[];
 constexpr const char*const Genten::MTTKRP_All_Method::names[];
+
+constexpr const Genten::Hess_Vec_Method::type Genten::Hess_Vec_Method::types[];
+constexpr const char*const Genten::Hess_Vec_Method::names[];
 
 constexpr const Genten::TTM_Method::type Genten::TTM_Method::types[];
 constexpr const char*const Genten::TTM_Method::names[];

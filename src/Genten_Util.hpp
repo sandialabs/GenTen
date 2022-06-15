@@ -57,24 +57,35 @@ namespace Genten {
   typedef Kokkos::DefaultExecutionSpace DefaultExecutionSpace;
   typedef Kokkos::DefaultHostExecutionSpace DefaultHostExecutionSpace;
 }
+
 #ifdef KOKKOS_ENABLE_CUDA
 #define GENTEN_INST_CUDA(INSTMACRO) \
   INSTMACRO(Kokkos::Cuda)
 #else
 #define GENTEN_INST_CUDA(INSTMACRO) /* */
 #endif
+
+#ifdef KOKKOS_ENABLE_HIP
+#define GENTEN_INST_HIP(INSTMACRO) \
+  INSTMACRO(Kokkos::Experimental::HIP)
+#else
+#define GENTEN_INST_HIP(INSTMACRO) /* */
+#endif
+
 #ifdef KOKKOS_ENABLE_OPENMP
 #define GENTEN_INST_OPENMP(INSTMACRO) \
   INSTMACRO(Kokkos::OpenMP)
 #else
 #define GENTEN_INST_OPENMP(INSTMACRO) /* */
 #endif
+
 #ifdef KOKKOS_ENABLE_THREADS
 #define GENTEN_INST_THREADS(INSTMACRO) \
   INSTMACRO(Kokkos::Threads)
 #else
 #define GENTEN_INST_THREADS(INSTMACRO) /* */
 #endif
+
 #ifdef KOKKOS_ENABLE_SERIAL
 #define GENTEN_INST_SERIAL(INSTMACRO) \
   INSTMACRO(Kokkos::Serial)
@@ -85,6 +96,7 @@ namespace Genten {
 #define GENTEN_INST(INSTMACRO)                  \
 namespace Genten {                              \
   GENTEN_INST_CUDA(INSTMACRO)                   \
+  GENTEN_INST_HIP(INSTMACRO)                    \
   GENTEN_INST_OPENMP(INSTMACRO)                 \
   GENTEN_INST_THREADS(INSTMACRO)                \
   GENTEN_INST_SERIAL(INSTMACRO)                 \
@@ -112,22 +124,58 @@ namespace Genten {
 
   enum UploType { Upper, Lower };
 
+  // Execution space to run on
+  struct Execution_Space {
+    enum type {
+      Cuda,
+      HIP,
+      OpenMP,
+      Threads,
+      Serial,
+      Default
+    };
+    static constexpr type types[] = {
+      Cuda, HIP, OpenMP, Threads, Serial, Default
+    };
+    static constexpr unsigned num_types = sizeof(types) / sizeof(types[0]);
+    static constexpr const char* names[] = {
+      "cuda", "hip", "openmp", "threads", "serial", "default"
+    };
+    static constexpr type default_type = Default;
+  };
+
   // Solver method
-  // Sampling functions supported by GCP
   struct Solver_Method {
     enum type {
       CP_ALS,
+      CP_OPT,
       GCP_SGD,
       GCP_OPT
     };
-    static constexpr unsigned num_types = 3;
+    static constexpr unsigned num_types = 4;
     static constexpr type types[] = {
-      CP_ALS, GCP_SGD, GCP_OPT
+      CP_ALS, CP_OPT, GCP_SGD, GCP_OPT
     };
     static constexpr const char* names[] = {
-      "cp-als", "gcp-sgd", "gcp-opt"
+      "cp-als", "cp-opt", "gcp-sgd", "gcp-opt"
     };
     static constexpr type default_type = CP_ALS;
+  };
+
+  // Solver method
+  struct Opt_Method {
+    enum type {
+      LBFGSB,
+      ROL
+    };
+    static constexpr unsigned num_types = 2;
+    static constexpr type types[] = {
+      LBFGSB, ROL
+    };
+    static constexpr const char* names[] = {
+      "lbfgsb", "rol"
+    };
+    static constexpr type default_type = LBFGSB;
   };
 
   // MTTKRP algorithm
@@ -178,6 +226,23 @@ namespace Genten {
     static constexpr type default_type = Default;
   };
 
+  // Sampling functions supported by GCP
+  struct Hess_Vec_Method {
+    enum type {
+      Full,
+      GaussNewton,
+      FiniteDifference
+    };
+    static constexpr unsigned num_types = 3;
+    static constexpr type types[] = {
+      Full, GaussNewton, FiniteDifference
+    };
+    static constexpr const char* names[] = {
+      "full", "gauss-newton", "finite-difference"
+    };
+    static constexpr type default_type = FiniteDifference;
+  };
+
   // TTM algorithm
   struct TTM_Method {
     enum type {
@@ -187,7 +252,7 @@ namespace Genten {
     static constexpr unsigned num_types = 2;
     static constexpr type types[] = {
       DGEMM,
-      Parfor_DGEMM 
+      Parfor_DGEMM
     };
     static constexpr const char* names[] = {
       "dgemm", "parfor-dgemm"

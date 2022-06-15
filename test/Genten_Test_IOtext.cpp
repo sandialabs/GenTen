@@ -53,9 +53,9 @@
 using namespace std;
 using namespace Genten::Test;
 
-
+// These tests are just on the host, so not templated on the space
 void Genten_Test_IO(int            infolevel,
-                 const string & dirname)
+                    const string & dirname)
 {
   initialize("Tests of tensor I/O methods", infolevel);
 

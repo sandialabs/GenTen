@@ -2,7 +2,7 @@
 // ************************************************************************
 //     C++ Tensor Toolbox
 //     Software package for tensor math by Sandia National Laboratories
-// 
+//
 // Sandia National Laboratories is a multiprogram laboratory operated by
 // Sandia Corporation, a wholly owned subsidiary of Lockheed Martin Corporation,
 // for the United States Department of Energy's National Nuclear Security
@@ -43,10 +43,10 @@ void copyFromKtensor(const TensorT<ExecSpace>& x,
   /*const*/ unsigned nd = src.ndims();
   /*const*/ unsigned nc = src.ncomponents();
 
-  // Make VectorSize*TeamSize ~= 256 on Cuda
-  static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
-  const unsigned VectorSize = is_cuda ? nc : 1;
-  const unsigned TeamSize = is_cuda ? (256+nc-1)/nc : 1;
+  // Make VectorSize*TeamSize ~= 256 on Cuda and HIP
+  static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+  const unsigned VectorSize = is_gpu ? nc : 1;
+  const unsigned TeamSize = is_gpu ? (256+nc-1)/nc : 1;
   const ttb_indx N = (ne+TeamSize-1)/TeamSize;
 
   const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);

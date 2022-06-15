@@ -82,6 +82,9 @@
 //---- DEFINED IF GCP IS ENABLED.
 #cmakedefine HAVE_GCP
 
+//---- DEFINED IF LBFGSB IS ENABLED.
+#cmakedefine HAVE_LBFGSB
+
 #include <cstddef>
 
 // Floating-point type

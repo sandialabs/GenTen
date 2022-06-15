@@ -63,16 +63,18 @@ using namespace Genten::Test;
  *  solution, just check that when you multiply the factors together, you
  *  get the original tensor.
  */
+template <typename ExecSpace>
 void Genten_Test_GCP_Opt_Type (int infolevel, const std::string& label,
                                Genten::MTTKRP_Method::type mttkrp_method,
                                const Genten::GCP_LossFunction::type loss_type)
 {
-  typedef Genten::DefaultExecutionSpace exec_space;
+  typedef ExecSpace exec_space;
   typedef Genten::DefaultHostExecutionSpace host_exec_space;
   typedef Genten::SptensorT<exec_space> Sptensor_type;
   typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
 
-  initialize("Test of Genten::GCP_Opt ("+label+")", infolevel);
+  std::string space_name = Genten::SpaceProperties<exec_space>::name();
+  initialize("Test of Genten::GCP_Opt ("+label+", "+space_name+")", infolevel);
 
   MESSAGE("Creating a sparse tensor with data to model");
   Genten::IndxArray  dims(3);
@@ -173,15 +175,34 @@ void Genten_Test_GCP_Opt_Type (int infolevel, const std::string& label,
   return;
 }
 
-void Genten_Test_GCP_Opt (int infolevel)
+template <typename ExecSpace>
+void Genten_Test_GCP_Opt_Space (int infolevel)
 {
-  Genten_Test_GCP_Opt_Type(infolevel,"Atomic, Gaussian",
-                           Genten::MTTKRP_Method::Atomic,
-                           Genten::GCP_LossFunction::Gaussian);
-  Genten_Test_GCP_Opt_Type(infolevel,"Duplicated, Gaussian",
-                           Genten::MTTKRP_Method::Duplicated,
-                           Genten::GCP_LossFunction::Gaussian);
-  Genten_Test_GCP_Opt_Type(infolevel,"Perm, Gaussian",
-                           Genten::MTTKRP_Method::Perm,
-                           Genten::GCP_LossFunction::Gaussian);
+  Genten_Test_GCP_Opt_Type<ExecSpace>(infolevel,"Atomic, Gaussian",
+                                      Genten::MTTKRP_Method::Atomic,
+                                      Genten::GCP_LossFunction::Gaussian);
+  Genten_Test_GCP_Opt_Type<ExecSpace>(infolevel,"Duplicated, Gaussian",
+                                      Genten::MTTKRP_Method::Duplicated,
+                                      Genten::GCP_LossFunction::Gaussian);
+  Genten_Test_GCP_Opt_Type<ExecSpace>(infolevel,"Perm, Gaussian",
+                                      Genten::MTTKRP_Method::Perm,
+                                      Genten::GCP_LossFunction::Gaussian);
+}
+
+void Genten_Test_GCP_Opt(int infolevel) {
+#ifdef KOKKOS_ENABLE_CUDA
+  Genten_Test_GCP_Opt_Space<Kokkos::Cuda>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_HIP
+  Genten_Test_GCP_Opt_Space<Kokkos::Experimental::HIP>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_OPENMP
+  Genten_Test_GCP_Opt_Space<Kokkos::OpenMP>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_THREADS
+  Genten_Test_GCP_Opt_Space<Kokkos::Threads>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_SERIAL
+  Genten_Test_GCP_Opt_Space<Kokkos::Serial>(infolevel);
+#endif
 }

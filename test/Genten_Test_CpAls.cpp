@@ -196,10 +196,11 @@ static void  evaluateResult (const int             infolevel,
  * the factor matrix columns shown above.  This is consistent with what the code
  * produces.
  */
+template <typename ExecSpace>
 void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
                              int infolevel, const std::string& label)
 {
-  typedef Genten::DefaultExecutionSpace exec_space;
+  typedef ExecSpace exec_space;
   typedef Genten::DefaultHostExecutionSpace host_exec_space;
   typedef Genten::SptensorT<exec_space> Sptensor_type;
   typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
@@ -208,7 +209,8 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
 
   SETUP_DISABLE_CERR;
 
-  initialize("Test of Genten::CpAls ("+label+")", infolevel);
+  std::string space_name = Genten::SpaceProperties<exec_space>::name();
+  initialize("Test of Genten::CpAls ("+label+", "+space_name+")", infolevel);
 
   MESSAGE("Creating a sparse tensor with data to model");
   Genten::IndxArray  dims(3);
@@ -294,27 +296,25 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
   {
     // Request performance information on every 3rd iteration.
     // Allocation adds two more for start and stop states of the algorithm.
-    ttb_indx  nMaxPerfSize = 2 + (algParams.maxiters / 3);
-    Genten::CpAlsPerfInfo *  perfInfo = new Genten::CpAlsPerfInfo[nMaxPerfSize];
+    Genten::PerfHistory perfInfo;
     deep_copy(result_dev, initialBasis_dev);
     Genten::cpals_core(X_dev, result_dev, algParams, itersCompleted, resNorm,
                        3, perfInfo);
     // Check performance information.
     bool  bIsOK = true;
-    for (ttb_indx  i = 0; i < nMaxPerfSize; i++)
+    for (ttb_indx i = 0; i < perfInfo.size(); i++)
     {
-      if ((perfInfo[i].nIter != -1) && (perfInfo[i].nIter > 0))
+      if ((perfInfo[i].iteration > 0))
       {
-        if ((perfInfo[i].dFit < 0.99) || (perfInfo[i].dFit > 1.00))
+        if ((perfInfo[i].fit < 0.99) || (perfInfo[i].fit > 1.00))
           bIsOK = false;
-        if (perfInfo[i].dResNorm > 0.03)
+        if (perfInfo[i].residual > 0.03)
           bIsOK = false;
-        if (perfInfo[i].dCumTime < 0.0)
+        if (perfInfo[i].cum_time < 0.0)
           bIsOK = false;
       }
     }
     ASSERT( bIsOK, "Performance info from cpals_core is reasonable." );
-    delete[] perfInfo;
   }
   catch(std::string sExc)
   {
@@ -343,8 +343,9 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
   {
     deep_copy(result_dev, initialZero_dev);
     algParams.printitn = 0;
+    Genten::PerfHistory history;
     Genten::cpals_core(X_dev, result_dev, algParams, itersCompleted, resNorm,
-                       0, NULL);
+                       0, history);
   }
   catch(std::string sExc)
   {
@@ -365,8 +366,9 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
   {
     algParams.printitn = infolevel;
     deep_copy(result_dev, initialBasis_dev);
+    Genten::PerfHistory history;
     Genten::cpals_core(Xd_dev, result_dev, algParams, itersCompleted, resNorm,
-                       0, nullptr);
+                       0, history);
   }
   catch(std::string sExc)
   {
@@ -383,16 +385,34 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
   return;
 }
 
-void Genten_Test_CpAls (int infolevel)
+template <typename ExecSpace>
+void Genten_Test_CpAls_Space (int infolevel)
 {
-  typedef Genten::DefaultExecutionSpace exec_space;
-  typedef Genten::SpaceProperties<exec_space> space_prop;
+  typedef Genten::SpaceProperties<ExecSpace> space_prop;
 
-  Genten_Test_CpAls_Type(Genten::MTTKRP_Method::Atomic,infolevel,
-                         "Atomic");
-  if (!space_prop::is_cuda)
-    Genten_Test_CpAls_Type(Genten::MTTKRP_Method::Duplicated,infolevel,
-                           "Duplicated");
-  Genten_Test_CpAls_Type(Genten::MTTKRP_Method::Perm,infolevel,
-                         "Perm");
+  Genten_Test_CpAls_Type<ExecSpace>(Genten::MTTKRP_Method::Atomic,infolevel,
+                                    "Atomic");
+  if (!space_prop::is_gpu)
+    Genten_Test_CpAls_Type<ExecSpace>(
+      Genten::MTTKRP_Method::Duplicated,infolevel, "Duplicated");
+  Genten_Test_CpAls_Type<ExecSpace>(Genten::MTTKRP_Method::Perm,infolevel,
+                                    "Perm");
+}
+
+void Genten_Test_CpAls(int infolevel) {
+#ifdef KOKKOS_ENABLE_CUDA
+  Genten_Test_CpAls_Space<Kokkos::Cuda>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_HIP
+  Genten_Test_CpAls_Space<Kokkos::Experimental::HIP>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_OPENMP
+  Genten_Test_CpAls_Space<Kokkos::OpenMP>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_THREADS
+  Genten_Test_CpAls_Space<Kokkos::Threads>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_SERIAL
+  Genten_Test_CpAls_Space<Kokkos::Serial>(infolevel);
+#endif
 }

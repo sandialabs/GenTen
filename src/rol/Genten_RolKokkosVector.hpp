@@ -40,13 +40,10 @@
 
 #pragma once
 
-#include <cstdlib>
 #include <cassert>
 
 #include "ROL_Vector.hpp"
-#include "Genten_Kokkos.hpp"
-#include "Genten_Ktensor.hpp"
-#include "Kokkos_Random.hpp"
+#include "Genten_KokkosVector.hpp"
 
 #include "Teuchos_TimeMonitor.hpp"
 
@@ -61,107 +58,80 @@ namespace Genten {
   class RolKokkosVector : public ROL::Vector<ttb_real> {
   public:
 
+    typedef KokkosVector<ExecSpace> kokkos_vector;
     typedef ExecSpace exec_space;
-    typedef Kokkos::View<ttb_real*,exec_space> view_type;
-    typedef KtensorT<exec_space> Ktensor_type;
+    typedef typename kokkos_vector::view_type view_type;
+    typedef typename kokkos_vector::Ktensor_type Ktensor_type;
 
-    RolKokkosVector(const Ktensor_type& V_, const bool make_view) :
-      nc(V_.ncomponents()), nd(V_.ndims()), sz(nd)
+    // This just copies the shape of V, not the values
+    RolKokkosVector(const Ktensor_type& V, const bool make_view) : kv(V)
     {
       assert(make_view == false);
-
-      for (unsigned j=0; j<nd; ++j)
-        sz[j] = V_[j].nRows();
-      initialize();
     }
 
-    RolKokkosVector(const unsigned nc_, const unsigned nd_,
-                     const IndxArrayT<ExecSpace> & sz_) :
-      nc(nc_), nd(nd_), sz(sz_)
+    RolKokkosVector(const unsigned nc, const unsigned nd, const IndxArray& sz) :
+      kv(nc,nd,sz)
     {
-      initialize();
     }
+
+    // Constructor taking a kokkos_vector.  This is a shallow-copy, unlike
+    // the other constructors which just copy the shape, so use carefully!
+    RolKokkosVector(const kokkos_vector& kv_) : kv(kv_) {}
 
     virtual ~RolKokkosVector() {}
 
-    view_type getView() const { return v; }
+    view_type getView() const { return kv.getView(); }
 
     // Create and return a Ktensor that is a view of the vector data
     Ktensor_type getKtensor() const
     {
       TEUCHOS_FUNC_TIME_MONITOR("ROL::Vector::getKtensor");
-
-      // Create Ktensor from subviews of 1-D data
-      typedef FacMatrixT<exec_space> fac_matrix_type;
-      Ktensor_type V(nc, nd);
-      ttb_real *d = v.data();
-      ttb_indx offset = 0;
-      for (unsigned i=0; i<nd; ++i) {
-        const unsigned nr = sz[i];
-        typename fac_matrix_type::view_type s(d+offset, nr, nc);
-        fac_matrix_type A(s);
-        V.set_factor(i, A);
-        offset += nr*nc;
-      }
-      V.weights() = 1.0;
-      return V;
+      return kv.getKtensor();
     }
 
     ROL::Ptr<RolKokkosVector> clone_vector() const
     {
-      return ROL::makePtr< RolKokkosVector<exec_space> >(nc,nd,sz);
+      return ROL::makePtr< RolKokkosVector<exec_space> >(kv.clone());
     }
 
     void copyToKtensor(const Ktensor_type& Kt) const {
       TEUCHOS_FUNC_TIME_MONITOR("ROL::Vector::copyToKtensor");
-      deep_copy(Kt, getKtensor());
-      Kt.weights() = 1.0;
+      kv.copyToKtensor(Kt);
     }
 
     void copyFromKtensor(const Ktensor_type& Kt) const {
       TEUCHOS_FUNC_TIME_MONITOR("ROL::Vector::copyFromKtensor");
-      deep_copy(getKtensor(), Kt);
+      kv.copyFromKtensor(Kt);
     }
 
     virtual void plus(const ROL::Vector<ttb_real>& xx)
     {
       TEUCHOS_FUNC_TIME_MONITOR("ROL::Vector::plus");
       const RolKokkosVector& x = dynamic_cast<const RolKokkosVector&>(xx);
-      view_type my_v = v;
-      view_type xv = x.v;
-      apply_func<exec_space>(KOKKOS_LAMBDA(const ttb_indx i)
-      {
-        my_v(i) += xv(i);
-      });
+      kv.plus(x.kv);
     }
 
     virtual void scale(const ttb_real alpha)
     {
       TEUCHOS_FUNC_TIME_MONITOR("ROL::Vector::scale");
-      view_type my_v = v;
-      apply_func<exec_space>(KOKKOS_LAMBDA(const ttb_indx i)
-      {
-        my_v(i) *= alpha;
-      });
+      kv.scale(alpha);
     }
 
     virtual ttb_real dot(const ROL::Vector<ttb_real>& xx) const
     {
       TEUCHOS_FUNC_TIME_MONITOR("ROL::Vector::dot");
       const RolKokkosVector& x = dynamic_cast<const RolKokkosVector&>(xx);
-      view_type my_v = v;
-      view_type xv = x.v;
-      ttb_real result = 0.0;
-      reduce_func<exec_space>(KOKKOS_LAMBDA(const ttb_indx i, ttb_real& d)
-      {
-        d += my_v(i)*xv(i);
-      }, result);
-      return result;
+      return kv.dot(x.kv);
     }
 
     virtual ttb_real norm() const
     {
-      return std::sqrt(dot(*this));
+      return kv.norm();
+    }
+
+    ttb_real normInf() const
+    {
+      return kv.normInf();
     }
 
     virtual ROL::Ptr< ROL::Vector<ttb_real> > clone() const
@@ -174,29 +144,20 @@ namespace Genten {
     {
       TEUCHOS_FUNC_TIME_MONITOR("ROL::Vector::axpy");
       const RolKokkosVector& x = dynamic_cast<const RolKokkosVector&>(xx);
-      view_type my_v = v;
-      view_type xv = x.v;
-      apply_func<exec_space>(KOKKOS_LAMBDA(const ttb_indx i)
-      {
-        my_v(i) += alpha*xv(i);
-      });
+      kv.axpy(alpha,x.kv);
     }
 
     virtual void zero()
     {
       TEUCHOS_FUNC_TIME_MONITOR("ROL::Vector::zero");
-      view_type my_v = v;
-      apply_func<exec_space>(KOKKOS_LAMBDA(const ttb_indx i)
-      {
-        my_v(i) = 0.0;
-      });
+      kv.zero();
     }
 
     virtual ROL::Ptr< ROL::Vector<ttb_real> > basis(const int i) const
     {
       TEUCHOS_FUNC_TIME_MONITOR("ROL::Vector::basis");
       ROL::Ptr<RolKokkosVector> x = clone_vector();
-      view_type xv = x->v;
+      view_type xv = x->kv.getView();
       Kokkos::parallel_for(Kokkos::RangePolicy<exec_space>(0,1),
                            KOKKOS_LAMBDA(const ttb_indx)
       {
@@ -207,19 +168,14 @@ namespace Genten {
 
     virtual int dimension() const
     {
-      return v.extent(0);
+      return kv.dimension();
     }
 
     virtual void set(const ROL::Vector<ttb_real>& xx)
     {
       TEUCHOS_FUNC_TIME_MONITOR("ROL::Vector::set");
       const RolKokkosVector& x = dynamic_cast<const RolKokkosVector&>(xx);
-      view_type my_v = v;
-      view_type xv = x.v;
-      apply_func<exec_space>(KOKKOS_LAMBDA(const ttb_indx i)
-      {
-        my_v(i) = xv(i);
-      });
+      kv.set(x.kv);
     }
 
     virtual const Vector<ttb_real>& dual() const
@@ -238,13 +194,13 @@ namespace Genten {
     {
       // Have to transfer to the host because these functions classes
       // use virtual functions
-      host_view_type h_v = Kokkos::create_mirror_view(v);
-      Kokkos::deep_copy(h_v, v);
-      apply_func<host_exec_space>([&](const ttb_indx i)
+      host_view_type h_v = Kokkos::create_mirror_view(kv.getView());
+      Kokkos::deep_copy(h_v, kv.getView());
+      kv.apply_func<host_exec_space>([&](const ttb_indx i)
       {
         h_v(i) = f.apply(h_v(i));
       });
-      Kokkos::deep_copy(v, h_v);
+      Kokkos::deep_copy(kv.getView(), h_v);
     }
 
     virtual void applyBinary(
@@ -255,15 +211,15 @@ namespace Genten {
 
       // Have to transfer to the host because these functions classes
       // use virtual functions
-      host_view_type h_v = Kokkos::create_mirror_view(v);
-      host_view_type h_x = Kokkos::create_mirror_view(x.v);
-      Kokkos::deep_copy(h_v, v);
-      Kokkos::deep_copy(h_x, x.v);
-      apply_func<host_exec_space>([&](const ttb_indx i)
+      host_view_type h_v = Kokkos::create_mirror_view(kv.getView());
+      host_view_type h_x = Kokkos::create_mirror_view(x.kv.getView());
+      Kokkos::deep_copy(h_v, kv.getView());
+      Kokkos::deep_copy(h_x, x.kv.getView());
+      kv.apply_func<host_exec_space>([&](const ttb_indx i)
       {
         h_v(i) = f.apply(h_v(i), h_x(i));
       });
-      Kokkos::deep_copy(v, h_v);
+      Kokkos::deep_copy(kv.getView(), h_v);
     }
 
     virtual ttb_real reduce(
@@ -271,10 +227,10 @@ namespace Genten {
     {
       // Have to transfer to the host because these functions classes
       // use virtual functions
-      host_view_type h_v = Kokkos::create_mirror_view(v);
-      Kokkos::deep_copy(h_v, v);
+      host_view_type h_v = Kokkos::create_mirror_view(kv.getView());
+      Kokkos::deep_copy(h_v, kv.getView());
       ttb_real result = 0.0;
-      reduce_func<host_exec_space>([&](const ttb_indx i, ttb_real& d)
+      kv.reduce_func<host_exec_space>([&](const ttb_indx i, ttb_real& d)
       {
         r.reduce(h_v(i), d);
       }, result);
@@ -284,66 +240,23 @@ namespace Genten {
 
     virtual void print(std::ostream& outStream) const
     {
-      host_view_type h_v = Kokkos::create_mirror_view(v);
-      Kokkos::deep_copy(h_v, v);
-      const ttb_indx n = h_v.extent(0);
-      outStream << "v = [" << std::endl;
-      for (ttb_indx i=0; i<n; ++i)
-        outStream << "\t" << h_v(i) << std::endl;
-      outStream << std::endl;
+      kv.print(outStream);
     }
 
     virtual void setScalar(const ttb_real C) {
       TEUCHOS_FUNC_TIME_MONITOR("ROL::Vector::setScalar");
-      view_type my_v = v;
-      apply_func<exec_space>(KOKKOS_LAMBDA(const ttb_indx i)
-      {
-        my_v(i) = C;
-      });
+      kv.setScalar(C);
     }
 
     virtual void randomize(const ttb_real l = 0.0, const ttb_real u = 1.0)
     {
       TEUCHOS_FUNC_TIME_MONITOR("ROL::Vector::randomize");
-      const ttb_indx seed = std::rand();
-      Kokkos::Random_XorShift64_Pool<exec_space> rand_pool(seed);
-      Kokkos::fill_random(v, rand_pool, l, u);
+      kv.randomize(l,u);
     }
 
   protected:
 
-    typedef typename view_type::HostMirror host_view_type;
-    typedef typename host_view_type::execution_space host_exec_space;
-
-    template <typename Space, typename Func>
-    void apply_func(const Func& f) const
-    {
-      const ttb_indx n = v.extent(0);
-      Kokkos::RangePolicy<Space> policy(0,n);
-      Kokkos::parallel_for(policy, f);
-    }
-
-    template <typename Space, typename Func>
-    void reduce_func(const Func& f, ttb_real& d) const
-    {
-      const ttb_indx n = v.extent(0);
-      Kokkos::RangePolicy<Space> policy(0,n);
-      Kokkos::parallel_reduce(policy, f, d);
-    }
-
-    void initialize()
-    {
-      // Form 1-D array of data
-      ttb_indx n = 0;
-      for (unsigned i=0; i<nd; ++i)
-        n += sz[i]*nc;
-      v = view_type(Kokkos::view_alloc(Kokkos::WithoutInitializing, "v"), n);
-    }
-
-    unsigned nc;
-    unsigned nd;
-    IndxArrayT<exec_space> sz;
-    view_type v;
+    kokkos_vector kv;
 
   };
 

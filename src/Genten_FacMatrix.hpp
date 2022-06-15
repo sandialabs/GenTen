@@ -88,7 +88,7 @@ public:
     // Default for whether to use full or symmetric Gram matrix.  Currently
     // use full only on GPU, symmetric everywhere else.  Todo:  check KNL
     static constexpr bool full_gram_default =
-      Genten::is_cuda_space<ExecSpace>::value;
+      Genten::is_gpu_space<ExecSpace>::value;
 
     /** ----------------------------------------------------------------
      *  @name Constructors and Destructors
@@ -268,6 +268,10 @@ public:
     /* accumulate y into x */
     void plus(const FacMatrixT & y) const;
 
+    // x = a*y + b*x
+    /* accumulate y into x */
+    void update(const ttb_real a, const FacMatrixT& y, const ttb_real b) const;
+
     // x += yi forall yi in ya
     void plusAll(const FacMatArrayT<ExecSpace> & ya) const;
 
@@ -334,6 +338,15 @@ public:
     void multByVector(bool                bTranspose,
                       const ArrayT<ExecSpace> &  x,
                             ArrayT<ExecSpace> &  y) const;
+
+    //! Perform matrix-matrix multiply
+    /*!
+     * Commputes C <- alpha * op(A) * op(B) + beta*C where C is *this
+     * and op() may be a transpose or not.
+     */
+    void gemm(const bool trans_a, const bool trans_b, const ttb_real alpha,
+              const FacMatrixT<ExecSpace>& A, const FacMatrixT<ExecSpace>& B,
+              const ttb_real beta) const;
 
     //! Solve AX = B' where B is this matrix.
     /*!
@@ -540,9 +553,9 @@ void FacMatrixT<ExecSpace>::apply_func(const Func& f) const
 
   const unsigned block_size = 128;
   const unsigned team_size =
-    Genten::is_cuda_space<ExecSpace>::value ? 16 : 1;
+    Genten::is_gpu_space<ExecSpace>::value ? 16 : 1;
   const unsigned vector_size =
-    Genten::is_cuda_space<ExecSpace>::value ? 256/team_size : 1;
+    Genten::is_gpu_space<ExecSpace>::value ? 256/team_size : 1;
   const ttb_indx nr = data.extent(0);
   const unsigned nc = data.extent(1);
   const ttb_indx N = (nr+block_size-1)/block_size;
@@ -573,9 +586,9 @@ void FacMatrixT<ExecSpace>::reduce_func(const Func& f, const Reducer& r) const
 
   const unsigned block_size = 128;
   const unsigned team_size =
-    Genten::is_cuda_space<ExecSpace>::value ? 16 : 1;
+    Genten::is_gpu_space<ExecSpace>::value ? 16 : 1;
   const unsigned vector_size =
-    Genten::is_cuda_space<ExecSpace>::value ? 256/team_size : 1;
+    Genten::is_gpu_space<ExecSpace>::value ? 256/team_size : 1;
   const ttb_indx nr = data.extent(0);
   const unsigned nc = data.extent(1);
   const ttb_indx N = (nr+block_size-1)/block_size;

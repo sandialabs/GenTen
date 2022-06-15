@@ -55,9 +55,10 @@ using namespace Genten::Test;
 /* This file contains unit tests for operations involving mixed tensor formats.
  */
 
+template <typename ExecSpace>
 void Genten_Test_MixedFormats_Impl(int infolevel)
 {
-  typedef Genten::DefaultExecutionSpace exec_space;
+  typedef ExecSpace exec_space;
   typedef Genten::DefaultHostExecutionSpace host_exec_space;
   typedef Genten::SptensorT<exec_space> Sptensor_type;
   typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
@@ -66,7 +67,9 @@ void Genten_Test_MixedFormats_Impl(int infolevel)
   typedef Genten::TensorT<exec_space> Tensor_type;
   typedef Genten::TensorT<host_exec_space> Tensor_host_type;
 
-  initialize("Tests involving mixed format tensors", infolevel);
+  std::string space_name = Genten::SpaceProperties<exec_space>::name();
+  initialize("Tests involving mixed format tensors (" + space_name + ")",
+             infolevel);
 
   Genten::IndxArray dims;
 
@@ -305,17 +308,19 @@ void Genten_Test_MixedFormats_Impl(int infolevel)
 
 }
 
+template <typename ExecSpace>
 void Genten_Test_MTTKRP_Type(Genten::MTTKRP_Method::type mttkrp_method,
                              int infolevel, const std::string& label)
 {
-  typedef Genten::DefaultExecutionSpace exec_space;
+  typedef ExecSpace exec_space;
   typedef Genten::DefaultHostExecutionSpace host_exec_space;
   typedef Genten::SptensorT<exec_space> Sptensor_type;
   typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
   typedef Genten::KtensorT<exec_space> Ktensor_type;
   typedef Genten::KtensorT<host_exec_space> Ktensor_host_type;
 
-  initialize("MTTKRP tests ("+label+")", infolevel);
+  std::string space_name = Genten::SpaceProperties<exec_space>::name();
+  initialize("MTTKRP tests ("+label+", "+space_name+")", infolevel);
 
   Genten::IndxArray dims;
 
@@ -450,17 +455,19 @@ void Genten_Test_MTTKRP_Type(Genten::MTTKRP_Method::type mttkrp_method,
   return;
 }
 
+template <typename ExecSpace>
 void Genten_Test_MTTKRP_All_Type(Genten::MTTKRP_All_Method::type mttkrp_method,
                                  int infolevel, const std::string& label)
 {
-  typedef Genten::DefaultExecutionSpace exec_space;
+  typedef ExecSpace exec_space;
   typedef Genten::DefaultHostExecutionSpace host_exec_space;
   typedef Genten::SptensorT<exec_space> Sptensor_type;
   typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
   typedef Genten::KtensorT<exec_space> Ktensor_type;
   typedef Genten::KtensorT<host_exec_space> Ktensor_host_type;
 
-  initialize("MTTKRP-All tests ("+label+")", infolevel);
+  std::string space_name = Genten::SpaceProperties<exec_space>::name();
+  initialize("MTTKRP-All tests ("+label+", "+space_name+")", infolevel);
 
   Genten::IndxArray dims;
 
@@ -565,26 +572,44 @@ void Genten_Test_MTTKRP_All_Type(Genten::MTTKRP_All_Method::type mttkrp_method,
   return;
 }
 
-void Genten_Test_MixedFormats(int infolevel)
+template <typename ExecSpace>
+void Genten_Test_MixedFormats_Space(int infolevel)
 {
-  typedef Genten::DefaultExecutionSpace exec_space;
-  typedef Genten::SpaceProperties<exec_space> space_prop;
+  typedef Genten::SpaceProperties<ExecSpace> space_prop;
 
-  Genten_Test_MixedFormats_Impl(infolevel);
+  Genten_Test_MixedFormats_Impl<ExecSpace>(infolevel);
 
-  Genten_Test_MTTKRP_Type(Genten::MTTKRP_Method::Atomic, infolevel,
-                          "Atomic");
-  if (!space_prop::is_cuda)
-    Genten_Test_MTTKRP_Type(Genten::MTTKRP_Method::Duplicated, infolevel,
-                            "Duplicated");
-  Genten_Test_MTTKRP_Type(Genten::MTTKRP_Method::Perm, infolevel,
-                          "Perm");
+  Genten_Test_MTTKRP_Type<ExecSpace>(
+    Genten::MTTKRP_Method::Atomic, infolevel, "Atomic");
+  if (!space_prop::is_gpu)
+    Genten_Test_MTTKRP_Type<ExecSpace>(
+      Genten::MTTKRP_Method::Duplicated, infolevel, "Duplicated");
+  Genten_Test_MTTKRP_Type<ExecSpace>(
+    Genten::MTTKRP_Method::Perm, infolevel, "Perm");
 
-  Genten_Test_MTTKRP_All_Type(Genten::MTTKRP_All_Method::Iterated, infolevel,
-                              "Iterated");
-  Genten_Test_MTTKRP_All_Type(Genten::MTTKRP_All_Method::Atomic, infolevel,
-                              "Atomic");
-  if (!space_prop::is_cuda)
-    Genten_Test_MTTKRP_All_Type(Genten::MTTKRP_All_Method::Duplicated,
-                                infolevel, "Duplicated");
+  Genten_Test_MTTKRP_All_Type<ExecSpace>(
+    Genten::MTTKRP_All_Method::Iterated, infolevel, "Iterated");
+  Genten_Test_MTTKRP_All_Type<ExecSpace>(
+    Genten::MTTKRP_All_Method::Atomic, infolevel, "Atomic");
+  if (!space_prop::is_gpu)
+    Genten_Test_MTTKRP_All_Type<ExecSpace>(
+      Genten::MTTKRP_All_Method::Duplicated, infolevel, "Duplicated");
+}
+
+void Genten_Test_MixedFormats(int infolevel) {
+#ifdef KOKKOS_ENABLE_CUDA
+  Genten_Test_MixedFormats_Space<Kokkos::Cuda>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_HIP
+  Genten_Test_MixedFormats_Space<Kokkos::Experimental::HIP>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_OPENMP
+  Genten_Test_MixedFormats_Space<Kokkos::OpenMP>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_THREADS
+  Genten_Test_MixedFormats_Space<Kokkos::Threads>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_SERIAL
+  Genten_Test_MixedFormats_Space<Kokkos::Serial>(infolevel);
+#endif
 }
