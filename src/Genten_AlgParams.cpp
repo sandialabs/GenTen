@@ -403,18 +403,21 @@ void Genten::AlgParams::print_help(std::ostream& out)
     if (i != Genten::GCP_Streaming_Solver::num_types-1)
       out << ", ";
   }
+  out << std::endl;
   out << "  --history-method <type> history method for streaming GCP: ";
   for (unsigned i=0; i<Genten::GCP_Streaming_History_Method::num_types; ++i) {
     out << Genten::GCP_Streaming_History_Method::names[i];
     if (i != Genten::GCP_Streaming_History_Method::num_types-1)
       out << ", ";
   }
+  out << std::endl;
   out << "  --window-method <type> window method for streaming GCP: ";
   for (unsigned i=0; i<Genten::GCP_Streaming_Window_Method::num_types; ++i) {
     out << Genten::GCP_Streaming_Window_Method::names[i];
     if (i != Genten::GCP_Streaming_Window_Method::num_types-1)
       out << ", ";
   }
+  out << std::endl;
   out << "  --window-size       Number of terms in streaming history window."
       << std::endl;
   out << "  --window-weight     Multiplier for each streaming window term."
