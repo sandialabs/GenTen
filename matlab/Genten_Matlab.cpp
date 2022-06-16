@@ -137,6 +137,63 @@ mxBuildArgList(int nargs, int offset, const mxArray* margs[]) {
   return args;
 }
 
+Genten::AlgParams
+mxGetAlgParams(const mxArray* ptr) {
+  std::vector<std::string> args;
+
+  if (mxIsStruct(ptr)) {
+    const int num_fields = mxGetNumberOfFields(ptr);
+    args = std::vector<std::string>(2*num_fields);
+    for (int i=0; i<num_fields; ++i) {
+      std::string name = std::string(mxGetFieldNameByNumber(ptr, i));
+      args[2*i] = name;
+      const mxArray* arg = mxGetFieldByNumber(ptr, 0, i);
+      if (mxIsScalar(arg))
+        args[2*i+1] = std::to_string(mxGetScalar(arg));
+      else if (mxIsChar(arg))
+        args[2*i+1] = mxGetStdString(arg);
+      else {
+        Genten::error(
+          std::string("Field ") + std::to_string(i) +
+          std::string(" of struct with name ") + args[2*i] +
+          std::string(" is not a scalar or string!"));
+      }
+    }
+  }
+
+  else if (mxIsCell(ptr)) {
+    const int num_fields = mxGetNumberOfElements(ptr);
+    if (num_fields % 2 == 1)
+      Genten::error("algParams cell array must have an even length!");
+    args = std::vector<std::string>(num_fields);
+    for (int i=0; i<num_fields; i+=2) {
+      const mxArray* cell = mxGetCell(ptr, i);
+      if (!mxIsChar(cell))
+        Genten::error(
+          std::string("Entry ") + std::to_string(i) +
+          std::string(" of algPrams cell array is not a string!"));
+      args[i] = mxGetStdString(cell);
+      const mxArray* arg = mxGetCell(ptr,i+1);
+      if (mxIsScalar(arg))
+        args[i+1] = std::to_string(mxGetScalar(arg));
+      else if (mxIsChar(arg))
+        args[i+1] = mxGetStdString(arg);
+      else {
+        Genten::error(
+          std::string("Entry ") + std::to_string(i+1) +
+          std::string(" of algParams cell array is not a scalar or string!"));
+      }
+    }
+  }
+
+  else
+    Genten::error("algParams argument is not a struct or cell array!");
+
+  Genten::AlgParams algParams;
+  algParams.parse(args);
+  return algParams;
+}
+
 void GentenInitialize() {
   // Initialize Kokkos
   if (!Kokkos::is_initialized()) {
