@@ -205,12 +205,12 @@ times(const Genten::FacMatrixT<ExecSpace> & v) const
 
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
-plus(const Genten::FacMatrixT<ExecSpace> & y) const
+plus(const Genten::FacMatrixT<ExecSpace> & y, const ttb_real s) const
 {
   // TODO: check size compatibility, parallelize
   auto data_1d = make_data_1d();
   auto y_data_1d = y.make_data_1d();
-  data_1d.plus(y_data_1d);
+  data_1d.plus(y_data_1d, s);
 }
 
 template <typename ExecSpace>
@@ -272,6 +272,14 @@ times(ttb_real a) const
 {
   auto data_1d = make_data_1d();
   data_1d.times(a);
+}
+
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+plus(ttb_real a) const
+{
+  auto data_1d = make_data_1d();
+  data_1d.shift(a);
 }
 
 namespace Genten {
@@ -764,23 +772,41 @@ oprod(const Genten::ArrayT<ExecSpace> & v) const
   cali::Function cali_func("Genten::FacMatrix::oprod");
 #endif
 
-  // TODO: Replace with call to BLAS2:DGER
-
   const ttb_indx n = v.size();
-  // for (ttb_indx j = 0; j < n; j ++)
-  // {
-  //   for (ttb_indx i = 0; i < n; i ++)
-  //   {
-  //     this->entry(i,j) = v[i] * v[j];
-  //   }
-  // }
+  assert(data.extent(0) == n);
+  assert(data.extent(1) == n);
+
   view_type d = data;
   Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,n),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
     const ttb_real vi = v[i];
-    for (ttb_indx j = 0; j < n; j ++)
+    for (ttb_indx j=0; j<n; ++j)
       d(i,j) = vi * v[j];
+  }, "Genten::FacMatrix::oprod_kernel");
+}
+
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+oprod(const Genten::ArrayT<ExecSpace> & v1,
+      const Genten::ArrayT<ExecSpace> & v2) const
+{
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::FacMatrix::oprod");
+#endif
+
+  const ttb_indx m = v1.size();
+  const ttb_indx n = v2.size();
+  assert(data.extent(0) == m);
+  assert(data.extent(1) == n);
+
+  view_type d = data;
+  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,m),
+                       KOKKOS_LAMBDA(const ttb_indx i)
+  {
+    const ttb_real vi = v1[i];
+    for (ttb_indx j=0; j<n; ++j)
+      d(i,j) = vi * v2[j];
   }, "Genten::FacMatrix::oprod_kernel");
 }
 
@@ -1294,6 +1320,42 @@ colScale(const Genten::ArrayT<ExecSpace> & v, bool inverse) const
     Impl::colScale_kernel<ExecSpace,64>(data, w);
 }
 
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+rowScale(const Genten::ArrayT<ExecSpace> & v, bool inverse) const
+{
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::FacMatrix::rowScale");
+#endif
+
+  const ttb_indx m = data.extent(0);
+  const ttb_indx n = data.extent(1);
+  assert(v.size() == m);
+
+  auto d = data;
+
+  const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+  // t = largest power of 2 <= n at most 256
+  const unsigned t = std::min(
+    256u, static_cast<unsigned>(std::pow(2,static_cast<unsigned>(std::log2(n)))));
+  const unsigned VectorSize = is_cuda ? t : 1;
+  const unsigned TeamSize = is_cuda ? 256/t : 1;
+  const ttb_indx LeagueSize = (m+TeamSize-1)/TeamSize;
+  typedef Kokkos::TeamPolicy<ExecSpace> Policy;
+  Policy policy(LeagueSize, TeamSize, VectorSize);
+  Kokkos::parallel_for(policy, KOKKOS_LAMBDA(typename Policy::member_type team)
+  {
+    const ttb_indx i = team.league_rank()*team.team_size() + team.team_rank();
+    if (i >= m) return;
+    const ttb_real w = inverse ? ttb_real(1.0)/v[i] : v[i];
+    Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,n),
+                         [&](const ttb_indx j)
+    {
+      d(i,j) *= w;
+    });
+  });
+}
+
 // Only called by Ben Allan's parallel test code.  It appears he uses the Linux
 // random number generator in a special way.
 #if !defined(_WIN32)
@@ -1411,6 +1473,34 @@ sum(const UploType uplo) const
   Kokkos::fence();
 
   return sum;
+}
+
+template <typename ExecSpace>
+ttb_real Genten::FacMatrixT<ExecSpace>::
+normFsq() const
+{
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::FacMatrix::normFsq");
+#endif
+
+  const ttb_indx nrows = data.extent(0);
+  const ttb_indx ncols = data.extent(1);
+
+  ttb_real nrm = 0;
+  // for (ttb_indx i=0; i<nrows; ++i)
+  //   for (ttb_indx j=0; j<ncols; ++j)
+  //     nrm += data(i,j)*data(i,j);
+  view_type d = data;
+  Kokkos::parallel_reduce("Genten::FacMatrix::normFsq_kernel",
+                          Kokkos::RangePolicy<ExecSpace>(0,nrows),
+                          KOKKOS_LAMBDA(const ttb_indx i, ttb_real& s)
+  {
+    for (ttb_indx j=0; j<ncols; ++j)
+      s += d(i,j)*d(i,j);
+  }, nrm);
+  Kokkos::fence();
+
+  return nrm;
 }
 
 template <typename ExecSpace>
@@ -1568,7 +1658,6 @@ gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
 }
 
 #if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
-
 template <typename ExecSpace,
           typename AT, typename ... AP,
           typename BT, typename ... BP,

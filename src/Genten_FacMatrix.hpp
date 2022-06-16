@@ -264,9 +264,12 @@ public:
     // Compute X = a * X
     void times(ttb_real a) const;
 
-    // x += y
+    // Compute X = X + a
+    void plus(ttb_real a) const;
+
+    // x += s*y
     /* accumulate y into x */
-    void plus(const FacMatrixT & y) const;
+    void plus(const FacMatrixT & y, const ttb_real s = ttb_real(1.0)) const;
 
     // x = a*y + b*x
     /* accumulate y into x */
@@ -296,6 +299,11 @@ public:
     /* X(i,j) = V(i) * V(j). */
     void oprod(const ArrayT<ExecSpace> & v) const;
 
+    // Compute the rank-one matrix that is the outer product of the vector v.
+    /* X(i,j) = V1(i) * V2(j). */
+    void oprod(const ArrayT<ExecSpace> & v1,
+               const ArrayT<ExecSpace> & v2) const;
+
     // Compute the norms of all the columns.
     /* The norm_type indicates the type of norm.
        The optional "minval" argument sets the minimum value of each column norm. */
@@ -305,6 +313,9 @@ public:
     /* If "inverse" is set to true, then scale by the reciprocal of the entries
      * in s. */
     void colScale(const ArrayT<ExecSpace> & s, bool inverse) const;
+
+    // Scale each row by the corresponding scalar entry in s.
+    void rowScale(const ArrayT<ExecSpace> & s, bool inverse) const;
 
     // see ktensor::scaleRandomElements
     void scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise) const;
@@ -316,6 +327,9 @@ public:
     // Compute the sum of all the entries for symmetric matrix.
     // If uplo == Upper/Lower, only upper/lower triangle is accessed.
     ttb_real sum(const UploType uplo) const;
+
+    // Compute Frobenius norm-squared of matrix
+    ttb_real normFsq() const;
 
     // tell location of first nonfinite number (Inf or NaN) where will  be 0 if result is false,
     bool hasNonFinite(ttb_indx &where) const;
