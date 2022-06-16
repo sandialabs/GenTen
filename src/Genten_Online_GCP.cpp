@@ -154,7 +154,7 @@ namespace Genten {
                std::ostream& out,
                const bool print)
   {
-    typedef GCP::KokkosVector<ExecSpace> VectorType;
+    typedef KokkosVector<ExecSpace> VectorType;
     typedef typename VectorType::view_type view_type;
 
     const ttb_indx nd = u.ndims();

@@ -47,7 +47,7 @@
 #include "Genten_SystemTimer.hpp"
 #include "Genten_GCP_SamplingKernels.hpp"
 #include "Genten_GCP_Hash.hpp"
-#include "Genten_GCP_KokkosVector.hpp"
+#include "Genten_KokkosVector.hpp"
 #include "Genten_GCP_StreamingHistory.hpp"
 
 #include "Kokkos_Random.hpp"
@@ -90,7 +90,7 @@ namespace Genten {
                           const StreamingHistory<ExecSpace>& hist,
                           const ttb_real penalty,
                           const LossFunction& loss_func,
-                          GCP::KokkosVector<ExecSpace>& g,
+                          KokkosVector<ExecSpace>& g,
                           const KtensorT<ExecSpace>& gt,
                           const ttb_indx mode_beg,
                           const ttb_indx mode_end,

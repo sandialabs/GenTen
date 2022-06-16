@@ -231,7 +231,7 @@ namespace Genten {
                           const StreamingHistory<ExecSpace>& hist,
                           const ttb_real penalty,
                           const LossFunction& loss_func,
-                          GCP::KokkosVector<ExecSpace>& g,
+                          KokkosVector<ExecSpace>& g,
                           const KtensorT<ExecSpace>& gt,
                           const ttb_indx mode_beg,
                           const ttb_indx mode_end,
@@ -308,7 +308,7 @@ namespace Genten {
 
     void fusedGradientAndStep(const KokkosVector<ExecSpace>& u,
                               const LossFunction& loss_func,
-                              const KokkosVector<ExecSpace>& g,
+                              KokkosVector<ExecSpace>& g,
                               const KtensorT<ExecSpace>& gt,
                               const Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,ExecSpace>& gind,
                               const Kokkos::View<ttb_indx*,ExecSpace>& perm,
@@ -336,7 +336,7 @@ namespace Genten {
       timer.stop(timer_init);
 
       Impl::gcp_sgd_ss_grad_sa(
-        X, ut, loss_func,
+        X, u, loss_func,
         num_samples_nonzeros_grad, num_samples_zeros_grad,
         weight_nonzeros_grad, weight_zeros_grad,
         g, gind, perm, use_adam, adam_m, adam_v, beta1, beta2, eps, step,

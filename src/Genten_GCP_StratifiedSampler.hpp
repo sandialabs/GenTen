@@ -247,7 +247,7 @@ namespace Genten {
                           const StreamingHistory<ExecSpace>& hist,
                           const ttb_real penalty,
                           const LossFunction& loss_func,
-                          GCP::KokkosVector<ExecSpace>& g,
+                          KokkosVector<ExecSpace>& g,
                           const KtensorT<ExecSpace>& gt,
                           const ttb_indx mode_beg,
                           const ttb_indx mode_end,

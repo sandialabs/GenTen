@@ -84,8 +84,8 @@ namespace Genten {
     // Note:  uv is not a view of u, so this involves an allocation.
     // The steppers just need u for dimensions, so there should be a more
     // efficient way to do this
-    GCP::KokkosVector<ExecSpace> uv(u);
-    GCP::KokkosVector<ExecSpace> us = uv.subview(mode_beg, mode_end);
+    KokkosVector<ExecSpace> uv(u);
+    KokkosVector<ExecSpace> us = uv.subview(mode_beg, mode_end);
     if (algParams.step_type == GCP_Step::ADAM)
       stepper = new Impl::AdamStep<ExecSpace,LossFunction>(algParams, us);
     else if (algParams.step_type == GCP_Step::AdaGrad)
