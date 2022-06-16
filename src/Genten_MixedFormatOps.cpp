@@ -518,7 +518,8 @@ void Genten::mttkrp(const Genten::TensorT<ExecSpace>& X,
                     const Genten::KtensorT<ExecSpace>& u,
                     const ttb_indx n,
                     const Genten::FacMatrixT<ExecSpace>& v,
-                    const Genten::AlgParams& algParams)
+                    const Genten::AlgParams& algParams,
+                    const bool zero_v)
 {
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::mttkrp");
@@ -537,7 +538,8 @@ void Genten::mttkrp(const Genten::TensorT<ExecSpace>& X,
   assert( v.nRows() == X.size(n) );
   assert( v.nCols() == nc );
 
-  v = ttb_real(0.0);
+  if (zero_v)
+    v = ttb_real(0.0);
 
   Genten::Impl::MTTKRP_Dense_Kernel<ExecSpace> kernel(X,u,n,v,algParams);
   Genten::Impl::run_row_simd_kernel(kernel, nc);
@@ -559,18 +561,23 @@ void Genten::mttkrp(const Genten::TensorT<ExecSpace>& X,
                 const Genten::KtensorT<SPACE>& u,                       \
                 const ttb_indx n,                                       \
                 const Genten::FacMatrixT<SPACE>& v,                     \
-                const AlgParams& algParams);                            \
+                const AlgParams& algParams,                             \
+                const bool zero_v);                                     \
                                                                         \
   template                                                              \
   void mttkrp<>(const Genten::TensorT<SPACE>& X,                        \
                 const Genten::KtensorT<SPACE>& u,                       \
                 const ttb_indx n,                                       \
                 const Genten::FacMatrixT<SPACE>& v,                     \
-                const AlgParams& algParams);                            \
+                const AlgParams& algParams,                             \
+                const bool zero_v);                                     \
                                                                         \
   template                                                              \
   void mttkrp_all<>(const Genten::SptensorT<SPACE>& X,                  \
                     const Genten::KtensorT<SPACE>& u,                   \
                     const Genten::KtensorT<SPACE>& v,                   \
-                    const AlgParams& algParams);
+                    const ttb_indx mode_beg,                            \
+                    const ttb_indx mode_end,                            \
+                    const AlgParams& algParams,                         \
+                    const bool zero_v);
 GENTEN_INST(INST_MACRO)

@@ -108,7 +108,8 @@ namespace Genten
               const KtensorT<ExecSpace>& u,
               const ttb_indx n,
               const FacMatrixT<ExecSpace>& v,
-              const AlgParams& algParams = AlgParams());
+              const AlgParams& algParams = AlgParams(),
+              const bool zero_v = true);
 
   // Matricized sparse tensor times Khatri-Rao product.
   /* Matricizes the Sptensor X along mode n, and computes the product
@@ -125,9 +126,10 @@ namespace Genten
   void mttkrp(const SptensorT<ExecSpace>& X,
               const KtensorT<ExecSpace>& u,
               const ttb_indx n,
-              const AlgParams& algParams = AlgParams())
+              const AlgParams& algParams = AlgParams(),
+              const bool zero_v = true)
   {
-    mttkrp (X, u, n, u[n], algParams);
+    mttkrp (X, u, n, u[n], algParams, zero_v);
     return;
   }
 
@@ -140,7 +142,8 @@ namespace Genten
               const KtensorT<ExecSpace>& u,
               const ttb_indx n,
               const FacMatrixT<ExecSpace>& v,
-              const AlgParams& algParams = AlgParams());
+              const AlgParams& algParams = AlgParams(),
+              const bool zero_v = true);
 
   // Matricized sparse tensor times Khatri-Rao product.
   /* Matricizes the Sptensor X along mode n, and computes the product
@@ -157,15 +160,17 @@ namespace Genten
   void mttkrp(const TensorT<ExecSpace>& X,
               const KtensorT<ExecSpace>& u,
               const ttb_indx n,
-              const AlgParams& algParams = AlgParams())
+              const AlgParams& algParams = AlgParams(),
+              const bool zero_v = true)
   {
-    mttkrp (X, u, n, u[n], algParams);
+    mttkrp (X, u, n, u[n], algParams, zero_v);
     return;
   }
 
   // Matricized sparse tensor times Khatri-Rao product.
   /*
-   * Computes MTTKRP along all modes for direct optimization methods such
+   * Computes MTTKRP along all modes in the range [mode_beg, mode_end)
+   * for direct optimization methods such
    * as SGD.  Depending on the choice of algParams.mttkrp_all_method, this
    * may just iterate over the modes sequentially or may compute them all
    * simultaneously.
@@ -174,7 +179,20 @@ namespace Genten
   void mttkrp_all(const Genten::SptensorT<ExecSpace>& X,
                   const Genten::KtensorT<ExecSpace>& u,
                   const Genten::KtensorT<ExecSpace>& v,
-                  const AlgParams& algParams);
+                  const ttb_indx mode_beg,
+                  const ttb_indx mode_end,
+                  const AlgParams& algParams,
+                  const bool zero_v = true);
+
+  template <typename ExecSpace>
+  void mttkrp_all(const Genten::SptensorT<ExecSpace>& X,
+                  const Genten::KtensorT<ExecSpace>& u,
+                  const Genten::KtensorT<ExecSpace>& v,
+                  const AlgParams& algParams,
+                  const bool zero_v = true)
+  {
+    mttkrp_all(X, u, v, 0, u.ndims(), algParams, zero_v);
+  }
 
   // Simple mttkrp_all for dense tensors, since we don't have a kernel yet
   template <typename ExecSpace>
