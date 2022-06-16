@@ -16,7 +16,8 @@ if length(argin) == 1 && isa(argin{1}, 'struct')
 end
 
 % Add alg params from X tensor
-argin = { X.alg_params{:}, argin{:} };
+% Actually this is done in cp_als_gt now
+%argin = { X.alg_params{:}, argin{:} };
 
 argout = cell(1,nargout-1);
 [U,argout{:}] = cp_als_gt(X,R,argin{:});

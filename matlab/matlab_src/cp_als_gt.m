@@ -53,6 +53,11 @@ if length(args) == 1 && isa(args{1}, 'struct')
   args = reshape({arg_names{:}; arg_vals{:}}, [2*length(arg_names),1]);
 end
 
+if isa(X, 'sptensor_gt')
+  a = X.alg_params; % For some reason, X.alg_params{:} only pulls out the first entry here?
+  args = { a{:}, args{:} };
+end
+
 % Initial guess
 Uinit = 'random';
 n = length(args);
