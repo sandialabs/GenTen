@@ -156,6 +156,102 @@ void Genten_Test_FacMatrix_Space(int infolevel, const std::string & datadir)
   }
   ASSERT(tf, "Gramian yields expected answer");
 
+  //
+  // gemm (matrix-matrix multiply)
+  //
+  const ttb_real alpha = 1.5;
+  const ttb_real beta = 2.1;
+  const ttb_real c0 = 0.6;
+
+  // gemm tester
+  auto test_gemm = [=](const Genten::FacMatrix& a,
+                       const Genten::FacMatrix& b,
+                       const Genten::FacMatrix& c,
+                       const bool trans_a, const bool trans_b,
+                       const std::string& label) {
+    Genten::FacMatrixT<exec_space> a_dev =
+      create_mirror_view( exec_space(), a );
+    Genten::FacMatrixT<exec_space> b_dev =
+      create_mirror_view( exec_space(), b );
+    Genten::FacMatrixT<exec_space> c_dev =
+      create_mirror_view( exec_space(), c );
+    deep_copy(a_dev, a);
+    deep_copy(b_dev, b);
+    deep_copy(c_dev, c);
+    c_dev.gemm(trans_a,trans_b,alpha,a_dev,b_dev,beta);
+    deep_copy(c, c_dev);
+    bool tf = true;
+    const ttb_indx p = trans_a ? a.nRows() : a.nCols();
+    for (ttb_indx i=0; i<c.nRows(); ++i) {
+      for (ttb_indx j=0; j<c.nCols(); ++j) {
+        ttb_real tmp = beta*c0;
+        for (ttb_indx k=0; k<p; ++k) {
+          if (trans_a && trans_b)
+            tmp += alpha*a(k,i)*b(j,k);
+          else if (trans_a)
+            tmp += alpha*a(k,i)*b(k,j);
+          else if (trans_b)
+            tmp += alpha*a(i,k)*b(j,k);
+          else
+            tmp += alpha*a(i,k)*b(k,j);
+        }
+        if (!EQ(c.entry(i,j), tmp)) {
+          std::cout << "c(" << i << "," << j << ") = " << c(i,j) << " tmp = "
+                    << tmp << std::endl;
+          tf = false;
+          break;
+        }
+      }
+      if (!tf)
+        break;
+    }
+    ASSERT(tf, label + std::string(" yields expected answer"));
+  };
+
+  // no-trans, no-trans
+  {
+    Genten::FacMatrix a(3,5);
+    Genten::FacMatrix b(5,7);
+    Genten::FacMatrix c(3,7);
+    a.rand();
+    b.rand();
+    c = c0;
+    test_gemm(a,b,c,false,false,"gemm(false,false)");
+  }
+
+  // no-trans, trans
+  {
+    Genten::FacMatrix a(3,5);
+    Genten::FacMatrix b(7,5);
+    Genten::FacMatrix c(3,7);
+    a.rand();
+    b.rand();
+    c = c0;
+    test_gemm(a,b,c,false,true,"gemm(false,true)");
+  }
+
+  // trans, no-trans
+  {
+    Genten::FacMatrix a(5,3);
+    Genten::FacMatrix b(5,7);
+    Genten::FacMatrix c(3,7);
+    a.rand();
+    b.rand();
+    c = c0;
+    test_gemm(a,b,c,true,false,"gemm(true,false)");
+  }
+
+  // trans, trans
+  {
+    Genten::FacMatrix a(5,3);
+    Genten::FacMatrix b(7,5);
+    Genten::FacMatrix c(3,7);
+    a.rand();
+    b.rand();
+    c = c0;
+    test_gemm(a,b,c,true,true,"gemm(true,true)");
+  }
+
   // hadamard product
   MESSAGE("Checking error on wrong sized matrices");
   tf = false;
@@ -390,6 +486,35 @@ void Genten_Test_FacMatrix_Space(int infolevel, const std::string & datadir)
   deep_copy( a, a_dev );
   ASSERT(a.isEqual(b,MACHINE_EPSILON),
          "ColScale (inverse) works as expected");
+
+  // rowScale
+  b = Genten::FacMatrix(a.nRows(), a.nCols());
+  deep_copy(b,a);
+  a_dev.rowScale(weights_dev, false);
+  deep_copy( a, a_dev );
+  print_matrix(a,std::cout,"a");
+  print_matrix(b,std::cout,"b");
+  tf = false;
+  for (ttb_indx i = 0; i < 3; i ++)
+  {
+    for (ttb_indx j = 0; j < 3; j ++)
+    {
+      tf = (a.entry(i,j) == (b.entry(i,j)*weights[i]));
+      if (tf == false)
+      {
+        break;
+      }
+    }
+    if (tf == false)
+    {
+      break;
+    }
+  }
+  ASSERT(tf,"RowScale works as expected");
+  a_dev.rowScale(weights_dev,true);
+  deep_copy( a, a_dev );
+  ASSERT(a.isEqual(b,MACHINE_EPSILON),
+         "RowScale (inverse) works as expected");
 
   // permute
   ttb_real pdata[] = {1,2,3,4,5,6,7,8,9};
