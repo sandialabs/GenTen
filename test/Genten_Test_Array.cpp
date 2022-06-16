@@ -47,16 +47,18 @@
 
 using namespace Genten::Test;
 
-void Genten_Test_Array(int infolevel)
+template <typename ExecSpace>
+void Genten_Test_Array_Space(int infolevel)
 {
-  typedef Genten::DefaultExecutionSpace exec_space;
+  typedef ExecSpace exec_space;
   typedef Genten::DefaultHostExecutionSpace host_exec_space;
 
   //SETUP_DISABLE_CERR;
 
   bool tf;
 
-  initialize("Tests on Genten::Array", infolevel);
+  std::string space_name = Genten::SpaceProperties<exec_space>::name();
+  initialize("Tests on Genten::Array (" + space_name + ")", infolevel);
 
   // EMPTY CONSTRUCTOR
   // a = []
@@ -366,4 +368,22 @@ void Genten_Test_Array(int infolevel)
   ASSERT(c.isEqual(answ, MACHINE_EPSILON), "c = a ./ b");
 
   finalize();
+}
+
+void Genten_Test_Array(int infolevel) {
+#ifdef KOKKOS_ENABLE_CUDA
+  Genten_Test_Array_Space<Kokkos::Cuda>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_HIP
+  Genten_Test_Array_Space<Kokkos::Experimental::HIP>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_OPENMP
+  Genten_Test_Array_Space<Kokkos::OpenMP>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_THREADS
+  Genten_Test_Array_Space<Kokkos::Threads>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_SERIAL
+  Genten_Test_Array_Space<Kokkos::Serial>(infolevel);
+#endif
 }

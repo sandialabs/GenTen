@@ -1,3 +1,7 @@
+# Turning off SAST as it doesn't seem to work on the internal instance
+#include:
+#  - template: Security/SAST.gitlab-ci.yml
+
 # Only run pipelines for:
 #  - merge requests (to any target branch)
 #  - tags
@@ -5,17 +9,21 @@
 # Do not run pipelines for forks
 workflow:
   rules:
-    - if: $CI_PROJECT_NAMESPACE != "tensors" && $CI_PROJECT_NAMESPACE != "etphipp"
-      when: never
+    # ETP:  Allow pipelines to run for forks by commenting this out
+    #- if: $CI_PROJECT_NAMESPACE != "tensors" && $CI_PROJECT_NAMESPACE != "etphipp"
+    #  when: never
     - if: $CI_MERGE_REQUEST_IID
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "questa"
 
 variables:
   GIT_STRATEGY: clone
+  SAST_EXCLUDED_PATHS: "tpls"
+
 
 stages:
   - build
+  - test
 
 # Clang build for internal repo
 # Disabling because internal runner isn't reliably picking up jobs

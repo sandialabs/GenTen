@@ -42,6 +42,71 @@
 
 #include "Genten_Matlab.hpp"
 
+// Array of structs version
+// mxArray* mxSetHistory(const Genten::PerfHistory& h)
+// {
+//   const char* fieldNames[] = { "iteration", "residual", "fit", "grad_norm", "cum_time", "mttkrp_throughput" };
+//   const ttb_indx m = h.size();
+//   const ttb_indx n = 1;
+//   const ttb_indx nfields = 6;
+//   mxArray *struct_ptr = mxCreateStructMatrix(
+//     (mwSize) m, (mwSize) n,  (mwSize) nfields, fieldNames );
+//   for (ttb_indx i=0; i<m; ++i) {
+//     mxArray *it_ptr     = mxCreateDoubleScalar((double) h[i].iteration);
+//     mxArray *f_ptr      = mxCreateDoubleScalar((double) h[i].residual);
+//     mxArray *fit_ptr    = mxCreateDoubleScalar((double) h[i].fit);
+//     mxArray *g_ptr      = mxCreateDoubleScalar((double) h[i].grad_norm);
+//     mxArray *t_ptr      = mxCreateDoubleScalar((double) h[i].cum_time);
+//     mxArray *mttkrp_ptr = mxCreateDoubleScalar((double) h[i].mttkrp_throughput);
+//     mxSetField(struct_ptr, (mwIndex) i, "iteration", it_ptr);
+//     mxSetField(struct_ptr, (mwIndex) i, "residual", f_ptr);
+//     mxSetField(struct_ptr, (mwIndex) i, "fit", fit_ptr);
+//     mxSetField(struct_ptr, (mwIndex) i, "grad_norm", g_ptr);
+//     mxSetField(struct_ptr, (mwIndex) i, "cum_time", t_ptr);
+//     mxSetField(struct_ptr, (mwIndex) i, "mttkrp_throughput", mttkrp_ptr);
+//   }
+
+//   return struct_ptr;
+// }
+
+// Struct-of-arrays version
+mxArray* mxSetHistory(const Genten::PerfHistory& h)
+{
+  const char* fieldNames[] = { "iteration", "residual", "fit", "grad_norm", "cum_time", "mttkrp_throughput" };
+  const ttb_indx m = h.size();
+  const ttb_indx nfields = 6;
+  mxArray *struct_ptr = mxCreateStructMatrix(
+    (mwSize) 1, (mwSize) 1,  (mwSize) nfields, fieldNames );
+  mxArray *it_ptr     = mxCreateDoubleMatrix((mwSize) m, (mwSize) 1, mxREAL);
+  mxArray *f_ptr      = mxCreateDoubleMatrix((mwSize) m, (mwSize) 1, mxREAL);
+  mxArray *fit_ptr    = mxCreateDoubleMatrix((mwSize) m, (mwSize) 1, mxREAL);
+  mxArray *g_ptr      = mxCreateDoubleMatrix((mwSize) m, (mwSize) 1, mxREAL);
+  mxArray *t_ptr      = mxCreateDoubleMatrix((mwSize) m, (mwSize) 1, mxREAL);
+  mxArray *mttkrp_ptr = mxCreateDoubleMatrix((mwSize) m, (mwSize) 1, mxREAL);
+  ttb_real *it     = mxGetDoubles(it_ptr);
+  ttb_real *f      = mxGetDoubles(f_ptr);
+  ttb_real *fit    = mxGetDoubles(fit_ptr);
+  ttb_real *g      = mxGetDoubles(g_ptr);
+  ttb_real *t      = mxGetDoubles(t_ptr);
+  ttb_real *mttkrp = mxGetDoubles(mttkrp_ptr);
+  for (ttb_indx i=0; i<m; ++i) {
+    it[i] = h[i].iteration;
+    f[i] = h[i].residual;
+    fit[i] = h[i].fit;
+    g[i] = h[i].grad_norm;
+    t[i] = h[i].cum_time;
+    mttkrp[i] = h[i].mttkrp_throughput;
+  }
+  mxSetField(struct_ptr, (mwIndex) 0, "iteration", it_ptr);
+  mxSetField(struct_ptr, (mwIndex) 0, "residual", f_ptr);
+  mxSetField(struct_ptr, (mwIndex) 0, "fit", fit_ptr);
+  mxSetField(struct_ptr, (mwIndex) 0, "grad_norm", g_ptr);
+  mxSetField(struct_ptr, (mwIndex) 0, "cum_time", t_ptr);
+  mxSetField(struct_ptr, (mwIndex) 0, "mttkrp_throughput", mttkrp_ptr);
+
+  return struct_ptr;
+}
+
 std::string
 mxGetStdString(const mxArray* ptr) {
   const mwSize str_len = mxGetNumberOfElements(ptr);

@@ -48,40 +48,11 @@
 
 #include <ostream>
 
-#include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_AlgParams.hpp"
+#include "Genten_PerfHistory.hpp"
 
 namespace Genten {
-
-  //! Contains CP-ALS performance information for one iteration.
-  /*!
-   * The container is used by cpals_core to return information about CP-ALS
-   * algorithm performance.  An array of this type is passed to cpals_core,
-   * and elements filled with information for a particular iteration.
-   * For examples, see Genten_Test/Genten_Test_CpAls.cpp and
-   * Genten_PerfTest/Genten_CpAlsRandomKtensor.cpp.
-   *
-   * @param nIter     The completed CP-ALS iteration that this information
-   *                  refers to.  If zero, then information is for the
-   *                  starting point.  If -1, then the container has no
-   *                  valid information.
-   * @param dResNorm  Square root of the Frobenius norm of the residual at
-   *                  the end of iteration nIter.
-   * @param dFit      Fit number (see Genten::cpals_core) at the end
-   *                  of iteration nIter.
-   * @param dCumTime  Wall clock time in seconds measured from the start of
-   *                  cpals_core to the end of iteration nIter.
-   */
-  typedef struct
-  {
-    int       nIter;
-    ttb_real  dResNorm;
-    ttb_real  dFit;
-    ttb_real  dCumTime;
-    ttb_real  dmttkrp_gflops;
-  } CpAlsPerfInfo;
-
 
   //! Compute the CP decomposition of a tensor based on a least squares objective.
   /*!
@@ -119,10 +90,7 @@ namespace Genten {
    *  @param[out] resNorm   Square root of Frobenius norm of the residual.
    *  @param[in] perfIter   Add performance information every n iterations.
    *                        If zero, do not collect info.
-   *  @param[out] perfInfo  Performance information array.  Must allocate
-   *                        (maxIters / perfIter) + 2 elements of type
-   *                        CpAlsPerfInfo.
-   *                        Can be NULL if perfIter is zero.
+   *  @param[out] perfInfo  Performance information array.
    *
    *  @throws string        if internal linear solve detects singularity,
    *                        or tensor arguments are incompatible.
@@ -135,7 +103,7 @@ namespace Genten {
                    ttb_indx& numIters,
                    ttb_real& resNorm,
                    const ttb_indx perfIter,
-                   CpAlsPerfInfo perfInfo[],
+                   PerfHistory& perfInfo,
                    std::ostream& out);
 
   template<typename TensorT, typename ExecSpace>
@@ -145,7 +113,7 @@ namespace Genten {
                    ttb_indx& numIters,
                    ttb_real& resNorm,
                    const ttb_indx perfIter,
-                   CpAlsPerfInfo perfInfo[]) {
+                   PerfHistory& perfInfo) {
     cpals_core(x,u,algParams,numIters,resNorm,perfIter,perfInfo,std::cout);
   }
 

@@ -86,17 +86,17 @@ int bulk_test(Genten::TensorT<HostSpace> X, Genten::TensorT<HostSpace> mat, int 
   Genten::TensorT<ExecSpace> Z_device = create_mirror_view(ExecSpace(), Z);
   deep_copy(Z_device, Z);
 
-  MESSAGE("Testing default DGEMM cuBlas enabled ttm along mode: " + std::to_string(mode));
+  MESSAGE("Testing default DGEMM ttm along mode: " + std::to_string(mode));
   Genten::ttm(X_device, mat_device, mode, Z_device, al);
   //Unload data off of device and check correctness
   deep_copy(Z,Z_device);
-  ASSERT(unit_test_tensor(Z, unit_test, prod), "CUDA DGEMM"); //NOTE: we need to copy data from device
-  MESSAGE("Testing Parfor_DGEMM cuBlas enabled ttm along mode: " + std::to_string(mode));
+  ASSERT(unit_test_tensor(Z, unit_test, prod), "DGEMM"); //NOTE: we need to copy data from device
+  MESSAGE("Testing Parfor_DGEMM ttm along mode: " + std::to_string(mode));
   al.ttm_method = Genten::TTM_Method::Parfor_DGEMM;
   Genten::ttm(X_device, mat_device, mode, Z_device, al);
   //Unload data off of device and check correctness
   deep_copy(Z,Z_device);
-  ASSERT(unit_test_tensor(Z, unit_test, prod), "CUDA Parfor_DGEMM"); //NOTE: we need to copy data from device
+  ASSERT(unit_test_tensor(Z, unit_test, prod), "Parfor_DGEMM"); //NOTE: we need to copy data from device
 
 
   MESSAGE("Testing parfor dgemm along mode: " + std::to_string(mode));
@@ -323,13 +323,32 @@ void test3()
   bulk_test<ExecSpace, HostSpace>( X,  mat, mode, unit_test);
 }
 
-void Genten_Test_TTM(int infolevel)
+template <typename ExecSpace>
+void Genten_Test_TTM_Space(int infolevel)
 {
-  typedef Genten::DefaultExecutionSpace ExecSpace;
-  initialize("Tests on Genten::TTM", infolevel);
+  std::string space_name = Genten::SpaceProperties<ExecSpace>::name();
+  initialize("Tests on Genten::TTM (" + space_name + ")", infolevel);
   test0<ExecSpace>();
   test1<ExecSpace>();
   test2<ExecSpace>();
   test3<ExecSpace>();
   finalize();
+}
+
+void Genten_Test_TTM(int infolevel) {
+#ifdef KOKKOS_ENABLE_CUDA
+  Genten_Test_TTM_Space<Kokkos::Cuda>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_HIP
+  Genten_Test_TTM_Space<Kokkos::Experimental::HIP>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_OPENMP
+  Genten_Test_TTM_Space<Kokkos::OpenMP>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_THREADS
+  Genten_Test_TTM_Space<Kokkos::Threads>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_SERIAL
+  Genten_Test_TTM_Space<Kokkos::Serial>(infolevel);
+#endif
 }

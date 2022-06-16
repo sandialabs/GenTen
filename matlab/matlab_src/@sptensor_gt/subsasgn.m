@@ -47,7 +47,7 @@ function t = subsasgn(t,s,rhs)
 
 
 
-switch s.type
+switch s(1).type
 
     % we all changing the alg_params field directly
     case '.'
@@ -56,21 +56,23 @@ switch s.type
           if length(s) == 1
             t.alg_params = rhs;
           else
-            t.alg_params(s(2:end)) = rhs;
+            %t.alg_params(s(2:end)) = rhs;
+           %rhs
+            t.alg_params = builtin('subsasgn', t.alg_params, s(2:end), rhs);
           end
         otherwise
-          error(['Cannot change field ', s.subs, ' directly.']);
+          error(['Cannot change field ', s(1).subs, ' directly.']);
         end
 
     case '()'
 
         % Do nothing if both subscripts and RHS are empty
-        if isempty(s.subs{1}) && isempty(t.vals)
+        if isempty(s(1).subs{1}) && isempty(t.vals)
             return;
         end
 
         % Figure out if we are doing a subtensor or a list of subscripts...
-        type = tt_assignment_type(t,s.subs,rhs);
+        type = tt_assignment_type(t,s(1).subs,rhs);
 
         %% Case I: Replace a sub-tensor
         if isequal(type,'subtensor')
@@ -81,28 +83,28 @@ switch s.type
                 %% First, Resize the tensor and check the size match with
                 %% the tensor that's being inserted.
                 m = 1;
-                for n = 1:numel(s.subs)
-                    if ischar(s.subs{n}) && (s.subs{n} == ':')
+                for n = 1:numel(s(1).subs)
+                    if ischar(s(1).subs{n}) && (s(1).subs{n} == ':')
                         if ndims(t) < n
                             newsz(1,n) = rhs.size(m);
                         else
                             newsz(1,n) = max([t.size(n), rhs.size(m)]);
                         end
                         m = m + 1;
-                    elseif numel(s.subs{n}) == 1
+                    elseif numel(s(1).subs{n}) == 1
                         if ndims(t) < n
-                            newsz(1,n) = s.subs{n};
+                            newsz(1,n) = s(1).subs{n};
                         else
-                            newsz(1,n) = max([t.size(n) s.subs{n}]);
+                            newsz(1,n) = max([t.size(n) s(1).subs{n}]);
                         end
                     else
-                        if numel(s.subs{n}) ~= rhs.size(m)
+                        if numel(s(1).subs{n}) ~= rhs.size(m)
                             error('RHS does not match range size');
                         end
                         if ndims(t) < n
-                            newsz(1,n) = max(s.subs{n});
+                            newsz(1,n) = max(s(1).subs{n});
                         else
-                            newsz(1,n) = max([t.size(n) s.subs{n}]);
+                            newsz(1,n) = max([t.size(n) s(1).subs{n}]);
                         end
                         m = m + 1;
                     end
@@ -116,13 +118,13 @@ switch s.type
                 end
 
                 % Delete what currently occupies the specified range
-                rmloc = subdims(s.subs,t);
+                rmloc = subdims(s(1).subs,t);
                 kploc = setdiff(1:nnz(t),rmloc);
                 newsubs = t.subs(:,kploc);
                 newvals = t.vals(kploc);
 
                 % Renumber the subscripts
-                addsubs = irenumber(rhs, t.size, s.subs);
+                addsubs = irenumber(rhs, t.size, s(1).subs);
                 t.subs = [newsubs addsubs'-1];
                 t.vals = [newvals; rhs.vals];
 
@@ -134,15 +136,15 @@ switch s.type
             % First, Resize the tensor.
             % Determine new size of existing modes
             for n = 1:ndims(t)
-                if ischar(s.subs{n}) && (s.subs{n} == ':')
+                if ischar(s(1).subs{n}) && (s(1).subs{n} == ':')
                     newsz(1,n) = t.size(n);
                 else
-                    newsz(1,n) = max([t.size(n) s.subs{n}]);
+                    newsz(1,n) = max([t.size(n) s(1).subs{n}]);
                 end
             end
             % Determine size of new modes, if any
-            for n = ndims(t)+1:numel(s.subs)
-                newsz(1,n) = max(s.subs{n});
+            for n = ndims(t)+1:numel(s(1).subs)
+                newsz(1,n) = max(s(1).subs{n});
             end
             t.size = newsz;
 
@@ -156,7 +158,7 @@ switch s.type
             if numel(rhs) == 1 && rhs == 0
 
                 % Delete what currently occupies the specified range
-                rmloc = subdims(s.subs,t);
+                rmloc = subdims(s(1).subs,t);
                 kploc = setdiff(1:nnz(t),rmloc);
                 t.subs = t.subs(:,kploc);
                 t.vals = t.vals(kploc);
@@ -168,15 +170,15 @@ switch s.type
 
                 % Determine number of dimensions (may be larger than
                 % current number)
-                N = numel(s.subs);
+                N = numel(s(1).subs);
 
                 % Figure out how many indices are in each dimension
                 nssubs = zeros(N,1);
                 for n = 1:N
-                    if ischar(s.subs{n}) && s.subs{n} == ':'
-                        s.subs{n} = 1:size(t,n);
+                    if ischar(s(1).subs{n}) && s(1).subs{n} == ':'
+                        s(1).subs{n} = 1:size(t,n);
                     end
-                    nssubs(n) = numel(s.subs{n});
+                    nssubs(n) = numel(s(1).subs{n});
                 end
 
                 % Preallocate (discover any memory issues here!)
@@ -191,7 +193,7 @@ switch s.type
                 % Generate each column of the subscripts in turn
                 for n = 1:N
                     i = o;
-                    i{n} = s.subs{n}';
+                    i{n} = s(1).subs{n}';
                     addsubs(:,n) = khatrirao(i);
                 end
 
@@ -216,7 +218,7 @@ switch s.type
 
             % Case II: Replacing values at specified indices
 
-            newsubs = [s.subs{1}];
+            newsubs = [s(1).subs{1}];
             tt_subscheck(newsubs);
 
             % Error check on subscripts

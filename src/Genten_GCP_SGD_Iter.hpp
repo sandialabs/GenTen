@@ -44,7 +44,7 @@
 
 #include "Genten_GCP_Sampler.hpp"
 #include "Genten_GCP_SGD_Step.hpp"
-#include "Genten_GCP_KokkosVector.hpp"
+#include "Genten_KokkosVector.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
 #include "Genten_GCP_StreamingHistory.hpp"
 #include "Genten_Sptensor.hpp"
@@ -59,7 +59,7 @@ namespace Genten {
     template <typename ExecSpace, typename LossFunction>
     class GCP_SGD_Iter {
     public:
-      typedef GCP::KokkosVector<ExecSpace> VectorType;
+      typedef KokkosVector<ExecSpace> VectorType;
 
       GCP_SGD_Iter(const KtensorT<ExecSpace>& u0,
                    const StreamingHistory<ExecSpace>& hist_,

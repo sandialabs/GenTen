@@ -61,6 +61,146 @@ void usage(char **argv)
   Genten::AlgParams::print_help(std::cout);
 }
 
+template <typename Space>
+int main_driver(Genten::AlgParams& algParams,
+                const std::string& inputfilename,
+                const std::string& outputfilename,
+                const ttb_bool sparse,
+                const std::string& initfilename,
+                const ttb_indx index_base,
+                const ttb_bool gz,
+                const Genten::IndxArray& facDims_h,
+                const ttb_indx nnz,
+                const std::string& tensor_outputfilename)
+{
+  int ret = 0;
+  Genten::SystemTimer timer(2);
+
+  typedef Genten::SptensorT<Space> Sptensor_type;
+  typedef Genten::SptensorT<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
+  typedef Genten::TensorT<Space> Tensor_type;
+  typedef Genten::TensorT<Genten::DefaultHostExecutionSpace> Tensor_host_type;
+  typedef Genten::KtensorT<Space> Ktensor_type;
+  typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
+
+  // Read in initial guess if provided
+  Ktensor_type u_init;
+  if (initfilename != "") {
+    Ktensor_host_type u_init_host;
+    Genten::import_ktensor(initfilename, u_init_host);
+    u_init = create_mirror_view(Space(), u_init_host);
+    deep_copy(u_init, u_init_host);
+  }
+
+  Ktensor_type u;
+  if (sparse) {
+    // Read in tensor data
+    Sptensor_host_type x_host;
+    Sptensor_type x;
+    if (inputfilename != "") {
+      timer.start(0);
+      Genten::import_sptensor(inputfilename, x_host, index_base, gz, true);
+      x = create_mirror_view( Space(), x_host );
+      deep_copy( x, x_host );
+      timer.stop(0);
+      printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
+    }
+    else {
+      Genten::IndxArrayT<Space> facDims =
+        create_mirror_view( Space(), facDims_h );
+      deep_copy( facDims, facDims_h );
+
+      std::cout << "Will construct a random Ktensor/Sptensor pair:\n";
+      std::cout << "  Ndims = " << facDims_h.size() << ",  Size = [ ";
+      for (ttb_indx  n = 0; n < facDims_h.size(); n++)
+        std::cout << facDims_h[n] << ' ';
+      std::cout << "]\n";
+      std::cout << "  Ncomps = " << algParams.rank << "\n";
+      std::cout << "  Maximum nnz = " << nnz << "\n";
+
+      // Generate a random Ktensor, and from it a representative sparse
+      // data tensor.
+      Genten::RandomMT rng (algParams.seed);
+      Ktensor_host_type sol_host;
+      timer.start(0);
+      Genten::FacTestSetGenerator testGen;
+      bool r = testGen.genSpFromRndKtensor(facDims_h, algParams.rank,
+                                           nnz, rng, x_host, sol_host);
+      if (!r)
+        Genten::error("*** Call to genSpFromRndKtensor failed.\n");
+      x = create_mirror_view( Space(), x_host );
+      deep_copy( x, x_host );
+      timer.stop(0);
+      printf ("Data generation took %6.3f seconds\n", timer.getTotalTime(0));
+      std::cout << "  Actual nnz  = " << x_host.nnz() << "\n";
+    }
+    if (algParams.debug) Genten::print_sptensor(x_host, std::cout, "tensor");
+
+    // Compute decomposition
+    Genten::PerfHistory history;
+    u = Genten::driver(x, u_init, algParams, history, std::cout);
+
+    if (tensor_outputfilename != "") {
+      timer.start(1);
+      Genten::export_sptensor(tensor_outputfilename, x_host, index_base == 0);
+      timer.stop(1);
+      printf("Sptensor export took %6.3f seconds\n", timer.getTotalTime(1));
+    }
+  }
+  else {
+    Tensor_host_type x_host;
+    Tensor_type x;
+    // Read in tensor data
+    if (inputfilename != "") {
+      timer.start(0);
+      Genten::import_tensor(inputfilename, x_host);
+      x = create_mirror_view( Space(), x_host );
+      deep_copy( x, x_host );
+      timer.stop(0);
+      printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
+    }
+    else {
+      timer.start(0);
+      Genten::RandomMT rng (algParams.seed);
+      Ktensor_host_type sol_host;
+      Genten::FacTestSetGenerator testGen;
+      testGen.genDnFromRndKtensor(facDims_h, algParams.rank,
+                                  rng, x_host, sol_host);
+      x = create_mirror_view( Space(), x_host );
+      deep_copy( x, x_host );
+      timer.stop(0);
+      printf ("Data generation took %6.3f seconds\n", timer.getTotalTime(0));
+    }
+
+    if (algParams.debug) Genten::print_tensor(x_host, std::cout, "tensor");
+
+    // Compute decomposition
+    Genten::PerfHistory history;
+    u = Genten::driver(x, u_init, algParams, history, std::cout);
+
+    if (tensor_outputfilename != "") {
+      timer.start(1);
+      Genten::export_tensor(tensor_outputfilename, x_host);
+      timer.stop(1);
+      printf("Tensor export took %6.3f seconds\n", timer.getTotalTime(1));
+    }
+  }
+
+  // Save results to file
+  if (outputfilename != "")
+  {
+    timer.start(1);
+    Ktensor_host_type u_host =
+      create_mirror_view(Genten::DefaultHostExecutionSpace(), u);
+    deep_copy( u_host, u );
+    Genten::export_ktensor(outputfilename, u_host);
+    timer.stop(1);
+    printf("Ktensor export took %6.3f seconds\n", timer.getTotalTime(1));
+  }
+
+  return ret;
+}
+
 int main(int argc, char* argv[])
 {
   Kokkos::initialize(argc, argv);
@@ -71,7 +211,7 @@ int main(int argc, char* argv[])
     // Convert argc,argv to list of arguments
     auto args = Genten::build_arg_list(argc,argv);
 
-    ttb_bool help =
+    const ttb_bool help =
       Genten::parse_ttb_bool(args, "--help", "--no-help", false);
     if ((argc < 2) || (help)) {
       usage(argv);
@@ -80,32 +220,32 @@ int main(int argc, char* argv[])
     }
 
     // Driver options
-    std::string inputfilename =
+    const std::string inputfilename =
       Genten::parse_string(args, "--input", "");
-    std::string outputfilename =
+    const std::string outputfilename =
       Genten::parse_string(args, "--output", "");
-    ttb_bool sparse =
+    const ttb_bool sparse =
       Genten::parse_ttb_bool(args, "--sparse", "--dense", true);
-    std::string initfilename =
+    const std::string initfilename =
       Genten::parse_string(args, "--init", "");
-    ttb_indx index_base =
+    const ttb_indx index_base =
       Genten::parse_ttb_indx(args, "--index-base", 0, 0, INT_MAX);
-    ttb_bool gz =
+    const ttb_bool gz =
       Genten::parse_ttb_bool(args, "--gz", "--no-gz", false);
-    ttb_bool vtune =
+    const ttb_bool vtune =
       Genten::parse_ttb_bool(args, "--vtune", "--no-vtune", false);
 
     // for random tensor when inputfilename == ""
     Genten::IndxArray facDims_h;
     if (sparse)
-     facDims_h = { 3000, 4000, 5000 };
+      facDims_h = { 3000, 4000, 5000 };
     else
       facDims_h = { 30, 40, 50 };
     facDims_h =
       Genten::parse_ttb_indx_array(args, "--dims", facDims_h, 1, INT_MAX);
-    ttb_indx nnz =
+    const ttb_indx nnz =
       Genten::parse_ttb_indx(args, "--nnz", 1 * 1000 * 1000, 1, INT_MAX);
-    std::string tensor_outputfilename =
+    const std::string tensor_outputfilename =
       Genten::parse_string(args, "--save-tensor", "");
 
     // Everything else
@@ -148,128 +288,85 @@ int main(int argc, char* argv[])
     if (vtune)
       Genten::connect_vtune();
 
-    Genten::SystemTimer timer(2);
-
-    typedef Genten::DefaultExecutionSpace Space;
-    typedef Genten::SptensorT<Space> Sptensor_type;
-    typedef Genten::SptensorT<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
-    typedef Genten::TensorT<Space> Tensor_type;
-    typedef Genten::TensorT<Genten::DefaultHostExecutionSpace> Tensor_host_type;
-    typedef Genten::KtensorT<Space> Ktensor_type;
-    typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
-
-    // Read in initial guess if provided
-    Ktensor_type u_init;
-    if (initfilename != "") {
-      Ktensor_host_type u_init_host;
-      Genten::import_ktensor(initfilename, u_init_host);
-      u_init = create_mirror_view(Space(), u_init_host);
-      deep_copy(u_init, u_init_host);
-    }
-
-    Ktensor_type u;
-    if (sparse) {
-      // Read in tensor data
-      Sptensor_host_type x_host;
-      Sptensor_type x;
-      if (inputfilename != "") {
-        timer.start(0);
-        Genten::import_sptensor(inputfilename, x_host, index_base, gz, true);
-        x = create_mirror_view( Space(), x_host );
-        deep_copy( x, x_host );
-        timer.stop(0);
-        printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
-      }
-      else {
-        Genten::IndxArrayT<Space> facDims =
-          create_mirror_view( Space(), facDims_h );
-        deep_copy( facDims, facDims_h );
-
-        std::cout << "Will construct a random Ktensor/Sptensor pair:\n";
-        std::cout << "  Ndims = " << facDims_h.size() << ",  Size = [ ";
-        for (ttb_indx  n = 0; n < facDims_h.size(); n++)
-          std::cout << facDims_h[n] << ' ';
-        std::cout << "]\n";
-        std::cout << "  Ncomps = " << algParams.rank << "\n";
-        std::cout << "  Maximum nnz = " << nnz << "\n";
-
-        // Generate a random Ktensor, and from it a representative sparse
-        // data tensor.
-        Genten::RandomMT rng (algParams.seed);
-        Ktensor_host_type sol_host;
-        timer.start(0);
-        Genten::FacTestSetGenerator testGen;
-        bool ret = testGen.genSpFromRndKtensor(facDims_h, algParams.rank,
-                                               nnz, rng, x_host, sol_host);
-        if (!ret)
-          Genten::error("*** Call to genSpFromRndKtensor failed.\n");
-        x = create_mirror_view( Space(), x_host );
-        deep_copy( x, x_host );
-        timer.stop(0);
-        printf ("Data generation took %6.3f seconds\n", timer.getTotalTime(0));
-        std::cout << "  Actual nnz  = " << x_host.nnz() << "\n";
-      }
-      if (algParams.debug) Genten::print_sptensor(x_host, std::cout, "tensor");
-
-      // Compute decomposition
-      u = Genten::driver(x, u_init, algParams, std::cout);
-
-      if (tensor_outputfilename != "") {
-        timer.start(1);
-        Genten::export_sptensor(tensor_outputfilename, x_host, index_base == 0);
-        timer.stop(1);
-        printf("Sptensor export took %6.3f seconds\n", timer.getTotalTime(1));
-      }
-    }
-    else {
-      Tensor_host_type x_host;
-      Tensor_type x;
-      // Read in tensor data
-      if (inputfilename != "") {
-        timer.start(0);
-        Genten::import_tensor(inputfilename, x_host);
-        x = create_mirror_view( Space(), x_host );
-        deep_copy( x, x_host );
-        timer.stop(0);
-        printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
-      }
-      else {
-        timer.start(0);
-        Genten::RandomMT rng (algParams.seed);
-        Ktensor_host_type sol_host;
-        Genten::FacTestSetGenerator testGen;
-        testGen.genDnFromRndKtensor(facDims_h, algParams.rank,
-                                    rng, x_host, sol_host);
-        x = create_mirror_view( Space(), x_host );
-        deep_copy( x, x_host );
-        timer.stop(0);
-        printf ("Data generation took %6.3f seconds\n", timer.getTotalTime(0));
-      }
-
-      if (algParams.debug) Genten::print_tensor(x_host, std::cout, "tensor");
-
-      // Compute decomposition
-      u = Genten::driver(x, u_init, algParams, std::cout);
-
-      if (tensor_outputfilename != "") {
-        timer.start(1);
-        Genten::export_tensor(tensor_outputfilename, x_host);
-        timer.stop(1);
-        printf("Tensor export took %6.3f seconds\n", timer.getTotalTime(1));
-      }
-    }
-
-    // Save results to file
-    if (outputfilename != "")
-    {
-      timer.start(1);
-      Ktensor_host_type u_host =
-        create_mirror_view(Genten::DefaultHostExecutionSpace(), u);
-      deep_copy( u_host, u );
-      Genten::export_ktensor(outputfilename, u_host);
-      timer.stop(1);
-      printf("Ktensor export took %6.3f seconds\n", timer.getTotalTime(1));
-    }
+    // Parse execution space and run
+    if (algParams.exec_space == Genten::Execution_Space::Default)
+      ret = main_driver<Genten::DefaultExecutionSpace>(algParams,
+                                                       inputfilename,
+                                                       outputfilename,
+                                                       sparse,
+                                                       initfilename,
+                                                       index_base,
+                                                       gz,
+                                                       facDims_h,
+                                                       nnz,
+                                                       tensor_outputfilename);
+#ifdef KOKKOS_ENABLE_CUDA
+    else if (algParams.exec_space == Genten::Execution_Space::Cuda)
+      ret = main_driver<Kokkos::Cuda>(algParams,
+                                      inputfilename,
+                                      outputfilename,
+                                      sparse,
+                                      initfilename,
+                                      index_base,
+                                      gz,
+                                      facDims_h,
+                                      nnz,
+                                      tensor_outputfilename);
+#endif
+#ifdef KOKKOS_ENABLE_HIP
+    else if (algParams.exec_space == Genten::Execution_Space::HIP)
+      ret = main_driver<Kokkos::Experimental::HIP>(algParams,
+                                      inputfilename,
+                                      outputfilename,
+                                      sparse,
+                                      initfilename,
+                                      index_base,
+                                      gz,
+                                      facDims_h,
+                                      nnz,
+                                      tensor_outputfilename);
+#endif
+#ifdef KOKKOS_ENABLE_OPENMP
+    else if (algParams.exec_space == Genten::Execution_Space::OpenMP)
+      ret = main_driver<Kokkos::OpenMP>(algParams,
+                                        inputfilename,
+                                        outputfilename,
+                                        sparse,
+                                        initfilename,
+                                        index_base,
+                                        gz,
+                                        facDims_h,
+                                        nnz,
+                                        tensor_outputfilename);
+#endif
+#ifdef KOKKOS_ENABLE_THREADS
+    else if (algParams.exec_space == Genten::Execution_Space::Threads)
+      ret = main_driver<Kokkos::Threads>(algParams,
+                                         inputfilename,
+                                         outputfilename,
+                                         sparse,
+                                         initfilename,
+                                         index_base,
+                                         gz,
+                                         facDims_h,
+                                         nnz,
+                                         tensor_outputfilename);
+#endif
+#ifdef KOKKOS_ENABLE_SERIAL
+    else if (algParams.exec_space == Genten::Execution_Space::Serial)
+      ret = main_driver<Kokkos::Serial>(algParams,
+                                        inputfilename,
+                                        outputfilename,
+                                        sparse,
+                                        initfilename,
+                                        index_base,
+                                        gz,
+                                        facDims_h,
+                                        nnz,
+                                        tensor_outputfilename);
+#endif
+    else
+      Genten::error("Invalid execution space: " + std::string(Genten::Execution_Space::names[algParams.exec_space]));
 
   }
   catch(std::string sExc)

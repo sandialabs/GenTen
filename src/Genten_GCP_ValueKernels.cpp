@@ -74,11 +74,11 @@ namespace Genten {
         const weights_type w = ww;
         const loss_type f = ff;
 
-        static const bool is_cuda = Genten::is_cuda_space<exec_space>::value;
+        static const bool is_gpu = Genten::is_gpu_space<exec_space>::value;
         static const unsigned RowBlockSize = 128;
         static const unsigned FacBlockSize = FBS;
-        static const unsigned VectorSize = is_cuda ? VS : 1;
-        static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+        static const unsigned VectorSize = is_gpu ? VS : 1;
+        static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
 
         const ttb_indx nnz = X.nnz();
         const ttb_indx N = (nnz+RowBlockSize-1)/RowBlockSize;

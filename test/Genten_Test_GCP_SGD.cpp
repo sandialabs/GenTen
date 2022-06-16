@@ -64,6 +64,7 @@ using namespace Genten::Test;
  *  solution, just check that when you multiply the factors together, you
  *  get the original tensor.
  */
+template <typename ExecSpace>
 void Genten_Test_GCP_SGD_Type(int infolevel,
                               const std::string& label,
                               Genten::GCP_Sampling::type sampling_type,
@@ -73,12 +74,13 @@ void Genten_Test_GCP_SGD_Type(int infolevel,
                               const bool fuse_sa,
                               const Genten::GCP_LossFunction::type loss_type)
 {
-  typedef Genten::DefaultExecutionSpace exec_space;
+  typedef ExecSpace exec_space;
   typedef Genten::DefaultHostExecutionSpace host_exec_space;
   typedef Genten::SptensorT<exec_space> Sptensor_type;
   typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
 
-  initialize("Test of Genten::GCP_SGD ("+label+")", infolevel);
+  std::string space_name = Genten::SpaceProperties<exec_space>::name();
+  initialize("Test of Genten::GCP_SGD ("+label+", "+space_name+")", infolevel);
 
   MESSAGE("Creating a sparse tensor with data to model");
   Genten::IndxArray  dims(3);
@@ -197,29 +199,29 @@ void Genten_Test_GCP_SGD_Type(int infolevel,
   return;
 }
 
-void Genten_Test_GCP_SGD (int infolevel)
+template <typename ExecSpace>
+void Genten_Test_GCP_SGD_Space (int infolevel)
 {
-  typedef Genten::DefaultExecutionSpace exec_space;
-  typedef Genten::SpaceProperties<exec_space> space_prop;
+  typedef Genten::SpaceProperties<ExecSpace> space_prop;
 
   // Stratified sampling with different MTTKRP variants
 
-  Genten_Test_GCP_SGD_Type(infolevel,
+  Genten_Test_GCP_SGD_Type<ExecSpace>(infolevel,
                            "Stratified, Atomic (iterated), Gaussian",
                            Genten::GCP_Sampling::Stratified,
                            Genten::MTTKRP_All_Method::Iterated,
                            Genten::MTTKRP_Method::Atomic,
                            false, false,
                            Genten::GCP_LossFunction::Gaussian);
-  Genten_Test_GCP_SGD_Type(infolevel,
+  Genten_Test_GCP_SGD_Type<ExecSpace>(infolevel,
                            "Stratified, Atomic (all), Gaussian",
                            Genten::GCP_Sampling::Stratified,
                            Genten::MTTKRP_All_Method::Atomic,
                            Genten::MTTKRP_Method::Atomic,
                            false, false,
                            Genten::GCP_LossFunction::Gaussian);
-  if (!space_prop::is_cuda)
-    Genten_Test_GCP_SGD_Type(infolevel,
+  if (!space_prop::is_gpu)
+    Genten_Test_GCP_SGD_Type<ExecSpace>(infolevel,
                              "Stratified, Duplicated (all), Gaussian",
                              Genten::GCP_Sampling::Stratified,
                              Genten::MTTKRP_All_Method::Duplicated,
@@ -232,25 +234,43 @@ void Genten_Test_GCP_SGD (int infolevel)
   // The factorization doesn't converge, so not currently running it.
   // Need to figure out why it doesn't converge and create one that does.
 
-  // Genten_Test_GCP_SGD_Type(infolevel,
+  // Genten_Test_GCP_SGD_Type<ExecSpace>(infolevel,
   //                          "Semi-Stratified, Fused (atomic), Gaussian",
   //                          Genten::GCP_Sampling::SemiStratified,
   //                          Genten::MTTKRP_All_Method::Atomic,
   //                          Genten::MTTKRP_Method::Atomic,
   //                          true, false,
   //                          Genten::GCP_LossFunction::Gaussian);
-  // Genten_Test_GCP_SGD_Type(infolevel,
+  // Genten_Test_GCP_SGD_Type<ExecSpace>(infolevel,
   //                          "Semi-Stratified, Fused (duplicated), Gaussian",
   //                          Genten::GCP_Sampling::SemiStratified,
   //                          Genten::MTTKRP_All_Method::Duplicated,
   //                          Genten::MTTKRP_Method::Duplicated,
   //                          true, false,
   //                          Genten::GCP_LossFunction::Gaussian);
-  // Genten_Test_GCP_SGD_Type(infolevel,
+  // Genten_Test_GCP_SGD_Type<ExecSpace>(infolevel,
   //                          "Semi-Stratified, Fused (SA), Gaussian",
   //                          Genten::GCP_Sampling::SemiStratified,
   //                          Genten::MTTKRP_All_Method::Atomic,
   //                          Genten::MTTKRP_Method::Atomic,
   //                          false, true,
   //                          Genten::GCP_LossFunction::Gaussian);
+}
+
+void Genten_Test_GCP_SGD(int infolevel) {
+#ifdef KOKKOS_ENABLE_CUDA
+  Genten_Test_GCP_SGD_Space<Kokkos::Cuda>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_HIP
+  Genten_Test_GCP_SGD_Space<Kokkos::Experimental::HIP>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_OPENMP
+  Genten_Test_GCP_SGD_Space<Kokkos::OpenMP>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_THREADS
+  Genten_Test_GCP_SGD_Space<Kokkos::Threads>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_SERIAL
+  Genten_Test_GCP_SGD_Space<Kokkos::Serial>(infolevel);
+#endif
 }

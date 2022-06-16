@@ -194,4 +194,16 @@ namespace Genten
     mttkrp_all(X, u, v, 0, u.ndims(), algParams, zero_v);
   }
 
+  // Simple mttkrp_all for dense tensors, since we don't have a kernel yet
+  template <typename ExecSpace>
+  void mttkrp_all(const Genten::TensorT<ExecSpace>& X,
+                  const Genten::KtensorT<ExecSpace>& u,
+                  const Genten::KtensorT<ExecSpace>& v,
+                  const AlgParams& algParams)
+  {
+    const ttb_indx nd = X.ndims();
+    for (ttb_indx n=0; n<nd; ++n)
+      mttkrp(X, u, n, v[n], algParams);
+  }
+
 }     //-- namespace Genten

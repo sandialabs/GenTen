@@ -47,7 +47,7 @@
 #include "Genten_GCP_ValueKernels.hpp"
 #include "Genten_GCP_SS_Grad.hpp"
 #include "Genten_GCP_SS_Grad_SA.hpp"
-#include "Genten_GCP_KokkosVector.hpp"
+#include "Genten_KokkosVector.hpp"
 
 // to do:
 //   * replace modes array with mode_beg, mode_end
@@ -306,15 +306,15 @@ namespace Genten {
       return num_samples_nonzeros_grad + num_samples_zeros_grad;
     }
 
-    void fusedGradientAndStep(const GCP::KokkosVector<ExecSpace>& ut,
+    void fusedGradientAndStep(const KokkosVector<ExecSpace>& u,
                               const LossFunction& loss_func,
-                              GCP::KokkosVector<ExecSpace>& g,
+                              const KokkosVector<ExecSpace>& g,
                               const KtensorT<ExecSpace>& gt,
                               const Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,ExecSpace>& gind,
                               const Kokkos::View<ttb_indx*,ExecSpace>& perm,
                               const bool use_adam,
-                              const GCP::KokkosVector<ExecSpace>& adam_m,
-                              const GCP::KokkosVector<ExecSpace>& adam_v,
+                              const KokkosVector<ExecSpace>& adam_m,
+                              const KokkosVector<ExecSpace>& adam_v,
                               const ttb_real beta1,
                               const ttb_real beta2,
                               const ttb_real eps,
