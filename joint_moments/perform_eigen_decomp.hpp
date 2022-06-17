@@ -2,9 +2,8 @@
 #include <cuda_runtime.h>
 #include "cublas_v2.h"
 #include <cusolverDn.h>
-#else
-#include <lapack.h>
 #endif
+#include "Genten_MathLibs.hpp"
 
 typedef typename Kokkos::View<double**, Kokkos::LayoutLeft, Kokkos::DefaultExecutionSpace> gram_view_type;
 typedef typename Kokkos::View<double*,  Kokkos::DefaultExecutionSpace> eig_view_type;
@@ -55,17 +54,22 @@ void perform_eigen_decomp(int nRows, gram_view_type& gram_matrix, eig_view_type&
     assert(CUSOLVER_STATUS_SUCCESS == cusolver_status);
     assert(cudaSuccess == cudaStat);
 #elif defined (LAPACK_FOUND)
-    int lwork = 0, info;
-    double *d_work = NULL;
+
+    ttb_blas_int lwork = 0; 
+    ttb_blas_int info_ml=0;
+    //double *d_work = NULL;
+
+    ttb_blas_int n_ml = (ttb_blas_int) nRows;
+    ttb_blas_int lda_ml = (ttb_blas_int) nRows;
 
     // First perform a workspace query
     lwork = -1;
     double best_lwork_val;
-    dsyev_("V", "U", &nRows, gram_matrix.data(), &nRows, eig_vals.data(), &best_lwork_val, &lwork, &info);
-    lwork = (int)best_lwork_val;
-    d_work = (double*)malloc(lwork*sizeof(double));
+    dsyev("V", "U", &n_ml, gram_matrix.data(), &lda_ml, eig_vals.data(), &best_lwork_val, &lwork, &info_ml);
+    lwork = (ttb_blas_int)best_lwork_val;
+    double * d_work = new double[lwork];//(double*)malloc(lwork*sizeof(double));
 
     // Call for actual eigensolve
-    dsyev_("V", "U", &nRows, gram_matrix.data(), &nRows, eig_vals.data(), d_work, &lwork, &info);
+    dsyev("V", "U", &n_ml, gram_matrix.data(), &lda_ml, eig_vals.data(), d_work, &lwork, &info_ml);
 #endif
 }
