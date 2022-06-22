@@ -38,40 +38,95 @@
 // ************************************************************************
 //@HEADER
 
-
-#include <iostream>
-#include <cmath>
 #include "Genten_Array.hpp"
+#include "Genten_HigherMoments.hpp"
+#include "Genten_IOtext.hpp"
+#include "Genten_Tensor.hpp"
 #include "Genten_Test_Utils.hpp"
 #include "Genten_Util.hpp"
-#include "Genten_HigherMoments.hpp"
+#include <Kokkos_Random.hpp>
+#include <cmath>
+#include <iostream>
 
 using namespace Genten::Test;
 
-
-
 template <typename ExecSpace>
-void Genten_Test_MomentTensorImpl(int infolevel)
-{
-  //using exec_space = ExecSpace;;
-  using host_exec_space = Genten::DefaultHostExecutionSpace;
-  //SETUP_DISABLE_CERR;
+Kokkos::View<ttb_real**, Kokkos::LayoutLeft, ExecSpace> generateTestInput(
+  const int numRows, const int numCols
+) {
+  Kokkos::View<ttb_real**, Kokkos::LayoutLeft, ExecSpace> x(
+    "x", numRows, numCols
+  );
 
-  std::string space_name = Genten::SpaceProperties<ExecSpace>::name();
-  initialize("Tests on Genten::MomentTensor (" + space_name + ")", infolevel);
+  std::srand(std::time(nullptr));
+  const ttb_indx seed = std::rand();
+  Kokkos::Random_XorShift64_Pool<ExecSpace> random(seed);
+  Kokkos::fill_random(x, random, 1.0);
 
-  const int numRows = 10;
-  const int numCols = 4;
-  std::vector<ttb_real> a(numRows*numCols);
-  int count=0;
-  // this loop order matters because the data must be in layoutleft order
-  for(int j=0; j<numCols; j++){
-    for (int i=0; i<numRows; i++){
-      a[count++] = static_cast <double> (i*numCols+j);
+  return x;
+}
+
+template <class ViewT>
+Genten::TensorT<typename ViewT::execution_space> naiveAlgo(const ViewT& X) {
+  const auto c = X.extent(1);
+  using exec_space = typename ViewT::execution_space;
+  Genten::TensorT<exec_space> moment(Genten::IndxArrayT<exec_space>{c, c, c, c});
+
+  const double factor = 1.0 / X.extent(0);
+  for (std::size_t i = 0; i < c; ++i) {
+    for (std::size_t j = 0; j < c; ++j) {
+      for (std::size_t k = 0; k < c; ++k) {
+        for (std::size_t l = 0; l < c; ++l) {
+          for (std::size_t m = 0; m < X.extent(0); ++m) {
+            moment(i, j, k, l) += X(m, i) * X(m, j) * X(m, k) * X(m, l);
+          }
+
+          moment(i, j, k, l) *= factor;
+        }
+      }
     }
   }
 
-  auto r = Genten::create_and_compute_raw_moment_tensor(a.data(), numRows, numCols);
+  return moment;
+}
+
+template <typename ExecSpace>
+void Genten_Test_MomentTensorImpl(int infolevel) {
+  std::string space_name = Genten::SpaceProperties<ExecSpace>::name();
+  initialize("Tests on Genten::MomentTensor (" + space_name + ")", infolevel);
+
+  // for (int numRows : {20, 31}) {
+    // for (int numCols : {4, 5, 6}) {
+
+  for (int numRows : {20}) {
+    for (int numCols : {5}) {
+      const auto x = generateTestInput<ExecSpace>(numRows, numCols);
+      constexpr int blockSize = 2;
+
+      printf(
+        "\nnumRows: %d, numCols: %d, blockSize: %d\n",
+        numRows, numCols, blockSize
+      );
+
+      const auto naiveAlgoRes = naiveAlgo(x);
+      Genten::print_tensor(naiveAlgoRes, std::cout, "naiveAlgoRes");
+
+      const auto refactoredAlgoRes =
+        Genten::create_and_compute_moment_tensor(x, blockSize);
+
+      Genten::print_tensor(refactoredAlgoRes, std::cout, "refactoredAlgoRes");
+
+      const auto areTheSame =
+        naiveAlgoRes.getValues().isEqual(
+          refactoredAlgoRes.getValues(), 1.0E-10
+
+          // TODO (STRZ) - std::epsilon doesn't work for colNum = 6
+          // refactoredAlgoRes.getValues(), std::numeric_limits<ttb_real>::epsilon()
+        );
+
+      printf("\nareTheSame: %s\n", areTheSame ? "true" : "false");
+    }
+  }
 
   finalize();
 }

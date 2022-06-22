@@ -45,14 +45,20 @@
 #ifndef GENTEN_HIGHER_ORDER_MOMENT_HPP_
 #define GENTEN_HIGHER_ORDER_MOMENT_HPP_
 
+#include "CMakeInclude.h"
+
+#include "Genten_Tensor.hpp"
+#include <Kokkos_Core_fwd.hpp>
+#include <Kokkos_Layout.hpp>
+
 namespace Genten {
 
-template<class ExeSpace>
-auto cokurtosis_moment_tensor(Kokkos::View<ttb_real**, Kokkos::LayoutLeft, ExeSpace> rawData);
+template <class ExecSpace>
+TensorT<ExecSpace> create_and_compute_moment_tensor(
+  const Kokkos::View<ttb_real**, Kokkos::LayoutLeft, ExecSpace>& x,
+  const int blockSize
+);
 
-double * create_and_compute_raw_moment_tensor(double *raw_data_ptr, int nsamples,
-					      int nvars, const int order= 4);
-
-}
+} // namespace Genten
 
 #endif

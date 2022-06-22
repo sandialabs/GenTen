@@ -38,330 +38,330 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_Kokkos.hpp"
-#include "Genten_Tensor.hpp"
-#include "Genten_IOtext.hpp"
 #include "Genten_HigherMoments.hpp"
+#include "Genten_IOtext.hpp"
+#include "Genten_Kokkos.hpp"
+#include "Genten_Util.hpp"
 #include "KokkosBatched_Gemm_Decl.hpp"
 #include "KokkosBatched_Gemm_TeamVector_Impl.hpp"
+#include <Kokkos_OpenMP.hpp>
+#include <cmath>
+#include <cstddef>
+#include <limits>
 
 namespace Genten {
-namespace impl{
 
-// Here we assume that X has 4 column blocks stacked
-// into a 3d tensor, each frontal slice of X is a column block.
-template<class MemberType, class MatrixViewType, class ScratchMatrixViewType>
+namespace impl {
+
+// Here we assume that X has 4 column blocks stacked into a 3d tensor, each
+// frontal slice of X is a column block.
+template <class MemberType, class MatrixViewType, class ScratchMatrixViewType>
 KOKKOS_INLINE_FUNCTION
-void khatri_rao_product(const MemberType & teamMember,
-			int blockIndex1,
-			int blockIndex2,
-			int block2Size,
-			int stdBlockSize,
-			int currentTileSize,
-			int baseRowIndex,
-			MatrixViewType X,
-			ScratchMatrixViewType result)
-{
+void khatri_rao_product(
+  const MemberType &teamMember, int blockIndex1, int blockIndex2,
+  int block2Size, int stdBlockSize, int currentTileSize, int baseRowIndex,
+  MatrixViewType X, ScratchMatrixViewType result
+) {
   const int resultNCol = result.extent_int(1);
   Kokkos::parallel_for(
-      Kokkos::TeamThreadRange(teamMember, resultNCol), [&](int i) {
-        const int block1ColPos = i / block2Size;
-        const int block2ColPos = i % block2Size;
-        const int block1BaseColInd = blockIndex1 * stdBlockSize;
-        const int block2BaseColInd = blockIndex2 * stdBlockSize;
-        Kokkos::parallel_for(
-            Kokkos::ThreadVectorRange(teamMember, currentTileSize), [&](int j) {
-              result(j, i) =
-                  X(baseRowIndex + j, block1BaseColInd + block1ColPos) *
-                  X(baseRowIndex + j, block2BaseColInd + block2ColPos);
-            });
-      });
+    Kokkos::TeamThreadRange(teamMember, resultNCol), [&](int i) {
+      const int block1ColPos = i / block2Size;
+      const int block2ColPos = i % block2Size;
+      const int block1BaseColInd = blockIndex1 * stdBlockSize;
+      const int block2BaseColInd = blockIndex2 * stdBlockSize;
+      Kokkos::parallel_for(
+        Kokkos::ThreadVectorRange(teamMember, currentTileSize), [&](int j) {
+          result(j, i) =
+            X(baseRowIndex + j, block1BaseColInd + block1ColPos) *
+            X(baseRowIndex + j, block2BaseColInd + block2ColPos);
+        }
+      );
+    }
+  );
 }
 
-//We want to create a matrix where each row contains the 4d index of each of the unique
-//blocks in the moment tensor. This matrix is stored row-major in a 1D array and variable
-// a will point to this array.
-template<class IndexViewType>
+// We want to create a matrix where each row contains the 4d index of each of
+// the unique blocks in the moment tensor. This matrix is stored row-major in a
+// 1D array and variable a will point to this array.
+template <class IndexViewType>
 KOKKOS_INLINE_FUNCTION
-void getIndexArray(int nblocks, IndexViewType h_indexArray)
-{
+void getIndexArray(
+  const int nblocks, IndexViewType h_indexArray
+) {
   int x = 0;
-  for(int i=0; i<nblocks; i++){
-    // printf("%d, \n", indexArray(x));
-    for(int j=i; j<nblocks; j++){
-      for(int k=j; k<nblocks; k++){
-        for(int l=k; l<nblocks; l++){
+  for (int i = 0; i < nblocks; i++) {
+    for (int j = i; j < nblocks; j++) {
+      for (int k = j; k < nblocks; k++) {
+        for (int l = k; l < nblocks; l++) {
           h_indexArray(x) = i;
-          h_indexArray(x+1) = j;
-          h_indexArray(x+2) = k;
-          h_indexArray(x+3) = l;
-          x = x + 4;
+          h_indexArray(x + 1) = j;
+          h_indexArray(x + 2) = k;
+          h_indexArray(x + 3) = l;
+          x += 4;
         }
       }
     }
   }
 }
 
-template<class IndexViewType>
-KOKKOS_INLINE_FUNCTION
-void rankToBlockIndex(int rank, int* blockIndex, IndexViewType indexArray)
-{
-  int startPos = rank*4;
-  blockIndex[0] = indexArray(startPos);
-  blockIndex[1] = indexArray(startPos+1);
-  blockIndex[2] = indexArray(startPos+2);
-  blockIndex[3] = indexArray(startPos+3);
+template <class IndexViewType>
+KOKKOS_INLINE_FUNCTION std::array<int, 4>
+rankToBlockIndex(int rank, IndexViewType indexArray) {
+  const int startPos = rank * 4;
+  return std::array<int, 4>{
+    indexArray(startPos), indexArray(startPos + 1),
+    indexArray(startPos + 2), indexArray(startPos + 3)
+  };
 }
 
-template<class ... Properties>
-void cokurtosis_impl(Kokkos::View<ttb_real**, Properties...> dataMatrix,
-		     int stdBlockSize, int tileSize, int teamSize)
-{
+template<typename ViewT>
+TensorT<typename ViewT::execution_space> cokurtosis_impl(
+  ViewT dataMatrix, int stdBlockSize, int tileSize, int teamSize
+) {
+  using exec_space = typename ViewT::execution_space;
+  using policy_type = Kokkos::TeamPolicy<exec_space>;
+  using member_type = typename policy_type::member_type;
 
-  const int XnRow = dataMatrix.extent(0);
-  const int XnCol = dataMatrix.extent(1);
+  using flat_index_arr_type = Kokkos::View<int*, exec_space>;
+  using flat_results_view_type = Kokkos::View<ttb_real***, exec_space>;
+  using scratch_matrix_view = Kokkos::View<ttb_real**, Kokkos::DefaultExecutionSpace::scratch_memory_space>;
 
-  int nBlocks = std::ceil(XnCol/stdBlockSize);
-  int oddBlockSize = XnCol - stdBlockSize * (nBlocks - 1);
+  const auto XnRow = dataMatrix.extent(0);
+  const auto XnCol = dataMatrix.extent(1);
+
+  const int nBlocks = std::ceil(XnCol/stdBlockSize);
+  const int oddBlockSize = XnCol - stdBlockSize * (nBlocks - 1);
   //# of unique blocks = (n+4-1) choose 4 or n choose 4 with repetition
-  int nUniqueBlocks = ((nBlocks+3)*(nBlocks+2)*(nBlocks+1)*nBlocks)/(4*3*2*1);
+  const int nUniqueBlocks = ((nBlocks+3)*(nBlocks+2)*(nBlocks+1)*nBlocks)/(4*3*2*1);
   std::cout << "nUniqueBlocks = " << nUniqueBlocks << '\n';
 
-  int nTile = XnRow%tileSize ==0 ? XnRow/tileSize : XnRow/tileSize + 1;
-
-  using flat_index_arr_type = Kokkos::View<int*>;
-  using flat_results_view_type = Kokkos::View<ttb_real***>;
-  using ScratchVectorView = Kokkos::View<ttb_real*,Kokkos::DefaultExecutionSpace::scratch_memory_space>;
-  using ScratchMatrixView = Kokkos::View<ttb_real**,Kokkos::DefaultExecutionSpace::scratch_memory_space>;
-  using ScratchTensorView = Kokkos::View<ttb_real***,Kokkos::DefaultExecutionSpace::scratch_memory_space>;
-
+  const int nTile = XnRow%tileSize == 0 ? XnRow/tileSize : XnRow/tileSize + 1;
 
   flat_index_arr_type flatIndexArr("flatIndexArr", nUniqueBlocks*4);
   auto h_flatIndexArr = Kokkos::create_mirror_view(flatIndexArr);
   getIndexArray(nBlocks, h_flatIndexArr);
   Kokkos::deep_copy(flatIndexArr, h_flatIndexArr);
 
-  flat_results_view_type flatResults("flatResults",
-				     std::pow(stdBlockSize,2), std::pow(stdBlockSize,2), nUniqueBlocks);
-  using policy_type = Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>;
+  flat_results_view_type flatResults(
+    "flatResults", std::pow(stdBlockSize, 2),
+    std::pow(stdBlockSize, 2), nUniqueBlocks
+  );
+
   policy_type policy(teamSize, Kokkos::AUTO);
-  using member_type = typename policy_type::member_type;
 
-  int stdNBlock = nUniqueBlocks/teamSize;
-  int firstNTeam = nUniqueBlocks%teamSize;
-  const int scratch_size = 2*ScratchMatrixView::shmem_size(tileSize, std::pow(stdBlockSize,2));
-  Kokkos::parallel_for("BlocksLoop",
-		       policy.set_scratch_size(0, Kokkos::PerTeam(scratch_size)),
-		       KOKKOS_LAMBDA(const member_type &teamMember)
-		       {
-			 const int tRank = teamMember.team_rank();
-			 const int lRank = teamMember.league_rank();
+  const int stdNBlock = nUniqueBlocks/teamSize;
+  const int firstNTeam = nUniqueBlocks%teamSize;
+  const int scratch_size =
+    2*scratch_matrix_view::shmem_size(tileSize, std::pow(stdBlockSize, 2));
 
-			 int variableTileSize = tileSize;
-			 int localNBlocks;
-			 int startingBlockIndex;
-			 if(firstNTeam > 0){
-			   if(lRank < firstNTeam){
-			     localNBlocks = stdNBlock+1;
-			     startingBlockIndex = lRank*(stdNBlock+1);
-			   }
-			   else{
-			     localNBlocks = stdNBlock;
-			     startingBlockIndex = firstNTeam + lRank*stdNBlock;
-			   }
-			 }
-			 else{
-			   localNBlocks = stdNBlock;
-			   startingBlockIndex = lRank*stdNBlock;
-			 }
+  Kokkos::parallel_for(
+    "BlocksLoop", policy.set_scratch_size(0, Kokkos::PerTeam(scratch_size)),
+    KOKKOS_LAMBDA(const member_type &teamMember) {
+      const int tRank = teamMember.team_rank();
+      const int lRank = teamMember.league_rank();
 
-			 ScratchMatrixView krp1_team(teamMember.team_scratch(0),
-						     tileSize, stdBlockSize*stdBlockSize);
-			 ScratchMatrixView krp2_team(teamMember.team_scratch(0),
-						     tileSize, stdBlockSize*stdBlockSize);
+      int variableTileSize = tileSize;
+      int localNBlocks;
+      int startingBlockIndex;
 
-			 // 4 int that represent the index of the block that this team is supposed to compute
-			 int blockIndex [4];
-			 // the number of columns in each of the column blocks of the input matrix
-			 int blockSizes [4];
-			 ttb_real ONE = 1.0;
-			 for(int blockLinInd=startingBlockIndex; blockLinInd<startingBlockIndex+localNBlocks; blockLinInd++)
-			   {
-			     rankToBlockIndex(blockLinInd, blockIndex, flatIndexArr);
-			     for(int i=0; i<4; i++){
-			       blockSizes[i] = (XnCol % stdBlockSize == 0 || blockIndex[i] != nBlocks) ? stdBlockSize : oddBlockSize;
-			     }
-			     auto krp1 = Kokkos::subview(krp1_team,
-							 Kokkos::ALL(),
-							 Kokkos::make_pair(0, blockSizes[0]*blockSizes[1]) );
-			     auto krp2 = Kokkos::subview(krp2_team,
-							 Kokkos::ALL(),
-							 Kokkos::make_pair(0, blockSizes[2]*blockSizes[3]) );
-			     auto gemmResult = Kokkos::subview(flatResults,
-							       Kokkos::ALL(),
-							       Kokkos::ALL(),
-							       blockLinInd);
+      if (firstNTeam > 0) {
+        if (lRank < firstNTeam) {
+          localNBlocks = stdNBlock + 1;
+          startingBlockIndex = lRank * (stdNBlock + 1);
+        } else {
+          localNBlocks = stdNBlock;
+          startingBlockIndex = firstNTeam + lRank * stdNBlock;
+        }
+      } else {
+        localNBlocks = stdNBlock;
+        startingBlockIndex = lRank * stdNBlock;
+      }
 
-			     for(int i=0; i<nTile; i++){
-			       int baseRowInd = i*tileSize;
-			       if((i == nTile-1) && (XnRow%tileSize!=0)){
-				 variableTileSize = XnRow%tileSize;
-			       }
+      scratch_matrix_view krp1_team(
+        teamMember.team_scratch(0), tileSize, stdBlockSize*stdBlockSize
+      );
 
-			       khatri_rao_product(teamMember, blockIndex[1],
-						blockIndex[0], blockSizes[0],
-						stdBlockSize, variableTileSize,
-						baseRowInd, dataMatrix, krp1);
-			       khatri_rao_product(teamMember, blockIndex[3],
-						blockIndex[2], blockSizes[2],
-						stdBlockSize, variableTileSize,
-						baseRowInd, dataMatrix, krp2);
+      scratch_matrix_view krp2_team(
+        teamMember.team_scratch(0), tileSize, stdBlockSize*stdBlockSize
+      );
 
-			       teamMember.team_barrier();
-			       const ttb_real alpha = 1.0/XnRow;
+      for (
+        int blockLinInd = startingBlockIndex;
+        blockLinInd < startingBlockIndex + localNBlocks;
+        blockLinInd++
+      ) {
+        // 4 int that represent the index of the block that this team is
+        // supposed to compute
+        const auto blockIndex = rankToBlockIndex(blockLinInd, flatIndexArr);
 
-			       if ( (i == nTile-1) && (XnRow%tileSize!=0) )
-			       {
-				 auto krp1SubView = Kokkos::subview(krp1,
-								    Kokkos::make_pair(0,variableTileSize),
-								    Kokkos::ALL());
-				 auto krp2SubView = Kokkos::subview(krp2,
-								    Kokkos::make_pair(0,variableTileSize),
-								    Kokkos::ALL());
+        // printf(
+        //   "blockLinInd: %d, blockIndex[0]: %d, blockIndex[1]: %d, blockIndex[2]: %d, blockIndex[3]: %d\n",
+        //   blockLinInd, blockIndex[0], blockIndex[1], blockIndex[2], blockIndex[3]
+        // );
 
-				 KokkosBatched::TeamGemm<
-				   member_type, KokkosBatched::Trans::Transpose,
-				   KokkosBatched::Trans::NoTranspose, KokkosBatched::Algo::Gemm::Unblocked
-				   >::invoke(teamMember, ONE, krp1SubView, krp2SubView, ONE, gemmResult);
-			       }
+        // the number of columns in each of the column blocks of the input matrix
+        std::array<int, 4> blockSizes;
+        for (int i = 0; i < 4; i++) {
+          blockSizes[i] =
+            (XnCol % stdBlockSize == 0 || blockIndex[i] != nBlocks)
+            ? stdBlockSize
+            : oddBlockSize;
+        }
 
-			       else{
-				 KokkosBatched::TeamGemm<
-				   member_type, KokkosBatched::Trans::Transpose,
-				   KokkosBatched::Trans::NoTranspose, KokkosBatched::Algo::Gemm::Unblocked
-				   >::invoke(teamMember, alpha, krp1, krp2, ONE, gemmResult);
-			       }
-			     }
-			   }
-		       });
+        // printf(
+        //   "blockSizes[0]: %d, blockSizes[1]: %d, blockSizes[2]: %d, blockSizes[3]: %d\n",
+        //   blockSizes[0], blockSizes[1], blockSizes[2], blockSizes[3]
+        // );
+
+        auto krp1 = Kokkos::subview(
+          krp1_team, Kokkos::ALL(),
+          Kokkos::make_pair(0, blockSizes[0] * blockSizes[1])
+        );
+        auto krp2 = Kokkos::subview(
+          krp2_team, Kokkos::ALL(),
+          Kokkos::make_pair(0, blockSizes[2] * blockSizes[3])
+        );
+
+        auto gemmResult = Kokkos::subview(
+          flatResults, Kokkos::ALL(), Kokkos::ALL(), blockLinInd
+        );
+
+        for (int i = 0; i < nTile; i++) {
+          const int baseRowInd = i * tileSize;
+          if ((i == nTile - 1) && (XnRow % tileSize != 0)) {
+            variableTileSize = XnRow % tileSize;
+          }
+
+          khatri_rao_product(
+            teamMember, blockIndex[1], blockIndex[0],
+            blockSizes[0], stdBlockSize, variableTileSize,
+            baseRowInd, dataMatrix, krp1
+          );
+
+          khatri_rao_product(
+            teamMember, blockIndex[3], blockIndex[2],
+            blockSizes[2], stdBlockSize, variableTileSize,
+            baseRowInd, dataMatrix, krp2
+          );
+
+          teamMember.team_barrier();
+          const ttb_real alpha = 1.0 / XnRow;
+
+          if ((i == nTile - 1) && (XnRow % tileSize != 0)) {
+            auto krp1SubView = Kokkos::subview(
+              krp1, Kokkos::make_pair(0, variableTileSize), Kokkos::ALL()
+            );
+
+            auto krp2SubView = Kokkos::subview(
+              krp2, Kokkos::make_pair(0, variableTileSize), Kokkos::ALL()
+            );
+
+            KokkosBatched::TeamGemm<
+              member_type, KokkosBatched::Trans::Transpose,
+              KokkosBatched::Trans::NoTranspose, KokkosBatched::Algo::Gemm::Unblocked
+            >::invoke(teamMember, 1.0, krp1SubView, krp2SubView, 1.0, gemmResult);
+          } else {
+            KokkosBatched::TeamGemm<
+              member_type, KokkosBatched::Trans::Transpose,
+              KokkosBatched::Trans::NoTranspose, KokkosBatched::Algo::Gemm::Unblocked
+            >::invoke(teamMember, alpha, krp1, krp2, 1.0, gemmResult);
+          }
+        }
+      }
+    }
+  );
+
   Kokkos::fence();
 
-  int count=0;
-  for (std::size_t k=0; k<flatResults.extent(2); ++k){
-    auto blockView = Kokkos::subview(flatResults, Kokkos::ALL(), Kokkos::ALL(), k);
-    for (std::size_t j=0; j<blockView.extent(1); ++j){
-      for (std::size_t i=0; i<blockView.extent(0); ++i){
-	std::cout << count++ << ' '
-		  << k << ' '
-		  << i << ' '
-		  << j << ' '
-		  << blockView(i,j)
-		  << '\n';
+  // Reconstruct tensor
+  TensorT<exec_space> moment(IndxArrayT<exec_space>{XnCol, XnCol, XnCol, XnCol});
+  for (std::size_t ki = 0; ki < flatResults.extent(2); ++ki) {
+    const auto blockView =
+      Kokkos::subview(flatResults, Kokkos::ALL(), Kokkos::ALL(), ki);
+
+    const auto blockIndex = impl::rankToBlockIndex(ki, flatIndexArr);
+    const auto s = stdBlockSize;
+    const auto sSquare = s*s;
+    const auto sCube = sSquare*s;
+
+    const auto iShift = blockIndex[0] * s;
+    const auto jShift = blockIndex[1] * s;
+    const auto kShift = blockIndex[2] * s;
+    const auto lShift = blockIndex[3] * s;
+
+    for (std::size_t ji = 0; ji < blockView.extent(1); ++ji) {
+      for (std::size_t ii = 0; ii < blockView.extent(0); ++ii) {
+        const auto linIdx = ii + ji*sSquare;
+
+        const auto lIdx = linIdx / sCube + lShift;
+        const auto b = linIdx % sCube;
+        const auto kIdx = b / sSquare + kShift;
+        const auto c = b % sSquare;
+        const auto jIdx = c / s + jShift;
+        const auto iIdx = c % s + iShift;
+
+        std::vector<long unsigned int> indices{iIdx, jIdx, kIdx, lIdx};
+        std::sort(indices.begin(), indices.end());
+        const auto m = blockView(ii, ji);
+        do {
+          moment(indices[0], indices[1], indices[2], indices[3]) = m;
+        } while (std::next_permutation(indices.begin(), indices.end()));
       }
     }
   }
+
+  // printf("\n# ncokurtosis_impl()\n\n");
+  // printf("nUniqueBlocks = %d\n", nUniqueBlocks);
+  // printf("| moment | k | i | j | count |\n");
+  // printf("| ------ | - | - | - | ----- |\n");
+  // std::size_t count = 0;
+  // for (std::size_t k = 0; k < flatResults.extent(2); ++k) {
+  //   auto blockView =
+  //       Kokkos::subview(flatResults, Kokkos::ALL(), Kokkos::ALL(), k);
+  //   for (std::size_t j = 0; j < blockView.extent(1); ++j) {
+  //     for (std::size_t i = 0; i < blockView.extent(0); ++i) {
+  //       printf(
+  //         "| %f | %zu | %zu | %zu | %zu |\n",
+  //         blockView(i, j), k, i, j, count
+  //       );
+
+  //       ++count;
+  //     }
+  //   }
+  // }
+
+  return moment;
 }
 
-// template<class ... Properties>
-// auto moment_tensor_impl(Kokkos::View<ttb_real**, Properties...> dataMatrix,
-// 			int order)
-// {
-//   using data_matrix_type = decltype(dataMatrix);
-//   using exe_space = typename data_matrix_type::execution_space;
-//   using default_space_host = Genten::DefaultHostExecutionSpace;
+} // namespace impl
 
-//   using index_arr_type      = Genten::IndxArrayT<exe_space>;
-//   using index_arr_type_host = Genten::IndxArrayT<default_space_host>;
-//   using moment_tensor_type  = Genten::TensorT<exe_space>;
+template <typename ExecSpace>
+TensorT<ExecSpace> create_and_compute_moment_tensor(
+  const Kokkos::View<ttb_real**, Kokkos::LayoutLeft, ExecSpace>& dataMatrix,
+  const int blockSize
+) {
+  // Example: https://github.com/kokkos/kokkos-fortran-interop/blob/master/src/flcl-cxx.hpp/#L157
+  // raw data is "viewed" as a 2D-array in layoutleft order
+  // using mem_unmanged = Kokkos::MemoryTraits<Kokkos::Unmanaged>;
+  // using data_matrix_type_host = Kokkos::View<ttb_real**, Kokkos::LayoutLeft, exe_space_host, mem_unmanged>;
+  // data_matrix_type_host dataMatrixHost(rawDataPtr, nsamples, nvars);
 
-//   //moment tensor is size nvars^d, where d is order of moment, i.e. nvars*nvars*.... (d times)
-//   index_arr_type momentTensorSize(order, dataMatrix.extent(1));
-
-//   moment_tensor_type X(momentTensorSize, 0.0);
-//   cokurtosis_impl(dataMatrix, X);
-
-//   // if (order == 4){
-//   //   cokurtosis_impl(dataMatrix, X);
-//   // }
-//   // else{
-//   //   throw std::runtime_error("Missing impl for oder != 4");
-//   // }
-
-//   return X;
-// }
-}// namespace impl
-
-template<class T>
-void naive(T X)
-{
-  const auto c = X.extent(1);
-  Kokkos::View<double****> moment("mm", c, c, c, c);
-
-  constexpr auto one = static_cast<double>(1);
-  const double factor = one/X.extent(0);
-  for (std::size_t i=0; i<c; ++i){
-    for (std::size_t j=0; j<c; ++j){
-      for (std::size_t k=0; k<c; ++k){
-	    for (std::size_t l=0; l<c; ++l)
-	    {
-	      for (std::size_t m=0; m<X.extent(0); ++m){
-	        moment(i,j,k,l) += X(m,i)*X(m,j)*X(m,k)*X(m,l);
-	      }
-	      moment(i,j,k,l) *= factor;
-	    }
-      }
-    }
-  }
-
-  int count=0;
-  for (std::size_t i=0; i<c; ++i){
-    for (std::size_t j=0; j<c; ++j){
-      for (std::size_t k=0; k<c; ++k){
-	    for (std::size_t l=0; l<c; ++l){
-	      std::cout << count++ << ' '
-		    << i << ' '
-		    << j << ' '
-		    << k << ' '
-		    << l << ' '
-		    << moment(i,j,k,l)
-		    << '\n';
-	    }
-      }
-    }
-  }
-}
-
-ttb_real * create_and_compute_raw_moment_tensor(ttb_real *rawDataPtr,
-						int nsamples,
-						int nvars,
-						const int order)
-{
-
-  using exe_space = Genten::DefaultExecutionSpace;
-  using exe_space_host = Genten::DefaultHostExecutionSpace;
-
-  //Example: https://github.com/kokkos/kokkos-fortran-interop/blob/master/src/flcl-cxx.hpp/#L157
-  //raw data is "viewed" as a 2D-array in layoutleft order
-  using mem_unmanged = Kokkos::MemoryTraits<Kokkos::Unmanaged>;
-  using data_matrix_type_host = Kokkos::View<ttb_real**, Kokkos::LayoutLeft, exe_space_host, mem_unmanged>;
-  data_matrix_type_host dataMatrixHost(rawDataPtr, nsamples, nvars);
-
-  auto dataMatrix = Kokkos::create_mirror_view(exe_space(), dataMatrixHost);
-  Kokkos::deep_copy(dataMatrix, dataMatrixHost);
-
-  naive(dataMatrix);
+  // auto dataMatrix = Kokkos::create_mirror_view(exe_space(), dataMatrixHost);
+  // Kokkos::deep_copy(dataMatrix, dataMatrixHost);
 
   // these need to be moved
-  int targetBlockSize = 1;
   int tileSize = 1;
   int teamSize = 1;
-  impl::cokurtosis_impl(dataMatrix, targetBlockSize, tileSize, teamSize);
+  const auto refactoredAlgoRes =
+    impl::cokurtosis_impl(dataMatrix, blockSize, tileSize, teamSize);
 
-  //auto momentTensor = impl::moment_tensor_impl(dataMatrix, order);
-  // auto momentTensorHost = create_mirror_view(momentTensor);
-  // deep_copy(momentTensorHost, momentTensor);
-
-  return nullptr; //momentTensorHost.getValues().ptr();
+  return refactoredAlgoRes;
 }
 
-}// namespace Genten
+template
+TensorT<Kokkos::OpenMP> create_and_compute_moment_tensor<Kokkos::OpenMP>(
+  const Kokkos::View<ttb_real**, Kokkos::LayoutLeft, Kokkos::OpenMP>& x,
+  const int blockSize
+);
+
+} // namespace Genten
