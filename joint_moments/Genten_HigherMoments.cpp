@@ -129,7 +129,7 @@ TensorT<typename ViewT::execution_space> cokurtosis_impl(
   const auto XnRow = dataMatrix.extent(0);
   const auto XnCol = dataMatrix.extent(1);
 
-  const int nBlocks = std::ceil(XnCol/stdBlockSize);
+  const int nBlocks = (XnCol + stdBlockSize - 1) / stdBlockSize;
   const int oddBlockSize = XnCol - stdBlockSize * (nBlocks - 1);
   //# of unique blocks = (n+4-1) choose 4 or n choose 4 with repetition
   const int nUniqueBlocks = ((nBlocks+3)*(nBlocks+2)*(nBlocks+1)*nBlocks)/(4*3*2*1);
