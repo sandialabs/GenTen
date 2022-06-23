@@ -38,10 +38,6 @@
 // ************************************************************************
 //@HEADER
 
-//#include "Genten_Kokkos.hpp"
-//#include "Genten_Tensor.hpp"
-//#include "Genten_IOtext.hpp"
-
 #ifndef GENTEN_HIGHER_ORDER_MOMENT_HPP_
 #define GENTEN_HIGHER_ORDER_MOMENT_HPP_
 

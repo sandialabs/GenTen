@@ -44,7 +44,6 @@
 #include "Genten_Util.hpp"
 #include "KokkosBatched_Gemm_Decl.hpp"
 #include "KokkosBatched_Gemm_TeamVector_Impl.hpp"
-#include <Kokkos_OpenMP.hpp>
 #include <cmath>
 #include <cstddef>
 #include <limits>
