@@ -67,18 +67,22 @@ Kokkos::View<ttb_real**, Kokkos::LayoutLeft, ExecSpace> generateTestInput(
 }
 
 template <class ViewT>
-Genten::TensorT<typename ViewT::execution_space> naiveAlgo(const ViewT& X) {
-  const auto c = X.extent(1);
-  using exec_space = typename ViewT::execution_space;
-  Genten::TensorT<exec_space> moment(Genten::IndxArrayT<exec_space>{c, c, c, c});
+Genten::TensorT<Kokkos::DefaultHostExecutionSpace> naiveAlgo(ViewT x) {
+  const auto x_h = Kokkos::create_mirror_view_and_copy(
+    Kokkos::DefaultHostExecutionSpace(), x
+  );
+  const auto c = x_h.extent(1);
+  Genten::TensorT<Kokkos::DefaultHostExecutionSpace> moment(
+    Genten::IndxArrayT<Kokkos::DefaultHostExecutionSpace>{c, c, c, c}
+  );
 
-  const double factor = 1.0 / X.extent(0);
+  const double factor = 1.0 / x.extent(0);
   for (std::size_t i = 0; i < c; ++i) {
     for (std::size_t j = 0; j < c; ++j) {
       for (std::size_t k = 0; k < c; ++k) {
         for (std::size_t l = 0; l < c; ++l) {
-          for (std::size_t m = 0; m < X.extent(0); ++m) {
-            moment(i, j, k, l) += X(m, i) * X(m, j) * X(m, k) * X(m, l);
+          for (std::size_t m = 0; m < x.extent(0); ++m) {
+            moment(i, j, k, l) += x_h(m, i) * x_h(m, j) * x_h(m, k) * x_h(m, l);
           }
 
           moment(i, j, k, l) *= factor;
@@ -133,9 +137,9 @@ void Genten_Test_MomentTensorImpl(int infolevel) {
 
 void Genten_MomentTensor(int infolevel) {
 
-// #ifdef KOKKOS_ENABLE_CUDA
-//   Genten_Test_MomentTensorImpl<Kokkos::Cuda>(infolevel);
-// #endif
+#ifdef KOKKOS_ENABLE_CUDA
+  Genten_Test_MomentTensorImpl<Kokkos::Cuda>(infolevel);
+#endif
 #ifdef KOKKOS_ENABLE_HIP
   Genten_Test_MomentTensorImpl<Kokkos::Experimental::HIP>(infolevel);
 #endif

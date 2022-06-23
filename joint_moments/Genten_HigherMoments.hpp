@@ -50,8 +50,8 @@
 namespace Genten {
 
 template <class ExecSpace>
-TensorT<ExecSpace> create_and_compute_moment_tensor(
-  const Kokkos::View<ttb_real**, Kokkos::LayoutLeft, ExecSpace>& x,
+TensorT<Kokkos::DefaultHostExecutionSpace> create_and_compute_moment_tensor(
+  Kokkos::View<ttb_real**, Kokkos::LayoutLeft, ExecSpace> x,
   const int blockSize
 );
 

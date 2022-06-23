@@ -104,26 +104,29 @@ void getIndexArray(
 }
 
 template <class IndexViewType>
-KOKKOS_INLINE_FUNCTION std::array<int, 4>
-rankToBlockIndex(int rank, IndexViewType indexArray) {
+KOKKOS_INLINE_FUNCTION
+void rankToBlockIndex(
+  const int rank, int* blockIndex, IndexViewType indexArray
+) {
   const int startPos = rank * 4;
-  return std::array<int, 4>{
-    indexArray(startPos), indexArray(startPos + 1),
-    indexArray(startPos + 2), indexArray(startPos + 3)
-  };
+  blockIndex[0] = indexArray(startPos);
+  blockIndex[1] = indexArray(startPos+1);
+  blockIndex[2] = indexArray(startPos+2);
+  blockIndex[3] = indexArray(startPos+3);
 }
 
 template<typename ViewT>
-TensorT<typename ViewT::execution_space> cokurtosis_impl(
+TensorT<Kokkos::DefaultHostExecutionSpace> cokurtosis_impl(
   ViewT dataMatrix, int stdBlockSize, int tileSize, int teamSize
 ) {
   using exec_space = typename ViewT::execution_space;
+  using scratch_memory_space = typename exec_space::scratch_memory_space;
   using policy_type = Kokkos::TeamPolicy<exec_space>;
   using member_type = typename policy_type::member_type;
 
   using flat_index_arr_type = Kokkos::View<int*, exec_space>;
   using flat_results_view_type = Kokkos::View<ttb_real***, exec_space>;
-  using scratch_matrix_view = Kokkos::View<ttb_real**, Kokkos::DefaultExecutionSpace::scratch_memory_space>;
+  using scratch_matrix_view = Kokkos::View<ttb_real**, scratch_memory_space>;
 
   const auto XnRow = dataMatrix.extent(0);
   const auto XnCol = dataMatrix.extent(1);
@@ -191,7 +194,8 @@ TensorT<typename ViewT::execution_space> cokurtosis_impl(
       ) {
         // 4 int that represent the index of the block that this team is
         // supposed to compute
-        const auto blockIndex = rankToBlockIndex(blockLinInd, flatIndexArr);
+        int blockIndex [4];
+        rankToBlockIndex(blockLinInd, blockIndex, flatIndexArr);
 
         // printf(
         //   "blockLinInd: %d, blockIndex[0]: %d, blockIndex[1]: %d, blockIndex[2]: %d, blockIndex[3]: %d\n",
@@ -199,7 +203,7 @@ TensorT<typename ViewT::execution_space> cokurtosis_impl(
         // );
 
         // the number of columns in each of the column blocks of the input matrix
-        std::array<int, 4> blockSizes;
+        int blockSizes [4];
         for (int i = 0; i < 4; i++) {
           blockSizes[i] =
             (XnCol % stdBlockSize == 0 || blockIndex[i] != nBlocks)
@@ -273,12 +277,26 @@ TensorT<typename ViewT::execution_space> cokurtosis_impl(
   Kokkos::fence();
 
   // Reconstruct tensor
-  TensorT<exec_space> moment(IndxArrayT<exec_space>{XnCol, XnCol, XnCol, XnCol});
-  for (std::size_t ki = 0; ki < flatResults.extent(2); ++ki) {
-    const auto blockView =
-      Kokkos::subview(flatResults, Kokkos::ALL(), Kokkos::ALL(), ki);
+  TensorT<Kokkos::DefaultHostExecutionSpace> moment(
+    IndxArrayT<Kokkos::DefaultHostExecutionSpace>{
+      XnCol, XnCol, XnCol, XnCol
+    }
+  );
 
-    const auto blockIndex = impl::rankToBlockIndex(ki, flatIndexArr);
+  const auto flatResults_host = Kokkos::create_mirror_view_and_copy(
+    Kokkos::DefaultHostExecutionSpace(), flatResults
+  );
+
+  const auto flatIndexArr_host = Kokkos::create_mirror_view_and_copy(
+    Kokkos::DefaultHostExecutionSpace(), flatIndexArr
+  );
+
+  for (std::size_t ki = 0; ki < flatResults_host.extent(2); ++ki) {
+    const auto blockView =
+      Kokkos::subview(flatResults_host, Kokkos::ALL(), Kokkos::ALL(), ki);
+
+    int blockIndex [4];
+    rankToBlockIndex(ki, blockIndex, flatIndexArr_host);
     const auto s = stdBlockSize;
     const auto sSquare = s*s;
     const auto sCube = sSquare*s;
@@ -335,8 +353,8 @@ TensorT<typename ViewT::execution_space> cokurtosis_impl(
 } // namespace impl
 
 template <typename ExecSpace>
-TensorT<ExecSpace> create_and_compute_moment_tensor(
-  const Kokkos::View<ttb_real**, Kokkos::LayoutLeft, ExecSpace>& dataMatrix,
+TensorT<Kokkos::DefaultHostExecutionSpace> create_and_compute_moment_tensor(
+  Kokkos::View<ttb_real**, Kokkos::LayoutLeft, ExecSpace> dataMatrix,
   const int blockSize
 ) {
   // Example: https://github.com/kokkos/kokkos-fortran-interop/blob/master/src/flcl-cxx.hpp/#L157
@@ -357,10 +375,44 @@ TensorT<ExecSpace> create_and_compute_moment_tensor(
   return refactoredAlgoRes;
 }
 
-template
-TensorT<Kokkos::OpenMP> create_and_compute_moment_tensor<Kokkos::OpenMP>(
-  const Kokkos::View<ttb_real**, Kokkos::LayoutLeft, Kokkos::OpenMP>& x,
+#ifdef KOKKOS_ENABLE_CUDA
+template TensorT<Kokkos::DefaultHostExecutionSpace>
+create_and_compute_moment_tensor<Kokkos::Cuda>(
+  Kokkos::View<ttb_real**, Kokkos::LayoutLeft, Kokkos::Cuda> x,
   const int blockSize
 );
+#endif
+
+#ifdef KOKKOS_ENABLE_HIP
+template TensorT<Kokkos::DefaultHostExecutionSpace>
+create_and_compute_moment_tensor<Kokkos::Experimental::HIP>(
+  Kokkos::View<ttb_real**, Kokkos::LayoutLeft, Kokkos::Experimental::HIP> x,
+  const int blockSize
+);
+#endif
+
+#ifdef KOKKOS_ENABLE_OPENMP
+template TensorT<Kokkos::DefaultHostExecutionSpace>
+create_and_compute_moment_tensor<Kokkos::OpenMP>(
+  Kokkos::View<ttb_real**, Kokkos::LayoutLeft, Kokkos::OpenMP> x,
+  const int blockSize
+);
+#endif
+
+#ifdef KOKKOS_ENABLE_THREADS
+template TensorT<Kokkos::DefaultHostExecutionSpace>
+create_and_compute_moment_tensor<Kokkos::Threads>(
+  Kokkos::View<ttb_real**, Kokkos::LayoutLeft, Kokkos::Threads> x,
+  const int blockSize
+);
+#endif
+
+#ifdef KOKKOS_ENABLE_SERIAL
+template TensorT<Kokkos::DefaultHostExecutionSpace>
+create_and_compute_moment_tensor<Kokkos::Serial>(
+  Kokkos::View<ttb_real**, Kokkos::LayoutLeft, Kokkos::Serial> x,
+  const int blockSize
+);
+#endif
 
 } // namespace Genten
