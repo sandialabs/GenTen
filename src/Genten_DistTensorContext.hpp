@@ -81,16 +81,19 @@ public:
   DistTensorContext& operator=(const DistTensorContext&) = default;
 
   template <typename ExecSpace>
-  SptensorT<ExecSpace> readTensorAndInit(const ptree& tree);
+  SptensorT<ExecSpace> distributeTensor(const ptree& tree);
   template <typename ExecSpace>
-  SptensorT<ExecSpace> readTensorAndInit(const std::string& file,
-                                         const ttb_indx index_base);
+  SptensorT<ExecSpace> distributeTensor(const std::string& file,
+                                        const ttb_indx index_base,
+                                        const bool compressed);
+  template <typename ExecSpaceDst, typename ExecSpaceSrc>
+  SptensorT<ExecSpaceDst> distributeTensor(const SptensorT<ExecSpaceSrc>& X);
 
   // Parallel info
   std::int32_t ndims() const { return global_dims_.size(); }
   const std::vector<std::uint32_t>& dims() const { return global_dims_; }
-  std::int64_t nprocs() const { return pmap_->gridSize(); }
-  std::int64_t gridRank() const { return pmap_->gridRank(); }
+  static std::int64_t nprocs() { return DistContext::nranks(); }
+  static std::int64_t gridRank() { return DistContext::rank(); }
   const std::vector<small_vector<int>>& blocking() const { return global_blocking_; }
 
   // Processor map for communication
@@ -131,8 +134,11 @@ public:
 
 private:
   template <typename ExecSpace>
-  SptensorT<ExecSpace> init_distributed(const std::string& file_name,
-                                        int indexbase);
+  SptensorT<ExecSpace> distributeTensorData(
+    const std::vector<MPI_IO::TDatatype<ttb_real>>& Tvec,
+    const std::vector<std::uint32_t>& TensorDims,
+    const std::vector<small_vector<int>>& blocking,
+    const ProcessorMap& pmap);
 
   boost::optional<std::pair<MPI_IO::SptnFileHeader, MPI_File>>
   readHeader(const std::string& file_name, int indexbase,
@@ -161,7 +167,7 @@ auto rangesToIndexArray(const small_vector<RangePair>& ranges);
 small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode);
 
 std::vector<MPI_IO::TDatatype<ttb_real>>
-distributeTensorToVectors(std::ifstream& ifs, uint64_t nnz, int indexbase,
+distributeTensorToVectors(const Sptensor& sp_tensor_host, uint64_t nnz,
                           MPI_Comm comm, int rank, int nprocs);
 
 std::vector<MPI_IO::TDatatype<ttb_real>>
@@ -443,40 +449,77 @@ computeInitialGuess(const SptensorT<ExecSpace>& X, const ptree& input) const
 template <typename ExecSpace>
 SptensorT<ExecSpace>
 DistTensorContext::
-readTensorAndInit(const ptree& tree)
+distributeTensor(const ptree& tree)
 {
-  if (tree.get<bool>("dump", false) && DistContext::rank() == 0) {
-    std::cout << "tensor:\n"
-      "\tfile: The input file\n"
-      "\tindexbase: Value that indices start at (defaults to 0)\n";
-  }
-
   auto t_tree = tree.get_child("tensor");
-  const auto file_name = t_tree.get<std::string>("file");
-  const auto indexbase = t_tree.get<int>("indexbase", 0);
-  return init_distributed<ExecSpace>(file_name, indexbase);
+  const std::string file_name = t_tree.get<std::string>("input-file");
+  const ttb_indx index_base = t_tree.get<int>("index-base", 0);
+  const bool compressed = t_tree.get<bool>("compressed", false);
+  return distributeTensor<ExecSpace>(file_name, index_base, compressed);
 }
 
 template <typename ExecSpace>
 SptensorT<ExecSpace>
 DistTensorContext::
-readTensorAndInit(const std::string& file, const ttb_indx index_base)
+distributeTensor(const std::string& file, const ttb_indx index_base,
+                 const bool compressed)
 {
-  return init_distributed<ExecSpace>(file, index_base);
-}
+  const bool is_binary = detail::fileFormatIsBinary(file);
+  if (is_binary && index_base != 0)
+    Genten::error("The binary format only supports zero based indexing\n");
+  if (is_binary && compressed)
+    Genten::error("The binary format does not support compression\n");
 
-template <typename ExecSpace>
-SptensorT<ExecSpace>
-DistTensorContext::
-init_distributed(const std::string& file_name, int indexbase)
-{
   std::uint64_t nnz = 0;
-  auto binary_header = readHeader(file_name, indexbase, global_dims_, nnz);
+  auto binary_header = readHeader(file, index_base, global_dims_, nnz);
 
   const auto ndims = global_dims_.size();
-  pmap_ = std::shared_ptr<ProcessorMap>(
-    new ProcessorMap(global_dims_));
 
+  pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_));
+  detail::printGrids(*pmap_);
+
+  global_blocking_ =
+    detail::generateUniformBlocking(global_dims_, pmap_->gridDims());
+
+  detail::printBlocking(*pmap_, global_blocking_);
+
+  DistContext::Barrier();
+  auto t2 = MPI_Wtime();
+  auto Tvec = [&] {
+    if (binary_header) {
+      return MPI_IO::parallelReadElements(DistContext::commWorld(),
+                                          binary_header->second,
+                                          binary_header->first);
+    } else {
+      Sptensor X_host;
+      if (pmap_->gridRank() == 0)
+        import_sptensor(file, X_host, index_base, compressed);
+      return detail::distributeTensorToVectors(
+        X_host, nnz, pmap_->gridComm(), pmap_->gridRank(),
+        pmap_->gridSize());
+    }
+  }();
+  DistContext::Barrier();
+  auto t3 = MPI_Wtime();
+  if (gridRank() == 0) {
+    std::cout << "Read in file in: " << t3 - t2 << "s" << std::endl;
+  }
+
+  return distributeTensorData<ExecSpace>(Tvec, global_dims_, global_blocking_,
+                                         *pmap_);
+}
+
+template <typename ExecSpaceDst, typename ExecSpaceSrc>
+SptensorT<ExecSpaceDst>
+DistTensorContext::
+distributeTensor(const SptensorT<ExecSpaceSrc>& X)
+{
+  const int ndims = X.ndims();
+  global_dims_.resize(ndims);
+  for (int i=0; i<ndims; ++i)
+    global_dims_[i] = X.size(i);
+
+  pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_));
   detail::printGrids(*pmap_);
 
   global_blocking_ =
@@ -485,26 +528,24 @@ init_distributed(const std::string& file_name, int indexbase)
   detail::printBlocking(*pmap_, global_blocking_);
   DistContext::Barrier();
 
-  auto t2 = MPI_Wtime();
-  auto Tvec = [&] {
-    if (binary_header) {
-      return MPI_IO::parallelReadElements(DistContext::commWorld(),
-                                          binary_header->second,
-                                          binary_header->first);
-    } else {
-      auto tensor_file = std::ifstream(file_name);
-      return detail::distributeTensorToVectors(
-          tensor_file, nnz, indexbase, pmap_->gridComm(), pmap_->gridRank(),
-          pmap_->gridSize());
-    }
-  }();
-  DistContext::Barrier();
-  auto t3 = MPI_Wtime();
+  auto X_host = create_mirror_view(X);
+  deep_copy(X_host, X);
+  auto Tvec = detail::distributeTensorToVectors(
+    X_host, X.nnz(), pmap_->gridComm(), pmap_->gridRank(),
+    pmap_->gridSize());
 
-  if (gridRank() == 0) {
-    std::cout << "Read in file in: " << t3 - t2 << "s" << std::endl;
-  }
+  return distributeTensorData<ExecSpaceDst>(
+    Tvec, global_dims_, global_blocking_, *pmap_);
+}
 
+template <typename ExecSpace>
+SptensorT<ExecSpace>
+DistTensorContext::
+distributeTensorData(const std::vector<MPI_IO::TDatatype<ttb_real>>& Tvec,
+                     const std::vector<std::uint32_t>& TensorDims,
+                     const std::vector<small_vector<int>>& blocking,
+                     const ProcessorMap& pmap)
+{
   DistContext::Barrier();
   auto t4 = MPI_Wtime();
 
@@ -523,6 +564,7 @@ init_distributed(const std::string& file_name, int indexbase)
   auto t6 = MPI_Wtime();
 
   std::vector<detail::RangePair> range;
+  auto ndims = TensorDims.size();
   for (auto i = 0; i < ndims; ++i) {
     auto coord = pmap_->gridCoord(i);
     range.push_back({global_blocking_[i][coord],

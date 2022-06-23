@@ -143,7 +143,7 @@ generateUniformBlocking(const std::vector<std::uint32_t>& ModeLengths,
 }
 
 std::vector<MPI_IO::TDatatype<ttb_real>>
-distributeTensorToVectors(std::ifstream &ifs, uint64_t nnz, int indexbase,
+distributeTensorToVectors(const Sptensor& sp_tensor_host, uint64_t nnz,
                           MPI_Comm comm, int rank, int nprocs) {
   constexpr auto dt_size = sizeof(MPI_IO::TDatatype<ttb_real>);
   std::vector<MPI_IO::TDatatype<ttb_real>> Tvec;
@@ -152,9 +152,6 @@ distributeTensorToVectors(std::ifstream &ifs, uint64_t nnz, int indexbase,
 
   if (rank == 0) {
     { // Write tensor to form we can MPI_Send more easily.
-      typename SptensorT<Kokkos::Serial>::HostMirror sp_tensor_host;
-      import_sptensor(ifs, sp_tensor_host, indexbase, false);
-
       if (sp_tensor_host.ndims() > 12) {
         throw std::logic_error(
             "Distributed tensors with more than 12 dimensions "

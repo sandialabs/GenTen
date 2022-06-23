@@ -131,7 +131,7 @@ void real_main(int argc, char **argv) {
     using Space = Kokkos::DefaultHostExecutionSpace;
     GT::DistTensorContext dtc;
     GT::SptensorT<Space> X =
-      dtc.readTensorAndInit<Space>(GT::DistContext::input());
+      dtc.distributeTensor<Space>(GT::DistContext::input());
     GT::KtensorT<Space> u =
       dtc.computeInitialGuess<Space>(X, GT::DistContext::input());
 

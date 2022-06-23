@@ -54,6 +54,9 @@ void usage(char **argv)
 {
   std::cout << "Usage: "<< argv[0]<<" [options]" << std::endl;
   std::cout << "Driver options: " << std::endl;
+#ifdef HAVE_BOOST
+  std::cout << "  --json <string>    Read input paramters from supplied JSON file" << std::endl;
+#endif
   std::cout << "  --input <string>   path to input sptensor data (leave empty for random tensor)" << std::endl;
   std::cout << "  --dims <array>     random tensor dimensions" << std::endl;
   std::cout << "  --nnz <int>        approximate number of random tensor nonzeros" << std::endl;
@@ -106,16 +109,13 @@ int main_driver(Genten::AlgParams& algParams,
     Sptensor_type x;
     if (inputfilename != "") {
       timer.start(0);
-      x = dtc.readTensorAndInit<Space>(inputfilename, index_base);
+      x = dtc.distributeTensor<Space>(inputfilename, index_base, gz);
       timer.stop(0);
       DC::Barrier();
       if (dtc.gridRank() == 0)
         printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
     }
     else {
-      if (dtc.nprocs() > 1)
-        Genten::error("Random tensor not implemented for > 1 MPI procs");
-
       Genten::IndxArrayT<Space> facDims =
         create_mirror_view( Space(), facDims_h );
       deep_copy( facDims, facDims_h );
@@ -140,14 +140,13 @@ int main_driver(Genten::AlgParams& algParams,
                                            nnz, rng, x_host, sol_host);
       if (!r)
         Genten::error("*** Call to genSpFromRndKtensor failed.\n");
-      x = create_mirror_view( Space(), x_host );
-      deep_copy( x, x_host );
       timer.stop(0);
       DC::Barrier();
       if (dtc.gridRank() == 0) {
         printf ("Data generation took %6.3f seconds\n", timer.getTotalTime(0));
         std::cout << "  Actual nnz  = " << x_host.nnz() << "\n";
       }
+      x = dtc.distributeTensor<Space>(x_host);
     }
     if (algParams.debug) Genten::print_sptensor(x_host, std::cout, "tensor");
 
