@@ -1,0 +1,27 @@
+{
+    "solver-method": "cp-als",
+    "tensor":
+    {
+        "input-file": "data/aminoacid_data_nn.txt",
+        "indexbase": 0
+    },
+    "k-tensor":
+    {
+        "rank": 4,
+        "output": "aminoacid.ktn",
+        "initial-guess": "rand",
+        "distributed-guess": "serial",
+        "seed": 12345,
+        "prng": false
+    },
+    "cp-als":
+    {
+        "maxiters": 10,
+        "tol": 1e-300,
+        "timings": true,
+        "mttkrp":
+        {
+            "method": "single"
+        }
+    }
+}
