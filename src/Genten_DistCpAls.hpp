@@ -100,8 +100,9 @@ ttb_real DistCpAls<ExecSpace>::compute()
 
   ttb_indx numIters = 0;
   ttb_real resNorm = 0.0;
-  Genten::cpals_core(spTensor_, Kfac_, algParams_, numIters, resNorm, 0,
-                     nullptr, out);
+  PerfHistory history;
+  Genten::cpals_core(spTensor_, Kfac_, algParams_, numIters, resNorm, 1,
+                     history, out);
 
   spTensor_.setProcessorMap(nullptr);
   Kfac_.setProcessorMap(nullptr);
