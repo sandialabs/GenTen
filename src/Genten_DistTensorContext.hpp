@@ -750,10 +750,12 @@ public:
   DistTensorContext& operator=(const DistTensorContext&) = default;
 
   template <typename ExecSpace>
-  SptensorT<ExecSpace> readTensorAndInit(const std::string& file,
-                                         const ttb_indx index_base) {
+  SptensorT<ExecSpace> distributeTensor(const std::string& file,
+                                        const ttb_indx index_base,
+                                        const bool compressed)
+  {
     Sptensor x_host;
-    Genten::import_sptensor(file, x_host, index_base, false, true);
+    Genten::import_sptensor(file, x_host, index_base, compressed, true);
     SptensorT<ExecSpace> x = create_mirror_view( ExecSpace(), x_host );
     deep_copy( x, x_host );
 
@@ -765,12 +767,19 @@ public:
 
     return x;
   }
+  template <typename ExecSpaceDst, typename ExecSpaceSrc>
+  SptensorT<ExecSpaceDst> distributeTensor(const SptensorT<ExecSpaceSrc>& X)
+  {
+    SptensorT<ExecSpaceDst> X_dst = create_mirror_view(ExecSpaceDst(), X);
+    deep_copy(X_dst, X);
+    return X_dst;
+  }
 
   // Parallel info
   std::int32_t ndims() const { return global_dims_.size(); }
   const std::vector<std::uint32_t>& dims() const { return global_dims_; }
-  std::int64_t nprocs() const { return pmap_->gridSize(); }
-  std::int64_t gridRank() const { return pmap_->gridRank(); }
+  std::int64_t nprocs() const { return 1; }
+  std::int64_t gridRank() const { return 0; }
 
   // Processor map for communication
   const ProcessorMap& pmap() const { return *pmap_; }
