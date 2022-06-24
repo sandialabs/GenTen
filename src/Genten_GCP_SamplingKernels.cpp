@@ -71,11 +71,11 @@ namespace Genten {
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
       typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
-      static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+      static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
       static const unsigned RowBlockSize = 1;
       static const unsigned FacBlockSize = 16; // FIXME
-      static const unsigned VectorSize = is_cuda ? 16 : 1; //FIXME
-      static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+      static const unsigned VectorSize = is_gpu ? 16 : 1; //FIXME
+      static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
       /*const*/ ttb_indx nnz = X.nnz();
@@ -125,7 +125,7 @@ namespace Genten {
           ttb_real m_val = 0.0;
           if (compute_gradient)
             m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
 
           // Add new entry
           const ttb_indx row = idx;
@@ -168,11 +168,11 @@ namespace Genten {
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
       typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
-      static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+      static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
       static const unsigned RowBlockSize = 1;
       static const unsigned FacBlockSize = 16; // FIXME
-      static const unsigned VectorSize = is_cuda ? 16 : 1; //FIXME
-      static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+      static const unsigned VectorSize = is_gpu ? 16 : 1; //FIXME
+      static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
       /*const*/ ttb_indx nnz = X.nnz();
@@ -225,7 +225,7 @@ namespace Genten {
           ttb_real m_val;
           if (compute_gradient)
             m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
 
           // Add new entry
           const ttb_indx row = idx;
@@ -269,11 +269,11 @@ namespace Genten {
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
       typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
-      static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+      static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
       static const unsigned RowBlockSize = 1;
       static const unsigned FacBlockSize = 16; // FIXME
-      static const unsigned VectorSize = is_cuda ? 16 : 1; //FIXME
-      static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+      static const unsigned VectorSize = is_gpu ? 16 : 1; //FIXME
+      static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
       /*const*/ ttb_indx nnz = X.nnz();
@@ -322,7 +322,7 @@ namespace Genten {
           ttb_real m_val = 0.0;
           if (compute_gradient)
             m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
 
           // Add new nonzero
           Kokkos::single( Kokkos::PerThread( team ), [&] ()
@@ -378,7 +378,7 @@ namespace Genten {
           ttb_real m_val;
           if (compute_gradient)
             m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
 
           // Add new nonzero
           const ttb_indx row = num_samples_nonzeros + idx;
@@ -423,11 +423,11 @@ namespace Genten {
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
       typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
-      static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+      static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
       static const unsigned RowBlockSize = 1;
       static const unsigned FacBlockSize = 16; // FIXME
-      static const unsigned VectorSize = is_cuda ? 16 : 1; //FIXME
-      static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+      static const unsigned VectorSize = is_gpu ? 16 : 1; //FIXME
+      static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
       /*const*/ ttb_indx nnz = X.nnz();
@@ -476,7 +476,7 @@ namespace Genten {
           ttb_real m_val = 0.0;
           if (compute_gradient)
             m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
 
           // Add new nonzero
           Kokkos::single( Kokkos::PerThread( team ), [&] ()
@@ -531,7 +531,7 @@ namespace Genten {
           ttb_real m_val;
           if (compute_gradient)
             m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
 
           // Add new nonzero
           const ttb_indx row = num_samples_nonzeros + idx;
@@ -575,11 +575,11 @@ namespace Genten {
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
       typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
-      static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+      static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
       static const unsigned RowBlockSize = 1;
       static const unsigned FacBlockSize = 16; // FIXME
-      static const unsigned VectorSize = is_cuda ? 16 : 1; //FIXME
-      static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+      static const unsigned VectorSize = is_gpu ? 16 : 1; //FIXME
+      static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
       /*const*/ ttb_indx nnz = X.nnz();
@@ -628,7 +628,7 @@ namespace Genten {
           ttb_real m_val = 0.0;
           if (compute_gradient)
             m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
 
           // Add new nonzero
           Kokkos::single( Kokkos::PerThread( team ), [&] ()
@@ -680,7 +680,7 @@ namespace Genten {
           ttb_real m_val = 0.0;
           if (compute_gradient)
             m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
 
           // Add new nonzero
           const ttb_indx row = num_samples_nonzeros + idx;

@@ -92,7 +92,7 @@ if isa(Uinit, 'char') && (strcmpi(Uinit, 'random') || strcmpi(Uinit, 'randn') ||
 end
 
 % Option parsing
-fs = 0;
+fs = 1;
 n = length(args);
 for i=1:n
   if isa(args{i}, 'char') && strcmp(args{i}, 'fixsigns')

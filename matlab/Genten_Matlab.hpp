@@ -47,8 +47,10 @@
 
 #include "Genten_Kokkos.hpp"
 #include "Genten_Sptensor.hpp"
+#include "Genten_Tensor.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_IOtext.hpp"
+#include "Genten_PerfHistory.hpp"
 
 extern "C" {
 #include "mex.h"
@@ -348,15 +350,44 @@ mxGetIndxArray(const mxArray* ptr, const bool subtract_one = false) {
   ttb_indx n = mxGetNumberOfElements(ptr);
 
   // Create array
-  array_type w(n, mx_w, subtract_one); // converts from ttb_real to ttb_indx
+  array_host_type w_host(n, mx_w, subtract_one); // converts from ttb_real to ttb_indx
+  array_type w = create_mirror_view(ExecSpace(), w_host);
+  deep_copy(w, w_host);
 
   return w;
 }
+
+template <typename ExecSpace>
+Genten::TensorT<ExecSpace>
+mxGetTensor(const mxArray *ptr, const bool print = false) {
+
+  if (!mxIsClass(ptr, "tensor"))
+    Genten::error("Arg is not a tensor");
+
+  mxArray* data_field = mxGetField(ptr, 0, "data");
+  mxArray* size_field = mxGetField(ptr, 0, "size");
+  Genten::ArrayT<ExecSpace> data = mxGetArray<ExecSpace>(data_field);
+  Genten::IndxArrayT<ExecSpace> size = mxGetIndxArray<ExecSpace>(size_field);
+  Genten::TensorT<ExecSpace> X(size, data);
+
+  if (print) {
+    auto X_host = create_mirror_view(X);
+    deep_copy(X_host, X);
+    Genten::print_tensor(X_host, std::cout, "X");
+  }
+
+  return X;
+}
+
+mxArray* mxSetHistory(const Genten::PerfHistory& h);
 
 std::string mxGetStdString(const mxArray* ptr);
 
 std::vector<std::string>
 mxBuildArgList(int nargs, int offset, const mxArray* margs[]);
+
+Genten::AlgParams
+mxGetAlgParams(const mxArray* ptr);
 
 void GentenInitialize();
 

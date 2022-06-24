@@ -358,19 +358,21 @@ template <typename ExecSpace> class SptensorT;
 // Len and WarpOrWavefrontSize are for nested parallelism using TinyVec
 template <typename ExecSpace, unsigned Len, unsigned WarpOrWavefrontSize>
 KOKKOS_INLINE_FUNCTION
-ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
+ttb_real compute_Ktensor_value(const typename Kokkos::TeamPolicy<ExecSpace>::member_type& team,
+                               const KtensorT<ExecSpace>& M,
                                const SptensorT<ExecSpace>& X,
                                const ttb_indx i) {
-  typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Len, WarpOrWavefrontSize> TV1;
+  typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, Len, Len, WarpOrWavefrontSize> TVM1;
 
   /*const*/ unsigned nd = M.ndims();
   /*const*/ unsigned nc = M.ncomponents();
 
-  TV1 m_val(Len,0.0);
+  auto m_val = TVM1::make(team, Len, 0.0);
 
   auto row_func = [&](auto j, auto nj, auto Nj) {
-    typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Nj(), WarpOrWavefrontSize> TV2;
-    TV2 tmp(nj, 0.0);
+    typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, Len, Nj(), WarpOrWavefrontSize> TVM2;
+    auto tmp = TVM2::make(team, nj, 0.0);
+
     tmp.load(&(M.weights(j)));
     for (unsigned m=0; m<nd; ++m) {
       tmp *= &(M[m].entry(X.subscript(i,m),j));
@@ -397,18 +399,19 @@ ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
 template <typename ExecSpace, unsigned Len, unsigned WarpOrWavefrontSize,
           typename IndexArray>
 KOKKOS_INLINE_FUNCTION
-ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
+ttb_real compute_Ktensor_value(const typename Kokkos::TeamPolicy<ExecSpace>::member_type& team,
+                               const KtensorT<ExecSpace>& M,
                                const IndexArray& ind) {
-  typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Len, WarpOrWavefrontSize> TV1;
+  typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, Len, Len, WarpOrWavefrontSize> TVM1;
 
   /*const*/ unsigned nd = M.ndims();
   /*const*/ unsigned nc = M.ncomponents();
 
-  TV1 m_val(Len,0.0);
+  auto m_val = TVM1::make(team, Len, 0.0);
 
   auto row_func = [&](auto j, auto nj, auto Nj) {
-    typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Nj(), WarpOrWavefrontSize> TV2;
-    TV2 tmp(nj, 0.0);
+    typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, Len, Nj(), WarpOrWavefrontSize> TVM2;
+    auto tmp = TVM2::make(team, nj, 0.0);
     tmp.load(&(M.weights(j)));
     for (unsigned m=0; m<nd; ++m) {
       tmp *= &(M[m].entry(ind[m],j));

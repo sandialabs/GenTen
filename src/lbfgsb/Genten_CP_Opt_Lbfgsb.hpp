@@ -44,6 +44,7 @@
 
 #include "Genten_Ktensor.hpp"
 #include "Genten_AlgParams.hpp"
+#include "Genten_PerfHistory.hpp"
 
 namespace Genten {
 
@@ -65,6 +66,7 @@ namespace Genten {
    */
   template<typename TensorT, typename ExecSpace>
   void cp_opt_lbfgsb(const TensorT& x, KtensorT<ExecSpace>& u,
-                     const AlgParams& algParams);
+                     const AlgParams& algParams,
+                     PerfHistory& history);
 
 }

@@ -54,6 +54,7 @@
 #include "Genten_Tensor.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_AlgParams.hpp"
+#include "Genten_PerfHistory.hpp"
 
 namespace Genten {
 
@@ -63,6 +64,7 @@ namespace Genten {
          SptensorT<ExecSpace>& x,
          KtensorT<ExecSpace>& u_init,
          AlgParams& algParams,
+         PerfHistory& history,
          std::ostream& out);
 
   template<typename ExecSpace>
@@ -70,6 +72,7 @@ namespace Genten {
   driver(TensorT<ExecSpace>& x,
          KtensorT<ExecSpace>& u_init,
          AlgParams& algParams,
+         PerfHistory& history,
          std::ostream& out);
 
 }

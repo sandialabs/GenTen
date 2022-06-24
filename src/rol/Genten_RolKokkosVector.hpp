@@ -129,6 +129,11 @@ namespace Genten {
       return kv.norm();
     }
 
+    ttb_real normInf() const
+    {
+      return kv.normInf();
+    }
+
     virtual ROL::Ptr< ROL::Vector<ttb_real> > clone() const
     {
       TEUCHOS_FUNC_TIME_MONITOR("ROL::Vector::clone");

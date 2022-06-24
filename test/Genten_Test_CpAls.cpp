@@ -296,27 +296,25 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
   {
     // Request performance information on every 3rd iteration.
     // Allocation adds two more for start and stop states of the algorithm.
-    ttb_indx  nMaxPerfSize = 2 + (algParams.maxiters / 3);
-    Genten::CpAlsPerfInfo *  perfInfo = new Genten::CpAlsPerfInfo[nMaxPerfSize];
+    Genten::PerfHistory perfInfo;
     deep_copy(result_dev, initialBasis_dev);
     Genten::cpals_core(X_dev, result_dev, algParams, itersCompleted, resNorm,
                        3, perfInfo);
     // Check performance information.
     bool  bIsOK = true;
-    for (ttb_indx  i = 0; i < nMaxPerfSize; i++)
+    for (ttb_indx i = 0; i < perfInfo.size(); i++)
     {
-      if ((perfInfo[i].nIter != -1) && (perfInfo[i].nIter > 0))
+      if ((perfInfo[i].iteration > 0))
       {
-        if ((perfInfo[i].dFit < 0.99) || (perfInfo[i].dFit > 1.00))
+        if ((perfInfo[i].fit < 0.99) || (perfInfo[i].fit > 1.00))
           bIsOK = false;
-        if (perfInfo[i].dResNorm > 0.03)
+        if (perfInfo[i].residual > 0.03)
           bIsOK = false;
-        if (perfInfo[i].dCumTime < 0.0)
+        if (perfInfo[i].cum_time < 0.0)
           bIsOK = false;
       }
     }
     ASSERT( bIsOK, "Performance info from cpals_core is reasonable." );
-    delete[] perfInfo;
   }
   catch(std::string sExc)
   {
@@ -345,8 +343,9 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
   {
     deep_copy(result_dev, initialZero_dev);
     algParams.printitn = 0;
+    Genten::PerfHistory history;
     Genten::cpals_core(X_dev, result_dev, algParams, itersCompleted, resNorm,
-                       0, NULL);
+                       0, history);
   }
   catch(std::string sExc)
   {
@@ -367,8 +366,9 @@ void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
   {
     algParams.printitn = infolevel;
     deep_copy(result_dev, initialBasis_dev);
+    Genten::PerfHistory history;
     Genten::cpals_core(Xd_dev, result_dev, algParams, itersCompleted, resNorm,
-                       0, nullptr);
+                       0, history);
   }
   catch(std::string sExc)
   {
@@ -405,6 +405,9 @@ void Genten_Test_CpAls(int infolevel) {
 #endif
 #ifdef KOKKOS_ENABLE_HIP
   Genten_Test_CpAls_Space<Kokkos::Experimental::HIP>(infolevel);
+#endif
+#ifdef ENABLE_SYCL_FOR_CUDA
+  Genten_Test_CpAls_Space<Kokkos::Experimental::SYCL>(infolevel);
 #endif
 #ifdef KOKKOS_ENABLE_OPENMP
   Genten_Test_CpAls_Space<Kokkos::OpenMP>(infolevel);

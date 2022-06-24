@@ -151,7 +151,8 @@ int main_driver(Genten::AlgParams& algParams,
     if (algParams.debug) Genten::print_sptensor(x_host, std::cout, "tensor");
 
     // Compute decomposition
-    u = Genten::driver(dtc, x, u_init, algParams, std::cout);
+    Genten::PerfHistory history;
+    u = Genten::driver(dtc, x, u_init, algParams, history, std::cout);
 
     if (tensor_outputfilename != "") {
       if (dtc.nprocs() > 1)
@@ -196,7 +197,8 @@ int main_driver(Genten::AlgParams& algParams,
     if (algParams.debug) Genten::print_tensor(x_host, std::cout, "tensor");
 
     // Compute decomposition
-    u = Genten::driver(x, u_init, algParams, std::cout);
+    Genten::PerfHistory history;
+    u = Genten::driver(x, u_init, algParams, history, std::cout);
 
     if (tensor_outputfilename != "") {
       timer.start(1);
@@ -368,6 +370,32 @@ int main(int argc, char* argv[])
                                       outputfilename,
                                       sparse,
                                       init,
+                                      index_base,
+                                      gz,
+                                      facDims_h,
+                                      nnz,
+                                      tensor_outputfilename);
+#endif
+#ifdef KOKKOS_ENABLE_HIP
+    else if (algParams.exec_space == Genten::Execution_Space::HIP)
+      ret = main_driver<Kokkos::Experimental::HIP>(algParams,
+                                      inputfilename,
+                                      outputfilename,
+                                      sparse,
+                                      initfilename,
+                                      index_base,
+                                      gz,
+                                      facDims_h,
+                                      nnz,
+                                      tensor_outputfilename);
+#endif
+#ifdef ENABLE_SYCL_FOR_CUDA
+    else if (algParams.exec_space == Genten::Execution_Space::SYCL)
+      ret = main_driver<Kokkos::Experimental::SYCL>(algParams,
+                                      inputfilename,
+                                      outputfilename,
+                                      sparse,
+                                      initfilename,
                                       index_base,
                                       gz,
                                       facDims_h,

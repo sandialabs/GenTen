@@ -73,6 +73,7 @@ Genten::AlgParams::AlgParams() :
   pgtol(1e-5),
   memory(5),
   max_total_iters(5000),
+  hess_vec_method(Hess_Vec_Method::default_type),
   loss_function_type(Genten::GCP_LossFunction::default_type),
   loss_eps(1.0e-10),
   gcp_tol(-DOUBLE_MAX),
@@ -175,6 +176,10 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   pgtol = parse_ttb_real(args, "--pgtol", pgtol, 0.0, DOUBLE_MAX);
   memory = parse_ttb_indx(args, "--memory", memory, 0, INT_MAX);
   max_total_iters = parse_ttb_indx(args, "--total-iters", max_total_iters, 0, INT_MAX);
+  hess_vec_method = parse_ttb_enum(args, "--hessian", hess_vec_method,
+                                 Genten::Hess_Vec_Method::num_types,
+                                 Genten::Hess_Vec_Method::types,
+                                 Genten::Hess_Vec_Method::names);
 
   // GCP options
   loss_function_type = parse_ttb_enum(args, "--type", loss_function_type,
@@ -425,6 +430,12 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --pgtol <float>    pgtol parameter for L-BFGS-B" << std::endl;
   out << "  --memory <int>     memory parameter for L-BFGS-B" << std::endl;
   out << "  --total-iters <int>  max total iterations for L-BFGS-B" << std::endl;
+  out << "  --hessian <method> Hessian-vector product method: ";
+  for (unsigned i=0; i<Genten::Hess_Vec_Method::num_types; ++i) {
+    out << Genten::Hess_Vec_Method::names[i];
+    if (i != Genten::Hess_Vec_Method::num_types-1)
+      out << ", ";
+  }
   out << std::endl;
   out << "GCP options:" << std::endl;
   out << "  --type <type>      loss function type for GCP: ";
@@ -526,6 +537,7 @@ void Genten::AlgParams::print(std::ostream& out)
   out <<   "pgtol = " << pgtol << std::endl;
   out <<   "memory = " << memory << std::endl;
   out <<   "total-iters = " << max_total_iters << std::endl;
+  out << "  hessian = " << Genten::Hess_Vec_Method::names[hess_vec_method] << std::endl;
 
   out << std::endl;
   out << "GCP options:" << std::endl;

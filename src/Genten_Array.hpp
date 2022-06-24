@@ -256,8 +256,11 @@ namespace Genten {
     //! @brief x = a + y
     void shift(ttb_real a, const ArrayT & y) const;
 
-    //! @brief x = x + y
-    void plus(const ArrayT & y) const;
+    //! @brief x = x + s*y
+    void plus(const ArrayT & y, const ttb_real s = ttb_real(1.0)) const;
+
+    //! @brief x = a*y + b*x
+    void update(const ttb_real a, const ArrayT & y, const ttb_real b) const;
 
     //! @brief x = x + sum(y[i])
     void plusVec(std::vector< const ArrayT * > y) const;

@@ -75,9 +75,11 @@ mttkrp_kernel(const SptensorT<ExecSpace>& X,
               const KtensorT<ExecSpace>& u,
               const unsigned n,
               const FacMatrixT<ExecSpace>& v,
-              const AlgParams& algParams)
+              const AlgParams& algParams,
+              const bool zero_v)
 {
-  v = ttb_real(0.0);
+  if (zero_v)
+    v = ttb_real(0.0);
 
   using Kokkos::Experimental::create_scatter_view;
   using Kokkos::Experimental::ScatterView;
@@ -132,7 +134,7 @@ mttkrp_kernel(const SptensorT<ExecSpace>& X,
       }
 
       auto row_func = [&](auto j, auto nj, auto Nj) {
-        typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+        typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
         for (unsigned ii=0; ii<RowBlockSize; ++ii) {
           const ttb_indx i = offset + ii*stride;
           if (i >= nnz)
@@ -142,7 +144,7 @@ mttkrp_kernel(const SptensorT<ExecSpace>& X,
           const ttb_real x_val = X.value(i);
 
           // MTTKRP for dimension n
-          TV tmp(nj, x_val);
+          auto tmp = TVM::make(team, nj, x_val);
           tmp *= &(u.weights(nc_beg+j));
           for (unsigned m=0; m<nd; ++m) {
             if (m != n)
@@ -175,9 +177,11 @@ mttkrp_kernel_perm(const SptensorT<ExecSpace>& X,
                    const KtensorT<ExecSpace>& u,
                    const unsigned n,
                    const FacMatrixT<ExecSpace>& v,
-                   const AlgParams& algParams)
+                   const AlgParams& algParams,
+                   const bool zero_v)
 {
-  v = ttb_real(0.0);
+  if (zero_v)
+    v = ttb_real(0.0);
 
   static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
   static const unsigned FacBlockSize = FBS;
@@ -201,8 +205,9 @@ mttkrp_kernel_perm(const SptensorT<ExecSpace>& X,
       (team.league_rank()*TeamSize + team.team_rank())*RowBlockSize;
 
     auto row_func = [&](auto j, auto nj, auto Nj) {
-      typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
-      TV val(nj, 0.0), tmp(nj, 0.0);
+      typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
+      auto val = TVM::make(team, nj, 0.0);
+      auto tmp = TVM::make(team, nj, 0.0);
 
       ttb_indx row_prev = invalid_row;
       ttb_indx row = invalid_row;
@@ -275,13 +280,15 @@ struct MTTKRP_Kernel {
   const ttb_indx n;
   const FacMatrixT<ExecSpace> v;
   const AlgParams algParams;
+  const bool zero_v;
 
   MTTKRP_Kernel(const SptensorT<ExecSpace>& X_,
                 const KtensorT<ExecSpace>& u_,
                 const ttb_indx n_,
                 const FacMatrixT<ExecSpace>& v_,
-                const AlgParams& algParams_) :
-    X(X_), u(u_), n(n_), v(v_), algParams(algParams_) {}
+                const AlgParams& algParams_,
+                const bool zero_v_) :
+    X(X_), u(u_), n(n_), v(v_), algParams(algParams_), zero_v(zero_v_) {}
 
   template <unsigned FBS, unsigned VS>
   void run() const {
@@ -296,7 +303,7 @@ struct MTTKRP_Kernel {
     if (space_prop::is_gpu &&
         (method == MTTKRP_Method::Single ||
          method == MTTKRP_Method::Duplicated))
-      Genten::error("Single and duplicated MTTKRP methods are invalid on Cuda or HIP!");
+      Genten::error("Single and duplicated MTTKRP methods are invalid on Cuda, HIP or SYCL!");
 
     // Check if Perm is selected, that perm is computed
     if (method == MTTKRP_Method::Perm && !X.havePerm())
@@ -304,10 +311,10 @@ struct MTTKRP_Kernel {
 
     if (method == MTTKRP_Method::Single)
       mttkrp_kernel<ScatterNonDuplicated,ScatterNonAtomic,FBS,VS>(
-        X,u,n,v,algParams);
+        X,u,n,v,algParams,zero_v);
     else if (method == MTTKRP_Method::Atomic)
       mttkrp_kernel<ScatterNonDuplicated,ScatterAtomic,FBS,VS>(
-        X,u,n,v,algParams);
+        X,u,n,v,algParams,zero_v);
     else if (method == MTTKRP_Method::Duplicated) {
       // Only use "Duplicated" if the mode length * concurrency is sufficiently
       // small.  Taken from "Sparse Tensor Factorization on Many-Core Processors
@@ -320,16 +327,16 @@ struct MTTKRP_Kernel {
       const ttb_real gamma = algParams.mttkrp_duplicated_threshold;
       if (gamma < 0.0 || (static_cast<ttb_real>(N*P) <= gamma*nnz))
         mttkrp_kernel<ScatterDuplicated,ScatterNonAtomic,FBS,VS>(
-          X,u,n,v,algParams);
+          X,u,n,v,algParams,zero_v);
       else
         mttkrp_kernel<ScatterNonDuplicated,ScatterAtomic,FBS,VS>(
-          X,u,n,v,algParams);
+          X,u,n,v,algParams,zero_v);
     }
     else if (method == MTTKRP_Method::Perm)
-      mttkrp_kernel_perm<FBS,VS>(X,u,n,v,algParams);
+      mttkrp_kernel_perm<FBS,VS>(X,u,n,v,algParams,zero_v);
     else
-      Genten::error(std::string("Invalid mttkrp-method:  ") +
-                    MTTKRP_Method::names[method]);
+      Genten::error(std::string("Unknown MTTKRP method:  ") +
+                    std::string(MTTKRP_Method::names[method]));
   }
 };
 
@@ -340,21 +347,32 @@ struct MTTKRP_All_Kernel {
   const SptensorT<ExecSpace> XX;
   const KtensorT<ExecSpace> uu;
   const KtensorT<ExecSpace> vv;
+  const ttb_indx mode_beg;
+  const ttb_indx mode_end;
   const AlgParams algParams;
+  const bool zero_v;
 
   MTTKRP_All_Kernel(const SptensorT<ExecSpace>& X_,
                     const KtensorT<ExecSpace>& u_,
                     const KtensorT<ExecSpace>& v_,
-                    const AlgParams& algParams_) :
-    XX(X_), uu(u_), vv(v_), algParams(algParams_) {}
+                    const ttb_indx mode_beg_,
+                    const ttb_indx mode_end_,
+                    const AlgParams& algParams_,
+                    const bool zero_v_) :
+    XX(X_), uu(u_), vv(v_), mode_beg(mode_beg_), mode_end(mode_end_),
+    algParams(algParams_), zero_v(zero_v_) {}
 
   template <unsigned FBS, unsigned VS>
   void run() const {
     const SptensorT<ExecSpace> X = XX;
     const KtensorT<ExecSpace> u = uu;
     const KtensorT<ExecSpace> v = vv;
+    /*const*/ unsigned mb = mode_beg;
+    /*const*/ unsigned me = mode_end;
+    /*const*/ unsigned nm = me-mb;
 
-    v.setMatrices(0.0);
+    if (zero_v)
+      v.setMatrices(0.0);
 
     using Kokkos::Experimental::create_scatter_view;
     using Kokkos::Experimental::ScatterView;
@@ -367,7 +385,7 @@ struct MTTKRP_All_Kernel {
     /*const*/ unsigned RowBlockSize = algParams.mttkrp_nnz_tile_size;
     const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
-    static_assert(!is_gpu, "Cannot call mttkrp_all_kernel for Cuda or HIP space!");
+    static_assert(!is_gpu, "Cannot call mttkrp_all_kernel for Cuda, HIP or SYCL space!");
 
     /*const*/ unsigned nd = u.ndims();
     /*const*/ unsigned nc_total = u.ncomponents();
@@ -388,8 +406,8 @@ struct MTTKRP_All_Kernel {
       const unsigned nc =
         nc_beg+FacTileSize <= nc_total ? FacTileSize : nc_total-nc_beg;
       const unsigned nc_end = nc_beg+nc;
-      ScatterViewType *sa = new ScatterViewType[nd];
-      for (unsigned n=0; n<nd; ++n) {
+      ScatterViewType *sa = new ScatterViewType[nm];
+      for (unsigned n=0; n<nm; ++n) {
         auto vv = Kokkos::subview(v[n].view(),Kokkos::ALL,
                                   std::make_pair(nc_beg,nc_end));
         sa[n] = ScatterViewType(vv);
@@ -414,7 +432,7 @@ struct MTTKRP_All_Kernel {
         }
 
         auto row_func = [&](auto j, auto nj, auto Nj) {
-          typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+          typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
           for (unsigned ii=0; ii<RowBlockSize; ++ii) {
             const ttb_indx i = offset + ii*stride;
             if (i >= nnz)
@@ -423,13 +441,13 @@ struct MTTKRP_All_Kernel {
             const ttb_real x_val = X.value(i);
 
             // MTTKRP for dimension n
-            for (unsigned n=0; n<nd; ++n) {
-              const ttb_indx k = X.subscript(i,n);
+            for (unsigned n=0; n<nm; ++n) {
+              const ttb_indx k = X.subscript(i,n+mb);
               auto va = sa[n].access();
-              TV tmp(nj, x_val);
+              auto tmp = TVM::make(team, nj, x_val);
               tmp *= &(u.weights(nc_beg+j));
               for (unsigned m=0; m<nd; ++m) {
-                if (m != n)
+                if (m != n+mb)
                   tmp *= &(u[m].entry(X.subscript(i,m),nc_beg+j));
               }
               va(k,j) += tmp;
@@ -449,7 +467,7 @@ struct MTTKRP_All_Kernel {
         }
       }, "mttkrp_all_kernel");
 
-      for (unsigned n=0; n<nd; ++n) {
+      for (unsigned n=0; n<nm; ++n) {
         auto vv = Kokkos::subview(v[n].view(),Kokkos::ALL,
                                   std::make_pair(nc_beg,nc_end));
         sa[n].contribute_into(vv);
@@ -459,8 +477,8 @@ struct MTTKRP_All_Kernel {
   }
 };
 
-#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP)
-// Specialization for Cuda or HIP that always uses atomics and doesn't call
+#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || defined(ENABLE_SYCL_FOR_CUDA)
+// Specialization for Cuda, HIP or SYCL that always uses atomics and doesn't call
 // mttkrp_all_kernel, which won't run on the GPU
 template <int Dupl, int Cont>
 struct MTTKRP_All_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
@@ -469,24 +487,35 @@ struct MTTKRP_All_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
   const SptensorT<ExecSpace> XX;
   const KtensorT<ExecSpace> uu;
   const KtensorT<ExecSpace> vv;
+  const ttb_indx mode_beg;
+  const ttb_indx mode_end;
   const AlgParams algParams;
+  const bool zero_v;
 
   MTTKRP_All_Kernel(const SptensorT<ExecSpace>& X_,
                     const KtensorT<ExecSpace>& u_,
                     const KtensorT<ExecSpace>& v_,
-                    const AlgParams& algParams_) :
-    XX(X_), uu(u_), vv(v_), algParams(algParams_) {}
+                    const ttb_indx mode_beg_,
+                    const ttb_indx mode_end_,
+                    const AlgParams& algParams_,
+                    const bool zero_v_) :
+    XX(X_), uu(u_), vv(v_), mode_beg(mode_beg_), mode_end(mode_end_),
+    algParams(algParams_), zero_v(zero_v_) {}
 
   template <unsigned FBS, unsigned VS>
   void run() const {
     const SptensorT<ExecSpace> X = XX;
     const KtensorT<ExecSpace> u = uu;
     const KtensorT<ExecSpace> v = vv;
+    /*const*/ unsigned mb = mode_beg;
+    /*const*/ unsigned me = mode_end;
+    /*const*/ unsigned nm = me-mb;
 
     if (algParams.mttkrp_all_method != MTTKRP_All_Method::Atomic)
-      Genten::error("MTTKRP-All method must be atomic on Cuda and HIP!");
+      Genten::error("MTTKRP-All method must be atomic on Cuda, HIP and SYCL!");
 
-    v.setMatrices(0.0);
+    if (zero_v)
+      v.setMatrices(0.0);
 
     static const unsigned FacBlockSize = FBS;
     static const unsigned VectorSize = VS;
@@ -514,7 +543,7 @@ struct MTTKRP_All_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
       ttb_indx stride = team.league_size()*TeamSize;
 
       auto row_func = [&](auto j, auto nj, auto Nj) {
-        typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+        typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
         for (unsigned ii=0; ii<RowBlockSize; ++ii) {
           const ttb_indx i = offset + ii*stride;
           if (i >= nnz)
@@ -523,12 +552,12 @@ struct MTTKRP_All_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
           const ttb_real x_val = X.value(i);
 
           // MTTKRP for dimension n
-          for (unsigned n=0; n<nd; ++n) {
-            const ttb_indx k = X.subscript(i,n);
-            TV tmp(nj, x_val);
+          for (unsigned n=0; n<nm; ++n) {
+            const ttb_indx k = X.subscript(i,n+mb);
+            auto tmp = TVM::make(team, nj, x_val);
             tmp *= &(u.weights(j));
             for (unsigned m=0; m<nd; ++m) {
-              if (m != n)
+              if (m != n+mb)
                 tmp *= &(u[m].entry(X.subscript(i,m),j));
             }
             Kokkos::atomic_add(&v[n].entry(k,j), tmp);
@@ -675,7 +704,8 @@ template <typename ExecSpace>
 void orig_kokkos_mttkrp(const SptensorT<ExecSpace>& X,
                         const KtensorT<ExecSpace>& u,
                         const ttb_indx n,
-                        const FacMatrixT<ExecSpace>& v)
+                        const FacMatrixT<ExecSpace>& v,
+                        const bool zero_v)
 {
   const ttb_indx nc = u.ncomponents();     // Number of components
   const ttb_indx nd = u.ndims();           // Number of dimensions
@@ -691,7 +721,8 @@ void orig_kokkos_mttkrp(const SptensorT<ExecSpace>& X,
   // Resize and initialize the output factor matrix to zero.
   assert( v.nRows() == X.size(n) );
   assert( v.nCols() == nc );
-  v = ttb_real(0.0);
+  if (zero_v)
+    v = ttb_real(0.0);
 
   // Call kernel with factor block size determined from nc
   if (nc == 1)
@@ -722,7 +753,8 @@ void mttkrp(const SptensorT<ExecSpace>& X,
             const KtensorT<ExecSpace>& u,
             const ttb_indx n,
             const FacMatrixT<ExecSpace>& v,
-            const AlgParams& algParams)
+            const AlgParams& algParams,
+            const bool zero_v)
 {
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::mttkrp");
@@ -742,10 +774,10 @@ void mttkrp(const SptensorT<ExecSpace>& X,
   assert( v.nCols() == nc );
 
   if (algParams.mttkrp_method == MTTKRP_Method::OrigKokkos) {
-    Impl::orig_kokkos_mttkrp(X,u,n,v);
+    Impl::orig_kokkos_mttkrp(X,u,n,v,zero_v);
   }
   else {
-    Impl::MTTKRP_Kernel<ExecSpace> kernel(X,u,n,v,algParams);
+    Impl::MTTKRP_Kernel<ExecSpace> kernel(X,u,n,v,algParams,zero_v);
     Impl::run_row_simd_kernel(kernel, nc);
   }
 
@@ -759,7 +791,10 @@ template <typename ExecSpace>
 void mttkrp_all(const SptensorT<ExecSpace>& X,
                 const KtensorT<ExecSpace>& u,
                 const KtensorT<ExecSpace>& v,
-                const AlgParams& algParams)
+                const ttb_indx mode_beg,
+                const ttb_indx mode_end,
+                const AlgParams& algParams,
+                const bool zero_v)
 {
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::mttkrp_all");
@@ -769,12 +804,16 @@ void mttkrp_all(const SptensorT<ExecSpace>& X,
   const ttb_indx nd = u.ndims();           // Number of dimensions
 
   assert(X.ndims() == nd);
-  assert(v.ndims() == nd);
   assert(v.ncomponents() == nc);
   assert(u.isConsistent());
   for (ttb_indx i=0; i<nd; ++i) {
     assert(u[i].nRows() == X.size(i));
-    assert(v[i].nRows() == X.size(i));
+  }
+  assert(mode_beg <= mode_end);
+  assert(mode_end <= nd);
+  assert(v.ndims() == (mode_end - mode_beg));
+  for (ttb_indx i=mode_beg; i<mode_end; ++i) {
+    assert(v[i-mode_beg].nRows() == X.size(i));
   }
 
   using Kokkos::Experimental::ScatterDuplicated;
@@ -788,27 +827,27 @@ void mttkrp_all(const SptensorT<ExecSpace>& X,
   if (space_prop::is_gpu &&
       (method == MTTKRP_All_Method::Single ||
        method == MTTKRP_All_Method::Duplicated))
-    Genten::error("Single and duplicated MTTKRP-All methods are invalid on Cuda and HIP!");
+    Genten::error("Single and duplicated MTTKRP-All methods are invalid on Cuda, HIP and SYCL!");
 
   if (algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated) {
-    for (ttb_indx n=0; n<nd; ++n)
-      mttkrp(X, u, n, v[n], algParams);
+    for (ttb_indx n=mode_beg; n<mode_end; ++n)
+      mttkrp(X, u, n, v[n-mode_beg], algParams, zero_v);
   }
   else if (method == MTTKRP_All_Method::Single) {
-    Impl::MTTKRP_All_Kernel<ScatterNonDuplicated,ScatterNonAtomic,ExecSpace> kernel(X,u,v,algParams);
+    Impl::MTTKRP_All_Kernel<ScatterNonDuplicated,ScatterNonAtomic,ExecSpace> kernel(X,u,v,mode_beg,mode_end,algParams, zero_v);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else if (method == MTTKRP_All_Method::Atomic) {
-    Impl::MTTKRP_All_Kernel<ScatterNonDuplicated,ScatterAtomic,ExecSpace> kernel(X,u,v,algParams);
+    Impl::MTTKRP_All_Kernel<ScatterNonDuplicated,ScatterAtomic,ExecSpace> kernel(X,u,v,mode_beg,mode_end,algParams, zero_v);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else if (method == MTTKRP_All_Method::Duplicated) {
-    Impl::MTTKRP_All_Kernel<ScatterDuplicated,ScatterNonAtomic,ExecSpace> kernel(X,u,v,algParams);
+    Impl::MTTKRP_All_Kernel<ScatterDuplicated,ScatterNonAtomic,ExecSpace> kernel(X,u,v,mode_beg,mode_end,algParams, zero_v);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else
-    Genten::error(std::string("Invalid mttkrp-all-method:  ") +
-                  MTTKRP_All_Method::names[algParams.mttkrp_all_method]);
+    Genten::error(std::string("Unknown MTTKRP-all method:  ") +
+                  std::string(MTTKRP_All_Method::names[method]));
 
   if (u.getProcessorMap() != nullptr) {
     Kokkos::fence();

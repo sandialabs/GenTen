@@ -327,6 +327,13 @@ int main(int argc, char* argv[])
         cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
         nMaxNonzeroes, nRNGseed, nIters, algParams);
 #endif
+#ifdef ENABLE_SYCL_FOR_CUDA
+    else if (exec_space == Genten::Execution_Space::SYCL)
+      run_mttkrp< Kokkos::Experimental::SYCL >(
+        inputfilename, index_base, gz,
+        cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
+        nMaxNonzeroes, nRNGseed, nIters, algParams);
+#endif
 #ifdef KOKKOS_ENABLE_OPENMP
     else if (exec_space == Genten::Execution_Space::OpenMP)
       run_mttkrp< Kokkos::OpenMP >(

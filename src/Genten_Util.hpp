@@ -72,6 +72,13 @@ namespace Genten {
 #define GENTEN_INST_HIP(INSTMACRO) /* */
 #endif
 
+#ifdef ENABLE_SYCL_FOR_CUDA
+#define GENTEN_INST_SYCL(INSTMACRO) \
+  INSTMACRO(Kokkos::Experimental::SYCL)
+#else
+#define GENTEN_INST_SYCL(INSTMACRO) /* */
+#endif
+
 #ifdef KOKKOS_ENABLE_OPENMP
 #define GENTEN_INST_OPENMP(INSTMACRO) \
   INSTMACRO(Kokkos::OpenMP)
@@ -97,6 +104,7 @@ namespace Genten {
 namespace Genten {                              \
   GENTEN_INST_CUDA(INSTMACRO)                   \
   GENTEN_INST_HIP(INSTMACRO)                    \
+  GENTEN_INST_SYCL(INSTMACRO)                   \
   GENTEN_INST_OPENMP(INSTMACRO)                 \
   GENTEN_INST_THREADS(INSTMACRO)                \
   GENTEN_INST_SERIAL(INSTMACRO)                 \
@@ -129,17 +137,18 @@ namespace Genten {
     enum type {
       Cuda,
       HIP,
+      SYCL,
       OpenMP,
       Threads,
       Serial,
       Default
     };
     static constexpr type types[] = {
-      Cuda, HIP, OpenMP, Threads, Serial, Default
+      Cuda, HIP, SYCL, OpenMP, Threads, Serial, Default
     };
     static constexpr unsigned num_types = sizeof(types) / sizeof(types[0]);
     static constexpr const char* names[] = {
-      "cuda", "hip", "openmp", "threads", "serial", "default"
+      "cuda", "hip", "sycl", "openmp", "threads", "serial", "default"
     };
     static constexpr type default_type = Default;
   };
@@ -224,6 +233,23 @@ namespace Genten {
       "default", "iterated", "atomic", "duplicated", "single"
     };
     static constexpr type default_type = Default;
+  };
+
+  // Sampling functions supported by GCP
+  struct Hess_Vec_Method {
+    enum type {
+      Full,
+      GaussNewton,
+      FiniteDifference
+    };
+    static constexpr unsigned num_types = 3;
+    static constexpr type types[] = {
+      Full, GaussNewton, FiniteDifference
+    };
+    static constexpr const char* names[] = {
+      "full", "gauss-newton", "finite-difference"
+    };
+    static constexpr type default_type = FiniteDifference;
   };
 
   // TTM algorithm
@@ -339,5 +365,4 @@ namespace Genten {
     explicit oblackholestream() : base(nullptr) {}
   };
   extern oblackholestream bhcout;
-
 }

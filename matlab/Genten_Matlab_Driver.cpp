@@ -53,8 +53,19 @@ void matlab_driver(int nlhs, mxArray *plhs[],
   // Get tensor
   Genten::SystemTimer timer(1, algParams.timings);
   timer.start(0);
-  Genten::SptensorT<ExecSpace> X =
-    mxGetSptensor<ExecSpace>(prhs[0], algParams.debug);
+  Genten::SptensorT<ExecSpace> X_sparse;
+  Genten::TensorT<ExecSpace> X_dense;
+  bool sparse = true;
+  if (mxIsClass(prhs[0], "sptensor") || mxIsClass(prhs[0], "sptensor_gt")) {
+    X_sparse = mxGetSptensor<ExecSpace>(prhs[0], algParams.debug);
+    sparse = true;
+  }
+  else if (mxIsClass(prhs[0], "tensor")) {
+    X_dense = mxGetTensor<ExecSpace>(prhs[0], algParams.debug);
+    sparse = false;
+  }
+  else
+    Genten::error("First arg is not a tensor or sptensor!");
   timer.stop(1);
   if (algParams.timings)
     std::cout << "Parsing tensor took " << timer.getTotalTime(0)
@@ -83,14 +94,20 @@ void matlab_driver(int nlhs, mxArray *plhs[],
   Genten::DistTensorContext dtc;
 
   // Call driver
-  Genten::KtensorT<ExecSpace> u =
-    Genten::driver(dtc, X, u_init, algParams, std::cout);
+  Genten::PerfHistory history;
+  Genten::KtensorT<ExecSpace> u;
+  if (sparse)
+    u = Genten::driver(dtc, X_sparse, u_init, algParams, history, std::cout);
+  else
+    u = Genten::driver(dtc, X_dense, u_init, algParams, history, std::cout);
 
   // Return results
   if (nlhs >= 1)
     plhs[0] = mxSetKtensor(u, algParams.debug);
   if (nlhs >= 2)
     plhs[1] = mxSetKtensor(u_init);
+  if (nlhs >= 3)
+    plhs[2] = mxSetHistory(history);
 }
 
 extern "C" {
@@ -122,6 +139,14 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
 #ifdef KOKKOS_ENABLE_CUDA
     else if (algParams.exec_space == Genten::Execution_Space::Cuda)
       matlab_driver<Kokkos::Cuda>(nlhs, plhs, nrhs, prhs, algParams);
+#endif
+#ifdef KOKKOS_ENABLE_HIP
+    else if (algParams.exec_space == Genten::Execution_Space::HIP)
+      matlab_driver<Kokkos::Experimental::HIP>(nlhs, plhs, nrhs, prhs, algParams);
+#endif
+#ifdef ENABLE_SYCL_FOR_CUDA
+    else if (algParams.exec_space == Genten::Execution_Space::SYCL)
+      matlab_driver<Kokkos::Experimental::SYCL>(nlhs, plhs, nrhs, prhs, algParams);
 #endif
 #ifdef KOKKOS_ENABLE_OPENMP
     else if (algParams.exec_space == Genten::Execution_Space::OpenMP)

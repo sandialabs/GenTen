@@ -68,6 +68,10 @@ namespace Genten
     inline bool float_eq(const ttb_real a, const ttb_real b) {
       return rel_diff(a, b) < ttb_real(10.0)*MACHINE_EPSILON;
     }
+    inline bool float_eq(const ttb_real a, const ttb_real b, const ttb_real tol)
+    {
+      return rel_diff(a, b) < tol;
+    }
   }
 }
 
@@ -86,3 +90,4 @@ namespace Genten
 #define MAXABS(a,b) (Genten::Test::max_abs(a,b))
 #define RELDIFF(a,b) (Genten::Test::rel_diff(a,b))
 #define EQ(a,b) (Genten::Test::float_eq(a,b))
+#define FLOAT_EQ(a,b,tol) (Genten::Test::float_eq(a,b,tol))

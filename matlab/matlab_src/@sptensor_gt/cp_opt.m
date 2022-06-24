@@ -1,4 +1,4 @@
-function [U,varargout] = cp_als(X,R,varargin)
+function [U,varargout] = cp_opt(X,R,varargin)
 %CP_OPT Compute a CP decomposition using GenTen
 %
 %  This is just a wrapper for CP_OPT_GT allowing CP_OPT to be called for tensors

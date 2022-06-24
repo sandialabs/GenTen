@@ -52,8 +52,9 @@
 #include "Genten_Sptensor.hpp"
 #include "Genten_Tensor.hpp"
 #include "Genten_KokkosVector.hpp"
-#include "Genten_MixedFormatOps.hpp"
+#include "Genten_CP_Model.hpp"
 #include "Genten_IOtext.hpp"
+#include "Genten_SystemTimer.hpp"
 
 extern "C" {
 #include "lbfgsb.h"
@@ -66,45 +67,6 @@ extern "C" {
 namespace Genten {
 
   namespace Impl {
-
-    template<typename TensorT, typename ExecSpace>
-    void cp_opt_lbfgsb_fg(const TensorT& X, const KtensorT<ExecSpace>& M,
-                          const ttb_real nrm_X_sq, const AlgParams& algParams,
-                          ttb_real& f, KtensorT<ExecSpace>& G,
-                          std::vector< FacMatrixT<ExecSpace> >& gram,
-                          std::vector< FacMatrixT<ExecSpace> >& hada,
-                          const ArrayT<ExecSpace>& ones)
-    {
-      // Gram matrix for each mode
-      const ttb_indx nd = M.ndims();
-      for (ttb_indx n=0; n<nd; ++n)
-        gram[n].gramian(M[n], true, Upper);
-
-      // Hadamard product of gram matrices
-      for (ttb_indx n=0; n<nd; ++n) {
-        hada[n].oprod(M.weights());
-        for (ttb_indx m=0; m<nd; ++m) {
-          if (n != m)
-            hada[n].times(gram[m]);
-        }
-      }
-
-      // MTTKRP
-      mttkrp_all(X, M, G, algParams);
-
-      // <X,M> using 'MTTKRP' trick
-      const ttb_real ip = M[nd-1].innerprod(G[nd-1], M.weights());
-
-      // <M,M>
-      const ttb_real nrm_M_sq = gram[nd-1].innerprod(hada[nd-1], ones);
-
-      // Compute objective
-      f = ttb_real(0.5) * (nrm_X_sq + nrm_M_sq) - ip;
-
-      // Compute gradient
-      for (ttb_indx n=0; n<nd; ++n)
-        G[n].gemm(false, false, ttb_real(1.0), M[n], hada[n], ttb_real(-1.0));
-    }
 
     std::string findTaskString(integer task)
     {
@@ -192,7 +154,8 @@ namespace Genten {
 
   template<typename TensorT, typename ExecSpace>
   void cp_opt_lbfgsb(const TensorT& X, KtensorT<ExecSpace>& u,
-                     const AlgParams& algParams)
+                     const AlgParams& algParams,
+                     PerfHistory& history)
   {
     typedef KokkosVector<ExecSpace> kokkos_vector;
 #ifdef HAVE_CALIPER
@@ -209,6 +172,9 @@ namespace Genten {
       if (X.size(i) != u[i].nRows())
         Genten::error("Genten::cp_opt - u and x have different size");
     }
+
+    Genten::SystemTimer timer(1);
+    timer.start(0);
 
     // Distribute the initial guess to have weights of one since the objective
     // does not include gradients w.r.t. weights
@@ -259,23 +225,17 @@ namespace Genten {
     integer isave[LENGTH_ISAVE];
     double  dsave[LENGTH_DSAVE];
 
-    const ttb_indx nd = u.ndims();
-    const ttb_indx nc = u.ncomponents();
-    std::vector< FacMatrixT<ExecSpace> > gram(nd);
-    std::vector< FacMatrixT<ExecSpace> > hada(nd);
-    for (ttb_indx i=0; i<nd; ++i) {
-      gram[i] = FacMatrixT<ExecSpace>(nc,nc);
-      hada[i] = FacMatrixT<ExecSpace>(nc,nc);
-    }
-    ArrayT<ExecSpace> ones(nc, 1.0);
     const ttb_real nrm_X = X.norm();
     const ttb_real nrm_X_sq = nrm_X*nrm_X;
 
+    history.addEmpty();
+    CP_Model<TensorT> cp_model(X, u, algParams);
+
     // Run CP-OPT
-    ttb_indx iters = 1;
-    ttb_indx total_iters = 1;
+    ttb_indx iters = 0;
+    ttb_indx total_iters = 0;
     ttb_indx print_iter = 0;
-    while (iters <= iterMax && total_iters <= total_iterMax) {
+    while (iters < iterMax && total_iters < total_iterMax) {
       ++total_iters;
 
       setulb(&n,&m,z_host.data(),lower.data(),upper.data(),nbd.data(),
@@ -286,22 +246,36 @@ namespace Genten {
         Kokkos::deep_copy(z.getView(), z_host);
         KtensorT<ExecSpace> M = z.getKtensor();
         KtensorT<ExecSpace> G = g.getKtensor();
-        Impl::cp_opt_lbfgsb_fg(X,M,nrm_X_sq,algParams,f,G,gram,hada,ones);
+        cp_model.update(M);
+        f = cp_model.value_and_gradient(G, M);
         deep_copy(g_host, g.getView());
+
+        const ttb_real nrmg = g.normInf();
+        const ttb_real time = timer.getTotalTime(0);
+
+        if (history.size() < iters+1)
+          history.resize(iters+1);
+        history[iters].iteration = iters;
+        history[iters].residual = f;
+        history[iters].fit = ttb_real(1.0) - f / (ttb_real(0.5)*nrm_X_sq);
+        history[iters].grad_norm = nrmg;
+        history[iters].cum_time = time;
 
         // Suppress printing of inner iterations by only printing when the
         // the outer iterations increments
-        if (algParams.printitn > 0 && iters % algParams.printitn == 0 &&
-            iters > print_iter) {
+        if (iters > print_iter) {
+          if (algParams.printitn > 0 && (print_iter+1) % algParams.printitn == 0) {
+            const auto& h = history[print_iter];
+            std::cout << "Iter " << std::setw(5) << print_iter+1
+                      << ", f(x) = "
+                      << std::setprecision(6) << std::scientific << h.residual
+                      << ", ||grad||_infty = "
+                      << std::setprecision(2) << std::scientific << h.grad_norm
+                      << ", t = "
+                      << std::setprecision(2) << std::scientific << h.cum_time
+                      << std::endl;
+          }
           print_iter = iters;
-
-          const ttb_real nrmg = g.normInf();
-          std::cout << "Iter " << std::setw(5) << iters
-                    << ", f(x) = "
-                    << std::setprecision(6) << std::scientific << f
-                    << ", ||grad||_infty = "
-                    << std::setprecision(2) << std::scientific << nrmg
-                    << std::endl;
         }
         continue;
       }
@@ -314,10 +288,25 @@ namespace Genten {
         break;
     }
 
+    // Print last iteration
+    if (algParams.printitn > 0) {
+      const auto& h = history.lastEntry();
+      std::cout << "Iter " << std::setw(5) << print_iter+1
+                << ", f(x) = "
+                << std::setprecision(6) << std::scientific << h.residual
+                << ", ||grad||_infty = "
+                << std::setprecision(2) << std::scientific << h.grad_norm
+                << ", t = "
+                << std::setprecision(2) << std::scientific << h.cum_time
+                << std::endl;
+          }
+
     // Normalize Ktensor u
     z.copyToKtensor(u);
     u.normalize(Genten::NormTwo);
     u.arrange();
+
+    timer.stop(0);
 
     // Compute final fit
     if (algParams.printitn > 0) {
@@ -329,6 +318,7 @@ namespace Genten {
         std::cout << Impl::findTaskString(task) << std::endl;
       const ttb_real fit = ttb_real(1.0) - f / (ttb_real(0.5)*nrm_X_sq);
       std::cout << "Final fit = " << fit << std::endl;
+      std::cout << "Total time = " << timer.getTotalTime(0) << std::endl;
     }
   }
 
@@ -338,11 +328,13 @@ namespace Genten {
   template void cp_opt_lbfgsb<SptensorT<SPACE>,SPACE>(                  \
     const SptensorT<SPACE>& x,                                          \
     KtensorT<SPACE>& u,                                                 \
-    const AlgParams& algParms);                                         \
+    const AlgParams& algParms,                                          \
+    PerfHistory& history);                                              \
                                                                         \
   template void cp_opt_lbfgsb<TensorT<SPACE>,SPACE>(                    \
     const TensorT<SPACE>& x,                                            \
     KtensorT<SPACE>& u,                                                 \
-    const AlgParams& algParms);
+    const AlgParams& algParms,                                          \
+    PerfHistory& history);
 
 GENTEN_INST(INST_MACRO)

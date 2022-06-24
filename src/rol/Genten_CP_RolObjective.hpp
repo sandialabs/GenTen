@@ -43,7 +43,9 @@
 #include "ROL_Objective.hpp"
 #include "Genten_RolKokkosVector.hpp"
 #include "Genten_RolKtensorVector.hpp"
-#include "Genten_MixedFormatOps.hpp"
+#include "Genten_CP_Model.hpp"
+#include "Genten_PerfHistory.hpp"
+#include "Genten_SystemTimer.hpp"
 
 #include "Teuchos_TimeMonitor.hpp"
 
@@ -73,7 +75,7 @@ namespace Genten {
 #endif
 
     CP_RolObjective(const tensor_type& x, const ktensor_type& m,
-                    const AlgParams& algParms);
+                    const AlgParams& algParms, PerfHistory& history);
 
     virtual ~CP_RolObjective() {}
 
@@ -89,6 +91,11 @@ namespace Genten {
                           const ROL::Vector<ttb_real>& x,
                           ttb_real &tol) override;
 
+    virtual void hessVec(ROL::Vector<ttb_real>& hv,
+                         const ROL::Vector<ttb_real>& v,
+                         const ROL::Vector<ttb_real>& x,
+                         ttb_real& tol ) override;
+
     ROL::Ptr<vector_type> createDesignVector() const
     {
       return ROL::makePtr<vector_type>(M, false);
@@ -96,15 +103,11 @@ namespace Genten {
 
   protected:
 
-    tensor_type X;
-    ktensor_type M;
-    ktensor_type G;
-    AlgParams algParams;
-
+    ktensor_type M, V, G;
+    CP_Model<tensor_type> cp_model;
+    PerfHistory& history;
+    SystemTimer timer;
     ttb_real nrm_X_sq;
-    std::vector< FacMatrixT<exec_space> > gram;
-    std::vector< FacMatrixT<exec_space> > hada;
-    ArrayT<exec_space> ones;
 
   };
 
@@ -112,27 +115,23 @@ namespace Genten {
   CP_RolObjective<Tensor>::
   CP_RolObjective(const tensor_type& x,
                   const ktensor_type& m,
-                  const AlgParams& algParms) :
-      X(x), M(m), algParams(algParms)
+                  const AlgParams& algParams,
+                  PerfHistory& h) : M(m), cp_model(x, m, algParams), history(h),
+                                    timer(1)
     {
       const ttb_indx nc = M.ncomponents();
       const ttb_indx nd = M.ndims();
 #if COPY_KTENSOR
-      G = ktensor_type(nc, nd);
-      for (ttb_indx i=0; i<nd; ++i)
-        G.set_factor(i, FacMatrixT<exec_space>(M[i].nRows(), nc));
+      V = ktensor_type(nc, nd, x.size());
+      G = ktensor_type(nc, nd, x.size());
 #endif
 
-      const ttb_real nrm_X = X.norm();
-      nrm_X_sq = nrm_X*nrm_X;
+      timer.start(0);
+      nrm_X_sq = x.norm();
+      nrm_X_sq = nrm_X_sq*nrm_X_sq;
 
-      gram.resize(nd);
-      hada.resize(nd);
-      for (ttb_indx i=0; i<nd; ++i) {
-        gram[i] = FacMatrixT<exec_space>(nc,nc);
-        hada[i] = FacMatrixT<exec_space>(nc,nc);
-      }
-      ones = ArrayT<exec_space>(nc, 1.0);
+      history.addEmpty();
+      history.lastEntry().iteration = 0;
     }
 
   // Compute information that is common to both value() and gradient()
@@ -152,20 +151,28 @@ namespace Genten {
     x.copyToKtensor(M);
 #endif
 
-    // Gram matrix for each mode
-    const ttb_indx nd = M.ndims();
-    for (ttb_indx n=0; n<nd; ++n)
-      gram[n].gramian(M[n], true, Upper);
+    // std::cout << "calling update with type == ";
+    // if (type == ROL::UpdateType::Initial)
+    //   std::cout << "initial";
+    // else if (type == ROL::UpdateType::Accept)
+    //   std::cout << "accept";
+    // else if (type == ROL::UpdateType::Revert)
+    //   std::cout << "revert";
+    // else if (type == ROL::UpdateType::Trial)
+    //   std::cout << "trial";
+    // else if (type == ROL::UpdateType::Temp)
+    //   std::cout << "temp";
+    // std::cout << std::endl;
 
-    // Hadamard product of gram matrices
-    for (ttb_indx n=0; n<nd; ++n) {
-      hada[n].oprod(M.weights());
-      for (ttb_indx m=0; m<nd; ++m) {
-        if (n != m)
-          hada[n].times(gram[m]);
-      }
+    cp_model.update(M);
+
+    // If the step was accepted, record the time and add a new working entry
+    if (type == ROL::UpdateType::Accept) {
+      const ttb_indx iter = history.lastEntry().iteration;
+      history.lastEntry().cum_time = timer.getTotalTime(0);
+      history.addEmpty();
+      history.lastEntry().iteration = iter+1;
     }
-
   }
 
   template <typename Tensor>
@@ -193,15 +200,12 @@ namespace Genten {
     x.copyToKtensor(M);
 #endif
 
-    // ||M||^2 = <M,M>
-    const ttb_indx nd = M.ndims();
-    const ttb_real nrm_M_sq = gram[nd-1].innerprod(hada[nd-1], ones);
+    ttb_real res = cp_model.value(M);
 
-    // <X,M>.  Unfortunately can't use MTTKRP trick since we don't want to
-    // compute MTTKRP in update()
-    const ttb_real ip = innerprod(X,M);
+    history.lastEntry().residual = res;
+    history.lastEntry().fit = ttb_real(1.0) - res / (ttb_real(0.5)*nrm_X_sq);
 
-    return ttb_real(0.5)*(nrm_X_sq + nrm_M_sq) - ip;
+    return res;
   }
 
   // Compute gradient of objective function:
@@ -224,14 +228,42 @@ namespace Genten {
     x.copyToKtensor(M);
 #endif
 
-    const ttb_indx nd = M.ndims();
-    mttkrp_all(X, M, G, algParams);
-    for (ttb_indx n=0; n<nd; ++n)
-      G[n].gemm(false, false, ttb_real(1.0), M[n], hada[n], ttb_real(-1.0));
+    cp_model.gradient(G, M);
 
     // Convert Ktensor to vector
 #if COPY_KTENSOR
     g.copyFromKtensor(G);
+#endif
+
+    history.lastEntry().grad_norm = g.normInf();
+  }
+
+  template <typename Tensor>
+  void
+  CP_RolObjective<Tensor>::
+  hessVec(ROL::Vector<ttb_real>& hhv, const ROL::Vector<ttb_real>& vv,
+          const ROL::Vector<ttb_real>& xx, ttb_real &tol)
+  {
+    TEUCHOS_FUNC_TIME_MONITOR("CP_RolObjective::hessVec");
+
+    const vector_type& x = dynamic_cast<const vector_type&>(xx);
+    const vector_type& v = dynamic_cast<const vector_type&>(vv);
+    vector_type& hv = dynamic_cast<vector_type&>(hhv);
+
+    // Convert input vector to a Ktensor
+    M = x.getKtensor();
+    V = v.getKtensor();
+    G = hv.getKtensor();
+#if COPY_KTENSOR
+    x.copyToKtensor(M);
+    v.copyToKtensor(V);
+#endif
+
+    cp_model.hess_vec(G, M, V);
+
+    // Convert Ktensor to vector
+#if COPY_KTENSOR
+    hv.copyFromKtensor(G);
 #endif
   }
 

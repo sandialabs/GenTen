@@ -399,6 +399,12 @@ power(ttb_real a) const
   Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
+#if defined(__SYCL_DEVICE_ONLY__)
+    using sycl::pow;
+#else
+    using std::pow;
+#endif
+
     d[i] = pow(d[i], a);
   }, "Genten::Array::power_kernel");
 }
@@ -423,10 +429,12 @@ void Genten::ArrayT<ExecSpace>::
 shift(ttb_real a) const
 {
   const ttb_indx sz = data.extent(0);
-  for (ttb_indx i = 0; i < sz; i ++)
+  view_type d = data;
+  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
   {
-    data[i] = data[i] + a;
-  }
+    d[i] += a;
+  }, "Genten::Array::scalar_shift_kernel");
 }
 
 template <typename ExecSpace>
@@ -446,7 +454,27 @@ shift(ttb_real a, const Genten::ArrayT<ExecSpace> & y) const
 
 template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
-plus(const Genten::ArrayT<ExecSpace> & y) const
+update(const ttb_real a, const Genten::ArrayT<ExecSpace> & y,
+       const ttb_real b) const
+{
+  const ttb_indx sz = data.extent(0);
+  if (sz != y.data.extent(0))
+  {
+    Genten::error("Genten::ArrayT::update - size mismatch");
+  }
+
+  view_type d = data;
+  view_type yd = y.data;
+  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
+ {
+   d[i] = a*yd[i] + b*d[i];
+ }, "Genten::Array::update_kernel");
+}
+
+template <typename ExecSpace>
+void Genten::ArrayT<ExecSpace>::
+plus(const Genten::ArrayT<ExecSpace> & y, const ttb_real s) const
 {
   const ttb_indx sz = data.extent(0);
   if (sz != y.data.extent(0))
@@ -454,7 +482,14 @@ plus(const Genten::ArrayT<ExecSpace> & y) const
     Genten::error("Genten::ArrayT::plus (one input) - size mismatch");
   }
 
-  Genten::axpy(sz, 1.0, y.data.data(), 1, data.data(), 1);
+  //Genten::axpy(sz, s, y.data.data(), 1, data.data(), 1);
+  view_type d = data;
+  view_type yd = y.data;
+  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
+  {
+    d[i] += s*yd[i];
+  }, "Genten::Array::plus_kernel");
 }
 
 // x = x + sum(y[i] )

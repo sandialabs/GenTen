@@ -77,6 +77,24 @@ namespace Genten {
       initialize();
     }
 
+    KokkosVector(const KokkosVector& x, const ttb_indx mode_beg,
+                 const ttb_indx mode_end) :
+      nc(x.nc), nd(mode_end-mode_beg)
+    {
+      auto sub =
+        Kokkos::subview(x.sz.values(), std::make_pair(mode_beg,mode_end));
+      sz = IndxArray(sub);
+      ttb_indx nb = 0;
+      ttb_indx ne = 0;
+      for (unsigned i=0; i<mode_beg; ++i) {
+        nb += x.sz[i]*nc;
+        ne += x.sz[i]*nc;
+      }
+      for (unsigned i=mode_beg; i<mode_end; ++i)
+        ne += x.sz[i]*nc;
+      v = Kokkos::subview(x.v, std::make_pair(nb, ne));
+    }
+
     ~KokkosVector() {}
 
     view_type getView() const { return v; }
@@ -103,6 +121,19 @@ namespace Genten {
     KokkosVector clone() const
     {
       return KokkosVector<exec_space>(nc,nd,sz);
+    }
+
+    KokkosVector clone(const ttb_indx mode_beg, const ttb_indx mode_end) const
+    {
+      const ttb_indx nm = mode_end-mode_beg;
+      auto sub =
+        Kokkos::subview(sz.values(), std::make_pair(mode_beg,mode_end));
+      return KokkosVector(nc,nm,IndxArray(sub));
+    }
+
+    KokkosVector subview(const ttb_indx mode_beg, const ttb_indx mode_end) const
+    {
+      return KokkosVector(*this, mode_beg, mode_end);
     }
 
     void copyToKtensor(const Ktensor_type& Kt) const {

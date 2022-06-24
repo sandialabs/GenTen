@@ -159,19 +159,17 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
 
   // Request performance information on every iteration.
   // Allocation adds two more for start and stop states of the algorithm.
-  ttb_indx  nMaxPerfSize = 2 + algParams.maxiters;
-  Genten::CpAlsPerfInfo *  perfInfo = new Genten::CpAlsPerfInfo[nMaxPerfSize];
+  Genten::PerfHistory perfInfo;
   cResult = cInitialGuess;
   Genten::cpals_core (cData, cResult, algParams, nItersCompleted, dResNorm,
                       1, perfInfo);
   printf ("Performance information per iteration:\n");
-  for (ttb_indx  i = 0; i <= nItersCompleted; i++)
+  for (ttb_indx i = 0; i < perfInfo.size(); i++)
   {
     printf (" %2d: fit = %.6e, resnorm = %.2e, time = %.3f secs\n",
-            perfInfo[i].nIter, perfInfo[i].dFit,
-            perfInfo[i].dResNorm, perfInfo[i].dCumTime);
+            perfInfo[i].iteration, perfInfo[i].fit,
+            perfInfo[i].residual, perfInfo[i].cum_time);
   }
-  delete[] perfInfo;
 
   printf ("  Final residual norm = %10.3e\n", dResNorm);
   printf ("  Weights (lambda):\n");
@@ -313,6 +311,11 @@ int main(int argc, char* argv[])
 #ifdef KOKKOS_ENABLE_HIP
     else if (exec_space == Genten::Execution_Space::HIP)
       ret = run_cpals< Kokkos::Experimental::HIP >(
+        cFacDims, nMaxNonzeroes, algParams);
+#endif
+#ifdef ENABLE_SYCL_FOR_CUDA
+    else if (exec_space == Genten::Execution_Space::SYCL)
+      ret = run_cpals< Kokkos::Experimental::SYCL >(
         cFacDims, nMaxNonzeroes, algParams);
 #endif
 #ifdef KOKKOS_ENABLE_OPENMP

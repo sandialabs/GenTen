@@ -243,14 +243,14 @@ ttb_real innerprod_kernel(const Genten::SptensorT<ExecSpace>& s,
                           const Genten::ArrayT<ExecSpace>& lambda)
 {
   // Compute team and vector sizes, depending on the architecture
-  const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+  const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
 
   const unsigned VectorSize =
-    is_cuda ? (FacBlockSize <= 16 ? FacBlockSize : 16) : 1;
+    is_gpu ? (FacBlockSize <= 16 ? FacBlockSize : 16) : 1;
   const unsigned TeamSize =
-    is_cuda ? 128/VectorSize : 1;
+    is_gpu ? 128/VectorSize : 1;
   const unsigned RowBlockSize =
-    is_cuda ? TeamSize : 32;
+    is_gpu ? TeamSize : 32;
 
   typedef InnerProductKernel<ExecSpace,RowBlockSize,FacBlockSize,TeamSize,VectorSize> Kernel;
   typedef typename Kernel::TeamMember TeamMember;
@@ -291,7 +291,7 @@ ttb_real Genten::innerprod(const Genten::SptensorT<ExecSpace>& s,
   cali::Function cali_func("Genten::innerprod");
 #endif
 
-  const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+  const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
 
   const ttb_indx nc = u.ncomponents();               // Number of components
   const ttb_indx nd = u.ndims();                     // Number of dimensions
@@ -313,7 +313,7 @@ ttb_real Genten::innerprod(const Genten::SptensorT<ExecSpace>& s,
     d = Impl::innerprod_kernel<ExecSpace,8>(s,u,lambda);
   else if (nc <= 16)
     d = Impl::innerprod_kernel<ExecSpace,16>(s,u,lambda);
-  else if (nc < 64 || !is_cuda)
+  else if (nc < 64 || !is_gpu)
     d = Impl::innerprod_kernel<ExecSpace,32>(s,u,lambda);
   else
     d = Impl::innerprod_kernel<ExecSpace,64>(s,u,lambda);
@@ -343,10 +343,10 @@ ttb_real Genten::innerprod(const Genten::TensorT<ExecSpace>& x,
   /*const*/ unsigned nd = u.ndims();
   /*const*/ unsigned nc = u.ncomponents();
 
-  // Make VectorSize*TeamSize ~= 256 on Cuda
-  static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
-  const unsigned VectorSize = is_cuda ? nc : 1;
-  const unsigned TeamSize = is_cuda ? (256+nc-1)/nc : 1;
+  // Make VectorSize*TeamSize ~= 256 on Cuda, HIP or SYCL
+  static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+  const unsigned VectorSize = is_gpu ? nc : 1;
+  const unsigned TeamSize = is_gpu ? (256+nc-1)/nc : 1;
   const ttb_indx N = (ne+TeamSize-1)/TeamSize;
 
   // Check on sizes
@@ -468,7 +468,7 @@ struct MTTKRP_Dense_Kernel {
 
       // lambda function for MTTKRP for block of size nj
       auto row_func = [&](auto j, auto nj, auto Nj) {
-        typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+        typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
 
         // Work around internal-compiler errors in recent Intel compilers
         unsigned nd_ = nd;
@@ -483,12 +483,12 @@ struct MTTKRP_Dense_Kernel {
           sub[n_] = i;
         });
 
-        TV val(nj, 0.0);
+        auto val = TVM::make(team, nj, 0.0);
         int done = 0;
         while (!done) {  // Would like to get some parallelism in this loop
           const ttb_indx k = X.sub2ind(sub);
           const ttb_real x_val = X[k];
-          TV tmp(nj, x_val);
+          auto tmp = TVM::make(team, nj, x_val);
           tmp *= &(u.weights(j));
           for (unsigned m=0; m<nd_; ++m) {
             if (m != n_)
@@ -528,7 +528,8 @@ void Genten::mttkrp(const Genten::TensorT<ExecSpace>& X,
                     const Genten::KtensorT<ExecSpace>& u,
                     const ttb_indx n,
                     const Genten::FacMatrixT<ExecSpace>& v,
-                    const Genten::AlgParams& algParams)
+                    const Genten::AlgParams& algParams,
+                    const bool zero_v)
 {
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::mttkrp");
@@ -547,7 +548,8 @@ void Genten::mttkrp(const Genten::TensorT<ExecSpace>& X,
   assert( v.nRows() == X.size(n) );
   assert( v.nCols() == nc );
 
-  v = ttb_real(0.0);
+  if (zero_v)
+    v = ttb_real(0.0);
 
   Genten::Impl::MTTKRP_Dense_Kernel<ExecSpace> kernel(X,u,n,v,algParams);
   Genten::Impl::run_row_simd_kernel(kernel, nc);
@@ -569,18 +571,23 @@ void Genten::mttkrp(const Genten::TensorT<ExecSpace>& X,
                 const Genten::KtensorT<SPACE>& u,                       \
                 const ttb_indx n,                                       \
                 const Genten::FacMatrixT<SPACE>& v,                     \
-                const AlgParams& algParams);                            \
+                const AlgParams& algParams,                             \
+                const bool zero_v);                                     \
                                                                         \
   template                                                              \
   void mttkrp<>(const Genten::TensorT<SPACE>& X,                        \
                 const Genten::KtensorT<SPACE>& u,                       \
                 const ttb_indx n,                                       \
                 const Genten::FacMatrixT<SPACE>& v,                     \
-                const AlgParams& algParams);                            \
+                const AlgParams& algParams,                             \
+                const bool zero_v);                                     \
                                                                         \
   template                                                              \
   void mttkrp_all<>(const Genten::SptensorT<SPACE>& X,                  \
                     const Genten::KtensorT<SPACE>& u,                   \
                     const Genten::KtensorT<SPACE>& v,                   \
-                    const AlgParams& algParams);
+                    const ttb_indx mode_beg,                            \
+                    const ttb_indx mode_end,                            \
+                    const AlgParams& algParams,                         \
+                    const bool zero_v);
 GENTEN_INST(INST_MACRO)

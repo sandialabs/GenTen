@@ -181,6 +181,12 @@ int main(int argc, char* argv[])
     algParams.maxiters = 100;
     algParams.maxsecs = -1.0;
     algParams.printitn = 10;
+    algParams.fixup<Genten::DefaultExecutionSpace>(std::cout);
+
+    // Perform any post-processing (e.g., permutation and row ptr generation)
+    if (algParams.mttkrp_method == Genten::MTTKRP_Method::Perm)
+      data.createPermutation();
+
     Genten::KtensorT<Genten::DefaultExecutionSpace> result;
     ttb_indx  itersCompleted;
     ttb_real  resNorm;
@@ -200,8 +206,9 @@ int main(int argc, char* argv[])
     try
     {
       result = initialGuess;
+      Genten::PerfHistory history;
       Genten::cpals_core (data, result, algParams, itersCompleted, resNorm,
-                          0, NULL);
+                          0, history);
     }
     catch(std::string sExc)
     {

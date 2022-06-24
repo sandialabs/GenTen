@@ -97,12 +97,21 @@ namespace Genten {
     static constexpr bool value = false;
   };
 
+  // A helper trait to determine whether an execution space is SYCL or not,
+  // and his always defined, regardless if SYCL is enabled.
+  template <typename ExecSpace>
+  struct is_sycl_space {
+    static constexpr bool value = false;
+  };
+
   // A helper trait to determine whether an execution space is GPU or not,
   // and his always defined, regardless if any GPU is enabled.
   template <typename ExecSpace>
   struct is_gpu_space {
     static constexpr bool value =
-      is_cuda_space<ExecSpace>::value || is_hip_space<ExecSpace>::value;
+      is_cuda_space<ExecSpace>::value ||
+      is_hip_space<ExecSpace>::value ||
+      is_sycl_space<ExecSpace>::value;
   };
 
   template <typename ExecSpace>
@@ -150,13 +159,22 @@ namespace Genten {
   using Kokkos_GPU_Space = Kokkos::Cuda;
 #endif
 
-#if defined (KOKKOS_ENABLE_HIP)
+#if defined(KOKKOS_ENABLE_HIP)
   template <>
   struct is_hip_space<Kokkos::Experimental::HIP> {
     static constexpr bool value = true;
   };
 
   using Kokkos_GPU_Space = Kokkos::Experimental::HIP;
+#endif
+
+#if defined(ENABLE_SYCL_FOR_CUDA)
+  template <>
+  struct is_sycl_space<Kokkos::Experimental::SYCL> {
+    static constexpr bool value = true;
+  };
+
+  using Kokkos_GPU_Space = Kokkos::Experimental::SYCL;
 #endif
 
   // Set of traits and functions for inquiring about the execution space
@@ -170,7 +188,8 @@ namespace Genten {
     static constexpr bool is_threads = is_threads_space<exec_space>::value;
     static constexpr bool is_cuda = is_cuda_space<exec_space>::value;
     static constexpr bool is_hip = is_hip_space<exec_space>::value;
-    static constexpr bool is_gpu = is_cuda || is_hip;
+    static constexpr bool is_sycl = is_sycl_space<exec_space>::value;
+    static constexpr bool is_gpu = is_cuda || is_hip || is_sycl;
 
     static std::string name() {
       if (is_serial)
@@ -183,6 +202,8 @@ namespace Genten {
         return "cuda";
       else if (is_hip)
         return "hip";
+      else if (is_sycl)
+        return "sycl";
       return "";
     }
 
@@ -204,6 +225,16 @@ namespace Genten {
           " (device " +
           std::to_string(Kokkos::Experimental::HIP{}.hip_device()) +
           ", " + prop.name + ")";
+      }
+#endif
+
+#ifdef ENABLE_SYCL_FOR_CUDA
+      if (is_sycl) {
+        Kokkos::Experimental::SYCL sycl;
+        auto sycl_device =
+          sycl.impl_internal_space_instance()->m_queue->get_device();
+        str +=
+          " (device " + sycl_device.get_info<sycl::info::device::name>() + ")";
       }
 #endif
 

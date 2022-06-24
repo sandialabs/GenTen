@@ -283,7 +283,8 @@ void Genten_Test_CpOptRol_Type (Genten::MTTKRP_All_Method::type mttkrp_method,
   try
   {
     deep_copy(result_dev, initialBasis_dev);
-    Genten::cp_opt_rol(X_dev, result_dev, algParams);
+    Genten::PerfHistory history;
+    Genten::cp_opt_rol(X_dev, result_dev, algParams, history);
   }
   catch(std::string sExc)
   {
@@ -307,7 +308,8 @@ void Genten_Test_CpOptRol_Type (Genten::MTTKRP_All_Method::type mttkrp_method,
   try
   {
     deep_copy(result_dev, initialBasis_dev);
-    Genten::cp_opt_rol(Xd_dev, result_dev, algParams);
+    Genten::PerfHistory history;
+    Genten::cp_opt_rol(Xd_dev, result_dev, algParams, history);
   }
   catch(std::string sExc)
   {
@@ -338,6 +340,12 @@ void Genten_Test_CpOptRol_Space (int infolevel)
 void Genten_Test_CpOptRol(int infolevel) {
 #ifdef KOKKOS_ENABLE_CUDA
   Genten_Test_CpOptRol_Space<Kokkos::Cuda>(infolevel);
+#endif
+#ifdef KOKKOS_ENABLE_HIP
+  Genten_Test_CpOptRol_Space<Kokkos::Experimental::HIP>(infolevel);
+#endif
+#ifdef ENABLE_SYCL_FOR_CUDA
+  Genten_Test_CpOptRol_Space<Kokkos::Experimental::SYCL>(infolevel);
 #endif
 #ifdef KOKKOS_ENABLE_OPENMP
   Genten_Test_CpOptRol_Space<Kokkos::OpenMP>(infolevel);

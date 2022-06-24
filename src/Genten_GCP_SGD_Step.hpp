@@ -714,8 +714,13 @@ namespace Genten {
                       const unsigned col, const ttb_real g,
                       const KtensorT<ExecSpace>& u) const
       {
-        using std::sqrt;
+#if defined(__SYCL_DEVICE_ONLY__)
+        using sycl::pow;
+#else
         using std::pow;
+#endif
+
+        using std::sqrt;
         using std::abs;
 
         // Compute exponential weighting
@@ -905,8 +910,13 @@ namespace Genten {
                       const unsigned col, const ttb_real g,
                       const KtensorT<ExecSpace>& u) const
       {
-        using std::sqrt;
+#if defined(__SYCL_DEVICE_ONLY__)
+        using cl::sycl::pow;
+#else
         using std::pow;
+#endif
+
+        using std::sqrt;
         using std::abs;
 
         // Compute our iteration index

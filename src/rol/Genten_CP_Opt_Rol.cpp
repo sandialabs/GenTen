@@ -52,6 +52,7 @@
 #include "Genten_Tensor.hpp"
 #include "Genten_RolBoundConstraint.hpp"
 #include "Genten_CP_RolObjective.hpp"
+#include "Genten_SystemTimer.hpp"
 
 #include "ROL_Problem.hpp"
 #include "ROL_Solver.hpp"
@@ -67,6 +68,7 @@ namespace Genten {
   template<typename TensorT, typename ExecSpace>
   void cp_opt_rol(const TensorT& x, KtensorT<ExecSpace>& u,
                   const AlgParams& algParams,
+                  PerfHistory& history,
                   Teuchos::ParameterList& params,
                   std::ostream& stream)
   {
@@ -85,6 +87,9 @@ namespace Genten {
         Genten::error("Genten::cp_opt - u and x have different size");
     }
 
+    Genten::SystemTimer timer(1);
+    timer.start(0);
+
     // Distribute the initial guess to have weights of one since the objective
     // does not include gradients w.r.t. weights
     u.distribute(0);
@@ -93,7 +98,7 @@ namespace Genten {
     typedef Genten::CP_RolObjective<TensorT> objective_type;
     typedef typename objective_type::vector_type vector_type;
     ROL::Ptr<objective_type> objective =
-      ROL::makePtr<objective_type>(x, u, algParams);
+      ROL::makePtr<objective_type>(x, u, algParams, history);
     ROL::Ptr<vector_type> z = objective->createDesignVector();
     z->copyFromKtensor(u);
 
@@ -137,13 +142,19 @@ namespace Genten {
     u.normalize(Genten::NormTwo);
     u.arrange();
 
+    // Set final time in history
+    timer.stop(0);
+    history.lastEntry().cum_time = timer.getTotalTime(0);
+
     // Compute final fit
     ttb_real tol;
     const ttb_real res = objective->value(*z, tol);
     const ttb_real nrm = x.norm();
     const ttb_real fit = ttb_real(1.0) - res / (ttb_real(0.5)*nrm*nrm) ;
-    if (algParams.printitn > 0)
+    if (algParams.printitn > 0) {
       stream << "Final fit = " << fit << std::endl;
+      stream << "Total time = " << timer.getTotalTime(0) << std::endl;
+    }
 
     // Print Teuchos timing info
     if (algParams.timings)
@@ -157,6 +168,7 @@ namespace Genten {
     const SptensorT<SPACE>& x,                                          \
     KtensorT<SPACE>& u,                                                 \
     const AlgParams& algParms,                                          \
+    PerfHistory& history,                                               \
     Teuchos::ParameterList& params,                                     \
     std::ostream& stream);                                              \
                                                                         \
@@ -164,6 +176,7 @@ namespace Genten {
     const TensorT<SPACE>& x,                                            \
     KtensorT<SPACE>& u,                                                 \
     const AlgParams& algParms,                                          \
+    PerfHistory& history,                                               \
     Teuchos::ParameterList& params,                                     \
     std::ostream& stream);
 

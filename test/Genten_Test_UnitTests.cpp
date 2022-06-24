@@ -62,6 +62,7 @@ void Genten_Test_Ktensor(int infolevel);
 void Genten_Test_MixedFormats(int infolevel);
 void Genten_Test_Sptensor(int infolevel);
 void Genten_Test_Tensor(int infolevel);
+void Genten_Test_HessVec(int infolevel);
 #ifdef HAVE_GCP
 // #ifdef HAVE_ROL
 // void Genten_Test_GCP_Opt(int infolevel);
@@ -108,6 +109,7 @@ int main(int argc, char * argv[])
 // #endif
   Genten_Test_GCP_SGD(infolevel);
 #endif
+  Genten_Test_HessVec(infolevel);
 
   cout << "Unit tests complete for " << Genten::getGentenVersion() << endl;
 

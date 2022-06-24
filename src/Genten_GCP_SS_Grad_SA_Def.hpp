@@ -81,11 +81,11 @@ namespace Genten {
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
       typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
-      static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+      static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
       static const unsigned RowBlockSize = 1;
       static const unsigned FacBlockSize = FBS;
-      static const unsigned VectorSize = is_cuda ? VS : 1;
-      static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+      static const unsigned VectorSize = is_gpu ? VS : 1;
+      static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
       /*const*/ unsigned nd = M.ndims();
@@ -126,7 +126,7 @@ namespace Genten {
 
           // Compute Ktensor value
           const ttb_real m_val =
-            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(M, ind);
+            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, M, ind);
 
           // Compute Y value
           const ttb_real y_val =
@@ -134,9 +134,9 @@ namespace Genten {
                                 f.deriv(ttb_real(0.0), m_val) );
 
           auto row_func = [&](auto j, auto nj, auto Nj, auto n) {
-            typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+            typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
 
-            TV tmp(nj, y_val);
+            auto tmp = TVM::make(team, nj, y_val);
             for (unsigned m=0; m<nd; ++m) {
               if (m != n)
                 tmp *= &(M[m].entry(ind[m],j));
@@ -194,15 +194,15 @@ namespace Genten {
 
           // Compute Ktensor value
           const ttb_real m_val =
-            compute_Ktensor_value<ExecSpace, FacBlockSize, VectorSize>(M, ind);
+            compute_Ktensor_value<ExecSpace, FacBlockSize, VectorSize>(team, M, ind);
 
           // Compute Y value
           const ttb_real y_val = weight_zeros * f.deriv(ttb_real(0.0), m_val);
 
           auto row_func = [&](auto j, auto nj, auto Nj, auto n) {
-            typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+            typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
 
-            TV tmp(nj, y_val);
+            auto tmp = TVM::make(team, nj, y_val);
             for (unsigned m=0; m<nd; ++m) {
               if (m != n)
                 tmp *= &(M[m].entry(ind[m],j));
@@ -347,8 +347,8 @@ namespace Genten {
         timer.start(timer_step);
         typedef Genten::SpaceProperties<ExecSpace> Prop;
         const unsigned R = Mt.ncomponents();
-        const unsigned vector_size = Prop::is_cuda ? R : 1;
-        const unsigned team_size = Prop::is_cuda ? 256/vector_size : 1;
+        const unsigned vector_size = Prop::is_gpu ? R : 1;
+        const unsigned team_size = Prop::is_gpu ? 256/vector_size : 1;
         const ttb_indx league_size = (ns+team_size-1)/team_size;
         typedef Kokkos::TeamPolicy<ExecSpace> Policy;
         typedef typename Policy::member_type TeamMember;
