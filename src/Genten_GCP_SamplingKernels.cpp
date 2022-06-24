@@ -125,7 +125,7 @@ namespace Genten {
           ttb_real m_val = 0.0;
           if (compute_gradient)
             m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
 
           // Add new entry
           const ttb_indx row = idx;
@@ -225,7 +225,7 @@ namespace Genten {
           ttb_real m_val;
           if (compute_gradient)
             m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
 
           // Add new entry
           const ttb_indx row = idx;
@@ -322,7 +322,7 @@ namespace Genten {
           ttb_real m_val = 0.0;
           if (compute_gradient)
             m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
 
           // Add new nonzero
           Kokkos::single( Kokkos::PerThread( team ), [&] ()
@@ -378,7 +378,7 @@ namespace Genten {
           ttb_real m_val;
           if (compute_gradient)
             m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
 
           // Add new nonzero
           const ttb_indx row = num_samples_nonzeros + idx;
@@ -476,7 +476,7 @@ namespace Genten {
           ttb_real m_val = 0.0;
           if (compute_gradient)
             m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
 
           // Add new nonzero
           Kokkos::single( Kokkos::PerThread( team ), [&] ()
@@ -531,7 +531,7 @@ namespace Genten {
           ttb_real m_val;
           if (compute_gradient)
             m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
 
           // Add new nonzero
           const ttb_indx row = num_samples_nonzeros + idx;
@@ -628,7 +628,7 @@ namespace Genten {
           ttb_real m_val = 0.0;
           if (compute_gradient)
             m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
 
           // Add new nonzero
           Kokkos::single( Kokkos::PerThread( team ), [&] ()
@@ -680,7 +680,7 @@ namespace Genten {
           ttb_real m_val = 0.0;
           if (compute_gradient)
             m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
 
           // Add new nonzero
           const ttb_indx row = num_samples_nonzeros + idx;

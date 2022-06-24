@@ -399,6 +399,12 @@ power(ttb_real a) const
   Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
+#if defined(__SYCL_DEVICE_ONLY__)
+    using sycl::pow;
+#else
+    using std::pow;
+#endif
+
     d[i] = pow(d[i], a);
   }, "Genten::Array::power_kernel");
 }

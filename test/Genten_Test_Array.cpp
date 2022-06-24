@@ -377,6 +377,9 @@ void Genten_Test_Array(int infolevel) {
 #ifdef KOKKOS_ENABLE_HIP
   Genten_Test_Array_Space<Kokkos::Experimental::HIP>(infolevel);
 #endif
+#ifdef ENABLE_SYCL_FOR_CUDA
+  Genten_Test_Array_Space<Kokkos::Experimental::SYCL>(infolevel);
+#endif
 #ifdef KOKKOS_ENABLE_OPENMP
   Genten_Test_Array_Space<Kokkos::OpenMP>(infolevel);
 #endif

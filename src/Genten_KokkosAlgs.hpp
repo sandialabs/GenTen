@@ -61,6 +61,10 @@
 #include <caliper/cali.h>
 #endif
 
+#if defined(ENABLE_SYCL_FOR_CUDA)
+#include <execution>
+#endif
+
 // Various utility algorithms using Kokkos
 
 namespace Genten {
@@ -95,18 +99,28 @@ void perm_sort_op(const PermType& perm, const Op& op)
     thrust::stable_sort(thrust::device_ptr<perm_val_type>(perm.data()),
                         thrust::device_ptr<perm_val_type>(perm.data()+sz),
                         op);
-    }
-    else
+  }
+  else
+#endif
+
+#if defined(ENABLE_SYCL_FOR_CUDA)
+  if (is_sycl_space<exec_space>::value) {
+    auto perm_mir = create_mirror_view(perm);
+    deep_copy(perm_mir, perm);
+    std::stable_sort(std::execution::par, perm_mir.data(), perm_mir.data()+sz, op);
+    deep_copy(perm, perm_mir);
+  }
+  else
 #endif
 
 #if defined(KOKKOS_ENABLE_OPENMP)
-    if (std::is_same<exec_space, Kokkos::OpenMP>::value) {
-      pss::parallel_stable_sort(perm.data(), perm.data()+sz, op);
-    }
-    else
+  if (std::is_same<exec_space, Kokkos::OpenMP>::value) {
+    pss::parallel_stable_sort(perm.data(), perm.data()+sz, op);
+  }
+  else
 #endif
 
-      std::stable_sort(perm.data(), perm.data()+sz, op);
+    std::stable_sort(perm.data(), perm.data()+sz, op);
 }
 
 // Sort an array by computing permutation vector to sorted order using
@@ -116,9 +130,9 @@ void perm_sort(const PermType& perm, const ViewType& v)
 {
   typedef typename ViewType::size_type size_type;
   // We see a massive slowdown on the CPU if this lambda does capture-by-value,
-  // which is what KOKKOS_LAMBDA always does.  It seems that the view is
+  // which is what KOKKOS_LAMBDA always does. It seems that the view is
   // copied each time the op is executed!
-#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP)
+#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || defined(ENABLE_SYCL_FOR_CUDA)
   perm_sort_op(perm, KOKKOS_LAMBDA(const size_type& a, const size_type& b)
 #else
   perm_sort_op(perm, [&](const size_type& a, const size_type& b)

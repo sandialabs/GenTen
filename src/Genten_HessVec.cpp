@@ -100,7 +100,7 @@ struct HessVec_Kernel {
     /*const*/ unsigned RowBlockSize = algParams.mttkrp_nnz_tile_size;
     const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
-    static_assert(!is_gpu, "Cannot call hessvec_kernel for Cuda or HIP space!");
+    static_assert(!is_gpu, "Cannot call hessvec_kernel for Cuda, HIP or SYCL space!");
 
     /*const*/ unsigned nd = a.ndims();
     /*const*/ unsigned nc_total = a.ncomponents();
@@ -147,7 +147,7 @@ struct HessVec_Kernel {
         }
 
         auto row_func = [&](auto j, auto nj, auto Nj) {
-          typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+          typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
           for (unsigned ll=0; ll<RowBlockSize; ++ll) {
             const ttb_indx l = offset + ll*stride;
             if (l >= nnz)
@@ -158,10 +158,10 @@ struct HessVec_Kernel {
             for (unsigned k=0; k<nd; ++k) {
               const ttb_indx i = X.subscript(l,k);
               auto vu = su[k].access();
-              TV tmp2(nj, 0.0);
+              auto tmp2 = TVM::make(team, nj, 0.0);
               for (unsigned s=0; s<nd; ++s) {
                 if (s != k) {
-                  TV tmp(nj, x_val);
+                  auto tmp = TVM::make(team, nj, x_val);
                   tmp *= &(a.weights(nc_beg+j));
                   for (unsigned n=0; n<nd; ++n) {
                     if (n != k && n != s)
@@ -198,8 +198,8 @@ struct HessVec_Kernel {
   }
 };
 
-#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP)
-// Specialization for Cuda or HIP that always uses atomics and doesn't call
+#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || defined(ENABLE_SYCL_FOR_CUDA)
+// Specialization for Cuda, HIP or SYCL that always uses atomics and doesn't call
 // mttkrp_all_kernel, which won't run on the GPU
 template <int Dupl, int Cont>
 struct HessVec_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
@@ -226,7 +226,7 @@ struct HessVec_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
     const KtensorT<ExecSpace> u = uu;
 
     if (algParams.mttkrp_all_method != MTTKRP_All_Method::Atomic)
-      Genten::error("MTTKRP-All method must be atomic on Cuda and HIP!");
+      Genten::error("MTTKRP-All method must be atomic on Cuda, HIP or SYCL!");
 
     u.setMatrices(0.0);
 
@@ -256,7 +256,7 @@ struct HessVec_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
       ttb_indx stride = team.league_size()*TeamSize;
 
       auto row_func = [&](auto j, auto nj, auto Nj) {
-        typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+        typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
         for (unsigned ll=0; ll<RowBlockSize; ++ll) {
           const ttb_indx l = offset + ll*stride;
           if (l >= nnz)
@@ -266,10 +266,10 @@ struct HessVec_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
 
           for (unsigned k=0; k<nd; ++k) {
             const ttb_indx i = X.subscript(l,k);
-            TV tmp2(nj, 0.0);
+            auto tmp2 = TVM::make(team, nj, 0.0);
             for (unsigned s=0; s<nd; ++s) {
               if (s != k) {
-                TV tmp(nj, x_val);
+                auto tmp = TVM::make(team, nj, x_val);
                 tmp *= &(a.weights(j));
                 for (unsigned n=0; n<nd; ++n) {
                   if (n != k && n != s)
@@ -357,7 +357,7 @@ struct HessVec_Dense_Kernel {
         ttb_indx *sub = &scratch(team_rank, 0);
 
         auto row_func = [&](auto j, auto nj, auto Nj) {
-          typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+          typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
 
           // Work around internal-compiler errors in recent Intel compilers
           unsigned nd_ = nd;
@@ -372,15 +372,15 @@ struct HessVec_Dense_Kernel {
             sub[k_] = i;
           });
 
-          TV val(nj, 0.0);
+          auto val = TVM::make(team, nj, 0.0);
           int done = 0;
           while (!done) {  // Would like to get some parallelism in this loop
             const ttb_indx l = X.sub2ind(sub);
             const ttb_real x_val = X[l];
-            TV tmp2(nj, 0.0);
+            auto tmp2 = TVM::make(team, nj, 0.0);
             for (unsigned s=0; s<nd; ++s) {
               if (s != k) {
-                TV tmp(nj, x_val);
+                auto tmp = TVM::make(team, nj, x_val);
                 tmp *= &(a.weights(j));
                 for (unsigned n=0; n<nd; ++n) {
                   if (n != k && n != s)

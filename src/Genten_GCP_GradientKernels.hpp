@@ -147,7 +147,7 @@ namespace Genten {
         if (space_prop::is_gpu &&
             (method == MTTKRP_Method::Single ||
              method == MTTKRP_Method::Duplicated))
-          Genten::error("Single and duplicated MTTKRP-All methods are invalid on Cuda and HIP!");
+          Genten::error("Single and duplicated MTTKRP-All methods are invalid on Cuda, HIP and SYCL!");
 
         GCP_GradTensor<tensor_type,loss_type,FBS,VS> XX(X, M, w, f);
         const unsigned nd = M.ndims();
@@ -242,15 +242,15 @@ namespace Genten {
             // Compute Ktensor value
             const ttb_real m_val =
               compute_Ktensor_value<ExecSpace, FacBlockSize, VectorSize>(
-                M, X, i);
+                team, M, X, i);
 
             // Compute Y value
             const ttb_real y_val = w[i] * f.deriv(X.value(i), m_val);
 
             auto row_func = [&](auto j, auto nj, auto Nj) {
-              typedef TinyVec<exec_space, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+              typedef TinyVecMaker<exec_space, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
 
-              TV tmp(nj, y_val);
+              auto tmp = TVM::make(team, nj, y_val);
               tmp *= &(M.weights(mc_beg+j));
               for (unsigned m=0; m<nd; ++m) {
                 if (m != n)
@@ -312,8 +312,9 @@ namespace Genten {
           (team.league_rank()*TeamSize + team.team_rank())*RowBlockSize;
 
         auto row_func = [&](auto j, auto nj, auto Nj) {
-          typedef TinyVec<exec_space, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
-          TV val(nj, 0.0), tmp(nj, 0.0);
+          typedef TinyVecMaker<exec_space, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
+          auto val = TVM::make(team, nj, 0.0);
+          auto tmp = TVM::make(team, nj, 0.0);
 
           ttb_indx row_prev = invalid_row;
           ttb_indx row = invalid_row;
@@ -332,7 +333,7 @@ namespace Genten {
               // Compute Ktensor value
               const ttb_real m_val =
                 compute_Ktensor_value<exec_space, FacBlockSize, VectorSize>(
-                  M, X, p);
+                  team, M, X, p);
 
               // Compute Y value
               y_val = w[i] * f.deriv(X.value(p), m_val);
@@ -426,7 +427,7 @@ namespace Genten {
                           method == MTTKRP_Method::Atomic))
           method = MTTKRP_Method::Single;
 
-        // Never use Duplicated for Cuda or HIP, use Atomic instead
+        // Never use Duplicated for Cuda, HIP or SYCL, use Atomic instead
         if (space_prop::is_gpu && method == MTTKRP_Duplicated)
           method = MTTKRP_Method::Atomic;
 

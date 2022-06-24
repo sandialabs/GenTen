@@ -53,16 +53,9 @@
 #include <assert.h>
 #include <cstring>
 
-#if defined(KOKKOS_ENABLE_CUDA)
-
-#if defined(HAVE_CUSOLVER)
-#include "cusolverDn.h"
-#endif
-
-#if defined(HAVE_CUBLAS)
-#include "cublas_v2.h"
-#endif
-
+#if defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)
+#include "Genten_CublasHandle.h"
+#include "Genten_CusolverHandle.h"
 #endif
 
 #if defined(KOKKOS_ENABLE_HIP)
@@ -85,7 +78,7 @@ template <typename ExecSpace>
 Genten::FacMatrixT<ExecSpace>::
 FacMatrixT(ttb_indx m, ttb_indx n)
 {
-  // Don't use padding if Cuda or HIP is the default execution space, so factor
+  // Don't use padding if Cuda, HIP or SYCL is the default execution space, so factor
   // matrices allocated on the host have the same shape.  We really need a
   // better way to do this.
   if (Genten::is_gpu_space<DefaultExecutionSpace>::value)
@@ -99,7 +92,7 @@ template <typename ExecSpace>
 Genten::FacMatrixT<ExecSpace>::
 FacMatrixT(ttb_indx m, ttb_indx n, const ttb_real * cvec)
 {
-  // Don't use padding if Cuda or HIP is the default execution space, so factor
+  // Don't use padding if Cuda, HIP or SYCL is the default execution space, so factor
   // matrices allocated on the host have the same shape.  We really need a
   // better way to do this.
   if (Genten::is_gpu_space<DefaultExecutionSpace>::value)
@@ -473,17 +466,16 @@ void gramianImpl(const ViewC& C, const ViewA& A,
 
 #endif
 
-#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) && defined(HAVE_CUBLAS)
 
   // Gramian implementation for CUDA and double precision using cuBLAS
   template <typename ExecSpace,
             typename CT, typename ... CP,
             typename AT, typename ... AP>
-  typename std::enable_if<
-    ( std::is_same<ExecSpace,Kokkos::Cuda>::value &&
-      std::is_same<typename Kokkos::View<AT,AP...>::non_const_value_type,
-                   double>::value )
-    >::type
+  std::enable_if_t<
+    (is_cuda_space<ExecSpace>::value || is_sycl_space<ExecSpace>::value) &&
+    std::is_same<typename Kokkos::View<AT, AP...>::non_const_value_type, double>::value
+  >
   gramianImpl(const Kokkos::View<CT,CP...>& C, const Kokkos::View<AT,AP...>& A,
               const bool full, const UploType uplo)
   {
@@ -494,32 +486,21 @@ void gramianImpl(const ViewC& C, const ViewA& A,
     const double alpha = 1.0;
     const double beta = 0.0;
     cublasStatus_t status;
+    CublasHandle handle;
 
     // We compute C = A'*A.  But since A is LayoutRight, and GEMM/SYRK
     // assumes layout left we compute this as C = A*A'.  Since SYRK writes
     // C', uplo == Upper means we call SYRK with 'L', and vice versa.
 
-    static cublasHandle_t handle = 0;
-    if (handle == 0) {
-      status = cublasCreate(&handle);
-      if (status != CUBLAS_STATUS_SUCCESS) {
-        std::stringstream ss;
-        ss << "Error!  cublasCreate() failed with status "
-           << status;
-        std::cerr << ss.str() << std::endl;
-        throw ss.str();
-      }
-    }
-
     if (full) {
-      status = cublasDgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, n, n, m,
+      status = cublasDgemm(handle.get(), CUBLAS_OP_N, CUBLAS_OP_T, n, n, m,
                            &alpha, A.data(), lda, A.data(), lda,
                            &beta, C.data(), ldc);
     }
     else {
       cublasFillMode_t cu_uplo =
         uplo == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
-      status = cublasDsyrk(handle, cu_uplo, CUBLAS_OP_N, n, m,
+      status = cublasDsyrk(handle.get(), cu_uplo, CUBLAS_OP_N, n, m,
                            &alpha, A.data(), lda, &beta, C.data(), ldc);
     }
     if (status != CUBLAS_STATUS_SUCCESS) {
@@ -535,11 +516,10 @@ void gramianImpl(const ViewC& C, const ViewA& A,
   template <typename ExecSpace,
             typename CT, typename ... CP,
             typename AT, typename ... AP>
-  typename std::enable_if<
-    ( std::is_same<ExecSpace,Kokkos::Cuda>::value &&
-      std::is_same<typename Kokkos::View<AT,AP...>::non_const_value_type,
-                   float>::value )
-    >::type
+  std::enable_if_t<
+    (is_cuda_space<ExecSpace>::value || is_sycl_space<ExecSpace>::value) &&
+    std::is_same<typename Kokkos::View<AT, AP...>::non_const_value_type, float>::value
+  >
   gramianImpl(const Kokkos::View<CT,CP...>& C, const Kokkos::View<AT,AP...>& A,
               const bool full, const UploType uplo)
   {
@@ -550,32 +530,21 @@ void gramianImpl(const ViewC& C, const ViewA& A,
     const float alpha = 1.0;
     const float beta = 0.0;
     cublasStatus_t status;
+    CublasHandle handle;
 
     // We compute C = A'*A.  But since A is LayoutRight, and GEMM/SYRK
     // assumes layout left we compute this as C = A*A'.  Since SYRK writes
     // C', uplo == Upper means we call SYRK with 'L', and vice versa.
 
-    static cublasHandle_t handle = 0;
-    if (handle == 0) {
-      status = cublasCreate(&handle);
-      if (status != CUBLAS_STATUS_SUCCESS) {
-        std::stringstream ss;
-        ss << "Error!  cublasCreate() failed with status "
-           << status;
-        std::cerr << ss.str() << std::endl;
-        throw ss.str();
-      }
-    }
-
     if (full) {
-      status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, n, n, m,
+      status = cublasSgemm(handle.get(), CUBLAS_OP_N, CUBLAS_OP_T, n, n, m,
                            &alpha, A.data(), lda, A.data(), lda,
                            &beta, C.data(), ldc);
     }
     else {
       cublasFillMode_t cu_uplo =
         uplo == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
-      status = cublasSsyrk(handle, cu_uplo, CUBLAS_OP_N, n, m,
+      status = cublasSsyrk(handle.get(), cu_uplo, CUBLAS_OP_N, n, m,
                            &alpha, A.data(), lda, &beta, C.data(), ldc);
     }
     if (status != CUBLAS_STATUS_SUCCESS) {
@@ -1657,16 +1626,15 @@ gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
                C.data(), ldc);
 }
 
-#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) && defined(HAVE_CUBLAS)
 template <typename ExecSpace,
           typename AT, typename ... AP,
           typename BT, typename ... BP,
           typename CT, typename ... CP>
-typename std::enable_if<
-  ( is_cuda_space<ExecSpace>::value &&
-    std::is_same<typename Kokkos::View<AT,AP...>::non_const_value_type,
-                 double>::value )
-  >::type
+std::enable_if_t<
+  (is_cuda_space<ExecSpace>::value || is_sycl_space<ExecSpace>::value) &&
+  std::is_same<typename Kokkos::View<AT, AP...>::non_const_value_type, double>::value
+>
 gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
          const Kokkos::View<AT,AP...>& A, const Kokkos::View<BT,BP...>& B,
          const ttb_real beta, const Kokkos::View<CT,CP...>& C)
@@ -1682,21 +1650,11 @@ gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
   const ttb_indx ldb = B.stride(0);
   const ttb_indx ldc = C.stride(0);
 
-  static cublasHandle_t handle = 0;
+  CublasHandle handle;
   cublasStatus_t status;
-  if (handle == 0) {
-    status = cublasCreate(&handle);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-      std::stringstream ss;
-      ss << "Error!  cublasCreate() failed with status "
-         << status;
-      std::cerr << ss.str() << std::endl;
-      throw ss.str();
-    }
-  }
 
   status = cublasDgemm(
-    handle, tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
+    handle.get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
     &beta, C.data(), ldc);
   if (status != CUBLAS_STATUS_SUCCESS) {
     std::stringstream ss;
@@ -1711,11 +1669,10 @@ template <typename ExecSpace,
           typename AT, typename ... AP,
           typename BT, typename ... BP,
           typename CT, typename ... CP>
-typename std::enable_if<
-  ( is_cuda_space<ExecSpace>::value &&
-    std::is_same<typename Kokkos::View<AT,AP...>::non_const_value_type,
-                 float>::value )
-  >::type
+std::enable_if_t<
+  (is_cuda_space<ExecSpace>::value || is_sycl_space<ExecSpace>::value) &&
+  std::is_same<typename Kokkos::View<AT, AP...>::non_const_value_type, float>::value
+>
 gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
          const Kokkos::View<AT,AP...>& A, const Kokkos::View<BT,BP...>& B,
          const ttb_real beta, const Kokkos::View<CT,CP...>& C)
@@ -1731,21 +1688,11 @@ gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
   const ttb_indx ldb = B.stride(0);
   const ttb_indx ldc = C.stride(0);
 
-  static cublasHandle_t handle = 0;
+  CublasHandle handle;
   cublasStatus_t status;
-  if (handle == 0) {
-    status = cublasCreate(&handle);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-      std::stringstream ss;
-      ss << "Error!  cublasCreate() failed with status "
-         << status;
-      std::cerr << ss.str() << std::endl;
-      throw ss.str();
-    }
-  }
 
   status = cublasSgemm(
-    handle, tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
+    handle.get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
     &beta, C.data(), ldc);
   if (status != CUBLAS_STATUS_SUCCESS) {
     std::stringstream ss;
@@ -1941,22 +1888,26 @@ namespace Genten {
       }
     }
 
-#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUSOLVER)
+#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) && defined(HAVE_CUSOLVER)
 
     template <typename AT, typename ... AP,
               typename BT, typename ... BP>
-    typename std::enable_if<
-      ( std::is_same<typename Kokkos::View<AT,AP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<BT,BP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<AT,BP...>::non_const_value_type,
-        double>::value ), bool
-      >::type
+    std::enable_if_t<
+      (is_cuda_space<typename Kokkos::View<AT, AP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<AT, AP...>::execution_space>::value) &&
+      (is_cuda_space<typename Kokkos::View<BT, BP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<BT, BP...>::execution_space>::value) &&
+      std::is_same<
+        typename Kokkos::View<AT, BP...>::non_const_value_type, double
+      >::value,
+      bool
+    >
     solveTransposeRHSImpl_SPD(const Kokkos::View<AT,AP...>& A,
                               const Kokkos::View<BT,BP...>& B,
                               const UploType ul)
     {
+      using exec_space = typename Kokkos::View<AT, AP...>::execution_space;
+
       const int m = B.extent(0);
       const int n = B.extent(1);
       const int lda = A.stride_0();
@@ -1967,21 +1918,11 @@ namespace Genten {
       assert(A.extent(0) == n);
       assert(A.extent(1) == n);
 
-      static cusolverDnHandle_t handle = 0;
-      if (handle == 0) {
-        status = cusolverDnCreate(&handle);
-        if (status != CUSOLVER_STATUS_SUCCESS) {
-          std::stringstream ss;
-          ss << "Error!  cusolverDnCreate() failed with status "
-             << status;
-          std::cerr << ss.str() << std::endl;
-          throw ss.str();
-        }
-      }
+      CusolverHandle handle;
 
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
-      status = cusolverDnDpotrf_bufferSize(handle, uplo, n, A.data(), lda, &lwork);
+      status = cusolverDnDpotrf_bufferSize(handle.get(), uplo, n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnDpotrf_bufferSize() failed with status "
@@ -1990,9 +1931,9 @@ namespace Genten {
         throw ss.str();
       }
 
-      Kokkos::View<double*,Kokkos::LayoutRight,Kokkos::Cuda> work("work",lwork);
-      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Cuda> info("info");
-      status = cusolverDnDpotrf(handle, uplo, n, A.data(), lda, work.data(),
+      Kokkos::View<double *, Kokkos::LayoutRight, exec_space> work("work", lwork);
+      Kokkos::View<int, Kokkos::LayoutRight, exec_space> info("info");
+      status = cusolverDnDpotrf(handle.get(), uplo, n, A.data(), lda, work.data(),
                                 lwork, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2012,7 +1953,7 @@ namespace Genten {
       if (info_host() > 0)
         return false;  // Matrix is not SPD
 
-      status = cusolverDnDpotrs(handle, uplo, n, m, A.data(), lda,
+      status = cusolverDnDpotrs(handle.get(), uplo, n, m, A.data(), lda,
                                 B.data(), ldb, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2034,14 +1975,15 @@ namespace Genten {
 
     template <typename AT, typename ... AP,
               typename BT, typename ... BP>
-    typename std::enable_if<
-      ( std::is_same<typename Kokkos::View<AT,AP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<BT,BP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<AT,BP...>::non_const_value_type,
-        double>::value )
-      >::type
+    std::enable_if_t<
+      (is_cuda_space<typename Kokkos::View<AT, AP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<AT, AP...>::execution_space>::value) &&
+      (is_cuda_space<typename Kokkos::View<BT, BP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<BT, BP...>::execution_space>::value) &&
+      std::is_same<
+        typename Kokkos::View<AT, BP...>::non_const_value_type, double
+      >::value
+    >
     solveTransposeRHSImpl_SID(const Kokkos::View<AT,AP...>& A,
                               const Kokkos::View<BT,BP...>& B,
                               const UploType ul)
@@ -2049,6 +1991,8 @@ namespace Genten {
       // cusolverDnDsytrs does not appear to work yet, so error out
       Genten::error("Symmetric, indefinite solve with Cuda is not fully implemented in cuSOLVER.  Instead you must use the option '--full-gram' to enable the non-symmetric solver.");
 #if 0
+      using exec_space = typename Kokkos::View<AT, AP...>::execution_space;
+
       const int m = B.extent(0);
       const int n = B.extent(1);
       const int lda = A.stride_0();
@@ -2059,21 +2003,11 @@ namespace Genten {
       assert(A.extent(0) == n);
       assert(A.extent(1) == n);
 
-      static cusolverDnHandle_t handle = 0;
-      if (handle == 0) {
-        status = cusolverDnCreate(&handle);
-        if (status != CUSOLVER_STATUS_SUCCESS) {
-          std::stringstream ss;
-          ss << "Error!  cusolverDnCreate() failed with status "
-             << status;
-          std::cerr << ss.str() << std::endl;
-          throw ss.str();
-        }
-      }
+      CusolverHandle handle;
 
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
-      status = cusolverDnDsytrf_bufferSize(handle, n, A.data(), lda, &lwork);
+      status = cusolverDnDsytrf_bufferSize(handle.get(), n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnDsytrf_bufferSize() failed with status "
@@ -2082,10 +2016,10 @@ namespace Genten {
         throw ss.str();
       }
 
-      Kokkos::View<double*,Kokkos::LayoutRight,Kokkos::Cuda> work("work",lwork);
-      Kokkos::View<int*,Kokkos::LayoutRight,Kokkos::Cuda> piv("piv",n);
-      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Cuda> info("info");
-      status = cusolverDnDsytrf(handle, uplo, n, A.data(), lda, piv.data(),
+      Kokkos::View<double*,Kokkos::LayoutRight,exec_space> work("work",lwork);
+      Kokkos::View<int*,Kokkos::LayoutRight,exec_space> piv("piv",n);
+      Kokkos::View<int,Kokkos::LayoutRight,exec_space> info("info");
+      status = cusolverDnDsytrf(handle.get(), uplo, n, A.data(), lda, piv.data(),
                                 work.data(), lwork, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2103,7 +2037,7 @@ namespace Genten {
         throw ss.str();
       }
 
-      status = cusolverDnDsytrs_bufferSize(handle, uplo, n, m, A.data(), lda,
+      status = cusolverDnDsytrs_bufferSize(handle.get(), uplo, n, m, A.data(), lda,
                                            piv.data(), B.data(), ldb, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2112,8 +2046,8 @@ namespace Genten {
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
-      Kokkos::View<double*,Kokkos::LayoutRight,Kokkos::Cuda> work2("work2",lwork);
-      status = cusolverDnDsytrs(handle, uplo, n, m, A.data(), lda,
+      Kokkos::View<double*,Kokkos::LayoutRight,exec_space> work2("work2",lwork);
+      status = cusolverDnDsytrs(handle.get(), uplo, n, m, A.data(), lda,
                                 piv.data(), B.data(), ldb, work2.data(), lwork,
                                 info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
@@ -2135,14 +2069,15 @@ namespace Genten {
 
     template <typename AT, typename ... AP,
               typename BT, typename ... BP>
-    typename std::enable_if<
-      ( std::is_same<typename Kokkos::View<AT,AP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<BT,BP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<AT,BP...>::non_const_value_type,
-        double>::value )
-      >::type
+    std::enable_if_t<
+      (is_cuda_space<typename Kokkos::View<AT, AP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<AT, AP...>::execution_space>::value) &&
+      (is_cuda_space<typename Kokkos::View<BT, BP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<BT, BP...>::execution_space>::value) &&
+      std::is_same<
+        typename Kokkos::View<AT, BP...>::non_const_value_type, double
+      >::value
+    >
     solveTransposeRHSImpl(const Kokkos::View<AT,AP...>& A,
                           const Kokkos::View<BT,BP...>& B,
                           const UploType uplo,
@@ -2150,6 +2085,8 @@ namespace Genten {
     {
       if (algParams.rank_def_solver)
         throw std::string("Rank-deficient solver not supported on the GPU!");
+
+      using exec_space = typename Kokkos::View<AT, AP...>::execution_space;
 
       const int m = B.extent(0);
       const int n = B.extent(1);
@@ -2160,21 +2097,11 @@ namespace Genten {
       assert(A.extent(0) == n);
       assert(A.extent(1) == n);
 
-      static cusolverDnHandle_t handle = 0;
-      if (handle == 0) {
-        status = cusolverDnCreate(&handle);
-        if (status != CUSOLVER_STATUS_SUCCESS) {
-          std::stringstream ss;
-          ss << "Error!  cusolverDnCreate() failed with status "
-             << status;
-          std::cerr << ss.str() << std::endl;
-          throw ss.str();
-        }
-      }
+      CusolverHandle handle;
 
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
-      status = cusolverDnDgetrf_bufferSize(handle, n, n, A.data(), lda, &lwork);
+      status = cusolverDnDgetrf_bufferSize(handle.get(), n, n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnDgetrf_bufferSize() failed with status "
@@ -2183,10 +2110,10 @@ namespace Genten {
         throw ss.str();
       }
 
-      Kokkos::View<double*,Kokkos::LayoutRight,Kokkos::Cuda> work("work",lwork);
-      Kokkos::View<int*,Kokkos::LayoutRight,Kokkos::Cuda> piv("piv",n);
-      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Cuda> info("info");
-      status = cusolverDnDgetrf(handle, n, n, A.data(), lda, work.data(),
+      Kokkos::View<double *, Kokkos::LayoutRight, exec_space> work("work", lwork);
+      Kokkos::View<int *, Kokkos::LayoutRight, exec_space> piv("piv", n);
+      Kokkos::View<int, Kokkos::LayoutRight, exec_space> info("info");
+      status = cusolverDnDgetrf(handle.get(), n, n, A.data(), lda, work.data(),
                                 piv.data(), info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2204,7 +2131,7 @@ namespace Genten {
         throw ss.str();
       }
 
-      status = cusolverDnDgetrs(handle, CUBLAS_OP_N, n, m, A.data(), lda,
+      status = cusolverDnDgetrs(handle.get(), CUBLAS_OP_N, n, m, A.data(), lda,
                                 piv.data(), B.data(), ldb, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2224,18 +2151,22 @@ namespace Genten {
 
     template <typename AT, typename ... AP,
               typename BT, typename ... BP>
-    typename std::enable_if<
-      ( std::is_same<typename Kokkos::View<AT,AP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<BT,BP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<AT,BP...>::non_const_value_type,
-        float>::value ), bool
-      >::type
+    std::enable_if_t<
+      (is_cuda_space<typename Kokkos::View<AT, AP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<AT, AP...>::execution_space>::value) &&
+      (is_cuda_space<typename Kokkos::View<BT, BP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<BT, BP...>::execution_space>::value) &&
+      std::is_same<
+        typename Kokkos::View<AT, BP...>::non_const_value_type, float
+      >::value,
+      bool
+    >
     solveTransposeRHSImpl_SPD(const Kokkos::View<AT,AP...>& A,
                               const Kokkos::View<BT,BP...>& B,
                               const UploType ul)
     {
+      using exec_space = typename Kokkos::View<AT, AP...>::execution_space;
+
       const int m = B.extent(0);
       const int n = B.extent(1);
       const int lda = A.stride_0();
@@ -2246,21 +2177,11 @@ namespace Genten {
       assert(A.extent(0) == n);
       assert(A.extent(1) == n);
 
-      static cusolverDnHandle_t handle = 0;
-      if (handle == 0) {
-        status = cusolverDnCreate(&handle);
-        if (status != CUSOLVER_STATUS_SUCCESS) {
-          std::stringstream ss;
-          ss << "Error!  cusolverDnCreate() failed with status "
-             << status;
-          std::cerr << ss.str() << std::endl;
-          throw ss.str();
-        }
-      }
+      CusolverHandle handle;
 
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
-      status = cusolverDnSpotrf_bufferSize(handle, uplo, n, A.data(), lda, &lwork);
+      status = cusolverDnSpotrf_bufferSize(handle.get(), uplo, n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnSpotrf_bufferSize() failed with status "
@@ -2269,9 +2190,9 @@ namespace Genten {
         throw ss.str();
       }
 
-      Kokkos::View<float*,Kokkos::LayoutRight,Kokkos::Cuda> work("work",lwork);
-      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Cuda> info("info");
-      status = cusolverDnSpotrf(handle, uplo, n, A.data(), lda, work.data(),
+      Kokkos::View<float *, Kokkos::LayoutRight, exec_space> work("work", lwork);
+      Kokkos::View<int, Kokkos::LayoutRight, exec_space> info("info");
+      status = cusolverDnSpotrf(handle.get(), uplo, n, A.data(), lda, work.data(),
                                 lwork, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2291,7 +2212,7 @@ namespace Genten {
       if (info_host() > 0)
         return false;  // Matrix is not SPD
 
-      status = cusolverDnSpotrs(handle, uplo, n, m, A.data(), lda,
+      status = cusolverDnSpotrs(handle.get(), uplo, n, m, A.data(), lda,
                                 B.data(), ldb, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2313,14 +2234,15 @@ namespace Genten {
 
     template <typename AT, typename ... AP,
               typename BT, typename ... BP>
-    typename std::enable_if<
-      ( std::is_same<typename Kokkos::View<AT,AP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<BT,BP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<AT,BP...>::non_const_value_type,
-        float>::value )
-      >::type
+    std::enable_if_t<
+      (is_cuda_space<typename Kokkos::View<AT, AP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<AT, AP...>::execution_space>::value) &&
+      (is_cuda_space<typename Kokkos::View<BT, BP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<BT, BP...>::execution_space>::value) &&
+      std::is_same<
+        typename Kokkos::View<AT, BP...>::non_const_value_type, float
+      >::value
+    >
     solveTransposeRHSImpl_SID(const Kokkos::View<AT,AP...>& A,
                               const Kokkos::View<BT,BP...>& B,
                               const UploType ul)
@@ -2338,21 +2260,11 @@ namespace Genten {
       assert(A.extent(0) == n);
       assert(A.extent(1) == n);
 
-      static cusolverDnHandle_t handle = 0;
-      if (handle == 0) {
-        status = cusolverDnCreate(&handle);
-        if (status != CUSOLVER_STATUS_SUCCESS) {
-          std::stringstream ss;
-          ss << "Error!  cusolverDnCreate() failed with status "
-             << status;
-          std::cerr << ss.str() << std::endl;
-          throw ss.str();
-        }
-      }
+      CusolverHandle handle;
 
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
-      status = cusolverDnSsytrf_bufferSize(handle, n, A.data(), lda, &lwork);
+      status = cusolverDnSsytrf_bufferSize(handle.get(), n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnSsytrf_bufferSize() failed with status "
@@ -2361,10 +2273,10 @@ namespace Genten {
         throw ss.str();
       }
 
-      Kokkos::View<float*,Kokkos::LayoutRight,Kokkos::Cuda> work("work",lwork);
-      Kokkos::View<int*,Kokkos::LayoutRight,Kokkos::Cuda> piv("piv",n);
-      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Cuda> info("info");
-      status = cusolverDnSsytrf(handle, uplo, n, A.data(), lda, piv.data(),
+      Kokkos::View<float*,Kokkos::LayoutRight,exec_space> work("work",lwork);
+      Kokkos::View<int*,Kokkos::LayoutRight,exec_space> piv("piv",n);
+      Kokkos::View<int,Kokkos::LayoutRight,exec_space> info("info");
+      status = cusolverDnSsytrf(handle.get(), uplo, n, A.data(), lda, piv.data(),
                                 work.data(), lwork, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2382,7 +2294,7 @@ namespace Genten {
         throw ss.str();
       }
 
-      status = cusolverDnSsytrs_bufferSize(handle, uplo, n, m, A.data(), lda,
+      status = cusolverDnSsytrs_bufferSize(handle.get(), uplo, n, m, A.data(), lda,
                                            piv.data(), B.data(), ldb, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2391,8 +2303,8 @@ namespace Genten {
         std::cerr << ss.str() << std::endl;
         throw ss.str();
       }
-      Kokkos::View<float*,Kokkos::LayoutRight,Kokkos::Cuda> work2("work2",lwork);
-      status = cusolverDnSsytrs(handle, uplo, n, m, A.data(), lda,
+      Kokkos::View<float*,Kokkos::LayoutRight,exec_space> work2("work2",lwork);
+      status = cusolverDnSsytrs(handle.get(), uplo, n, m, A.data(), lda,
                                 piv.data(), B.data(), ldb, work2.data(), lwork,
                                 info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
@@ -2414,19 +2326,22 @@ namespace Genten {
 
     template <typename AT, typename ... AP,
               typename BT, typename ... BP>
-    typename std::enable_if<
-      ( std::is_same<typename Kokkos::View<AT,AP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<BT,BP...>::execution_space,
-                     Kokkos::Cuda>::value &&
-        std::is_same<typename Kokkos::View<AT,BP...>::non_const_value_type,
-                     float>::value )
-      >::type
+    std::enable_if_t<
+      (is_cuda_space<typename Kokkos::View<AT, AP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<AT, AP...>::execution_space>::value) &&
+      (is_cuda_space<typename Kokkos::View<BT, BP...>::execution_space>::value ||
+       is_sycl_space<typename Kokkos::View<BT, BP...>::execution_space>::value) &&
+      std::is_same<
+        typename Kokkos::View<AT, BP...>::non_const_value_type, float
+      >::value
+    >
     solveTransposeRHSImpl(const Kokkos::View<AT,AP...>& A,
                           const Kokkos::View<BT,BP...>& B,
                           const UploType uplo,
                           const AlgParams& algParams)
     {
+      using exec_space = typename Kokkos::View<AT, AP...>::execution_space;
+
       if (algParams.rank_def_solver)
         throw std::string("Rank-deficient solver not supported on the GPU!");
 
@@ -2439,21 +2354,11 @@ namespace Genten {
       assert(A.extent(0) == n);
       assert(A.extent(1) == n);
 
-      static cusolverDnHandle_t handle = 0;
-      if (handle == 0) {
-        status = cusolverDnCreate(&handle);
-        if (status != CUSOLVER_STATUS_SUCCESS) {
-          std::stringstream ss;
-          ss << "Error!  cusolverDnCreate() failed with status "
-             << status;
-          std::cerr << ss.str() << std::endl;
-          throw ss.str();
-        }
-      }
+      CusolverHandle handle;
 
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
-      status = cusolverDnSgetrf_bufferSize(handle, n, n, A.data(), lda, &lwork);
+      status = cusolverDnSgetrf_bufferSize(handle.get(), n, n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnSgetrf_bufferSize() failed with status "
@@ -2462,10 +2367,10 @@ namespace Genten {
         throw ss.str();
       }
 
-      Kokkos::View<float*,Kokkos::LayoutRight,Kokkos::Cuda> work("work",lwork);
-      Kokkos::View<int*,Kokkos::LayoutRight,Kokkos::Cuda> piv("piv",n);
-      Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Cuda> info("info");
-      status = cusolverDnSgetrf(handle, n, n, A.data(), lda, work.data(),
+      Kokkos::View<float *, Kokkos::LayoutRight, exec_space> work("work", lwork);
+      Kokkos::View<int *, Kokkos::LayoutRight, exec_space> piv("piv", n);
+      Kokkos::View<int, Kokkos::LayoutRight, exec_space> info("info");
+      status = cusolverDnSgetrf(handle.get(), n, n, A.data(), lda, work.data(),
                                 piv.data(), info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2483,7 +2388,7 @@ namespace Genten {
         throw ss.str();
       }
 
-      status = cusolverDnSgetrs(handle, CUBLAS_OP_N, n, m, A.data(), lda,
+      status = cusolverDnSgetrs(handle.get(), CUBLAS_OP_N, n, m, A.data(), lda,
                                 piv.data(), B.data(), ldb, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;

@@ -47,8 +47,12 @@ CMAKE_MINIMUM_REQUIRED (VERSION 3.16)
 #---- to the directory where cmake has been invoked.
 project(Genten VERSION "0.0.0")
 
-#---- Require C++14 without GNU extensions
-SET(CMAKE_CXX_STANDARD 14)
+#---- Require C++14 (or C++17 for SYCL) without GNU extensions
+IF(GENTEN_ENABLE_SYCL_FOR_CUDA)
+  SET(CMAKE_CXX_STANDARD 17)
+ELSE()
+  SET(CMAKE_CXX_STANDARD 14)
+ENDIF()
 SET(CMAKE_CXX_EXTENSIONS OFF)
 
 #------------------------------------------------------------
@@ -91,6 +95,10 @@ IF(KOKKOS_INLINE_BUILD)
   # We must enable Lambda support in Kokkos
   IF(Kokkos_ENABLE_CUDA)
     SET(Kokkos_ENABLE_CUDA_LAMBDA ON CACHE BOOL "Enable lambdas for CUDA.")
+  ENDIF()
+
+  IF(GENTEN_ENABLE_SYCL_FOR_CUDA)
+    SET(Kokkos_ENABLE_SYCL ON CACHE BOOL "Enable SYCL for CUDA.")
   ENDIF()
 
   # Configure kokkos
@@ -176,24 +184,39 @@ IF(ENABLE_MATLAB)
   ENDIF()
 ENDIF()
 
-IF(Kokkos_ENABLE_CUDA)
+IF(Kokkos_ENABLE_CUDA OR GENTEN_ENABLE_SYCL_FOR_CUDA)
   OPTION(ENABLE_CUBLAS "Flag to enable cuBLAS for Kokkos with Cuda (do not turn this off unless you know what you are doing)" ON)
   OPTION(ENABLE_CUSOLVER "Flag to enable cuSolver for Kokkos with Cuda (do not turn this off unless you know what you are doing)" ON)
-  IF (ENABLE_CUBLAS)
-    SET(GENTEN_LIBS "${GENTEN_LIBS} -lcublas")
+
+  IF(ENABLE_CUBLAS)
+    IF(LIBCUBLAS_PATH)
+      SET(GENTEN_LIBS "${GENTEN_LIBS} -L${LIBCUBLAS_PATH} -lcublas")
+    ELSE()
+      SET(GENTEN_LIBS "${GENTEN_LIBS} -lcublas")
+    ENDIF()
+
     SET(HAVE_CUBLAS ${ENABLE_CUBLAS})
-    MESSAGE (STATUS "GenTen: Using cuBLAS")
+    MESSAGE(STATUS "GenTen: Using cuBLAS")
   ENDIF()
-  IF (ENABLE_CUSOLVER)
-    SET(GENTEN_LIBS "${GENTEN_LIBS} -lcusolver")
+
+  IF(ENABLE_CUSOLVER)
+    IF(LIBCUSOLVER_PATH)
+      SET(GENTEN_LIBS "${GENTEN_LIBS} -L${LIBCUSOLVER_PATH} -lcusolver")
+    ELSE()
+      SET(GENTEN_LIBS "${GENTEN_LIBS} -lcusolver")
+    ENDIF()
+
     SET(HAVE_CUSOLVER ${ENABLE_CUSOLVER})
     MESSAGE (STATUS "GenTen: Using cuSolver")
   ENDIF()
-  # Add useful CXX flags when building with Cuda
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --expt-relaxed-constexpr")
-  IF (KOKKOS_CXX_COMPILER_ID STREQUAL NVIDIA)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Xcudafe --diag_suppress=code_is_unreachable")
-    #message("CMAKE_CXX_FLAGS = ${CMAKE_CXX_FLAGS}")
+
+  IF(Kokkos_ENABLE_CUDA)
+    # Add useful CXX flags when building with Cuda
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --expt-relaxed-constexpr")
+    IF (KOKKOS_CXX_COMPILER_ID STREQUAL NVIDIA)
+      SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Xcudafe --diag_suppress=code_is_unreachable")
+      #message("CMAKE_CXX_FLAGS = ${CMAKE_CXX_FLAGS}")
+    ENDIF()
   ENDIF()
 ENDIF()
 
@@ -293,6 +316,7 @@ INSTALL (
 # to compile of c code (since the c code can't depend on kokkos)
 #------------------------------------------------------------
 OPTION(ENABLE_LAPACK "Enable BLAS/LAPACK.  Only required for CPU (cuBLAS/cuSolver are used on Cuda and rocBLAS/rocSolver on HIP)." ON)
+
 INCLUDE (cmake/ConfigureLapack.cmake)
 IF (LAPACK_FOUND)
   ADD_DEFINITIONS (-DLAPACK_FOUND)
@@ -376,6 +400,8 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_Tensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_HessVec.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_CublasHandle.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_CusolverHandle.cpp
   )
 
 IF (ENABLE_LBFGSB)
@@ -449,6 +475,10 @@ IF(Kokkos_ENABLE_HIP)
     TARGET_COMPILE_DEFINITIONS(gentenlib PUBLIC HAVE_ROCTHRUST)
     MESSAGE(STATUS "GenTen: Using rocTHRUST")
   ENDIF()
+ENDIF()
+
+IF(GENTEN_ENABLE_SYCL_FOR_CUDA)
+  TARGET_COMPILE_DEFINITIONS(gentenlib PUBLIC ENABLE_SYCL_FOR_CUDA)
 ENDIF()
 
 SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${ROL_LIBRARIES} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
@@ -706,6 +736,9 @@ if (Kokkos_ENABLE_CUDA)
 endif()
 if (Kokkos_ENABLE_HIP)
   list(APPEND kokkos_devices "hip")
+endif()
+if (Kokkos_ENABLE_SYCL)
+  list(APPEND kokkos_devices "sycl")
 endif()
 
 add_mttkrp_tests(Genten_MTTKRP_random_atomic "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method atomic" "${kokkos_devices}")
