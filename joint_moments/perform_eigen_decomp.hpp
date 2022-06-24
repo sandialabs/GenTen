@@ -1,7 +1,15 @@
 #if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
 #include <cuda_runtime.h>
 #include "cublas_v2.h"
+#endif
+#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUSOLVER)
 #include <cusolverDn.h>
+#endif
+#if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
+#include "rocblas.h"
+#endif
+#if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCSOLVER)
+#include "rocsolver.h"
 #endif
 #include "Genten_MathLibs.hpp"
 

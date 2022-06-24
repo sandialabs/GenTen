@@ -142,6 +142,17 @@ void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nva
       std::cout<< "Error!  cublasCreate() failed with status "<< status<< std::endl;
     }
   }
+#elif defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_ROCBLAS)
+  //Setup rocblas handles once, will be reused repeatedly
+  rocblas_status status;
+
+  static rocblas_handle handle = 0;
+  if (handle == 0) {
+    status = rocblas_create_handle(&handle);
+    if (status != rocblas_status_success) {
+      std::cout<< "Error!  rocblas_create_handle() failed with status "<< status<< std::endl;
+    }
+  }
 #endif //KOKKOS_ENABLE_CUDA
 
 
@@ -171,6 +182,14 @@ void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nva
                        krp_of_raw_data.data(), nvars*nvars,
                        &beta,
                        cokurtosis_tensor.data(), nvars*nvars);
+#elif defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_ROCBLAS)
+  status = rocblas_dgemm(handle, rocblas_operation_none, rocblas_operation_transpose,
+		         nvars*nvars, nvars*nvars, nsamples,
+                         &alpha,
+                         krp_of_raw_data.data(), nvars*nvars,
+                         krp_of_raw_data.data(), nvars*nvars,
+                         &beta,
+                         cokurtosis_tensor.data(), nvars*nvars);
 #else
   Genten::gemm('N','T',
                nvars*nvars, nvars*nvars, nsamples,
@@ -195,6 +214,14 @@ void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nva
                        cokurtosis_tensor.data(), nvars,
                        &beta,
                        gram_matrix.data(), nvars);
+#elif defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_ROCBLAS)
+  status = rocblas_dgemm(handle, rocblas_operation_none, rocblas_operation_transpose,
+		         nvars, nvars, nvars*nvars*nvars,
+                         &alpha2,
+                         cokurtosis_tensor.data(), nvars,
+                         cokurtosis_tensor.data(), nvars,
+                         &beta,
+                         gram_matrix.data(), nvars);
 #else
   Genten::gemm('N','T',
                nvars, nvars, nvars*nvars*nvars,
