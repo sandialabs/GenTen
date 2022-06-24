@@ -200,7 +200,7 @@ std::vector<TDatatype<double>> parallelReadElements(MPI_Comm comm, MPI_File fh,
   }
   MPI_Barrier(comm);
   auto t1 = MPI_Wtime();
-  if (rank == 0) {
+  if (0 && rank == 0) { // Turning this off for now
     std::cout << "\tTime in MPI_File_read_at_all: " << t1 - t0 << "s"
               << std::endl;
   }
