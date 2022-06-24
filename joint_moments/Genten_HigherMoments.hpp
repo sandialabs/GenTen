@@ -38,15 +38,12 @@
 // ************************************************************************
 //@HEADER
 
-#include<Kokkos_Core.hpp>
-#include "Genten_Kokkos.hpp"
-#include "Genten_Tensor.hpp"
-#include "Genten_IOtext.hpp"
+//#include "Genten_Kokkos.hpp"
+//#include "Genten_Tensor.hpp"
+//#include "Genten_IOtext.hpp"
 
 extern "C" {
 
 double * FormRawMomentTensor(double *raw_data_ptr, int nsamples, int nvars, const int order);
 
-void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nvars,
-                                     double *pvecs, double *pvals);
 }
