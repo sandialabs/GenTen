@@ -470,40 +470,59 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
   if (is_binary && compressed)
     Genten::error("The binary format does not support compression\n");
 
-  std::uint64_t nnz = 0;
-  auto binary_header = readHeader(file, index_base, global_dims_, nnz);
+  std::vector<MPI_IO::TDatatype<ttb_real>> Tvec;
 
-  const auto ndims = global_dims_.size();
+  DistContext::Barrier();
+  auto t2 = MPI_Wtime();
+  if (is_binary) {
+    // For binary file, do a parallel read
+    std::uint64_t nnz = 0;
+    auto binary_header = readHeader(file, index_base, global_dims_, nnz);
+    Tvec = MPI_IO::parallelReadElements(DistContext::commWorld(),
+                                          binary_header->second,
+                                          binary_header->first);
+  }
+  else {
+    // For non-binary, read on rank 0 and broadcast dimensions.
+    // We do this instead of reading the header because we want to support
+    // headerless files
+    Sptensor X_host;
+    if (gridRank() == 0)
+      import_sptensor(file, X_host, index_base, compressed);
+
+    std::size_t nnz = X_host.nnz();
+    DistContext::Bcast(nnz, 0);
+
+    std::size_t ndims = X_host.ndims();
+    DistContext::Bcast(ndims, 0);
+
+    small_vector<int> dims(ndims);
+    if (gridRank() == 0) {
+      for (std::size_t i=0; i<ndims; ++i)
+        dims[i] = X_host.size(i);
+    }
+    DistContext::Bcast(dims, 0);
+
+    global_dims_ = std::vector<std::uint32_t>(ndims);
+    for (std::size_t i=0; i<ndims; ++i)
+      global_dims_[i] = dims[i];
+
+    Tvec = detail::distributeTensorToVectors(
+      X_host, nnz, DistContext::commWorld(), DistContext::rank(),
+      DistContext::nranks());
+  }
+  DistContext::Barrier();
+  auto t3 = MPI_Wtime();
+  if (gridRank() == 0) {
+    std::cout << "Read in file in: " << t3 - t2 << "s" << std::endl;
+  }
 
   pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_));
   detail::printGrids(*pmap_);
 
   global_blocking_ =
     detail::generateUniformBlocking(global_dims_, pmap_->gridDims());
-
   detail::printBlocking(*pmap_, global_blocking_);
-
-  DistContext::Barrier();
-  auto t2 = MPI_Wtime();
-  auto Tvec = [&] {
-    if (binary_header) {
-      return MPI_IO::parallelReadElements(DistContext::commWorld(),
-                                          binary_header->second,
-                                          binary_header->first);
-    } else {
-      Sptensor X_host;
-      if (pmap_->gridRank() == 0)
-        import_sptensor(file, X_host, index_base, compressed);
-      return detail::distributeTensorToVectors(
-        X_host, nnz, pmap_->gridComm(), pmap_->gridRank(),
-        pmap_->gridSize());
-    }
-  }();
-  DistContext::Barrier();
-  auto t3 = MPI_Wtime();
-  if (gridRank() == 0) {
-    std::cout << "Read in file in: " << t3 - t2 << "s" << std::endl;
-  }
 
   return distributeTensorData<ExecSpace>(Tvec, global_dims_, global_blocking_,
                                          *pmap_);
