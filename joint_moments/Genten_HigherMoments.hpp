@@ -52,7 +52,7 @@ namespace Genten {
 template <class ExecSpace>
 TensorT<Kokkos::DefaultHostExecutionSpace> create_and_compute_moment_tensor(
   Kokkos::View<ttb_real**, Kokkos::LayoutLeft, ExecSpace> x,
-  const int blockSize
+  const int blockSize, const int teamSize
 );
 
 } // namespace Genten

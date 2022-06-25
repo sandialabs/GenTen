@@ -135,7 +135,7 @@ TensorT<Kokkos::DefaultHostExecutionSpace> cokurtosis_impl(
   const int oddBlockSize = XnCol - stdBlockSize * (nBlocks - 1);
   //# of unique blocks = (n+4-1) choose 4 or n choose 4 with repetition
   const int nUniqueBlocks = ((nBlocks+3)*(nBlocks+2)*(nBlocks+1)*nBlocks)/(4*3*2*1);
-  std::cout << "nUniqueBlocks = " << nUniqueBlocks << '\n';
+  // printf("nUniqueBlocks: %f\n", nUniqueBlocks);
 
   const int nTile = XnRow%tileSize == 0 ? XnRow/tileSize : XnRow/tileSize + 1;
 
@@ -206,7 +206,8 @@ TensorT<Kokkos::DefaultHostExecutionSpace> cokurtosis_impl(
         int blockSizes [4];
         for (int i = 0; i < 4; i++) {
           blockSizes[i] =
-            (XnCol % stdBlockSize == 0 || blockIndex[i] != nBlocks)
+            // TODO: should be `nBlocks` or `nBlocks-1`?
+            (XnCol % stdBlockSize == 0 || blockIndex[i] != nBlocks-1)
             ? stdBlockSize
             : oddBlockSize;
         }
@@ -355,20 +356,10 @@ TensorT<Kokkos::DefaultHostExecutionSpace> cokurtosis_impl(
 template <typename ExecSpace>
 TensorT<Kokkos::DefaultHostExecutionSpace> create_and_compute_moment_tensor(
   Kokkos::View<ttb_real**, Kokkos::LayoutLeft, ExecSpace> dataMatrix,
-  const int blockSize
+  const int blockSize, const int teamSize
 ) {
-  // Example: https://github.com/kokkos/kokkos-fortran-interop/blob/master/src/flcl-cxx.hpp/#L157
-  // raw data is "viewed" as a 2D-array in layoutleft order
-  // using mem_unmanged = Kokkos::MemoryTraits<Kokkos::Unmanaged>;
-  // using data_matrix_type_host = Kokkos::View<ttb_real**, Kokkos::LayoutLeft, exe_space_host, mem_unmanged>;
-  // data_matrix_type_host dataMatrixHost(rawDataPtr, nsamples, nvars);
-
-  // auto dataMatrix = Kokkos::create_mirror_view(exe_space(), dataMatrixHost);
-  // Kokkos::deep_copy(dataMatrix, dataMatrixHost);
-
   // these need to be moved
   int tileSize = 1;
-  int teamSize = 1;
   const auto refactoredAlgoRes =
     impl::cokurtosis_impl(dataMatrix, blockSize, tileSize, teamSize);
 
@@ -379,7 +370,7 @@ TensorT<Kokkos::DefaultHostExecutionSpace> create_and_compute_moment_tensor(
 template TensorT<Kokkos::DefaultHostExecutionSpace>
 create_and_compute_moment_tensor<Kokkos::Cuda>(
   Kokkos::View<ttb_real**, Kokkos::LayoutLeft, Kokkos::Cuda> x,
-  const int blockSize
+  const int blockSize, const int teamSize
 );
 #endif
 
@@ -387,7 +378,7 @@ create_and_compute_moment_tensor<Kokkos::Cuda>(
 template TensorT<Kokkos::DefaultHostExecutionSpace>
 create_and_compute_moment_tensor<Kokkos::Experimental::HIP>(
   Kokkos::View<ttb_real**, Kokkos::LayoutLeft, Kokkos::Experimental::HIP> x,
-  const int blockSize
+  const int blockSize, const int teamSize
 );
 #endif
 
@@ -395,7 +386,7 @@ create_and_compute_moment_tensor<Kokkos::Experimental::HIP>(
 template TensorT<Kokkos::DefaultHostExecutionSpace>
 create_and_compute_moment_tensor<Kokkos::OpenMP>(
   Kokkos::View<ttb_real**, Kokkos::LayoutLeft, Kokkos::OpenMP> x,
-  const int blockSize
+  const int blockSize, const int teamSize
 );
 #endif
 
@@ -403,7 +394,7 @@ create_and_compute_moment_tensor<Kokkos::OpenMP>(
 template TensorT<Kokkos::DefaultHostExecutionSpace>
 create_and_compute_moment_tensor<Kokkos::Threads>(
   Kokkos::View<ttb_real**, Kokkos::LayoutLeft, Kokkos::Threads> x,
-  const int blockSize
+  const int blockSize, const int teamSize
 );
 #endif
 
@@ -411,7 +402,7 @@ create_and_compute_moment_tensor<Kokkos::Threads>(
 template TensorT<Kokkos::DefaultHostExecutionSpace>
 create_and_compute_moment_tensor<Kokkos::Serial>(
   Kokkos::View<ttb_real**, Kokkos::LayoutLeft, Kokkos::Serial> x,
-  const int blockSize
+  const int blockSize, const int teamSize
 );
 #endif
 

@@ -47,6 +47,7 @@
 #include <Kokkos_Random.hpp>
 #include <cmath>
 #include <iostream>
+#include <sstream>
 
 using namespace Genten::Test;
 
@@ -99,36 +100,57 @@ void Genten_Test_MomentTensorImpl(int infolevel) {
   std::string space_name = Genten::SpaceProperties<ExecSpace>::name();
   initialize("Tests on Genten::MomentTensor (" + space_name + ")", infolevel);
 
-  // for (int numRows : {20, 31}) {
-    // for (int numCols : {4, 5, 6}) {
+  for (const int numRows : {20, 35, 40, 91}) {
+    for (const int numCols : {4, 5, 6}) {
+      for (const int blockSize : {2, 3, 4, 5, 6}) {
+        if (numCols <= blockSize) {
+          for (const int teamSize : {1, 2, 4}) {
+            std::stringstream inputInfo;
+            inputInfo << "Computing 4th joint moment for matrix " << numRows
+                      << "x" << numCols << ", blockSize: " << blockSize
+                      << ", teamSize: " << teamSize;
+            MESSAGE(inputInfo.str());
 
-  for (int numRows : {20}) {
-    for (int numCols : {5}) {
-      const auto x = generateTestInput<ExecSpace>(numRows, numCols);
-      constexpr int blockSize = 2;
+            const auto x = generateTestInput<ExecSpace>(numRows, numCols);
 
-      printf(
-        "\nnumRows: %d, numCols: %d, blockSize: %d\n",
-        numRows, numCols, blockSize
-      );
+            const auto naiveAlgoRes = naiveAlgo(x);
+            // Genten::print_tensor(naiveAlgoRes, std::cout, "naiveAlgoRes");
 
-      const auto naiveAlgoRes = naiveAlgo(x);
-      Genten::print_tensor(naiveAlgoRes, std::cout, "naiveAlgoRes");
+            const auto refactoredAlgoRes =
+              Genten::create_and_compute_moment_tensor(x, blockSize, teamSize);
+            // Genten::print_tensor(refactoredAlgoRes, std::cout, "refactoredAlgoRes");
 
-      const auto refactoredAlgoRes =
-        Genten::create_and_compute_moment_tensor(x, blockSize);
+            constexpr auto epsilon = 1.0E-10;
+            const auto tensorsAreEqual =
+              naiveAlgoRes.getValues().isEqual(
+                refactoredAlgoRes.getValues(), epsilon
+              );
 
-      Genten::print_tensor(refactoredAlgoRes, std::cout, "refactoredAlgoRes");
+            if (not tensorsAreEqual) {
+              MESSAGE("Results differences:");
+              for (int i = 0; i < numCols; ++i) {
+                for (int j = 0; j < numCols; ++j) {
+                  for (int k = 0; k < numCols; ++k) {
+                    for (int l = 0; l < numCols; ++l) {
+                      const auto nar = naiveAlgoRes(i, j, k, l);
+                      const auto rar = refactoredAlgoRes(i, j, k, l);
+                      if (not Genten::isEqualToTol(nar, rar, epsilon)) {
+                        std::stringstream resDiff;
+                        resDiff << "(" << i << "," << j << "," << k << "," << l
+                                << "): naiveAlgoRes = " << nar
+                                << ", refactoredAlgoRes = " << rar;
+                        MESSAGE(resDiff.str());
+                      }
+                    }
+                  }
+                }
+              }
+            }
 
-      const auto areTheSame =
-        naiveAlgoRes.getValues().isEqual(
-          refactoredAlgoRes.getValues(), 1.0E-10
-
-          // TODO (STRZ) - std::epsilon doesn't work for colNum = 6
-          // refactoredAlgoRes.getValues(), std::numeric_limits<ttb_real>::epsilon()
-        );
-
-      printf("\nareTheSame: %s\n", areTheSame ? "true" : "false");
+            ASSERT(tensorsAreEqual, "4th joint moment computation");
+          }
+        }
+      }
     }
   }
 
