@@ -43,11 +43,11 @@
 #include "CMakeInclude.h"
 #if defined(HAVE_DIST)
 
+#include <vector>
+
 #include "Genten_SmallVector.hpp"
 #include "Genten_DistContext.hpp"
 #include "Genten_Util.hpp"
-
-#include <vector>
 
 namespace Genten {
 

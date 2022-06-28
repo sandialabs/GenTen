@@ -40,10 +40,10 @@
 
 #pragma once
 
-#include "Genten_Ptree.hpp"
-
 #include <cmath>
 #include <memory>
+
+#include "Genten_Ptree.hpp"
 
 namespace Genten {
 class AnnealerBase {

@@ -51,11 +51,11 @@
 
 #include "CMakeInclude.h"
 #if defined(HAVE_DIST)
-#include "Genten_MPI_IO.h"
-#include "Genten_SpTn_Util.h"
 #include <cmath>
 #include <fstream>
 #include <memory>
+#include "Genten_MPI_IO.hpp"
+#include "Genten_SpTn_Util.hpp"
 #endif
 
 namespace Genten {

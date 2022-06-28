@@ -38,8 +38,9 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_DistTensorContext.hpp"
 #include <string>
+
+#include "Genten_DistTensorContext.hpp"
 
 #ifdef HAVE_DIST
 

@@ -38,10 +38,11 @@
 // ************************************************************************
 //@HEADER
 //
-#include <Genten_MPI_IO.h>
 
 #include <iostream>
 #include <memory>
+
+#include "Genten_MPI_IO.hpp"
 
 namespace Genten {
 namespace MPI_IO {

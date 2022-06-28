@@ -39,6 +39,9 @@
 //@HEADER
 
 #pragma once
+
+#include <cmath>
+
 #include "Genten_Driver.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
 #include "Genten_GCP_SGD_Iter.hpp"
@@ -50,8 +53,6 @@
 #include "Genten_DistTensorContext.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
-
-#include <cmath>
 
 namespace Genten {
 

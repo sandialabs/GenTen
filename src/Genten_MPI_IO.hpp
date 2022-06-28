@@ -41,44 +41,22 @@
 
 #pragma once
 
-#include <Genten_SmallVector.hpp>
-#include <Genten_TensorInfo.hpp>
-
 #include <cstdint>
-#include <vector>
-#include <iosfwd>
+#include <string>
+#include <mpi.h>
+
+#include "Genten_SpTn_Util.hpp"
 
 namespace Genten {
 namespace MPI_IO {
+MPI_File openFile(MPI_Comm comm, std::string const &file_name,
+                  int access_mode = MPI_MODE_RDONLY,
+                  MPI_Info info = MPI_INFO_NULL);
 
-struct SptnFileHeader {
-  std::uint32_t ndims = 0;
-  std::uint32_t float_bits = 0;
-  small_vector<std::uint64_t> dim_lengths;
-  small_vector<std::uint64_t> dim_bits;
-  std::uint64_t nnz = 0;
-  std::uint64_t data_starting_byte = 0;
+SptnFileHeader readHeader(MPI_Comm comm, MPI_File fh);
 
-  std::uint64_t bytesInDataLine() const;
-  std::uint64_t indByteOffset(int ind) const;
-  std::uint64_t dataByteOffset() const;
-  std::uint64_t totalBytesToRead() const;
-
-  small_vector<std::uint64_t> getOffsetRanges(int nranks) const;
-
-  std::pair<std::uint64_t, std::uint64_t> getLocalOffsetRange(int rank,
-                                                              int nranks) const;
-
-  TensorInfo toTensorInfo() const;
-};
-
-std::ostream &operator<<(std::ostream &os, SptnFileHeader const &h);
-
-// Type to temporarily  hold coo data for the initial MPI distribution
-template <typename T> struct TDatatype {
-  std::uint32_t coo[6] = {-1u, -1u, -1u, -1u, -1u, -1u};
-  double val;
-};
+std::vector<TDatatype<double>> parallelReadElements(MPI_Comm comm, MPI_File fh,
+                                                    SptnFileHeader const &h);
 
 } // namespace MPI_IO
 } // namespace Genten

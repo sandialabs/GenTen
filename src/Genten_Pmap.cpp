@@ -42,15 +42,15 @@
 
 #ifdef HAVE_DIST
 
-#include "Genten_DistContext.hpp"
-#include "Genten_IOtext.hpp"
-
 #include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <numeric>
 #include <unordered_map>
 #include <vector>
+
+#include "Genten_DistContext.hpp"
+#include "Genten_IOtext.hpp"
 
 namespace Genten {
 

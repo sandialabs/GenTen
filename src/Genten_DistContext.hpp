@@ -48,21 +48,21 @@ bool FinalizeGenten();
 #include "CMakeInclude.h"
 #if defined(HAVE_DIST)
 
-#include "Genten_Util.hpp"
-#include "Genten_Ptree.hpp"
-#include "Genten_SmallVector.hpp"
-#include <Kokkos_Core.hpp>
-#include <mpi.h>
-
-#include <assert.h>
-#include <memory.h>
+#include <cassert>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <typeinfo>
 
+#include <mpi.h>
+
 #ifdef HAVE_BOOST
 #include <boost/core/demangle.hpp>
 #endif
+
+#include "Genten_Util.hpp"
+#include "Genten_Ptree.hpp"
+#include "Genten_SmallVector.hpp"
 
 namespace Genten {
 std::stringstream debugInput();
