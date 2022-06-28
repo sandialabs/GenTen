@@ -129,7 +129,7 @@ if (MPI_FOUND)
 endif()
 
 if(ENABLE_BOOST)
-  find_package(Boost REQUIRED COMPONENTS serialization iostreams)
+  find_package(Boost REQUIRED COMPONENTS iostreams)
   find_package(ZLIB REQUIRED)
 endif()
 if (BOOST_FOUND AND ZLIB_FOUND)
@@ -479,7 +479,7 @@ TARGET_LINK_LIBRARIES(DistContextLib nlohmann_json::nlohmann_json)
 TARGET_LINK_LIBRARIES(gentenlib DistContextLib )
 IF(HAVE_DIST)
   TARGET_LINK_LIBRARIES(DistContextLib MPI::MPI_C
-                                       Boost::boost Boost::serialization
+                                       Boost::boost
     )
   ADD_LIBRARY(GentenMpiIoLib
     ${Genten_SOURCE_DIR}/src/Genten_SpTn_Util.cpp
@@ -671,7 +671,6 @@ IF(HAVE_DIST)
     GentenMpiIoLib
     MPI::MPI_C
     Boost::boost
-    Boost::serialization
     )
 
   INSTALL(
