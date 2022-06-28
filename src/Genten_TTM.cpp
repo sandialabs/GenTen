@@ -48,7 +48,7 @@
 #include "Genten_MathLibs.hpp"
 
 #if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) && defined(HAVE_CUBLAS)
-#include "Genten_CublasHandle.h"
+#include "Genten_CublasHandle.hpp"
 #endif
 
 #if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
