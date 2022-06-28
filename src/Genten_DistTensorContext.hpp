@@ -667,7 +667,7 @@ printRandomElements(const SptensorT<ExecSpace>& tensor,
     }
     std::cout << std::endl;
     MPI_Barrier(gComm);
-    sleep(1);
+    //sleep(1);
   }
 }
 

@@ -64,10 +64,6 @@ OPTION(FLOAT_TYPE "C++ data type used for floating-point values" OFF)
 OPTION(INDEX_TYPE "C++ data type used for tensor indices" OFF)
 OPTION(ENABLE_GCP "Enable experimental GCP code" ON)
 
-IF(ENABLE_MPI AND NOT ENABLE_BOOST)
-  MESSAGE(FATAL_ERROR "ENABLE_MPI=ON but ENABLE_BOOST=OFF. Distributed MPI code also requires boost.  Please reconfigure with ENABLE_BOOST=ON (and set BOOST_ROOT if necessary if CMake cannot find it automatically).")
-ENDIF()
-
 IF(FLOAT_TYPE)
   SET(GENTEN_FLOAT_TYPE ${FLOAT_TYPE})
 ELSE()
@@ -136,7 +132,7 @@ if (BOOST_FOUND AND ZLIB_FOUND)
   set(HAVE_BOOST ON)
 endif()
 
-if(MPI_FOUND AND BOOST_FOUND)
+if(MPI_FOUND)
   set(HAVE_DIST ON)
 endif()
 
@@ -477,15 +473,19 @@ ADD_LIBRARY(DistContextLib
 TARGET_LINK_LIBRARIES(DistContextLib Kokkos::kokkos)
 TARGET_LINK_LIBRARIES(DistContextLib nlohmann_json::nlohmann_json)
 TARGET_LINK_LIBRARIES(gentenlib DistContextLib )
-IF(HAVE_DIST)
-  TARGET_LINK_LIBRARIES(DistContextLib MPI::MPI_C
-                                       Boost::boost
-    )
+IF(HAVE_MPI)
+  TARGET_LINK_LIBRARIES(DistContextLib MPI::MPI_C)
+  IF(HAVE_BOOST)
+    TARGET_LINK_LIBRARIES(DistContextLib Boost::boost)
+  ENDIF()
   ADD_LIBRARY(GentenMpiIoLib
     ${Genten_SOURCE_DIR}/src/Genten_SpTn_Util.cpp
     ${Genten_SOURCE_DIR}/src/Genten_MPI_IO.cpp
     )
-  TARGET_LINK_LIBRARIES(GentenMpiIoLib MPI::MPI_C Boost::boost)
+  TARGET_LINK_LIBRARIES(GentenMpiIoLib MPI::MPI_C)
+  IF(HAVE_BOOST)
+    TARGET_LINK_LIBRARIES(GentenMpiIoLib Boost::boost)
+  ENDIF()
   TARGET_LINK_LIBRARIES(gentenlib GentenMpiIoLib)
 ENDIF()
 
@@ -669,8 +669,6 @@ IF(HAVE_DIST)
     ${GENTEN_LINK_LIBS}
     DistContextLib
     GentenMpiIoLib
-    MPI::MPI_C
-    Boost::boost
     )
 
   INSTALL(
