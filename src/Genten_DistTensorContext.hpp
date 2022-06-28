@@ -43,7 +43,7 @@
 #include <random>
 
 #include "Genten_Ptree.hpp"
-#include "Genten_Boost.hpp"
+#include "Genten_SmallVector.hpp"
 #include "Genten_DistContext.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_Pmap.hpp"

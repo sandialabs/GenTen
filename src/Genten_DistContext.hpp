@@ -50,7 +50,7 @@ bool FinalizeGenten();
 
 #include "Genten_Util.hpp"
 #include "Genten_Ptree.hpp"
-#include "Genten_Boost.hpp"
+#include "Genten_SmallVector.hpp"
 #include <Kokkos_Core.hpp>
 #include <mpi.h>
 

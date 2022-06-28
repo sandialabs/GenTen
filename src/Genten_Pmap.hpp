@@ -43,7 +43,7 @@
 #include "CMakeInclude.h"
 #if defined(HAVE_DIST)
 
-#include "Genten_Boost.hpp"
+#include "Genten_SmallVector.hpp"
 #include "Genten_DistContext.hpp"
 #include "Genten_Util.hpp"
 

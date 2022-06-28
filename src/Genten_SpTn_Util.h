@@ -41,7 +41,7 @@
 
 #pragma once
 
-#include <Genten_Boost.hpp>
+#include <Genten_SmallVector.hpp>
 #include <Genten_TensorInfo.hpp>
 
 #include <cstdint>
