@@ -44,11 +44,7 @@
 #include "Genten_SystemTimer.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_FacTestSetGenerator.hpp"
-#ifdef HAVE_BOOST
-#include "Genten_Boost.hpp"
-#define BOOST_BIND_GLOBAL_PLACEHOLDERS
-#include <boost/property_tree/json_parser.hpp>
-#endif
+#include "Genten_Ptree.hpp"
 
 void usage(char **argv)
 {
@@ -254,14 +250,13 @@ int main(int argc, char* argv[])
     std::string init = "";
     std::string outputfilename = "";
 
-#ifdef HAVE_BOOST
     // Parse a json file if given before command-line arguments, that way
     // command line will override what is in the file
     Genten::ptree json_input;
     const std::string json_file =
       Genten::parse_string(args, "--json", "");
     if (json_file != "") {
-      boost::property_tree::read_json(json_file, json_input);
+      read_json(json_file, json_input);
       algParams.parse(json_input);
       Genten::parse_ptree_value(json_input, "vtune", vtune);
 
@@ -290,7 +285,7 @@ int main(int argc, char* argv[])
         Genten::parse_ptree_value(ktensor_input, "output", outputfilename);
       }
     }
-#endif
+
     vtune =
       Genten::parse_ttb_bool(args, "--vtune", "--no-vtune", vtune);
     inputfilename =

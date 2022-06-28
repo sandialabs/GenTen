@@ -115,6 +115,10 @@ ELSE()
 ENDIF()
 SET(HAVE_KOKKOS ON)
 
+# Embedded "JSON for Modern C++" library
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+add_subdirectory(tpls/json)
+
 SET(GENTEN_LIBS "")
 
 if(ENABLE_MPI)
@@ -281,6 +285,7 @@ INCLUDE_DIRECTORIES (
   ${Genten_BINARY_DIR}/CMakeInclude/
   ${Genten_SOURCE_DIR}/driver/
   ${Genten_SOURCE_DIR}/tpls/lbfgsb/
+  ${Genten_SOURCE_DIR}/tpls/json/single_include/nlohmann/
   )
 FILE (GLOB genten_headers
   ${Genten_SOURCE_DIR}/src/*.h
@@ -459,6 +464,7 @@ ENDIF()
 #---- Tell CMake to build the library.
 ADD_LIBRARY (gentenlib ${Genten_SOURCE_LIST})
 TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkos)
+TARGET_LINK_LIBRARIES(gentenlib nlohmann_json::nlohmann_json)
 IF(HAVE_BOOST)
   TARGET_LINK_LIBRARIES(gentenlib Boost::iostreams ZLIB::ZLIB)
 ENDIF()
@@ -469,6 +475,7 @@ ADD_LIBRARY(DistContextLib
     ${Genten_SOURCE_DIR}/src/Genten_DistTensorContext.cpp
     )
 TARGET_LINK_LIBRARIES(DistContextLib Kokkos::kokkos)
+TARGET_LINK_LIBRARIES(DistContextLib nlohmann_json::nlohmann_json)
 TARGET_LINK_LIBRARIES(gentenlib DistContextLib )
 IF(HAVE_DIST)
   TARGET_LINK_LIBRARIES(DistContextLib MPI::MPI_C
@@ -519,7 +526,7 @@ ENDIF()
 SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${ROL_LIBRARIES} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
 TARGET_LINK_LIBRARIES(${GENTEN_LINK_LIBS})
 INSTALL (
-  TARGETS gentenlib DistContextLib 
+  TARGETS gentenlib DistContextLib nlohmann_json
   EXPORT genten
   DESTINATION ${CMAKE_INSTALL_LIBDIR}
   )

@@ -48,6 +48,7 @@ bool FinalizeGenten();
 #include "CMakeInclude.h"
 #if defined(HAVE_DIST)
 
+#include "Genten_Ptree.hpp"
 #include "Genten_Boost.hpp"
 #include <Kokkos_Core.hpp>
 #include <mpi.h>
@@ -206,6 +207,7 @@ template <typename T> T deserializeFromStr(std::string const &s) {
 // Bcasts that I don't want to figure out how to do the other way right now
 template <> int DistContext::Bcast(small_vector<int> &t, int root);
 template <> int DistContext::Bcast(std::size_t &t, int root);
+template <> int DistContext::Bcast(ptree &t, int root);
 
 } // namespace Genten
 

@@ -46,7 +46,7 @@
 #include "Genten_GCP_ValueKernels.hpp"
 
 #include "Genten_Annealer.hpp"
-#include "Genten_Boost.hpp"
+#include "Genten_Ptree.hpp"
 #include "Genten_DistTensorContext.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
@@ -208,9 +208,8 @@ AlgParams DistGCP<ExecSpace>::setAlgParams() const {
   global_batch_size_nz =
       pmap().gridAllReduce(algParams.num_samples_nonzeros_grad);
 
-  auto epoch_size = input_.get_optional<int>("epoch_size");
-  if (epoch_size) {
-    algParams.epoch_iters = epoch_size.get();
+  if (input_.contains("epoch_size")) {
+    algParams.epoch_iters = input_.get<int>("epoch_size");
   } else {
     algParams.epoch_iters = gnz / global_batch_size_nz;
   }
@@ -305,8 +304,8 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
   const auto my_rank = pmap().gridRank();
 
   auto algParams = setAlgParams();
-  if (auto eps = input_.get_optional<ttb_real>("eps")) {
-    algParams.adam_eps = *eps;
+  if (input_.contains("eps")) {
+    algParams.adam_eps = input_.get<ttb_real>("eps");
   }
 
   // This is a lot of copies :/ but accept it for now

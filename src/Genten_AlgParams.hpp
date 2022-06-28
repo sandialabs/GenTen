@@ -46,7 +46,7 @@
 
 #include "Genten_Util.hpp"
 #include "Genten_IndxArray.hpp"
-#include "Genten_Boost.hpp"
+#include "Genten_Ptree.hpp"
 
 namespace Genten {
 
@@ -134,10 +134,7 @@ namespace Genten {
 
     // Parse options
     void parse(std::vector<std::string>& args);
-
-#ifdef HAVE_BOOST
     void parse(const ptree& tree);
-#endif
 
     // Print help string
     static void print_help(std::ostream& out);
@@ -220,7 +217,6 @@ namespace Genten {
     return T::default_type;
   }
 
-#ifdef HAVE_BOOST
   // A helper function for parsing standard values out of a ptree
   // where the default value is the current value in val
   template <typename T, typename U, typename V>
@@ -246,9 +242,9 @@ namespace Genten {
                          std::vector<T>& val,
                          const U& lower, const V& upper)
   {
-    val = std::vector<T>();
-    for (auto& item : input.get_child(name)) {
-      T v = item.second.get_value<T>();
+    val = input.get<std::vector<T> >(name);
+    int nv = val.size();
+    for (const auto& v : val) {
       if (v < lower || v > upper) {
         std::ostringstream error_string;
         error_string << "Bad input: " << name << " " << v
@@ -256,7 +252,6 @@ namespace Genten {
                      << ")" << std::endl;
         Genten::error(error_string.str());
       }
-      val.push_back(v);
     }
   }
 
@@ -268,7 +263,6 @@ namespace Genten {
   {
     val = Genten::parse_enum<T>(input.get<std::string>(name, T::names[val]));
   }
-#endif
 
   // Convert (argc,argv) to list of strings
   std::vector<std::string> build_arg_list(int argc, char** argv);

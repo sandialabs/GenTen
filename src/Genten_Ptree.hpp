@@ -40,80 +40,85 @@
 
 #pragma once
 
-#include "Genten_Ptree.hpp"
-
-#include <cmath>
-#include <memory>
+#include <iostream>
+#include <fstream>
+#include "json.hpp"
 
 namespace Genten {
-class AnnealerBase {
-public:
-  AnnealerBase(ptree const &ptree) {}
-  virtual double operator()(int epoch) = 0;
-  virtual void failed(){};
-  virtual void success(){};
 
+// A replacement for boost::property_tree using the bundled json parser
+class ptree {
 private:
-};
-
-class TraditionalAnnealer : public AnnealerBase {
-  double step_size_;
-
+  nlohmann::json j;
 public:
-  TraditionalAnnealer(ptree const &ptree)
-      : AnnealerBase(ptree), step_size_(ptree.get<double>("lr.step", 3e-4)) {}
+  ptree() = default;
+  ptree(const ptree&) = default;
+  ptree(ptree&&) = default;
+  ptree& operator=(const ptree&) = default;
+  ptree& operator=(ptree&&) = default;
 
-  double operator()(int epoch) override { return step_size_; }
-  void failed() override { step_size_ /= 10; }
+  operator bool() const { return j.size() > 0; }
+  ptree& operator*() { return *this; }
+
+  void read(const std::string& file) {
+    std::ifstream f(file);
+    f >> j;
+    f.close();
+  }
+
+  void write(std::ostream& os) const { os << j; }
+
+  bool contains(const std::string& key) const { return j.contains(key); }
+
+  template <typename T> T get(const std::string& key, const T& val) {
+    if (!j.contains(key))
+      j[key] = val;
+    return j[key];
+  }
+
+  template <typename T> T get(const std::string& key, const T& val) const {
+    if (!j.contains(key))
+      return val;
+    return j[key];
+  }
+
+  template <typename T> T get(const std::string& key) const {
+    return j[key];
+  }
+
+  std::string get(const std::string& key, const char* val) {
+    return get<std::string>(key,std::string(val));
+  }
+
+  std::string get(const std::string& key, const char* val) const {
+    return get<std::string>(key,std::string(val));
+  }
+
+  ptree get_child(const std::string& key) const {
+    ptree p;
+    p.j = j[key];
+    return p;
+  }
+
+  ptree get_child_optional(const std::string& key) const {
+    ptree p;
+    if (j.contains(key))
+      p.j = j[key];
+    return p;
+  }
+
+  template <typename T> void add(const std::string& key, const T& val) {
+    j[key] = val;
+  }
+
+  int count(const std::string& key) const { return j.count(key); }
+
+  std::string dump() const { return j.dump(); }
+
+  void parse(const std::string& s) { j = nlohmann::json::parse(s); }
 };
 
-// Slightly annoyingly I want the first run through to be a warm up then resets
-// So we will maintain a different count than Tcur to decide when to reset Tcur
-class CosineAnnealer : public AnnealerBase {
-  double min_lr;
-  double max_lr;
-  int Ti;
-  int Tcur;
-  int iter = 0;
+inline void read_json(const std::string& file, ptree& input) { input.read(file); }
+inline void write_json(std::ostream& os, const ptree& input) { input.write(os); }
 
-public:
-  CosineAnnealer(ptree const &ptree)
-      : AnnealerBase(ptree), min_lr(ptree.get<double>("lr.min_lr", 1e-12)),
-        max_lr(ptree.get<double>("lr.max_lr", 1e-9)),
-        Ti(ptree.get<int>("lr.Ti", 10)), Tcur(Ti) {}
-
-  double operator()(int) override {
-    return min_lr +
-           0.5 * (max_lr - min_lr) * (1 + std::cos(double(Tcur) / Ti * M_PI));
-  }
-
-  void failed() override {
-    min_lr *= 0.5;
-    max_lr *= 0.5;
-    Tcur = 0;
-    iter = 0;
-  }
-
-  void success() override {
-    ++iter;
-    ++Tcur;
-    if (iter > Ti) {
-      Tcur = 0;
-      iter = 0;
-      Ti *= 2;
-    }
-  }
-};
-
-inline std::unique_ptr<AnnealerBase> getAnnealer(ptree const& ptree){
-  auto annealer = ptree.get<std::string>("annealer", "traditional");
-  if(annealer == "traditional"){
-    return std::make_unique<TraditionalAnnealer>(TraditionalAnnealer(ptree));
-  } else if(annealer == "cosine"){
-    return std::make_unique<CosineAnnealer>(CosineAnnealer(ptree));
-  } else {
-    return std::make_unique<TraditionalAnnealer>(TraditionalAnnealer(ptree));
-  }
 }
-
-} // namespace Genten

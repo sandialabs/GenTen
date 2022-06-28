@@ -47,12 +47,9 @@
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/container/small_vector.hpp>
 #include <boost/optional.hpp>
-#include <boost/property_tree/ptree.hpp>
 #include <boost/core/demangle.hpp>
 
 namespace Genten {
-
-using ptree = boost::property_tree::ptree;
 
 namespace detail {
 // Attempt to fill one 64 byte cacheline with the small_vector

@@ -237,8 +237,6 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   anneal_max_lr = parse_ttb_real(args, "--anneal-max-lr", anneal_max_lr, 0.0, 1.0);
 }
 
-#ifdef HAVE_BOOST
-
 void Genten::AlgParams::parse(const ptree& input)
 {
   // Generic options
@@ -349,8 +347,6 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_value(gcp_input, "anneal-max-lr", anneal_max_lr, 0.0, 1.0);
   }
 }
-
-#endif
 
 void Genten::AlgParams::print_help(std::ostream& out)
 {
@@ -801,7 +797,6 @@ Genten::parse_ttb_indx_array(std::vector<std::string>& args,
   return default_value;
 }
 
-#ifdef HAVE_BOOST
 void
 Genten::parse_ptree_value(const Genten::ptree& input, const std::string& name,
                           bool& val)
@@ -815,7 +810,6 @@ Genten::parse_ptree_value(const Genten::ptree& input, const std::string& name,
 {
   val = input.get<std::string>(name, val);
 }
-#endif
 
 std::vector<std::string>
 Genten::build_arg_list(int argc, char** argv)

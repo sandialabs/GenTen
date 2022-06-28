@@ -86,7 +86,7 @@ int main(int argc, char **argv) {
     return 0;
   default:
     GT::FinalizeGenten();
-    return -1; // If we get unknown what can we do 🤷‍♀️
+    return -1; // If we get unknown what can we do
   }
 
   { real_main(argc, argv); }
@@ -97,7 +97,7 @@ int main(int argc, char **argv) {
 void check_input() {
   auto const &in = GT::DistContext::input();
   if (GT::DistContext::rank() == 0) {
-    if (in.get_optional<std::string>("tensor.file") == boost::none) {
+    if (!in.contains("tensor.file")) {
       throw std::logic_error{"Input must contain tensor.file"};
     }
   }

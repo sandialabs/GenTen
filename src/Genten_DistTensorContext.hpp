@@ -40,6 +40,9 @@
 
 #pragma once
 
+#include <random>
+
+#include "Genten_Ptree.hpp"
 #include "Genten_Boost.hpp"
 #include "Genten_DistContext.hpp"
 #include "Genten_IOtext.hpp"
@@ -48,16 +51,16 @@
 
 #include "CMakeInclude.h"
 #if defined(HAVE_DIST)
-
 #include "Genten_MPI_IO.h"
 #include "Genten_SpTn_Util.h"
-
 #include <cmath>
 #include <fstream>
 #include <memory>
-#include <random>
+#endif
 
 namespace Genten {
+
+#if defined(HAVE_DIST)
 
 namespace detail {
 void printGrids(const ProcessorMap& pmap);
@@ -420,45 +423,6 @@ randomInitialGuess(const SptensorT<ExecSpace>& X,
 }
 
 template <typename ExecSpace>
-KtensorT<ExecSpace>
-DistTensorContext::
-computeInitialGuess(const SptensorT<ExecSpace>& X, const ptree& input) const
-{
-  KtensorT<ExecSpace> u;
-
-  auto kt_input = input.get_child("k-tensor");
-  std::string init_method = kt_input.get<std::string>("initial-guess", "rand");
-  if (init_method == "file") {
-    std::string file_name = kt_input.get<std::string>("initial-file");
-    u = readInitialGuess<ExecSpace>(file_name);
-  }
-  else if (init_method == "rand") {
-    const int seed = kt_input.get<int>("seed",std::random_device{}());
-    const bool prng = kt_input.get<bool>("prng",true);
-    const int nc = kt_input.get<int>("rank");
-    const std::string dist_method =
-      kt_input.get<std::string>("distributed-guess", "serial");
-    u = randomInitialGuess(X, nc, seed, prng, dist_method);
-  }
-  else
-    Genten::error("Unknown initial-guess method: " + init_method);
-
-  return u;
-}
-
-template <typename ExecSpace>
-SptensorT<ExecSpace>
-DistTensorContext::
-distributeTensor(const ptree& tree)
-{
-  auto t_tree = tree.get_child("tensor");
-  const std::string file_name = t_tree.get<std::string>("input-file");
-  const ttb_indx index_base = t_tree.get<int>("index-base", 0);
-  const bool compressed = t_tree.get<bool>("compressed", false);
-  return distributeTensor<ExecSpace>(file_name, index_base, compressed);
-}
-
-template <typename ExecSpace>
 SptensorT<ExecSpace>
 DistTensorContext::
 distributeTensor(const std::string& file, const ttb_indx index_base,
@@ -733,11 +697,7 @@ rangesToIndexArray(const small_vector<RangePair>& ranges)
 
 } // namespace detail
 
-} // namespace Genten
-
 #else
-
-namespace Genten {
 
 class DistTensorContext {
 public:
@@ -749,6 +709,8 @@ public:
   DistTensorContext& operator=(DistTensorContext&&) = default;
   DistTensorContext& operator=(const DistTensorContext&) = default;
 
+  template <typename ExecSpace>
+  SptensorT<ExecSpace> distributeTensor(const ptree& tree);
   template <typename ExecSpace>
   SptensorT<ExecSpace> distributeTensor(const std::string& file,
                                         const ttb_indx index_base,
@@ -872,12 +834,54 @@ public:
       Genten::error("Unknown distributed-guess method: " + dist_method);
     return Genten::KtensorT<ExecSpace>();
   }
+  template <typename ExecSpace>
+  KtensorT<ExecSpace> computeInitialGuess(const SptensorT<ExecSpace>& X,
+                                          const ptree& input) const;
 
 private:
   std::vector<std::uint32_t> global_dims_;
   std::shared_ptr<ProcessorMap> pmap_;
 };
 
-} // namespace Genten
-
 #endif
+
+template <typename ExecSpace>
+SptensorT<ExecSpace>
+DistTensorContext::
+distributeTensor(const ptree& tree)
+{
+  auto t_tree = tree.get_child("tensor");
+  const std::string file_name = t_tree.get<std::string>("input-file");
+  const ttb_indx index_base = t_tree.get<int>("index-base", 0);
+  const bool compressed = t_tree.get<bool>("compressed", false);
+  return distributeTensor<ExecSpace>(file_name, index_base, compressed);
+}
+
+template <typename ExecSpace>
+KtensorT<ExecSpace>
+DistTensorContext::
+computeInitialGuess(const SptensorT<ExecSpace>& X, const ptree& input) const
+{
+  KtensorT<ExecSpace> u;
+
+  auto kt_input = input.get_child("k-tensor");
+  std::string init_method = kt_input.get<std::string>("initial-guess", "rand");
+  if (init_method == "file") {
+    std::string file_name = kt_input.get<std::string>("initial-file");
+    u = readInitialGuess<ExecSpace>(file_name);
+  }
+  else if (init_method == "rand") {
+    const int seed = kt_input.get<int>("seed",std::random_device{}());
+    const bool prng = kt_input.get<bool>("prng",true);
+    const int nc = kt_input.get<int>("rank");
+    const std::string dist_method =
+      kt_input.get<std::string>("distributed-guess", "serial");
+    u = randomInitialGuess(X, nc, seed, prng, dist_method);
+  }
+  else
+    Genten::error("Unknown initial-guess method: " + init_method);
+
+  return u;
+}
+
+} // namespace Genten

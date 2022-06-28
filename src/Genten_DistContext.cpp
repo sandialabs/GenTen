@@ -42,10 +42,6 @@
 
 #if defined(HAVE_DIST)
 
-#define BOOST_BIND_GLOBAL_PLACEHOLDERS
-#include <boost/property_tree/json_parser.hpp>
-#include <boost/property_tree/ptree_serialization.hpp>
-
 #include <algorithm>
 #include <fstream>
 #include <mutex>
@@ -74,7 +70,7 @@ bool contains(std::string const &s, std::string const &target) {
 ptree readInput(std::string const &json_file) {
   ptree tree;
   if (DistContext::rank() == 0) {
-    boost::property_tree::read_json(json_file, tree);
+    read_json(json_file, tree);
   }
 
   // Have rank 0 serialize the ptree and bcast it to all other ranks
@@ -126,6 +122,20 @@ template <> int DistContext::Bcast(std::size_t &t, int root) {
   return MPI_Bcast(&t, 1, size_t_data_type, root, instance_->commWorld());
 }
 
+template <> int DistContext::Bcast(ptree &t, int root) {
+  assert(instance_ != nullptr);
+  if (DistContext::nranks() == 1 && root == 0) {
+    return MPI_SUCCESS;
+  }
+
+  std::string s = t.dump();
+  int ret = detail::bcastStr(s, root);
+  if (DistContext::rank() != root)
+    t.parse(s);
+
+  return ret;
+}
+
 std::stringstream debugInput() {
   ptree in = DistContext::input();
 
@@ -137,7 +147,7 @@ std::stringstream debugInput() {
   }
 
   std::stringstream ss;
-  boost::property_tree::json_parser::write_json(ss, in);
+  write_json(ss, in);
   return ss;
 }
 

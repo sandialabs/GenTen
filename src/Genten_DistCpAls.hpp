@@ -40,7 +40,7 @@
 
 #pragma once
 
-#include "Genten_Boost.hpp"
+#include "Genten_Ptree.hpp"
 #include "Genten_DistTensorContext.hpp"
 #include "Genten_CpAls.hpp"
 
