@@ -39,10 +39,10 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_CublasHandle.h"
+#include "Genten_CublasHandle.hpp"
 
 #if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) &&          \
-    defined(HAVE_CUSOLVER)
+    defined(HAVE_CUBLAS)
 
 #include <iostream>
 #include <sstream>

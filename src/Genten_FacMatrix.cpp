@@ -54,8 +54,8 @@
 #include <cstring>
 
 #if defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)
-#include "Genten_CublasHandle.h"
-#include "Genten_CusolverHandle.h"
+#include "Genten_CublasHandle.hpp"
+#include "Genten_CusolverHandle.hpp"
 #endif
 
 #if defined(KOKKOS_ENABLE_HIP)

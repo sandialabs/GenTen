@@ -38,7 +38,7 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_CusolverHandle.h"
+#include "Genten_CusolverHandle.hpp"
 
 #if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) &&          \
     defined(HAVE_CUSOLVER)
