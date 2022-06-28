@@ -59,6 +59,10 @@ bool FinalizeGenten();
 #include <string>
 #include <typeinfo>
 
+#ifdef HAVE_BOOST
+#include <boost/core/demangle.hpp>
+#endif
+
 namespace Genten {
 std::stringstream debugInput();
 
@@ -149,7 +153,12 @@ struct DistContext {
     }
 
     std::stringstream ss;
-    ss << "Not able to convert type " << boost::core::demangle(typeid(T).name())
+    ss << "Not able to convert type "
+#ifdef HAVE_BOOST
+       << boost::core::demangle(typeid(T).name())
+#else
+       << typeid(T).name()
+#endif
        << " to an MPI_Datatype.";
     throw std::logic_error(ss.str());
   }
