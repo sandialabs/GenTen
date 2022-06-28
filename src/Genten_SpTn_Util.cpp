@@ -1,5 +1,6 @@
 #include <Genten_SpTn_Util.h>
 
+#include <iostream>
 #include <cassert>
 #include <numeric>
 #include <stdexcept>

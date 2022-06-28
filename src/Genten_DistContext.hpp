@@ -48,6 +48,7 @@ bool FinalizeGenten();
 #include "CMakeInclude.h"
 #if defined(HAVE_DIST)
 
+#include "Genten_Util.hpp"
 #include "Genten_Ptree.hpp"
 #include "Genten_Boost.hpp"
 #include <Kokkos_Core.hpp>
@@ -67,9 +68,6 @@ namespace Genten {
 std::stringstream debugInput();
 
 namespace detail {
-template <typename T> std::string serializeToStr(T const &t);
-template <typename T> T deserializeFromStr(std::string const &s);
-
 int bcastStr(std::string &s, int root);
 } // namespace detail
 
@@ -163,25 +161,10 @@ struct DistContext {
     throw std::logic_error(ss.str());
   }
 
-  // TODO we might want to specialize this function to be more efficent for
-  // specific types, like say a Kokkos View ...
-  template <typename T> static int Bcast(T &t, int root) {
-    assert(instance_ != nullptr);
-    if (DistContext::nranks() == 1 && root == 0) {
-      return MPI_SUCCESS;
-    }
-
-    int bcast_result = MPI_SUCCESS;
-    if (DistContext::rank() == root) {
-      auto data = detail::serializeToStr(t);
-      bcast_result = detail::bcastStr(data, root);
-    } else {
-      std::string data;
-      bcast_result = detail::bcastStr(data, root);
-      t = detail::deserializeFromStr<T>(data);
-    }
-    return bcast_result;
-  }
+  // Bcasts that I don't want to figure out how to do the other way right now
+  static int Bcast(small_vector<int> &t, int root);
+  static int Bcast(std::size_t &t, int root);
+  static int Bcast(ptree &t, int root);
 
 private:
   int rank_;
@@ -193,30 +176,6 @@ private:
   DistContext() = default;
   static std::unique_ptr<DistContext> instance_;
 };
-
-namespace detail {
-template <typename T> std::string serializeToStr(T const &t) {
-  std::ostringstream oss;
-  boost::archive::binary_oarchive ar(oss);
-  ar << t;
-  return oss.str();
-}
-
-template <typename T> T deserializeFromStr(std::string const &s) {
-  std::stringstream ss;
-  ss.write(s.data(), s.size());
-  T t{};
-  boost::archive::binary_iarchive oi(ss);
-  oi >> t;
-  return t;
-}
-
-} // namespace detail
-
-// Bcasts that I don't want to figure out how to do the other way right now
-template <> int DistContext::Bcast(small_vector<int> &t, int root);
-template <> int DistContext::Bcast(std::size_t &t, int root);
-template <> int DistContext::Bcast(ptree &t, int root);
 
 } // namespace Genten
 
@@ -240,8 +199,6 @@ struct DistContext {
   static bool isDebug() { return false; }
 
   static void Barrier() {}
-
-  template <typename T> static int Bcast(T &t, int root) {}
 
 };
 

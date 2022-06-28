@@ -45,8 +45,6 @@
 #include "Genten_DistContext.hpp"
 #include "Genten_IOtext.hpp"
 
-#include <boost/serialization/vector.hpp>
-
 #include <algorithm>
 #include <fstream>
 #include <iostream>

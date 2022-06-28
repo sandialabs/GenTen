@@ -83,7 +83,7 @@ ptree readInput(std::string const &json_file) {
 }
 } // namespace
 
-template <> int DistContext::Bcast(small_vector<int> &t, int root) {
+int DistContext::Bcast(small_vector<int> &t, int root) {
   assert(instance_ != nullptr);
   if (DistContext::nranks() == 1 && root == 0) {
     return MPI_SUCCESS;
@@ -106,7 +106,7 @@ template <> int DistContext::Bcast(small_vector<int> &t, int root) {
   return bcast_result;
 }
 
-template <> int DistContext::Bcast(std::size_t &t, int root) {
+int DistContext::Bcast(std::size_t &t, int root) {
   assert(instance_ != nullptr);
   if (DistContext::nranks() == 1 && root == 0) {
     return MPI_SUCCESS;
@@ -122,7 +122,7 @@ template <> int DistContext::Bcast(std::size_t &t, int root) {
   return MPI_Bcast(&t, 1, size_t_data_type, root, instance_->commWorld());
 }
 
-template <> int DistContext::Bcast(ptree &t, int root) {
+int DistContext::Bcast(ptree &t, int root) {
   assert(instance_ != nullptr);
   if (DistContext::nranks() == 1 && root == 0) {
     return MPI_SUCCESS;

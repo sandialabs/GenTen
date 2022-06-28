@@ -43,8 +43,6 @@
 #include "CMakeInclude.h"
 #ifdef HAVE_BOOST
 
-#include <boost/archive/binary_iarchive.hpp>
-#include <boost/archive/binary_oarchive.hpp>
 #include <boost/container/small_vector.hpp>
 
 namespace Genten {
