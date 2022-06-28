@@ -41,6 +41,7 @@
 #pragma once
 
 #include "CMakeInclude.h"
+#include "Kokkos_Core.hpp"
 
 #if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) &&          \
     defined(HAVE_CUSOLVER)
