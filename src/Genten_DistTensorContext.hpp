@@ -143,9 +143,9 @@ private:
     const std::vector<small_vector<int>>& blocking,
     const ProcessorMap& pmap);
 
-  boost::optional<std::pair<MPI_IO::SptnFileHeader, MPI_File>>
-  readHeader(const std::string& file_name, int indexbase,
-           std::vector<std::uint32_t>& dims, std::uint64_t& nnz);
+  std::pair<MPI_IO::SptnFileHeader, MPI_File>
+  readBinaryHeader(const std::string& file_name, int indexbase,
+                   std::vector<std::uint32_t>& dims, std::uint64_t& nnz);
 
   std::vector<std::uint32_t> local_dims_;
   std::vector<std::uint32_t> global_dims_;
@@ -441,10 +441,10 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
   if (is_binary) {
     // For binary file, do a parallel read
     std::uint64_t nnz = 0;
-    auto binary_header = readHeader(file, index_base, global_dims_, nnz);
+    auto binary_header = readBinaryHeader(file, index_base, global_dims_, nnz);
     Tvec = MPI_IO::parallelReadElements(DistContext::commWorld(),
-                                          binary_header->second,
-                                          binary_header->first);
+                                          binary_header.second,
+                                          binary_header.first);
   }
   else {
     // For non-binary, read on rank 0 and broadcast dimensions.
@@ -598,23 +598,17 @@ distributeTensorData(const std::vector<MPI_IO::TDatatype<ttb_real>>& Tvec,
   return sptensor;
 }
 
-boost::optional<std::pair<MPI_IO::SptnFileHeader, MPI_File>>
+std::pair<MPI_IO::SptnFileHeader, MPI_File>
 DistTensorContext::
-readHeader(const std::string& file_name, int indexbase,
+readBinaryHeader(const std::string& file_name, int indexbase,
            std::vector<std::uint32_t>& dims,
            std::uint64_t& nnz)
 {
   bool is_binary = detail::fileFormatIsBinary(file_name);
-  if (is_binary && indexbase != 0)
+  if (!is_binary)
+    Genten::error("readBinaryHeader called on non-binary file!\n");
+  if (indexbase != 0)
     Genten::error("The binary format only supports zero based indexing\n");
-
-  if (!is_binary) {
-    std::ifstream tensor_file(file_name);
-    TensorInfo ti = read_sptensor_header(tensor_file);
-    dims = ti.dim_sizes;
-    nnz = ti.nnz;
-    return boost::none;
-  }
 
   auto *mpi_fh = MPI_IO::openFile(DistContext::commWorld(), file_name);
   auto binary_header = MPI_IO::readHeader(DistContext::commWorld(), mpi_fh);

@@ -46,7 +46,6 @@
 #include <boost/archive/binary_iarchive.hpp>
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/container/small_vector.hpp>
-#include <boost/optional.hpp>
 #include <boost/core/demangle.hpp>
 
 namespace Genten {
