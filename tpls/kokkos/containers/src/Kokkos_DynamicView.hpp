@@ -173,7 +173,9 @@ struct ChunkedArrayManager {
     void execute() {
       // Destroy the array of chunk pointers.
       // Two entries beyond the max chunks are allocation counters.
-      for (unsigned i = 0; i < m_chunk_max; i++) {
+      uintptr_t const len =
+          *reinterpret_cast<uintptr_t*>(m_chunks + m_chunk_max);
+      for (unsigned i = 0; i < len; i++) {
         Space().deallocate(m_label.c_str(), m_chunks[i],
                            sizeof(value_type) * m_chunk_size);
       }
@@ -278,21 +280,6 @@ class DynamicView : public Kokkos::ViewTraits<DataType, P...> {
   // when this is not the case, potential problems can occur.
   static_assert(std::is_same<typename traits::specialize, void>::value,
                 "DynamicView only implemented for non-specialized View type");
-
-  template <class Space, bool = Kokkos::Impl::MemorySpaceAccess<
-                             Space, device_space>::accessible>
-  struct verify_space {
-    KOKKOS_FORCEINLINE_FUNCTION static void check() {}
-  };
-
-  template <class Space>
-  struct verify_space<Space, false> {
-    KOKKOS_FORCEINLINE_FUNCTION static void check() {
-      Kokkos::abort(
-          "Kokkos::DynamicView ERROR: attempt to access inaccessible memory "
-          "space");
-    };
-  };
 
  private:
   device_accessor m_chunks;
@@ -418,8 +405,10 @@ class DynamicView : public Kokkos::ViewTraits<DataType, P...> {
     static_assert(Kokkos::Impl::are_integral<I0, Args...>::value,
                   "Indices must be integral type");
 
-    DynamicView::template verify_space<
-        Kokkos::Impl::ActiveExecutionMemorySpace>::check();
+    Kokkos::Impl::runtime_check_memory_access_violation<
+        typename traits::memory_space>(
+        "Kokkos::DynamicView ERROR: attempt to access inaccessible memory "
+        "space");
 
     // Which chunk is being indexed.
     const uintptr_t ic = uintptr_t(i0 >> m_chunk_shift);
