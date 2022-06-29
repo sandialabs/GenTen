@@ -159,10 +159,8 @@ public:
   KOKKOS_INLINE_FUNCTION
   const FacMatrixT<ExecSpace>& operator[](ttb_indx n) const
   {
-    if (Kokkos::Impl::MemorySpaceAccess< typename Kokkos::Impl::ActiveExecutionMemorySpace::memory_space, typename ExecSpace::memory_space >::accessible)
-      return data[n];
-    else
-      return host_data[n];
+    KOKKOS_IF_ON_DEVICE(return data[n];)
+    KOKKOS_IF_ON_HOST(return host_data[n];)
   }
 
   KOKKOS_INLINE_FUNCTION
