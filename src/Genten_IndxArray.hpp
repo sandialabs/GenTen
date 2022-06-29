@@ -163,8 +163,6 @@ public:
   ttb_indx& operator[](ttb_indx i) const
   {
     assert(i < data.extent(0));
-    if (!Kokkos::Impl::MemorySpaceAccess< typename Kokkos::Impl::ActiveExecutionMemorySpace::memory_space, typename ExecSpace::memory_space >::accessible)
-      Kokkos::abort("Attempt to access IndxArray[] from inaccessible memory space!");
     return data[i];
   }
 

@@ -150,10 +150,8 @@ public:
   // Return size of dimension i.
   KOKKOS_INLINE_FUNCTION
   ttb_indx size(ttb_indx i) const {
-    if (Kokkos::Impl::MemorySpaceAccess< typename Kokkos::Impl::ActiveExecutionMemorySpace::memory_space, typename ExecSpace::memory_space >::accessible)
-      return siz[i];
-    else
-      return siz_host[i];
+    KOKKOS_IF_ON_DEVICE(return siz[i];)
+    KOKKOS_IF_ON_HOST(return siz_host[i];)
   }
 
   // Return the entire size array.
