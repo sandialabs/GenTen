@@ -77,6 +77,7 @@ typedef ptrdiff_t ttb_vml_int;
      #define dgesv dgesv_
      #define dposv dposv_
      #define dsysv dsysv_
+     #define dsyev dsyev_
      #define dgelsy dgelsy_
      #define sgesv sgesv_
      #define sposv sposv_
@@ -111,6 +112,7 @@ typedef ptrdiff_t ttb_vml_int;
      #define dgesv dgesv
      #define dposv dposv
      #define dsysv dsysv
+     #define dsyev dsyev
      #define dgelsy dgelsy
      #define sgesv sgesv
      #define sposv sposv
@@ -145,6 +147,7 @@ typedef ptrdiff_t ttb_vml_int;
      #define dgesv dgesv_
      #define dposv dposv_
      #define dsysv dsysv_
+     #define dsyev dsyev_
      #define dgelsy dgelsy_
      #define sgesv sgesv_
      #define sposv sposv_
@@ -251,6 +254,16 @@ extern "C"
                 double * work,
                 ttb_blas_int * lwork,
                 ttb_blas_int * info);
+
+    void dsyev (char const* jobz,
+		char const* uplo,
+		ttb_blas_int * n,
+		double* A,
+		ttb_blas_int * lda,
+		double* W,
+		double* work,
+		ttb_blas_int * lwork,
+		ttb_blas_int * info );
 
   void dgelsy (ttb_blas_int * m,
                ttb_blas_int * n,
