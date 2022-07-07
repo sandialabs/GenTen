@@ -38,7 +38,7 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_HigherMoments.hpp"
+#include "Genten_ComputePrincipalKurtosisVectors.hpp"
 #include "Genten_FormCokurtosisSlice.hpp"
 #include "Genten_MathLibs_Wpr.hpp"
 #include "compute_krp.hpp"

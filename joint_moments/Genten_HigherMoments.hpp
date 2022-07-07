@@ -44,6 +44,5 @@
 
 extern "C" {
 
-double * FormRawMomentTensor(double *raw_data_ptr, int nsamples, int nvars, const int order);
 
 }
