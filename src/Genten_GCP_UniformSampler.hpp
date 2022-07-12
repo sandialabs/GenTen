@@ -56,41 +56,77 @@ namespace Genten {
     typedef typename base_type::map_type map_type;
 
     UniformSampler(const SptensorT<ExecSpace>& X_,
-                      const AlgParams& algParams_) :
+                   const AlgParams& algParams_) :
       X(X_), algParams(algParams_)
     {
-      num_samples_nonzeros_value = algParams.num_samples_nonzeros_value;
-      num_samples_zeros_value = algParams.num_samples_zeros_value;
-      num_samples_grad = algParams.num_samples_nonzeros_grad;
+      global_num_samples_nonzeros_value = algParams.num_samples_nonzeros_value;
+      global_num_samples_zeros_value = algParams.num_samples_zeros_value;
+      global_num_samples_grad = algParams.num_samples_nonzeros_grad;
       weight_nonzeros_value = algParams.w_f_nz;
       weight_zeros_value = algParams.w_f_z;
       weight_grad = algParams.w_g_nz;
 
       // Compute number of samples if necessary
-      const ttb_indx nnz = X.nnz();
-      const ttb_real tsz = X.numel_float();
+      const ttb_indx nnz = X.global_nnz();
+      const ttb_real tsz = X.global_numel_float();
       const ttb_real nz = tsz - nnz;
       const ttb_indx maxEpochs = algParams.maxiters;
       const ttb_indx ftmp = std::max((nnz+99)/100,ttb_indx(100000));
-      if (num_samples_nonzeros_value == 0)
-        num_samples_nonzeros_value = std::min(ftmp, nnz);
-      if (num_samples_zeros_value == 0)
-        num_samples_zeros_value =
-          ttb_indx(std::min(ttb_real(num_samples_nonzeros_value), nz));
-      if (num_samples_grad == 0)
-        num_samples_grad =
-          ttb_indx(std::min(std::max(ttb_real(10.0)*tsz/maxEpochs, ttb_real(1e3)), tsz));
+      if (global_num_samples_nonzeros_value == 0)
+        global_num_samples_nonzeros_value = std::min(ftmp, nnz);
+      if (global_num_samples_zeros_value == 0)
+        global_num_samples_zeros_value =
+          ttb_indx(std::min(ttb_real(global_num_samples_nonzeros_value), nz));
+      if (global_num_samples_grad == 0)
+        global_num_samples_grad =
+          ttb_indx(std::min(std::max(ttb_real(10.0)*tsz/maxEpochs,
+                                     ttb_real(1e3)), tsz));
+
+      // Compute local number of samples by distributing them evenly across
+      // processors (might be better to weight according to number of nonzeros)
+      const ProcessorMap* pmap = X.getProcessorMap();
+      const ttb_indx lnnz = X.nnz();
+      const ttb_real lsz = X.numel_float();
+      const ttb_real lnz = lsz - lnnz;
+      const ttb_indx np = pmap != nullptr ? pmap->gridSize() : 1;
+      num_samples_nonzeros_value = global_num_samples_nonzeros_value / np;
+      num_samples_zeros_value = global_num_samples_zeros_value / np;
+      num_samples_grad = global_num_samples_grad / np;
+
+      // Don't sample more zeros/nonzeros than we actually have locally
+      num_samples_nonzeros_value = std::min(num_samples_nonzeros_value, lnnz);
+      num_samples_zeros_value = std::min(num_samples_zeros_value,
+                                         ttb_indx(lnz));
+      num_samples_grad = std::min(num_samples_grad, ttb_indx(lsz));
+
+      // Compute global number of samples actually used
+      if (pmap != nullptr) {
+        global_num_samples_nonzeros_value =
+          pmap->gridAllReduce(num_samples_nonzeros_value);
+        global_num_samples_zeros_value =
+          pmap->gridAllReduce(num_samples_zeros_value);
+        global_num_samples_grad =
+          pmap->gridAllReduce(num_samples_grad);
+      }
+      else {
+        global_num_samples_nonzeros_value = num_samples_nonzeros_value;
+        global_num_samples_zeros_value = num_samples_zeros_value;
+        global_num_samples_grad = num_samples_grad;
+      }
 
       // Compute weights if necessary
       if (weight_nonzeros_value < 0.0)
-        weight_nonzeros_value =
-          ttb_real(nnz) / ttb_real(num_samples_nonzeros_value);
+        weight_nonzeros_value = global_num_samples_nonzeros_value == 0 ? 0.0 :
+          ttb_real(nnz) / ttb_real(global_num_samples_nonzeros_value);
       if (weight_zeros_value < 0.0)
-        weight_zeros_value =
-          ttb_real(tsz-nnz) / ttb_real(num_samples_zeros_value);
+        weight_zeros_value = global_num_samples_zeros_value == 0 ? 0.0 :
+          ttb_real(tsz-nnz) / ttb_real(global_num_samples_zeros_value);
       if (weight_grad < 0.0)
-        weight_grad =
-          tsz / ttb_real(num_samples_grad);
+        weight_grad = global_num_samples_grad == 0 ? 0.0 :
+          tsz / ttb_real(global_num_samples_grad);
+
+      grad_percent = ttb_real(global_num_samples_grad * algParams.epoch_iters) /
+        ttb_real(tsz) * ttb_real(100.0);
     }
 
     virtual ~UniformSampler() {}
@@ -120,10 +156,15 @@ namespace Genten {
 
     virtual void print(std::ostream& out) override
     {
-      out << "Function sampler:  stratified with " << num_samples_nonzeros_value
-          << " nonzero and " << num_samples_zeros_value << " zero samples\n"
-          << "Gradient sampler:  uniform with " << num_samples_grad
-          << " samples"
+      out << "Function sampler:  stratified with "
+          << global_num_samples_nonzeros_value
+          << " nonzero and " << global_num_samples_zeros_value
+          << " zero samples\n"
+          << "Gradient sampler:  uniform with " << global_num_samples_grad
+          << " samples\n"
+          << "Gradient samples per epoch: "
+          << global_num_samples_grad*algParams.epoch_iters
+          << " (" << std::setprecision(1) << std::fixed << grad_percent << "%)"
           << std::endl;
     }
 
@@ -178,9 +219,13 @@ namespace Genten {
     ttb_indx num_samples_nonzeros_value;
     ttb_indx num_samples_zeros_value;
     ttb_indx num_samples_grad;
+    ttb_indx global_num_samples_nonzeros_value;
+    ttb_indx global_num_samples_zeros_value;
+    ttb_indx global_num_samples_grad;
     ttb_real weight_nonzeros_value;
     ttb_real weight_zeros_value;
     ttb_real weight_grad;
+    ttb_real grad_percent;
     map_type hash_map;
   };
 

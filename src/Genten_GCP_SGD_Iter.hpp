@@ -74,16 +74,18 @@ namespace Genten {
         timer_step = num_timers++;
         timer_sample_g_z_nz = num_timers++;
         timer_sample_g_perm = num_timers++;
-        timer.init(num_timers, algParams.timings);
+        timer.init(num_timers, algParams.timings, u0.getProcessorMap());
 
         // Ktensor-vector for solution
         u = VectorType(u0);
         u.copyFromKtensor(u0);
         ut = u.getKtensor();
+        ut.setProcessorMap(u0.getProcessorMap());
 
         // Gradient Ktensor
         g = u.clone();
         gt = g.getKtensor();
+        gt.setProcessorMap(u0.getProcessorMap());
       }
 
       virtual ~GCP_SGD_Iter() {}

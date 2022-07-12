@@ -80,6 +80,7 @@ namespace Genten {
 
       const ttb_indx nd = u0.ndims();
       const ttb_indx nc = u0.ncomponents();
+      const ProcessorMap* pmap = u0.getProcessorMap();
 
       // Constants for the algorithm
       const ttb_real tol = algParams.tol;
@@ -101,7 +102,7 @@ namespace Genten {
 
       // Create sampler
       Genten::SemiStratifiedSampler<ExecSpace,LossFunction> sampler(
-        X, algParams);
+        X, algParams, true);
       const ttb_indx tot_num_grad_samples = sampler.totalNumGradSamples();
 
       // bounds
@@ -111,8 +112,8 @@ namespace Genten {
       constexpr ttb_real ub = LossFunction::upper_bound();
 
       if (printIter > 0) {
-        const ttb_indx nnz = X.nnz();
-        const ttb_real tsz = X.numel_float();
+        const ttb_indx nnz = X.global_nnz();
+        const ttb_real tsz = X.global_numel_float();
         const ttb_real nz = tsz - nnz;
         out << "\nGCP-SGD (Generalized CP Tensor Decomposition)\n\n"
             << "Tensor size: ";
@@ -156,7 +157,7 @@ namespace Genten {
       const int timer_step = num_timers++;
       const int timer_sample_g_z_nz = num_timers++;
       const int timer_sample_g_perm = num_timers++;
-      SystemTimer timer(num_timers, algParams.timings);
+      SystemTimer timer(num_timers, algParams.timings, pmap);
 
       // Start timer for total execution time of the algorithm.
       timer.start(timer_sgd);
@@ -169,11 +170,13 @@ namespace Genten {
       VectorType u(u0);
       u.copyFromKtensor(u0);
       KtensorT<ExecSpace> ut = u.getKtensor();
+      ut.setProcessorMap(pmap);
 
       // Gradient Ktensor
       IndxArrayT<ExecSpace> gsz(nd, tot_num_grad_samples);
       VectorType g(nc, nd, gsz);
       KtensorT<ExecSpace> gt = g.getKtensor();
+      gt.setProcessorMap(pmap);
       Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,ExecSpace> gind("Gradient index", tot_num_grad_samples, nd);
       Kokkos::View<ttb_indx*,ExecSpace> perm("perm", tot_num_grad_samples);
 
@@ -214,7 +217,7 @@ namespace Genten {
       timer.start(timer_fest);
       fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
       if (compute_fit) {
-        x_norm = X.norm();
+        x_norm = X.global_norm();
         ttb_real u_norm = sqrt(u.normFsq());
         ttb_real dot = innerprod(X, ut);
         fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;

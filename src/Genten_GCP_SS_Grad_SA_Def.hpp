@@ -324,6 +324,13 @@ namespace Genten {
         timer,timer_nzs,timer_zs);
       run_row_simd_kernel(kernel, Mt.ncomponents());
 
+      if (X.getProcessorMap() != nullptr) {
+        Kokkos::fence();
+        for (ttb_indx n=0; n<X.ndims(); ++n)
+          X.getProcessorMap()->subGridAllReduce(n, Gt[n].view().data(),
+                                                Gt[n].view().span());
+      }
+
       const ttb_indx ns = Gind.extent(0);
       const ttb_indx nd = Gind.extent(1);
       KtensorT<ExecSpace> mt = adam_m.getKtensor();

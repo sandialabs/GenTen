@@ -114,16 +114,16 @@ namespace Genten {
                        const ArrayT<ExecSpace>& w,
                        const loss_type& f)
     {
+      ttb_real val = 0.0;
 #if 1
       GCP_Value<ExecSpace,loss_type> kernel(X,M,w,f);
       run_row_simd_kernel(kernel, M.ncomponents());
-      return kernel.value;
+      val = kernel.value;
 #else
       const ttb_indx nnz = X.nnz();
       const unsigned nd = M.ndims();
       const unsigned nc = M.ncomponents();
       Kokkos::RangePolicy<ExecSpace> policy(0, nnz);
-      ttb_real v = 0.0;
       Kokkos::parallel_reduce("GCP_RolObjective::value", policy,
                               KOKKOS_LAMBDA(const ttb_indx i, ttb_real& d)
       {
@@ -138,10 +138,16 @@ namespace Genten {
 
         // Evaluate link function
         d += w[i] * f.value(X.value(i), m_val);
-      }, v);
-      Kokkos::fence();  // ensure v is updated before using it
-      return v;
+      }, val);
+      Kokkos::fence();  // ensure val is updated before using it
 #endif
+
+      if (M.getProcessorMap() != nullptr) {
+        Kokkos::fence();
+        val = M.getProcessorMap()->gridAllReduce(val);
+      }
+
+      return val;
     }
 
   }

@@ -241,6 +241,18 @@ void Genten::AlgParams::parse(const ptree& input)
 {
   // Generic options
   parse_ptree_enum<Execution_Space>(input, "exec-space", exec_space);
+  parse_ptree_enum<Solver_Method>(input, "method", method);
+
+  // generic solver params may appear in multiple places, so make a lambda to
+  // parse them
+  auto parse_generic_solver_params = [&](const ptree& tree) {
+    parse_ptree_value(tree, "maxiters", maxiters, 1, INT_MAX);
+    parse_ptree_value(tree, "maxsecs", maxsecs, -1.0, DOUBLE_MAX);
+    parse_ptree_value(tree, "tol", tol, 0.0, DOUBLE_MAX);
+    parse_ptree_value(tree, "printitn", printitn, 0, INT_MAX);
+    parse_ptree_value(tree, "debug", debug);
+    parse_ptree_value(tree, "timings", timings);
+  };
 
   // mttkrp tree may appear in multiple places, so make a lambda to parse it
   auto parse_mttkrp = [&](const ptree& tree) {
@@ -273,12 +285,7 @@ void Genten::AlgParams::parse(const ptree& input)
   auto cpals_input_o = input.get_child_optional("cp-als");
   if (cpals_input_o) {
     auto& cpals_input = *cpals_input_o;
-    parse_ptree_value(cpals_input, "maxiters", maxiters, 1, INT_MAX);
-    parse_ptree_value(cpals_input, "maxsecs", maxsecs, -1.0, DOUBLE_MAX);
-    parse_ptree_value(cpals_input, "tol", tol, 0.0, DOUBLE_MAX);
-    parse_ptree_value(cpals_input, "printitn", printitn, 0, INT_MAX);
-    parse_ptree_value(cpals_input, "debug", debug);
-    parse_ptree_value(cpals_input, "timings", timings);
+    parse_generic_solver_params(cpals_input);
     parse_ptree_value(cpals_input, "full-gram", full_gram);
     parse_ptree_value(cpals_input, "rank-def-solver", rank_def_solver);
     parse_ptree_value(cpals_input, "rcond", rcond, 0.0, DOUBLE_MAX);
@@ -298,6 +305,7 @@ void Genten::AlgParams::parse(const ptree& input)
   if (cpopt_input_o) {
     auto& cpopt_input = *cpopt_input_o;
     parse_ptree_enum<Opt_Method>(cpopt_input, "method", opt_method);
+    parse_generic_solver_params(cpopt_input);
     parse_ptree_value(cpopt_input, "lower", lower, -DOUBLE_MAX, DOUBLE_MAX);
     parse_ptree_value(cpopt_input, "upper", upper, -DOUBLE_MAX, DOUBLE_MAX);
     parse_ptree_value(cpopt_input, "rol", rolfilename);
@@ -305,15 +313,17 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_value(cpopt_input, "pgtol", pgtol, 0.0, DOUBLE_MAX);
     parse_ptree_value(cpopt_input, "memory", memory, 0, INT_MAX);
     parse_ptree_value(cpopt_input, "total-iters", max_total_iters, 0, INT_MAX);
+    parse_mttkrp(cpopt_input);
   }
 
   // GCP
   auto gcp_input_o = input.get_child_optional("gcp");
   if (gcp_input_o) {
     auto& gcp_input = *gcp_input_o;
+    parse_generic_solver_params(gcp_input);
+    parse_mttkrp(gcp_input);
     parse_ptree_enum<GCP_LossFunction>(gcp_input, "type", loss_function_type);
     parse_ptree_value(gcp_input, "eps", loss_eps, 0.0, 1.0);
-    parse_ptree_value(gcp_input, "tol", gcp_tol, -DOUBLE_MAX, DOUBLE_MAX);
 
     // GCP-SGD
     parse_ptree_enum<GCP_Sampling>(gcp_input, "sampling", sampling_type);

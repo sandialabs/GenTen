@@ -173,12 +173,26 @@ public:
   {
     return siz_host.prod();
   }
+  ttb_indx global_numel() const
+  {
+    ttb_indx numel = siz_host.prod();
+    if (pmap != nullptr)
+      numel = pmap->gridAllReduce(numel);
+    return numel;
+  }
 
   // Return the total number of (zero and nonzero) elements in the tensor as
   // a float (to avoid overflow for large tensors)
   ttb_real numel_float() const
   {
     return siz_host.prod_float();
+  }
+  ttb_real global_numel_float() const
+  {
+    ttb_real numel = siz_host.prod_float();
+    if (pmap != nullptr)
+      numel = pmap->gridAllReduce(numel);
+    return numel;
   }
 
   // Return the number of structural nonzeros.
@@ -187,7 +201,6 @@ public:
   {
     return values.size();
   }
-
   ttb_indx global_nnz() const
   {
     ttb_indx nnz = values.size();
@@ -267,8 +280,6 @@ public:
   {
     return values.norm(NormTwo);
   }
-
-  // Return the norm (sqrt of the sum of the squares of all entries).
   ttb_real global_norm() const
   {
     ttb_real nrm_sqrd = values.dot(values);

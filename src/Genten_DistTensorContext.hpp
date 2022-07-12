@@ -108,6 +108,8 @@ public:
   ttb_real globalNorm(const SptensorT<ExecSpace>& X) const;
   template <typename ExecSpace>
   std::uint64_t globalNNZ(const SptensorT<ExecSpace>& X) const;
+  template <typename ExecSpace>
+  ttb_real globalNumelFloat(const SptensorT<ExecSpace>& X) const;
 
   // Ktensor operations
   template <typename ExecSpace>
@@ -204,6 +206,14 @@ DistTensorContext::
 globalNNZ(const SptensorT<ExecSpace>& X) const
 {
   return pmap_->gridAllReduce(X.nnz());
+}
+
+template <typename ExecSpace>
+ttb_real
+DistTensorContext::
+globalNumelFloat(const SptensorT<ExecSpace>& X) const
+{
+  return pmap_->gridAllReduce(X.numel_float());
 }
 
 template <typename ExecSpace>
@@ -746,6 +756,8 @@ public:
   ttb_real globalNorm(const SptensorT<ExecSpace>& X) const { return X.norm(); }
   template <typename ExecSpace>
   std::uint64_t globalNNZ(const SptensorT<ExecSpace>& X) const { return X.nnz(); }
+  template <typename ExecSpace>
+  ttb_real globalNumelFloat(const SptensorT<ExecSpace>& X) const { return X.numel_float(); }
 
   // Ktensor operations
   template <typename ExecSpace>

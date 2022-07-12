@@ -332,7 +332,7 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
   KtensorT<ExecSpace> Dfac = diff.getKtensor();
 
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(
-      spTensor_, algParams);
+    spTensor_, algParams, false);
 
   Impl::SGDStep<ExecSpace, Loss> stepper;
   Impl::AdamStep<ExecSpace, Loss> meta_stepper(algParams, meta_u);
@@ -539,7 +539,7 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
   decltype(Kfac_) GFac = g.getKtensor();
 
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(
-      spTensor_, algParams);
+    spTensor_, algParams, false);
 
   Stepper stepper(algParams, u);
 

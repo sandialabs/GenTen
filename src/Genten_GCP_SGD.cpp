@@ -86,6 +86,7 @@ namespace Genten {
 
       const ttb_indx nd = u0.ndims();
       const ttb_indx nc = u0.ncomponents();
+      const ProcessorMap* pmap = u0.getProcessorMap();
 
       // Constants for the algorithm
       const ttb_real tol = algParams.gcp_tol;
@@ -108,13 +109,13 @@ namespace Genten {
           X, algParams);
       else if (algParams.sampling_type == GCP_Sampling::SemiStratified)
         sampler = new Genten::SemiStratifiedSampler<ExecSpace,LossFunction>(
-          X, algParams);
+          X, algParams, true);
       else
         Genten::error("Genten::gcp_sgd - unknown sampling type");
 
       if (printIter > 0) {
-        const ttb_indx nnz = X.nnz();
-        const ttb_real tsz = X.numel_float();
+        const ttb_indx nnz = X.global_nnz();
+        const ttb_real tsz = X.global_numel_float();
         const ttb_real nz = tsz - nnz;
         out << "\nGCP-SGD (Generalized CP Tensor Decomposition)\n\n"
             << "Tensor size: ";
@@ -162,7 +163,7 @@ namespace Genten {
       const int timer_sort = num_timers++;
       const int timer_sample_f = num_timers++;
       const int timer_fest = num_timers++;
-      SystemTimer timer(num_timers, algParams.timings);
+      SystemTimer timer(num_timers, algParams.timings, pmap);
 
       // Start timer for total execution time of the algorithm.
       timer.start(timer_sgd);
@@ -182,6 +183,7 @@ namespace Genten {
       // Get vector/Ktensor for current solution (this is a view of the data)
       VectorType u = it.getSolution();
       KtensorT<ExecSpace> ut = u.getKtensor();
+      ut.setProcessorMap(pmap);
 
       // Copy Ktensor for restoring previous solution
       VectorType u_prev = u.clone();
@@ -216,7 +218,7 @@ namespace Genten {
       sampler->sampleTensor(false, ut, loss_func, X_val, w_val);
       timer.stop(timer_sample_f);
 
-      ttb_real x_norm = X.norm();
+      ttb_real x_norm = X.global_norm();
       auto u_norm = std::sqrt(ut.normFsq());
 
       // Objective estimates
@@ -255,8 +257,8 @@ namespace Genten {
       }
 
       struct Annealer {
-        ttb_real last_returned = 0.0; 
-        ttb_real last_good = 0.0; 
+        ttb_real last_returned = 0.0;
+        ttb_real last_good = 0.0;
         ttb_real min_lr;
         ttb_real max_lr = 0.0;
         ttb_real warm_up_min;
@@ -267,7 +269,7 @@ namespace Genten {
         int warmup_size = 50;
         bool do_warmup = true;
 
-        Annealer(AlgParams const& algParams): 
+        Annealer(AlgParams const& algParams):
           min_lr(algParams.anneal_min_lr),
           max_lr(algParams.anneal_max_lr),
           warm_up_max(10 * algParams.anneal_max_lr)
@@ -301,9 +303,9 @@ namespace Genten {
             max_lr *= 0.1;
           }
           epoch_internal = 0;
-        } 
+        }
 
-        void success(){ 
+        void success(){
           last_good = last_returned;
         }
       } annealer(algParams);
@@ -312,7 +314,6 @@ namespace Genten {
       ttb_real nuc = 1.0;
       ttb_indx nfails = 0;
       ttb_indx total_iters = 0;
-
 
       for (numEpochs=0; numEpochs<maxEpochs; ++numEpochs) {
         // Gradient step size
