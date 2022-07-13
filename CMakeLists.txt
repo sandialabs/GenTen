@@ -660,23 +660,6 @@ INSTALL (
   DESTINATION ${CMAKE_INSTALL_BINDIR}
   )
 
-IF(HAVE_DIST)
-  ADD_EXECUTABLE(
-    genten_mpisgd
-    ${Genten_SOURCE_DIR}/driver/Genten_MPISGD_Driver.cpp
-    )
-  TARGET_LINK_LIBRARIES(genten_mpisgd
-    ${GENTEN_LINK_LIBS}
-    DistContextLib
-    GentenMpiIoLib
-    )
-
-  INSTALL(
-    TARGETS genten_mpisgd
-    DESTINATION drivers
-    )
-ENDIF()
-
 #------------------------------------------------------------
 #---- Matlab
 #------------------------------------------------------------
