@@ -134,9 +134,9 @@ TDatatype<double> readElement(SptnFileHeader const &h,
   auto read_index = [](auto byte_ptr, int bits_for_index) -> std::uint32_t {
     switch (bits_for_index) {
     case 16:
-      return *reinterpret_cast<std::uint16_t const *const>(byte_ptr);
+      return *reinterpret_cast<std::uint16_t const *>(byte_ptr);
     case 32:
-      return *reinterpret_cast<std::uint32_t const *const>(byte_ptr);
+      return *reinterpret_cast<std::uint32_t const *>(byte_ptr);
     default:
       throw std::runtime_error(
           "TDatatype can't handle indices that require 64 bits of space yet.");
@@ -149,10 +149,10 @@ TDatatype<double> readElement(SptnFileHeader const &h,
 
   if (h.float_bits == 32) {
     data.val =
-        *reinterpret_cast<float const *const>(data_ptr + h.dataByteOffset());
+        *reinterpret_cast<float const *>(data_ptr + h.dataByteOffset());
   } else if (h.float_bits == 64) {
     data.val =
-        *reinterpret_cast<double const *const>(data_ptr + h.dataByteOffset());
+        *reinterpret_cast<double const *>(data_ptr + h.dataByteOffset());
   } else {
     throw std::runtime_error("Currently the floating point data must have a "
                              "precision of 32 or 64 bits.");
@@ -168,7 +168,7 @@ std::vector<TDatatype<double>> parallelReadElements(MPI_Comm comm, MPI_File fh,
   MPI_Comm_rank(comm, &rank);
   MPI_Comm_size(comm, &nprocs);
 
-  const auto ndims = h.ndims;
+  //const auto ndims = h.ndims;
   const auto bytes_per_element = h.bytesInDataLine();
   const auto local_range = h.getLocalOffsetRange(rank, nprocs);
   const auto nlocal_bytes = local_range.second - local_range.first;

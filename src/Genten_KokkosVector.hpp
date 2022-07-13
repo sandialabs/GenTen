@@ -175,7 +175,7 @@ namespace Genten {
       view_type c_v = center.v;
       apply_func(KOKKOS_LAMBDA(const ttb_indx i)
       {
-        diff_v(i) = alpha * (v(i) - c_v(i));
+        diff_v(i) = alpha * (my_v(i) - c_v(i));
       }, "Genten::KokkosVector::elastic_difference");
     }
 

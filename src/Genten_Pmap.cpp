@@ -150,50 +150,50 @@ auto minFactorSpaceGrid(int nprocs,
   return grid;
 }
 
-small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode) {
-  small_vector<int> Range{0};
-  const auto FibersPerBlock = ModeLength / ProcsInMode;
-  auto Remainder = ModeLength % ProcsInMode;
+// small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode) {
+//   small_vector<int> Range{0};
+//   const auto FibersPerBlock = ModeLength / ProcsInMode;
+//   auto Remainder = ModeLength % ProcsInMode;
 
-  // We ended up with more processors than rows in the fiber :O Just return all
-  // fibers in the same block. It seems easier to handle this here than to try
-  // to make the while loop logic do something smart
-  if (FibersPerBlock == 0) {
-    Range.push_back(ModeLength);
-  }
+//   // We ended up with more processors than rows in the fiber :O Just return all
+//   // fibers in the same block. It seems easier to handle this here than to try
+//   // to make the while loop logic do something smart
+//   if (FibersPerBlock == 0) {
+//     Range.push_back(ModeLength);
+//   }
 
-  while (Range.back() < ModeLength) {
-    const auto back = Range.back();
-    // This branch makes our blocks 1 bigger to eat the Remainder fibers
-    if (Remainder > 0) {
-      Range.push_back(back + FibersPerBlock + 1);
-      --Remainder;
-    } else {
-      Range.push_back(back + FibersPerBlock);
-    }
-  }
+//   while (Range.back() < ModeLength) {
+//     const auto back = Range.back();
+//     // This branch makes our blocks 1 bigger to eat the Remainder fibers
+//     if (Remainder > 0) {
+//       Range.push_back(back + FibersPerBlock + 1);
+//       --Remainder;
+//     } else {
+//       Range.push_back(back + FibersPerBlock);
+//     }
+//   }
 
-  // Sanity check that we ended with the correct number of blocks and fibers
-  assert(Range.size() == ProcsInMode + 1);
-  assert(Range.back() == ModeLength);
+//   // Sanity check that we ended with the correct number of blocks and fibers
+//   assert(Range.size() == ProcsInMode + 1);
+//   assert(Range.back() == ModeLength);
 
-  return Range;
-}
+//   return Range;
+// }
 
-std::vector<small_vector<int>>
-generateUniformBlocking(std::vector<std::uint32_t> const &ModeLengths,
-                        small_vector<int> const &ProcGridSizes) {
-  const auto Ndims = ModeLengths.size();
-  std::vector<small_vector<int>> blocking;
-  blocking.reserve(Ndims);
+// std::vector<small_vector<int>>
+// generateUniformBlocking(std::vector<std::uint32_t> const &ModeLengths,
+//                         small_vector<int> const &ProcGridSizes) {
+//   const auto Ndims = ModeLengths.size();
+//   std::vector<small_vector<int>> blocking;
+//   blocking.reserve(Ndims);
 
-  for (auto i = 0; i < Ndims; ++i) {
-    blocking.emplace_back(
-        singleDimUniformBlocking(ModeLengths[i], ProcGridSizes[i]));
-  }
+//   for (auto i = 0; i < Ndims; ++i) {
+//     blocking.emplace_back(
+//         singleDimUniformBlocking(ModeLengths[i], ProcGridSizes[i]));
+//   }
 
-  return blocking;
-}
+//   return blocking;
+// }
 
 small_vector<int> CartGrid(int nprocs,
                            std::vector<std::uint32_t> const &tensor_dims) {

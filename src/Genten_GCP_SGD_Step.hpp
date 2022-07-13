@@ -253,6 +253,7 @@ namespace Genten {
       virtual void eval(const VectorType& g, VectorType& u) const
       {
         const ttb_real sgd_step = step_;
+        const ttb_real v_scale = v_scale_;
         auto uv = u.getView();
         auto gv = g.getView();
         auto vv = v_.getView();
@@ -264,7 +265,7 @@ namespace Genten {
 
         u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
         {
-          vv(i) = v_scale_ * vv(i) + sgd_step * gv(i);
+          vv(i) = v_scale * vv(i) + sgd_step * gv(i);
           ttb_real uu = uv(i) - vv(i);
           if (has_bounds){
             uu = uu < lb ? lb : (uu > ub ? ub : uu);
@@ -388,7 +389,7 @@ namespace Genten {
     struct AdamOp {
       ttb_real beta = 0.0;
 
-      KOKKOS_INLINE_FUNCTION
+      //KOKKOS_INLINE_FUNCTION
       AdamOp() = default;
 
       KOKKOS_INLINE_FUNCTION
