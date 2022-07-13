@@ -2,7 +2,7 @@
     "method": "gcp-sgd",
     "tensor":
     {
-        "input-file": "data/aminoacid_data.txt.bin",
+        "input-file": "data/aminoacid_data.txt",
         "indexbase": 0
     },
     "k-tensor":
