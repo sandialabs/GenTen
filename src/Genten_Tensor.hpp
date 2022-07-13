@@ -59,7 +59,7 @@ ttb_indx sub2ind(const SubType& sub,
 {
   const ttb_indx nd = siz.size();
   for (ttb_indx i=0; i<nd; ++i)
-    assert((sub[i] >= 0) && (sub[i] < siz[i]));
+    assert(/*(sub[i] >= 0) &&*/ (sub[i] < siz[i])); // pointless comparison
 
   ttb_indx idx = 0;
   ttb_indx cumprod = 1;
