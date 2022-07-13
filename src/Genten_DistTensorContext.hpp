@@ -272,9 +272,11 @@ importToRoot(const KtensorT<ExecSpace>& u) const
 
   KtensorT<ExecSpace> out;
   IndxArrayT<ExecSpace> sizes_idx(nd);
+  auto sizes_idx_host = create_mirror_view(sizes_idx);
   for (int i=0; i<nd; ++i) {
-    sizes_idx[i] = global_dims_[i];
+    sizes_idx_host[i] = global_dims_[i];
   }
+  deep_copy(sizes_idx, sizes_idx_host);
   out = KtensorT<ExecSpace>(nc, nd, sizes_idx);
 
   if (print)
