@@ -1,0 +1,37 @@
+{
+    "method": "gcp-sgd",
+    "tensor":
+    {
+        "input-file": "data/aminoacid_data.txt.bin",
+        "indexbase": 0
+    },
+    "k-tensor":
+    {
+        "rank": 4,
+        "output": "aminoacid.ktn",
+        "initial-guess": "rand",
+        "distributed-guess": "parallel-drew",
+        "seed": 12345,
+        "prng": false
+    },
+    "gcp":
+    {
+        "maxiters": 100,
+        "fails": 2,
+        "tol": 1e-300,
+        "timings": true,
+        "mttkrp":
+        {
+            "all-method": "duplicated"
+        },
+        "type": "gaussian",
+        "sampling": "uniform",
+        "fuse": false,
+        "hash": false,
+        "gnzs": 100,
+        "gzs": 0,
+        "fnzs": 10000,
+        "fzs": 0,
+        "fit": true
+    }
+}

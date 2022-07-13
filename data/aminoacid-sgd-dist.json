@@ -1,0 +1,30 @@
+{
+    "method": "gcp-sgd-dist",
+    "tensor":
+    {
+        "input-file": "data/aminoacid_data.txt.bin",
+        "indexbase": 0
+    },
+    "k-tensor":
+    {
+        "rank": 4,
+        "output": "aminoacid.ktn",
+        "initial-guess": "rand",
+        "distributed-guess": "parallel-drew",
+        "seed": 12345,
+        "prng": false
+    },
+    "gcp":
+    {
+        "method": "adam",
+        "rank": 4,
+        "loss": "gaussian",
+        "batch_size_nz": 1000,
+        "batch_size_zero": 0,
+        "max_epochs": 100,
+        "lr":
+        {
+            "step": 1e-3
+        }
+    }
+}
