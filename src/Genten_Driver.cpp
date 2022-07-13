@@ -54,6 +54,9 @@
 #include "Genten_GCP_LossFunctions.hpp"
 #include "Genten_GCP_SGD.hpp"
 #include "Genten_GCP_SGD_SA.hpp"
+#ifdef HAVE_DIST
+#include "Genten_DistGCP.hpp"
+#endif
 #ifdef HAVE_ROL
 #include "Genten_GCP_Opt.hpp"
 #include "Teuchos_RCP.hpp"
@@ -70,6 +73,7 @@ driver(const DistTensorContext& dtc,
        SptensorT<ExecSpace>& x,
        KtensorT<ExecSpace>& u,
        AlgParams& algParams,
+       const ptree& ptree,
        PerfHistory& history,
        std::ostream& out_in)
 {
@@ -190,6 +194,17 @@ driver(const DistTensorContext& dtc,
     ttb_indx iter;
     ttb_real resNorm;
     gcp_sgd_sa(x, u, algParams, iter, resNorm, out);
+  }
+  else if (algParams.method == Genten::Solver_Method::GCP_SGD_DIST) {
+#ifdef HAVE_DIST
+    // Run Drew's distributed GCP-SGD implementation
+    x.setProcessorMap(nullptr); // DistGCP handles communication itself
+    u.setProcessorMap(nullptr);
+    DistGCP<ExecSpace> dgcp(dtc, x, u, ptree);
+    ttb_real resNorm = dgcp.compute();
+#else
+    Genten::error("gcp-sgd-dist requires MPI support!");
+#endif
   }
 #ifdef HAVE_ROL
   else if (algParams.method == Genten::Solver_Method::GCP_OPT) {
@@ -355,6 +370,7 @@ driver(TensorT<ExecSpace>& x,
     SptensorT<SPACE>& x,                                                \
     KtensorT<SPACE>& u_init,                                            \
     AlgParams& algParams,                                               \
+    const ptree& ptree,                                                 \
     PerfHistory& history,                                               \
     std::ostream& os);                                                  \
                                                                         \

@@ -69,6 +69,7 @@ void usage(char **argv)
 
 template <typename Space>
 int main_driver(Genten::AlgParams& algParams,
+                const Genten::ptree& json_input,
                 const std::string& inputfilename,
                 const std::string& outputfilename,
                 const ttb_bool sparse,
@@ -148,7 +149,8 @@ int main_driver(Genten::AlgParams& algParams,
 
     // Compute decomposition
     Genten::PerfHistory history;
-    u = Genten::driver(dtc, x, u_init, algParams, history, std::cout);
+    u = Genten::driver(dtc, x, u_init, algParams, json_input, history,
+                       std::cout);
 
     if (tensor_outputfilename != "") {
       if (dtc.nprocs() > 1)
@@ -349,6 +351,7 @@ int main(int argc, char* argv[])
     // Parse execution space and run
     if (algParams.exec_space == Genten::Execution_Space::Default)
       ret = main_driver<Genten::DefaultExecutionSpace>(algParams,
+                                                       json_input,
                                                        inputfilename,
                                                        outputfilename,
                                                        sparse,
@@ -361,6 +364,7 @@ int main(int argc, char* argv[])
 #ifdef KOKKOS_ENABLE_CUDA
     else if (algParams.exec_space == Genten::Execution_Space::Cuda)
       ret = main_driver<Kokkos::Cuda>(algParams,
+                                      json_input,
                                       inputfilename,
                                       outputfilename,
                                       sparse,
@@ -374,32 +378,35 @@ int main(int argc, char* argv[])
 #ifdef KOKKOS_ENABLE_HIP
     else if (algParams.exec_space == Genten::Execution_Space::HIP)
       ret = main_driver<Kokkos::Experimental::HIP>(algParams,
-                                      inputfilename,
-                                      outputfilename,
-                                      sparse,
-                                      initfilename,
-                                      index_base,
-                                      gz,
-                                      facDims_h,
-                                      nnz,
-                                      tensor_outputfilename);
+                                                   json_input,
+                                                   inputfilename,
+                                                   outputfilename,
+                                                   sparse,
+                                                   initfilename,
+                                                   index_base,
+                                                   gz,
+                                                   facDims_h,
+                                                   nnz,
+                                                   tensor_outputfilename);
 #endif
 #ifdef ENABLE_SYCL_FOR_CUDA
     else if (algParams.exec_space == Genten::Execution_Space::SYCL)
       ret = main_driver<Kokkos::Experimental::SYCL>(algParams,
-                                      inputfilename,
-                                      outputfilename,
-                                      sparse,
-                                      initfilename,
-                                      index_base,
-                                      gz,
-                                      facDims_h,
-                                      nnz,
-                                      tensor_outputfilename);
+                                                    json_input,
+                                                    inputfilename,
+                                                    outputfilename,
+                                                    sparse,
+                                                    initfilename,
+                                                    index_base,
+                                                    gz,
+                                                    facDims_h,
+                                                    nnz,
+                                                    tensor_outputfilename);
 #endif
 #ifdef KOKKOS_ENABLE_OPENMP
     else if (algParams.exec_space == Genten::Execution_Space::OpenMP)
       ret = main_driver<Kokkos::OpenMP>(algParams,
+                                        json_input,
                                         inputfilename,
                                         outputfilename,
                                         sparse,
@@ -413,6 +420,7 @@ int main(int argc, char* argv[])
 #ifdef KOKKOS_ENABLE_THREADS
     else if (algParams.exec_space == Genten::Execution_Space::Threads)
       ret = main_driver<Kokkos::Threads>(algParams,
+                                         json_input,
                                          inputfilename,
                                          outputfilename,
                                          sparse,
@@ -426,6 +434,7 @@ int main(int argc, char* argv[])
 #ifdef KOKKOS_ENABLE_SERIAL
     else if (algParams.exec_space == Genten::Execution_Space::Serial)
       ret = main_driver<Kokkos::Serial>(algParams,
+                                        json_input,
                                         inputfilename,
                                         outputfilename,
                                         sparse,

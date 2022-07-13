@@ -97,8 +97,9 @@ int main(int argc, char **argv) {
 void check_input() {
   auto const &in = GT::DistContext::input();
   if (GT::DistContext::rank() == 0) {
-    if (!in.contains("tensor.file")) {
-      throw std::logic_error{"Input must contain tensor.file"};
+    if (!in.get_child("tensor").contains("input-file")) {
+      in.write(std::cout);
+      throw std::logic_error{"Input must contain tensor.input-file"};
     }
   }
 }
@@ -109,12 +110,12 @@ void real_main(int argc, char **argv) {
     const auto size = GT::DistContext::nranks();
     const auto rank = GT::DistContext::rank();
 
-    std::string solver_method = GT::DistContext::input().get<std::string>("solver-method","gcp");
+    std::string solver_method = GT::DistContext::input().get<std::string>("method","gcp-sgd-dist");
 
     if (rank == 0) {
       std::cout << "Running Geten-MPI-SGD with: " << size << " mpi-ranks\n";
       std::cout << "\tdecomposing file: "
-                << GT::DistContext::input().get<std::string>("tensor.file")
+                << GT::DistContext::input().get_child("tensor").get<std::string>("input-file")
                 << "\n";
       std::cout << "\tusing solution method: "
                 << solver_method
@@ -139,7 +140,7 @@ void real_main(int argc, char **argv) {
       GT::DistCpAls<Space> cpals(dtc, X, u, GT::DistContext::input());
       cpals.compute();
     }
-    else if (solver_method == "gcp") {
+    else if (solver_method == "gcp-sgd-dist") {
       GT::DistGCP<Space> gcp(dtc, X, u, GT::DistContext::input());
       gcp.compute();
     }
@@ -147,7 +148,7 @@ void real_main(int argc, char **argv) {
       Genten::error("Unknown solver-method: " + solver_method);
 
     std::string output =
-      GT::DistContext::input().get<std::string>("k-tensor.output", "");
+      GT::DistContext::input().get_child("k-tensor").get<std::string>("output", "");
     if (output != "")
       dtc.exportToFile(u, output);
 

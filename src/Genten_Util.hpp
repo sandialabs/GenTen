@@ -159,14 +159,15 @@ namespace Genten {
       CP_ALS,
       CP_OPT,
       GCP_SGD,
+      GCP_SGD_DIST,
       GCP_OPT
     };
     static constexpr unsigned num_types = 4;
     static constexpr type types[] = {
-      CP_ALS, CP_OPT, GCP_SGD, GCP_OPT
+      CP_ALS, CP_OPT, GCP_SGD, GCP_SGD_DIST, GCP_OPT
     };
     static constexpr const char* names[] = {
-      "cp-als", "cp-opt", "gcp-sgd", "gcp-opt"
+      "cp-als", "cp-opt", "gcp-sgd", "gcp-sgd-dist", "gcp-opt"
     };
     static constexpr type default_type = CP_ALS;
   };
