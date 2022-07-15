@@ -40,6 +40,7 @@
 
 #include "Genten_AlgParams.hpp"
 #include "Genten_FacMatrix.hpp"
+#include "Genten_JSON_Schema.hpp"
 
 Genten::AlgParams::AlgParams() :
   exec_space(Execution_Space::default_type),
@@ -239,9 +240,15 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
 
 void Genten::AlgParams::parse(const ptree& input)
 {
+  // validate input
+  ptree schema(json_schema);
+  input.validate(schema);
+
   // Generic options
   parse_ptree_enum<Execution_Space>(input, "exec-space", exec_space);
-  parse_ptree_enum<Solver_Method>(input, "method", method);
+  parse_ptree_enum<Solver_Method>(input, "solver-method", method);
+  parse_ptree_value(input, "debug", debug);
+  parse_ptree_value(input, "timings", timings);
 
   // generic solver params may appear in multiple places, so make a lambda to
   // parse them
@@ -250,8 +257,7 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_value(tree, "maxsecs", maxsecs, -1.0, DOUBLE_MAX);
     parse_ptree_value(tree, "tol", tol, 0.0, DOUBLE_MAX);
     parse_ptree_value(tree, "printitn", printitn, 0, INT_MAX);
-    parse_ptree_value(tree, "debug", debug);
-    parse_ptree_value(tree, "timings", timings);
+
   };
 
   // mttkrp tree may appear in multiple places, so make a lambda to parse it
@@ -313,11 +319,12 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_value(cpopt_input, "pgtol", pgtol, 0.0, DOUBLE_MAX);
     parse_ptree_value(cpopt_input, "memory", memory, 0, INT_MAX);
     parse_ptree_value(cpopt_input, "total-iters", max_total_iters, 0, INT_MAX);
+    parse_ptree_enum<Hess_Vec_Method>(cpopt_input, "hessian", hess_vec_method);
     parse_mttkrp(cpopt_input);
   }
 
   // GCP
-  auto gcp_input_o = input.get_child_optional("gcp");
+  auto gcp_input_o = input.get_child_optional("gcp-sgd");
   if (gcp_input_o) {
     auto& gcp_input = *gcp_input_o;
     parse_generic_solver_params(gcp_input);
@@ -539,18 +546,18 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  lower = " << lower << std::endl;
   out << "  upper = " << upper << std::endl;
   out << "  rol = " << rolfilename << std::endl;
-  out <<   "factr = " << factr << std::endl;
-  out <<   "pgtol = " << pgtol << std::endl;
-  out <<   "memory = " << memory << std::endl;
-  out <<   "total-iters = " << max_total_iters << std::endl;
+  out << "  factr = " << factr << std::endl;
+  out << "  pgtol = " << pgtol << std::endl;
+  out << "  memory = " << memory << std::endl;
+  out << "  total-iters = " << max_total_iters << std::endl;
   out << "  hessian = " << Genten::Hess_Vec_Method::names[hess_vec_method] << std::endl;
 
   out << std::endl;
   out << "GCP options:" << std::endl;
   out << "  type = " << Genten::GCP_LossFunction::names[loss_function_type]
       << std::endl;
-  out <<   "eps = " << loss_eps << std::endl;
-  out <<   "gcp-tol = " << gcp_tol << std::endl;
+  out << "  eps = " << loss_eps << std::endl;
+  out << "  gcp-tol = " << gcp_tol << std::endl;
 
   out << std::endl;
   out << "GCP-SGD options:" << std::endl;

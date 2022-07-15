@@ -101,7 +101,7 @@ DistGCP<ExecSpace>::DistGCP(const DistTensorContext& dtc,
                             const KtensorT<ExecSpace>& kTensor,
                             const ptree& tree) :
   dtc_(dtc), spTensor_(spTensor), Kfac_(kTensor),
-  input_(tree.get_child("gcp")),
+  input_(tree.get_child("gcp-sgd-dist")),
   dump_(tree.get<bool>("dump", false)),
   seed_(input_.get<unsigned int>("seed", std::random_device{}()))
 {
@@ -171,15 +171,15 @@ AlgParams DistGCP<ExecSpace>::setAlgParams() const {
   const std::uint64_t lz = spTensor_.numel_float() - lnz;
 
   AlgParams algParams;
-  algParams.maxiters = input_.get<int>("max_epochs", 1000);
+  algParams.maxiters = input_.get<int>("max-epochs", 1000);
 
-  auto global_batch_size_nz = input_.get<int>("batch_size_nz", 128);
+  auto global_batch_size_nz = input_.get<int>("batch-size-nz", 128);
   auto global_batch_size_z =
-      input_.get<int>("batch_size_zero", global_batch_size_nz);
+      input_.get<int>("batch-size-zero", global_batch_size_nz);
   auto global_value_size_nz =
-    input_.get<int>("value_size_nz", 100000);
+    input_.get<int>("value-size-nz", 100000);
   auto global_value_size_z =
-      input_.get<int>("value_size_zero", global_value_size_nz);
+      input_.get<int>("value-size-zero", global_value_size_nz);
 
   // If we have fewer nnz than the batch size don't over sample them
   algParams.num_samples_nonzeros_grad =
@@ -209,8 +209,8 @@ AlgParams DistGCP<ExecSpace>::setAlgParams() const {
   global_batch_size_nz =
       pmap().gridAllReduce(algParams.num_samples_nonzeros_grad);
 
-  if (input_.contains("epoch_size")) {
-    algParams.epoch_iters = input_.get<int>("epoch_size");
+  if (input_.contains("epoch-size")) {
+    algParams.epoch_iters = input_.get<int>("epoch-size");
   } else {
     algParams.epoch_iters = gnz / global_batch_size_nz;
   }
@@ -360,13 +360,13 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
 
   const auto maxEpochs = algParams.maxiters;
   const auto epochIters = algParams.epoch_iters;
-  const auto dp_iters = input_.get<int>("downpour_iters", 4);
+  const auto dp_iters = input_.get<int>("downpour-iters", 4);
 
   auto annealer_ptr = getAnnealer(input_);
   auto &annealer = *annealer_ptr;
 
   auto fedavg = input_.get<bool>("fedavg", false);
-  auto meta_lr = input_.get<ttb_real>("meta_lr", 1e-3);
+  auto meta_lr = input_.get<ttb_real>("meta-lr", 1e-3);
 
   double t0 = 0;
   double t1 = 0;

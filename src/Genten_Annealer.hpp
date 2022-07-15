@@ -61,7 +61,7 @@ class TraditionalAnnealer : public AnnealerBase {
 
 public:
   TraditionalAnnealer(ptree const &ptree)
-      : AnnealerBase(ptree), step_size_(ptree.get<double>("lr.step", 3e-4)) {}
+    : AnnealerBase(ptree), step_size_(ptree.get_child("learning-rate").get<double>("step", 3e-4)) {}
 
   double operator()(int epoch) override { return step_size_; }
   void failed() override { step_size_ /= 10; }
@@ -78,9 +78,9 @@ class CosineAnnealer : public AnnealerBase {
 
 public:
   CosineAnnealer(ptree const &ptree)
-      : AnnealerBase(ptree), min_lr(ptree.get<double>("lr.min_lr", 1e-12)),
-        max_lr(ptree.get<double>("lr.max_lr", 1e-9)),
-        Ti(ptree.get<int>("lr.Ti", 10)), Tcur(Ti) {}
+    : AnnealerBase(ptree), min_lr(ptree.get_child("learning-rate").get<double>("min", 1e-12)),
+      max_lr(ptree.get_child("learning-rate").get<double>("max", 1e-9)),
+      Ti(ptree.get_child("learning-rate").get<int>("Ti", 10)), Tcur(Ti) {}
 
   double operator()(int) override {
     return min_lr +

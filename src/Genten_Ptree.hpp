@@ -43,6 +43,7 @@
 #include <iostream>
 #include <fstream>
 #include "json.hpp"
+#include "json-schema.hpp"
 
 namespace Genten {
 
@@ -56,6 +57,8 @@ public:
   ptree(ptree&&) = default;
   ptree& operator=(const ptree&) = default;
   ptree& operator=(ptree&&) = default;
+
+  ptree(const nlohmann::json& json) : j(json) {}
 
   operator bool() const { return j.size() > 0; }
   ptree& operator*() { return *this; }
@@ -116,6 +119,12 @@ public:
   std::string dump() const { return j.dump(); }
 
   void parse(const std::string& s) { j = nlohmann::json::parse(s); }
+
+  void validate(const ptree& schema) const {
+    nlohmann::json_schema::json_validator validator;
+    validator.set_root_schema(schema.j);
+    validator.validate(j);
+  }
 };
 
 inline void read_json(const std::string& file, ptree& input) { input.read(file); }

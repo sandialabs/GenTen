@@ -1,9 +1,10 @@
 {
-    "method": "gcp-sgd",
+    "solver-method": "gcp-sgd",
+    "timings": true,
     "tensor":
     {
         "input-file": "data/aminoacid_data.txt",
-        "indexbase": 0
+        "index-base": 0
     },
     "k-tensor":
     {
@@ -14,12 +15,11 @@
         "seed": 12345,
         "prng": false
     },
-    "gcp":
+    "gcp-sgd":
     {
         "maxiters": 100,
         "fails": 2,
         "tol": 1e-300,
-        "timings": true,
         "mttkrp":
         {
             "all-method": "duplicated"

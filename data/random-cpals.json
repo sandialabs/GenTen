@@ -1,15 +1,16 @@
 {
     "solver-method": "cp-als",
+    "debug": false,
     "timings": true,
     "tensor":
     {
-        "input-file": "data/aminoacid_data_nn.txt",
-        "index-base": 0
+        "rand-dims": [30,30,5],
+        "rand-nnz": 1000
     },
     "k-tensor":
     {
         "rank": 4,
-        "output": "aminoacid.ktn",
+        "output": "random.ktn",
         "initial-guess": "rand",
         "distributed-guess": "serial",
         "seed": 12345,

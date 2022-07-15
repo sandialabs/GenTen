@@ -277,6 +277,7 @@ int main(int argc, char* argv[])
           Genten::parse_ptree_value(tensor_input, "rand-dims", dims, 1, INT_MAX);
           facDims_h = Genten::IndxArray(dims.size(), dims.data());
         }
+        Genten::parse_ptree_value(tensor_input, "output-file", tensor_outputfilename);
       }
 
       // K-tensor
@@ -299,9 +300,9 @@ int main(int argc, char* argv[])
     sparse =
       Genten::parse_ttb_bool(args, "--sparse", "--dense", sparse);
     tensor_outputfilename =
-      Genten::parse_string(args, "--save-tensor", "");
+      Genten::parse_string(args, "--save-tensor", tensor_outputfilename);
     nnz =
-      Genten::parse_ttb_indx(args, "--nnz", 1 * 1000 * 1000, 1, INT_MAX);
+      Genten::parse_ttb_indx(args, "--nnz", nnz, 1, INT_MAX);
     facDims_h =
       Genten::parse_ttb_indx_array(args, "--dims", facDims_h, 1, INT_MAX);
     init =
@@ -319,7 +320,7 @@ int main(int argc, char* argv[])
       throw std::string("Invalid command line arguments.");
     }
 
-    if (algParams.debug) {
+    if (algParams.debug && Genten::DistContext::rank() == 0) {
       std::cout << "Driver options:" << std::endl;
       if (inputfilename == "")
         std::cout << "  input = " << inputfilename << std::endl;
