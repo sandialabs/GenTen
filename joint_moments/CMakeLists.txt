@@ -1,9 +1,9 @@
 #--https://stackoverflow.com/questions/49857596/cmake-simple-config-file-example/49858236
 #--https://stackoverflow.com/questions/20746936/what-use-is-find-package-if-you-need-to-specify-cmake-module-path-anyway
-set(joint_moment_headers Genten_HigherMoments.hpp)
+set(joint_moment_headers Genten_HigherMoments.hpp Genten_ComputePrincipalKurtosisVectors.hpp)
 
 ADD_LIBRARY (
-  gt_higher_moments SHARED
+	gt_higher_moments 
   ${Genten_SOURCE_DIR}/joint_moments/Genten_HigherMoments.cpp
   ${Genten_SOURCE_DIR}/joint_moments/Genten_ComputePrincipalKurtosisVectors.cpp
   )
