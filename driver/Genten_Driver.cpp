@@ -450,11 +450,26 @@ int main(int argc, char* argv[])
       Genten::error("Invalid execution space: " + std::string(Genten::Execution_Space::names[algParams.exec_space]));
 
   }
-  catch(std::string sExc)
+  catch(const std::exception& e)
   {
-    std::cout << "*** Call to genten threw an exception:\n";
-    std::cout << "  " << sExc << "\n";
-    ret = 0;
+    if (Genten::DistContext::rank() == 0)
+      std::cout << "*** Call to genten threw an exception:" << std::endl
+                << "  " << e.what() << std::endl;
+    ret = -1;
+  }
+  catch(const std::string& s)
+  {
+    if (Genten::DistContext::rank() == 0)
+      std::cout << "*** Call to genten threw an exception:" << std::endl
+                << "  " << s << std::endl;
+    ret = -1;
+  }
+  catch(...)
+  {
+    if (Genten::DistContext::rank() == 0)
+      std::cout << "*** Call to genten threw an unknown exception"
+                << std::endl;
+    ret = -1;
   }
 
   Genten::FinalizeGenten();
