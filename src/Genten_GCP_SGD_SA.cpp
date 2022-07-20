@@ -71,6 +71,7 @@ namespace Genten {
                          const AlgParams& algParams,
                          ttb_indx& numEpochs,
                          ttb_real& fest,
+                         PerfHistory& perfInfo,
                          std::ostream& out)
     {
       typedef KokkosVector<ExecSpace> VectorType;
@@ -238,6 +239,15 @@ namespace Genten {
         out << std::endl;
       }
 
+      {
+        perfInfo.addEmpty();
+        auto& p = perfInfo.lastEntry();
+        p.iteration = 0;
+        p.residual = fest;
+        if (compute_fit)
+          p.fit = fit;
+      }
+
       // SGD epoch loop
       ttb_real nuc = 1.0;
       ttb_indx total_iters = 0;
@@ -311,6 +321,15 @@ namespace Genten {
             out << ", nfails = " << nfails
                 << " (resetting to solution from last epoch)";
           out << std::endl;
+        }
+
+        {
+          perfInfo.addEmpty();
+          auto& p = perfInfo.lastEntry();
+          p.iteration = numEpochs+1;
+          p.residual = fest;
+          if (compute_fit)
+            p.fit = fit;
         }
 
         if (failed_epoch) {
@@ -395,6 +414,7 @@ namespace Genten {
                   const AlgParams& algParams,
                   ttb_indx& numIters,
                   ttb_real& resNorm,
+                  PerfHistory& perfInfo,
                   std::ostream& out)
   {
 #ifdef HAVE_CALIPER
@@ -415,19 +435,19 @@ namespace Genten {
     // Dispatch implementation based on loss function type
     if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
       Impl::gcp_sgd_sa_impl(x, u, GaussianLossFunction(algParams.loss_eps),
-                            algParams, numIters, resNorm, out);
+                            algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Rayleigh)
       Impl::gcp_sgd_sa_impl(x, u, RayleighLossFunction(algParams.loss_eps),
-                            algParams, numIters, resNorm, out);
+                            algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Gamma)
       Impl::gcp_sgd_sa_impl(x, u, GammaLossFunction(algParams.loss_eps),
-                            algParams, numIters, resNorm, out);
+                            algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Bernoulli)
       Impl::gcp_sgd_sa_impl(x, u, BernoulliLossFunction(algParams.loss_eps),
-                            algParams, numIters, resNorm, out);
+                            algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Poisson)
       Impl::gcp_sgd_sa_impl(x, u, PoissonLossFunction(algParams.loss_eps),
-                           algParams, numIters, resNorm, out);
+                           algParams, numIters, resNorm, perfInfo, out);
     else
        Genten::error("Genten::gcp_sgd - unknown loss function");
   }
@@ -441,6 +461,7 @@ namespace Genten {
     const AlgParams& algParams,                                         \
     ttb_indx& numIters,                                                 \
     ttb_real& resNorm,                                                  \
+    PerfHistory& perfInfo,                                              \
     std::ostream& out);
 
 GENTEN_INST(INST_MACRO)

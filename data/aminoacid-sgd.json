@@ -8,7 +8,7 @@
     },
     "k-tensor":
     {
-        "rank": 4,
+        "rank": 16,
         "output": "aminoacid.ktn",
         "initial-guess": "rand",
         "distributed-guess": "parallel-drew",
@@ -19,19 +19,32 @@
     {
         "maxiters": 100,
         "fails": 2,
-        "tol": 1e-300,
+        "tol": 1e-4,
         "mttkrp":
         {
-            "all-method": "duplicated"
+            "all-method": "default"
         },
         "type": "gaussian",
-        "sampling": "uniform",
+        "sampling": "stratified",
         "fuse": false,
-        "hash": false,
+        "hash": true,
         "gnzs": 100,
         "gzs": 0,
         "fnzs": 10000,
         "fzs": 0,
         "fit": true
+    },
+    "testing":
+    {
+        "final-fit":
+        {
+            "value": 0.98,
+            "absolute-tolerance": 0.1
+        },
+        "iterations":
+        {
+            "value": 73,
+            "absolute-tolerance": 20
+        }
     }
 }

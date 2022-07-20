@@ -53,6 +53,7 @@
 #include "Genten_DistTensorContext.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
+#include "Genten_PerfHistory.hpp"
 
 namespace Genten {
 
@@ -62,7 +63,8 @@ public:
   DistGCP(const DistTensorContext& dtc,
           const SptensorT<ExecSpace>& spTensor,
           const KtensorT<ExecSpace>& kTensor,
-          const ptree& tree);
+          const ptree& tree,
+          PerfHistory& history);
   ~DistGCP() = default;
 
   // For now let's delete these so they aren't accidently used
@@ -89,6 +91,7 @@ private:
   SptensorT<ExecSpace> spTensor_;
   KtensorT<ExecSpace> Kfac_;
   ptree input_;
+  PerfHistory& history_;
 
   bool dump_; // I don't love keeping this flag, but it's easy
   unsigned int seed_;
@@ -99,9 +102,10 @@ template <typename ExecSpace>
 DistGCP<ExecSpace>::DistGCP(const DistTensorContext& dtc,
                             const SptensorT<ExecSpace>& spTensor,
                             const KtensorT<ExecSpace>& kTensor,
-                            const ptree& tree) :
+                            const ptree& tree,
+                            PerfHistory& history) :
   dtc_(dtc), spTensor_(spTensor), Kfac_(kTensor),
-  input_(tree.get_child("gcp-sgd-dist")),
+  input_(tree.get_child("gcp-sgd-dist")), history_(history),
   dump_(tree.get<bool>("dump", false)),
   seed_(input_.get<unsigned int>("seed", std::random_device{}()))
 {
@@ -567,6 +571,13 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
   }
   pmap().gridBarrier();
 
+  {
+    history_.addEmpty();
+    auto& p = history_.lastEntry();
+    p.iteration = 0;
+    p.residual = fest;
+  }
+
   auto fest_prev = fest;
   const auto maxEpochs = algParams.maxiters;
   const auto epochIters = algParams.epoch_iters;
@@ -666,6 +677,13 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
                 << "\n";
 
       std::cout << std::flush;
+    }
+
+    {
+      history_.addEmpty();
+      auto& p = history_.lastEntry();
+      p.iteration = e+1;
+      p.residual = fest;
     }
 
     if (fest_diff > -0.001 * fest_best) {

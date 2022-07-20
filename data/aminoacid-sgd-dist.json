@@ -7,7 +7,7 @@
     },
     "k-tensor":
     {
-        "rank": 4,
+        "rank": 16,
         "output": "aminoacid.ktn",
         "initial-guess": "rand",
         "distributed-guess": "parallel-drew",
@@ -24,6 +24,19 @@
         "learning-rate":
         {
             "step": 1e-3
+        }
+    },
+    "testing":
+    {
+        "final-residual":
+        {
+            "value": 1.51e9,
+            "relative-tolerance": 0.1
+        },
+        "iterations":
+        {
+            "value": 100,
+            "absolute-tolerance": 1
         }
     }
 }

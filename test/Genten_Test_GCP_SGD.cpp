@@ -153,15 +153,16 @@ void Genten_Test_GCP_SGD_Type(int infolevel,
   ttb_indx numIters;
   ttb_real resNorm;
   Genten::KtensorT<exec_space> result_dev;
+  Genten::PerfHistory history;
   try
   {
     result_dev = initialBasis_dev;
     if (!fuse_sa)
       Genten::gcp_sgd<Sptensor_type>(X_dev, result_dev, algParams,
-                                     numIters, resNorm, std::cout);
+                                     numIters, resNorm, history, std::cout);
     else
       Genten::gcp_sgd_sa<Sptensor_type>(X_dev, result_dev, algParams,
-                                        numIters, resNorm, std::cout);
+                                        numIters, resNorm, history, std::cout);
   }
   catch(std::string sExc)
   {

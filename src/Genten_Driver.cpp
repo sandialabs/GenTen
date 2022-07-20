@@ -186,21 +186,21 @@ driver(const DistTensorContext& dtc,
     // Run GCP-SGD
     ttb_indx iter;
     ttb_real resNorm;
-    gcp_sgd(x, u, algParams, iter, resNorm, out);
+    gcp_sgd(x, u, algParams, iter, resNorm, history, out);
   }
   else if (algParams.method == Genten::Solver_Method::GCP_SGD &&
            algParams.fuse_sa) {
     // Run GCP-SGD
     ttb_indx iter;
     ttb_real resNorm;
-    gcp_sgd_sa(x, u, algParams, iter, resNorm, out);
+    gcp_sgd_sa(x, u, algParams, iter, resNorm, history, out);
   }
   else if (algParams.method == Genten::Solver_Method::GCP_SGD_DIST) {
 #ifdef HAVE_DIST
     // Run Drew's distributed GCP-SGD implementation
     x.setProcessorMap(nullptr); // DistGCP handles communication itself
     u.setProcessorMap(nullptr);
-    DistGCP<ExecSpace> dgcp(dtc, x, u, ptree);
+    DistGCP<ExecSpace> dgcp(dtc, x, u, ptree, history);
     ttb_real resNorm = dgcp.compute();
 #else
     Genten::error("gcp-sgd-dist requires MPI support!");

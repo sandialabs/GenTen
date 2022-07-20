@@ -1,5 +1,5 @@
 {
-    "solver-method": "cp-als",
+    "solver-method": "cp-opt",
     "timings": true,
     "tensor":
     {
@@ -15,7 +15,7 @@
         "seed": 12345,
         "prng": false
     },
-    "cp-als":
+    "cp-opt":
     {
         "maxiters": 20,
         "tol": 1e-4,
@@ -33,8 +33,8 @@
         },
         "iterations":
         {
-            "value": 8,
-            "absolute-tolerance": 1
+            "value": 19,
+            "absolute-tolerance": 2
         }
     }
 }

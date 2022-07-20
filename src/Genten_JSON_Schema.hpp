@@ -672,6 +672,98 @@ static nlohmann::json json_schema = R"(
                   "default": "dgemm"
               }
           }
+      },
+      "testing": {
+          "description": "Regression testing parameters",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+              "final-fit": {
+                  "description": "Tests on the final fit",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                      "value" : {
+                          "type": "number",
+                          "minimum": 0.0,
+                          "maximum": 1.0
+                      },
+                      "relative-tolerance" : {
+                          "type": "number",
+                          "minimum": 0.0,
+                          "default": 0.0
+                      },
+                      "absolute-tolerance" : {
+                          "type": "number",
+                          "minimum": 0.0,
+                          "default": 0.0
+                      }
+                  }
+              },
+              "final-residual": {
+                  "description": "Tests on the final residual",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                      "value" : {
+                          "type": "number",
+                          "minimum": 0.0
+                      },
+                      "relative-tolerance" : {
+                          "type": "number",
+                          "minimum": 0.0,
+                          "default": 0.0
+                      },
+                      "absolute-tolerance" : {
+                          "type": "number",
+                          "minimum": 0.0,
+                          "default": 0.0
+                      }
+                  }
+              },
+              "final-gradient-norm": {
+                  "description": "Tests on the final gradient norm",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                      "value" : {
+                          "type": "number",
+                          "minimum": 0.0
+                      },
+                      "relative-tolerance" : {
+                          "type": "number",
+                          "minimum": 0.0,
+                          "default": 0.0
+                      },
+                      "absolute-tolerance" : {
+                          "type": "number",
+                          "default": 0.0,
+                          "minimum": 0.0
+                      }
+                  }
+              },
+              "iterations": {
+                  "description": "Tests on the number of iterations",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                      "value" : {
+                          "type": "integer",
+                          "minimum": 0
+                      },
+                      "relative-tolerance" : {
+                          "type": "integer",
+                          "minimum": 0,
+                          "default": 0
+                      },
+                      "absolute-tolerance" : {
+                          "type": "integer",
+                          "minimum": 0,
+                          "default": 0
+                      }
+                  }
+              }
+          }
       }
   }
 }

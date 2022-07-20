@@ -100,6 +100,7 @@ int main_driver(Genten::AlgParams& algParams,
   }
 
   Ktensor_type u;
+  Genten::PerfHistory history;
   if (sparse) {
     // Read in tensor data
     Sptensor_host_type x_host;
@@ -148,7 +149,6 @@ int main_driver(Genten::AlgParams& algParams,
     if (algParams.debug) Genten::print_sptensor(x_host, std::cout, "tensor");
 
     // Compute decomposition
-    Genten::PerfHistory history;
     u = Genten::driver(dtc, x, u_init, algParams, json_input, history,
                        std::cout);
 
@@ -195,7 +195,6 @@ int main_driver(Genten::AlgParams& algParams,
     if (algParams.debug) Genten::print_tensor(x_host, std::cout, "tensor");
 
     // Compute decomposition
-    Genten::PerfHistory history;
     u = Genten::driver(x, u_init, algParams, history, std::cout);
 
     if (tensor_outputfilename != "") {
@@ -217,15 +216,123 @@ int main_driver(Genten::AlgParams& algParams,
       printf("Ktensor export took %6.3f seconds\n", timer.getTotalTime(1));
   }
 
+  // Testing -- we use int/double on purpose to avoid ambiguities
+  if (history.size() > 0) {
+    const auto& entry = history.lastEntry();
+    auto testing_input_o = json_input.get_child_optional("testing");
+    if (testing_input_o) {
+      auto testing_input = *testing_input_o;
+
+      // Final fit
+      auto fit_input_o = testing_input.get_child_optional("final-fit");
+      if (fit_input_o) {
+        auto fit_input = *fit_input_o;
+        double fit_expected = fit_input.get<double>("value");
+        double rtol = fit_input.get("relative-tolerance", 0.0);
+        double atol = fit_input.get("absolute-tolerance", 0.0);
+        double tol = std::abs(fit_expected)*rtol+atol;
+        double fit = entry.fit;
+        double diff = std::abs(fit_expected-fit);
+        bool passed = diff < tol;
+        std::string pass_fail_string = passed ? "Passed!" : "Failed!";
+        if (dtc.gridRank() == 0) {
+          std::cout << std::endl
+                    << "Checking final fit:" << std::endl
+                    << "\tValue:      " << fit << std::endl
+                    << "\tExpected:   " << fit_expected << std::endl
+                    << "\tDifference: " << diff << std::endl
+                    << "\tTolerance:  " << tol << std::endl
+                    << "\t" << pass_fail_string
+                    << std::endl;
+        }
+        if (!passed) ++ret;
+      }
+
+      // Final residual
+      auto res_input_o = testing_input.get_child_optional("final-residual");
+      if (res_input_o) {
+        auto res_input = *res_input_o;
+        double res_expected = res_input.get<double>("value");
+        double rtol = res_input.get("relative-tolerance", 0.0);
+        double atol = res_input.get("absolute-tolerance", 0.0);
+        double tol = std::abs(res_expected)*rtol+atol;
+        double res = entry.residual;
+        double diff = std::abs(res_expected-res);
+        bool passed = diff < tol;
+        std::string pass_fail_string = passed ? "Passed!" : "Failed!";
+        if (dtc.gridRank() == 0) {
+          std::cout << std::endl
+                    << "Checking final residual:" << std::endl
+                    << "\tValue:      " << res << std::endl
+                    << "\tExpected:   " << res_expected << std::endl
+                    << "\tDifference: " << diff << std::endl
+                    << "\tTolerance:  " << tol << std::endl
+                    << "\t" << pass_fail_string
+                    << std::endl;
+        }
+        if (!passed) ++ret;
+      }
+
+      // Final gradient norm
+      auto grad_input_o =
+        testing_input.get_child_optional("final-gradient-norm");
+      if (grad_input_o) {
+        auto grad_input = *grad_input_o;
+        double grad_expected = grad_input.get<double>("value");
+        double rtol = grad_input.get("relative-tolerance", 0.0);
+        double atol = grad_input.get("absolute-tolerance", 0.0);
+        double tol = std::abs(grad_expected)*rtol+atol;
+        double grad = entry.grad_norm;
+        double diff = std::abs(grad_expected-grad);
+        bool passed = diff < tol;
+        std::string pass_fail_string = passed ? "Passed!" : "Failed!";
+        if (dtc.gridRank() == 0) {
+          std::cout << std::endl
+                    << "Checking final gradient norm:" << std::endl
+                    << "\tValue:      " << grad << std::endl
+                    << "\tExpected:   " << grad_expected << std::endl
+                    << "\tDifference: " << diff << std::endl
+                    << "\tTolerance:  " << tol << std::endl
+                    << "\t" << pass_fail_string
+                    << std::endl;
+        }
+        if (!passed) ++ret;
+      }
+
+      // Number of iterations
+      auto itr_input_o = testing_input.get_child_optional("iterations");
+      if (itr_input_o) {
+        auto itr_input = *itr_input_o;
+        int itr_expected = itr_input.get<int>("value");
+        int tol = itr_input.get("absolute-tolerance", 0);
+        int itr = entry.iteration;
+        int diff = std::abs(itr_expected-itr);
+        bool passed = diff < tol;
+        std::string pass_fail_string = passed ? "Passed!" : "Failed!";
+        if (dtc.gridRank() == 0) {
+          std::cout << std::endl
+                    << "Checking number of iterations:" << std::endl
+                    << "\tValue:      " << itr << std::endl
+                    << "\tExpected:   " << itr_expected << std::endl
+                    << "\tDifference: " << diff << std::endl
+                    << "\tTolerance:  " << tol << std::endl
+                    << "\t" << pass_fail_string
+                    << std::endl;
+        }
+        if (!passed) ++ret;
+      }
+    }
+  }
+
   return ret;
 }
 
 int main(int argc, char* argv[])
 {
-  Genten::InitializeGenten(&argc, &argv);
   int ret = 0;
 
   try {
+    Genten::InitializeGenten(&argc, &argv);
 
     // Convert argc,argv to list of arguments
     auto args = Genten::build_arg_list(argc,argv);
