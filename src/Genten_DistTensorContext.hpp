@@ -765,9 +765,9 @@ public:
   template <typename ExecSpace>
   ttb_real globalNorm(const KtensorT<ExecSpace>& u) const { return std::sqrt(u.normFsq()); }
   template <typename ExecSpace>
-  KtensorT<ExecSpace> exportFromRoot(const KtensorT<ExecSpace>& u) const {}
+  KtensorT<ExecSpace> exportFromRoot(const KtensorT<ExecSpace>& u) const { return u; }
   template <typename ExecSpace>
-  KtensorT<ExecSpace> importToRoot(const KtensorT<ExecSpace>& u) const {}
+  KtensorT<ExecSpace> importToRoot(const KtensorT<ExecSpace>& u) const { return u; }
   template <typename ExecSpace>
   void allReduce(KtensorT<ExecSpace>& u,
                  const bool divide_by_grid_size = false) const {}

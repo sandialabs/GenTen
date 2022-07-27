@@ -222,6 +222,7 @@ bool InitializeGenten(int *argc, char ***argv) {
 
 bool FinalizeGenten() {
   Kokkos::finalize();
+  return true;
 }
 
 }
