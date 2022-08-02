@@ -53,16 +53,17 @@
 
 template <typename ExecSpace>
 Genten::KtensorT<ExecSpace>::
-KtensorT(ttb_indx nc, ttb_indx nd):
-  lambda(nc), data(nd)
+KtensorT(ttb_indx nc, ttb_indx nd, const ProcessorMap* pmap_):
+  lambda(nc), data(nd), pmap(pmap_)
 {
   setWeights(1.0);
 }
 
 template <typename ExecSpace>
 Genten::KtensorT<ExecSpace>::
-KtensorT(ttb_indx nc, ttb_indx nd, const Genten::IndxArrayT<ExecSpace> & sz):
-  lambda(nc), data(nd,sz,nc)
+KtensorT(ttb_indx nc, ttb_indx nd, const Genten::IndxArrayT<ExecSpace> & sz,
+         const ProcessorMap* pmap_):
+  lambda(nc), data(nd,sz,nc), pmap(pmap_)
 {
   setWeights(1.0);
 }
@@ -190,6 +191,16 @@ void Genten::KtensorT<ExecSpace>::
 setMatrices(ttb_real val) const
 {
   data = val;
+}
+
+template <typename ExecSpace>
+void Genten::KtensorT<ExecSpace>::
+setProcessorMap(const ProcessorMap* pmap_)
+{
+  pmap = pmap_;
+  if (pmap != nullptr)
+    for (ttb_indx i =0; i< data.size(); i++)
+      data[i].setProcessorMap(pmap->facMap(i));
 }
 
 template <typename ExecSpace>
@@ -528,7 +539,7 @@ arrange(const Genten::IndxArray& permutation_indices) const
 
 template <typename ExecSpace>
 ttb_real Genten::KtensorT<ExecSpace>::
-normFsq() const
+normFsq(const ProcessorMap* proc_map) const
 {
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::Ktensor::normFsq");
@@ -546,6 +557,10 @@ normFsq() const
   for (ttb_indx  n = 0; n < ndims(); n++)
   {
     cG.gramian(data[n]);
+    if (proc_map != nullptr) {
+      Kokkos::fence();
+      proc_map->facMap(n)->allReduce(cG.view().data(),cG.view().span());
+    }
     cH.times(cG);
   }
 
@@ -575,7 +590,7 @@ normFsq() const
 
 template <typename ExecSpace>
 ttb_real Genten::KtensorT<ExecSpace>::
-normFsq(const Genten::ArrayT<ExecSpace>& l) const
+normFsq(const ProcessorMap* proc_map, const Genten::ArrayT<ExecSpace>& l) const
 {
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::Ktensor::normFsq");
@@ -593,6 +608,10 @@ normFsq(const Genten::ArrayT<ExecSpace>& l) const
   for (ttb_indx  n = 0; n < ndims(); n++)
   {
     cG.gramian(data[n]);
+    if (proc_map != nullptr) {
+      Kokkos::fence();
+      proc_map->facMap(n)->allReduce(cG.view().data(),cG.view().span());
+    }
     cH.times(cG);
   }
 

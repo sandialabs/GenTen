@@ -159,14 +159,15 @@ namespace Genten {
       CP_ALS,
       CP_OPT,
       GCP_SGD,
+      GCP_SGD_DIST,
       GCP_OPT
     };
     static constexpr unsigned num_types = 4;
     static constexpr type types[] = {
-      CP_ALS, CP_OPT, GCP_SGD, GCP_OPT
+      CP_ALS, CP_OPT, GCP_SGD, GCP_SGD_DIST, GCP_OPT
     };
     static constexpr const char* names[] = {
-      "cp-als", "cp-opt", "gcp-sgd", "gcp-opt"
+      "cp-als", "cp-opt", "gcp-sgd", "gcp-sgd-dist", "gcp-opt"
     };
     static constexpr type default_type = CP_ALS;
   };
@@ -311,14 +312,15 @@ namespace Genten {
       SGD,
       ADAM,
       AdaGrad,
-      AMSGrad
+      AMSGrad,
+      SGDMomentum
     };
-    static constexpr unsigned num_types = 4;
+    static constexpr unsigned num_types = 5;
     static constexpr type types[] = {
-      SGD, ADAM, AdaGrad, AMSGrad
+      SGD, ADAM, AdaGrad, AMSGrad, SGDMomentum
     };
     static constexpr const char* names[] = {
-      "sgd", "adam", "adagrad", "amsgrad"
+      "sgd", "adam", "adagrad", "amsgrad", "sgd-momentum"
     };
     static constexpr type default_type = ADAM;
   };
@@ -354,4 +356,14 @@ namespace Genten {
 
   // Connect executable to vtune for profiling
   void connect_vtune(const int p_rank = 0);
+
+  // A stream that drops all of its input (useful for parallel output)
+  class oblackholestream :
+    public virtual std::basic_ostream<char,std::char_traits<char> >
+  {
+    typedef std::basic_ostream<char,std::char_traits<char> > base;
+  public:
+    explicit oblackholestream() : base(nullptr) {}
+  };
+  extern oblackholestream bhcout;
 }

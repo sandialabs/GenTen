@@ -163,6 +163,14 @@ public:
     KOKKOS_IF_ON_HOST(return host_data[n];)
   }
 
+  // Return n-th factor matrix
+  KOKKOS_INLINE_FUNCTION
+  FacMatrixT<ExecSpace>& operator[](ttb_indx n)
+  {
+    KOKKOS_IF_ON_DEVICE(return data[n];)
+    KOKKOS_IF_ON_HOST(return host_data[n];)
+  }
+
   KOKKOS_INLINE_FUNCTION
   view_type values() const { return data; }
 

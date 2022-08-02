@@ -198,6 +198,9 @@ namespace Genten {
                          const AlgParams& algParams) :
         GCP_SGD_Iter<ExecSpace, LossFunction>(u0, algParams)
       {
+        if (u0.getProcessorMap() != nullptr &&
+            u0.getProcessorMap()->gridSize() > 0)
+          Genten::error("Asynchronous GCP iterator does not work with > 1 MPI processor.");
       }
 
       virtual ~GCP_SGD_Iter_Async() {}

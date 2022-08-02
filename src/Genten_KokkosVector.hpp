@@ -155,6 +155,30 @@ namespace Genten {
       }, "Genten::KokkosVector::plus");
     }
 
+    void plus(const KokkosVector& x, const ttb_real alpha)
+    {
+      view_type my_v = v;
+      view_type xv = x.v;
+      apply_func(KOKKOS_LAMBDA(const ttb_indx i)
+      {
+        my_v(i) += alpha * xv(i);
+      }, "Genten::KokkosVector::plus_alpha");
+    }
+
+    void elastic_difference(KokkosVector &diff, 
+                            const KokkosVector& center, 
+                            const ttb_real alpha)
+    {
+
+      view_type my_v = v;
+      view_type diff_v = diff.v;
+      view_type c_v = center.v;
+      apply_func(KOKKOS_LAMBDA(const ttb_indx i)
+      {
+        diff_v(i) = alpha * (my_v(i) - c_v(i));
+      }, "Genten::KokkosVector::elastic_difference");
+    }
+
     void scale(const ttb_real alpha)
     {
       view_type my_v = v;

@@ -38,15 +38,21 @@
 // ************************************************************************
 //@HEADER
 
+#include "Genten_DistContext.hpp"
+#include "Genten_DistTensorContext.hpp"
 #include "Genten_Driver.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_FacTestSetGenerator.hpp"
+#include "Genten_Ptree.hpp"
 
 void usage(char **argv)
 {
   std::cout << "Usage: "<< argv[0]<<" [options]" << std::endl;
   std::cout << "Driver options: " << std::endl;
+#ifdef HAVE_BOOST
+  std::cout << "  --json <string>    Read input paramters from supplied JSON file" << std::endl;
+#endif
   std::cout << "  --input <string>   path to input sptensor data (leave empty for random tensor)" << std::endl;
   std::cout << "  --dims <array>     random tensor dimensions" << std::endl;
   std::cout << "  --nnz <int>        approximate number of random tensor nonzeros" << std::endl;
@@ -63,6 +69,7 @@ void usage(char **argv)
 
 template <typename Space>
 int main_driver(Genten::AlgParams& algParams,
+                const Genten::ptree& json_input,
                 const std::string& inputfilename,
                 const std::string& outputfilename,
                 const ttb_bool sparse,
@@ -82,41 +89,44 @@ int main_driver(Genten::AlgParams& algParams,
   typedef Genten::TensorT<Genten::DefaultHostExecutionSpace> Tensor_host_type;
   typedef Genten::KtensorT<Space> Ktensor_type;
   typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
+  typedef Genten::DistContext DC;
+
+  Genten::DistTensorContext dtc;
 
   // Read in initial guess if provided
   Ktensor_type u_init;
   if (initfilename != "") {
-    Ktensor_host_type u_init_host;
-    Genten::import_ktensor(initfilename, u_init_host);
-    u_init = create_mirror_view(Space(), u_init_host);
-    deep_copy(u_init, u_init_host);
+    u_init = dtc.readInitialGuess<Space>(initfilename);
   }
 
   Ktensor_type u;
+  Genten::PerfHistory history;
   if (sparse) {
     // Read in tensor data
     Sptensor_host_type x_host;
     Sptensor_type x;
     if (inputfilename != "") {
       timer.start(0);
-      Genten::import_sptensor(inputfilename, x_host, index_base, gz, true);
-      x = create_mirror_view( Space(), x_host );
-      deep_copy( x, x_host );
+      x = dtc.distributeTensor<Space>(inputfilename, index_base, gz);
       timer.stop(0);
-      printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
+      DC::Barrier();
+      if (dtc.gridRank() == 0)
+        printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
     }
     else {
       Genten::IndxArrayT<Space> facDims =
         create_mirror_view( Space(), facDims_h );
       deep_copy( facDims, facDims_h );
 
-      std::cout << "Will construct a random Ktensor/Sptensor pair:\n";
-      std::cout << "  Ndims = " << facDims_h.size() << ",  Size = [ ";
-      for (ttb_indx  n = 0; n < facDims_h.size(); n++)
-        std::cout << facDims_h[n] << ' ';
-      std::cout << "]\n";
-      std::cout << "  Ncomps = " << algParams.rank << "\n";
-      std::cout << "  Maximum nnz = " << nnz << "\n";
+      if (dtc.gridRank() == 0) {
+        std::cout << "Will construct a random Ktensor/Sptensor pair:\n";
+        std::cout << "  Ndims = " << facDims_h.size() << ",  Size = [ ";
+        for (ttb_indx  n = 0; n < facDims_h.size(); n++)
+          std::cout << facDims_h[n] << ' ';
+        std::cout << "]\n";
+        std::cout << "  Ncomps = " << algParams.rank << "\n";
+        std::cout << "  Maximum nnz = " << nnz << "\n";
+      }
 
       // Generate a random Ktensor, and from it a representative sparse
       // data tensor.
@@ -128,26 +138,36 @@ int main_driver(Genten::AlgParams& algParams,
                                            nnz, rng, x_host, sol_host);
       if (!r)
         Genten::error("*** Call to genSpFromRndKtensor failed.\n");
-      x = create_mirror_view( Space(), x_host );
-      deep_copy( x, x_host );
       timer.stop(0);
-      printf ("Data generation took %6.3f seconds\n", timer.getTotalTime(0));
-      std::cout << "  Actual nnz  = " << x_host.nnz() << "\n";
+      DC::Barrier();
+      if (dtc.gridRank() == 0) {
+        printf ("Data generation took %6.3f seconds\n", timer.getTotalTime(0));
+        std::cout << "  Actual nnz  = " << x_host.nnz() << "\n";
+      }
+      x = dtc.distributeTensor<Space>(x_host);
     }
     if (algParams.debug) Genten::print_sptensor(x_host, std::cout, "tensor");
 
     // Compute decomposition
-    Genten::PerfHistory history;
-    u = Genten::driver(x, u_init, algParams, history, std::cout);
+    u = Genten::driver(dtc, x, u_init, algParams, json_input, history,
+                       std::cout);
 
     if (tensor_outputfilename != "") {
+      if (dtc.nprocs() > 1)
+        Genten::error("Tensor export not implemented for > 1 MPI procs");
+
       timer.start(1);
       Genten::export_sptensor(tensor_outputfilename, x_host, index_base == 0);
       timer.stop(1);
-      printf("Sptensor export took %6.3f seconds\n", timer.getTotalTime(1));
+      DC::Barrier();
+      if (dtc.gridRank() == 0)
+        printf("Sptensor export took %6.3f seconds\n", timer.getTotalTime(1));
     }
   }
   else {
+    if (dtc.nprocs() > 1)
+        Genten::error("Dense tensor not implemented for > 1 MPI procs");
+
     Tensor_host_type x_host;
     Tensor_type x;
     // Read in tensor data
@@ -175,7 +195,6 @@ int main_driver(Genten::AlgParams& algParams,
     if (algParams.debug) Genten::print_tensor(x_host, std::cout, "tensor");
 
     // Compute decomposition
-    Genten::PerfHistory history;
     u = Genten::driver(x, u_init, algParams, history, std::cout);
 
     if (tensor_outputfilename != "") {
@@ -190,12 +209,119 @@ int main_driver(Genten::AlgParams& algParams,
   if (outputfilename != "")
   {
     timer.start(1);
-    Ktensor_host_type u_host =
-      create_mirror_view(Genten::DefaultHostExecutionSpace(), u);
-    deep_copy( u_host, u );
-    Genten::export_ktensor(outputfilename, u_host);
+    dtc.exportToFile(u, outputfilename);
     timer.stop(1);
-    printf("Ktensor export took %6.3f seconds\n", timer.getTotalTime(1));
+    DC::Barrier();
+    if (dtc.gridRank() == 0)
+      printf("Ktensor export took %6.3f seconds\n", timer.getTotalTime(1));
+  }
+
+  // Testing -- we use int/double on purpose to avoid ambiguities
+  if (history.size() > 0) {
+    const auto& entry = history.lastEntry();
+    auto testing_input_o = json_input.get_child_optional("testing");
+    if (testing_input_o) {
+      auto testing_input = *testing_input_o;
+
+      // Final fit
+      auto fit_input_o = testing_input.get_child_optional("final-fit");
+      if (fit_input_o) {
+        auto fit_input = *fit_input_o;
+        double fit_expected = fit_input.get<double>("value");
+        double rtol = fit_input.get("relative-tolerance", 0.0);
+        double atol = fit_input.get("absolute-tolerance", 0.0);
+        double tol = std::abs(fit_expected)*rtol+atol;
+        double fit = entry.fit;
+        double diff = std::abs(fit_expected-fit);
+        bool passed = diff < tol;
+        std::string pass_fail_string = passed ? "Passed!" : "Failed!";
+        if (dtc.gridRank() == 0) {
+          std::cout << std::endl
+                    << "Checking final fit:" << std::endl
+                    << "\tValue:      " << fit << std::endl
+                    << "\tExpected:   " << fit_expected << std::endl
+                    << "\tDifference: " << diff << std::endl
+                    << "\tTolerance:  " << tol << std::endl
+                    << "\t" << pass_fail_string
+                    << std::endl;
+        }
+        if (!passed) ++ret;
+      }
+
+      // Final residual
+      auto res_input_o = testing_input.get_child_optional("final-residual");
+      if (res_input_o) {
+        auto res_input = *res_input_o;
+        double res_expected = res_input.get<double>("value");
+        double rtol = res_input.get("relative-tolerance", 0.0);
+        double atol = res_input.get("absolute-tolerance", 0.0);
+        double tol = std::abs(res_expected)*rtol+atol;
+        double res = entry.residual;
+        double diff = std::abs(res_expected-res);
+        bool passed = diff < tol;
+        std::string pass_fail_string = passed ? "Passed!" : "Failed!";
+        if (dtc.gridRank() == 0) {
+          std::cout << std::endl
+                    << "Checking final residual:" << std::endl
+                    << "\tValue:      " << res << std::endl
+                    << "\tExpected:   " << res_expected << std::endl
+                    << "\tDifference: " << diff << std::endl
+                    << "\tTolerance:  " << tol << std::endl
+                    << "\t" << pass_fail_string
+                    << std::endl;
+        }
+        if (!passed) ++ret;
+      }
+
+      // Final gradient norm
+      auto grad_input_o =
+        testing_input.get_child_optional("final-gradient-norm");
+      if (grad_input_o) {
+        auto grad_input = *grad_input_o;
+        double grad_expected = grad_input.get<double>("value");
+        double rtol = grad_input.get("relative-tolerance", 0.0);
+        double atol = grad_input.get("absolute-tolerance", 0.0);
+        double tol = std::abs(grad_expected)*rtol+atol;
+        double grad = entry.grad_norm;
+        double diff = std::abs(grad_expected-grad);
+        bool passed = diff < tol;
+        std::string pass_fail_string = passed ? "Passed!" : "Failed!";
+        if (dtc.gridRank() == 0) {
+          std::cout << std::endl
+                    << "Checking final gradient norm:" << std::endl
+                    << "\tValue:      " << grad << std::endl
+                    << "\tExpected:   " << grad_expected << std::endl
+                    << "\tDifference: " << diff << std::endl
+                    << "\tTolerance:  " << tol << std::endl
+                    << "\t" << pass_fail_string
+                    << std::endl;
+        }
+        if (!passed) ++ret;
+      }
+
+      // Number of iterations
+      auto itr_input_o = testing_input.get_child_optional("iterations");
+      if (itr_input_o) {
+        auto itr_input = *itr_input_o;
+        int itr_expected = itr_input.get<int>("value");
+        int tol = itr_input.get("absolute-tolerance", 0);
+        int itr = entry.iteration;
+        int diff = std::abs(itr_expected-itr);
+        bool passed = diff < tol;
+        std::string pass_fail_string = passed ? "Passed!" : "Failed!";
+        if (dtc.gridRank() == 0) {
+          std::cout << std::endl
+                    << "Checking number of iterations:" << std::endl
+                    << "\tValue:      " << itr << std::endl
+                    << "\tExpected:   " << itr_expected << std::endl
+                    << "\tDifference: " << diff << std::endl
+                    << "\tTolerance:  " << tol << std::endl
+                    << "\t" << pass_fail_string
+                    << std::endl;
+        }
+        if (!passed) ++ret;
+      }
+    }
   }
 
   return ret;
@@ -203,10 +329,10 @@ int main_driver(Genten::AlgParams& algParams,
 
 int main(int argc, char* argv[])
 {
-  Kokkos::initialize(argc, argv);
   int ret = 0;
 
   try {
+    Genten::InitializeGenten(&argc, &argv);
 
     // Convert argc,argv to list of arguments
     auto args = Genten::build_arg_list(argc,argv);
@@ -219,37 +345,79 @@ int main(int argc, char* argv[])
       return 0;
     }
 
-    // Driver options
-    const std::string inputfilename =
-      Genten::parse_string(args, "--input", "");
-    const std::string outputfilename =
-      Genten::parse_string(args, "--output", "");
-    const ttb_bool sparse =
-      Genten::parse_ttb_bool(args, "--sparse", "--dense", true);
-    const std::string initfilename =
-      Genten::parse_string(args, "--init", "");
-    const ttb_indx index_base =
-      Genten::parse_ttb_indx(args, "--index-base", 0, 0, INT_MAX);
-    const ttb_bool gz =
-      Genten::parse_ttb_bool(args, "--gz", "--no-gz", false);
-    const ttb_bool vtune =
-      Genten::parse_ttb_bool(args, "--vtune", "--no-vtune", false);
+    Genten::AlgParams algParams;
 
-    // for random tensor when inputfilename == ""
-    Genten::IndxArray facDims_h;
-    if (sparse)
-      facDims_h = { 3000, 4000, 5000 };
-    else
-      facDims_h = { 30, 40, 50 };
+    // Driver options
+    ttb_bool vtune = false;
+    std::string inputfilename = "";
+    ttb_indx index_base = 0;
+    ttb_bool gz = false;
+    ttb_bool sparse = true;
+    std::string tensor_outputfilename = "";
+    ttb_indx nnz = 1 * 1000 * 1000;
+    Genten::IndxArray facDims_h = { 30, 40, 50 };
+    std::string init = "";
+    std::string outputfilename = "";
+
+    // Parse a json file if given before command-line arguments, that way
+    // command line will override what is in the file
+    Genten::ptree json_input;
+    const std::string json_file =
+      Genten::parse_string(args, "--json", "");
+    if (json_file != "") {
+      read_json(json_file, json_input);
+      algParams.parse(json_input);
+      Genten::parse_ptree_value(json_input, "vtune", vtune);
+
+      // Tensor
+      auto tensor_input_o = json_input.get_child_optional("tensor");
+      if (tensor_input_o) {
+        auto& tensor_input = *tensor_input_o;
+        Genten::parse_ptree_value(tensor_input, "input-file", inputfilename);
+        Genten::parse_ptree_value(tensor_input, "index-base", index_base, 0, INT_MAX);
+        Genten::parse_ptree_value(tensor_input, "compressed", gz);
+        Genten::parse_ptree_value(tensor_input, "sparse", sparse);
+        Genten::parse_ptree_value(tensor_input, "output-file", tensor_outputfilename);
+        Genten::parse_ptree_value(tensor_input, "rand-nnz", nnz, 1, INT_MAX);
+        if (tensor_input.get_child_optional("rand-dims")) {
+          std::vector<ttb_real> dims;
+          Genten::parse_ptree_value(tensor_input, "rand-dims", dims, 1, INT_MAX);
+          facDims_h = Genten::IndxArray(dims.size(), dims.data());
+        }
+        Genten::parse_ptree_value(tensor_input, "output-file", tensor_outputfilename);
+      }
+
+      // K-tensor
+      auto ktensor_input_o = json_input.get_child_optional("k-tensor");
+      if (ktensor_input_o) {
+        auto& ktensor_input = *ktensor_input_o;
+        Genten::parse_ptree_value(ktensor_input, "init", init);
+        Genten::parse_ptree_value(ktensor_input, "output", outputfilename);
+      }
+    }
+
+    vtune =
+      Genten::parse_ttb_bool(args, "--vtune", "--no-vtune", vtune);
+    inputfilename =
+      Genten::parse_string(args, "--input", inputfilename);
+    index_base =
+      Genten::parse_ttb_indx(args, "--index-base", index_base, 0, INT_MAX);
+    gz =
+      Genten::parse_ttb_bool(args, "--gz", "--no-gz", gz);
+    sparse =
+      Genten::parse_ttb_bool(args, "--sparse", "--dense", sparse);
+    tensor_outputfilename =
+      Genten::parse_string(args, "--save-tensor", tensor_outputfilename);
+    nnz =
+      Genten::parse_ttb_indx(args, "--nnz", nnz, 1, INT_MAX);
     facDims_h =
       Genten::parse_ttb_indx_array(args, "--dims", facDims_h, 1, INT_MAX);
-    const ttb_indx nnz =
-      Genten::parse_ttb_indx(args, "--nnz", 1 * 1000 * 1000, 1, INT_MAX);
-    const std::string tensor_outputfilename =
-      Genten::parse_string(args, "--save-tensor", "");
+    init =
+      Genten::parse_string(args, "--init", init);
+    outputfilename =
+      Genten::parse_string(args, "--output", outputfilename);
 
     // Everything else
-    Genten::AlgParams algParams;
     algParams.parse(args);
 
     // Check for unrecognized arguments
@@ -259,7 +427,7 @@ int main(int argc, char* argv[])
       throw std::string("Invalid command line arguments.");
     }
 
-    if (algParams.debug) {
+    if (algParams.debug && Genten::DistContext::rank() == 0) {
       std::cout << "Driver options:" << std::endl;
       if (inputfilename == "")
         std::cout << "  input = " << inputfilename << std::endl;
@@ -273,8 +441,8 @@ int main(int argc, char* argv[])
         std::cout << "]" << std::endl;
         std::cout << "  nnz = " << nnz << std::endl;
       }
-      if (initfilename != "")
-        std::cout << "  init = " << initfilename << std::endl;
+      if (init != "")
+        std::cout << "  init = " << init << std::endl;
       if (tensor_outputfilename != "")
         std::cout << "  save_tensor = " << tensor_outputfilename << std::endl;
       std::cout << "  output = " << outputfilename << std::endl;
@@ -291,10 +459,11 @@ int main(int argc, char* argv[])
     // Parse execution space and run
     if (algParams.exec_space == Genten::Execution_Space::Default)
       ret = main_driver<Genten::DefaultExecutionSpace>(algParams,
+                                                       json_input,
                                                        inputfilename,
                                                        outputfilename,
                                                        sparse,
-                                                       initfilename,
+                                                       init,
                                                        index_base,
                                                        gz,
                                                        facDims_h,
@@ -303,10 +472,11 @@ int main(int argc, char* argv[])
 #ifdef KOKKOS_ENABLE_CUDA
     else if (algParams.exec_space == Genten::Execution_Space::Cuda)
       ret = main_driver<Kokkos::Cuda>(algParams,
+                                      json_input,
                                       inputfilename,
                                       outputfilename,
                                       sparse,
-                                      initfilename,
+                                      init,
                                       index_base,
                                       gz,
                                       facDims_h,
@@ -316,36 +486,39 @@ int main(int argc, char* argv[])
 #ifdef KOKKOS_ENABLE_HIP
     else if (algParams.exec_space == Genten::Execution_Space::HIP)
       ret = main_driver<Kokkos::Experimental::HIP>(algParams,
-                                      inputfilename,
-                                      outputfilename,
-                                      sparse,
-                                      initfilename,
-                                      index_base,
-                                      gz,
-                                      facDims_h,
-                                      nnz,
-                                      tensor_outputfilename);
+                                                   json_input,
+                                                   inputfilename,
+                                                   outputfilename,
+                                                   sparse,
+                                                   initfilename,
+                                                   index_base,
+                                                   gz,
+                                                   facDims_h,
+                                                   nnz,
+                                                   tensor_outputfilename);
 #endif
 #ifdef ENABLE_SYCL_FOR_CUDA
     else if (algParams.exec_space == Genten::Execution_Space::SYCL)
       ret = main_driver<Kokkos::Experimental::SYCL>(algParams,
-                                      inputfilename,
-                                      outputfilename,
-                                      sparse,
-                                      initfilename,
-                                      index_base,
-                                      gz,
-                                      facDims_h,
-                                      nnz,
-                                      tensor_outputfilename);
+                                                    json_input,
+                                                    inputfilename,
+                                                    outputfilename,
+                                                    sparse,
+                                                    initfilename,
+                                                    index_base,
+                                                    gz,
+                                                    facDims_h,
+                                                    nnz,
+                                                    tensor_outputfilename);
 #endif
 #ifdef KOKKOS_ENABLE_OPENMP
     else if (algParams.exec_space == Genten::Execution_Space::OpenMP)
       ret = main_driver<Kokkos::OpenMP>(algParams,
+                                        json_input,
                                         inputfilename,
                                         outputfilename,
                                         sparse,
-                                        initfilename,
+                                        init,
                                         index_base,
                                         gz,
                                         facDims_h,
@@ -355,10 +528,11 @@ int main(int argc, char* argv[])
 #ifdef KOKKOS_ENABLE_THREADS
     else if (algParams.exec_space == Genten::Execution_Space::Threads)
       ret = main_driver<Kokkos::Threads>(algParams,
+                                         json_input,
                                          inputfilename,
                                          outputfilename,
                                          sparse,
-                                         initfilename,
+                                         init,
                                          index_base,
                                          gz,
                                          facDims_h,
@@ -368,10 +542,11 @@ int main(int argc, char* argv[])
 #ifdef KOKKOS_ENABLE_SERIAL
     else if (algParams.exec_space == Genten::Execution_Space::Serial)
       ret = main_driver<Kokkos::Serial>(algParams,
+                                        json_input,
                                         inputfilename,
                                         outputfilename,
                                         sparse,
-                                        initfilename,
+                                        init,
                                         index_base,
                                         gz,
                                         facDims_h,
@@ -382,13 +557,28 @@ int main(int argc, char* argv[])
       Genten::error("Invalid execution space: " + std::string(Genten::Execution_Space::names[algParams.exec_space]));
 
   }
-  catch(std::string sExc)
+  catch(const std::exception& e)
   {
-    std::cout << "*** Call to genten threw an exception:\n";
-    std::cout << "  " << sExc << "\n";
-    ret = 0;
+    if (Genten::DistContext::rank() == 0)
+      std::cout << "*** Call to genten threw an exception:" << std::endl
+                << "  " << e.what() << std::endl;
+    ret = -1;
+  }
+  catch(const std::string& s)
+  {
+    if (Genten::DistContext::rank() == 0)
+      std::cout << "*** Call to genten threw an exception:" << std::endl
+                << "  " << s << std::endl;
+    ret = -1;
+  }
+  catch(...)
+  {
+    if (Genten::DistContext::rank() == 0)
+      std::cout << "*** Call to genten threw an unknown exception"
+                << std::endl;
+    ret = -1;
   }
 
-  Kokkos::finalize();
+  Genten::FinalizeGenten();
   return ret;
 }

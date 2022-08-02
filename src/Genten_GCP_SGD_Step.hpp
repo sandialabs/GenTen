@@ -161,6 +161,7 @@ namespace Genten {
       typedef typename BaseType::VectorType VectorType;
 
       SGDStep() {}
+      SGDStep(AlgParams const& algParams, VectorType const& u){}
 
       virtual ~SGDStep() {}
 
@@ -216,8 +217,180 @@ namespace Genten {
 
     };
 
+    template <typename ExecSpace, typename LossFunction>
+    class SGDMomentumStep : public GCP_SGD_Step<ExecSpace,LossFunction> {
+    public:
+      typedef GCP_SGD_Step<ExecSpace,LossFunction> BaseType;
+      typedef typename BaseType::VectorType VectorType;
+
+      SGDMomentumStep(AlgParams const& algParams, VectorType const& u):
+        v_scale_(0.9), 
+        v_(u.clone()),
+        vt_(v_.getKtensor())
+      {
+        v_.zero();
+      }
+
+      virtual ~SGDMomentumStep() {}
+
+      virtual void setStep(const ttb_real s) { step_ = s; }
+
+      virtual ttb_real getStep() const { return step_; }
+
+      virtual void update() {}
+
+      virtual void reset() {}
+
+      virtual void setPassed() {
+      }
+
+      virtual void setFailed() {
+        v_.zero();
+      }
+
+      virtual void setNumSamples(const ttb_indx num_samples) {}
+
+      virtual void eval(const VectorType& g, VectorType& u) const
+      {
+        const ttb_real sgd_step = step_;
+        const ttb_real v_scale = v_scale_;
+        auto uv = u.getView();
+        auto gv = g.getView();
+        auto vv = v_.getView();
+
+        constexpr bool has_bounds = (LossFunction::has_lower_bound() ||
+                                     LossFunction::has_upper_bound());
+        constexpr ttb_real lb = LossFunction::lower_bound();
+        constexpr ttb_real ub = LossFunction::upper_bound();
+
+        u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
+        {
+          vv(i) = v_scale * vv(i) + sgd_step * gv(i);
+          ttb_real uu = uv(i) - vv(i);
+          if (has_bounds){
+            uu = uu < lb ? lb : (uu > ub ? ub : uu);
+          }
+          uv(i) = uu;
+        });
+      }
+
+      template <typename TeamMember>
+      KOKKOS_INLINE_FUNCTION
+      void update_async(const ttb_indx num_iters, const TeamMember& team) const {
+        Genten::error("SGDMomentumStep is not tested in aysnc code.");
+      }
+
+      KOKKOS_INLINE_FUNCTION
+      void eval_async(const unsigned dim, const ttb_indx row,
+                      const unsigned col, const ttb_real g,
+                      const KtensorT<ExecSpace>& u) const
+      {
+        Genten::error("SGDMomentumStep is not tested in aysnc code.");
+      }
+
+    protected:
+      ttb_real v_scale_;
+      ttb_real step_;
+      VectorType v_;
+      KtensorT<ExecSpace> vt_;
+    };
+
+    template <typename ExecSpace, typename LossFunction>
+    class DEMON : public GCP_SGD_Step<ExecSpace,LossFunction> {
+    public:
+      typedef GCP_SGD_Step<ExecSpace,LossFunction> BaseType;
+      typedef typename BaseType::VectorType VectorType;
+
+      DEMON(AlgParams const& algParams, VectorType const& u):
+        v_scale_(0.9), 
+        max_iters_(algParams.maxiters),
+        v_(u.clone()),
+        vt_(v_.getKtensor())
+      {
+        v_.zero();
+      }
+
+      virtual ~DEMON() {}
+
+      virtual void setStep(const ttb_real s) { step_ = s; }
+
+      virtual ttb_real getStep() const { return step_; }
+
+      virtual void update() {}
+
+      virtual void reset() {}
+
+      virtual void setPassed() {
+        ++current_iter;
+      }
+
+      virtual void setFailed() {
+        // TODO Not sure how to handle this one
+        current_iter = 0;
+        v_.zero();
+      }
+
+      virtual void setNumSamples(const ttb_indx num_samples) {}
+
+      virtual void eval(const VectorType& g, VectorType& u) const
+      {
+        const ttb_real sgd_step = step_;
+
+        const ttb_real mom_scale = [=]{
+          const auto tmp = 1 - ttb_real(current_iter)/ttb_real(max_iters_);
+          const auto denom = (1 - v_scale_) + v_scale_ * tmp;
+          return v_scale_ * (tmp/denom);
+        }();
+
+        auto uv = u.getView();
+        auto gv = g.getView();
+        auto vv = v_.getView();
+
+        constexpr bool has_bounds = (LossFunction::has_lower_bound() ||
+                                     LossFunction::has_upper_bound());
+        constexpr ttb_real lb = LossFunction::lower_bound();
+        constexpr ttb_real ub = LossFunction::upper_bound();
+
+        u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
+        {
+          vv(i) = mom_scale * vv(i) + sgd_step * gv(i);
+          ttb_real uu = uv(i) - vv(i);
+          if (has_bounds){
+            uu = uu < lb ? lb : (uu > ub ? ub : uu);
+          }
+          uv(i) = uu;
+        });
+      }
+
+      template <typename TeamMember>
+      KOKKOS_INLINE_FUNCTION
+      void update_async(const ttb_indx num_iters, const TeamMember& team) const {
+        Genten::error("SGDMomentumStep is not tested in aysnc code.");
+      }
+
+      KOKKOS_INLINE_FUNCTION
+      void eval_async(const unsigned dim, const ttb_indx row,
+                      const unsigned col, const ttb_real g,
+                      const KtensorT<ExecSpace>& u) const
+      {
+        Genten::error("SGDMomentumStep is not tested in aysnc code.");
+      }
+
+    protected:
+      ttb_real v_scale_;
+      std::int32_t max_iters_;
+      std::int32_t current_iter = 0;
+      ttb_real step_;
+      VectorType v_;
+      KtensorT<ExecSpace> vt_;
+    };
+
+
     struct AdamOp {
-      ttb_real beta;
+      ttb_real beta = 0.0;
+
+      //KOKKOS_INLINE_FUNCTION
+      AdamOp() = default;
 
       KOKKOS_INLINE_FUNCTION
       AdamOp(const ttb_real& beta_) : beta(beta_) {}

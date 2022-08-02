@@ -38,21 +38,25 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_CpAls.hpp"
+#include "Genten_Driver.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_IOtext.hpp"
+
+#include "Genten_CpAls.hpp"
 #ifdef HAVE_ROL
 #include "Genten_CP_Opt_Rol.hpp"
 #endif
 #ifdef HAVE_LBFGSB
 #include "Genten_CP_Opt_Lbfgsb.hpp"
 #endif
-
 #ifdef HAVE_GCP
 #include "Genten_GCP_LossFunctions.hpp"
 #include "Genten_GCP_SGD.hpp"
 #include "Genten_GCP_SGD_SA.hpp"
+#ifdef HAVE_DIST
+#include "Genten_DistGCP.hpp"
+#endif
 #ifdef HAVE_ROL
 #include "Genten_GCP_Opt.hpp"
 #include "Teuchos_RCP.hpp"
@@ -65,11 +69,13 @@ namespace Genten {
 
 template<typename ExecSpace>
 KtensorT<ExecSpace>
-driver(SptensorT<ExecSpace>& x,
-       KtensorT<ExecSpace>& u_init,
+driver(const DistTensorContext& dtc,
+       SptensorT<ExecSpace>& x,
+       KtensorT<ExecSpace>& u,
        AlgParams& algParams,
+       const ptree& ptree,
        PerfHistory& history,
-       std::ostream& out)
+       std::ostream& out_in)
 {
   typedef Genten::SptensorT<ExecSpace> Sptensor_type;
   typedef Genten::SptensorT<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
@@ -78,46 +84,39 @@ driver(SptensorT<ExecSpace>& x,
 
   Genten::SystemTimer timer(3, algParams.timings);
 
+  // Set parallel output stream
+  const ProcessorMap* pmap = dtc.pmap_ptr().get();
+  std::ostream& out = pmap->gridRank() == 0 ? out_in : Genten::bhcout;
+
   out.setf(std::ios_base::scientific);
   out.precision(2);
 
-  Ktensor_type u(algParams.rank, x.ndims(), x.size());
-  Ktensor_host_type u_host =
-    create_mirror_view( Genten::DefaultHostExecutionSpace(), u );
-
   // Generate a random starting point if initial guess is empty
-  if (u_init.ncomponents() == 0 && u_init.ndims() == 0) {
-    u_init = Ktensor_type(algParams.rank, x.ndims(), x.size());
-
-    Genten::RandomMT cRMT(algParams.seed);
+  if (u.ncomponents() == 0 && u.ndims() == 0) {
     timer.start(0);
-    if (algParams.prng) {
-      u_init.setWeights(1.0); // Matlab cp_als always sets the weights to one.
-      u_init.setMatricesScatter(false, true, cRMT);
-      if (algParams.debug) deep_copy( u_host, u_init );
-    }
-    else {
-      u_host.setWeights(1.0); // Matlab cp_als always sets the weights to one.
-      u_host.setMatricesScatter(false, false, cRMT);
-      deep_copy( u_init, u_host );
-    }
-    // Normalize
-    const ttb_real norm_x = x.norm();
-    const ttb_real norm_u = std::sqrt(u_init.normFsq());
-    u_init.weights().times(norm_x/norm_u);
+    u = dtc.randomInitialGuess<ExecSpace>(x, algParams.rank, algParams.seed,
+                                          algParams.prng,
+                                          algParams.dist_guess_method);
     timer.stop(0);
     if (algParams.timings)
       out << "Creating random initial guess took " << timer.getTotalTime(0)
           << " seconds\n";
   }
 
-  // Copy initial guess into u
-  deep_copy(u, u_init);
-
-  if (algParams.debug) Genten::print_ktensor(u_host, out, "Initial guess");
+  if (algParams.debug) {
+    Ktensor_type u0 = dtc.importToRoot(u);
+    Ktensor_host_type u0_host = create_mirror_view(
+    Genten::DefaultHostExecutionSpace(), u0 );
+    deep_copy(u0_host, u0);
+    Genten::print_ktensor(u0_host, out, "Initial guess");
+  }
 
   // Fixup algorithmic choices
   algParams.fixup<ExecSpace>(out);
+
+  // Set parallel maps
+  x.setProcessorMap(pmap);
+  u.setProcessorMap(pmap);
 
   if (algParams.warmup)
   {
@@ -187,14 +186,25 @@ driver(SptensorT<ExecSpace>& x,
     // Run GCP-SGD
     ttb_indx iter;
     ttb_real resNorm;
-    gcp_sgd(x, u, algParams, iter, resNorm, out);
+    gcp_sgd(x, u, algParams, iter, resNorm, history, out);
   }
   else if (algParams.method == Genten::Solver_Method::GCP_SGD &&
            algParams.fuse_sa) {
     // Run GCP-SGD
     ttb_indx iter;
     ttb_real resNorm;
-    gcp_sgd_sa(x, u, algParams, iter, resNorm, out);
+    gcp_sgd_sa(x, u, algParams, iter, resNorm, history, out);
+  }
+  else if (algParams.method == Genten::Solver_Method::GCP_SGD_DIST) {
+#ifdef HAVE_DIST
+    // Run Drew's distributed GCP-SGD implementation
+    x.setProcessorMap(nullptr); // DistGCP handles communication itself
+    u.setProcessorMap(nullptr);
+    DistGCP<ExecSpace> dgcp(dtc, x, u, ptree, history);
+    ttb_real resNorm = dgcp.compute();
+#else
+    Genten::error("gcp-sgd-dist requires MPI support!");
+#endif
   }
 #ifdef HAVE_ROL
   else if (algParams.method == Genten::Solver_Method::GCP_OPT) {
@@ -218,12 +228,21 @@ driver(SptensorT<ExecSpace>& x,
                   Genten::Solver_Method::names[algParams.method]);
   }
 
-  if (algParams.debug) Genten::print_ktensor(u_host, out, "Solution");
+  if (algParams.debug) {
+    Ktensor_type u0 = dtc.importToRoot(u);
+    Ktensor_host_type u0_host = create_mirror_view(
+      Genten::DefaultHostExecutionSpace(), u0 );
+    deep_copy(u0_host, u0);
+    Genten::print_ktensor(u0_host, out, "Solution");
+  }
 
 #if defined(HAVE_GCP) && defined(HAVE_ROL)
   if (algParams.method == Genten::Solver_Method::GCP_OPT)
     Teuchos::TimeMonitor::summarize();
 #endif
+
+  x.setProcessorMap(nullptr);
+  u.setProcessorMap(nullptr);
 
   return u;
 }
@@ -347,9 +366,11 @@ driver(TensorT<ExecSpace>& x,
 #define INST_MACRO(SPACE)                                               \
   template KtensorT<SPACE>                                              \
   driver<SPACE>(                                                        \
+    const DistTensorContext& dtc,                                       \
     SptensorT<SPACE>& x,                                                \
     KtensorT<SPACE>& u_init,                                            \
     AlgParams& algParams,                                               \
+    const ptree& ptree,                                                 \
     PerfHistory& history,                                               \
     std::ostream& os);                                                  \
                                                                         \

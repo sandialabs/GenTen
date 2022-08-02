@@ -166,6 +166,7 @@ scatter (const bool bUseMatlabRNG,
   }
   else
   {
+    auto d = create_mirror_view(data);
     for (ttb_indx  i = 0; i < sz; i++)
     {
       ttb_real  dNextRan;
@@ -173,7 +174,7 @@ scatter (const bool bUseMatlabRNG,
         dNextRan = cRMT.genMatlabMT();
       else
         dNextRan = cRMT.genrnd_double();
-      data[i] = dNextRan;
+      d[i] = dNextRan;
       /*TBD...legacy randomization
         data[i]= 0;
         while (data[i] == 0.0) {
@@ -181,6 +182,7 @@ scatter (const bool bUseMatlabRNG,
         }
       */
     }
+    deep_copy(data, d);
   }
   return;
 }
@@ -313,7 +315,19 @@ dot(const Genten::ArrayT<ExecSpace> & y) const
     Genten::error("Genten::ArrayT::dot - Size mismatch");
   }
 
-  return(Genten::dot(sz, data.data(), 1, y.data.data(), 1));
+  //return(Genten::dot(sz, data.data(), 1, y.data.data(), 1));
+
+  auto my_data = data; // can't capture *this by value
+  ttb_real d = 0.0;
+  Kokkos::parallel_reduce("Genten::Array::dot_kernel",
+                          Kokkos::RangePolicy<ExecSpace>(0,sz),
+                          KOKKOS_LAMBDA(const ttb_indx i, ttb_real& t)
+  {
+    t += my_data(i)*y.data(i);
+  }, d);
+  Kokkos::fence();
+
+  return d;
 }
 
 template <typename ExecSpace>

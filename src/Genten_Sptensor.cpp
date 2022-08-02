@@ -88,7 +88,7 @@ SptensorT(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls,
   siz(nd,sz), nNumDims(nd), values(nz,vls,false),
   subs(Kokkos::view_alloc("Genten::Sptensor::subs",
                           Kokkos::WithoutInitializing),nz,nd),
-  perm(), is_sorted(false)
+  perm(), is_sorted(false), pmap(nullptr)
 {
   siz_host = create_mirror_view(siz);
   deep_copy(siz_host, siz);
@@ -105,7 +105,7 @@ SptensorT(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals,
   siz(nd,dims), nNumDims(nd), values(nz,vals,false),
   subs(Kokkos::view_alloc("Genten::Sptensor::subs",
                           Kokkos::WithoutInitializing),nd,nz),
-  perm(), is_sorted(false)
+  perm(), is_sorted(false), pmap(nullptr)
 {
   siz_host = create_mirror_view(siz);
   deep_copy(siz_host, siz);
@@ -124,7 +124,7 @@ SptensorT(const std::vector<ttb_indx>& dims,
   nNumDims(dims.size()),
   values(vals.size(),const_cast<ttb_real*>(vals.data()),false),
   subs("Genten::Sptensor::subs",vals.size(),dims.size()),
-  perm(), is_sorted(false)
+  perm(), is_sorted(false), pmap(nullptr)
 {
   siz_host = create_mirror_view(siz);
   deep_copy(siz_host, siz);

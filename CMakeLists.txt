@@ -47,12 +47,8 @@ CMAKE_MINIMUM_REQUIRED (VERSION 3.16)
 #---- to the directory where cmake has been invoked.
 project(Genten VERSION "0.0.0")
 
-#---- Require C++14 (or C++17 for SYCL) without GNU extensions
-IF(GENTEN_ENABLE_SYCL_FOR_CUDA)
-  SET(CMAKE_CXX_STANDARD 17)
-ELSE()
-  SET(CMAKE_CXX_STANDARD 14)
-ENDIF()
+#---- Require C++17 without GNU extensions
+SET(CMAKE_CXX_STANDARD 17)
 SET(CMAKE_CXX_EXTENSIONS OFF)
 
 #------------------------------------------------------------
@@ -60,7 +56,8 @@ SET(CMAKE_CXX_EXTENSIONS OFF)
 #------------------------------------------------------------
 # Note: OPTION is a binary thing and can't have string in them
 OPTION(BUILD_SHARED_LIBS "Build shared libraries." OFF)
-OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files" OFF)
+OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files and distributed memory functionality" OFF)
+OPTION(ENABLE_MPI "Enable MPI distributed memory functionality" OFF)
 OPTION(ENABLE_CALIPER "Enable Caliper for application profiling" OFF)
 OPTION(ENABLE_MATLAB "Enable MATLAB linkage to Tensor Toolbox" OFF)
 OPTION(FLOAT_TYPE "C++ data type used for floating-point values" OFF)
@@ -89,6 +86,7 @@ ENDIF()
 # Check minimum compiler version
 INCLUDE (cmake/CheckCompilerVersion.cmake)
 
+
 # If we are doing an inline build of Kokkos
 IF(KOKKOS_INLINE_BUILD)
 
@@ -113,14 +111,35 @@ ELSE()
 ENDIF()
 SET(HAVE_KOKKOS ON)
 
+# Embedded "JSON for Modern C++" library
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+add_subdirectory(tpls/json)
+
+# Embedded "JSON schema validator for JSON for Modern C++"
+set(JSON_VALIDATOR_BUILD_TESTS OFF CACHE INTERNAL "")
+set(JSON_VALIDATOR_BUILD_EXAMPLES OFF CACHE INTERNAL "")
+add_subdirectory(tpls/json-validator)
+
 SET(GENTEN_LIBS "")
 
-IF (ENABLE_BOOST)
-  OPTION(BOOST_PATH "Path to BOOST installation")
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -isystem ${BOOST_PATH}/include")
-  SET(GENTEN_LIBS "${GENTEN_LIBS} -L${BOOST_PATH}/lib -lboost_iostreams -lz")
-  SET(HAVE_BOOST ${ENABLE_BOOST})
-ENDIF()
+if(ENABLE_MPI)
+  find_package(MPI REQUIRED)
+endif()
+if (MPI_FOUND)
+  set(HAVE_MPI ON)
+endif()
+
+if(ENABLE_BOOST)
+  find_package(Boost REQUIRED COMPONENTS iostreams)
+  find_package(ZLIB REQUIRED)
+endif()
+if (BOOST_FOUND AND ZLIB_FOUND)
+  set(HAVE_BOOST ON)
+endif()
+
+if(MPI_FOUND)
+  set(HAVE_DIST ON)
+endif()
 
 IF (ENABLE_CALIPER)
   OPTION(CALIPER_PATH "Path to Caliper installation")
@@ -267,6 +286,9 @@ INCLUDE_DIRECTORIES (
   ${Genten_BINARY_DIR}/CMakeInclude/
   ${Genten_SOURCE_DIR}/driver/
   ${Genten_SOURCE_DIR}/tpls/lbfgsb/
+  ${Genten_SOURCE_DIR}/tpls/json/single_include/nlohmann/
+  ${Genten_SOURCE_DIR}/tpls/json-validator/src/
+  ${Genten_SOURCE_DIR}/tpls/json-validator/src/nlohmann/
   )
 FILE (GLOB genten_headers
   ${Genten_SOURCE_DIR}/src/*.h
@@ -442,10 +464,39 @@ IF (ENABLE_GCP)
   # ENDIF()
 ENDIF()
 
-
 #---- Tell CMake to build the library.
 ADD_LIBRARY (gentenlib ${Genten_SOURCE_LIST})
 TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkos)
+TARGET_LINK_LIBRARIES(gentenlib nlohmann_json_schema_validator)
+TARGET_LINK_LIBRARIES(gentenlib nlohmann_json::nlohmann_json)
+IF(HAVE_BOOST)
+  TARGET_LINK_LIBRARIES(gentenlib Boost::iostreams ZLIB::ZLIB)
+ENDIF()
+
+ADD_LIBRARY(DistContextLib
+    ${Genten_SOURCE_DIR}/src/Genten_DistContext.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_Pmap.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_DistTensorContext.cpp
+    )
+TARGET_LINK_LIBRARIES(DistContextLib Kokkos::kokkos)
+TARGET_LINK_LIBRARIES(DistContextLib nlohmann_json_schema_validator)
+TARGET_LINK_LIBRARIES(DistContextLib nlohmann_json::nlohmann_json)
+TARGET_LINK_LIBRARIES(gentenlib DistContextLib )
+IF(HAVE_MPI)
+  TARGET_LINK_LIBRARIES(DistContextLib MPI::MPI_C)
+  IF(HAVE_BOOST)
+    TARGET_LINK_LIBRARIES(DistContextLib Boost::boost)
+  ENDIF()
+  ADD_LIBRARY(GentenMpiIoLib
+    ${Genten_SOURCE_DIR}/src/Genten_SpTn_Util.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_MPI_IO.cpp
+    )
+  TARGET_LINK_LIBRARIES(GentenMpiIoLib MPI::MPI_C)
+  IF(HAVE_BOOST)
+    TARGET_LINK_LIBRARIES(GentenMpiIoLib Boost::boost)
+  ENDIF()
+  TARGET_LINK_LIBRARIES(gentenlib GentenMpiIoLib)
+ENDIF()
 
 IF(Kokkos_ENABLE_HIP)
   IF(ROCM_SEARCH_PATH)
@@ -484,10 +535,17 @@ ENDIF()
 SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${ROL_LIBRARIES} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
 TARGET_LINK_LIBRARIES(${GENTEN_LINK_LIBS})
 INSTALL (
-  TARGETS gentenlib
+  TARGETS gentenlib DistContextLib nlohmann_json_schema_validator nlohmann_json
   EXPORT genten
   DESTINATION ${CMAKE_INSTALL_LIBDIR}
   )
+IF(HAVE_DIST)
+  INSTALL (
+    TARGETS GentenMpiIoLib
+    EXPORT genten
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  )
+ENDIF()
 
 #---- Adding the higher moment interface to the Library sources
 #---- Must be a better way to do this. Inside an IF??
@@ -703,6 +761,8 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
 
 ENDIF()
 
+add_subdirectory(tools)
+
 #------------------------------------------------------------
 #---- Testing
 #------------------------------------------------------------
@@ -712,14 +772,39 @@ enable_testing()
 add_test(Genten_Unit_Tests ${Genten_BINARY_DIR}/bin/unit_tests)
 SET_TESTS_PROPERTIES(Genten_Unit_Tests PROPERTIES FAIL_REGULAR_EXPRESSION "Error")
 
-function(add_mttkrp_tests name cmd args spaces)
+function(add_genten_tests name cmd args spaces)
   foreach(space ${spaces})
     string(CONCAT test_name ${name} "_" ${space})
     string(CONCAT test_args ${args} " --exec-space " ${space})
     separate_arguments(test_args)
     add_test(${test_name} ${cmd} ${test_args})
   endforeach()
-endfunction(add_mttkrp_tests)
+endfunction(add_genten_tests)
+
+function(add_genten_mpi_tests name cmd args spaces)
+  set(my_args "${args}")
+  set(test_cmd "${cmd}")
+  if (HAVE_MPI)
+    set(my_args " ${MPIEXEC_NUMPROC_FLAG}")
+    string(CONCAT my_args ${my_args} " " ${MPIEXEC_MAX_NUM_PROCS})
+    string(CONCAT my_args ${my_args} " " ${MPIEXEC_PREFLAGS})
+    string(CONCAT my_args ${my_args} " " ${cmd})
+    string(CONCAT my_args ${my_args} " " ${MPIEXEC_POSTFLAGS})
+    string(CONCAT my_args ${my_args} " " ${args})
+    set(test_cmd ${MPIEXEC_EXECUTABLE})
+  endif()
+  foreach(space ${spaces})
+    string(CONCAT test_name ${name} "_" ${space})
+    string(CONCAT test_args ${my_args} " --exec-space " ${space})
+    # The tests can run VERY slowly with multiple threads and MPI ranks,
+    # so run with a single thread for OpenMP and Threads
+    if (HAVE_MPI AND (space STREQUAL "openmp") OR (space STREQUAL "threads"))
+      string(CONCAT test_args ${test_args} " --kokkos-threads=1")
+    endif()
+    separate_arguments(test_args)
+    add_test(${test_name} ${test_cmd} ${test_args})
+  endforeach()
+endfunction(add_genten_mpi_tests)
 
 set(kokkos_devices "")
 if (Kokkos_ENABLE_SERIAL)
@@ -741,13 +826,25 @@ if (Kokkos_ENABLE_SYCL)
   list(APPEND kokkos_devices "sycl")
 endif()
 
-add_mttkrp_tests(Genten_MTTKRP_random_atomic "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method atomic" "${kokkos_devices}")
-add_mttkrp_tests(Genten_MTTKRP_random_dupl "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method duplicated" "${kokkos_devices}")
-add_mttkrp_tests(Genten_MTTKRP_random_perm "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method perm" "${kokkos_devices}")
-add_mttkrp_tests(Genten_MTTKRP_aminoacid_atomic "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method atomic" "${kokkos_devices}")
-add_mttkrp_tests(Genten_MTTKRP_aminoacid_dupl "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method duplicated" "${kokkos_devices}")
-add_mttkrp_tests(Genten_MTTKRP_aminoacid_perm "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method perm" "${kokkos_devices}")
-add_mttkrp_tests(Genten_MTTKRP_random_dense "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [30,40,50] --dense" "${kokkos_devices}")
+add_genten_tests(Genten_MTTKRP_random_atomic "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method atomic" "${kokkos_devices}")
+add_genten_tests(Genten_MTTKRP_random_dupl "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method duplicated" "${kokkos_devices}")
+add_genten_tests(Genten_MTTKRP_random_perm "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method perm" "${kokkos_devices}")
+add_genten_tests(Genten_MTTKRP_aminoacid_atomic "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method atomic" "${kokkos_devices}")
+add_genten_tests(Genten_MTTKRP_aminoacid_dupl "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method duplicated" "${kokkos_devices}")
+add_genten_tests(Genten_MTTKRP_aminoacid_perm "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method perm" "${kokkos_devices}")
+add_genten_tests(Genten_MTTKRP_random_dense "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [30,40,50] --dense" "${kokkos_devices}")
+
+add_genten_mpi_tests(Genten_driver_aminoacid_cpals "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpals.json" "${kokkos_devices}")
+if (HAVE_LBFGSB)
+  # Don't think this supports MPI properly yet
+  add_genten_tests(Genten_driver_aminoacid_cpopt "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpopt.json" "${kokkos_devices}")
+endif()
+if (HAVE_GCP)
+  add_genten_mpi_tests(Genten_driver_aminoacid_sgd "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-sgd.json" "${kokkos_devices}")
+  if (HAVE_MPI)
+    add_genten_mpi_tests(Genten_driver_aminoacid_sgd_dist "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-sgd-dist.json" "${kokkos_devices}")
+  endif()
+endif()
 
 #------------------------------------------------------------
 #---- Config

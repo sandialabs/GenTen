@@ -46,6 +46,7 @@
 
 #include "Genten_Util.hpp"
 #include "Genten_IndxArray.hpp"
+#include "Genten_Ptree.hpp"
 
 namespace Genten {
 
@@ -68,6 +69,7 @@ namespace Genten {
     bool rank_def_solver; // Use rank-deficient least-squares solver
     ttb_real rcond;      // Truncation threshold in rank-deficient solver
     ttb_real penalty;    // Regularization penalty
+    std::string dist_guess_method; // Method for distributed initial guess
 
     // MTTKRP options
     MTTKRP_Method::type mttkrp_method; // MTTKRP algorithm
@@ -123,12 +125,16 @@ namespace Genten {
     ttb_real adam_beta2;                 // Decay rate of second moment avg.
     ttb_real adam_eps;                   // Shift in ADAM/AdaGrad step
     bool async;                          // Asynchronous SGD solver
+    bool anneal;                         // Do Cosine annealing
+    ttb_real anneal_min_lr;
+    ttb_real anneal_max_lr;
 
     // Constructor initializing values to defaults
     AlgParams();
 
     // Parse options
     void parse(std::vector<std::string>& args);
+    void parse(const ptree& tree);
 
     // Print help string
     static void print_help(std::ostream& out);
@@ -209,6 +215,53 @@ namespace Genten {
     error_string << "." << std::endl;
     Genten::error(error_string.str());
     return T::default_type;
+  }
+
+  // A helper function for parsing standard values out of a ptree
+  // where the default value is the current value in val
+  template <typename T, typename U, typename V>
+  void parse_ptree_value(const Genten::ptree& input, const std::string& name,
+                         T& val, const U& lower, const V& upper)
+  {
+    val = input.get<T>(name, val);
+    if (val < lower || val > upper) {
+      std::ostringstream error_string;
+      error_string << "Bad input: " << name << " " << val
+                   << ",  must be in the range (" << lower << ", " << upper
+                   << ")" << std::endl;
+      Genten::error(error_string.str());
+    }
+  }
+  void parse_ptree_value(const Genten::ptree& input, const std::string& name,
+                         bool& val);
+  void parse_ptree_value(const Genten::ptree& input, const std::string& name,
+                         std::string& val);
+
+  template <typename T, typename U, typename V>
+  void parse_ptree_value(const Genten::ptree& input, const std::string& name,
+                         std::vector<T>& val,
+                         const U& lower, const V& upper)
+  {
+    val = input.get<std::vector<T> >(name);
+    int nv = val.size();
+    for (const auto& v : val) {
+      if (v < lower || v > upper) {
+        std::ostringstream error_string;
+        error_string << "Bad input: " << name << " " << v
+                     << ",  must be in the range (" << lower << ", " << upper
+                     << ")" << std::endl;
+        Genten::error(error_string.str());
+      }
+    }
+  }
+
+  // A helper function for parsing an enum out of a ptree where T is the
+  // struct using the pattern in Genten_Util.hpp
+  template <typename T>
+  void parse_ptree_enum(const Genten::ptree& input, const std::string& name,
+                        typename T::type& val)
+  {
+    val = Genten::parse_enum<T>(input.get<std::string>(name, T::names[val]));
   }
 
   // Convert (argc,argv) to list of strings
