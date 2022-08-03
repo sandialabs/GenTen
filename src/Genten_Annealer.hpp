@@ -49,6 +49,7 @@ namespace Genten {
 class AnnealerBase {
 public:
   AnnealerBase(ptree const &ptree) {}
+  virtual ~AnnealerBase() = default;
   virtual double operator()(int epoch) = 0;
   virtual void failed(){};
   virtual void success(){};
