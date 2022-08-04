@@ -41,6 +41,7 @@
 
 #include <iostream>
 #include <memory>
+#include <limits>
 
 #include "Genten_MPI_IO.hpp"
 
