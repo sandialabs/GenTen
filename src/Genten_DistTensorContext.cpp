@@ -207,7 +207,7 @@ distributeTensorToVectors(const Sptensor& sp_tensor_host, uint64_t nnz,
 
 namespace {
 int blockInThatDim(int element, const small_vector<int>& range) {
-  const auto nblocks = range.size();
+  // const auto nblocks = range.size();
   assert(element < range.back()); // This would mean the element is too large
   assert(range.size() >= 2);      // Range always has at least 2 elements
 
