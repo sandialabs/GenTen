@@ -25,7 +25,7 @@ stages:
   - test
 
 # Build genten (w/clang) and push to registry using docker-in-docker
-build-gitlab-clang-image:
+.build-gitlab-clang-image:
   stage: build
   image: docker:stable
   services:
@@ -42,7 +42,7 @@ build-gitlab-clang-image:
     - if: $CI_SERVER_HOST == "gitlab.com"
 
 # Build genten (w/gcc) and push to registry using docker-in-docker
-.build-gitlab-gcc-image:
+build-gitlab-gcc-image:
   stage: build
   image: docker:stable
   services:
