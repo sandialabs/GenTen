@@ -20,116 +20,9 @@ variables:
   GIT_STRATEGY: clone
   SAST_EXCLUDED_PATHS: "tpls"
 
-
 stages:
   - build
   - test
-
-# Clang build for internal repo
-# Disabling because internal runner isn't reliably picking up jobs
-.build-clang:
-  stage: build
-  tags:
-    - clang
-  script:
-    - cd ..
-    - rm -rf build_clang
-    - mkdir build_clang
-    - cd build_clang
-    - source ../genten/scripts/sems_clang/setup_env.sh
-    - ../genten/scripts/sems_clang/do_configure.sh
-    - make -j32
-    - ctest
-  rules:
-    - if: $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
-
-# Gcc build for internal repo
-# Disabling because internal runner isn't reliably picking up jobs
-.build-gcc:
-  stage: build
-  tags:
-    - gcc
-  script:
-    - cd ..
-    - rm -rf build_gcc
-    - mkdir build_gcc
-    - cd build_gcc
-    - source ../genten/scripts/sems_gcc/setup_env.sh
-    - ../genten/scripts/sems_gcc/do_configure.sh
-    - make -j32
-    - ctest
-  rules:
-    - if: $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
-
-# Intel build for internal repo
-# Disabling because internal runner isn't reliably picking up jobs
-.build-intel:
-  stage: build
-  tags:
-    - intel
-  script:
-    - cd ..
-    - rm -rf build_intel
-    - mkdir build_intel
-    - cd build_intel
-    - source ../genten/scripts/sems_intel/setup_env.sh
-    - ../genten/scripts/sems_intel/do_configure.sh
-    - make -j32
-    - ctest
-  rules:
-    - if: $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
-
-# Cuda-kepler build for internal repo
-# Disabling because internal runner isn't reliably picking up jobs
-.build-cuda-kepler:
-  stage: build
-  tags:
-    - cuda_kepler
-  script:
-    - cd ..
-    - rm -rf build_cuda_kepler
-    - mkdir build_cuda_kepler
-    - cd build_cuda_kepler
-    - source ../genten/scripts/elbert_cuda_kepler/setup_env.sh
-    - ../genten/scripts/elbert_cuda_kepler/do_configure.sh
-    - make -j32
-    - ctest
-  rules:
-    - if: $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
-
-# Gcc build for external repo (run manually and is optional)
-build-gitlab-gcc:
-  stage: build
-  image: registry.gitlab.com/tensors/genten/build_gnu_clang:latest
-  script:
-    - cd ..
-    - rm -rf build_gitlab_gcc
-    - mkdir build_gitlab_gcc
-    - cd build_gitlab_gcc
-    - ../genten/scripts/gitlab_gcc/do_configure.sh
-    - make -j4
-    - ctest
-  rules:
-    - if: $CI_SERVER_HOST == "gitlab.com"
-      when: manual
-      allow_failure: true
-
-# Clang build for external repo (run manually and is optional)
-build-gitlab-clang:
-  stage: build
-  image: registry.gitlab.com/tensors/genten/build_gnu_clang:latest
-  script:
-    - cd ..
-    - rm -rf build_gitlab_clang
-    - mkdir build_gitlab_clang
-    - cd build_gitlab_clang
-    - ../genten/scripts/gitlab_clang/do_configure.sh
-    - make -j4
-    - ctest
-  rules:
-    - if: $CI_SERVER_HOST == "gitlab.com"
-      when: manual
-      allow_failure: true
 
 # Build genten (w/clang) and push to registry using docker-in-docker
 build-gitlab-clang-image:
@@ -139,26 +32,28 @@ build-gitlab-clang-image:
     - docker:stable-dind
   script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - docker pull $CI_REGISTRY_IMAGE:latest || true
-    - docker build --cache-from $CI_REGISTRY_IMAGE:latest -t genten:latest --build-arg ARCH=SNB -f docker/Dockerfile_clang_openmp_image .
-    - docker run --name gt -w /build/genten -t genten:latest ctest
-    - docker tag genten:latest $CI_REGISTRY_IMAGE:latest
-    - docker push $CI_REGISTRY_IMAGE:latest
-    - docker rmi $CI_REGISTRY_IMAGE:latest
+    - docker pull ${CI_REGISTRY_IMAGE}-clang-openmp-snb:latest || true
+    - docker build --cache-from ${CI_REGISTRY_IMAGE}-clang-openmp-snb:latest -t genten-clang-openmp-snb:latest --build-arg ARCH=SNB -f docker/Dockerfile_clang_openmp_image .
+    - docker run --name gt -w /build/genten -t genten-clang-openmp-snb:latest ctest
+    - docker tag genten-clang-openmp-snb:latest ${CI_REGISTRY_IMAGE}-clang-openmp-snb:latest
+    - docker push ${CI_REGISTRY_IMAGE}-clang-openmp-snb:latest
+    - docker rmi ${CI_REGISTRY_IMAGE}-clang-openmp-snb:latest
   rules:
     - if: $CI_SERVER_HOST == "gitlab.com"
 
-# Build genten (w/clang) and push to registry using podman
-# Disable this for now because the runner seems to not be working
-.build-clang-image:
+# Build genten (w/gcc) and push to registry using docker-in-docker
+build-gitlab-gcc-image:
   stage: build
+  image: docker:stable
+  services:
+    - docker:stable-dind
   script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - docker pull $CI_REGISTRY_IMAGE:latest || true
-    - docker build --cache-from $CI_REGISTRY_IMAGE:latest -t genten:latest --format=docker --build-arg ARCH=SNB -f docker/Dockerfile_clang_openmp_image .
-    - docker run --name gt -w /build/genten -t genten:latest ctest
-    - docker tag genten:latest $CI_REGISTRY_IMAGE:latest
-    - docker push $CI_REGISTRY_IMAGE:latest
-    - docker rmi $CI_REGISTRY_IMAGE:latest
+    - docker pull ${CI_REGISTRY_IMAGE}-gcc-openmpi-openmp-snb:latest || true
+    - docker build --cache-from ${CI_REGISTRY_IMAGE}-gcc-openmpi-openmp-snb:latest -t genten-gcc-openmpi-openmp-snb:latest --build-arg ARCH=SNB -f docker/Dockerfile_gcc_openmp_image .
+    - docker run --name gt -w /build/genten -t genten-gcc-openmpi-openmp-snb:latest ctest
+    - docker tag genten-gcc-openmpi-openmp-snb:latest ${CI_REGISTRY_IMAGE}-gcc-openmpi-openmp-snb:latest
+    - docker push ${CI_REGISTRY_IMAGE}-gcc-openmpi-openmp-snb:latest
+    - docker rmi ${CI_REGISTRY_IMAGE}-gcc-openmpi-openmp-snb:latest
   rules:
-    - if: $CI_SERVER_HOST == "cee-gitlab.sandia.gov"
+    - if: $CI_SERVER_HOST == "gitlab.com"
