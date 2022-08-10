@@ -4,7 +4,8 @@
 # This is intended to be run from the top-level genten source tree
 
 # Base image -- assumes an image with the sycl compiler is already created
-FROM sycl:base
+ARG BASE=sycl:base
+FROM $BASE
 MAINTAINER Eric Phipps <etphipp@sandia.gov>
 
 # Change to bash so we have, e.g., -o pipefail
