@@ -1,6 +1,12 @@
 ARG BASE=nvidia/cuda:11.7.0-devel-ubuntu22.04
 FROM $BASE
 
+# Note, older cuda images may need the following due to some repo changes that
+# were not backported to the older images.  However, GenTen may not build with
+# older images due to errors about a missing C++17 "execution" header. Changing
+# the image also requires updating the CUDA_LIB_PATH below.
+#RUN rm /etc/apt/sources.list.d/cuda.list && rm /etc/apt/sources.list.d/nvidia-ml.list
+
 RUN apt-get update && apt-get install -y \
         bc \
         wget \
