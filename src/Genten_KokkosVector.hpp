@@ -192,8 +192,6 @@ namespace Genten {
 
     ttb_real dot(const KokkosVector& x) const
     {
-      Ktensor_type kt = getKtensor();
-      Ktensor_type xkt = x.getKtensor();
       view_type my_v = v;
       view_type xv = x.v;
       ttb_real result = 0.0;
