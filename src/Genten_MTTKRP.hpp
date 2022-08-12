@@ -849,7 +849,10 @@ void mttkrp_all(const SptensorT<ExecSpace>& X,
     Genten::error(std::string("Unknown MTTKRP-all method:  ") +
                   std::string(MTTKRP_All_Method::names[method]));
 
-  if (u.getProcessorMap() != nullptr) {
+  // We don't need to do the inter-process reduction for iterated, because it
+  // does it itself
+  if (u.getProcessorMap() != nullptr &&
+      algParams.mttkrp_all_method != MTTKRP_All_Method::Iterated) {
     Kokkos::fence();
     for (ttb_indx n=0; n<nd; ++n)
       u.getProcessorMap()->subGridAllReduce(n, v[n].view().data(),

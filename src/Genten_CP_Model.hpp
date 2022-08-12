@@ -43,6 +43,7 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_HessVec.hpp"
+#include "Genten_Pmap.hpp"
 
 namespace Genten {
 
@@ -105,9 +106,10 @@ namespace Genten {
     {
       const ttb_indx nc = M.ncomponents();
       const ttb_indx nd = M.ndims();
-      const ttb_real nrm_X = X.norm();
+      const ttb_real nrm_X = X.global_norm();
       nrm_X_sq = nrm_X*nrm_X;
 
+      // Note gram and hada are not distributed, so we don't set the pmap
       gram.resize(nd);
       hada.resize(nd);
       for (ttb_indx i=0; i<nd; ++i) {
@@ -161,6 +163,7 @@ namespace Genten {
   {
     const ttb_indx nd = M.ndims();
     mttkrp_all(X, M, G, algParams);
+
     for (ttb_indx n=0; n<nd; ++n)
       G[n].gemm(false, false, ttb_real(1.0), M[n], hada[n], ttb_real(-1.0));
   }
@@ -203,7 +206,8 @@ namespace Genten {
       const ttb_indx nc = M.ncomponents();
       const ttb_indx nd = M.ndims();
 
-      KtensorT<exec_space> Mp(nc, nd, X.size()), Up(nc, nd, X.size());
+      KtensorT<exec_space> Mp(nc, nd, X.size(), M.getProcessorMap()),
+        Up(nc, nd, X.size(), U.getProcessorMap());
       Mp.setWeights(1.0);
       U.setWeights(1.0);
       for (ttb_indx n=0; n<nd; ++n) {

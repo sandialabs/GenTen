@@ -550,6 +550,13 @@ void hess_vec(const SptensorT<ExecSpace>& X,
 
   // Add in the second (ktensor) term
   Impl::hess_vec_ktensor_term(a, v, u);
+
+  if (u.getProcessorMap() != nullptr) {
+    Kokkos::fence();
+    for (ttb_indx n=0; n<nd; ++n)
+      u.getProcessorMap()->subGridAllReduce(n, u[n].view().data(),
+                                            u[n].view().span());
+  }
 }
 
 template <typename ExecSpace>
@@ -589,6 +596,14 @@ void hess_vec(const TensorT<ExecSpace>& X,
 
   // Add in the second (ktensor) term
   Impl::hess_vec_ktensor_term(a, v, u);
+
+  // allReduce disabled because TensorT doesn't yet support MPI parallelism
+  // if (u.getProcessorMap() != nullptr) {
+  //   Kokkos::fence();
+  //   for (ttb_indx n=0; n<nd; ++n)
+  //     u.getProcessorMap()->subGridAllReduce(n, u[n].view().data(),
+  //                                           u[n].view().span());
+  // }
 }
 
 template <typename TensorType>
@@ -655,6 +670,13 @@ void gauss_newton_hess_vec(const TensorType& X,
 
       } // j
     }, "hessvec_ktensor_kernel");
+  }
+
+  if (u.getProcessorMap() != nullptr) {
+    Kokkos::fence();
+    for (ttb_indx n=0; n<nd; ++n)
+      u.getProcessorMap()->subGridAllReduce(n, u[n].view().data(),
+                                            u[n].view().span());
   }
 }
 

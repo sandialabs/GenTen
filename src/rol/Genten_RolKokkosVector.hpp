@@ -69,8 +69,9 @@ namespace Genten {
       assert(make_view == false);
     }
 
-    RolKokkosVector(const unsigned nc, const unsigned nd, const IndxArray& sz) :
-      kv(nc,nd,sz)
+    RolKokkosVector(const unsigned nc, const unsigned nd, const IndxArray& sz,
+                    const ProcessorMap* pmap = nullptr) :
+      kv(nc,nd,sz,pmap)
     {
     }
 

@@ -8,7 +8,7 @@
     "k-tensor":
     {
         "rank": 16,
-        "output": "aminoacid.ktn",
+        "output-file": "aminoacid.ktn",
         "initial-guess": "rand",
         "distributed-guess": "parallel-drew",
         "seed": 12345,

@@ -302,16 +302,11 @@ public:
   void arrange(const IndxArray& permutation_indices) const;
 
   // Return the Frobenius norm squared (sum of squares of each tensor element).
-  ttb_real normFsq(const ProcessorMap* proc_map) const;
-  ttb_real normFsq() const { return normFsq(pmap); }
+  ttb_real normFsq() const;
 
   // Return the Frobenius norm squared (sum of squares of each tensor element)
   // using specified weights array w
-  ttb_real normFsq(const ProcessorMap* proc_map,
-                   const ArrayT<ExecSpace> & w) const;
-  ttb_real normFsq(const ArrayT<ExecSpace> & w) const {
-    return normFsq(pmap,w);
-  }
+  ttb_real normFsq(const ArrayT<ExecSpace> & w) const;
 
 private:
 

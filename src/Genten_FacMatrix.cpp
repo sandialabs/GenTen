@@ -696,9 +696,11 @@ gramian(const Genten::FacMatrixT<ExecSpace> & v, const bool full,
 
   Genten::Impl::gramianImpl<ExecSpace>(data,v.data,full,uplo);
 
-  if (pmap != nullptr) {
+  // We check if v is distributed, not *this, because the result of the gramian
+  // should be replicated, not distributed
+  if (v.pmap != nullptr) {
     Kokkos::fence();
-    pmap->allReduce(data.data(), data.span());
+    v.pmap->allReduce(data.data(), data.span());
   }
 }
 

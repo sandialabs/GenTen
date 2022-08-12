@@ -154,7 +154,9 @@ driver(const DistTensorContext& dtc,
     timer.start(2);
     if (algParams.opt_method == Genten::Opt_Method::LBFGSB) {
 #ifdef HAVE_LBFGSB
-      // Run CP-OPT using L-BFGS-B
+      // Run CP-OPT using L-BFGS-B.  It does not support MPI parallelism
+      if (dtc.nprocs() > 1)
+        Genten::error("CP-OPT using L-BFGS-B does not support MPI parallelism with > 1 processor.  Try ROL instead.");
       cp_opt_lbfgsb(x, u, algParams, history);
 #else
       Genten::error("L-BFGS-B requested but not available!");

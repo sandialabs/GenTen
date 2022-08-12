@@ -93,12 +93,6 @@ int main_driver(Genten::AlgParams& algParams,
 
   Genten::DistTensorContext dtc;
 
-  // Read in initial guess if provided
-  Ktensor_type u_init;
-  if (initfilename != "") {
-    u_init = dtc.readInitialGuess<Space>(initfilename);
-  }
-
   Ktensor_type u;
   Genten::PerfHistory history;
   if (sparse) {
@@ -148,6 +142,12 @@ int main_driver(Genten::AlgParams& algParams,
     }
     if (algParams.debug) Genten::print_sptensor(x_host, std::cout, "tensor");
 
+    // Read in initial guess if provided
+    Ktensor_type u_init;
+    if (initfilename != "") {
+      u_init = dtc.readInitialGuess<Space>(initfilename);
+    }
+
     // Compute decomposition
     u = Genten::driver(dtc, x, u_init, algParams, json_input, history,
                        std::cout);
@@ -193,6 +193,12 @@ int main_driver(Genten::AlgParams& algParams,
     }
 
     if (algParams.debug) Genten::print_tensor(x_host, std::cout, "tensor");
+
+    // Read in initial guess if provided
+    Ktensor_type u_init;
+    if (initfilename != "") {
+      u_init = dtc.readInitialGuess<Space>(initfilename);
+    }
 
     // Compute decomposition
     u = Genten::driver(x, u_init, algParams, history, std::cout);
@@ -391,8 +397,8 @@ int main(int argc, char* argv[])
       auto ktensor_input_o = json_input.get_child_optional("k-tensor");
       if (ktensor_input_o) {
         auto& ktensor_input = *ktensor_input_o;
-        Genten::parse_ptree_value(ktensor_input, "init", init);
-        Genten::parse_ptree_value(ktensor_input, "output", outputfilename);
+        Genten::parse_ptree_value(ktensor_input, "initial-file", init);
+        Genten::parse_ptree_value(ktensor_input, "output-file", outputfilename);
       }
     }
 
@@ -413,9 +419,9 @@ int main(int argc, char* argv[])
     facDims_h =
       Genten::parse_ttb_indx_array(args, "--dims", facDims_h, 1, INT_MAX);
     init =
-      Genten::parse_string(args, "--init", init);
+      Genten::parse_string(args, "--initial-file", init);
     outputfilename =
-      Genten::parse_string(args, "--output", outputfilename);
+      Genten::parse_string(args, "--output-file", outputfilename);
 
     // Everything else
     algParams.parse(args);
@@ -442,10 +448,10 @@ int main(int argc, char* argv[])
         std::cout << "  nnz = " << nnz << std::endl;
       }
       if (init != "")
-        std::cout << "  init = " << init << std::endl;
+        std::cout << "  initial-file = " << init << std::endl;
       if (tensor_outputfilename != "")
         std::cout << "  save_tensor = " << tensor_outputfilename << std::endl;
-      std::cout << "  output = " << outputfilename << std::endl;
+      std::cout << "  output-file = " << outputfilename << std::endl;
       std::cout << "  sparse = " << (sparse ? "true" : "false") << std::endl;
       std::cout << "  index_base = " << index_base << std::endl;
       std::cout << "  gz = " << (gz ? "true" : "false") << std::endl;

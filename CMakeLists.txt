@@ -850,8 +850,11 @@ add_genten_tests(Genten_MTTKRP_random_dense "${Genten_BINARY_DIR}/bin/perf_MTTKR
 
 add_genten_mpi_tests(Genten_driver_aminoacid_cpals "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpals.json" "${kokkos_driver_devices}")
 if (HAVE_LBFGSB)
-  # Don't think this supports MPI properly yet
-  add_genten_tests(Genten_driver_aminoacid_cpopt "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpopt.json" "${kokkos_driver_devices}")
+  # L-BFGS-B does not work with MPI (implements its own vector operations)
+  add_genten_tests(Genten_driver_aminoacid_cpopt-lbfgsb "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpopt-lbfgsb.json" "${kokkos_driver_devices}")
+endif()
+if (HAVE_ROL)
+  add_genten_mpi_tests(Genten_driver_aminoacid_cpopt-rol "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpopt-rol.json" "${kokkos_driver_devices}")
 endif()
 if (HAVE_GCP)
   add_genten_mpi_tests(Genten_driver_aminoacid_sgd "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-sgd.json" "${kokkos_driver_devices}")

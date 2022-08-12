@@ -183,8 +183,6 @@ namespace Genten {
     for (ttb_indx n = 0; n < nd; n ++)
     {
       gamma.set_factor( n, FacMatrixT<ExecSpace>(u[n].nCols(), u[n].nCols()) );
-      if (pmap != nullptr)
-        gamma[n].setProcessorMap(pmap->facMap(n));
     }
     for (ttb_indx n = 1; n < nd; n ++)
     {

@@ -9,7 +9,7 @@
     "k-tensor":
     {
         "rank": 16,
-        "output": "aminoacid.ktn",
+        "output-file": "aminoacid.ktn",
         "initial-guess": "rand",
         "distributed-guess": "serial",
         "seed": 12345,
@@ -17,6 +17,7 @@
     },
     "cp-opt":
     {
+        "method": "rol",
         "maxiters": 20,
         "tol": 1e-4,
         "mttkrp":
@@ -33,7 +34,7 @@
         },
         "iterations":
         {
-            "value": 19,
+            "value": 20,
             "absolute-tolerance": 2
         }
     }

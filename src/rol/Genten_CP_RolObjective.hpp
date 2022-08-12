@@ -122,12 +122,12 @@ namespace Genten {
       const ttb_indx nc = M.ncomponents();
       const ttb_indx nd = M.ndims();
 #if COPY_KTENSOR
-      V = ktensor_type(nc, nd, x.size());
-      G = ktensor_type(nc, nd, x.size());
+      V = ktensor_type(nc, nd, x.size(), M.getProcessorMap());
+      G = ktensor_type(nc, nd, x.size(), M.getProcessorMap());
 #endif
 
       timer.start(0);
-      nrm_X_sq = x.norm();
+      nrm_X_sq = x.global_norm();
       nrm_X_sq = nrm_X_sq*nrm_X_sq;
 
       history.addEmpty();

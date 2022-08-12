@@ -182,14 +182,18 @@ static nlohmann::json json_schema = R"(
                   "type": "integer",
                   "minimum": 1
               },
-              "output": {
+              "output-file": {
                   "description": "Path to output K-tensor file",
                   "type": "string"
               },
               "initial-guess": {
                   "description": "Type of initial guess to use",
-                  "enum": ["rand", "initial-file"],
+                  "enum": ["rand", "file"],
                   "default": "rand"
+              },
+              "initial-file": {
+                  "description": "Path to initial K-tensor file",
+                  "type": "string"
               },
               "distributed-guess": {
                   "description": "How to compute parallel-distributed initial guess",

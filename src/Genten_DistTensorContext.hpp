@@ -221,7 +221,7 @@ ttb_real
 DistTensorContext::
 globalNorm(const KtensorT<ExecSpace>& u) const
 {
-  return std::sqrt(u.normFsq(pmap_.get()));
+  return std::sqrt(u.normFsq());
 }
 
 template <typename ExecSpace>

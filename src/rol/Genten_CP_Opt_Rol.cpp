@@ -87,7 +87,7 @@ namespace Genten {
         Genten::error("Genten::cp_opt - u and x have different size");
     }
 
-    Genten::SystemTimer timer(1);
+    Genten::SystemTimer timer(1, u.getProcessorMap());
     timer.start(0);
 
     // Distribute the initial guess to have weights of one since the objective
@@ -149,7 +149,7 @@ namespace Genten {
     // Compute final fit
     ttb_real tol;
     const ttb_real res = objective->value(*z, tol);
-    const ttb_real nrm = x.norm();
+    const ttb_real nrm = x.global_norm();
     const ttb_real fit = ttb_real(1.0) - res / (ttb_real(0.5)*nrm*nrm) ;
     if (algParams.printitn > 0) {
       stream << "Final fit = " << fit << std::endl;
