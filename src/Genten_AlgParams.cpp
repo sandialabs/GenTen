@@ -314,7 +314,7 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_generic_solver_params(cpopt_input);
     parse_ptree_value(cpopt_input, "lower", lower, -DOUBLE_MAX, DOUBLE_MAX);
     parse_ptree_value(cpopt_input, "upper", upper, -DOUBLE_MAX, DOUBLE_MAX);
-    parse_ptree_value(cpopt_input, "rol", rolfilename);
+    parse_ptree_value(cpopt_input, "rol-file", rolfilename);
     parse_ptree_value(cpopt_input, "factr", factr, 0.0, DOUBLE_MAX);
     parse_ptree_value(cpopt_input, "pgtol", pgtol, 0.0, DOUBLE_MAX);
     parse_ptree_value(cpopt_input, "memory", memory, 0, INT_MAX);

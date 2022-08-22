@@ -291,7 +291,7 @@ static nlohmann::json json_schema = R"(
                   "type": "number",
                   "default": 1e300
               },
-              "file": {
+              "rol-file": {
                   "description": "Path to ROL optimization settings",
                   "type": "string",
                   "default": ""
