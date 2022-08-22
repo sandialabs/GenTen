@@ -426,12 +426,17 @@ void hess_vec_ktensor_term(const KtensorT<ExecSpace>& a,
   cali::Function cali_func("Genten::hess_vec_ktensor_term");
 #endif
 
+  const ProcessorMap *pmap = u.getProcessorMap();
   const ttb_indx nc = a.ncomponents();     // Number of components
   const ttb_indx nd = a.ndims();           // Number of dimensions
   IndxArrayT<ExecSpace> nrow(nd, nc);
-  FacMatArrayT<ExecSpace> Z(nd, nrow, nc);
-  for (unsigned n=0; n<nd; ++n)
+  FacMatArrayT<ExecSpace> Z(nd, nrow, nc), W(nd, nrow, nc);
+  for (unsigned n=0; n<nd; ++n) {
     Z[n].gramian(a[n], true); // full gram
+    W[n].gemm(true, false, 1.0, a[n], v[n], 0.0);  // a[n]^T * v[n]
+    if (pmap != nullptr)
+      pmap->facMap(n)->allReduce(W[n].view().data(), W[n].view().span());
+  }
 
   for (unsigned k=0; k<nd; ++k) {
     const ttb_indx I_k = a[k].nRows();
@@ -452,32 +457,30 @@ void hess_vec_ktensor_term(const KtensorT<ExecSpace>& a,
             } // p
           }
           else {
-            for (ttb_indx t=0; t<I_s; ++t) {
-              for (unsigned p=0; p<nc; ++p) {
-                if (p != j) {
-                  ttb_real tmp = a[k].entry(i,p)*a[s].entry(t,j);
+            for (unsigned p=0; p<nc; ++p) {
+              if (p != j) {
+                ttb_real tmp = a[k].entry(i,p)*W[s].entry(j,p);
+                for (unsigned n=0; n<nd; ++n) {
+                  if (n != k && n != s)
+                    tmp *= Z[n].entry(p,j);
+                }
+                u[k].entry(i,j) += tmp;
+              }
+              else {
+                ttb_real tmp2 = 0.0;
+                for (unsigned q=0; q<nc; ++q) {
+                  ttb_real tmp = a[k].entry(i,q)*W[s].entry(q,j);
+                  if (q == j)
+                    tmp *= 2.0;
                   for (unsigned n=0; n<nd; ++n) {
                     if (n != k && n != s)
-                      tmp *= Z[n].entry(p,j);
-                  }
-                  u[k].entry(i,j) += tmp * v[s].entry(t,p);
-                }
-                else {
-                  ttb_real tmp2 = 0.0;
-                  for (unsigned q=0; q<nc; ++q) {
-                    ttb_real tmp = a[k].entry(i,q)*a[s].entry(t,q);
-                    if (q == j)
-                      tmp *= 2.0;
-                    for (unsigned n=0; n<nd; ++n) {
-                      if (n != k && n != s)
-                        tmp *= Z[n].entry(q,j);
-                    } // n
-                    tmp2 += tmp;
-                  } // q
-                  u[k].entry(i,j) += tmp2 * v[s].entry(t,p);
-                }
-              } // p
-            } // t
+                      tmp *= Z[n].entry(q,j);
+                  } // n
+                  tmp2 += tmp;
+                } // q
+                u[k].entry(i,j) += tmp2;
+              }
+            } // p
           }
         } // s
 
@@ -544,19 +547,19 @@ void hess_vec(const SptensorT<ExecSpace>& X,
     Genten::error(std::string("Invalid mttkrp-all-method for hess-vec:  ") +
                   MTTKRP_All_Method::names[algParams.mttkrp_all_method]);
 
+  const ProcessorMap *pmap = u.getProcessorMap();
+  if (pmap != nullptr) {
+    Kokkos::fence();
+    for (ttb_indx n=0; n<nd; ++n)
+      pmap->subGridAllReduce(n, u[n].view().data(), u[n].view().span());
+  }
+
   // Scale first term by -1
   for (unsigned n=0; n<nd; ++n)
     u[n].times(-1.0);
 
   // Add in the second (ktensor) term
   Impl::hess_vec_ktensor_term(a, v, u);
-
-  if (u.getProcessorMap() != nullptr) {
-    Kokkos::fence();
-    for (ttb_indx n=0; n<nd; ++n)
-      u.getProcessorMap()->subGridAllReduce(n, u[n].view().data(),
-                                            u[n].view().span());
-  }
 }
 
 template <typename ExecSpace>
