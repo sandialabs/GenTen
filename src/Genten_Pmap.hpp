@@ -114,7 +114,7 @@ public:
 
   template <typename T> void subGridAllReduce(int i, T* element, int n, MpiOp op = Sum) const {
     static_assert(std::is_arithmetic<T>::value,
-                  "gridAllReduce requires something like a double, or int");
+                  "subGridAllReduce requires something like a double, or int");
 
     if (sub_comm_sizes_[i] > 1) {
       MPI_Allreduce(MPI_IN_PLACE, element, n, DistContext::toMpiType<T>(),
@@ -128,6 +128,15 @@ public:
 
     if (grid_nprocs_ > 1) {
       MPI_Bcast(element, n, DistContext::toMpiType<T>(), root, cart_comm_);
+    }
+  }
+
+  template <typename T> void subGridBcast(int i, T* element, int n, int root) const {
+    static_assert(std::is_arithmetic<T>::value,
+                  "subGridBcast requires something like a double, or int");
+
+    if (sub_comm_sizes_[i] > 1) {
+      MPI_Bcast(element, n, DistContext::toMpiType<T>(), root, sub_maps_[i]);
     }
   }
 
@@ -221,6 +230,7 @@ public:
   template <typename T> void gridAllReduce(T* element, int n, MpiOp op = Sum) const {}
   template <typename T> void subGridAllReduce(int i, T* element, int n, MpiOp op = Sum) const {}
   template <typename T> void gridBcast(T* element, int n, int root) const {}
+  template <typename T> void subGridBcast(int i, T* element, int n, int root) const {}
 
   class FacMap {
   public:

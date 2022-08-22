@@ -96,7 +96,11 @@ namespace Genten {
       v = Kokkos::subview(x.v, std::make_pair(nb, ne));
     }
 
-    ~KokkosVector() {}
+    KokkosVector(const KokkosVector&) = default;
+    KokkosVector(KokkosVector&&) = default;
+    ~KokkosVector() = default;
+    KokkosVector& operator=(const KokkosVector&) = default;
+    KokkosVector& operator=(KokkosVector&&) = default;
 
     view_type getView() const { return v; }
 
@@ -330,6 +334,18 @@ namespace Genten {
       const ttb_indx seed = std::rand();
       Kokkos::Random_XorShift64_Pool<exec_space> rand_pool(seed);
       Kokkos::fill_random(v, rand_pool, l, u);
+
+      // Broadcast values across each sub-grid from sub-grid root to ensure
+      // consistency
+      if (pmap != nullptr) {
+        ttb_indx n_beg = 0;
+        ttb_indx n_end = 0;
+        for (ttb_indx i=0; i<nd; ++i) {
+          n_beg = n_end;
+          n_end = n_end + sz[i]*nc;
+          pmap->subGridBcast(i, v.data()+n_beg, n_end-n_beg, 0);
+        }
+      }
     }
 
     template <typename Func>
