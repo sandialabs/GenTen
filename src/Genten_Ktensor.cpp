@@ -63,7 +63,7 @@ template <typename ExecSpace>
 Genten::KtensorT<ExecSpace>::
 KtensorT(ttb_indx nc, ttb_indx nd, const Genten::IndxArrayT<ExecSpace> & sz,
          const ProcessorMap* pmap_):
-  lambda(nc), data(nd,sz,nc), pmap(pmap_)
+  lambda(nc), data(nd,sz,nc,pmap_), pmap(pmap_)
 {
   setWeights(1.0);
 }
