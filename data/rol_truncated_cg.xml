@@ -1,0 +1,75 @@
+<ParameterList name="Optimization">
+
+  <Parameter name="Check ROL Interface" type="bool" value="true"/>
+
+  <ParameterList name="ROL">
+
+    <ParameterList name="Status Test">
+      <Parameter name="Gradient Tolerance"   type="double" value="1.e-6" />
+      <Parameter name="Step Tolerance"       type="double" value="1.e-12" />
+      <Parameter name="Iteration Limit"      type="int"    value="20"    />
+    </ParameterList>
+
+    <ParameterList name="General">
+      <Parameter name="Output Level"      type="int"    value="1"    />
+      <Parameter name="Inexact Objective Function" type="bool" value="false"/>
+      <Parameter name="Inexact Gradient" type="bool" value="false"/>
+      <Parameter name="Inexact Hessian-Times-A-Vector" type="bool" value="true"/>
+      <Parameter name="Projected Gradient Criticality Measure" type="bool" value="false"/>
+
+      <ParameterList name="Secant">
+        <Parameter name="Type" type="string" value="Limited-Memory BFGS"/>
+        <Parameter name="Use as Preconditioner" type="bool" value="false"/>
+        <Parameter name="Use as Hessian" type="bool" value="false"/>
+        <Parameter name="Maximum Storage" type="int" value="20"/>
+        <Parameter name="Barzilai-Borwein Type" type="int" value="1"/>
+      </ParameterList>
+
+      <ParameterList name="Krylov">
+        <Parameter name="Absolute Tolerance" type="double" value="1.0e-04"/>
+        <Parameter name="Relative Tolerance" type="double" value="1.0e-02"/>
+        <Parameter name="Iteration Limit" type="int" value="20"/>
+      </ParameterList>
+    </ParameterList>
+
+    <ParameterList name="Step">
+      <ParameterList name="Line Search">
+        <Parameter name="Function Evaluation Limit" type="int" value="20"/>
+        <Parameter name="Sufficient Decrease Tolerance" type="double" value="1.0e-04"/>
+        <Parameter name="Initial Step Size" type="double" value="1.0e+00"/>
+        <Parameter name="User Defined Initial Step Size" type="bool" value="false"/>
+
+        <ParameterList name="Descent Method">
+          <Parameter name="Type" type="string" value="Newton-Krylov"/>
+          <Parameter name="Nonlinear CG Type" type="string" value="Hestenes-Stiefel"/>
+        </ParameterList>
+
+        <ParameterList name="Line Search Method">
+          <Parameter name="Type" type="string" value="Cubic Interpolation"/>
+          <Parameter name="Bracketing Tolerance" type="double" value="1.0e-08"/>
+          <Parameter name="Backtracking Rate" type="double" value="5.0e-01"/>
+        </ParameterList>
+
+        <ParameterList name="Curvature Condition">
+          <Parameter name="Type" type="string" value="Strong Wolfe Conditions"/>
+          <Parameter name="General Parameter" type="double" value="9.0e-01"/>
+          <Parameter name="Generalized Wolfe Parameter" type="double" value="6.0e-01"/>
+        </ParameterList>
+      </ParameterList>
+
+      <ParameterList name="Trust Region">
+        <Parameter name="Subproblem Solver" type="string" value="Truncated CG"/>
+        <!--Parameter name="Subproblem Solver" type="string" value="Cauchy Point"/-->
+        <Parameter name="Initial Radius" type="double" value="1.0e-1"/>
+        <Parameter name="Maximum Radius" type="double" value="1.0e+08"/>
+        <Parameter name="Step Acceptance Threshold" type="double" value="5.0e-02"/>
+        <Parameter name="Radius Shrinking Threshold" type="double" value="5.0e-02"/>
+        <Parameter name="Radius Growing Threshold" type="double" value="7.50e-01"/>
+        <Parameter name="Radius Growing Rate" type="double" value="2.50e+00"/>
+        <Parameter name="Safeguard Size" type="double" value="1.0e+04"/>
+      </ParameterList>
+
+    </ParameterList>
+  </ParameterList>
+
+</ParameterList>
