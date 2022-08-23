@@ -101,10 +101,12 @@ namespace Genten {
       ROL::makePtr<objective_type>(x, u, algParams, history);
     ROL::Ptr<vector_type> z = objective->createDesignVector();
     z->copyFromKtensor(u);
+    auto g = z->dual().clone();
+    g->set(z->dual());
 
     // Create optimization problem
     ROL::Ptr< ROL::Problem<ttb_real> > problem =
-      ROL::makePtr< ROL::Problem<ttb_real> >(objective, z);
+      ROL::makePtr< ROL::Problem<ttb_real> >(objective, z, g);
 
     // Create bound constraints
     if (algParams.lower != -DOUBLE_MAX || algParams.upper != DOUBLE_MAX) {
