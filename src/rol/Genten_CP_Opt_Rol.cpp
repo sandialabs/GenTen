@@ -87,12 +87,46 @@ namespace Genten {
         Genten::error("Genten::cp_opt - u and x have different size");
     }
 
-    Genten::SystemTimer timer(1, u.getProcessorMap());
+    const ProcessorMap* pmap = u.getProcessorMap();
+
+    Genten::SystemTimer timer(1, pmap);
     timer.start(0);
 
     // Distribute the initial guess to have weights of one since the objective
     // does not include gradients w.r.t. weights
     u.distribute(0);
+
+    if (algParams.printitn > 0) {
+      const ttb_indx nc = u.ncomponents();
+      stream << std::endl
+             << "CP-OPT (ROL):" << std::endl;
+      stream << "  CP Rank: " << nc << std::endl
+             << "  Lower bound: ";
+      if (algParams.lower == -DBL_MAX)
+        stream << "-infinity";
+      else
+        stream << std::setprecision(2) << std::scientific
+               << algParams.lower;
+      stream << std::endl
+             << "  Upper bound: ";
+      if (algParams.upper == DBL_MAX)
+        stream << "infinity";
+      else
+        stream << std::setprecision(2) << std::scientific
+               << algParams.upper;
+      stream  << std::endl
+              << "  Gradient method: "
+             << MTTKRP_All_Method::names[algParams.mttkrp_all_method];
+      if (algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated)
+        stream << " (" << MTTKRP_Method::names[algParams.mttkrp_method] << ")";
+      stream << " MTTKRP" << std::endl
+             << "  Hess-vec method: "
+             << Hess_Vec_Method::names[algParams.hess_vec_method];
+      if (algParams.hess_vec_method == Hess_Vec_Method::Full) {
+        stream << " (" << Hess_Vec_Tensor_Method::names[algParams.hess_vec_tensor_method] << ")";
+      }
+      stream << std::endl;
+    }
 
     // Create ROL interface
     typedef Genten::CP_RolObjective<TensorT> objective_type;
@@ -121,13 +155,13 @@ namespace Genten {
 
     // Finalize problem
     const bool lumpConstraints = false;
-    const bool printToStream   = algParams.printitn > 0;
-    problem->finalize(lumpConstraints, printToStream, stream);
+    //const bool printToStream   = algParams.printitn > 0;
+    problem->finalize(lumpConstraints, false, stream);
 
     // Check interface consistency
     const bool do_checks = params.get("Check ROL Interface", false);
     if (do_checks)
-      problem->check(printToStream, stream);
+      problem->check(true, stream);
 
     // Create ROL optimization solver
     Teuchos::ParameterList& rol_params = params.sublist("ROL");
@@ -155,12 +189,15 @@ namespace Genten {
     const ttb_real fit = ttb_real(1.0) - res / (ttb_real(0.5)*nrm*nrm) ;
     if (algParams.printitn > 0) {
       stream << "Final fit = " << fit << std::endl;
-      stream << "Total time = " << timer.getTotalTime(0) << std::endl;
+      stream << "Total time = " << timer.getTotalTime(0) << std::endl
+             << std::endl;
     }
 
     // Print Teuchos timing info
-    if (algParams.timings)
+    if (algParams.timings) {
       Teuchos::TimeMonitor::summarize(stream);
+      stream << std::endl;
+    }
   }
 
 }
