@@ -82,13 +82,13 @@ driver(const DistTensorContext& dtc,
   typedef Genten::KtensorT<ExecSpace> Ktensor_type;
   typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
 
-  Genten::SystemTimer timer(3, algParams.timings);
-
   // Set parallel output stream
   const ProcessorMap* pmap = dtc.pmap_ptr().get();
   std::ostream& out = pmap->gridRank() == 0 ? out_in : Genten::bhcout;
 
-  out.setf(std::ios_base::scientific);
+  Genten::SystemTimer timer(3, algParams.timings, pmap);
+
+  //out.setf(std::ios_base::scientific);
   out.precision(2);
 
   // Generate a random starting point if initial guess is empty
@@ -132,15 +132,19 @@ driver(const DistTensorContext& dtc,
   }
 
   // Perform any post-processing (e.g., permutation and row ptr generation)
-  if (algParams.mttkrp_method == Genten::MTTKRP_Method::Perm &&
-      (algParams.method == Genten::Solver_Method::CP_ALS ||
-       algParams.mttkrp_all_method == Genten::MTTKRP_All_Method::Iterated) &&
+  if (((algParams.mttkrp_method == Genten::MTTKRP_Method::Perm &&
+        (algParams.method == Genten::Solver_Method::CP_ALS ||
+         algParams.mttkrp_all_method == Genten::MTTKRP_All_Method::Iterated)) ||
+       (algParams.hess_vec_tensor_method == Genten::Hess_Vec_Tensor_Method::Perm &&
+        algParams.method == Genten::Solver_Method::CP_OPT &&
+        algParams.opt_method == Genten::Opt_Method::ROL &&
+        algParams.hess_vec_method == Genten::Hess_Vec_Method::Full)) &&
       !x.havePerm()) {
     timer.start(1);
     x.createPermutation();
     timer.stop(1);
     if (algParams.timings)
-      out << "Creating permutation arrays for perm MTTKRP method took " << timer.getTotalTime(1)
+      out << "Creating permutation arrays for perm MTTKRP/hess-vec method took " << timer.getTotalTime(1)
           << " seconds\n";
   }
 
