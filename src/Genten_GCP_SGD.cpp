@@ -118,30 +118,17 @@ namespace Genten {
         const ttb_indx nnz = X.global_nnz();
         const ttb_real tsz = X.global_numel_float();
         const ttb_real nz = tsz - nnz;
-        out << "\nGCP-SGD (Generalized CP Tensor Decomposition)\n\n"
-            << "Tensor size: ";
-        for (ttb_indx i=0; i<nd; ++i) {
-          out << X.size(i) << " ";
-          if (i<nd-1)
-            out << "x ";
-        }
-        out << "(" << tsz << " total entries)\n"
-            << "Sparse tensor: " << nnz << " ("
-            << std::setprecision(1) << std::fixed << 100.0*(nnz/tsz)
-            << "%) Nonzeros" << " and ("
-            << std::setprecision(1) << std::fixed << 100.0*(nz/tsz)
-            << "%) Zeros\n"
-            << "Rank: " << nc << std::endl
-            << "Generalized function type: " << loss_func.name() << std::endl
-            << "Optimization method: " << GCP_Step::names[algParams.step_type]
+        out << "\nGCP-SGD (Generalized CP Tensor Decomposition):\n"
+            << "  Generalized function type: " << loss_func.name() << std::endl
+            << "  Optimization method: " << GCP_Step::names[algParams.step_type]
             << std::endl
-            << "Max iterations (epochs): " << maxEpochs << std::endl
-            << "Iterations per epoch: " << epoch_iters << std::endl
-            << "Learning rate / decay / maxfails: "
+            << "  Max iterations (epochs): " << maxEpochs << std::endl
+            << "  Iterations per epoch: " << epoch_iters << std::endl
+            << "  Learning rate / decay / maxfails: "
             << std::setprecision(1) << std::scientific
             << rate << " " << decay << " " << max_fails << std::endl;
         sampler->print(out);
-        out << "Gradient method: ";
+        out << "  Gradient method: ";
         if (algParams.async)
           out << "Fused asynchronous sampling and atomic MTTKRP\n";
         else if (algParams.fuse)
@@ -412,7 +399,7 @@ namespace Genten {
           out << ", fit: "
               << std::setw(10) << std::setprecision(3) << std::scientific
               << fit;
-        out << std::endl
+        out << std::endl << std::endl
             << "GCP-SGD completed " << total_iters << " iterations in "
             << std::setw(8) << std::setprecision(2) << std::scientific
             << timer.getTotalTime(timer_sgd) << " seconds" << std::endl;
@@ -425,6 +412,7 @@ namespace Genten {
               << " seconds\n";
           it.printTimers(out);
         }
+        out << std::endl;
       }
 
       u.copyToKtensor(u0);

@@ -156,13 +156,13 @@ namespace Genten {
 
     virtual void print(std::ostream& out) override
     {
-      out << "Function sampler:  stratified with "
+      out << "  Function sampler:  stratified with "
           << global_num_samples_nonzeros_value
           << " nonzero and " << global_num_samples_zeros_value
           << " zero samples\n"
-          << "Gradient sampler:  uniform with " << global_num_samples_grad
+          << "  Gradient sampler:  uniform with " << global_num_samples_grad
           << " samples\n"
-          << "Gradient samples per epoch: "
+          << "  Gradient samples per epoch: "
           << global_num_samples_grad*algParams.epoch_iters
           << " (" << std::setprecision(1) << std::fixed << grad_percent << "%)"
           << std::endl;
