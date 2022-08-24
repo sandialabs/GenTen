@@ -46,6 +46,34 @@
 #include "Genten_FacTestSetGenerator.hpp"
 #include "Genten_Ptree.hpp"
 
+void print_banner(std::ostream& out)
+{
+  std::string banner = R"(
+          ___         ___         ___      ___         ___         ___
+         /\  \       /\  \       /\__\    /\  \       /\  \       /\__\
+        /::\  \     /::\  \     /::|  |   \:\  \     /::\  \     /::|  |
+       /:/\:\  \   /:/\:\  \   /:|:|  |    \:\  \   /:/\:\  \   /:|:|  |
+      /:/  \:\  \ /::\~\:\  \ /:/|:|  |__  /::\  \ /::\~\:\  \ /:/|:|  |__
+     /:/__/_\:\__/:/\:\ \:\__/:/ |:| /\__\/:/\:\__/:/\:\ \:\__/:/ |:| /\__\
+     \:\  /\ \/__\:\~\:\ \/__\/__|:|/:/  /:/  \/__\:\~\:\ \/__\/__|:|/:/  /
+      \:\ \:\__\  \:\ \:\__\     |:/:/  /:/  /     \:\ \:\__\     |:/:/  /
+       \:\/:/  /   \:\ \/__/     |::/  /\/__/       \:\ \/__/     |::/  /
+        \::/  /     \:\__\       /:/  /              \:\__\       /:/  /
+         \/__/       \/__/       \/__/                \/__/       \/__/
+
+--------------------------------------------------------------------------------
+GenTen:  Software for Generalized Canonical Polyadic Tensor Decompositions
+
+Copyright 2017 National Technology & Engineering Solutions of Sandia, LLC
+(NTESS). Under the terms of Contract DE-NA0003525 with NTESS, the U.S.
+Government retains certain rights in this software.
+--------------------------------------------------------------------------------
+)";
+
+  if (Genten::DistContext::rank() == 0)
+    out << banner << std::endl;
+}
+
 void usage(char **argv)
 {
   std::cout << "Usage: "<< argv[0]<<" [options]" << std::endl;
@@ -65,6 +93,64 @@ void usage(char **argv)
   std::cout << "  --vtune            connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
   std::cout << std::endl;
   Genten::AlgParams::print_help(std::cout);
+}
+
+template <typename ExecSpace>
+void print_environment(const Genten::SptensorT<ExecSpace>& x,
+                       const Genten::DistTensorContext& dtc,
+                       std::ostream& out)
+{
+  const ttb_indx nd = x.ndims();
+  const ttb_indx nnz = dtc.globalNNZ(x);
+  const ttb_real tsz = dtc.globalNumelFloat(x);
+  const ttb_real nz = tsz - nnz;
+  if (Genten::DistContext::rank() == 0) {
+    out << std::endl
+        << "Sparse tensor: " << std::endl << "  ";
+    for (ttb_indx i=0; i<nd; ++i) {
+      out << dtc.dims()[i] << " ";
+      if (i<nd-1)
+        out << "x ";
+    }
+    out << "(" << tsz << " total entries)" << std::endl
+        << "  " << nnz << " ("
+        << std::setprecision(1) << std::fixed << 100.0*(nnz/tsz)
+        << "%) Nonzeros" << " and "
+        << std::setprecision(0) << std::fixed << nz << " ("
+        << std::setprecision(1) << std::fixed << 100.0*(nz/tsz)
+        << "%) Zeros" << std::endl << std::endl
+        << "Execution environment:" << std::endl
+        << "  MPI grid: ";
+    for (ttb_indx i=0; i<nd; ++i) {
+      out << dtc.pmap().gridDims()[i] << " ";
+      if (i<nd-1)
+        out << "x ";
+    }
+    out << "processes (" << dtc.nprocs() << " total)" << std::endl
+        << "  Execution space: "
+        << Genten::SpaceProperties<ExecSpace>::verbose_name()
+        << std::endl << std::endl;
+  }
+}
+
+template <typename ExecSpace>
+void print_environment(const Genten::TensorT<ExecSpace>& x,
+                       std::ostream& out)
+{
+  const ttb_indx nd = x.ndims();
+  const ttb_indx tsz = x.numel();
+  out << std::endl
+      << "Dense tensor: " << std::endl << "  ";
+  for (ttb_indx i=0; i<nd; ++i) {
+    out << x.size(i) << " ";
+    if (i<nd-1)
+      out << "x ";
+  }
+  out << "(" << tsz << " total entries)" << std::endl << std::endl
+      << "Execution environment:" << std::endl;
+  out << "  Execution space: "
+      << Genten::SpaceProperties<ExecSpace>::verbose_name()
+      << std::endl << std::endl;
 }
 
 template <typename Space>
@@ -105,7 +191,7 @@ int main_driver(Genten::AlgParams& algParams,
       timer.stop(0);
       DC::Barrier();
       if (dtc.gridRank() == 0)
-        printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
+        printf("  Data import took %6.3f seconds\n", timer.getTotalTime(0));
     }
     else {
       Genten::IndxArrayT<Space> facDims =
@@ -135,11 +221,15 @@ int main_driver(Genten::AlgParams& algParams,
       timer.stop(0);
       DC::Barrier();
       if (dtc.gridRank() == 0) {
-        printf ("Data generation took %6.3f seconds\n", timer.getTotalTime(0));
+        printf ("  Data generation took %6.3f seconds\n", timer.getTotalTime(0));
         std::cout << "  Actual nnz  = " << x_host.nnz() << "\n";
       }
       x = dtc.distributeTensor<Space>(x_host);
     }
+
+    // Print execution environment
+    print_environment(x, dtc, std::cout);
+
     if (algParams.debug) Genten::print_sptensor(x_host, std::cout, "tensor");
 
     // Read in initial guess if provided
@@ -192,6 +282,9 @@ int main_driver(Genten::AlgParams& algParams,
       printf ("Data generation took %6.3f seconds\n", timer.getTotalTime(0));
     }
 
+    // Print execution environment
+    print_environment(x, std::cout);
+
     if (algParams.debug) Genten::print_tensor(x_host, std::cout, "tensor");
 
     // Read in initial guess if provided
@@ -219,7 +312,7 @@ int main_driver(Genten::AlgParams& algParams,
     timer.stop(1);
     DC::Barrier();
     if (dtc.gridRank() == 0)
-      printf("Ktensor export took %6.3f seconds\n", timer.getTotalTime(1));
+      printf("  Ktensor export took %6.3f seconds\n", timer.getTotalTime(1));
   }
 
   // Testing -- we use int/double on purpose to avoid ambiguities
@@ -339,6 +432,8 @@ int main(int argc, char* argv[])
 
   try {
     Genten::InitializeGenten(&argc, &argv);
+
+    print_banner(std::cout);
 
     // Convert argc,argv to list of arguments
     auto args = Genten::build_arg_list(argc,argv);

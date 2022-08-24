@@ -448,6 +448,9 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
 
   std::vector<MPI_IO::TDatatype<ttb_real>> Tvec;
 
+  if (DistContext::rank() == 0)
+    std::cout << "Reading tensor from file " << file << std::endl;
+
   DistContext::Barrier();
   auto t2 = MPI_Wtime();
   if (is_binary) {
@@ -490,7 +493,7 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
   DistContext::Barrier();
   auto t3 = MPI_Wtime();
   if (gridRank() == 0) {
-    std::cout << "Read in file in: " << t3 - t2 << "s" << std::endl;
+    std::cout << "  Read file in: " << t3 - t2 << "s" << std::endl;
   }
 
   pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_));
@@ -552,7 +555,7 @@ distributeTensorData(const std::vector<MPI_IO::TDatatype<ttb_real>>& Tvec,
   auto t5 = MPI_Wtime();
 
   if (gridRank() == 0) {
-    std::cout << "Redistributied file in: " << t5 - t4 << "s" << std::endl;
+    std::cout << "  Redistributied file in: " << t5 - t4 << "s" << std::endl;
   }
 
   DistContext::Barrier();
@@ -603,9 +606,9 @@ distributeTensorData(const std::vector<MPI_IO::TDatatype<ttb_real>>& Tvec,
   DistContext::Barrier();
   auto t7 = MPI_Wtime();
 
-  if (gridRank() == 0) {
-    std::cout << "Copied to data struct in: " << t7 - t6 << "s" << std::endl;
-  }
+  // if (gridRank() == 0) {
+  //   std::cout << "Copied to data struct in: " << t7 - t6 << "s" << std::endl;
+  // }
 
   return sptensor;
 }
