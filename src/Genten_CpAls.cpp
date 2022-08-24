@@ -159,16 +159,17 @@ namespace Genten {
     ttb_indx nd = x.ndims();           // number of dimensions
 
     if (printIter > 0) {
-      out << "\nCP-ALS (rank " << nc << ", "
-          << Genten::MTTKRP_Method::names[algParams.mttkrp_method]
-          << " MTTKRP method, ";
+      out << std::endl
+             << "CP-ALS:" << std::endl;
+      out << "  CP Rank: " << nc << std::endl
+          << "  MTTKRP method: "
+          << Genten::MTTKRP_Method::names[algParams.mttkrp_method] << std::endl
+          << "  Gram formulation: ";
       if (algParams.full_gram)
-        out << "full-gram";
+        out << "full";
       else
-        out << "symmetric-gram";
-      out << " formulation, "
-          << Genten::SpaceProperties<ExecSpace>::verbose_name()
-          << "):" << std::endl;
+        out << "symmetric";
+      out << std::endl << std::endl;
     }
 
     // Distribute the initial guess to have weights of one.
@@ -400,7 +401,7 @@ namespace Genten {
     {
       out.setf(std::ios_base::scientific);
       out.precision(2);
-      out << "CpAls completed " << numIters << " iterations in "
+      out << "\nCP-ALS completed " << numIters << " iterations in "
           << timer.getTotalTime(timer_cpals) << " seconds\n";
       out << "\tMTTKRP total time = " << mttkrp_total_time
           << " seconds, average time = " << mttkrp_avg_time << " seconds\n";
@@ -425,6 +426,7 @@ namespace Genten {
           << " seconds, average time = " << timer.getAvgTime(timer_arrange)
           << " seconds\n";
     }
+    out << std::endl;
 
     return;
   }
