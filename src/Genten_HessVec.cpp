@@ -299,6 +299,130 @@ struct HessVec_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
 };
 #endif
 
+// HessVec permutation-based kernel for Sptensor for all modes simultaneously
+template <typename ExecSpace>
+struct HessVec_PermKernel {
+  const SptensorT<ExecSpace> XX;
+  const KtensorT<ExecSpace> aa;
+  const KtensorT<ExecSpace> vv;
+  const KtensorT<ExecSpace> uu;
+  const AlgParams algParams;
+
+  HessVec_PermKernel(const SptensorT<ExecSpace>& X_,
+                     const KtensorT<ExecSpace>& a_,
+                     const KtensorT<ExecSpace>& v_,
+                     const KtensorT<ExecSpace>& u_,
+                     const AlgParams& algParams_) :
+    XX(X_), aa(a_), vv(v_), uu(u_), algParams(algParams_) {}
+
+  template <unsigned FBS, unsigned VS>
+  void run() const {
+    const SptensorT<ExecSpace> X = XX;
+    const KtensorT<ExecSpace> a = aa;
+    const KtensorT<ExecSpace> v = vv;
+    const KtensorT<ExecSpace> u = uu;
+
+    u.setMatrices(0.0);
+
+    static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+    static const unsigned FacBlockSize = FBS;
+    static const unsigned VectorSize = is_gpu ? VS : 1;
+    static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
+    /*const*/ unsigned RowBlockSize = algParams.mttkrp_nnz_tile_size;
+    const unsigned RowsPerTeam = TeamSize * RowBlockSize;
+
+    /*const*/ unsigned nd = a.ndims();
+    /*const*/ unsigned nc = a.ncomponents();
+    /*const*/ ttb_indx nnz = X.nnz();
+    const ttb_indx N = (nnz+RowsPerTeam-1)/RowsPerTeam;
+
+    typedef Kokkos::TeamPolicy<ExecSpace> Policy;
+    typedef typename Policy::member_type TeamMember;
+    Policy policy(N, TeamSize, VectorSize);
+
+    // Perm only works for a single dimension at a time, so loop over them
+    // outside the kernel
+    for (unsigned k=0; k<nd; ++k) {
+      Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+      {
+        /*const*/ ttb_indx invalid_row = ttb_indx(-1);
+        /*const*/ ttb_indx i_block =
+          (team.league_rank()*TeamSize + team.team_rank())*RowBlockSize;
+
+        auto row_func = [&](auto j, auto nj, auto Nj) {
+          typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
+          auto val = TVM::make(team, nj, 0.0);
+          auto tmp = TVM::make(team, nj, 0.0);
+
+          ttb_indx row_prev = invalid_row;
+          ttb_indx row = invalid_row;
+          ttb_indx first_row = invalid_row;
+          ttb_indx p = invalid_row;
+          ttb_real x_val = 0.0;
+
+          for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+            /*const*/ ttb_indx i = i_block+ii;
+
+            if (i >= nnz)
+              row = invalid_row;
+            else {
+              p = X.getPerm(i,k);
+              x_val = X.value(p);
+              row = X.subscript(p,k);
+            }
+
+            if (ii == 0)
+              first_row = row;
+
+            // If we got a different row index, add in result
+            if (row != row_prev) {
+              if (row_prev != invalid_row) {
+                if (row_prev == first_row) // Only need atomics for first/last row
+                  Kokkos::atomic_add(&u[k].entry(row_prev,j), val);
+                else
+                  val.store_plus(&u[k].entry(row_prev,j));
+                val.broadcast(0.0);
+              }
+              row_prev = row;
+            }
+
+            if (row != invalid_row) {
+              for (unsigned s=0; s<nd; ++s) {
+                if (s != k) {
+                  tmp.load(&(a.weights(j)));
+                  tmp *= x_val;
+                  for (unsigned n=0; n<nd; ++n) {
+                    if (n != k && n != s)
+                      tmp *= &(a[n].entry(X.subscript(p,n),j));
+                  }
+                  tmp *= &(v[s].entry(X.subscript(p,s),j));
+                  val += tmp;
+                }
+              }
+            }
+          }
+
+          // Sum in last row
+          if (row != invalid_row) {
+            Kokkos::atomic_add(&u[k].entry(row,j), val);
+          }
+        };
+
+        for (unsigned j=0; j<nc; j+=FacBlockSize) {
+          if (j+FacBlockSize <= nc) {
+            const unsigned nj = FacBlockSize;
+            row_func(j, nj, std::integral_constant<unsigned,nj>());
+          }
+        else {
+          const unsigned nj = nc-j;
+          row_func(j, nj, std::integral_constant<unsigned,0>());
+        }
+        }
+      }, "hessvec_perm_kernel");
+    }
+  }
+};
+
 // This is a very poor implementation of hess_vec for dense tensors, using
 // the same (bad) parallelism strategy as for dense MTTKRP
 template <typename ExecSpace>
@@ -525,22 +649,28 @@ void hess_vec(const SptensorT<ExecSpace>& X,
   typedef SpaceProperties<ExecSpace> space_prop;
 
   // Compute the first (tensor) term in the hess-vec
-  MTTKRP_All_Method::type method = algParams.mttkrp_all_method;
+  Hess_Vec_Tensor_Method::type method = algParams.hess_vec_tensor_method;
   if (space_prop::is_gpu &&
-      (method == MTTKRP_All_Method::Single ||
-       method == MTTKRP_All_Method::Duplicated))
-    Genten::error("Single and duplicated MTTKRP-All methods are invalid on Cuda and HIP!");
+      (method == Hess_Vec_Tensor_Method::Single ||
+       method == Hess_Vec_Tensor_Method::Duplicated))
+    Genten::error("Single and duplicated hess-vec tensor methods are invalid on Cuda and HIP!");
 
-  if (method == MTTKRP_All_Method::Single) {
+  if (method == Hess_Vec_Tensor_Method::Single) {
     Impl::HessVec_Kernel<ScatterNonDuplicated,ScatterNonAtomic,ExecSpace> kernel(X,a,v,u,algParams);
     Impl::run_row_simd_kernel(kernel, nc);
   }
-  else if (method == MTTKRP_All_Method::Atomic) {
+  else if (method == Hess_Vec_Tensor_Method::Atomic) {
     Impl::HessVec_Kernel<ScatterNonDuplicated,ScatterAtomic,ExecSpace> kernel(X,a,v,u,algParams);
     Impl::run_row_simd_kernel(kernel, nc);
   }
-  else if (method == MTTKRP_All_Method::Duplicated) {
+  else if (method == Hess_Vec_Tensor_Method::Duplicated) {
     Impl::HessVec_Kernel<ScatterDuplicated,ScatterNonAtomic,ExecSpace> kernel(X,a,v,u,algParams);
+    Impl::run_row_simd_kernel(kernel, nc);
+  }
+  else if (method == Hess_Vec_Tensor_Method::Perm) {
+    if (!X.havePerm())
+      Genten::error("Perm hess-vec tensor method selected, but permutation array not computed!");
+    Impl::HessVec_PermKernel<ExecSpace> kernel(X,a,v,u,algParams);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else

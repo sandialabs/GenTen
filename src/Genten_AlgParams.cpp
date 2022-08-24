@@ -75,6 +75,7 @@ Genten::AlgParams::AlgParams() :
   memory(5),
   max_total_iters(5000),
   hess_vec_method(Hess_Vec_Method::default_type),
+  hess_vec_tensor_method(Hess_Vec_Tensor_Method::default_type),
   loss_function_type(Genten::GCP_LossFunction::default_type),
   loss_eps(1.0e-10),
   gcp_tol(-DOUBLE_MAX),
@@ -178,9 +179,15 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   memory = parse_ttb_indx(args, "--memory", memory, 0, INT_MAX);
   max_total_iters = parse_ttb_indx(args, "--total-iters", max_total_iters, 0, INT_MAX);
   hess_vec_method = parse_ttb_enum(args, "--hessian", hess_vec_method,
-                                 Genten::Hess_Vec_Method::num_types,
-                                 Genten::Hess_Vec_Method::types,
-                                 Genten::Hess_Vec_Method::names);
+                                   Genten::Hess_Vec_Method::num_types,
+                                   Genten::Hess_Vec_Method::types,
+                                   Genten::Hess_Vec_Method::names);
+  hess_vec_tensor_method = parse_ttb_enum(
+    args, "--hessian-tensor",
+    hess_vec_tensor_method,
+    Genten::Hess_Vec_Tensor_Method::num_types,
+    Genten::Hess_Vec_Tensor_Method::types,
+    Genten::Hess_Vec_Tensor_Method::names);
 
   // GCP options
   loss_function_type = parse_ttb_enum(args, "--type", loss_function_type,
@@ -320,6 +327,7 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_value(cpopt_input, "memory", memory, 0, INT_MAX);
     parse_ptree_value(cpopt_input, "total-iters", max_total_iters, 0, INT_MAX);
     parse_ptree_enum<Hess_Vec_Method>(cpopt_input, "hessian", hess_vec_method);
+    parse_ptree_enum<Hess_Vec_Tensor_Method>(cpopt_input, "hessian-tensor", hess_vec_tensor_method);
     parse_mttkrp(cpopt_input);
   }
 
@@ -450,6 +458,13 @@ void Genten::AlgParams::print_help(std::ostream& out)
       out << ", ";
   }
   out << std::endl;
+  out << "  --hessian-tensor <method> Hessian-vector product method for tensor term: ";
+  for (unsigned i=0; i<Genten::Hess_Vec_Tensor_Method::num_types; ++i) {
+    out << Genten::Hess_Vec_Tensor_Method::names[i];
+    if (i != Genten::Hess_Vec_Tensor_Method::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
   out << "GCP options:" << std::endl;
   out << "  --type <type>      loss function type for GCP: ";
   for (unsigned i=0; i<Genten::GCP_LossFunction::num_types; ++i) {
@@ -551,6 +566,7 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  memory = " << memory << std::endl;
   out << "  total-iters = " << max_total_iters << std::endl;
   out << "  hessian = " << Genten::Hess_Vec_Method::names[hess_vec_method] << std::endl;
+  out << "  hessian-tensor = " << Genten::Hess_Vec_Tensor_Method::names[hess_vec_tensor_method] << std::endl;
 
   out << std::endl;
   out << "GCP options:" << std::endl;

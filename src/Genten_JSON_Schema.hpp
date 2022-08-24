@@ -324,6 +324,11 @@ static nlohmann::json json_schema = R"(
                   "description": "Hessian-vector product method",
                   "enum": ["full", "gauss-newton", "finite-difference"],
                   "default": "finite-difference"
+              },
+              "hessian-tensor": {
+                  "description": "Hessian-vector product method for tensor-only term",
+                  "enum": ["default", "atomic", "duplicated", "single", "perm"],
+                  "default": "default"
               }
           }
       },

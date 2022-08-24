@@ -253,6 +253,29 @@ namespace Genten {
     static constexpr type default_type = FiniteDifference;
   };
 
+  // HessVec algorithm for tensor term
+  struct Hess_Vec_Tensor_Method {
+    enum type {
+      Default,     // Use default method based on architecture
+      Atomic,      // Use atomics factor matrix update
+      Duplicated,  // Duplicate factor matrix then inter-thread reduce
+      Single,      // Single-thread algorithm (no atomics or duplication)
+      Perm         // Use permutation array approach, similar to MTTKRP
+    };
+    static constexpr unsigned num_types = 5;
+    static constexpr type types[] = {
+      Default,
+      Atomic,
+      Duplicated,
+      Single,
+      Perm
+    };
+    static constexpr const char* names[] = {
+      "default", "atomic", "duplicated", "single", "perm"
+    };
+    static constexpr type default_type = Default;
+  };
+
   // TTM algorithm
   struct TTM_Method {
     enum type {

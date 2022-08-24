@@ -92,6 +92,7 @@ namespace Genten {
     ttb_indx memory;             // memory parameter for L-BFGS-B
     ttb_indx max_total_iters;    // maximum total iterations for L-BFGS-B
     Hess_Vec_Method::type hess_vec_method; // Hessian-vector product method
+    Hess_Vec_Tensor_Method::type hess_vec_tensor_method; // Hessian-vector product method for tensor-only term
 
     // GCP options
     GCP_LossFunction::type loss_function_type; // Loss function for GCP
@@ -316,9 +317,9 @@ namespace Genten {
         mttkrp_all_method = MTTKRP_All_Method::Single;
 
       // Always use atomic on Cuda if fused
-      if (space_prop::is_cuda &&
-          method == Solver_Method::GCP_SGD &&
-          sampling_type == GCP_Sampling::SemiStratified && fuse)
+      else if (space_prop::is_cuda &&
+               method == Solver_Method::GCP_SGD &&
+               sampling_type == GCP_Sampling::SemiStratified && fuse)
         mttkrp_all_method = MTTKRP_All_Method::Atomic;
 
       // Use Atomic on Cuda if it supports fast atomics for ttb_real.
@@ -344,6 +345,24 @@ namespace Genten {
         else
           mttkrp_all_method = MTTKRP_All_Method::Iterated;
       }
+    }
+
+    // Compute default hess-vec-tensor method
+    if (hess_vec_tensor_method == Hess_Vec_Tensor_Method::Default) {
+
+      // Always use Single if there is only a single thread
+      if (space_prop::concurrency() == 1)
+        hess_vec_tensor_method = Hess_Vec_Tensor_Method::Single;
+
+      // Use Atomic on Cuda if it supports fast atomics for ttb_real.
+      // This is true with float on all arch's or float/double on Pascal (6.0)
+      // or later
+      else if (space_prop::is_cuda && (space_prop::cuda_arch() >= 600 ||
+                                  sizeof(ttb_real) == 4))
+        hess_vec_tensor_method = Hess_Vec_Tensor_Method::Atomic;
+
+      else
+        hess_vec_tensor_method = Hess_Vec_Tensor_Method::Perm;
     }
 
     // Fix invalid choices from the user:
@@ -381,6 +400,14 @@ namespace Genten {
         out << "Fused semi-stratified sampling/MTTKRP method requires atomic"
             << " on Cuda.  Changing MTTKRP-All method to atomic." << std::endl;
       }
+      if (method == Solver_Method::CP_OPT &&
+          hess_vec_method == Hess_Vec_Method::Full &&
+          (hess_vec_tensor_method == Hess_Vec_Tensor_Method::Single ||
+           hess_vec_tensor_method == Hess_Vec_Tensor_Method::Duplicated)) {
+        out << "hess-vec tensor method " << Hess_Vec_Tensor_Method::names[hess_vec_tensor_method]
+            << " is invalid on Cuda.  Changing method to atomic." << std::endl;
+        hess_vec_tensor_method = Hess_Vec_Tensor_Method::Atomic;
+      }
     } else if (space_prop::is_hip) {
       if (mttkrp_method == MTTKRP_Method::Single ||
           mttkrp_method == MTTKRP_Method::Duplicated) {
@@ -404,6 +431,14 @@ namespace Genten {
         out << "Fused semi-stratified sampling/MTTKRP method requires atomic"
             << " on HIP.  Changing MTTKRP-All method to atomic." << std::endl;
       }
+      if (method == Solver_Method::CP_OPT &&
+          hess_vec_method == Hess_Vec_Method::Full &&
+          (hess_vec_tensor_method == Hess_Vec_Tensor_Method::Single ||
+           hess_vec_tensor_method == Hess_Vec_Tensor_Method::Duplicated)) {
+        out << "hess-vec tensor method " << Hess_Vec_Tensor_Method::names[hess_vec_tensor_method]
+            << " is invalid on HIP.  Changing method to atomic." << std::endl;
+        hess_vec_tensor_method = Hess_Vec_Tensor_Method::Atomic;
+      }
     } else if (space_prop::is_sycl) {
       if (mttkrp_method == MTTKRP_Method::Single ||
           mttkrp_method == MTTKRP_Method::Duplicated) {
@@ -426,6 +461,14 @@ namespace Genten {
         mttkrp_all_method = MTTKRP_All_Method::Atomic;
         out << "Fused semi-stratified sampling/MTTKRP method requires atomic"
             << " on SYCL.  Changing MTTKRP-All method to atomic." << std::endl;
+      }
+      if (method == Solver_Method::CP_OPT &&
+          hess_vec_method == Hess_Vec_Method::Full &&
+          (hess_vec_tensor_method == Hess_Vec_Tensor_Method::Single ||
+           hess_vec_tensor_method == Hess_Vec_Tensor_Method::Duplicated)) {
+        out << "hess-vec tensor method " << Hess_Vec_Tensor_Method::names[hess_vec_tensor_method]
+            << " is invalid on SYCL.  Changing method to atomic." << std::endl;
+        hess_vec_tensor_method = Hess_Vec_Tensor_Method::Atomic;
       }
     }
   }

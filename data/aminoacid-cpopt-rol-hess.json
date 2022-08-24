@@ -20,12 +20,10 @@
         "method": "rol",
         "rol-file": "data/rol_truncated_cg.xml",
         "hessian": "full",
-        "maxiters": 1,
-        "tol": 1e-4,
         "mttkrp":
         {
             "method": "default",
-            "all-method": "single"
+            "all-method": "default"
         }
     },
     "testing":
