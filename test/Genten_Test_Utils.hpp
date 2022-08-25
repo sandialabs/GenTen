@@ -59,6 +59,8 @@ namespace Genten
        double timediff(timeval start, timeval end);
     */
 
+    int num_failed();
+
     inline ttb_real max_abs(const ttb_real a, const ttb_real b) {
       return std::fabs(a) > std::fabs(b) ? std::fabs(a) : std::fabs(b);
     }

@@ -42,6 +42,7 @@
 #include <iostream>
 
 #include "Genten_Util.hpp"
+#include "Genten_Test_Utils.hpp"
 
 using namespace std;
 
@@ -75,6 +76,7 @@ int main(int argc, char * argv[])
 
   Kokkos::initialize(argc, argv);
 
+  int ret = 0;
   try {
 
   // Level 0 is minimal output, 1 is more verbose.
@@ -113,12 +115,23 @@ int main(int argc, char * argv[])
 
   cout << "Unit tests complete for " << Genten::getGentenVersion() << endl;
 
+  ret = Genten::Test::num_failed();
+
+  }
+  catch(const std::exception& e) {
+    std::cout << e.what() << std::endl;
+    ret = -1;
   }
   catch(std::string& s) {
     std::cout << s << std::endl;
+    ret = -1;
+  }
+  catch(...) {
+    std::cout << "Unknown exception!" << std::endl;
+    ret = -1;
   }
 
   Kokkos::finalize();
 
-  return( 0 );
+  return ret;
 }

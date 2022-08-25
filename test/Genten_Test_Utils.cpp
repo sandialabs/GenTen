@@ -126,6 +126,11 @@ void Genten::Test::finalize()
   }
 }
 
+int Genten::Test::num_failed()
+{
+  return Genten::Test::errors.size();
+}
+
 /* timing routines which work on Linux
    void Genten::Test::gettime(timeval * time)
    {
