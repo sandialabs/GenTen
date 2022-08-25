@@ -122,7 +122,7 @@ void print_environment(const Genten::SptensorT<ExecSpace>& x,
         << "Execution environment:" << std::endl
         << "  MPI grid: ";
     for (ttb_indx i=0; i<nd; ++i) {
-      out << dtc.pmap().gridDims()[i] << " ";
+      out << dtc.pmap().gridDim(i) << " ";
       if (i<nd-1)
         out << "x ";
     }

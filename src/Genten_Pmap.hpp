@@ -68,6 +68,7 @@ public:
   // Size of the cartesian grid
   int gridSize() const { return grid_nprocs_; }
   small_vector<int> const &gridDims() const { return dimension_sizes_; }
+  int gridDim(int dim) const { return dimension_sizes_[dim]; }
 
   int gridRank() const { return grid_rank_; }
   MPI_Comm gridComm() const { return cart_comm_; }
@@ -215,6 +216,7 @@ public:
 
   int gridSize() const { return 1; }
   int gridRank() const { return 0; }
+  int gridDim(int dim) const { return 1; }
 
   int subCommSize(int dim) const { return 1; }
   int subCommRank(int dim) const { return 0; }
