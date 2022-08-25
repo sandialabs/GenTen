@@ -56,8 +56,9 @@ using namespace Genten::Test;
  */
 
 template <typename ExecSpace>
-void Genten_Test_HessVec_Type(Genten::MTTKRP_All_Method::type mttkrp_method,
-                              int infolevel, const std::string& label)
+void Genten_Test_HessVec_Type(
+  Genten::Hess_Vec_Tensor_Method::type hess_vec_method,
+  int infolevel, const std::string& label)
 {
   std::string space_name = Genten::SpaceProperties<ExecSpace>::name();
   initialize("HessVec tests ("+label+", "+space_name+")", infolevel);
@@ -89,8 +90,9 @@ void Genten_Test_HessVec_Type(Genten::MTTKRP_All_Method::type mttkrp_method,
   deep_copy(v, v_host);
 
   Genten::AlgParams algParams;
-  algParams.mttkrp_all_method = mttkrp_method;
+  algParams.hess_vec_tensor_method = hess_vec_method;
   algParams.mttkrp_method = Genten::MTTKRP_Method::Atomic;
+  algParams.mttkrp_all_method = Genten::MTTKRP_All_Method::Atomic;
 
   // Compute full hess-vec
   algParams.hess_vec_method = Genten::Hess_Vec_Method::Full;
@@ -243,10 +245,10 @@ void Genten_Test_HessVec_Space(int infolevel)
   typedef Genten::SpaceProperties<ExecSpace> space_prop;
 
   Genten_Test_HessVec_Type<ExecSpace>(
-    Genten::MTTKRP_All_Method::Atomic, infolevel, "Atomic");
+    Genten::Hess_Vec_Tensor_Method::Atomic, infolevel, "Atomic");
   if (!space_prop::is_gpu)
     Genten_Test_HessVec_Type<ExecSpace>(
-      Genten::MTTKRP_All_Method::Duplicated, infolevel, "Duplicated");
+      Genten::Hess_Vec_Tensor_Method::Duplicated, infolevel, "Duplicated");
   Genten_Test_HessVec_GaussNewton<ExecSpace>(infolevel);
 }
 
