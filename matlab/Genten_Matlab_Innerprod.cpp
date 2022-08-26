@@ -96,27 +96,27 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
     if (algParams.exec_space == Genten::Execution_Space::Default)
       matlab_driver<Genten::DefaultExecutionSpace>(nlhs, plhs, nrhs, prhs,
                                                    algParams);
-#ifdef KOKKOS_ENABLE_CUDA
+#ifdef HAVE_CUDA
     else if (algParams.exec_space == Genten::Execution_Space::Cuda)
       matlab_driver<Kokkos::Cuda>(nlhs, plhs, nrhs, prhs, algParams);
 #endif
-#ifdef KOKKOS_ENABLE_HIP
+#ifdef HAVE_HIP
     else if (algParams.exec_space == Genten::Execution_Space::HIP)
       matlab_driver<Kokkos::Experimental::HIP>(nlhs, plhs, nrhs, prhs, algParams);
 #endif
-#ifdef ENABLE_SYCL_FOR_CUDA
+#ifdef HAVE_SYCL
     else if (algParams.exec_space == Genten::Execution_Space::SYCL)
       matlab_driver<Kokkos::Experimental::SYCL>(nlhs, plhs, nrhs, prhs, algParams);
 #endif
-#ifdef KOKKOS_ENABLE_OPENMP
+#ifdef HAVE_OPENMP
     else if (algParams.exec_space == Genten::Execution_Space::OpenMP)
       matlab_driver<Kokkos::OpenMP>(nlhs, plhs, nrhs, prhs, algParams);
 #endif
-#ifdef KOKKOS_ENABLE_THREADS
+#ifdef HAVE_THREADS
     else if (algParams.exec_space == Genten::Execution_Space::Threads)
       matlab_driver<Kokkos::Threads>(nlhs, plhs, nrhs, prhs, algParams);
 #endif
-#ifdef KOKKOS_ENABLE_SERIAL
+#ifdef HAVE_SERIAL
     else if (algParams.exec_space == Genten::Execution_Space::Serial)
       matlab_driver<Kokkos::Serial>(nlhs, plhs, nrhs, prhs, algParams);
 #endif

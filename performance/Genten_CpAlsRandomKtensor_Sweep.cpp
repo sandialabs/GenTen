@@ -299,37 +299,37 @@ int main(int argc, char* argv[])
       ret = run_cpals< Genten::DefaultExecutionSpace >(
         cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
         nMaxNonzeroes, algParams);
-#ifdef KOKKOS_ENABLE_CUDA
+#ifdef HAVE_CUDA
     else if (exec_space == Genten::Execution_Space::Cuda)
       ret = run_cpals< Kokkos::Cuda >(
         cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
         nMaxNonzeroes, algParams);
 #endif
-#ifdef KOKKOS_ENABLE_HIP
+#ifdef HAVE_HIP
     else if (exec_space == Genten::Execution_Space::HIP)
       ret = run_cpals< Kokkos::Experimental::HIP >(
         cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
         nMaxNonzeroes, algParams);
 #endif
-#ifdef ENABLE_SYCL_FOR_CUDA
+#ifdef HAVE_SYCL
     else if (exec_space == Genten::Execution_Space::SYCL)
       ret = run_cpals< Kokkos::Experimental::SYCL >(
         cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
         nMaxNonzeroes, algParams);
 #endif
-#ifdef KOKKOS_ENABLE_OPENMP
+#ifdef HAVE_OPENMP
     else if (exec_space == Genten::Execution_Space::OpenMP)
       ret = run_cpals< Kokkos::OpenMP >(
         cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
         nMaxNonzeroes, algParams);
 #endif
-#ifdef KOKKOS_ENABLE_THREADS
+#ifdef HAVE_THREADS
     else if (exec_space == Genten::Execution_Space::Threads)
       ret = run_cpals< Kokkos::Threads >(
         cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
         nMaxNonzeroes, algParams);
 #endif
-#ifdef KOKKOS_ENABLE_SERIAL
+#ifdef HAVE_SERIAL
     else if (exec_space == Genten::Execution_Space::Serial)
       ret = run_cpals< Kokkos::Serial >(
         cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,

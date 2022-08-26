@@ -570,7 +570,7 @@ int main(int argc, char* argv[])
                                                        facDims_h,
                                                        nnz,
                                                        tensor_outputfilename);
-#ifdef KOKKOS_ENABLE_CUDA
+#ifdef HAVE_CUDA
     else if (algParams.exec_space == Genten::Execution_Space::Cuda)
       ret = main_driver<Kokkos::Cuda>(algParams,
                                       json_input,
@@ -584,7 +584,7 @@ int main(int argc, char* argv[])
                                       nnz,
                                       tensor_outputfilename);
 #endif
-#ifdef KOKKOS_ENABLE_HIP
+#ifdef HAVE_HIP
     else if (algParams.exec_space == Genten::Execution_Space::HIP)
       ret = main_driver<Kokkos::Experimental::HIP>(algParams,
                                                    json_input,
@@ -598,7 +598,7 @@ int main(int argc, char* argv[])
                                                    nnz,
                                                    tensor_outputfilename);
 #endif
-#ifdef ENABLE_SYCL_FOR_CUDA
+#ifdef HAVE_SYCL
     else if (algParams.exec_space == Genten::Execution_Space::SYCL)
       ret = main_driver<Kokkos::Experimental::SYCL>(algParams,
                                                     json_input,
@@ -612,7 +612,7 @@ int main(int argc, char* argv[])
                                                     nnz,
                                                     tensor_outputfilename);
 #endif
-#ifdef KOKKOS_ENABLE_OPENMP
+#ifdef HAVE_OPENMP
     else if (algParams.exec_space == Genten::Execution_Space::OpenMP)
       ret = main_driver<Kokkos::OpenMP>(algParams,
                                         json_input,
@@ -626,7 +626,7 @@ int main(int argc, char* argv[])
                                         nnz,
                                         tensor_outputfilename);
 #endif
-#ifdef KOKKOS_ENABLE_THREADS
+#ifdef HAVE_THREADS
     else if (algParams.exec_space == Genten::Execution_Space::Threads)
       ret = main_driver<Kokkos::Threads>(algParams,
                                          json_input,
@@ -640,7 +640,7 @@ int main(int argc, char* argv[])
                                          nnz,
                                          tensor_outputfilename);
 #endif
-#ifdef KOKKOS_ENABLE_SERIAL
+#ifdef HAVE_SERIAL
     else if (algParams.exec_space == Genten::Execution_Space::Serial)
       ret = main_driver<Kokkos::Serial>(algParams,
                                         json_input,
