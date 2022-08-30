@@ -76,6 +76,9 @@ Government retains certain rights in this software.
 
 void usage(char **argv)
 {
+  if (Genten::DistContext::rank() != 0)
+    return;
+
   std::cout << "Usage: "<< argv[0]<<" [options]" << std::endl;
   std::cout << "Driver options: " << std::endl;
 #ifdef HAVE_BOOST
@@ -104,6 +107,7 @@ void print_environment(const Genten::SptensorT<ExecSpace>& x,
   const ttb_indx nnz = dtc.globalNNZ(x);
   const ttb_real tsz = dtc.globalNumelFloat(x);
   const ttb_real nz = tsz - nnz;
+  const ttb_real nrm = dtc.globalNorm(x);
   if (Genten::DistContext::rank() == 0) {
     out << std::endl
         << "Sparse tensor: " << std::endl << "  ";
@@ -118,7 +122,9 @@ void print_environment(const Genten::SptensorT<ExecSpace>& x,
         << "%) Nonzeros" << " and "
         << std::setprecision(0) << std::fixed << nz << " ("
         << std::setprecision(1) << std::fixed << 100.0*(nz/tsz)
-        << "%) Zeros" << std::endl << std::endl
+        << "%) Zeros" << std::endl
+        << "  " << std::setprecision(1) << std::scientific << nrm
+        << " Frobenius norm" << std::endl << std::endl
         << "Execution environment:" << std::endl
         << "  MPI grid: ";
     for (ttb_indx i=0; i<nd; ++i) {
