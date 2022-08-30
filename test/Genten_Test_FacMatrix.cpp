@@ -578,22 +578,22 @@ void Genten_Test_FacMatrix_Space(int infolevel, const std::string & datadir)
 }
 
 void Genten_Test_FacMatrix(int infolevel, const std::string & datadir) {
-#ifdef KOKKOS_ENABLE_CUDA
+#ifdef HAVE_CUDA
   Genten_Test_FacMatrix_Space<Kokkos::Cuda>(infolevel, datadir);
 #endif
-#ifdef KOKKOS_ENABLE_HIP
+#ifdef HAVE_HIP
   Genten_Test_FacMatrix_Space<Kokkos::Experimental::HIP>(infolevel, datadir);
 #endif
-#ifdef ENABLE_SYCL_FOR_CUDA
+#ifdef HAVE_SYCL
   Genten_Test_FacMatrix_Space<Kokkos::Experimental::SYCL>(infolevel, datadir);
 #endif
-#ifdef KOKKOS_ENABLE_OPENMP
+#ifdef HAVE_OPENMP
   Genten_Test_FacMatrix_Space<Kokkos::OpenMP>(infolevel, datadir);
 #endif
-#ifdef KOKKOS_ENABLE_THREADS
+#ifdef HAVE_THREADS
   Genten_Test_FacMatrix_Space<Kokkos::Threads>(infolevel, datadir);
 #endif
-#ifdef KOKKOS_ENABLE_SERIAL
+#ifdef HAVE_SERIAL
   Genten_Test_FacMatrix_Space<Kokkos::Serial>(infolevel, datadir);
 #endif
 }

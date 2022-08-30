@@ -644,7 +644,7 @@ int main(int argc, char* argv[])
           cFacDims, nNumComponents, nRNGseed, nIters,
           check, warmup, algParams);
     }
-#ifdef KOKKOS_ENABLE_CUDA
+#ifdef HAVE_CUDA
     else if (exec_space == Genten::Execution_Space::Cuda) {
       if (sparse)
         ret = run_sparse_mttkrp< Kokkos::Cuda >(
@@ -658,7 +658,7 @@ int main(int argc, char* argv[])
           check, warmup, algParams);
     }
 #endif
-#ifdef KOKKOS_ENABLE_HIP
+#ifdef HAVE_HIP
     else if (exec_space == Genten::Execution_Space::HIP) {
       if (sparse)
         ret = run_sparse_mttkrp< Kokkos::Experimental::HIP >(
@@ -672,7 +672,7 @@ int main(int argc, char* argv[])
           check, warmup, algParams);
     }
 #endif
-#ifdef ENABLE_SYCL_FOR_CUDA
+#ifdef HAVE_SYCL
     else if (exec_space == Genten::Execution_Space::SYCL) {
       if (sparse)
         ret = run_sparse_mttkrp< Kokkos::Experimental::SYCL >(
@@ -686,7 +686,7 @@ int main(int argc, char* argv[])
           check, warmup, algParams);
     }
 #endif
-#ifdef KOKKOS_ENABLE_OPENMP
+#ifdef HAVE_OPENMP
     else if (exec_space == Genten::Execution_Space::OpenMP) {
       if (sparse)
         ret = run_sparse_mttkrp< Kokkos::OpenMP >(
@@ -700,7 +700,7 @@ int main(int argc, char* argv[])
           check, warmup, algParams);
     }
 #endif
-#ifdef KOKKOS_ENABLE_THREADS
+#ifdef HAVE_THREADS
     else if (exec_space == Genten::Execution_Space::Threads) {
       if (sparse)
         ret = run_sparse_mttkrp< Kokkos::Threads >(
@@ -714,7 +714,7 @@ int main(int argc, char* argv[])
           check, warmup, algParams);
     }
 #endif
-#ifdef KOKKOS_ENABLE_SERIAL
+#ifdef HAVE_SERIAL
     else if (exec_space == Genten::Execution_Space::Serial) {
       if (sparse)
         ret = run_sparse_mttkrp< Kokkos::Serial >(

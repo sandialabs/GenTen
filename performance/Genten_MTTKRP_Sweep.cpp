@@ -313,28 +313,28 @@ int main(int argc, char* argv[])
         inputfilename, index_base, gz,
         cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
         nMaxNonzeroes, nRNGseed, nIters, algParams);
-#ifdef KOKKOS_ENABLE_CUDA
+#ifdef HAVE_CUDA
     else if (exec_space == Genten::Execution_Space::Cuda)
       run_mttkrp< Kokkos::Cuda >(
         inputfilename, index_base, gz,
         cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
         nMaxNonzeroes, nRNGseed, nIters, algParams);
 #endif
-#ifdef KOKKOS_ENABLE_HIP
+#ifdef HAVE_HIP
     else if (exec_space == Genten::Execution_Space::HIP)
       run_mttkrp< Kokkos::Experimental::HIP >(
         inputfilename, index_base, gz,
         cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
         nMaxNonzeroes, nRNGseed, nIters, algParams);
 #endif
-#ifdef ENABLE_SYCL_FOR_CUDA
+#ifdef HAVE_SYCL
     else if (exec_space == Genten::Execution_Space::SYCL)
       run_mttkrp< Kokkos::Experimental::SYCL >(
         inputfilename, index_base, gz,
         cFacDims, nNumComponentsMin, nNumComponentsMax, nNumComponentsStep,
         nMaxNonzeroes, nRNGseed, nIters, algParams);
 #endif
-#ifdef KOKKOS_ENABLE_OPENMP
+#ifdef HAVE_OPENMP
     else if (exec_space == Genten::Execution_Space::OpenMP)
       run_mttkrp< Kokkos::OpenMP >(
         inputfilename, index_base, gz,
@@ -342,7 +342,7 @@ int main(int argc, char* argv[])
         nMaxNonzeroes, nRNGseed, nIters, algParams);
 
 #endif
-#ifdef KOKKOS_ENABLE_THREADS
+#ifdef HAVE_THREADS
     else if (exec_space == Genten::Execution_Space::Threads)
       run_mttkrp< Kokkos::Threads >(
         inputfilename, index_base, gz,
@@ -350,7 +350,7 @@ int main(int argc, char* argv[])
         nMaxNonzeroes, nRNGseed, nIters, algParams);
 
 #endif
-#ifdef KOKKOS_ENABLE_SERIAL
+#ifdef HAVE_SERIAL
     else if (exec_space == Genten::Execution_Space::Serial)
       run_mttkrp< Kokkos::Serial >(
         inputfilename, index_base, gz,

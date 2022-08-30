@@ -336,22 +336,22 @@ void Genten_Test_TTM_Space(int infolevel)
 }
 
 void Genten_Test_TTM(int infolevel) {
-#ifdef KOKKOS_ENABLE_CUDA
+#ifdef HAVE_CUDA
   Genten_Test_TTM_Space<Kokkos::Cuda>(infolevel);
 #endif
-#ifdef KOKKOS_ENABLE_HIP
+#ifdef HAVE_HIP
   Genten_Test_TTM_Space<Kokkos::Experimental::HIP>(infolevel);
 #endif
-#ifdef ENABLE_SYCL_FOR_CUDA
+#ifdef HAVE_SYCL
   Genten_Test_TTM_Space<Kokkos::Experimental::SYCL>(infolevel);
 #endif
-#ifdef KOKKOS_ENABLE_OPENMP
+#ifdef HAVE_OPENMP
   Genten_Test_TTM_Space<Kokkos::OpenMP>(infolevel);
 #endif
-#ifdef KOKKOS_ENABLE_THREADS
+#ifdef HAVE_THREADS
   Genten_Test_TTM_Space<Kokkos::Threads>(infolevel);
 #endif
-#ifdef KOKKOS_ENABLE_SERIAL
+#ifdef HAVE_SERIAL
   Genten_Test_TTM_Space<Kokkos::Serial>(infolevel);
 #endif
 }
