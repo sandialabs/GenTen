@@ -67,4 +67,11 @@ namespace Genten
                              const KtensorT<typename TensorType::exec_space>& v,
                              const KtensorT<typename TensorType::exec_space>& u,
                              const AlgParams& algParams);
+
+  template <typename TensorType>
+  void blk_diag_prec_vec(const TensorType& X,
+                         const KtensorT<typename TensorType::exec_space>& a,
+                         const KtensorT<typename TensorType::exec_space>& v,
+                         const KtensorT<typename TensorType::exec_space>& u,
+                         const AlgParams& algParams);
 }

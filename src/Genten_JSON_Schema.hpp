@@ -320,15 +320,26 @@ static nlohmann::json json_schema = R"(
                   "minimum": 0,
                   "default": 5000
               },
-              "hessian": {
+              "hess-vec": {
                   "description": "Hessian-vector product method",
                   "enum": ["full", "gauss-newton", "finite-difference"],
                   "default": "finite-difference"
               },
-              "hessian-tensor": {
+              "hess-vec-tensor": {
                   "description": "Hessian-vector product method for tensor-only term",
                   "enum": ["default", "atomic", "duplicated", "single", "perm"],
                   "default": "default"
+              },
+              "hess-vec-prec": {
+                  "description": "Preconditioning method for Hessian-vector product",
+                  "enum": ["none", "approx-block-diag"],
+                  "default": "approx-block-diag"
+              },
+              "penalty": {
+                  "description": "Penalty term for Tikhonov regularization.  Needed to eliminate scaling ambiguity of CP decomposition.",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "default": 0.0
               }
           }
       },

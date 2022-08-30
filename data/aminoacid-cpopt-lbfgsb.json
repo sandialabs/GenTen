@@ -19,11 +19,7 @@
     {
         "method": "lbfgsb",
         "maxiters": 20,
-        "tol": 1e-4,
-        "mttkrp":
-        {
-            "method": "default"
-        }
+        "tol": 1e-4
     },
     "testing":
     {

@@ -96,6 +96,11 @@ namespace Genten {
                          const ROL::Vector<ttb_real>& x,
                          ttb_real& tol ) override;
 
+    virtual void precond(ROL::Vector<ttb_real>& pv,
+                         const ROL::Vector<ttb_real>& v,
+                         const ROL::Vector<ttb_real>& x,
+                         ttb_real& tol ) override;
+
     ROL::Ptr<vector_type> createDesignVector() const
     {
       return ROL::makePtr<vector_type>(M, false);
@@ -264,6 +269,35 @@ namespace Genten {
     // Convert Ktensor to vector
 #if COPY_KTENSOR
     hv.copyFromKtensor(G);
+#endif
+  }
+
+  template <typename Tensor>
+  void
+  CP_RolObjective<Tensor>::
+  precond(ROL::Vector<ttb_real>& ppv, const ROL::Vector<ttb_real>& vv,
+          const ROL::Vector<ttb_real>& xx, ttb_real &tol)
+  {
+    TEUCHOS_FUNC_TIME_MONITOR("CP_RolObjective::precond");
+
+    const vector_type& x = dynamic_cast<const vector_type&>(xx);
+    const vector_type& v = dynamic_cast<const vector_type&>(vv);
+    vector_type& pv = dynamic_cast<vector_type&>(ppv);
+
+    // Convert input vector to a Ktensor
+    M = x.getKtensor();
+    V = v.getKtensor();
+    G = pv.getKtensor();
+#if COPY_KTENSOR
+    x.copyToKtensor(M);
+    v.copyToKtensor(V);
+#endif
+
+    cp_model.prec_vec(G, M, V);
+
+    // Convert Ktensor to vector
+#if COPY_KTENSOR
+    pv.copyFromKtensor(G);
 #endif
   }
 

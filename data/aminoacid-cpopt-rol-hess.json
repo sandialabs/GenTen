@@ -19,12 +19,7 @@
     {
         "method": "rol",
         "rol-file": "data/rol_truncated_cg.xml",
-        "hessian": "full",
-        "mttkrp":
-        {
-            "method": "default",
-            "all-method": "default"
-        }
+        "hess-vec": "full"
     },
     "testing":
     {

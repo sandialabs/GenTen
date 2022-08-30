@@ -93,6 +93,7 @@ namespace Genten {
     ttb_indx max_total_iters;    // maximum total iterations for L-BFGS-B
     Hess_Vec_Method::type hess_vec_method; // Hessian-vector product method
     Hess_Vec_Tensor_Method::type hess_vec_tensor_method; // Hessian-vector product method for tensor-only term
+    Hess_Vec_Prec_Method::type hess_vec_prec_method; // Preconditoning method for hessian-vector product
 
     // GCP options
     GCP_LossFunction::type loss_function_type; // Loss function for GCP

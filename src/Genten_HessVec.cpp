@@ -544,7 +544,8 @@ struct HessVec_Dense_Kernel {
 template <typename ExecSpace>
 void hess_vec_ktensor_term(const KtensorT<ExecSpace>& a,
                            const KtensorT<ExecSpace>& v,
-                           const KtensorT<ExecSpace>& u)
+                           const KtensorT<ExecSpace>& u,
+                           const AlgParams& algParams)
 {
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::hess_vec_ktensor_term");
@@ -561,6 +562,9 @@ void hess_vec_ktensor_term(const KtensorT<ExecSpace>& a,
     if (pmap != nullptr)
       pmap->facMap(n)->allReduce(W[n].view().data(), W[n].view().span());
   }
+
+  // Regularization term
+  const ttb_real lambda = algParams.penalty;
 
   for (unsigned k=0; k<nd; ++k) {
     const ttb_indx I_k = a[k].nRows();
@@ -608,6 +612,8 @@ void hess_vec_ktensor_term(const KtensorT<ExecSpace>& a,
           }
         } // s
 
+        // Add in regularization term
+        u[k].entry(i,j) += lambda*v[k].entry(i,j);
       } // j
     }, "hessvec_ktensor_kernel");
   }
@@ -689,7 +695,7 @@ void hess_vec(const SptensorT<ExecSpace>& X,
     u[n].times(-1.0);
 
   // Add in the second (ktensor) term
-  Impl::hess_vec_ktensor_term(a, v, u);
+  Impl::hess_vec_ktensor_term(a, v, u, algParams);
 }
 
 template <typename ExecSpace>
@@ -723,13 +729,6 @@ void hess_vec(const TensorT<ExecSpace>& X,
   Impl::HessVec_Dense_Kernel<ExecSpace> kernel(X,a,v,u,algParams);
   Impl::run_row_simd_kernel(kernel, nc);
 
-  // Scale first term by -1
-  for (unsigned n=0; n<nd; ++n)
-    u[n].times(-1.0);
-
-  // Add in the second (ktensor) term
-  Impl::hess_vec_ktensor_term(a, v, u);
-
   // allReduce disabled because TensorT doesn't yet support MPI parallelism
   // if (u.getProcessorMap() != nullptr) {
   //   Kokkos::fence();
@@ -737,6 +736,13 @@ void hess_vec(const TensorT<ExecSpace>& X,
   //     u.getProcessorMap()->subGridAllReduce(n, u[n].view().data(),
   //                                           u[n].view().span());
   // }
+
+  // Scale first term by -1
+  for (unsigned n=0; n<nd; ++n)
+    u[n].times(-1.0);
+
+  // Add in the second (ktensor) term
+  Impl::hess_vec_ktensor_term(a, v, u, algParams);
 }
 
 template <typename TensorType>
@@ -765,6 +771,8 @@ void gauss_newton_hess_vec(const TensorType& X,
     assert(u[i].nRows() == X.size(i));
   }
 
+  u.setMatrices(0.0);
+
   IndxArrayT<ExecSpace> nrow(nd, nc);
   FacMatArrayT<ExecSpace> Z(nd, nrow, nc) , W(nd, nrow, nc);
   for (unsigned n=0; n<nd; ++n) {
@@ -773,6 +781,9 @@ void gauss_newton_hess_vec(const TensorType& X,
     if (pmap != nullptr)
       pmap->facMap(n)->allReduce(W[n].view().data(), W[n].view().span());
   }
+
+  // Regularization term (this makes the approximation non-singular)
+  const ttb_real lambda = algParams.penalty;
 
   for (unsigned k=0; k<nd; ++k) {
     const ttb_indx I_k = X.size(k);
@@ -804,8 +815,57 @@ void gauss_newton_hess_vec(const TensorType& X,
           }
         } // s
 
+        // Add in regularization term
+        u[k].entry(i,j) += lambda*v[k].entry(i,j);
       } // j
     }, "hessvec_ktensor_kernel");
+  }
+}
+
+template <typename TensorType>
+void blk_diag_prec_vec(const TensorType& X,
+                       const KtensorT<typename TensorType::exec_space>& a,
+                       const KtensorT<typename TensorType::exec_space>& v,
+                       const KtensorT<typename TensorType::exec_space>& u,
+                       const AlgParams& algParams)
+{
+  typedef typename TensorType::exec_space ExecSpace;
+
+  const ttb_indx nc = a.ncomponents();     // Number of components
+  const ttb_indx nd = a.ndims();           // Number of dimensions
+
+  assert(X.ndims() == nd);
+  assert(v.ndims() == nd);
+  assert(v.ncomponents() == nc);
+  assert(u.ndims() == nd);
+  assert(u.ncomponents() == nc);
+  assert(v.isConsistent());
+  assert(u.isConsistent());
+  for (ttb_indx i=0; i<nd; ++i) {
+    assert(a[i].nRows() == X.size(i));
+    assert(v[i].nRows() == X.size(i));
+    assert(u[i].nRows() == X.size(i));
+  }
+
+  IndxArrayT<ExecSpace> nrow(nd, nc);
+  FacMatArrayT<ExecSpace> Z(nd, nrow, nc);
+  for (unsigned n=0; n<nd; ++n)
+    Z[n].gramian(a[n], true); // full gram
+  FacMatrixT<ExecSpace> Gamma(nc,nc);
+
+  // Regularization term (this makes the approximation non-singular)
+  const ttb_real lambda = algParams.penalty;
+
+  // u[n] = v[n] * (Z[0].*....*Z[n-1].*Z[n+1].*....*Z[nd-1])^{-1}
+  for (unsigned n=0; n<nd; ++n) {
+    Gamma = ttb_real(1.0);
+    for (unsigned m=0; m<nd; ++m) {
+      if (m != n)
+        Gamma.times(Z[m]);
+    }
+    Gamma.diagonalShift(lambda);
+    deep_copy(u[n], v[n]);
+    u[n].solveTransposeRHS(Gamma, true, Upper, true, algParams); // full gram
   }
 }
 
@@ -835,6 +895,20 @@ void gauss_newton_hess_vec(const TensorType& X,
                                                                         \
   template                                                              \
   void gauss_newton_hess_vec(const TensorT<SPACE>& X,                   \
+    const KtensorT<SPACE>& a,                                           \
+    const KtensorT<SPACE>& v,                                           \
+    const KtensorT<SPACE>& u,                                           \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template                                                              \
+  void blk_diag_prec_vec(const SptensorT<SPACE>& X,                     \
+    const KtensorT<SPACE>& a,                                           \
+    const KtensorT<SPACE>& v,                                           \
+    const KtensorT<SPACE>& u,                                           \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template                                                              \
+  void blk_diag_prec_vec(const TensorT<SPACE>& X,                       \
     const KtensorT<SPACE>& a,                                           \
     const KtensorT<SPACE>& v,                                           \
     const KtensorT<SPACE>& u,                                           \

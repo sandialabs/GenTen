@@ -41,6 +41,7 @@
 #include "Genten_AlgParams.hpp"
 #include "Genten_FacMatrix.hpp"
 #include "Genten_JSON_Schema.hpp"
+#include "Genten_DistContext.hpp"
 
 Genten::AlgParams::AlgParams() :
   exec_space(Execution_Space::default_type),
@@ -76,6 +77,7 @@ Genten::AlgParams::AlgParams() :
   max_total_iters(5000),
   hess_vec_method(Hess_Vec_Method::default_type),
   hess_vec_tensor_method(Hess_Vec_Tensor_Method::default_type),
+  hess_vec_prec_method(Hess_Vec_Prec_Method::default_type),
   loss_function_type(Genten::GCP_LossFunction::default_type),
   loss_eps(1.0e-10),
   gcp_tol(-DOUBLE_MAX),
@@ -178,16 +180,22 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   pgtol = parse_ttb_real(args, "--pgtol", pgtol, 0.0, DOUBLE_MAX);
   memory = parse_ttb_indx(args, "--memory", memory, 0, INT_MAX);
   max_total_iters = parse_ttb_indx(args, "--total-iters", max_total_iters, 0, INT_MAX);
-  hess_vec_method = parse_ttb_enum(args, "--hessian", hess_vec_method,
+  hess_vec_method = parse_ttb_enum(args, "--hess-vec", hess_vec_method,
                                    Genten::Hess_Vec_Method::num_types,
                                    Genten::Hess_Vec_Method::types,
                                    Genten::Hess_Vec_Method::names);
   hess_vec_tensor_method = parse_ttb_enum(
-    args, "--hessian-tensor",
+    args, "--hess-vec-tensor",
     hess_vec_tensor_method,
     Genten::Hess_Vec_Tensor_Method::num_types,
     Genten::Hess_Vec_Tensor_Method::types,
     Genten::Hess_Vec_Tensor_Method::names);
+  hess_vec_prec_method = parse_ttb_enum(
+    args, "--hess-vec-prec",
+    hess_vec_prec_method,
+    Genten::Hess_Vec_Prec_Method::num_types,
+    Genten::Hess_Vec_Prec_Method::types,
+    Genten::Hess_Vec_Prec_Method::names);
 
   // GCP options
   loss_function_type = parse_ttb_enum(args, "--type", loss_function_type,
@@ -326,8 +334,10 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_value(cpopt_input, "pgtol", pgtol, 0.0, DOUBLE_MAX);
     parse_ptree_value(cpopt_input, "memory", memory, 0, INT_MAX);
     parse_ptree_value(cpopt_input, "total-iters", max_total_iters, 0, INT_MAX);
-    parse_ptree_enum<Hess_Vec_Method>(cpopt_input, "hessian", hess_vec_method);
-    parse_ptree_enum<Hess_Vec_Tensor_Method>(cpopt_input, "hessian-tensor", hess_vec_tensor_method);
+    parse_ptree_enum<Hess_Vec_Method>(cpopt_input, "hess-vec", hess_vec_method);
+    parse_ptree_enum<Hess_Vec_Tensor_Method>(cpopt_input, "hess-vec-tensor", hess_vec_tensor_method);
+    parse_ptree_enum<Hess_Vec_Prec_Method>(cpopt_input, "hess-vec-prec", hess_vec_prec_method);
+    parse_ptree_value(cpopt_input, "penalty", penalty, 0.0, DOUBLE_MAX);
     parse_mttkrp(cpopt_input);
   }
 
@@ -450,20 +460,29 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --factr <float>    factr parameter for L-BFGS-B" << std::endl;
   out << "  --pgtol <float>    pgtol parameter for L-BFGS-B" << std::endl;
   out << "  --memory <int>     memory parameter for L-BFGS-B" << std::endl;
-  out << "  --total-iters <int>  max total iterations for L-BFGS-B" << std::endl;
-  out << "  --hessian <method> Hessian-vector product method: ";
+  out << "  --total-iters <int> max total iterations for L-BFGS-B" << std::endl;
+  out << "  --hess-vec <method> Hessian-vector product method: ";
   for (unsigned i=0; i<Genten::Hess_Vec_Method::num_types; ++i) {
     out << Genten::Hess_Vec_Method::names[i];
     if (i != Genten::Hess_Vec_Method::num_types-1)
       out << ", ";
   }
   out << std::endl;
-  out << "  --hessian-tensor <method> Hessian-vector product method for tensor term: ";
+  out << "  --hess-vec-tensor <method> Hessian-vector product method for tensor term: ";
   for (unsigned i=0; i<Genten::Hess_Vec_Tensor_Method::num_types; ++i) {
     out << Genten::Hess_Vec_Tensor_Method::names[i];
     if (i != Genten::Hess_Vec_Tensor_Method::num_types-1)
       out << ", ";
   }
+  out << std::endl;
+  out << "  --hess-vec-prec <method> Preconditioning method for Hessian-vector product: ";
+  for (unsigned i=0; i<Genten::Hess_Vec_Prec_Method::num_types; ++i) {
+    out << Genten::Hess_Vec_Prec_Method::names[i];
+    if (i != Genten::Hess_Vec_Prec_Method::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
+  out << "  --penalty <float>  Tikhonov regularization penalty multiplier" << std::endl;
   out << std::endl;
   out << "GCP options:" << std::endl;
   out << "  --type <type>      loss function type for GCP: ";
@@ -513,6 +532,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
     if (i != Genten::GCP_Step::num_types-1)
       out << ", ";
   }
+  out << std::endl;
   out << "  --adam-beta1       Decay rate for 1st moment avg." << std::endl;
   out << "  --adam-beta2       Decay rate for 2nd moment avg." << std::endl;
   out << "  --adam-eps         Shift in ADAM step." << std::endl;
@@ -565,8 +585,10 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  pgtol = " << pgtol << std::endl;
   out << "  memory = " << memory << std::endl;
   out << "  total-iters = " << max_total_iters << std::endl;
-  out << "  hessian = " << Genten::Hess_Vec_Method::names[hess_vec_method] << std::endl;
-  out << "  hessian-tensor = " << Genten::Hess_Vec_Tensor_Method::names[hess_vec_tensor_method] << std::endl;
+  out << "  hess-vec = " << Genten::Hess_Vec_Method::names[hess_vec_method] << std::endl;
+  out << "  hess-vec-tensor = " << Genten::Hess_Vec_Tensor_Method::names[hess_vec_tensor_method] << std::endl;
+  out << "  hess-vec-prec = " << Genten::Hess_Vec_Prec_Method::names[hess_vec_prec_method] << std::endl;
+  out << "  penalty = " << penalty << std::endl;
 
   out << std::endl;
   out << "GCP options:" << std::endl;
@@ -860,9 +882,11 @@ Genten::check_and_print_unused_args(const std::vector<std::string>& args,
   if (args.size() == 0)
     return false;
 
-  out << std::endl << "Error!  Unknown command line arguments: ";
-  for (auto arg : args)
-    out << arg << " ";
-  out << std::endl << std::endl;
+  if (Genten::DistContext::rank() == 0) {
+    out << std::endl << "Error!  Unknown command line arguments: ";
+    for (auto arg : args)
+      out << arg << " ";
+    out << std::endl << std::endl;
+  }
   return true;
 }

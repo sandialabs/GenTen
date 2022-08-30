@@ -236,7 +236,7 @@ namespace Genten {
     static constexpr type default_type = Default;
   };
 
-  // Sampling functions supported by GCP
+  // Hessian-vector product method for CP-OPT w/ROL
   struct Hess_Vec_Method {
     enum type {
       Full,
@@ -253,7 +253,7 @@ namespace Genten {
     static constexpr type default_type = FiniteDifference;
   };
 
-  // HessVec algorithm for tensor term
+  // Method for handling race conditions in tensor term for full hess-vec
   struct Hess_Vec_Tensor_Method {
     enum type {
       Default,     // Use default method based on architecture
@@ -274,6 +274,23 @@ namespace Genten {
       "default", "atomic", "duplicated", "single", "perm"
     };
     static constexpr type default_type = Default;
+  };
+
+  // Method for preconditioning hessian-vector products
+  struct Hess_Vec_Prec_Method {
+    enum type {
+      None,           // No preconditioning
+      ApproxBlockDiag // Precondition with inverse of approximate block diagonal
+    };
+    static constexpr unsigned num_types = 2;
+    static constexpr type types[] = {
+      None,
+      ApproxBlockDiag
+    };
+    static constexpr const char* names[] = {
+      "none", "approx-block-diag"
+    };
+    static constexpr type default_type = None;
   };
 
   // TTM algorithm
