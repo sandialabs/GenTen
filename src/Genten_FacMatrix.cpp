@@ -1534,6 +1534,9 @@ normFsq() const
   }, nrm);
   Kokkos::fence();
 
+  if (pmap != nullptr)
+    nrm = pmap->allReduce(nrm);
+
   return nrm;
 }
 
