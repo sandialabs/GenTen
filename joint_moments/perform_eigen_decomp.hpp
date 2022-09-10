@@ -61,6 +61,36 @@ void perform_eigen_decomp(int nRows, gram_view_type& gram_matrix, eig_view_type&
     cudaStat = cudaDeviceSynchronize();
     assert(CUSOLVER_STATUS_SUCCESS == cusolver_status);
     assert(cudaSuccess == cudaStat);
+#elif defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCSOLVER)
+    rocblas_status status;
+    static rocblas_handle handle = 0;
+    if (handle == 0) {
+        status = rocblas_create_handle(&handle);
+    }
+        
+    //Ask for eigenvectors to be computed
+    rocblas_evect jobz = rocblas_evect_original;
+    rocblas_fill uplo = rocblas_fill_lower;
+
+    //Allocate a working array on GPU of size nRows
+    double *dE;
+    hipMalloc(&dE, sizeof(double)*nRows);
+    int *devInfo = NULL;
+    hipMalloc((void**)&devInfo, sizeof(int));
+
+    //Now call the actual function
+    status = rocsolver_dsyevd(handle, jobz, uplo,
+                              nRows,  // M of input matrix
+                              gram_matrix.data(),   // input matrix
+                              nRows,  // leading dimension of input matrix
+                              eig_vals.data(),    // vector of eigenvalues
+			      dE, //Internal work array on GPU
+			      devInfo);
+
+    if (status != rocblas_status_success) {
+    std::cout << "rocsolver_dsyevd() exited with status "
+         << status << std::endl;
+    }
 #elif defined (LAPACK_FOUND)
 
     ttb_blas_int lwork = 0; 

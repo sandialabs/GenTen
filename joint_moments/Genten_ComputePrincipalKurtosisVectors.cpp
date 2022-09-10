@@ -142,7 +142,7 @@ void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nva
       std::cout<< "Error!  cublasCreate() failed with status "<< status<< std::endl;
     }
   }
-#elif defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_ROCBLAS)
+#elif defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
   //Setup rocblas handles once, will be reused repeatedly
   rocblas_status status;
 
@@ -182,7 +182,7 @@ void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nva
                        krp_of_raw_data.data(), nvars*nvars,
                        &beta,
                        cokurtosis_tensor.data(), nvars*nvars);
-#elif defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_ROCBLAS)
+#elif defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
   status = rocblas_dgemm(handle, rocblas_operation_none, rocblas_operation_transpose,
 		         nvars*nvars, nvars*nvars, nsamples,
                          &alpha,
@@ -214,7 +214,7 @@ void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nva
                        cokurtosis_tensor.data(), nvars,
                        &beta,
                        gram_matrix.data(), nvars);
-#elif defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_ROCBLAS)
+#elif defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
   status = rocblas_dgemm(handle, rocblas_operation_none, rocblas_operation_transpose,
 		         nvars, nvars, nvars*nvars*nvars,
                          &alpha2,
