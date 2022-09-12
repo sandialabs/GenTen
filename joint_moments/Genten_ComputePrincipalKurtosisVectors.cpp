@@ -163,7 +163,7 @@ void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nva
   int nteams_y = 32; //hard-coding for now
   int nteams = nteams_x * nteams_y;
 
-  std::cout<<"Launching KRP kernel with "<<nteams_x<<" "<<nteams_y<<" "<<nteams<<std::endl;
+  //HKstd::cout<<"Launching KRP kernel with "<<nteams_x<<" "<<nteams_y<<" "<<nteams<<std::endl;
 
   //We're using a 2D block of thread teams (nteams_x*nteams_y in number)
   //The Team Policy can also be specified with a 1D index, so we'll flatten the 2D index
@@ -237,11 +237,11 @@ void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nva
   //Allocate views for eigen values
   //HKKokkos::View<ttb_real*, ExecSpace> eig_vals("gram_eig_vals", nvars);
   Kokkos::View<ttb_real*, Space> eig_vals = Kokkos::create_mirror_view(Space(), principal_vals);
-  std::cout<<"Starting eigen decomposition of gram matrix"<<std::endl;
+  //HKstd::cout<<"Starting eigen decomposition of gram matrix"<<std::endl;
 
   perform_eigen_decomp(nvars, gram_matrix, eig_vals); 
 
-  std::cout<<"Finished eigen decomposition"<<std::endl;
+  //HKstd::cout<<"Finished eigen decomposition"<<std::endl;
 
   //Copy over mirrored views from device to host 
   deep_copy(principal_vecs, gram_matrix);
