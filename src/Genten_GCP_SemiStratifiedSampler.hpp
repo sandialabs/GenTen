@@ -105,11 +105,11 @@ namespace Genten {
 
       // Don't sample more zeros/nonzeros than we actually have locally
       num_samples_nonzeros_value = std::min(num_samples_nonzeros_value, lnnz);
-      num_samples_zeros_value = std::min(num_samples_zeros_value,
-                                         ttb_indx(lnz));
+      num_samples_zeros_value = std::min(ttb_real(num_samples_zeros_value),
+                                         lnz);
       num_samples_nonzeros_grad = std::min(num_samples_nonzeros_grad, lnnz);
-      num_samples_zeros_grad = std::min(num_samples_zeros_grad,
-                                        ttb_indx(lnz));
+      num_samples_zeros_grad = std::min(ttb_real(num_samples_zeros_grad),
+                                        lnz);
 
       // Compute global number of samples actually used
       if (pmap != nullptr) {
