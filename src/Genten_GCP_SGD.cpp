@@ -251,6 +251,7 @@ namespace Genten {
         p.residual = fest;
         if (compute_fit)
           p.fit = fit;
+        p.cum_time = timer.getTotalTime(timer_sgd);
       }
 
       struct Annealer {
@@ -364,6 +365,7 @@ namespace Genten {
           p.residual = fest;
           if (compute_fit)
             p.fit = fit;
+          p.cum_time = timer.getTotalTime(timer_sgd);
         }
 
         if (failed_epoch) {

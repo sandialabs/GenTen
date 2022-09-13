@@ -234,6 +234,7 @@ namespace Genten {
         p.residual = fest;
         if (compute_fit)
           p.fit = fit;
+        p.cum_time = timer.getTotalTime(timer_sgd);
       }
 
       // SGD epoch loop
@@ -318,6 +319,7 @@ namespace Genten {
           p.residual = fest;
           if (compute_fit)
             p.fit = fit;
+          p.cum_time = timer.getTotalTime(timer_sgd);
         }
 
         if (failed_epoch) {
