@@ -41,6 +41,7 @@
 #pragma once
 
 #include <vector>
+#include <ostream>
 #include "Genten_Util.hpp"
 
 namespace Genten {
@@ -87,6 +88,33 @@ namespace Genten {
 
     // Resize to given size
     void resize(const ttb_indx new_size) { entries.resize(new_size); }
+
+    // Print history to stream
+    void print(std::ostream& os) const {
+      os << std::setw(6) << "iter" << "\t"
+         << std::setw(13) << "residual" << "\t"
+         << std::setw(13) << "fit" << "\t"
+         << std::setw(13) << "||grad||" << "\t"
+         << std::setw(9) << "time" << "\t"
+         << std::setw(9) << "mttkrp" << std::endl;
+      for (const auto& entry : entries)
+        os << std::setw(6) << entry.iteration << " \t"
+           << std::setw(13) << std::setprecision(6) << std::scientific
+           << entry.residual << "\t"
+           << std::setw(13) << std::setprecision(6) << std::scientific
+           << entry.fit << "\t"
+           << std::setw(13) << std::setprecision(6) << std::scientific
+           << entry.grad_norm << "\t"
+           << std::setw(9) << std::setprecision(2) << std::scientific
+           << entry.cum_time << "\t"
+           << std::setw(9) << std::setprecision(2) << std::scientific
+           << entry.mttkrp_throughput
+           << std::endl;
+    }
+    void print(const std::string& fname) const {
+      std::ofstream fs(fname);
+      print(fs);
+    }
 
   private:
     std::vector<Entry> entries;

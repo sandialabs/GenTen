@@ -94,6 +94,7 @@ void usage(char **argv)
   std::cout << "  --init <string>  file name for reading Ktensor initial guess (leave blank for random initial guess)" << std::endl;
   std::cout << "  --output <string>  output file name for saving Ktensor" << std::endl;
   std::cout << "  --vtune            connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
+  std::cout << "  --history          file to save performance history" << std::endl;
   std::cout << std::endl;
   Genten::AlgParams::print_help(std::cout);
 }
@@ -170,7 +171,8 @@ int main_driver(Genten::AlgParams& algParams,
                 const ttb_bool gz,
                 const Genten::IndxArray& facDims_h,
                 const ttb_indx nnz,
-                const std::string& tensor_outputfilename)
+                const std::string& tensor_outputfilename,
+                const std::string& history_file)
 {
   int ret = 0;
   Genten::SystemTimer timer(2);
@@ -321,6 +323,13 @@ int main_driver(Genten::AlgParams& algParams,
       printf("  Ktensor export took %6.3f seconds\n", timer.getTotalTime(1));
   }
 
+  // Save history to file
+  if (history_file != "" && dtc.gridRank() == 0) {
+    std::cout << "Saving performance history to file " << history_file
+              << std::endl;
+    history.print(history_file);
+  }
+
   // Testing -- we use int/double on purpose to avoid ambiguities
   if (history.size() > 0) {
     const auto& entry = history.lastEntry();
@@ -465,6 +474,7 @@ int main(int argc, char* argv[])
     Genten::IndxArray facDims_h = { 30, 40, 50 };
     std::string init = "";
     std::string outputfilename = "";
+    std::string history_file = "";
 
     // Parse a json file if given before command-line arguments, that way
     // command line will override what is in the file
@@ -501,6 +511,8 @@ int main(int argc, char* argv[])
         Genten::parse_ptree_value(ktensor_input, "initial-file", init);
         Genten::parse_ptree_value(ktensor_input, "output-file", outputfilename);
       }
+
+      Genten::parse_ptree_value(json_input, "history-file", history_file);
     }
 
     vtune =
@@ -523,6 +535,8 @@ int main(int argc, char* argv[])
       Genten::parse_string(args, "--initial-file", init);
     outputfilename =
       Genten::parse_string(args, "--output-file", outputfilename);
+    history_file =
+      Genten::parse_string(args, "--history-file", history_file);
 
     // Everything else
     algParams.parse(args);
@@ -557,6 +571,8 @@ int main(int argc, char* argv[])
       std::cout << "  index_base = " << index_base << std::endl;
       std::cout << "  gz = " << (gz ? "true" : "false") << std::endl;
       std::cout << "  vtune = " << (vtune ? "true" : "false") << std::endl;
+      if (history_file != "")
+        std::cout << "  history-file = " << history_file << std::endl;
       algParams.print(std::cout);
     }
 
@@ -575,7 +591,8 @@ int main(int argc, char* argv[])
                                                        gz,
                                                        facDims_h,
                                                        nnz,
-                                                       tensor_outputfilename);
+                                                       tensor_outputfilename,
+                                                       history_file);
 #ifdef HAVE_CUDA
     else if (algParams.exec_space == Genten::Execution_Space::Cuda)
       ret = main_driver<Kokkos::Cuda>(algParams,
@@ -588,7 +605,8 @@ int main(int argc, char* argv[])
                                       gz,
                                       facDims_h,
                                       nnz,
-                                      tensor_outputfilename);
+                                      tensor_outputfilename,
+                                      history_file);
 #endif
 #ifdef HAVE_HIP
     else if (algParams.exec_space == Genten::Execution_Space::HIP)
@@ -602,7 +620,8 @@ int main(int argc, char* argv[])
                                                    gz,
                                                    facDims_h,
                                                    nnz,
-                                                   tensor_outputfilename);
+                                                   tensor_outputfilename,
+                                                   history_file);
 #endif
 #ifdef HAVE_SYCL
     else if (algParams.exec_space == Genten::Execution_Space::SYCL)
@@ -616,7 +635,8 @@ int main(int argc, char* argv[])
                                                     gz,
                                                     facDims_h,
                                                     nnz,
-                                                    tensor_outputfilename);
+                                                    tensor_outputfilename,
+                                                    history_file);
 #endif
 #ifdef HAVE_OPENMP
     else if (algParams.exec_space == Genten::Execution_Space::OpenMP)
@@ -630,7 +650,8 @@ int main(int argc, char* argv[])
                                         gz,
                                         facDims_h,
                                         nnz,
-                                        tensor_outputfilename);
+                                        tensor_outputfilename,
+                                        history_file);
 #endif
 #ifdef HAVE_THREADS
     else if (algParams.exec_space == Genten::Execution_Space::Threads)
@@ -644,7 +665,8 @@ int main(int argc, char* argv[])
                                          gz,
                                          facDims_h,
                                          nnz,
-                                         tensor_outputfilename);
+                                         tensor_outputfilename,
+                                         history_file);
 #endif
 #ifdef HAVE_SERIAL
     else if (algParams.exec_space == Genten::Execution_Space::Serial)
@@ -658,7 +680,8 @@ int main(int argc, char* argv[])
                                         gz,
                                         facDims_h,
                                         nnz,
-                                        tensor_outputfilename);
+                                        tensor_outputfilename,
+                                        history_file);
 #endif
     else
       Genten::error("Invalid execution space: " + std::string(Genten::Execution_Space::names[algParams.exec_space]));
