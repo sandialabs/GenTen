@@ -88,6 +88,7 @@ Genten::AlgParams::AlgParams() :
   epoch_iters(1000),
   frozen_iters(1),
   rng_iters(128),
+  gcp_seed(0),
   num_samples_nonzeros_value(0),
   num_samples_zeros_value(0),
   num_samples_nonzeros_grad(0),
@@ -126,7 +127,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                           Genten::Solver_Method::types,
                           Genten::Solver_Method::names);
   rank = parse_ttb_indx(args, "--rank", rank, 1, INT_MAX);
-  seed = parse_ttb_indx(args, "--seed", seed, 0, INT_MAX);
+  seed = parse_ttb_indx(args, "--seed", seed, 0, ULONG_MAX);
   prng = parse_ttb_bool(args, "--prng", "--no-prng", prng);
   maxiters = parse_ttb_indx(args, "--maxiters", maxiters, 1, INT_MAX);
   maxsecs = parse_ttb_real(args, "--maxsecs", maxsecs, -1.0, DOUBLE_MAX);
@@ -220,6 +221,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
     parse_ttb_indx(args, "--frozeniters", frozen_iters, 1, INT_MAX);
   rng_iters =
     parse_ttb_indx(args, "--rngiters", rng_iters, 1, INT_MAX);
+  gcp_seed = parse_ttb_indx(args, "--gcp-seed", gcp_seed, 0, ULONG_MAX);
   num_samples_nonzeros_value =
     parse_ttb_indx(args, "--fnzs", num_samples_nonzeros_value, 0, INT_MAX);
   num_samples_zeros_value =
@@ -297,7 +299,7 @@ void Genten::AlgParams::parse(const ptree& input)
   if (ktensor_input_o) {
     auto& ktensor_input = *ktensor_input_o;
     parse_ptree_value(ktensor_input, "rank", rank, 1, INT_MAX);
-    parse_ptree_value(ktensor_input, "seed", seed, 0, INT_MAX);
+    parse_ptree_value(ktensor_input, "seed", seed, 0, ULONG_MAX);
     parse_ptree_value(ktensor_input, "prng", prng);
     parse_ptree_value(ktensor_input, "distributed-guess", dist_guess_method);
   }
@@ -358,6 +360,7 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_value(gcp_input, "epochiters", epoch_iters, 1, INT_MAX);
     parse_ptree_value(gcp_input, "frozeniters", frozen_iters, 1, INT_MAX);
     parse_ptree_value(gcp_input, "rngiters", rng_iters, 1, INT_MAX);
+    parse_ptree_value(gcp_input, "seed", gcp_seed, 0, ULONG_MAX);
     parse_ptree_value(gcp_input, "fnzs", num_samples_nonzeros_value, 0, INT_MAX);
     parse_ptree_value(gcp_input, "fzs", num_samples_zeros_value, 0, INT_MAX);
     parse_ptree_value(gcp_input, "gnzs", num_samples_nonzeros_grad, 0, INT_MAX);
@@ -511,6 +514,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --frozeniters <int> inner iterations with frozen gradient"
       << std::endl;
   out << "  --rngiters <int>   iteration loops in parallel RNG" << std::endl;
+  out << "  --gcp-seed <int>   seed for sampling in GCP (set to 0 for random seed)" << std::endl;
   out << "  --fnzs <int>       nonzero samples for f-est" << std::endl;
   out << "  --fzs <int>        zero samples for f-est" << std::endl;
   out << "  --gnzs <int>       nonzero samples for gradient" << std::endl;
@@ -607,6 +611,7 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  epochiters = " << epoch_iters << std::endl;
   out << "  frozeniters = " << frozen_iters << std::endl;
   out << "  rngiters = " << rng_iters << std::endl;
+  out << "  gcp-seed = " << gcp_seed << std::endl;
   out << "  fnzs = " << num_samples_nonzeros_value << std::endl;
   out << "  fzs = " << num_samples_zeros_value << std::endl;
   out << "  gnzs = " << num_samples_nonzeros_grad << std::endl;

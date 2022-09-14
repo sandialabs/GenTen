@@ -57,7 +57,7 @@ namespace Genten {
     Execution_Space::type exec_space; // Chosen execution space
     Solver_Method::type method; // Solver method ("cp-als", "gcp-sgd", ...)
     ttb_indx rank;       // Rank of decomposition
-    unsigned long seed;  // Random number seed
+    unsigned long seed;  // Random number seed for initial guess
     bool prng;           // Use parallel random number generator
     ttb_indx maxiters;   // Maximum number of iterations
     ttb_real maxsecs;    // Maximum amount of time
@@ -108,6 +108,7 @@ namespace Genten {
     ttb_indx epoch_iters;                // Number of iterations per epoch
     ttb_indx frozen_iters;               // Number of iterations w/frozen grad
     ttb_indx rng_iters;                  // Number of loops in RNG
+    unsigned long gcp_seed;              // Random number seed for GCP
     ttb_indx num_samples_nonzeros_value; // Nonzero samples for f-est
     ttb_indx num_samples_zeros_value;    // Zero sampels for f-est
     ttb_indx num_samples_nonzeros_grad;  // Nonzero samples for gradient

@@ -380,6 +380,11 @@ static nlohmann::json json_schema = R"(
                   "enum": ["uniform", "stratified", "semi-stratified"],
                   "default": "stratified"
               },
+              "seed": {
+                "description": "Seed for random number generator used in sampling",
+                "type": "integer",
+                "minimum": 1
+              },
               "rate": {
                   "description": "Initial step size",
                   "type": "number",
@@ -558,6 +563,11 @@ static nlohmann::json json_schema = R"(
                   "description": "Dump debugging info",
                   "type": "boolean",
                   "default": false
+              },
+              "seed": {
+                "description": "Seed for random number generator used in sampling",
+                "type": "integer",
+                "minimum": 1
               },
               "mttkrp": {
                   "$ref": "#/definitions/mttkrp"
