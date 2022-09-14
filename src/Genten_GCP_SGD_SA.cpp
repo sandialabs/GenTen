@@ -41,6 +41,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <cmath>
+#include <random>
 
 #include "Genten_GCP_SGD.hpp"
 #include "Genten_GCP_StratifiedSampler.hpp"
@@ -51,7 +52,6 @@
 
 #include "Genten_Sptensor.hpp"
 #include "Genten_SystemTimer.hpp"
-#include "Genten_RandomMT.hpp"
 #include "Genten_MixedFormatOps.hpp"
 
 #ifdef HAVE_CALIPER
@@ -90,7 +90,7 @@ namespace Genten {
       const ttb_indx max_fails = algParams.max_fails;
       const ttb_indx epoch_iters = algParams.epoch_iters;
       const ttb_indx frozen_iters = algParams.frozen_iters;
-      const ttb_indx seed = algParams.seed;
+      const ttb_indx seed = algParams.gcp_seed > 0 ? algParams.gcp_seed : std::random_device{}();
       const ttb_indx maxEpochs = algParams.maxiters;
       const ttb_indx printIter = algParams.printitn;
       const bool compute_fit = algParams.compute_fit;
@@ -152,7 +152,6 @@ namespace Genten {
       timer.start(timer_sgd);
 
       // Distribute the initial guess to have weights of one.
-      u0.normalize(Genten::NormTwo);
       u0.distribute();
 
       // Ktensor-vector for solution
@@ -188,8 +187,7 @@ namespace Genten {
 
       // Initialize sampler (sorting, hashing, ...)
       timer.start(timer_sort);
-      RandomMT rng(seed);
-      Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(rng.genrnd_int32());
+      Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
       sampler.initialize(rand_pool, out);
       timer.stop(timer_sort);
 
