@@ -281,7 +281,7 @@ AlgParams DistGCP<ExecSpace>::setAlgParams() const {
     } else {
       std::cout << "method(" << algParams.mttkrp_all_method << ")\n";
     }
-    if (np < 41) {
+    if (false && np < 41) {
       std::cout << "Node Specific info: {local_nnz, local_value_size_nz, "
                 << "local_value_size_z, local_batch_size_nz, "
                 << "local_batch_size_z}\n";
@@ -344,7 +344,7 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
 
   std::stringstream ss;
   sampler.initialize(rand_pool, ss);
-  if (nprocs < 41) {
+  if (my_rank) {
     std::cout << ss.str();
   }
 
@@ -371,6 +371,14 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
 
   auto fedavg = input_.get<bool>("fedavg", false);
   auto meta_lr = input_.get<ttb_real>("meta-lr", 1e-3);
+
+  {
+    history_.addEmpty();
+    auto& p = history_.lastEntry();
+    p.iteration = 0;
+    p.residual = fest;
+    p.cum_time = MPI_Wtime()-start_time;
+  }
 
   double t0 = 0;
   double t1 = 0;
@@ -486,6 +494,14 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
                 << "\n";
     }
 
+    {
+      history_.addEmpty();
+      auto& p = history_.lastEntry();
+      p.iteration = e+1;
+      p.residual = fest;
+      p.cum_time = t1 - start_time;
+    }
+
     if (fest_diff > -0.001 * fest_best) {
       stepper.setPassed();
       meta_stepper.setPassed();
@@ -530,6 +546,9 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
 
   auto algParams = setAlgParams();
 
+  // Distribute the initial guess to have weights of one.
+  Kfac_.distribute();
+
   using VectorType = KokkosVector<ExecSpace>;
   auto u = VectorType(Kfac_);
   u.copyFromKtensor(Kfac_);
@@ -550,7 +569,7 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
   Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed_);
   std::stringstream ss;
   sampler.initialize(rand_pool, ss);
-  if (nprocs < 41) {
+  if (my_rank == 0) {
     std::cout << ss.str();
   }
 
@@ -576,6 +595,7 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
     auto& p = history_.lastEntry();
     p.iteration = 0;
     p.residual = fest;
+    p.cum_time = MPI_Wtime()-start_time;
   }
 
   auto fest_prev = fest;
@@ -684,6 +704,7 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
       auto& p = history_.lastEntry();
       p.iteration = e+1;
       p.residual = fest;
+      p.cum_time = e_end - start_time;
     }
 
     if (fest_diff > -0.001 * fest_best) {
