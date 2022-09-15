@@ -286,6 +286,17 @@ namespace Genten {
       }, "Genten::KokkosVector::axpy");
     }
 
+    void axpby(const ttb_real alpha, const KokkosVector& x, const ttb_real beta, const KokkosVector& y)
+    {
+      view_type my_v = v;
+      view_type xv = x.v;
+      view_type yv = y.v;
+      apply_func(KOKKOS_LAMBDA(const ttb_indx i)
+      {
+        my_v(i) = alpha*xv(i) + beta*yv(i);
+      }, "Genten::KokkosVector::axpby");
+    }
+
     void zero()
     {
       view_type my_v = v;
