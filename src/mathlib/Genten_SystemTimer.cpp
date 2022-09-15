@@ -318,7 +318,7 @@ namespace Genten
       dResult += getTimeSinceLastStart_ (nTimerID);
 
     if (_pmap != nullptr)
-      _pmap->gridAllReduce(dResult);
+      dResult = _pmap->gridAllReduce(dResult, ProcessorMap::Max);
 
     return( dResult );
   }
@@ -350,7 +350,7 @@ namespace Genten
     double dResult = _daCumTimes[nTimerID] / ((double) getNumStarts (nTimerID));
 
     if (_pmap != nullptr)
-      _pmap->gridAllReduce(dResult);
+      dResult = _pmap->gridAllReduce(dResult, ProcessorMap::Max);
 
     return dResult;
   }
