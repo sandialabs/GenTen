@@ -16,7 +16,8 @@
     },
     "gcp-sgd-dist":
     {
-        "method": "adam",
+        "method": "sgd",
+        "step": "adam",
         "loss": "gaussian",
         "batch-size-nz": 1000,
         "batch-size-zero": 0,
