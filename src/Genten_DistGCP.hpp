@@ -310,7 +310,8 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
   }
 
   // Distribute the initial guess to have weights of one.
-  if (algParams.normalize)
+  const bool normalize = input_.get<bool>("normalize", true);
+  if (normalize)
     Kfac_.normalize(NormTwo);
   Kfac_.distribute();
 
@@ -614,7 +615,8 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
   auto algParams = setAlgParams();
 
   // Distribute the initial guess to have weights of one.
-  if (algParams.normalize)
+  const bool normalize = input_.get<bool>("normalize", true);
+  if (normalize)
     Kfac_.normalize(NormTwo);
   Kfac_.distribute();
 
