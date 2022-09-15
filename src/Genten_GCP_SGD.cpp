@@ -157,6 +157,8 @@ namespace Genten {
       timer.start(timer_sgd);
 
       // Distribute the initial guess to have weights of one.
+      if (algParams.normalize)
+        u0.normalize(NormTwo);
       u0.distribute();
 
       // Create iterator

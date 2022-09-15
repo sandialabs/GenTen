@@ -309,6 +309,11 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
     algParams.adam_eps = input_.get<ttb_real>("eps");
   }
 
+  // Distribute the initial guess to have weights of one.
+  if (algParams.normalize)
+    Kfac_.normalize(NormTwo);
+  Kfac_.distribute();
+
   // This is a lot of copies :/ but accept it for now
   using VectorType = KokkosVector<ExecSpace>;
   auto u = VectorType(Kfac_);
@@ -381,7 +386,6 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
       << std::setw(13) << std::setprecision(6) << std::scientific
       << fest << std::endl;
   timer.stop(timer_fest);
-  //pmap->gridBarrier();
 
   {
     history_.addEmpty();
@@ -610,6 +614,8 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
   auto algParams = setAlgParams();
 
   // Distribute the initial guess to have weights of one.
+  if (algParams.normalize)
+    Kfac_.normalize(NormTwo);
   Kfac_.distribute();
 
   using VectorType = KokkosVector<ExecSpace>;

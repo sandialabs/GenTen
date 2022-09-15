@@ -482,6 +482,11 @@ static nlohmann::json json_schema = R"(
                   "minimum": -1.0,
                   "default": -1.0
               },
+              "normalize": {
+                  "description": "Normalize initial Ktensor",
+                  "type": "boolean",
+                  "default": true
+              },
               "hash": {
                   "description": "Compute hash map for zero sampling",
                   "type": "boolean",
@@ -623,6 +628,11 @@ static nlohmann::json json_schema = R"(
                   "type": "integer",
                   "minimum": 0,
                   "default": 128
+              },
+              "normalize": {
+                  "description": "Normalize initial Ktensor",
+                  "type": "boolean",
+                  "default": true
               },
               "step": {
                   "description": "Local optimization step type",

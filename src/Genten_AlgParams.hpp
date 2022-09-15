@@ -119,6 +119,7 @@ namespace Genten {
     ttb_real w_f_z;                      // Zero sample weight for f
     ttb_real w_g_nz;                     // Nonzero sample weight for grad
     ttb_real w_g_z;                      // Zero sample weight for grad
+    bool normalize;                      // Normalize initial Ktensor
     bool hash;                           // Hash tensor instead of sorting
     bool fuse;                           // Fuse sampling and gradient kernels
     bool fuse_sa;                        // Fused with sparse array gradient

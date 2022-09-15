@@ -99,6 +99,7 @@ Genten::AlgParams::AlgParams() :
   w_f_z(-1.0),
   w_g_nz(-1.0),
   w_g_z(-1.0),
+  normalize(true),
   hash(false),
   fuse(false),
   fuse_sa(false),
@@ -238,6 +239,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   w_f_z = parse_ttb_real(args, "--fzw", w_f_z, -1.0, DOUBLE_MAX);
   w_g_nz = parse_ttb_real(args, "--gnzw", w_g_nz, -1.0, DOUBLE_MAX);
   w_g_z = parse_ttb_real(args, "--gzw", w_g_z, -1.0, DOUBLE_MAX);
+  normalize = parse_ttb_bool(args, "--normalize", "--no-normalize", normalize);
   hash = parse_ttb_bool(args, "--hash", "--no-hash", hash);
   fuse = parse_ttb_bool(args, "--fuse", "--no-fuse", fuse);
   fuse_sa = parse_ttb_bool(args, "--fuse-sa", "--no-fuse-sa", fuse_sa);
@@ -371,6 +373,7 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_value(gcp_input, "fzw", w_f_z, -1.0, DOUBLE_MAX);
     parse_ptree_value(gcp_input, "gnzw", w_g_nz, -1.0, DOUBLE_MAX);
     parse_ptree_value(gcp_input, "gzw", w_g_z, -1.0, DOUBLE_MAX);
+    parse_ptree_value(gcp_input, "normalize", normalize);
     parse_ptree_value(gcp_input, "hash", hash);
     parse_ptree_value(gcp_input, "fuse", fuse);
     parse_ptree_value(gcp_input, "fuse-sa", fuse_sa);
@@ -525,6 +528,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --fzw <float>      zero sample weight for f-est" << std::endl;
   out << "  --gnzw <float>     nonzero sample weight for gradient" << std::endl;
   out << "  --gzw <float>      zero sample weight for gradient" << std::endl;
+  out << "  --normalize        normalize initial Ktensor" << std::endl;
   out << "  --hash             compute hash map for zero sampling" << std::endl;
   out << "  --bulk-factor <int> factor for bulk zero sampling" << std::endl;
   out << "  --fuse             fuse gradient sampling and MTTKRP" << std::endl;
@@ -622,6 +626,7 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  gnzw = " << w_g_nz << std::endl;
   out << "  gzw = " << w_g_z << std::endl;
   out << "  bulk-factor = " << bulk_factor << std::endl;
+  out << "  normalize = " << (normalize ? "true" : "false") << std::endl;
   out << "  hash = " << (hash ? "true" : "false") << std::endl;
   out << "  fuse = " << (fuse ? "true" : "false") << std::endl;
   out << "  fuse-sa = " << (fuse_sa ? "true" : "false") << std::endl;
