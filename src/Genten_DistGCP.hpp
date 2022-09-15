@@ -81,8 +81,7 @@ private:
   std::int32_t ndims() const { return dtc_.ndims(); }
   ProcessorMap const &pmap() const { return dtc_.pmap(); }
 
-  template <typename Stepper, typename Loss>
-  ttb_real allReduceTrad(Loss const &loss);
+  template <typename Loss> ttb_real allReduceTrad(Loss const &loss);
   template <typename Loss> ttb_real fedOpt(Loss const &loss);
   template <typename Loss> ttb_real pickMethod(Loss const &loss);
   AlgParams setAlgParams() const;
@@ -132,21 +131,14 @@ DistGCP<ExecSpace>::DistGCP(const DistTensorContext& dtc,
 template <typename ExecSpace>
 template <typename Loss>
 ttb_real DistGCP<ExecSpace>::pickMethod(Loss const &loss) {
-  auto method = input_.get<std::string>("method", "adam");
-  if (method == "fedopt") {
+  auto method = input_.get<std::string>("method", "sgd");
+  if (method == "fedopt" || method == "fedavg") {
     return fedOpt(loss);
   } else if (method == "sgd") {
-    return allReduceTrad<Impl::SGDStep<ExecSpace, Loss>>(loss);
-  } else if (method == "sgdm") {
-    return allReduceTrad<Impl::SGDMomentumStep<ExecSpace, Loss>>(loss);
-  } else if (method == "adam") {
-    return allReduceTrad<Impl::AdamStep<ExecSpace, Loss>>(loss);
-  } else if (method == "adagrad") {
-    return allReduceTrad<Impl::AdaGradStep<ExecSpace, Loss>>(loss);
-  } else if (method == "demon") {
-    return allReduceTrad<Impl::DEMON<ExecSpace, Loss>>(loss);
+    return allReduceTrad(loss);
+  } else {
+    Genten::error("Your method for distributed SGD wasn't recognized.\n");
   }
-  Genten::error("Your method for distributed SGD wasn't recognized.\n");
   return -1.0;
 }
 
@@ -304,9 +296,13 @@ AlgParams DistGCP<ExecSpace>::setAlgParams() const {
 template <typename ExecSpace>
 template <typename Loss>
 ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
+  const ProcessorMap* pmap = &dtc_.pmap();
+
   const auto start_time = MPI_Wtime();
   const auto nprocs = dtc_.nprocs();
-  const auto my_rank = pmap().gridRank();
+  const auto my_rank = pmap->gridRank();
+
+  std::ostream& out = my_rank == 0 ? std::cout : Genten::bhcout;
 
   auto algParams = setAlgParams();
   if (input_.contains("eps")) {
@@ -338,39 +334,54 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(
     spTensor_, algParams, false);
 
-  Impl::SGDStep<ExecSpace, Loss> stepper;
-  Impl::AdamStep<ExecSpace, Loss> meta_stepper(algParams, meta_u);
-  Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed_);
+  // Create steppers
+  Impl::GCP_SGD_Step<ExecSpace,Loss> *stepper =
+    Impl::createStepper<ExecSpace,Loss>(algParams, u);
+  Impl::GCP_SGD_Step<ExecSpace,Loss> *meta_stepper =
+    Impl::createStepper<ExecSpace,Loss>(algParams, meta_u,
+                        input_.get<std::string>("meta-step","adam"));
 
-  std::stringstream ss;
-  sampler.initialize(rand_pool, ss);
-  if (my_rank) {
-    std::cout << ss.str();
-  }
+  // Timers -- turn on fences when timing info is requested so we get
+  // accurate kernel times
+  int num_timers = 0;
+  const int timer_sgd = num_timers++;
+  const int timer_sort = num_timers++;
+  const int timer_sample_f = num_timers++;
+  const int timer_fest = num_timers++;
+  const int timer_sample_g = num_timers++;
+  const int timer_grad = num_timers++;
+  const int timer_grad_nzs = num_timers++;
+  const int timer_grad_zs = num_timers++;
+  const int timer_grad_init = num_timers++;
+  const int timer_step = num_timers++;
+  const int timer_meta_step = num_timers++;
+  const int timer_allreduce = num_timers++;
+  SystemTimer timer(num_timers, algParams.timings, pmap);
+
+  // Start timer for total execution time of the algorithm.
+  timer.start(timer_sgd);
+
+  timer.start(timer_sort);
+  Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed_);
+  sampler.initialize(rand_pool, out);
+  timer.stop(timer_sort);
 
   SptensorT<ExecSpace> X_val;
   ArrayT<ExecSpace> w_val;
+  timer.start(timer_sample_f);
   sampler.sampleTensor(false, ut, loss, X_val, w_val);
-
-  // Stuff for the timer that we can'g avoid providing
-  SystemTimer timer;
-  int tnzs = 0;
-  int tzs = 0;
+  timer.stop(timer_sample_f);
 
   // Fit stuff
-  auto fest = pmap().gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
+  timer.start(timer_fest);
+  auto fest = pmap->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
   auto fest_best = fest;
   auto fest_prev = fest;
-
-  const auto maxEpochs = algParams.maxiters;
-  const auto epochIters = algParams.epoch_iters;
-  const auto dp_iters = input_.get<int>("downpour-iters", 4);
-
-  auto annealer_ptr = getAnnealer(input_);
-  auto &annealer = *annealer_ptr;
-
-  auto fedavg = input_.get<bool>("fedavg", false);
-  auto meta_lr = input_.get<ttb_real>("meta-lr", 1e-3);
+  out << "Initial f-est: "
+      << std::setw(13) << std::setprecision(6) << std::scientific
+      << fest << std::endl;
+  timer.stop(timer_fest);
+  //pmap->gridBarrier();
 
   {
     history_.addEmpty();
@@ -380,19 +391,37 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
     p.cum_time = MPI_Wtime()-start_time;
   }
 
+  const auto maxEpochs = algParams.maxiters;
+  const auto epochIters = algParams.epoch_iters;
+  const auto dp_iters = input_.get<int>("downpour-iters", 4);
+
+  auto annealer_ptr = getAnnealer(input_);
+  auto &annealer = *annealer_ptr;
+
+  bool fedavg = input_.get<std::string>("method") == "fedavg";
+  auto meta_lr = input_.get<ttb_real>("meta-lr", 1e-3);
+
   double t0 = 0;
   double t1 = 0;
   for (auto e = 0; e < maxEpochs; ++e) { // Epochs
     t0 = MPI_Wtime();
     auto epoch_lr = annealer(e);
-    stepper.setStep(epoch_lr);
+    stepper->setStep(epoch_lr);
 
     auto do_epoch_iter = [&](double &gtime, double &etime) {
+      timer.start(timer_grad);
+      timer.start(timer_grad_init);
       g.zero();
+      timer.stop(timer_grad_init);
       auto start = MPI_Wtime();
-      sampler.fusedGradient(ut, loss, GFac, timer, tnzs, tzs);
+      sampler.fusedGradient(ut, loss, GFac, timer, timer_grad_nzs,
+                            timer_grad_zs);
+      timer.stop(timer_grad);
       auto ge = MPI_Wtime();
-      stepper.eval(g, u);
+      timer.start(timer_step);
+      stepper->update();
+      stepper->eval(g, u);
+      timer.stop(timer_step);
       auto end = MPI_Wtime();
 
       gtime += ge - start;
@@ -409,23 +438,33 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
       if ((i + 1) % dp_iters == 0 || i == (epochIters - 1)) {
         auto s0 = MPI_Wtime();
         if (fedavg) {
+          timer.start(timer_allreduce);
           dtc_.allReduce(ut, true);
+          timer.stop(timer_allreduce);
         } else {
-          diff.set(meta_u);
-          diff.plus(u, -1.0); // Subtract u from meta_u to get Meta grad
-          dtc_.allReduce(Dfac, true);
+          timer.start(timer_meta_step);
+          diff.axpby(1.0, meta_u, -1.0, u); // Subtract u from meta_u to get Meta grad
+          timer.stop(timer_meta_step);
 
-          meta_stepper.update();
-          meta_stepper.setStep(meta_lr);
-          meta_stepper.eval(diff, meta_u);
+          timer.start(timer_allreduce);
+          dtc_.allReduce(Dfac, true);
+          timer.stop(timer_allreduce);
+
+          timer.start(timer_meta_step);
+          meta_stepper->update();
+          meta_stepper->setStep(meta_lr);
+          meta_stepper->eval(diff, meta_u);
           u.set(meta_u); // Everyone agrees that meta_u is the new factors
+          timer.stop(timer_meta_step);
         }
         ++allreduceCounter;
         sync_time += MPI_Wtime() - s0;
       }
     }
 
-    fest = pmap().gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
+    timer.start(timer_fest);
+    fest = pmap->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
+    timer.stop(timer_fest);
     t1 = MPI_Wtime();
 
     const auto fest_diff = fest_prev - fest;
@@ -435,7 +474,7 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
     std::vector<double> eval_times;
     if (my_rank == 0) {
       if (std::isnan(fest)) {
-        std::cout << "IS NAN: Best result was: " << fest_best << std::endl;
+        out << "IS NAN: Best result was: " << fest_best << std::endl;
         return fest_best;
       }
       gradient_times.resize(nprocs);
@@ -443,21 +482,21 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
       eval_times.resize(nprocs);
 
       MPI_Gather(&gradient_time, 1, mpiElemType_, &gradient_times[0], 1,
-                 mpiElemType_, 0, pmap().gridComm());
+                 mpiElemType_, 0, pmap->gridComm());
       MPI_Gather(&evaluation_time, 1, mpiElemType_, &eval_times[0], 1, mpiElemType_,
-                 0, pmap().gridComm());
+                 0, pmap->gridComm());
       MPI_Gather(&sync_time, 1, mpiElemType_, &elastic_times[0], 1, mpiElemType_, 0,
-                 pmap().gridComm());
+                 pmap->gridComm());
     } else {
       if (std::isnan(fest)) {
         return fest_best;
       }
       MPI_Gather(&gradient_time, 1, mpiElemType_, nullptr, 1, mpiElemType_, 0,
-                 pmap().gridComm());
+                 pmap->gridComm());
       MPI_Gather(&evaluation_time, 1, mpiElemType_, nullptr, 1, mpiElemType_, 0,
-                 pmap().gridComm());
+                 pmap->gridComm());
       MPI_Gather(&sync_time, 1, mpiElemType_, nullptr, 1, mpiElemType_, 0,
-                 pmap().gridComm());
+                 pmap->gridComm());
     }
 
     if (my_rank == 0) {
@@ -479,19 +518,19 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
           std::accumulate(eval_times.begin(), eval_times.end(), 0.0) /
           double(nprocs);
 
-      std::cout << "Fit(" << e << "): " << fest
-                << "\n\tchange in fit: " << fest_diff
-                << "\n\tlr:            " << epoch_lr
-                << "\n\tallReduces:    " << allreduceCounter
-                << "\n\tSeconds:       " << (t1 - t0)
-                << "\n\tElapsed Time:  " << (t1 - start_time);
-      std::cout << "\n\t\tGradient(avg, min, max):  " << grad_avg << ", "
-                << *min_max_gradient.first << ", " << *min_max_gradient.second
-                << "\n\t\tAllReduce(avg, min, max):   " << elastic_avg << ", "
-                << *min_max_elastic.first << ", " << *min_max_elastic.second
-                << "\n\t\tEval(avg, min, max):      " << eval_avg << ", "
-                << *min_max_evals.first << ", " << *min_max_evals.second
-                << "\n";
+      out << "Fit(" << e << "): " << fest
+          << "\n\tchange in fit: " << fest_diff
+          << "\n\tlr:            " << epoch_lr
+          << "\n\tallReduces:    " << allreduceCounter
+          << "\n\tSeconds:       " << (t1 - t0)
+          << "\n\tElapsed Time:  " << (t1 - start_time);
+      out << "\n\t\tGradient(avg, min, max):  " << grad_avg << ", "
+          << *min_max_gradient.first << ", " << *min_max_gradient.second
+          << "\n\t\tAllReduce(avg, min, max):   " << elastic_avg << ", "
+          << *min_max_elastic.first << ", " << *min_max_elastic.second
+          << "\n\t\tEval(avg, min, max):      " << eval_avg << ", "
+          << *min_max_evals.first << ", " << *min_max_evals.second
+          << "\n";
     }
 
     {
@@ -503,8 +542,8 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
     }
 
     if (fest_diff > -0.001 * fest_best) {
-      stepper.setPassed();
-      meta_stepper.setPassed();
+      stepper->setPassed();
+      meta_stepper->setPassed();
       fest_prev = fest;
       annealer.success();
       if (fest < fest_best) { // Only set best if really best
@@ -514,17 +553,41 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
     } else {
       u.set(u_best);
       annealer.failed();
-      stepper.setFailed();
-      meta_stepper.setFailed();
+      stepper->setFailed();
+      meta_stepper->setFailed();
       fest = fest_best;
     }
   }
+
+  timer.stop(timer_sgd);
+  out << std::endl << "GCP-";
+  if (fedavg)
+    out << "FedAvg";
+  else
+    out << "FedOpt";
+  out << " completed in "
+      << std::setw(8) << std::setprecision(2) << std::scientific
+      << timer.getTotalTime(timer_sgd) << " seconds\n"
+      << "\tsort/hash: " << timer.getTotalTime(timer_sort) << " seconds\n"
+      << "\tsample-f:  " << timer.getTotalTime(timer_sample_f) << " seconds\n"
+      << "\tf-est:     " << timer.getTotalTime(timer_fest) << " seconds\n"
+      << "\tgradient:  " << timer.getTotalTime(timer_grad) << " seconds\n"
+      << "\t\tinit:    " << timer.getTotalTime(timer_grad_init) << " seconds\n"
+      << "\t\tnzs:     " << timer.getTotalTime(timer_grad_nzs) << " seconds\n"
+      << "\t\tzs:      " << timer.getTotalTime(timer_grad_zs) << " seconds\n"
+      << "\tstep/clip: " << timer.getTotalTime(timer_step) << " seconds\n"
+      << "\tmeta step: " << timer.getTotalTime(timer_meta_step) << " seconds\n"
+      << "\tallreduce: " << timer.getTotalTime(timer_allreduce) << " seconds\n"
+      << std::endl;
+
+  delete stepper;
+  delete meta_stepper;
 
   return fest_prev;
 }
 
 template <typename ExecSpace>
-template <typename Stepper, typename Loss>
+template <typename Loss>
 ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
   if (dump_) {
     std::cout
@@ -564,7 +627,9 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(
     spTensor_, algParams, false);
 
-  Stepper stepper(algParams, u);
+  // Create stepper
+  Impl::GCP_SGD_Step<ExecSpace,Loss> *stepper =
+    Impl::createStepper<ExecSpace,Loss>(algParams, u);
 
   Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed_);
   std::stringstream ss;
@@ -611,21 +676,21 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
     pmap().gridBarrier();                // Makes times more accurate
     double e_start = MPI_Wtime();
     const auto epoch_lr = annealer(e);
-    stepper.setStep(epoch_lr);
+    stepper->setStep(epoch_lr);
 
     auto allreduceCounter = 0;
     double gradient_time = 0;
     double allreduce_time = 0;
     double eval_time = 0;
     for (auto i = 0; i < epochIters; ++i) {
-      stepper.update();
+      stepper->update();
       g.zero();
       auto ze = MPI_Wtime();
       sampler.fusedGradient(ut, loss, GFac, timer, tnzs, tzs);
       auto ge = MPI_Wtime();
       dtc_.allReduce(GFac, false /* don't average */);
       auto are = MPI_Wtime();
-      stepper.eval(g, u);
+      stepper->eval(g, u);
       auto ee = MPI_Wtime();
       gradient_time += ge - ze;
       allreduce_time += are - ge;
@@ -708,7 +773,7 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
     }
 
     if (fest_diff > -0.001 * fest_best) {
-      stepper.setPassed();
+      stepper->setPassed();
       fest_prev = fest;
       annealer.success();
       if (fest < fest_best) {
@@ -718,12 +783,21 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
     } else {
       u.set(u_best);
       fest = fest_prev;
-      stepper.setFailed();
+      stepper->setFailed();
       annealer.failed();
     }
   }
   u.set(u_best);
   deep_copy(Kfac_, ut);
+
+  const auto end_time = MPI_Wtime();
+  if (my_rank == 0)
+    std::cout << std::endl << "GCP-SGD-Dist completed in "
+              << std::setw(8) << std::setprecision(2) << std::scientific
+              << end_time-start_time << " seconds"
+              << std::endl << std::endl;
+
+  delete stepper;
 
   return fest_prev;
 }

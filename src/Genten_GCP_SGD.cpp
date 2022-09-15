@@ -177,18 +177,8 @@ namespace Genten {
       u_prev.set(u);
 
       // Create stepper
-      GCP_SGD_Step<ExecSpace,LossFunction> *stepper = nullptr;
-      if (algParams.step_type == GCP_Step::ADAM)
-        stepper = new AdamStep<ExecSpace,LossFunction>(algParams, u);
-      else if (algParams.step_type == GCP_Step::AdaGrad)
-        stepper = new AdaGradStep<ExecSpace,LossFunction>(algParams, u);
-      else if (algParams.step_type == GCP_Step::AMSGrad)
-        stepper = new AMSGradStep<ExecSpace,LossFunction>(algParams, u);
-      else if (algParams.step_type == GCP_Step::SGDMomentum)
-        stepper = new SGDMomentumStep<ExecSpace,LossFunction>(algParams, u);
-      else {
-        stepper = new SGDStep<ExecSpace,LossFunction>();
-      }
+      GCP_SGD_Step<ExecSpace,LossFunction> *stepper =
+        createStepper<ExecSpace,LossFunction>(algParams, u);
 
       // Initialize sampler (sorting, hashing, ...)
       timer.start(timer_sort);

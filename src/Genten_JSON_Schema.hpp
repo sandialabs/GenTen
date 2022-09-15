@@ -586,8 +586,8 @@ static nlohmann::json json_schema = R"(
               },
               "method": {
                   "description": "Optimization method",
-                  "enum": ["fedopt", "sgd", "sgdm", "adam", "adagrad", "demon"],
-                  "default": "adam"
+                  "enum": ["sgd", "fedopt", "fedavg"],
+                  "default": "sgd"
               },
               "max-epochs": {
                   "description": "Maximum number of epochs to perform",
@@ -625,9 +625,28 @@ static nlohmann::json json_schema = R"(
                   "default": 128
               },
               "step": {
-                  "description": "GCP-SGD optimization step type",
-                  "enum": ["sgd", "adam", "adagrad", "amsgrad", "sgd-momentum"],
+                  "description": "Local optimization step type",
+                  "enum": ["sgd", "adam", "adagrad", "amsgrad", "sgd-momentum", "demon"],
                   "default": "adam"
+              },
+              "meta-step": {
+                  "description": "Meta optimization step type",
+                  "enum": ["sgd", "adam", "adagrad", "amsgrad", "sgd-momentum", "demon"],
+                  "default": "adam"
+              },
+              "adam-beta1": {
+                  "description": "Decay rate for 1st moment average",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "maximum": 1.0,
+                  "default": 0.9
+              },
+              "adam-beta2": {
+                  "description": "Decay rate for 2st moment average",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "maximum": 1.0,
+                  "default": 0.999
               },
               "adam-eps": {
                   "description": "Shift in ADAM step",
@@ -641,11 +660,6 @@ static nlohmann::json json_schema = R"(
                   "type": "integer",
                   "minimum": 1,
                   "default": 4
-              },
-              "fedavg": {
-                  "description": "Average worker contributions",
-                  "type": "boolean",
-                  "default": false
               },
               "meta-lr": {
                   "description": "Overall learning rate",

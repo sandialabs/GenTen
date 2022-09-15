@@ -353,14 +353,15 @@ namespace Genten {
       ADAM,
       AdaGrad,
       AMSGrad,
-      SGDMomentum
+      SGDMomentum,
+      DEMON
     };
-    static constexpr unsigned num_types = 5;
+    static constexpr unsigned num_types = 6;
     static constexpr type types[] = {
-      SGD, ADAM, AdaGrad, AMSGrad, SGDMomentum
+      SGD, ADAM, AdaGrad, AMSGrad, SGDMomentum, DEMON
     };
     static constexpr const char* names[] = {
-      "sgd", "adam", "adagrad", "amsgrad", "sgd-momentum"
+      "sgd", "adam", "adagrad", "amsgrad", "sgd-momentum", "demon"
     };
     static constexpr type default_type = ADAM;
   };
