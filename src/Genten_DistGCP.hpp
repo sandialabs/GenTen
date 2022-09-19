@@ -257,6 +257,7 @@ AlgParams DistGCP<ExecSpace>::setAlgParams() const {
     MPI_Gather(&local_value_sizez, 1, MPI_INT, val_z.data(), 1, MPI_INT, 0,
                pmap().gridComm());
 
+    /*
     std::cout << "Iters/epoch:           " << algParams.epoch_iters << "\n";
     std::cout << "value size nz:         " << global_nzf << "\n";
     std::cout << "value size zeros:      " << global_zf << "\n";
@@ -287,6 +288,7 @@ AlgParams DistGCP<ExecSpace>::setAlgParams() const {
       }
     }
     std::cout << std::endl;
+    */
   }
   pmap().gridBarrier();
 
@@ -341,11 +343,40 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
     spTensor_, algParams, false);
 
   // Create steppers
+  const std::string meta_step = input_.get<std::string>("meta-step","adam");
   Impl::GCP_SGD_Step<ExecSpace,Loss> *stepper =
     Impl::createStepper<ExecSpace,Loss>(algParams, u);
   Impl::GCP_SGD_Step<ExecSpace,Loss> *meta_stepper =
-    Impl::createStepper<ExecSpace,Loss>(algParams, meta_u,
-                        input_.get<std::string>("meta-step","adam"));
+    Impl::createStepper<ExecSpace,Loss>(algParams, meta_u, meta_step);
+
+  const auto maxEpochs = algParams.maxiters;
+  const auto epochIters = algParams.epoch_iters;
+  const auto dp_iters = input_.get<int>("downpour-iters", 4);
+
+  auto annealer_ptr = getAnnealer(input_);
+  auto &annealer = *annealer_ptr;
+
+  bool fedavg = input_.get<std::string>("method") == "fedavg";
+  auto meta_lr = input_.get<ttb_real>("meta-lr", 1e-3);
+
+  out << "\nGCP-";
+  if (fedavg)
+    out << "FedAvg";
+  else
+    out << "FedOpt";
+  out << " (Generalized CP Tensor Decomposition):\n"
+      << "  Generalized function type: " << loss.name() << std::endl
+      << "  Meta step method: " << meta_step << std::endl
+      << "  Local step method: " << GCP_Step::names[algParams.step_type]
+      << std::endl
+      << "  Max iterations (epochs): " << maxEpochs << std::endl
+      << "  Iterations per epoch: " << epochIters << std::endl;
+  sampler.print(out);
+  out << "  Gradient method: ";
+  out << "Fused sampling and "
+      << MTTKRP_All_Method::names[algParams.mttkrp_all_method]
+      << " MTTKRP\n";
+  out << std::endl;
 
   // Timers -- turn on fences when timing info is requested so we get
   // accurate kernel times
@@ -395,16 +426,6 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
     p.residual = fest;
     p.cum_time = MPI_Wtime()-start_time;
   }
-
-  const auto maxEpochs = algParams.maxiters;
-  const auto epochIters = algParams.epoch_iters;
-  const auto dp_iters = input_.get<int>("downpour-iters", 4);
-
-  auto annealer_ptr = getAnnealer(input_);
-  auto &annealer = *annealer_ptr;
-
-  bool fedavg = input_.get<std::string>("method") == "fedavg";
-  auto meta_lr = input_.get<ttb_real>("meta-lr", 1e-3);
 
   double t0 = 0;
   double t1 = 0;
@@ -472,16 +493,32 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
     timer.stop(timer_fest);
     t1 = MPI_Wtime();
 
+    if (std::isnan(fest)) {
+      out << "IS NAN: Best result was: " << fest_best << std::endl;
+      return fest_best;
+    }
+
+    out << "Epoch " << std::setw(3) << e + 1 << ": f-est = "
+        << std::setw(13) << std::setprecision(6) << std::scientific
+        << fest;
+    out << ", meta step = "
+        << std::setw(8) << std::setprecision(1) << std::scientific
+        << meta_stepper->getStep();
+    out << ", local step = "
+        << std::setw(8) << std::setprecision(1) << std::scientific
+        << stepper->getStep();
+    out << ", time = "
+        << std::setw(8) << std::setprecision(2) << std::scientific
+        << timer.getTotalTime(timer_sgd) << " sec";
+    out << std::endl;
+
     const auto fest_diff = fest_prev - fest;
 
+    /*
     std::vector<double> gradient_times;
     std::vector<double> elastic_times;
     std::vector<double> eval_times;
     if (my_rank == 0) {
-      if (std::isnan(fest)) {
-        out << "IS NAN: Best result was: " << fest_best << std::endl;
-        return fest_best;
-      }
       gradient_times.resize(nprocs);
       elastic_times.resize(nprocs);
       eval_times.resize(nprocs);
@@ -493,9 +530,6 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
       MPI_Gather(&sync_time, 1, mpiElemType_, &elastic_times[0], 1, mpiElemType_, 0,
                  pmap->gridComm());
     } else {
-      if (std::isnan(fest)) {
-        return fest_best;
-      }
       MPI_Gather(&gradient_time, 1, mpiElemType_, nullptr, 1, mpiElemType_, 0,
                  pmap->gridComm());
       MPI_Gather(&evaluation_time, 1, mpiElemType_, nullptr, 1, mpiElemType_, 0,
@@ -537,6 +571,7 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
           << *min_max_evals.first << ", " << *min_max_evals.second
           << "\n";
     }
+    */
 
     {
       history_.addEmpty();
@@ -565,7 +600,10 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
   }
 
   timer.stop(timer_sgd);
-  out << std::endl << "GCP-";
+  out << "Final f-est: "
+            << std::setw(13) << std::setprecision(6) << std::scientific
+      << fest << std::endl << std::endl;
+  out << "GCP-";
   if (fedavg)
     out << "FedAvg";
   else
