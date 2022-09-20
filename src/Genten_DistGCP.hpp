@@ -617,6 +617,7 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
       }
     } else {
       u.set(u_best);
+      meta_u.set(u_best);
       annealer.failed();
       stepper->setFailed();
       meta_stepper->setFailed();
