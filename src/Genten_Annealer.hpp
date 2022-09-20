@@ -50,42 +50,52 @@ class AnnealerBase {
 public:
   AnnealerBase(ptree const &ptree) {}
   virtual ~AnnealerBase() = default;
-  virtual double operator()(int epoch) = 0;
+  virtual ttb_real operator()(int epoch) = 0;
   virtual void failed(){};
   virtual void success(){};
+  virtual void print(std::ostream& os) {};
 
 private:
 };
 
 class TraditionalAnnealer : public AnnealerBase {
-  double step_size_;
+  ttb_real step_size_;
+  ttb_real decay_;
 
 public:
   TraditionalAnnealer(ptree const &ptree)
-    : AnnealerBase(ptree), step_size_(ptree.get_child("learning-rate").get<double>("step", 3e-4)) {}
+    : AnnealerBase(ptree),
+      step_size_(ptree.get_child("learning-rate").get<ttb_real>("step", 3e-4)),
+      decay_(ptree.get_child("learning-rate").get<ttb_real>("step", 0.1)) {}
 
-  double operator()(int epoch) override { return step_size_; }
-  void failed() override { step_size_ /= 10; }
+  ttb_real operator()(int epoch) override { return step_size_; }
+  void failed() override { step_size_ *= decay_; }
+  void print(std::ostream& os) {
+    os << "  Traditional annealer, learning rate: "
+       << std::setprecision(1) << std::scientific << step_size_
+       << ", decay: " << decay_ << std::endl;
+  }
 };
 
 // Slightly annoyingly I want the first run through to be a warm up then resets
 // So we will maintain a different count than Tcur to decide when to reset Tcur
 class CosineAnnealer : public AnnealerBase {
-  double min_lr;
-  double max_lr;
+  ttb_real min_lr;
+  ttb_real max_lr;
   int Ti;
   int Tcur;
   int iter = 0;
 
 public:
   CosineAnnealer(ptree const &ptree)
-    : AnnealerBase(ptree), min_lr(ptree.get_child("learning-rate").get<double>("min", 1e-12)),
-      max_lr(ptree.get_child("learning-rate").get<double>("max", 1e-9)),
+    : AnnealerBase(ptree),
+      min_lr(ptree.get_child("learning-rate").get<ttb_real>("min", 1e-12)),
+      max_lr(ptree.get_child("learning-rate").get<ttb_real>("max", 1e-9)),
       Ti(ptree.get_child("learning-rate").get<int>("Ti", 10)), Tcur(Ti) {}
 
-  double operator()(int) override {
+  ttb_real operator()(int) override {
     return min_lr +
-           0.5 * (max_lr - min_lr) * (1 + std::cos(double(Tcur) / Ti * M_PI));
+           0.5 * (max_lr - min_lr) * (1 + std::cos(ttb_real(Tcur) / Ti * M_PI));
   }
 
   void failed() override {
@@ -103,6 +113,16 @@ public:
       iter = 0;
       Ti *= 2;
     }
+  }
+
+  void print(std::ostream& os) {
+    os << "  Cosine annealer, min learning rate: "
+       << std::setprecision(1) << std::scientific << min_lr
+       << ", max learning rate: "
+       << std::setprecision(1) << std::scientific << max_lr
+       << ", initial temp: "
+       << std::setprecision(1) << std::scientific << Ti
+       << std::endl;
   }
 };
 

@@ -358,7 +358,7 @@ static nlohmann::json json_schema = R"(
                   "description": "Stopping tolerance",
                   "type": "number",
                   "minimum": 0.0,
-                  "default": 0.004
+                  "default": 0.001
               },
               "mttkrp": {
                   "$ref": "#/definitions/mttkrp"
@@ -600,6 +600,18 @@ static nlohmann::json json_schema = R"(
                   "minimum": 1,
                   "default": 1000
               },
+              "tol": {
+                  "description": "Stopping tolerance",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "default": 0.001
+              },
+              "fails": {
+                  "description": "Maximum number of fails",
+                  "type": "integer",
+                  "minimum": 0,
+                  "default": 10
+              },
               "epoch-size": {
                   "description": "Iterations per epoch",
                   "type": "integer",
@@ -692,6 +704,13 @@ static nlohmann::json json_schema = R"(
                           "type": "number",
                           "minimum": 0.0,
                           "default": 3e-4
+                      },
+                      "decay": {
+                          "description": "Rate step size decreases on fails",
+                          "type": "number",
+                          "minimum": 0.0,
+                          "maximum": 1.0,
+                          "default": 0.1
                       },
                       "max": {
                           "description": "Initial max learning rate for cosine annealer",

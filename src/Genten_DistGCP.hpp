@@ -168,6 +168,8 @@ AlgParams DistGCP<ExecSpace>::setAlgParams() const {
 
   AlgParams algParams;
   algParams.maxiters = input_.get<int>("max-epochs", 1000);
+  algParams.max_fails = input_.get<int>("fails", 2);
+  algParams.gcp_tol = input_.get<double>("tol", 1e-4);
 
   auto global_batch_size_nz = input_.get<int>("batch-size-nz", 128);
   auto global_batch_size_z =
@@ -351,6 +353,8 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
 
   const auto maxEpochs = algParams.maxiters;
   const auto epochIters = algParams.epoch_iters;
+  const auto max_fails = algParams.max_fails;
+  const auto tol = algParams.gcp_tol;
   const auto dp_iters = input_.get<int>("downpour-iters", 4);
 
   auto annealer_ptr = getAnnealer(input_);
@@ -359,21 +363,21 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
   bool fedavg = input_.get<std::string>("method") == "fedavg";
   auto meta_lr = input_.get<ttb_real>("meta-lr", 1e-3);
 
-  out << "\nGCP-";
   if (fedavg)
-    out << "FedAvg";
+    out << "\nGCP-FedAvg:\n";
   else
-    out << "FedOpt";
-  out << " (Generalized CP Tensor Decomposition):\n"
-      << "  Generalized function type: " << loss.name() << std::endl
+    out << "\nGCP-FedOpt:\n";
+  out << "  Generalized function type: " << loss.name() << std::endl
       << "  Meta step method: " << meta_step << std::endl
       << "  Local step method: " << GCP_Step::names[algParams.step_type]
       << std::endl
-      << "  Max iterations (epochs): " << maxEpochs << std::endl
-      << "  Iterations per epoch: " << epochIters << std::endl;
+      << "  Max epochs: " << maxEpochs << std::endl
+      << "  Iterations per epoch: " << epochIters << std::endl
+      << "  Downpour interations: " << dp_iters << std::endl
+      << "  Max fails: " << max_fails << std::endl;
+  annealer.print(out);
   sampler.print(out);
-  out << "  Gradient method: ";
-  out << "Fused sampling and "
+  out << "  Gradient method: Fused sampling and "
       << MTTKRP_All_Method::names[algParams.mttkrp_all_method]
       << " MTTKRP\n";
   out << std::endl;
@@ -414,6 +418,7 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
   auto fest = pmap->gridAllReduce(Impl::gcp_value(X_val, ut, w_val, loss));
   auto fest_best = fest;
   auto fest_prev = fest;
+  auto fest_init = fest;
   out << "Initial f-est: "
       << std::setw(13) << std::setprecision(6) << std::scientific
       << fest << std::endl;
@@ -429,6 +434,7 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
 
   double t0 = 0;
   double t1 = 0;
+  int nfails = 0;
   for (auto e = 0; e < maxEpochs; ++e) { // Epochs
     t0 = MPI_Wtime();
     auto epoch_lr = annealer(e);
@@ -493,10 +499,8 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
     timer.stop(timer_fest);
     t1 = MPI_Wtime();
 
-    if (std::isnan(fest)) {
-      out << "IS NAN: Best result was: " << fest_best << std::endl;
-      return fest_best;
-    }
+    const auto fest_diff = fest_prev - fest;
+    bool passed_epoch = fest_diff > -0.001 * fest_best && !std::isnan(fest);
 
     out << "Epoch " << std::setw(3) << e + 1 << ": f-est = "
         << std::setw(13) << std::setprecision(6) << std::scientific
@@ -510,9 +514,9 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
     out << ", time = "
         << std::setw(8) << std::setprecision(2) << std::scientific
         << timer.getTotalTime(timer_sgd) << " sec";
+    if (!passed_epoch)
+      out << ", nfails = " << nfails;
     out << std::endl;
-
-    const auto fest_diff = fest_prev - fest;
 
     /*
     std::vector<double> gradient_times;
@@ -581,7 +585,7 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
       p.cum_time = t1 - start_time;
     }
 
-    if (fest_diff > -0.001 * fest_best) {
+    if (passed_epoch) {
       stepper->setPassed();
       meta_stepper->setPassed();
       fest_prev = fest;
@@ -596,12 +600,16 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
       stepper->setFailed();
       meta_stepper->setFailed();
       fest = fest_best;
+      ++nfails;
     }
+
+    if (nfails > max_fails || fest < tol*fest_init)
+      break;
   }
 
   timer.stop(timer_sgd);
   out << "Final f-est: "
-            << std::setw(13) << std::setprecision(6) << std::scientific
+      << std::setw(13) << std::setprecision(6) << std::scientific
       << fest << std::endl << std::endl;
   out << "GCP-";
   if (fedavg)
