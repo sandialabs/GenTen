@@ -66,7 +66,7 @@ public:
   TraditionalAnnealer(ptree const &ptree)
     : AnnealerBase(ptree),
       step_size_(ptree.get_child("learning-rate").get<ttb_real>("step", 3e-4)),
-      decay_(ptree.get_child("learning-rate").get<ttb_real>("step", 0.1)) {}
+      decay_(ptree.get_child("learning-rate").get<ttb_real>("decay", 0.1)) {}
 
   ttb_real operator()(int epoch) override { return step_size_; }
   void failed() override { step_size_ *= decay_; }
