@@ -91,10 +91,10 @@ void usage(char **argv)
   std::cout << "  --gz               read tensor in gzip compressed format" << std::endl;
   std::cout << "  --sparse           whether tensor is sparse or dense" << std::endl;
   std::cout << "  --save-tensor <string> filename to save the tensor (leave blank for no save)" << std::endl;
-  std::cout << "  --init <string>  file name for reading Ktensor initial guess (leave blank for random initial guess)" << std::endl;
-  std::cout << "  --output <string>  output file name for saving Ktensor" << std::endl;
+  std::cout << "  --initial-file <string>  file name for reading Ktensor initial guess (leave blank for random initial guess)" << std::endl;
+  std::cout << "  --output-file <string>  output file name for saving Ktensor" << std::endl;
   std::cout << "  --vtune            connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
-  std::cout << "  --history          file to save performance history" << std::endl;
+  std::cout << "  --history-file     file to save performance history" << std::endl;
   std::cout << std::endl;
   Genten::AlgParams::print_help(std::cout);
 }
@@ -494,14 +494,13 @@ int main(int argc, char* argv[])
         Genten::parse_ptree_value(tensor_input, "index-base", index_base, 0, INT_MAX);
         Genten::parse_ptree_value(tensor_input, "compressed", gz);
         Genten::parse_ptree_value(tensor_input, "sparse", sparse);
-        Genten::parse_ptree_value(tensor_input, "output-file", tensor_outputfilename);
+        Genten::parse_ptree_value(tensor_input, "tensor-output-file", tensor_outputfilename);
         Genten::parse_ptree_value(tensor_input, "rand-nnz", nnz, 1, INT_MAX);
         if (tensor_input.get_child_optional("rand-dims")) {
           std::vector<ttb_real> dims;
           Genten::parse_ptree_value(tensor_input, "rand-dims", dims, 1, INT_MAX);
           facDims_h = Genten::IndxArray(dims.size(), dims.data());
         }
-        Genten::parse_ptree_value(tensor_input, "output-file", tensor_outputfilename);
       }
 
       // K-tensor
