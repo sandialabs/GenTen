@@ -84,7 +84,7 @@ private:
   template <typename Loss> ttb_real allReduceTrad(Loss const &loss);
   template <typename Loss> ttb_real fedOpt(Loss const &loss);
   template <typename Loss> ttb_real pickMethod(Loss const &loss);
-  AlgParams setAlgParams() const;
+  AlgParams setAlgParams();
 
   DistTensorContext dtc_;
   SptensorT<ExecSpace> spTensor_;
@@ -95,6 +95,12 @@ private:
   bool dump_; // I don't love keeping this flag, but it's easy
   unsigned int seed_;
   MPI_Datatype mpiElemType_ = DistContext::toMpiType<ttb_real>();
+
+  int global_nzg;
+  int global_nzf;
+  int global_zg;
+  int global_zf;
+  int percent_nz_epoch;
 };
 
 template <typename ExecSpace>
@@ -160,7 +166,7 @@ ttb_real DistGCP<ExecSpace>::compute() {
 }
 
 template <typename ExecSpace>
-AlgParams DistGCP<ExecSpace>::setAlgParams() const {
+AlgParams DistGCP<ExecSpace>::setAlgParams() {
   const std::uint64_t np = dtc_.nprocs();
   const std::uint64_t lnz = spTensor_.nnz();
   const std::uint64_t gnz = dtc_.globalNNZ(spTensor_);
@@ -221,14 +227,14 @@ AlgParams DistGCP<ExecSpace>::setAlgParams() const {
   const int local_batch_sizez = algParams.num_samples_zeros_grad;
   const int local_value_size = algParams.num_samples_nonzeros_value;
   const int local_value_sizez = algParams.num_samples_zeros_value;
-  const int global_nzg = pmap().gridAllReduce(local_batch_size);
-  const int global_nzf = pmap().gridAllReduce(local_value_size);
-  const int global_zg = pmap().gridAllReduce(local_batch_sizez);
-  const int global_zf = pmap().gridAllReduce(local_value_sizez);
+  global_nzg = pmap().gridAllReduce(local_batch_size);
+  global_nzf = pmap().gridAllReduce(local_value_size);
+  global_zg = pmap().gridAllReduce(local_batch_sizez);
+  global_zf = pmap().gridAllReduce(local_value_sizez);
 
   const auto percent_nz_batch =
       double(global_batch_size_nz) / double(gnz) * 100.0;
-  const auto percent_nz_epoch =
+  percent_nz_epoch =
       double(algParams.epoch_iters * global_batch_size_nz) / double(gnz) *
       100.0;
 
@@ -376,7 +382,22 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
       << "  Downpour interations: " << dp_iters << std::endl
       << "  Max fails: " << max_fails << std::endl;
   annealer.print(out);
-  sampler.print(out);
+  // NOTE (ETP 9/20/22:  sampler output is not correct because pmap is not
+  // passed through the tensor, so it only prints the local number of samples.
+  // This will be fixed when this code is refactored.
+  //sampler.print(out);
+  out << "  Function sampler:  stratified with "
+      << global_nzf
+      << " nonzero and " << global_zf
+      << " zero samples\n"
+      << "  Gradient sampler:  semi-stratified with "
+      << global_nzg
+      << " nonzero and " << global_zg
+      << " zero samples\n"
+      << "  Gradient nonzero samples per epoch: "
+      << global_zg*epochIters
+      << " (" << std::setprecision(1) << std::fixed << percent_nz_epoch << "%)"
+      << std::endl;
   out << "  Gradient method: Fused sampling and "
       << MTTKRP_All_Method::names[algParams.mttkrp_all_method]
       << " MTTKRP\n";
@@ -515,7 +536,7 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
         << std::setw(8) << std::setprecision(2) << std::scientific
         << timer.getTotalTime(timer_sgd) << " sec";
     if (!passed_epoch)
-      out << ", nfails = " << nfails;
+      out << ", nfails = " << nfails+1;
     out << std::endl;
 
     /*
