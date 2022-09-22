@@ -38,562 +38,550 @@
 // ************************************************************************
 //@HEADER
 
+#include <Genten_FacMatrix.hpp>
+#include <Genten_IOtext.hpp>
+#include <sstream>
 
-#include "Genten_FacMatrix.hpp"
-#include "Genten_IOtext.hpp"
 #include "Genten_Test_Utils.hpp"
-#include "Genten_Util.hpp"
 
-using namespace Genten::Test;
+#include <gtest/gtest.h>
 
-template <typename ExecSpace>
-void Genten_Test_FacMatrix_Space(int infolevel, const std::string & datadir)
-{
-  typedef ExecSpace exec_space;
-  typedef Genten::DefaultHostExecutionSpace host_exec_space;
+namespace Genten {
+namespace UnitTests {
 
-  SETUP_DISABLE_CERR;
+template <typename ExecSpace> struct TestFacMatrixT : public ::testing::Test {
+  using exec_space = ExecSpace;
+};
 
-  bool tf;
-  std::string space_name = Genten::SpaceProperties<exec_space>::name();
-  initialize("Tests on Genten::FacMatrix (" + space_name + ")", infolevel);
+TYPED_TEST_SUITE(TestFacMatrixT, genten_test_types);
 
-  // Empty Constructor
-  MESSAGE("Testing empty constructor");
-  Genten::FacMatrix a;
-  ASSERT((a.nRows() == 0) & (a.nCols() == 0), "Empty constructor works as expected");
+TEST(TestFacMatrix, EmptyConstructor) {
+  FacMatrix fm;
+  ASSERT_EQ(fm.nRows(), 0);
+  ASSERT_EQ(fm.nCols(), 0);
+}
 
-  // Size Constructor
-  MESSAGE("Testing size constructor");
-  Genten::FacMatrix a2(3,2);
-  ASSERT((a2.nRows() == 3) && (a2.nCols() == 2), "Size constructor works as expected");
+TEST(TestFacMatrix, SizeConstructor) {
+  FacMatrix fm(3, 2);
+  ASSERT_EQ(fm.nRows(), 3);
+  ASSERT_EQ(fm.nCols(), 2);
+}
 
-  // Data Constructor
-  MESSAGE("Testing data constructor");
-  ttb_real cdata[] = {1,2,3,4,5,6,7,8,9};
-  Genten::FacMatrix c(3, 3, cdata);
-  tf = true;
+TEST(TestFacMatrix, DataConstructor) {
+  ttb_real fm_data[]{1, 2, 3, 4, 5, 6, 7, 8, 9};
+  FacMatrix fm(3, 3, fm_data);
   double val = 1;
-  for (ttb_indx j = 0; j < c.nRows(); j ++)
-  {
-    for (ttb_indx i = 0; i < c.nCols(); i ++)
-    {
-      if (c.entry(i,j) != val)
-      {
-        tf = false;
-        break;
-      }
-      val += 1;
+  for (ttb_indx j = 0; j < fm.nRows(); ++j) {
+    for (ttb_indx i = 0; i < fm.nCols(); ++i) {
+      ASSERT_FLOAT_EQ(fm.entry(i, j), val);
+      ++val;
     }
   }
-  ASSERT(tf, "Data constructor works as expected");
+}
 
-  // Copy Constructor
-  MESSAGE("Copy constructor not tested explicitly");
+TEST(TestFacMatrix, EntryConst) {
+  ttb_real fm_data[]{1, 2, 3, 4, 5, 6, 7, 8, 9};
+  FacMatrix fm(3, 3, fm_data);
 
-  // Destructor
-  MESSAGE("Destructor is not tested explicitly");
+  FacMatrix fm_const(fm);
+  ASSERT_TRUE(fm_const.isEqual(fm, MACHINE_EPSILON));
+}
 
+TEST(TestFacMatrix, Resize) {
+  FacMatrix fm;
+  fm = FacMatrix(2, 2);
+  ASSERT_EQ(fm.nRows(), 2);
+  ASSERT_EQ(fm.nCols(), 2);
+}
 
-  // entry const
-  const Genten::FacMatrix cconst(c);
-  tf = cconst.isEqual(c, MACHINE_EPSILON);
-  ASSERT(tf, "Entry for const works as expected");
+TEST(TestFacMatrix, AssignmentOperator) {
+  FacMatrix fm(2, 2);
+  fm = 5;
+  ASSERT_FLOAT_EQ(fm.entry(0, 0), 5);
+  ASSERT_FLOAT_EQ(fm.entry(0, 1), 5);
+  ASSERT_FLOAT_EQ(fm.entry(1, 0), 5);
+  ASSERT_FLOAT_EQ(fm.entry(1, 1), 5);
+}
 
+TEST(TestFacMatrix, Reset) {
+  FacMatrix fm(2, 2);
+  fm = 5;
 
-  // entry non-const
-  MESSAGE("Entry for non-const not tested explicitly");
+  fm = FacMatrix(1, 1);
+  fm = 3;
+  ASSERT_EQ(fm.nRows(), 1);
+  ASSERT_EQ(fm.nCols(), 1);
+  ASSERT_FLOAT_EQ(fm.entry(0, 0), 3);
+}
 
-  // resize
-  a = Genten::FacMatrix(2,2);
-  ASSERT(a.nRows() == 2, "Resize works as expected");
-  ASSERT(a.nCols() == 2, "Resize works as expected");
+TYPED_TEST(TestFacMatrixT, Gramian) {
+  FacMatrix fm_b;
+  FacMatrix fm_d;
+  import_matrix("data/B_matrix.txt", fm_b);
+  import_matrix("data/D_matrix.txt", fm_d);
 
-  // operator=
-  a = 5;
-  ASSERT(EQ(a.entry(0,0), 5), "Operator= for scalar works as expected");
-  ASSERT(EQ(a.entry(0,1), 5), "Operator= for scalar works as expected");
-  ASSERT(EQ(a.entry(1,0), 5), "Operator= for scalar works as expected");
-  ASSERT(EQ(a.entry(1,1), 5), "Operator= for scalar works as expected");
+  FacMatrix fm_e(fm_b.nCols(), fm_b.nCols());
 
-  // reset
-  a = Genten::FacMatrix(1,1);
-  a = 3;
-  ASSERT(a.nRows() == 1, "Reset works as expected");
-  ASSERT(a.nCols() == 1, "Reset works as expected");
-  ASSERT(EQ(a.entry(0,0), 3), "Reset works as expected");
+  using exec_space = typename TestFixture::exec_space;
+  FacMatrixT<exec_space> fm_b_dev = create_mirror_view(exec_space(), fm_b);
+  FacMatrixT<exec_space> fm_e_dev = create_mirror_view(exec_space(), fm_e);
+  deep_copy(fm_b_dev, fm_b);
+  fm_e_dev.gramian(fm_b_dev, true);
+  deep_copy(fm_e, fm_e_dev);
 
-  // gramian
-  Genten::FacMatrix b;
-  Genten::import_matrix(datadir + "B_matrix.txt", b);
-  Genten::FacMatrix d;
-  Genten::import_matrix(datadir + "D_matrix.txt", d);
-  Genten::FacMatrix e(b.nCols(), b.nCols());
-  Genten::FacMatrixT<exec_space> b_dev = create_mirror_view( exec_space(), b );
-  Genten::FacMatrixT<exec_space> e_dev = create_mirror_view( exec_space(), e );
-  deep_copy( b_dev, b );
-  e_dev.gramian(b_dev, true);
-  deep_copy( e, e_dev );
-  ASSERT(e.nCols() == d.nCols(), "Gramian works");
-  ASSERT(e.nRows() == d.nRows(), "Gramian works");
-  tf = true;
-  for (ttb_indx j = 0; j < e.nCols(); j ++)
-  {
-    for (ttb_indx i = 0; i < e.nRows(); i ++)
-    {
-      if (!EQ(e.entry(i,j), d.entry(i,j)))
-      {
-        tf = false;
-        break;
-      }
+  ASSERT_EQ(fm_e.nCols(), fm_d.nCols());
+  ASSERT_EQ(fm_e.nRows(), fm_d.nRows());
 
-    }
-
-    if (!tf)
-    {
-      break;
+  for (ttb_indx j = 0; j < fm_e.nCols(); j++) {
+    for (ttb_indx i = 0; i < fm_e.nRows(); i++) {
+      ASSERT_FLOAT_EQ(fm_e.entry(i, j), fm_d.entry(i, j));
     }
   }
-  ASSERT(tf, "Gramian yields expected answer");
+}
 
-  //
+TYPED_TEST(TestFacMatrixT, Gemm) {
   // gemm (matrix-matrix multiply)
-  //
-  const ttb_real alpha = 1.5;
-  const ttb_real beta = 2.1;
-  const ttb_real c0 = 0.6;
+  constexpr ttb_real alpha = 1.5;
+  constexpr ttb_real beta = 2.1;
+  constexpr ttb_real c0 = 0.6;
 
-  // gemm tester
-  auto test_gemm = [=](const Genten::FacMatrix& a,
-                       const Genten::FacMatrix& b,
-                       const Genten::FacMatrix& c,
-                       const bool trans_a, const bool trans_b,
-                       const std::string& label) {
-    Genten::FacMatrixT<exec_space> a_dev =
-      create_mirror_view( exec_space(), a );
-    Genten::FacMatrixT<exec_space> b_dev =
-      create_mirror_view( exec_space(), b );
-    Genten::FacMatrixT<exec_space> c_dev =
-      create_mirror_view( exec_space(), c );
-    deep_copy(a_dev, a);
-    deep_copy(b_dev, b);
-    deep_copy(c_dev, c);
-    c_dev.gemm(trans_a,trans_b,alpha,a_dev,b_dev,beta);
-    deep_copy(c, c_dev);
-    bool tf = true;
-    const ttb_indx p = trans_a ? a.nRows() : a.nCols();
-    for (ttb_indx i=0; i<c.nRows(); ++i) {
-      for (ttb_indx j=0; j<c.nCols(); ++j) {
-        ttb_real tmp = beta*c0;
-        for (ttb_indx k=0; k<p; ++k) {
-          if (trans_a && trans_b)
-            tmp += alpha*a(k,i)*b(j,k);
-          else if (trans_a)
-            tmp += alpha*a(k,i)*b(k,j);
-          else if (trans_b)
-            tmp += alpha*a(i,k)*b(j,k);
-          else
-            tmp += alpha*a(i,k)*b(k,j);
+  using exec_space = typename TestFixture::exec_space;
+
+  auto test_gemm = [=](const FacMatrix &fm_a, const FacMatrix &fm_b,
+                       const FacMatrix &fm_c, const bool trans_a,
+                       const bool trans_b, const std::string &label) {
+    FacMatrixT<exec_space> fm_a_dev = create_mirror_view(exec_space(), fm_a);
+    FacMatrixT<exec_space> fm_b_dev = create_mirror_view(exec_space(), fm_b);
+    FacMatrixT<exec_space> fm_c_dev = create_mirror_view(exec_space(), fm_c);
+    deep_copy(fm_a_dev, fm_a);
+    deep_copy(fm_b_dev, fm_b);
+    deep_copy(fm_c_dev, fm_c);
+    fm_c_dev.gemm(trans_a, trans_b, alpha, fm_a_dev, fm_b_dev, beta);
+    deep_copy(fm_c, fm_c_dev);
+    const ttb_indx p = trans_a ? fm_a.nRows() : fm_a.nCols();
+    for (ttb_indx i = 0; i < fm_c.nRows(); ++i) {
+      for (ttb_indx j = 0; j < fm_c.nCols(); ++j) {
+        ttb_real tmp = beta * c0;
+        for (ttb_indx k = 0; k < p; ++k) {
+          if (trans_a && trans_b) {
+            tmp += alpha * fm_a(k, i) * fm_b(j, k);
+          } else if (trans_a) {
+            tmp += alpha * fm_a(k, i) * fm_b(k, j);
+          } else if (trans_b) {
+            tmp += alpha * fm_a(i, k) * fm_b(j, k);
+          } else {
+            tmp += alpha * fm_a(i, k) * fm_b(k, j);
+          }
         }
-        if (!EQ(c.entry(i,j), tmp)) {
-          std::cout << "c(" << i << "," << j << ") = " << c(i,j) << " tmp = "
-                    << tmp << std::endl;
-          tf = false;
-          break;
-        }
+
+        std::ostringstream oss;
+        oss << "fm_c(" << i << "," << j << ") = " << fm_c(i, j)
+            << " tmp = " << tmp;
+        GENTEN_FLOAT_EQ(fm_c.entry(i, j), tmp, oss.str().c_str());
       }
-      if (!tf)
-        break;
     }
-    ASSERT(tf, label + std::string(" yields expected answer"));
+
+    const std::string msg = label + std::string(" yields expected answer");
+    INFO_MSG(msg.c_str());
   };
 
   // no-trans, no-trans
   {
-    Genten::FacMatrix a(3,5);
-    Genten::FacMatrix b(5,7);
-    Genten::FacMatrix c(3,7);
+    FacMatrix a(3, 5);
+    FacMatrix b(5, 7);
+    FacMatrix c(3, 7);
     a.rand();
     b.rand();
     c = c0;
-    test_gemm(a,b,c,false,false,"gemm(false,false)");
+    test_gemm(a, b, c, false, false, "gemm(false,false)");
   }
 
   // no-trans, trans
   {
-    Genten::FacMatrix a(3,5);
-    Genten::FacMatrix b(7,5);
-    Genten::FacMatrix c(3,7);
+    FacMatrix a(3, 5);
+    FacMatrix b(7, 5);
+    FacMatrix c(3, 7);
     a.rand();
     b.rand();
     c = c0;
-    test_gemm(a,b,c,false,true,"gemm(false,true)");
+    test_gemm(a, b, c, false, true, "gemm(false,true)");
   }
 
   // trans, no-trans
   {
-    Genten::FacMatrix a(5,3);
-    Genten::FacMatrix b(5,7);
-    Genten::FacMatrix c(3,7);
+    FacMatrix a(5, 3);
+    FacMatrix b(5, 7);
+    FacMatrix c(3, 7);
     a.rand();
     b.rand();
     c = c0;
-    test_gemm(a,b,c,true,false,"gemm(true,false)");
+    test_gemm(a, b, c, true, false, "gemm(true,false)");
   }
 
   // trans, trans
   {
-    Genten::FacMatrix a(5,3);
-    Genten::FacMatrix b(7,5);
-    Genten::FacMatrix c(3,7);
+    FacMatrix a(5, 3);
+    FacMatrix b(7, 5);
+    FacMatrix c(3, 7);
     a.rand();
     b.rand();
     c = c0;
-    test_gemm(a,b,c,true,true,"gemm(true,true)");
+    test_gemm(a, b, c, true, true, "gemm(true,true)");
   }
+}
 
-  // hadamard product
-  MESSAGE("Checking error on wrong sized matrices");
-  tf = false;
-  DISABLE_CERR;
-  try
-  {
-    b.times(d);
-  }
-  catch(...)
-  {
-    tf = true;
-  }
-  REENABLE_CERR;
-  ASSERT(tf, "Expected exception is caught");
+TEST(TestFacMatrix, HadamardProductThrow) {
+  FacMatrix fm_b;
+  import_matrix("data/B_matrix.txt", fm_b);
+  FacMatrix fm_d;
+  import_matrix("data/D_matrix.txt", fm_d);
 
-  MESSAGE("Now checking actual correctness");
-  Genten::FacMatrix f(3,2);
-  f = 2;
-  Genten::FacMatrixT<exec_space> f_dev = create_mirror_view( exec_space(), f );
-  deep_copy( f_dev, f );
-  f_dev.times(b_dev);
-  deep_copy( f, f_dev );
-  ASSERT(f.nRows() == 3, "Hadamard works");
-  ASSERT(f.nCols() == 2, "Hadamard works");
-  tf = true;
-  val = 0.1;
-  for (ttb_indx j = 0; j < f.nCols(); j ++)
-  {
-    for (ttb_indx i = 0; i < f.nRows(); i ++)
-    {
-      if (!EQ(f.entry(i,j), 2*val))
-      {
-        tf = false;
-        break;
-      }
+  ASSERT_ANY_THROW(fm_b.times(fm_d));
+}
+
+TYPED_TEST(TestFacMatrixT, HadamardProduct) {
+  using exec_space = typename TestFixture::exec_space;
+
+  FacMatrix fm_b;
+  import_matrix("data/B_matrix.txt", fm_b);
+
+  FacMatrixT<exec_space> fm_b_dev = create_mirror_view(exec_space(), fm_b);
+  deep_copy(fm_b_dev, fm_b);
+
+  FacMatrix fm_f(3, 2);
+  fm_f = 2;
+
+  FacMatrixT<exec_space> fm_f_dev = create_mirror_view(exec_space(), fm_f);
+  deep_copy(fm_f_dev, fm_f);
+  fm_f_dev.times(fm_b_dev);
+  deep_copy(fm_f, fm_f_dev);
+
+  ASSERT_EQ(fm_f.nRows(), 3);
+  ASSERT_EQ(fm_f.nCols(), 2);
+
+  ttb_real val = 0.1;
+  for (ttb_indx j = 0; j < fm_f.nCols(); j++) {
+    for (ttb_indx i = 0; i < fm_f.nRows(); i++) {
+      ASSERT_FLOAT_EQ(fm_f.entry(i, j), 2 * val);
       val += 0.1;
     }
+  }
+}
 
-    if (tf == false)
-    {
-      break;
+TEST(TestFacMatrix, Transpose) {
+  FacMatrix fm_b;
+  import_matrix("data/B_matrix.txt", fm_b);
+
+  FacMatrix fm(fm_b.nCols(), fm_b.nRows());
+  fm.transpose(fm_b);
+  ASSERT_EQ(fm.nCols(), fm_b.nRows());
+  ASSERT_EQ(fm.nRows(), fm_b.nCols());
+
+  for (ttb_indx j = 0; j < fm.nCols(); j++) {
+    for (ttb_indx i = 0; i < fm.nRows(); i++) {
+      ASSERT_FLOAT_EQ(fm.entry(i, j), fm_b.entry(j, i));
     }
   }
-  ASSERT(tf, "Hadamard works as expected");
+}
 
-  // transpose
-  Genten::FacMatrix g(b.nCols(), b.nRows());
-  g.transpose(b);
-  ASSERT(g.nCols() == b.nRows(), "Transpose # columns ok");
-  ASSERT(g.nRows() == b.nCols(), "Transpose # rows ok");
-  tf = true;
-  for (ttb_indx j = 0; j < g.nCols(); j ++)
-  {
-    for (ttb_indx i = 0; i < g.nRows(); i ++)
-    {
-      if (!EQ(g.entry(i,j), b.entry(j,i)))
-      {
-        tf = false;
-        break;
-      }
-    }
+TYPED_TEST(TestFacMatrixT, Oprod) {
+  using exec_space = typename TestFixture::exec_space;
 
-    if (tf == false)
-    {
-      break;
+  ttb_real arr_data[]{0.1, 0.2, 0.3};
+  const Array arr(3, arr_data);
+  FacMatrix fm(arr.size(), arr.size());
+  FacMatrixT<exec_space> fm_dev = create_mirror_view(exec_space(), fm);
+  ArrayT<exec_space> arr_dev = create_mirror_view(exec_space(), arr);
+  deep_copy(fm_dev, fm);
+  deep_copy(arr_dev, arr);
+  fm_dev.oprod(arr_dev);
+  deep_copy(fm, fm_dev);
+  ASSERT_EQ(fm.nRows(), 3);
+  ASSERT_EQ(fm.nCols(), 3);
+  for (ttb_indx j = 0; j < fm.nCols(); j++) {
+    for (ttb_indx i = 0; i < fm.nRows(); i++) {
+      const ttb_real val = arr[i] * arr[j];
+      ASSERT_FLOAT_EQ(fm.entry(i, j), val);
     }
   }
-  ASSERT(tf, "Transpose works as expected");
+}
 
-  // oprod
-  ttb_real hdata[] = {.1, .2, .3};
-  const Genten::Array h(3, hdata);
-  a = Genten::FacMatrix(h.size(), h.size());
-  Genten::FacMatrixT<exec_space> a_dev = create_mirror_view( exec_space(), a );
-  Genten::ArrayT<exec_space> h_dev = create_mirror_view( exec_space(), h );
-  deep_copy( a_dev, a );
-  deep_copy( h_dev, h );
-  a_dev.oprod(h_dev);
-  deep_copy( a, a_dev );
-  ASSERT(a.nRows() == 3, "Oprod # rows ok");
-  ASSERT(a.nCols() == 3, "Oprod # cols ok");
-  tf = true;
-  for (ttb_indx j = 0; j < g.nCols(); j ++)
-  {
-    for (ttb_indx i = 0; i < g.nRows(); i ++)
-    {
-      val = h[i]*h[j];
-      if (!EQ(a.entry(i,j),val))
-      {
-        tf = false;
-        break;
-      }
-    }
+TYPED_TEST(TestFacMatrixT, LinearSolverDiagonalMatrix) {
+  using exec_space = typename TestFixture::exec_space;
 
-    if (tf == false)
-    {
-      break;
-    }
-  }
-  ASSERT(tf, "Oprod works as expected");
+  FacMatrix fm_a(2, 2);
+  fm_a.entry(0, 0) = 1.0;
+  fm_a.entry(1, 0) = 0.0;
+  fm_a.entry(0, 1) = 0.0;
+  fm_a.entry(1, 1) = 2.0;
 
-  // Linear solver, first for a diagonal matrix.
-  a = Genten::FacMatrix(2,2);
-  a.entry(0,0) = 1.0;
-  a.entry(1,0) = 0.0;
-  a.entry(0,1) = 0.0;
-  a.entry(1,1) = 2.0;
-  b = Genten::FacMatrix(1,2);
-  b.entry(0,0) = 3.0;
-  b.entry(0,1) = 4.0;
-  a_dev = create_mirror_view( exec_space(), a );
-  b_dev = create_mirror_view( exec_space(), b );
-  deep_copy( a_dev, a );
-  deep_copy( b_dev, b );
-  b_dev.solveTransposeRHS (a_dev);
-  deep_copy( b, b_dev );
-  c = Genten::FacMatrix(1,2);
-  c.entry(0,0) = 3.0;
-  c.entry(0,1) = 2.0;
+  FacMatrix fm_b(1, 2);
+  fm_b.entry(0, 0) = 3.0;
+  fm_b.entry(0, 1) = 4.0;
+
+  FacMatrixT<exec_space> fm_a_dev = create_mirror_view(exec_space(), fm_a);
+  FacMatrixT<exec_space> fm_b_dev = create_mirror_view(exec_space(), fm_b);
+  deep_copy(fm_a_dev, fm_a);
+  deep_copy(fm_b_dev, fm_b);
+
+  fm_b_dev.solveTransposeRHS(fm_a_dev);
+  deep_copy(fm_b, fm_b_dev);
+
+  FacMatrix fm_c(1, 2);
+  fm_c.entry(0, 0) = 3.0;
+  fm_c.entry(0, 1) = 2.0;
+
   // Very slightly loosening of tolerance for GPU
-  ASSERT(c.isEqual(b,MACHINE_EPSILON*10.), "Solve works for diagonal matrix");
+  ASSERT_TRUE(fm_c.isEqual(fm_b, MACHINE_EPSILON * 10.0));
+}
 
-  // Linear solver, for an indefinite matrix and 3 right-hand sides.
-  a = Genten::FacMatrix(2,2);
-  a.entry(0,0) = 1.0;
-  a.entry(1,0) = 2.0;
-  a.entry(0,1) = 2.0;
-  a.entry(1,1) = 1.0;
-  b = Genten::FacMatrix(3,2);
-  b.entry(0,0) = 1.0;
-  b.entry(0,1) = 0.0;
-  b.entry(1,0) = 0.0;
-  b.entry(1,1) = 1.0;
-  b.entry(2,0) = -1.0;
-  b.entry(2,1) =  2.0;
-  c = Genten::FacMatrix(3,2);
-  c.entry(0,0) = -1.0 / 3.0;
-  c.entry(0,1) =  2.0 / 3.0;
-  c.entry(1,0) =  2.0 / 3.0;
-  c.entry(1,1) = -1.0 / 3.0;
-  c.entry(2,0) =  5.0 / 3.0;
-  c.entry(2,1) = -4.0 / 3.0;
-  a_dev = create_mirror_view( exec_space(), a );
-  deep_copy( a_dev, a );
+TYPED_TEST(TestFacMatrixT, LinearSolverIndefiniteMatrix) {
+  using exec_space = typename TestFixture::exec_space;
+  using host_exec_space = DefaultHostExecutionSpace;
 
-  Genten::FacMatrixT<exec_space> b1_dev( b.nRows(), b.nCols() );
-  deep_copy( b1_dev, b );
-  b1_dev.solveTransposeRHS (a_dev, true);
-  auto b1 = create_mirror_view( host_exec_space(), b1_dev );
-  deep_copy( b1, b1_dev );
-  ASSERT(c.isEqual(b1,ttb_real(10.0)*MACHINE_EPSILON),
-         "Solve (full) works for indefinite matrix");
+  FacMatrix fm_a(2, 2);
+  fm_a.entry(0, 0) = 1.0;
+  fm_a.entry(1, 0) = 2.0;
+  fm_a.entry(0, 1) = 2.0;
+  fm_a.entry(1, 1) = 1.0;
 
-  // Symmetric, indefinite solver currently doesn't work on GPU
-  // (solver not fully implemented in cuSOLVER)
-  if (!Genten::is_gpu_space<exec_space>::value) {
-    Genten::FacMatrixT<exec_space> b2_dev( b.nRows(), b.nCols() );
-    deep_copy( b2_dev, b );
-    b2_dev.solveTransposeRHS (a_dev, false, Genten::Upper, true);
-    auto b2 = create_mirror_view( host_exec_space(), b2_dev );
-    deep_copy( b2, b2_dev );
-    ASSERT(c.isEqual(b2,MACHINE_EPSILON),
-           "Solve (sym, assume spd) works for indefinite matrix");
+  FacMatrix fm_b(3, 2);
+  fm_b.entry(0, 0) = 1.0;
+  fm_b.entry(0, 1) = 0.0;
+  fm_b.entry(1, 0) = 0.0;
+  fm_b.entry(1, 1) = 1.0;
+  fm_b.entry(2, 0) = -1.0;
+  fm_b.entry(2, 1) = 2.0;
 
-    Genten::FacMatrixT<exec_space> b3_dev( b.nRows(), b.nCols() );
-    deep_copy( b3_dev, b );
-    b3_dev.solveTransposeRHS (a_dev, false, Genten::Upper, false);
-    auto b3 = create_mirror_view( host_exec_space(), b3_dev );
-    deep_copy( b3, b3_dev );
-    ASSERT(c.isEqual(b3,MACHINE_EPSILON),
-           "Solve (sym, assume indefinite) works for indefinite matrix");
+  FacMatrix fm_c(3, 2);
+  fm_c.entry(0, 0) = -1.0 / 3.0;
+  fm_c.entry(0, 1) = 2.0 / 3.0;
+  fm_c.entry(1, 0) = 2.0 / 3.0;
+  fm_c.entry(1, 1) = -1.0 / 3.0;
+  fm_c.entry(2, 0) = 5.0 / 3.0;
+  fm_c.entry(2, 1) = -4.0 / 3.0;
+
+  FacMatrixT<exec_space> fm_a_dev = create_mirror_view(exec_space(), fm_a);
+  deep_copy(fm_a_dev, fm_a);
+
+  FacMatrixT<exec_space> fm_b1_dev(fm_b.nRows(), fm_b.nCols());
+  deep_copy(fm_b1_dev, fm_b);
+  fm_b1_dev.solveTransposeRHS(fm_a_dev, true);
+  auto fm_b1 = create_mirror_view(host_exec_space(), fm_b1_dev);
+  deep_copy(fm_b1, fm_b1_dev);
+
+  ASSERT_TRUE(fm_c.isEqual(fm_b1, 10.0 * MACHINE_EPSILON));
+}
+
+TYPED_TEST(TestFacMatrixT, LinearSolverSymetricIndefiniteMatrix) {
+  // Symmetric, indefinite solver currently doesn't work on GPU (solver not
+  // fully implemented in cuSOLVER)
+  using exec_space = typename TestFixture::exec_space;
+  using host_exec_space = DefaultHostExecutionSpace;
+
+  if (is_gpu_space<exec_space>::value) {
+    return;
   }
 
-  // colNorms
-  Genten::Array nrms(3), nrms_chk(3);
-  // set a = [3 0 0; 4 1 0; 0 0 0]
-  a = Genten::FacMatrix(3,3);
-  a.entry(0,0) = 3;
-  a.entry(1,0) = 4;
-  a.entry(1,1) = 1;
-  a_dev = create_mirror_view( exec_space(), a );
-  Genten::ArrayT<exec_space> nrms_dev = create_mirror_view( exec_space(), nrms );
-  deep_copy( a_dev, a );
-  a_dev.colNorms(Genten::NormInf,nrms_dev,0.0);
-  deep_copy( nrms, nrms_dev );
+  FacMatrix fm_a(2, 2);
+  fm_a.entry(0, 0) = 1.0;
+  fm_a.entry(1, 0) = 2.0;
+  fm_a.entry(0, 1) = 2.0;
+  fm_a.entry(1, 1) = 1.0;
+
+  FacMatrix fm_b(3, 2);
+  fm_b.entry(0, 0) = 1.0;
+  fm_b.entry(0, 1) = 0.0;
+  fm_b.entry(1, 0) = 0.0;
+  fm_b.entry(1, 1) = 1.0;
+  fm_b.entry(2, 0) = -1.0;
+  fm_b.entry(2, 1) = 2.0;
+
+  FacMatrix fm_c(3, 2);
+  fm_c.entry(0, 0) = -1.0 / 3.0;
+  fm_c.entry(0, 1) = 2.0 / 3.0;
+  fm_c.entry(1, 0) = 2.0 / 3.0;
+  fm_c.entry(1, 1) = -1.0 / 3.0;
+  fm_c.entry(2, 0) = 5.0 / 3.0;
+  fm_c.entry(2, 1) = -4.0 / 3.0;
+
+  FacMatrixT<exec_space> fm_a_dev = create_mirror_view(exec_space(), fm_a);
+  deep_copy(fm_a_dev, fm_a);
+
+  FacMatrixT<exec_space> fm_b1_dev(fm_b.nRows(), fm_b.nCols());
+  deep_copy(fm_b1_dev, fm_b);
+  fm_b1_dev.solveTransposeRHS(fm_a_dev, false, Upper, true);
+  auto fm_b1 = create_mirror_view(host_exec_space(), fm_b1_dev);
+  deep_copy(fm_b1, fm_b1_dev);
+  ASSERT_TRUE(fm_c.isEqual(fm_b1, MACHINE_EPSILON));
+
+  FacMatrixT<exec_space> fm_b2_dev(fm_b.nRows(), fm_b.nCols());
+  deep_copy(fm_b2_dev, fm_b);
+  fm_b2_dev.solveTransposeRHS(fm_a_dev, false, Upper, false);
+  auto fm_b2 = create_mirror_view(host_exec_space(), fm_b2_dev);
+  deep_copy(fm_b2, fm_b2_dev);
+  ASSERT_TRUE(fm_c.isEqual(fm_b2, MACHINE_EPSILON));
+}
+
+TYPED_TEST(TestFacMatrixT, ColNorms) {
+  using exec_space = typename TestFixture::exec_space;
+
+  Array nrms(3), nrms_chk(3);
+
+  // set fm_a = [3 0 0; 4 1 0; 0 0 0]
+  FacMatrix fm_a(3, 3);
+  fm_a.entry(0, 0) = 3;
+  fm_a.entry(1, 0) = 4;
+  fm_a.entry(1, 1) = 1;
+
+  FacMatrixT<exec_space> fm_a_dev = create_mirror_view(exec_space(), fm_a);
+  deep_copy(fm_a_dev, fm_a);
+
+  ArrayT<exec_space> nrms_dev = create_mirror_view(exec_space(), nrms);
+
+  fm_a_dev.colNorms(NormInf, nrms_dev, 0.0);
+  deep_copy(nrms, nrms_dev);
   nrms_chk[0] = 4;
   nrms_chk[1] = 1;
   nrms_chk[2] = 0;
-  ASSERT(nrms.isEqual(nrms_chk,MACHINE_EPSILON),
-         "ColNorms (max norm) works as expected");
-  a_dev.colNorms(Genten::NormOne,nrms_dev,0.0);
-  deep_copy( nrms, nrms_dev );
-  nrms_chk[0] = 7;
-  ASSERT(nrms.isEqual(nrms_chk,MACHINE_EPSILON),
-         "ColNorms (1-norm) works as expected");
-  a_dev.colNorms(Genten::NormTwo,nrms_dev,0.0);
-  deep_copy( nrms, nrms_dev );
-  nrms_chk[0] = 5;
-  ASSERT(nrms.isEqual(nrms_chk,MACHINE_EPSILON),
-         "ColNorms (2-norm) works as expected");
+  ASSERT_TRUE(nrms.isEqual(nrms_chk, MACHINE_EPSILON));
 
-  // colScale
-  Genten::Array weights(3);
+  fm_a_dev.colNorms(NormOne, nrms_dev, 0.0);
+  deep_copy(nrms, nrms_dev);
+  nrms_chk[0] = 7;
+  ASSERT_TRUE(nrms.isEqual(nrms_chk, MACHINE_EPSILON));
+
+  fm_a_dev.colNorms(NormTwo, nrms_dev, 0.0);
+  deep_copy(nrms, nrms_dev);
+  nrms_chk[0] = 5;
+  ASSERT_TRUE(nrms.isEqual(nrms_chk, MACHINE_EPSILON));
+}
+
+TYPED_TEST(TestFacMatrixT, ColScale) {
+  using exec_space = typename TestFixture::exec_space;
+
+  Array weights(3);
   weights[0] = 3;
   weights[1] = 2;
   weights[2] = 1;
-  b = Genten::FacMatrix(a.nRows(), a.nCols());
-  deep_copy(b,a);
-  Genten::ArrayT<exec_space> weights_dev =
-    create_mirror_view( exec_space(), weights );
-  deep_copy( weights_dev, weights );
-  a_dev.colScale(weights_dev, false);
-  deep_copy( a, a_dev );
-  tf = false;
-  for (ttb_indx i = 0; i < 3; i ++)
-  {
-    for (ttb_indx j = 0; j < 3; j ++)
-    {
-      tf = (a.entry(i,j) == (b.entry(i,j)*weights[j]));
-      if (tf == false)
-      {
-        break;
-      }
-    }
-    if (tf == false)
-    {
-      break;
-    }
-  }
-  ASSERT(tf,"ColScale works as expected");
-  a_dev.colScale(weights_dev,true);
-  deep_copy( a, a_dev );
-  ASSERT(a.isEqual(b,MACHINE_EPSILON),
-         "ColScale (inverse) works as expected");
 
-  // rowScale
-  b = Genten::FacMatrix(a.nRows(), a.nCols());
-  deep_copy(b,a);
-  a_dev.rowScale(weights_dev, false);
-  deep_copy( a, a_dev );
-  print_matrix(a,std::cout,"a");
-  print_matrix(b,std::cout,"b");
-  tf = false;
-  for (ttb_indx i = 0; i < 3; i ++)
-  {
-    for (ttb_indx j = 0; j < 3; j ++)
-    {
-      tf = (a.entry(i,j) == (b.entry(i,j)*weights[i]));
-      if (tf == false)
-      {
-        break;
-      }
-    }
-    if (tf == false)
-    {
-      break;
+  FacMatrix fm_a(3, 3);
+  fm_a.entry(0, 0) = 3;
+  fm_a.entry(1, 0) = 4;
+  fm_a.entry(1, 1) = 1;
+
+  FacMatrixT<exec_space> fm_a_dev = create_mirror_view(exec_space(), fm_a);
+  deep_copy(fm_a_dev, fm_a);
+
+  FacMatrix fm_b(fm_a.nRows(), fm_a.nCols());
+  deep_copy(fm_b, fm_a);
+
+  ArrayT<exec_space> weights_dev = create_mirror_view(exec_space(), weights);
+  deep_copy(weights_dev, weights);
+  fm_a_dev.colScale(weights_dev, false);
+  deep_copy(fm_a, fm_a_dev);
+
+  for (ttb_indx i = 0; i < 3; i++) {
+    for (ttb_indx j = 0; j < 3; j++) {
+      ASSERT_FLOAT_EQ(fm_a.entry(i, j), fm_b.entry(i, j) * weights[j]);
     }
   }
-  ASSERT(tf,"RowScale works as expected");
-  a_dev.rowScale(weights_dev,true);
-  deep_copy( a, a_dev );
-  ASSERT(a.isEqual(b,MACHINE_EPSILON),
-         "RowScale (inverse) works as expected");
 
-  // permute
-  ttb_real pdata[] = {1,2,3,4,5,6,7,8,9};
-  ttb_real pdata_new[] = {7,8,9,4,5,6,1,2,3};
-  ttb_indx idata[] = {2,1,0};
+  fm_a_dev.colScale(weights_dev, true);
+  deep_copy(fm_a, fm_a_dev);
+  ASSERT_TRUE(fm_a.isEqual(fm_b, MACHINE_EPSILON));
+}
 
-  Genten::IndxArray ind(3, idata);
-  Genten::FacMatrix p(3, 3, pdata);
-  Genten::FacMatrix p_new(3, 3, pdata_new);
+TYPED_TEST(TestFacMatrixT, RowScale) {
+  using exec_space = typename TestFixture::exec_space;
 
-  Genten::FacMatrixT<exec_space> p_dev = create_mirror_view( exec_space(), p );
-  deep_copy( p_dev, p );
+  FacMatrix fm_a(3, 3);
+  fm_a.entry(0, 0) = 3;
+  fm_a.entry(1, 0) = 4;
+  fm_a.entry(1, 1) = 1;
+
+  FacMatrixT<exec_space> fm_a_dev = create_mirror_view(exec_space(), fm_a);
+  deep_copy(fm_a_dev, fm_a);
+
+  FacMatrix fm_b(fm_a.nRows(), fm_a.nCols());
+  deep_copy(fm_b, fm_a);
+
+  Array weights(3);
+  weights[0] = 3;
+  weights[1] = 2;
+  weights[2] = 1;
+
+  ArrayT<exec_space> weights_dev = create_mirror_view(exec_space(), weights);
+  deep_copy(weights_dev, weights);
+
+  fm_a_dev.rowScale(weights_dev, false);
+  deep_copy(fm_a, fm_a_dev);
+
+  for (ttb_indx i = 0; i < 3; i++) {
+    for (ttb_indx j = 0; j < 3; j++) {
+      ASSERT_FLOAT_EQ(fm_a.entry(i, j), fm_b.entry(i, j) * weights[i]);
+    }
+  }
+
+  fm_a_dev.rowScale(weights_dev, true);
+  deep_copy(fm_a, fm_a_dev);
+  ASSERT_TRUE(fm_a.isEqual(fm_b, MACHINE_EPSILON));
+}
+
+TYPED_TEST(TestFacMatrixT, Permute) {
+  using exec_space = typename TestFixture::exec_space;
+
+  ttb_real pdata[]{1, 2, 3, 4, 5, 6, 7, 8, 9};
+  ttb_real pdata_new[]{7, 8, 9, 4, 5, 6, 1, 2, 3};
+  ttb_indx idata[]{2, 1, 0};
+
+  IndxArray ind(3, idata);
+  FacMatrix p(3, 3, pdata);
+  FacMatrix p_new(3, 3, pdata_new);
+
+  FacMatrixT<exec_space> p_dev = create_mirror_view(exec_space(), p);
+  deep_copy(p_dev, p);
   p_dev.permute(ind);
-  deep_copy( p, p_dev );
+  deep_copy(p, p_dev);
 
-  tf = false;
-  for (ttb_indx i = 0; i < 3; i ++)
-  {
-    for (ttb_indx j = 0; j < 3; j ++)
-    {
-      tf = (p.entry(i,j) == p_new.entry(i,j));
-      if (tf == false)
-      {
-        break;
-      }
-    }
-    if (tf == false)
-    {
-      break;
+  for (ttb_indx i = 0; i < 3; i++) {
+    for (ttb_indx j = 0; j < 3; j++) {
+      ASSERT_FLOAT_EQ(p.entry(i, j), p_new.entry(i, j));
     }
   }
-  ASSERT(tf,"Permute works as expected");
+}
 
-  // innerprod
+TYPED_TEST(TestFacMatrixT, Innerprod) {
+  using exec_space = typename TestFixture::exec_space;
+
   const ttb_indx m = 50;
   const ttb_indx n = 20;
-  a = Genten::FacMatrix(m,n);
-  b = Genten::FacMatrix(m,n);
-  Genten::Array w(n);
+
+  FacMatrix fm_a(m, n);
+  FacMatrix fm_b(m, n);
+  Array w(n);
+
   ttb_real ip_true = 0.0;
-  for (ttb_indx i=0; i<m; ++i) {
-    for (ttb_indx j=0; j<n; ++j) {
-      a.entry(i,j) = i+j;
-      b.entry(i,j) = 10*(i+j);
-      w[j] = j+1;
-      ip_true += w[j]*a.entry(i,j) * b.entry(i,j);
+  for (ttb_indx i = 0; i < m; ++i) {
+    for (ttb_indx j = 0; j < n; ++j) {
+      fm_a.entry(i, j) = i + j;
+      fm_b.entry(i, j) = 10 * (i + j);
+      w[j] = j + 1;
+      ip_true += w[j] * fm_a.entry(i, j) * fm_b.entry(i, j);
     }
   }
-  a_dev = create_mirror_view( exec_space(), a );
-  b_dev = create_mirror_view( exec_space(), b );
-  Genten::ArrayT<exec_space> w_dev = create_mirror_view( exec_space(), w );
-  deep_copy( a_dev, a );
-  deep_copy( b_dev, b );
-  deep_copy( w_dev, w );
-  ttb_real ip = a_dev.innerprod(b_dev, w_dev);
-  ASSERT( EQ(ip, ip_true), "innerprod works as expected");
 
-  // sum TODO
+  FacMatrixT<exec_space> fm_a_dev = create_mirror_view(exec_space(), fm_a);
+  FacMatrixT<exec_space> fm_b_dev = create_mirror_view(exec_space(), fm_b);
+  ArrayT<exec_space> w_dev = create_mirror_view(exec_space(), w);
 
-  finalize();
+  deep_copy(fm_a_dev, fm_a);
+  deep_copy(fm_b_dev, fm_b);
+  deep_copy(w_dev, w);
+  ttb_real ip = fm_a_dev.innerprod(fm_b_dev, w_dev);
+
+  ASSERT_FLOAT_EQ(ip, ip_true);
 }
 
-void Genten_Test_FacMatrix(int infolevel, const std::string & datadir) {
-#ifdef HAVE_CUDA
-  Genten_Test_FacMatrix_Space<Kokkos::Cuda>(infolevel, datadir);
-#endif
-#ifdef HAVE_HIP
-  Genten_Test_FacMatrix_Space<Kokkos::Experimental::HIP>(infolevel, datadir);
-#endif
-#ifdef HAVE_SYCL
-  Genten_Test_FacMatrix_Space<Kokkos::Experimental::SYCL>(infolevel, datadir);
-#endif
-#ifdef HAVE_OPENMP
-  Genten_Test_FacMatrix_Space<Kokkos::OpenMP>(infolevel, datadir);
-#endif
-#ifdef HAVE_THREADS
-  Genten_Test_FacMatrix_Space<Kokkos::Threads>(infolevel, datadir);
-#endif
-#ifdef HAVE_SERIAL
-  Genten_Test_FacMatrix_Space<Kokkos::Serial>(infolevel, datadir);
-#endif
-}
+} // namespace UnitTests
+} // namespace Genten
