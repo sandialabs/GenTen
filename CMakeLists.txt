@@ -585,64 +585,6 @@ ENDIF()
 #---- Must be a better way to do this. Inside an IF??
 ADD_SUBDIRECTORY(joint_moments)
 
-# FIND_PACKAGE(GTest REQUIRED)
-# IF (${GTest_FOUND})
-#   MESSAGE(STATUS "FOUND GTEST")
-#   MESSAGE(STATUS "GTEST_INCLUDE_DIR: " ${GTEST_INCLUDE_DIR})
-# ELSE (${GTest_FOUND})
-#   MESSAGE(STATUS "DID NOT FIND GTEST")
-# ENDIF (${GTest_FOUND})
-# include_directories(${GTEST_INCLUDE_DIR})
-
-#------------------------------------------------------------
-#---- Unit Test Executables (not installed)
-#------------------------------------------------------------
-
-#---- Specifications for building unit_tests.
-
-SET(UNIT_TEST_SRCS
-  ${Genten_SOURCE_DIR}/test/Genten_Test_TTM.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_Array.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_CpAls.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_FacMatrix.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_IndxArray.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_IOtext.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_Ktensor.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_MixedFormats.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_Sptensor.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_Tensor.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_HessVec.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_UnitTests.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_Utils.cpp
-  )
-IF(ENABLE_LBFGSB)
-  SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
-    ${Genten_SOURCE_DIR}/test/Genten_Test_CpOptLbfgsb.cpp
-    )
-ENDIF()
-IF(ENABLE_ROL)
-  SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
-    ${Genten_SOURCE_DIR}/test/Genten_Test_CpOptRol.cpp
-    )
-ENDIF()
-IF (ENABLE_GCP)
-   SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
-     ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_SGD.cpp
-     )
-  # IF(ENABLE_ROL)
-  #   SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
-  #     ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_Opt.cpp
-  #     )
-  # ENDIF()
-ENDIF()
-
-ADD_EXECUTABLE (
-  unit_tests
-  ${UNIT_TEST_SRCS}
-  )
-TARGET_LINK_LIBRARIES (unit_tests ${GENTEN_LINK_LIBS})
-
-
 #------------------------------------------------------------
 #---- Performance Test Executables (not installed)
 #------------------------------------------------------------
@@ -801,19 +743,17 @@ add_subdirectory(tools)
 #---- Testing
 #------------------------------------------------------------
 enable_testing()
+add_subdirectory(tpls/googletest)
+add_subdirectory(test)
 
-# Unit tests -- tests don't return nonzero on failure, so have to grep output
-add_test(Genten_Unit_Tests ${Genten_BINARY_DIR}/bin/unit_tests)
-SET_TESTS_PROPERTIES(Genten_Unit_Tests PROPERTIES FAIL_REGULAR_EXPRESSION "Error")
-
-function(add_genten_tests name cmd args spaces)
+function(add_genten_perf_tests name cmd args spaces)
   foreach(space ${spaces})
     string(CONCAT test_name ${name} "_" ${space})
     string(CONCAT test_args ${args} " --exec-space " ${space})
     separate_arguments(test_args)
     add_test(${test_name} ${cmd} ${test_args})
   endforeach()
-endfunction(add_genten_tests)
+endfunction(add_genten_perf_tests)
 
 function(add_genten_mpi_tests name cmd args spaces)
   set(my_args "${args}")
@@ -861,18 +801,18 @@ if (HAVE_SYCL)
   list(APPEND kokkos_devices "sycl")
 endif()
 
-add_genten_tests(Genten_MTTKRP_random_atomic "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method atomic" "${kokkos_devices}")
-add_genten_tests(Genten_MTTKRP_random_dupl "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method duplicated" "${kokkos_devices}")
-add_genten_tests(Genten_MTTKRP_random_perm "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method perm" "${kokkos_devices}")
-add_genten_tests(Genten_MTTKRP_aminoacid_atomic "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method atomic" "${kokkos_devices}")
-add_genten_tests(Genten_MTTKRP_aminoacid_dupl "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method duplicated" "${kokkos_devices}")
-add_genten_tests(Genten_MTTKRP_aminoacid_perm "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method perm" "${kokkos_devices}")
-add_genten_tests(Genten_MTTKRP_random_dense "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [30,40,50] --dense" "${kokkos_devices}")
+add_genten_perf_tests(Genten_MTTKRP_random_atomic "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method atomic" "${kokkos_devices}")
+add_genten_perf_tests(Genten_MTTKRP_random_dupl "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method duplicated" "${kokkos_devices}")
+add_genten_perf_tests(Genten_MTTKRP_random_perm "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method perm" "${kokkos_devices}")
+add_genten_perf_tests(Genten_MTTKRP_aminoacid_atomic "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method atomic" "${kokkos_devices}")
+add_genten_perf_tests(Genten_MTTKRP_aminoacid_dupl "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method duplicated" "${kokkos_devices}")
+add_genten_perf_tests(Genten_MTTKRP_aminoacid_perm "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method perm" "${kokkos_devices}")
+add_genten_perf_tests(Genten_MTTKRP_random_dense "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [30,40,50] --dense" "${kokkos_devices}")
 
 add_genten_mpi_tests(Genten_driver_aminoacid_cpals "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpals.json" "${kokkos_devices}")
 if (HAVE_LBFGSB)
   # L-BFGS-B does not work with MPI (implements its own vector operations)
-  add_genten_tests(Genten_driver_aminoacid_cpopt-lbfgsb "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpopt-lbfgsb.json" "${kokkos_devices}")
+  add_genten_perf_tests(Genten_driver_aminoacid_cpopt-lbfgsb "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpopt-lbfgsb.json" "${kokkos_devices}")
 endif()
 if (HAVE_ROL)
   add_genten_mpi_tests(Genten_driver_aminoacid_cpopt-rol "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpopt-rol.json" "${kokkos_devices}")

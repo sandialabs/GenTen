@@ -38,123 +38,133 @@
 // ************************************************************************
 //@HEADER
 
+#include <Genten_Tensor.hpp>
+#include <Genten_Util.hpp>
 
-#include <iostream>
-#include <cmath>
-#include <time.h>
-
-#include "Genten_Tensor.hpp"
-#include "Genten_IOtext.hpp"
 #include "Genten_Test_Utils.hpp"
 
-using namespace Genten::Test;
+#include <gtest/gtest.h>
 
-template <typename ExecSpace>
-void Genten_Test_Tensor_Space(int infolevel)
-{
-  typedef ExecSpace exec_space;
-  typedef Genten::DefaultHostExecutionSpace host_exec_space;
-  typedef Genten::SptensorT<exec_space> Sptensor_type;
-  typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
-  typedef Genten::TensorT<exec_space> Tensor_type;
-  typedef Genten::TensorT<host_exec_space> Tensor_host_type;
-  typedef Genten::KtensorT<exec_space> Ktensor_type;
-  typedef Genten::KtensorT<host_exec_space> Ktensor_host_type;
+namespace Genten {
+namespace UnitTests {
 
-  std::string space_name = Genten::SpaceProperties<exec_space>::name();
-  initialize("Tests on Genten::Tensor (" + space_name + ")", infolevel);
+template <typename ExecSpace> struct TestTensorT : public ::testing::Test {
+  using exec_space = ExecSpace;
+};
 
-  // Empty constructor, equivalent to Matlab:  a = [].
-  MESSAGE("Creating empty tensor");
-  Genten::Tensor a;
-  ASSERT( (a.nnz() == 0) && (a.ndims() == 0), "Tensor is empty" );
+TYPED_TEST_SUITE(TestTensorT, genten_test_types);
 
-  MESSAGE("Creating 0-th order tensors");
-  ttb_indx nd = 0;
-  Genten::Tensor b(nd);
-  ASSERT( (b.nnz() == 0) && (b.ndims() == 0), "Tensor is empty");
-  Genten::IndxArray dims;
-  Genten::Tensor c(dims);
-  ASSERT( (c.nnz() == 0) && (c.ndims() == 0), "Tensor is empty");
+TEST(TestTensor, EmptyConstructor) {
+  Tensor t;
+  ASSERT_EQ(t.nnz(), 0);
+  ASSERT_EQ(t.ndims(), 0);
+}
 
-  MESSAGE("Creating tensor to test element access");
-  dims = Genten::IndxArray(3); dims[0] = 4; dims[1] = 2; dims[2] = 3;
-  Genten::Tensor d(dims, 0.0);
-  d[0] = 1.0;
-  d[23] = 2.0;
-  ASSERT( d.nnz() == 24, "nnz() correct");
-  Genten::IndxArray oSub(3);
-  oSub[0] = 0;  oSub[1] = 0;  oSub[2] = 0;
-  ASSERT( d[oSub] == 1.0, "First element [0,0,0] found");
-  oSub[0] = 3;  oSub[1] = 1;  oSub[2] = 2;
-  ASSERT( d[oSub] == 2.0, "Last element [3,1,2] found");
-  d[oSub] = 3.0;
-  ASSERT( d[23] == 3.0, "Last element modified and found");
+TEST(TestTensor, ZerothOrderTensor) {
+  Tensor t_a(0);
+  ASSERT_EQ(t_a.nnz(), 0);
+  ASSERT_EQ(t_a.ndims(), 0);
 
-  MESSAGE("Resizing and populating tensor to test norm");
-  dims = Genten::IndxArray(2); dims[0] = 1; dims[1] = 2;
-  d = Genten::Tensor(dims);
-  d[0] = 1.0;
-  d[1] = 3.0;
-  ASSERT( EQ(d.norm(), sqrt(10.0)), "Frobenius norm correct");
+  IndxArray dims;
+  Tensor t_b(dims);
+  ASSERT_EQ(t_b.nnz(), 0);
+  ASSERT_EQ(t_b.ndims(), 0);
+}
 
-  MESSAGE("Creating dense tensor from sparse tensor");
-  // create test Sptensor
-  dims = Genten::IndxArray(3); dims[0] = 3; dims[1] = 4; dims[2] = 5;
-  Sptensor_host_type s(dims,5);
-  for (ttb_indx i = 0; i < s.nnz(); i ++)
-  {
-    s.subscript(i,0) = i % 3;
-    s.subscript(i,1) = (i+1) % 4;
-    s.subscript(i,2) = (i+2) % 5;
-    s.value(i) = i*1.5+1;
+TEST(TestTensor, AccessingElements) {
+  IndxArray dims(3);
+  dims[0] = 4;
+  dims[1] = 2;
+  dims[2] = 3;
+  Tensor t(dims, 0.0);
+  t[0] = 1.0;
+  t[23] = 2.0;
+
+  ASSERT_EQ(t.nnz(), 24);
+
+  IndxArray oSub(3);
+  oSub[0] = 0;
+  oSub[1] = 0;
+  oSub[2] = 0;
+
+  ASSERT_EQ(t[oSub], 1.0);
+
+  oSub[0] = 3;
+  oSub[1] = 1;
+  oSub[2] = 2;
+
+  ASSERT_EQ(t[oSub], 2.0);
+
+  t[oSub] = 3.0;
+
+  ASSERT_EQ(t[23], 3.0);
+}
+
+TEST(TestTensor, Norm) {
+  IndxArray dims(2);
+  dims[0] = 1;
+  dims[1] = 2;
+
+  Tensor t(dims);
+  t[0] = 1.0;
+  t[1] = 3.0;
+
+  ASSERT_FLOAT_EQ(t.norm(), std::sqrt(10.0));
+}
+
+TYPED_TEST(TestTensorT, DenseTensorFromSparseTensor) {
+  using exec_space = typename TestFixture::exec_space;
+  using host_exec_space = DefaultHostExecutionSpace;
+
+  IndxArray dims(3);
+  dims[0] = 3;
+  dims[1] = 4;
+  dims[2] = 5;
+
+  SptensorT<host_exec_space> st(dims, 5);
+  for (ttb_indx i = 0; i < st.nnz(); i++) {
+    st.subscript(i, 0) = i % 3;
+    st.subscript(i, 1) = (i + 1) % 4;
+    st.subscript(i, 2) = (i + 2) % 5;
+    st.value(i) = i * 1.5 + 1;
   }
-  Sptensor_type s_dev = create_mirror_view(exec_space(), s);
-  deep_copy(s_dev, s);
-  Tensor_type e_dev(s_dev);
-  ASSERT( EQ(e_dev.norm(), s_dev.norm()), "Constructor from Sptensor correct");
 
-  MESSAGE("Creating dense tensor from Kruskal tensor");
-  // create test Ktensor
-  dims = Genten::IndxArray(2); dims[0] = 1; dims[1] = 2;
-  Ktensor_host_type k(3, 2, dims);
-  k.setWeightsRand();
-  k.setMatricesRand();
-  Ktensor_type k_dev = create_mirror_view(exec_space(), k);
-  deep_copy(k_dev, k);
-  Tensor_type f_dev(k_dev);
-  Tensor_host_type f = create_mirror_view(host_exec_space(), f_dev);
-  deep_copy(f,f_dev);
-  // check entries
-  Genten::IndxArray sub(2);
-  sub[0] = 0; sub[1] = 0;
-  ASSERT( EQ(f[sub], Genten::compute_Ktensor_value(k,sub)),
-          "Constructor from Ktensor correct");
-  sub[0] = 0; sub[1] = 1;
-  ASSERT( EQ(f[sub], Genten::compute_Ktensor_value(k,sub)),
-          "Constructor from Ktensor correct");
-
-  finalize();
-  return;
+  SptensorT<exec_space> st_dev = create_mirror_view(exec_space(), st);
+  deep_copy(st_dev, st);
+  TensorT<exec_space> t_dev(st_dev);
+  ASSERT_FLOAT_EQ(t_dev.norm(), st_dev.norm());
 }
 
-void Genten_Test_Tensor(int infolevel) {
-#ifdef HAVE_CUDA
-  Genten_Test_Tensor_Space<Kokkos::Cuda>(infolevel);
-#endif
-#ifdef HAVE_HIP
-  Genten_Test_Tensor_Space<Kokkos::Experimental::HIP>(infolevel);
-#endif
-#ifdef HAVE_SYCL
-  Genten_Test_Tensor_Space<Kokkos::Experimental::SYCL>(infolevel);
-#endif
-#ifdef HAVE_OPENMP
-  Genten_Test_Tensor_Space<Kokkos::OpenMP>(infolevel);
-#endif
-#ifdef HAVE_THREADS
-  Genten_Test_Tensor_Space<Kokkos::Threads>(infolevel);
-#endif
-#ifdef HAVE_SERIAL
-  Genten_Test_Tensor_Space<Kokkos::Serial>(infolevel);
-#endif
+TYPED_TEST(TestTensorT, DenseTensorFromKruskalTensor) {
+  using exec_space = typename TestFixture::exec_space;
+  using host_exec_space = DefaultHostExecutionSpace;
+
+  IndxArray dims(2);
+  dims[0] = 1;
+  dims[1] = 2;
+
+  KtensorT<host_exec_space> kt(3, 2, dims);
+  kt.setWeightsRand();
+  kt.setMatricesRand();
+
+  KtensorT<exec_space> kt_dev = create_mirror_view(exec_space(), kt);
+  deep_copy(kt_dev, kt);
+
+  TensorT<exec_space> t_dev(kt_dev);
+  TensorT<host_exec_space> t = create_mirror_view(host_exec_space(), t_dev);
+  deep_copy(t, t_dev);
+
+  IndxArray sub(2);
+  sub[0] = 0;
+  sub[1] = 0;
+
+  ASSERT_FLOAT_EQ(t[sub], compute_Ktensor_value(kt, sub));
+
+  sub[0] = 0;
+  sub[1] = 1;
+
+  ASSERT_FLOAT_EQ(t[sub], compute_Ktensor_value(kt, sub));
 }
+
+} // namespace UnitTests
+} // namespace Genten

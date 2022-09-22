@@ -8,7 +8,7 @@ DE-NA0003525.
 
 Copyright 2017 National Technology & Engineering Solutions of Sandia, LLC
 (NTESS). Under the terms of Contract DE-NA0003525 with NTESS, the U.S.
-Government retains certain rights in this software. 
+Government retains certain rights in this software.
 
 [[_TOC_]]
 
@@ -126,7 +126,7 @@ Most computations in Genten are implemented directly with Kokkos, however BLAS a
 
 #### MATLAB
 
-Genten includes a limited MATLAB interface designed to be integrated with 
+Genten includes a limited MATLAB interface designed to be integrated with
 the [Tensor Toolbox](https://www.tensortoolbox.org/).  To enable it, simply
 add the configure options:
 ```
@@ -381,15 +381,15 @@ Once Genten has been compiled, it can be tested by executing `ctest`.
 # Using Genten
 
 The primary executable for Genten is `bin/genten` in your build tree, which is
-a driver for reading in a (sparse) tensor and performing a CP or GCP 
+a driver for reading in a (sparse) tensor and performing a CP or GCP
 decomposition of it.  The driver accepts numerous command line options
 controlling various aspects of the computation.  Run `genten --help` for a full
 listing.  For example
 ```
 ./bin/genten --input data/aminoacid_data.txt --rank 16 --output aa.ktns
 ```
-will perform a rank 16 CP decomposition of the amino-acid tensor data set 
-included with Genten in the data directory, and save the resulting factors in 
+will perform a rank 16 CP decomposition of the amino-acid tensor data set
+included with Genten in the data directory, and save the resulting factors in
 `aa.ktns`.  One should see output similar to:
 ```
 ./bin/genten --input data/aminoacid_data.txt --rank 16 --output aa.ktns
@@ -406,7 +406,7 @@ Final fit =  9.883227e-01
 Ktensor export took  0.005 seconds
 ```
 
-For larger tensor datasets, consider those available from the 
+For larger tensor datasets, consider those available from the
 [FROSTT](https://frost.io) collection.  Note that Genten *does not* require
 a header at the top of the sparse tensor file indicating the number of modes,
 their dimensions, and the number of nonzeros.  Any textfile consisting of a list
@@ -442,7 +442,7 @@ Iter   5: fit =  2.692030e-01 fitdelta =  2.3e-02
 Final fit =  2.692030e-01
 ```
 Note that in addition to the normal options accepted by `cp_als`,
-all options accepted by the `genten` command-line driver (without the 
+all options accepted by the `genten` command-line driver (without the
 leading '--') are also accepted, e.g.,
 ```
 >> U = cp_als(X_gt,16,'maxiters',5,'mttkrp-method','duplicated','timings');
