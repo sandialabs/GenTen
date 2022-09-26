@@ -360,7 +360,7 @@ exportToFile(const KtensorT<ExecSpace>& u, const std::string& file_name) const
     out.arrange();
 
     std::cout << "Saving final Ktensor to " << file_name << std::endl;
-    auto out_h = create_mirror_view(out);
+    auto out_h = create_mirror_view(Genten::DefaultHostExecutionSpace(), out);
     deep_copy(out_h, out);
     Genten::export_ktensor(file_name, out_h);
   }

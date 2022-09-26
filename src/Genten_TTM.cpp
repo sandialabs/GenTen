@@ -75,13 +75,13 @@ namespace Genten
                                                TensorT<ExecSpace> &ans)
     {
       //NOTE: if TensorT already resides on host then deep_copy is no-op
-      Genten::TensorT<Genten::DefaultHostExecutionSpace> ten_host = create_mirror_view(ten);
+      auto ten_host = create_mirror_view(ten);
       deep_copy(ten_host, ten);
 
-      Genten::TensorT<Genten::DefaultHostExecutionSpace> mat_host = create_mirror_view(mat);
+      auto mat_host = create_mirror_view(mat);
       deep_copy(mat_host, mat);
 
-      Genten::TensorT<Genten::DefaultHostExecutionSpace> ans_host = create_mirror_view(ans);
+      auto ans_host = create_mirror_view(ans);
 
       if ((mode + 1 > 0) && (mode < ten_host.ndims()))
       {
@@ -203,13 +203,13 @@ namespace Genten
                                                TensorT<ExecSpace> &ans)
     {
       //NOTE: if TensorT already resides on host then deep_copy is no-op
-      Genten::TensorT<Genten::DefaultHostExecutionSpace> ten_host = create_mirror_view(ten);
+      auto ten_host = create_mirror_view(ten);
       deep_copy(ten_host, ten);
 
-      Genten::TensorT<Genten::DefaultHostExecutionSpace> mat_host = create_mirror_view(mat);
+      auto mat_host = create_mirror_view(mat);
       deep_copy(mat_host, mat);
 
-      Genten::TensorT<Genten::DefaultHostExecutionSpace> ans_host = create_mirror_view(ans);
+      auto ans_host = create_mirror_view(ans);
 
       if ((mode + 1 > 0) && (mode < ten_host.ndims()))
       {
