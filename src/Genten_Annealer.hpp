@@ -70,7 +70,7 @@ public:
 
   ttb_real operator()(int epoch) override { return step_size_; }
   void failed() override { step_size_ *= decay_; }
-  void print(std::ostream& os) {
+  void print(std::ostream& os) override {
     os << "  Traditional annealer, learning rate: "
        << std::setprecision(1) << std::scientific << step_size_
        << ", decay: " << decay_ << std::endl;
@@ -115,7 +115,7 @@ public:
     }
   }
 
-  void print(std::ostream& os) {
+  void print(std::ostream& os) override {
     os << "  Cosine annealer, min learning rate: "
        << std::setprecision(1) << std::scientific << min_lr
        << ", max learning rate: "

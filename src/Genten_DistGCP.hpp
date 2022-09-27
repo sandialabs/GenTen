@@ -453,11 +453,11 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
     p.cum_time = MPI_Wtime()-start_time;
   }
 
-  double t0 = 0;
+  //double t0 = 0;
   double t1 = 0;
   int nfails = 0;
   for (auto e = 0; e < maxEpochs; ++e) { // Epochs
-    t0 = MPI_Wtime();
+    //t0 = MPI_Wtime();
     auto epoch_lr = annealer(e);
     stepper->setStep(epoch_lr);
 
