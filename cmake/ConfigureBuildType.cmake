@@ -77,9 +77,9 @@ ENDIF()
 
 
 #---- Compile with clang, needs to not resolve symbols until runtime
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-  set(CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS "${CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS} -undefined dynamic_lookup")
-endif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+#if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+#  set(CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS "${CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS} -undefined dynamic_lookup")
+#endif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
 
 
 #-------------------------------------------------------------------------
