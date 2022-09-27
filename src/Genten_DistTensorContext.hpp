@@ -140,12 +140,12 @@ public:
 private:
   template <typename ExecSpace>
   SptensorT<ExecSpace> distributeTensorData(
-    const std::vector<MPI_IO::TDatatype<ttb_real>>& Tvec,
+    const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
     const std::vector<std::uint32_t>& TensorDims,
     const std::vector<small_vector<int>>& blocking,
     const ProcessorMap& pmap);
 
-  std::pair<MPI_IO::SptnFileHeader, MPI_File>
+  std::pair<G_MPI_IO::SptnFileHeader, MPI_File>
   readBinaryHeader(const std::string& file_name, int indexbase,
                    std::vector<std::uint32_t>& dims, std::uint64_t& nnz);
 
@@ -171,12 +171,12 @@ template <typename ExecSpace>
 auto rangesToIndexArray(const small_vector<RangePair>& ranges);
 small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode);
 
-std::vector<MPI_IO::TDatatype<ttb_real>>
+std::vector<G_MPI_IO::TDatatype<ttb_real>>
 distributeTensorToVectors(const Sptensor& sp_tensor_host, uint64_t nnz,
                           MPI_Comm comm, int rank, int nprocs);
 
-std::vector<MPI_IO::TDatatype<ttb_real>>
-redistributeTensor(const std::vector<MPI_IO::TDatatype<ttb_real>>& Tvec,
+std::vector<G_MPI_IO::TDatatype<ttb_real>>
+redistributeTensor(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
                    const std::vector<std::uint32_t>& TensorDims,
                    const std::vector<small_vector<int>>& blocking,
                    const ProcessorMap& pmap);
@@ -446,7 +446,7 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
   if (is_binary && compressed)
     Genten::error("The binary format does not support compression\n");
 
-  std::vector<MPI_IO::TDatatype<ttb_real>> Tvec;
+  std::vector<G_MPI_IO::TDatatype<ttb_real>> Tvec;
 
   if (DistContext::rank() == 0)
     std::cout << "Reading tensor from file " << file << std::endl;
@@ -457,7 +457,7 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
     // For binary file, do a parallel read
     std::uint64_t nnz = 0;
     auto binary_header = readBinaryHeader(file, index_base, global_dims_, nnz);
-    Tvec = MPI_IO::parallelReadElements(DistContext::commWorld(),
+    Tvec = G_MPI_IO::parallelReadElements(DistContext::commWorld(),
                                           binary_header.second,
                                           binary_header.first);
   }
@@ -539,7 +539,7 @@ distributeTensor(const SptensorT<ExecSpaceSrc>& X)
 template <typename ExecSpace>
 SptensorT<ExecSpace>
 DistTensorContext::
-distributeTensorData(const std::vector<MPI_IO::TDatatype<ttb_real>>& Tvec,
+distributeTensorData(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
                      const std::vector<std::uint32_t>& TensorDims,
                      const std::vector<small_vector<int>>& blocking,
                      const ProcessorMap& pmap)
@@ -613,26 +613,6 @@ distributeTensorData(const std::vector<MPI_IO::TDatatype<ttb_real>>& Tvec,
   return sptensor;
 }
 
-std::pair<MPI_IO::SptnFileHeader, MPI_File>
-DistTensorContext::
-readBinaryHeader(const std::string& file_name, int indexbase,
-           std::vector<std::uint32_t>& dims,
-           std::uint64_t& nnz)
-{
-  bool is_binary = detail::fileFormatIsBinary(file_name);
-  if (!is_binary)
-    Genten::error("readBinaryHeader called on non-binary file!\n");
-  if (indexbase != 0)
-    Genten::error("The binary format only supports zero based indexing\n");
-
-  auto *mpi_fh = MPI_IO::openFile(DistContext::commWorld(), file_name);
-  auto binary_header = MPI_IO::readHeader(DistContext::commWorld(), mpi_fh);
-  TensorInfo ti = binary_header.toTensorInfo();
-  dims = ti.dim_sizes;
-  nnz = ti.nnz;
-  return std::make_pair(std::move(binary_header), mpi_fh);
-}
-
 namespace detail {
 
 template <typename ExecSpace>
@@ -647,7 +627,7 @@ printRandomElements(const SptensorT<ExecSpace>& tensor,
 
   const auto size = pmap.gridSize();
   const auto rank = pmap.gridRank();
-  auto *gComm = pmap.gridComm();
+  auto gComm = pmap.gridComm();
 
   const auto nnz = tensor.nnz();
   std::uniform_int_distribution<> dist(0, nnz - 1);

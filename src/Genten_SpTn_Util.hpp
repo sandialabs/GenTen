@@ -49,7 +49,7 @@
 #include "Genten_TensorInfo.hpp"
 
 namespace Genten {
-namespace MPI_IO {
+namespace G_MPI_IO {
 
 struct SptnFileHeader {
   std::uint32_t ndims = 0;
@@ -80,5 +80,5 @@ template <typename T> struct TDatatype {
   double val;
 };
 
-} // namespace MPI_IO
+} // namespace G_MPI_IO
 } // namespace Genten

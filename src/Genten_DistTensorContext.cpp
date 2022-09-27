@@ -143,11 +143,11 @@ generateUniformBlocking(const std::vector<std::uint32_t>& ModeLengths,
   return blocking;
 }
 
-std::vector<MPI_IO::TDatatype<ttb_real>>
+std::vector<G_MPI_IO::TDatatype<ttb_real>>
 distributeTensorToVectors(const Sptensor& sp_tensor_host, uint64_t nnz,
                           MPI_Comm comm, int rank, int nprocs) {
-  constexpr auto dt_size = sizeof(MPI_IO::TDatatype<ttb_real>);
-  std::vector<MPI_IO::TDatatype<ttb_real>> Tvec;
+  constexpr auto dt_size = sizeof(G_MPI_IO::TDatatype<ttb_real>);
+  std::vector<G_MPI_IO::TDatatype<ttb_real>> Tvec;
   small_vector<int> who_gets_what =
       detail::singleDimUniformBlocking(nnz, nprocs);
 
@@ -239,8 +239,8 @@ int rankInGridThatOwns(std::uint32_t const *COO, MPI_Comm grid_comm,
 }
 } // namespace
 
-std::vector<MPI_IO::TDatatype<ttb_real>>
-redistributeTensor(const std::vector<MPI_IO::TDatatype<ttb_real>>& Tvec,
+std::vector<G_MPI_IO::TDatatype<ttb_real>>
+redistributeTensor(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
                    const std::vector<std::uint32_t>& TDims,
                    const std::vector<small_vector<int>>& blocking,
                    const ProcessorMap& pmap) {
@@ -249,7 +249,7 @@ redistributeTensor(const std::vector<MPI_IO::TDatatype<ttb_real>>& Tvec,
   const auto rank = pmap.gridRank();
   MPI_Comm grid_comm = pmap.gridComm();
 
-  std::vector<std::vector<MPI_IO::TDatatype<ttb_real>>> elems_to_write(nprocs);
+  std::vector<std::vector<G_MPI_IO::TDatatype<ttb_real>>> elems_to_write(nprocs);
   for (auto const &elem : Tvec) {
     auto elem_owner_rank = rankInGridThatOwns(elem.coo, grid_comm, blocking);
     elems_to_write[elem_owner_rank].push_back(elem);
@@ -289,9 +289,9 @@ redistributeTensor(const std::vector<MPI_IO::TDatatype<ttb_real>>& Tvec,
 
   // Let's leave this onesided because IMO it makes life easier. This is self
   // contained so won't impact TBS
-  MPI_IO::TDatatype<ttb_real> *data;
+  G_MPI_IO::TDatatype<ttb_real> *data;
   MPI_Win window;
-  constexpr auto DataElemSize = sizeof(MPI_IO::TDatatype<ttb_real>);
+  constexpr auto DataElemSize = sizeof(G_MPI_IO::TDatatype<ttb_real>);
   MPI_Win_allocate(amount_to_allocate_for_window * DataElemSize,
                    /*displacement = */ DataElemSize, MPI_INFO_NULL, grid_comm,
                    &data, &window);
@@ -316,7 +316,7 @@ redistributeTensor(const std::vector<MPI_IO::TDatatype<ttb_real>>& Tvec,
   MPI_Win_fence(0, window);
 
   // Copy data to the output vector
-  std::vector<MPI_IO::TDatatype<ttb_real>> redistributedData(
+  std::vector<G_MPI_IO::TDatatype<ttb_real>> redistributedData(
       data, data + amount_to_allocate_for_window);
 
   // Free the MPI window and the buffer that it was allocated in
@@ -326,6 +326,27 @@ redistributeTensor(const std::vector<MPI_IO::TDatatype<ttb_real>>& Tvec,
 }
 
 } // namespace detail
+
+std::pair<G_MPI_IO::SptnFileHeader, MPI_File>
+DistTensorContext::
+readBinaryHeader(const std::string& file_name, int indexbase,
+           std::vector<std::uint32_t>& dims,
+           std::uint64_t& nnz)
+{
+  bool is_binary = detail::fileFormatIsBinary(file_name);
+  if (!is_binary)
+    Genten::error("readBinaryHeader called on non-binary file!\n");
+  if (indexbase != 0)
+    Genten::error("The binary format only supports zero based indexing\n");
+
+  auto *mpi_fh = G_MPI_IO::openFile(DistContext::commWorld(), file_name);
+  auto binary_header = G_MPI_IO::readHeader(DistContext::commWorld(), mpi_fh);
+  TensorInfo ti = binary_header.toTensorInfo();
+  dims = ti.dim_sizes;
+  nnz = ti.nnz;
+  return std::make_pair(std::move(binary_header), mpi_fh);
+}
+
 } // namespace Genten
 
 #endif

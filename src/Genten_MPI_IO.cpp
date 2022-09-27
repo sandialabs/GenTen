@@ -46,7 +46,7 @@
 #include "Genten_MPI_IO.hpp"
 
 namespace Genten {
-namespace MPI_IO {
+namespace G_MPI_IO {
 
 MPI_File openFile(MPI_Comm comm, std::string const &file_name, int access_mode,
                   MPI_Info info) {
@@ -218,5 +218,5 @@ std::vector<TDatatype<double>> parallelReadElements(MPI_Comm comm, MPI_File fh,
   return out;
 }
 
-} // namespace MPI_IO
+} // namespace G_MPI_IO
 } // namespace Genten

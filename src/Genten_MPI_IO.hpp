@@ -48,7 +48,7 @@
 #include "Genten_SpTn_Util.hpp"
 
 namespace Genten {
-namespace MPI_IO {
+namespace G_MPI_IO {
 MPI_File openFile(MPI_Comm comm, std::string const &file_name,
                   int access_mode = MPI_MODE_RDONLY,
                   MPI_Info info = MPI_INFO_NULL);
@@ -58,5 +58,5 @@ SptnFileHeader readHeader(MPI_Comm comm, MPI_File fh);
 std::vector<TDatatype<double>> parallelReadElements(MPI_Comm comm, MPI_File fh,
                                                     SptnFileHeader const &h);
 
-} // namespace MPI_IO
+} // namespace G_MPI_IO
 } // namespace Genten

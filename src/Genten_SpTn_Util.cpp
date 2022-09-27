@@ -47,7 +47,7 @@
 #include "Genten_SpTn_Util.hpp"
 
 namespace Genten {
-namespace MPI_IO {
+namespace G_MPI_IO {
 
 std::uint64_t SptnFileHeader::bytesInDataLine() const {
   return std::accumulate(dim_bits.begin(), dim_bits.end(), float_bits) / 8;
@@ -125,5 +125,5 @@ std::ostream &operator<<(std::ostream &os, SptnFileHeader const &h) {
 
   return os;
 }
-} // namespace MPI_IO
+} // namespace G_MPI_IO
 } // namespace Genten
