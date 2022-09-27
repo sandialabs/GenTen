@@ -38,48 +38,46 @@
 // ************************************************************************
 //@HEADER
 
+#include <Genten_CP_Model.hpp>
+#include <Genten_CpAls.hpp>
+#include <Genten_FacTestSetGenerator.hpp>
+#include <Genten_Ktensor.hpp>
+#include <Genten_Sptensor.hpp>
+#include <Genten_Tensor.hpp>
+#include <sstream>
 
-#include "Genten_Array.hpp"
-#include "Genten_FacMatrix.hpp"
-#include "Genten_IOtext.hpp"             // In case debug lines are uncommented
-#include "Genten_Ktensor.hpp"
-#include "Genten_Sptensor.hpp"
-#include "Genten_CP_Model.hpp"
 #include "Genten_Test_Utils.hpp"
-#include "Genten_Util.hpp"
-#include "Genten_FacTestSetGenerator.hpp"
 
-using namespace Genten::Test;
+#include <gtest/gtest.h>
 
+namespace Genten {
+namespace UnitTests {
 
-/* This file contains unit tests for Hessian-vector product operations.
- */
+template <typename ExecSpace> struct TestHessVecT : public ::testing::Test {
+  using exec_space = ExecSpace;
+};
 
-template <typename ExecSpace>
-void Genten_Test_HessVec_Type(
-  Genten::Hess_Vec_Tensor_Method::type hess_vec_method,
-  int infolevel, const std::string& label)
-{
-  std::string space_name = Genten::SpaceProperties<ExecSpace>::name();
-  initialize("HessVec tests ("+label+", "+space_name+")", infolevel);
+TYPED_TEST_SUITE(TestHessVecT, genten_test_types);
 
-  // Create random sparse tensor
+template <typename exec_space>
+void RunHessVecTest(Genten::Hess_Vec_Tensor_Method::type hess_vec_method,
+                    const std::string &label) {
   const ttb_indx nd = 4;
   const ttb_indx nc = 3;
   const ttb_indx nnz = 20;
-  Genten::IndxArray dims = { 3, 4, 5, 6};
-  Genten::RandomMT rng (12345);
-  Genten::Ktensor sol_host;
-  Genten::Sptensor x_host;
-  Genten::FacTestSetGenerator testGen;
-  bool r = testGen.genSpFromRndKtensor(dims, nc, nnz, rng, x_host, sol_host);
-  if (!r)
-    Genten::error("*** Call to genSpFromRndKtensor failed.\n");
-  Genten::SptensorT<ExecSpace> x = create_mirror_view( ExecSpace(), x_host );
-  deep_copy( x, x_host );
+  IndxArray dims = {3, 4, 5, 6};
+  RandomMT rng(12345);
+  Ktensor sol_host;
+  Sptensor x_host;
+  FacTestSetGenerator testGen;
+  ASSERT_TRUE(
+      testGen.genSpFromRndKtensor(dims, nc, nnz, rng, x_host, sol_host));
+
+  SptensorT<exec_space> x = create_mirror_view(exec_space(), x_host);
+  deep_copy(x, x_host);
 
   // Create random Ktensors for multiply
-  Genten::KtensorT<ExecSpace> a(nc, nd, x.size()), v(nc, nd, x.size());
+  KtensorT<exec_space> a(nc, nd, x.size()), v(nc, nd, x.size());
   auto a_host = create_mirror_view(a);
   auto v_host = create_mirror_view(v);
   a_host.setMatricesScatter(true, false, rng);
@@ -89,24 +87,22 @@ void Genten_Test_HessVec_Type(
   deep_copy(a, a_host);
   deep_copy(v, v_host);
 
-  Genten::AlgParams algParams;
+  AlgParams algParams;
   algParams.hess_vec_tensor_method = hess_vec_method;
-  algParams.mttkrp_method = Genten::MTTKRP_Method::Atomic;
+  algParams.mttkrp_method = MTTKRP_Method::Atomic;
   algParams.mttkrp_all_method = Genten::MTTKRP_All_Method::Atomic;
 
   // Compute full hess-vec
-  algParams.hess_vec_method = Genten::Hess_Vec_Method::Full;
-  Genten::CP_Model<Genten::SptensorT<ExecSpace> >
-    cp_model_full(x, a, algParams);
-  Genten::KtensorT<ExecSpace> u(nc, nd, x.size());
+  algParams.hess_vec_method = Hess_Vec_Method::Full;
+  CP_Model<SptensorT<exec_space>> cp_model_full(x, a, algParams);
+  KtensorT<exec_space> u(nc, nd, x.size());
   cp_model_full.update(a);
   cp_model_full.hess_vec(u, a, v);
 
   // Compute finite-difference approximation to hess-vec
-  algParams.hess_vec_method = Genten::Hess_Vec_Method::FiniteDifference;
-  Genten::CP_Model<Genten::SptensorT<ExecSpace> >
-    cp_model_fd(x, a, algParams);
-  Genten::KtensorT<ExecSpace> u_fd(nc, nd, x.size());
+  algParams.hess_vec_method = Hess_Vec_Method::FiniteDifference;
+  CP_Model<SptensorT<exec_space>> cp_model_fd(x, a, algParams);
+  KtensorT<exec_space> u_fd(nc, nd, x.size());
   cp_model_fd.update(a);
   cp_model_fd.hess_vec(u_fd, a, v);
 
@@ -116,159 +112,137 @@ void Genten_Test_HessVec_Type(
   auto u_fd_host = create_mirror_view(u_fd);
   deep_copy(u_host, u);
   deep_copy(u_fd_host, u_fd);
-  //print_ktensor(u_host, std::cout, "u");
-  //print_ktensor(u_fd_host, std::cout, "u_fd");
-  for (ttb_indx n=0; n<nd; ++n) {
-    for (ttb_indx i=0; i<x.size(n); ++i) {
-      for (ttb_indx j=0; j<nc; ++j) {
-        std::string msg = "hess-vec values correct for dim " +
-          std::to_string(n) + ", entry (" +
-          std::to_string(i) + "," +
-          std::to_string(j) + ")";
-        ASSERT(FLOAT_EQ(u_host[n].entry(i,j), u_fd_host[n].entry(i,j), tol),
-               msg);
+  for (ttb_indx n = 0; n < nd; ++n) {
+    for (ttb_indx i = 0; i < x.size(n); ++i) {
+      for (ttb_indx j = 0; j < nc; ++j) {
+        std::stringstream ss;
+        ss << "hess-vec values correct for dim " << n << ", entry (" << i << ","
+           << j << ")";
+        GENTEN_TRUE(
+            FLOAT_EQ(u_host[n].entry(i, j), u_fd_host[n].entry(i, j), tol),
+            ss.str().c_str());
       }
     }
   }
 
   // Compute dense hess_vec
-   algParams.hess_vec_method = Genten::Hess_Vec_Method::Full;
-  Genten::TensorT<ExecSpace> x_dense(x);
-  Genten::CP_Model<Genten::TensorT<ExecSpace> >
-    cp_model_dense(x_dense, a, algParams);
-  Genten::KtensorT<ExecSpace> u_dense(nc, nd, x.size());
+  algParams.hess_vec_method = Hess_Vec_Method::Full;
+  TensorT<exec_space> x_dense(x);
+  CP_Model<TensorT<exec_space>> cp_model_dense(x_dense, a, algParams);
+  KtensorT<exec_space> u_dense(nc, nd, x.size());
   cp_model_dense.update(a);
   cp_model_dense.hess_vec(u_dense, a, v);
 
   // Check hess-vec values
-  const ttb_real tol2 = 100.0*MACHINE_EPSILON;
+  const ttb_real tol2 = 100.0 * MACHINE_EPSILON;
   auto u_dense_host = create_mirror_view(u_dense);
   deep_copy(u_dense_host, u_dense);
-  //print_ktensor(u_host, std::cout, "u");
-  //print_ktensor(u_dense_host, std::cout, "u_dense");
-  for (ttb_indx n=0; n<nd; ++n) {
-    for (ttb_indx i=0; i<x.size(n); ++i) {
-      for (ttb_indx j=0; j<nc; ++j) {
-        std::string msg = "dense hess-vec values correct for dim " +
-          std::to_string(n) + ", entry (" +
-          std::to_string(i) + "," +
-          std::to_string(j) + ")";
-        ASSERT(FLOAT_EQ(u_host[n].entry(i,j), u_dense_host[n].entry(i,j), tol2),
-               msg);
+  for (ttb_indx n = 0; n < nd; ++n) {
+    for (ttb_indx i = 0; i < x.size(n); ++i) {
+      for (ttb_indx j = 0; j < nc; ++j) {
+        std::stringstream ss;
+        ss << "dense hess-vec values correct for dim " << n << ", entry (" << i
+           << "," << j << ")";
+        GENTEN_TRUE(
+            FLOAT_EQ(u_host[n].entry(i, j), u_dense_host[n].entry(i, j), tol2),
+            ss.str().c_str());
       }
     }
   }
-
-  finalize();
-  return;
 }
 
-template <typename ExecSpace>
-void Genten_Test_HessVec_GaussNewton(int infolevel)
-{
-  std::string space_name = Genten::SpaceProperties<ExecSpace>::name();
-  initialize("Gauss Newton HessVec tests ("+space_name+")", infolevel);
+TYPED_TEST(TestHessVecT, HessVec) {
+  using exec_space = typename TestFixture::exec_space;
 
-  // Create random ktensor tensor
+  struct TestCase {
+    TestCase(const Hess_Vec_Tensor_Method::type hess_vec_method,
+             const char *label)
+        : hess_vec_method{hess_vec_method}, label{label} {}
+
+    const Hess_Vec_Tensor_Method::type hess_vec_method;
+    const char *label;
+
+    const bool run{not SpaceProperties<exec_space>::is_gpu ||
+                   hess_vec_method != Hess_Vec_Tensor_Method::type::Duplicated};
+  };
+
+  TestCase test_cases[]{
+      TestCase{Hess_Vec_Tensor_Method::type::Atomic, "Atomic"},
+      TestCase{Hess_Vec_Tensor_Method::type::Duplicated, "Duplicated"}};
+
+  for (const auto &tc : test_cases) {
+    if (tc.run) {
+      RunHessVecTest<exec_space>(tc.hess_vec_method, tc.label);
+    }
+  }
+}
+
+TYPED_TEST(TestHessVecT, HessVecGaussNewton) {
+  using exec_space = typename TestFixture::exec_space;
+
   const ttb_indx nd = 3;
   const ttb_indx nc = 3;
-  Genten::IndxArray dims = { 3, 4, 5 };
-  Genten::Ktensor sol_host(nc, nd, dims);
-  Genten::RandomMT rng (12345);
+  IndxArray dims{3, 4, 5};
+  Ktensor sol_host(nc, nd, dims);
+  RandomMT rng(12345);
   sol_host.setMatricesScatter(true, false, rng);
   sol_host.setWeights(1.0);
-  Genten::KtensorT<ExecSpace> sol = create_mirror_view(ExecSpace(), sol_host);
+  KtensorT<exec_space> sol = create_mirror_view(exec_space(), sol_host);
   deep_copy(sol, sol_host);
 
   // Create dense tensor from ktensor.  The Gauss-Newton and full Hessian
   // should be equal when the residual is zero, i.e., the ktensor exactly
   // matches the tensor
-  Genten::TensorT<ExecSpace> x(sol);
+  TensorT<exec_space> x(sol);
 
   // Create random Ktensors for multiply
-  Genten::KtensorT<ExecSpace> v(nc, nd, x.size());
+  KtensorT<exec_space> v(nc, nd, x.size());
   auto v_host = create_mirror_view(v);
   v_host.setMatricesScatter(true, false, rng);
   v_host.setWeights(1.0);
   deep_copy(v, v_host);
 
-  Genten::AlgParams algParams;
+  AlgParams algParams;
 
   // Compute full hess-vec
-  algParams.hess_vec_method = Genten::Hess_Vec_Method::Full;
-  Genten::CP_Model<Genten::TensorT<ExecSpace> >
-    cp_model_full(x, sol, algParams);
-  Genten::KtensorT<ExecSpace> u_full(nc, nd, x.size());
+  algParams.hess_vec_method = Hess_Vec_Method::Full;
+  CP_Model<TensorT<exec_space>> cp_model_full(x, sol, algParams);
+  KtensorT<exec_space> u_full(nc, nd, x.size());
   cp_model_full.update(sol);
   cp_model_full.hess_vec(u_full, sol, v);
 
   // Compute Gauss-Newton approximation to hess-vec
-  algParams.hess_vec_method = Genten::Hess_Vec_Method::GaussNewton;
-  Genten::CP_Model<Genten::TensorT<ExecSpace> >
-    cp_model_gn(x, sol, algParams);
-  Genten::KtensorT<ExecSpace> u_gn(nc, nd, x.size());
+  algParams.hess_vec_method = Hess_Vec_Method::GaussNewton;
+  CP_Model<TensorT<exec_space>> cp_model_gn(x, sol, algParams);
+  KtensorT<exec_space> u_gn(nc, nd, x.size());
   cp_model_gn.update(sol);
   cp_model_gn.hess_vec(u_gn, sol, v);
 
   // Check residuals are in fact 0
-  const ttb_real tol = 100.0*MACHINE_EPSILON;
+  const ttb_real tol = 100.0 * MACHINE_EPSILON;
   cp_model_full.update(sol);
   ttb_real residual = cp_model_full.value(sol);
-  ASSERT(FLOAT_EQ(residual, ttb_real(0.0), tol), "residual value correct");
+  GENTEN_TRUE(FLOAT_EQ(residual, ttb_real(0.0), tol), "residual value correct");
 
   // Check hess-vec values
   auto u_full_host = create_mirror_view(u_full);
   auto u_gn_host = create_mirror_view(u_gn);
   deep_copy(u_full_host, u_full);
   deep_copy(u_gn_host, u_gn);
-  //print_ktensor(u_full_host, std::cout, "u_full");
-  //print_ktensor(u_gn_host, std::cout, "u_gn");
-  for (ttb_indx n=0; n<nd; ++n) {
-    for (ttb_indx i=0; i<x.size(n); ++i) {
-      for (ttb_indx j=0; j<nc; ++j) {
-        std::string msg = "hess-vec values correct for dim " +
-          std::to_string(n) + ", entry (" +
-          std::to_string(i) + "," +
-          std::to_string(j) + ")";
-        ASSERT(FLOAT_EQ(u_full_host[n].entry(i,j), u_gn_host[n].entry(i,j), tol), msg);
+  for (ttb_indx n = 0; n < nd; ++n) {
+    for (ttb_indx i = 0; i < x.size(n); ++i) {
+      for (ttb_indx j = 0; j < nc; ++j) {
+        std::stringstream ss;
+        ss << "hess-vec values correct for dim " << n << ", entry (" << i << ","
+           << j << ")";
+
+        GENTEN_TRUE(
+            FLOAT_EQ(u_full_host[n].entry(i, j), u_gn_host[n].entry(i, j), tol),
+            ss.str().c_str());
       }
     }
   }
-
-  finalize();
-  return;
 }
 
-template <typename ExecSpace>
-void Genten_Test_HessVec_Space(int infolevel)
-{
-  typedef Genten::SpaceProperties<ExecSpace> space_prop;
-
-  Genten_Test_HessVec_Type<ExecSpace>(
-    Genten::Hess_Vec_Tensor_Method::Atomic, infolevel, "Atomic");
-  if (!space_prop::is_gpu)
-    Genten_Test_HessVec_Type<ExecSpace>(
-      Genten::Hess_Vec_Tensor_Method::Duplicated, infolevel, "Duplicated");
-  Genten_Test_HessVec_GaussNewton<ExecSpace>(infolevel);
-}
-
-void Genten_Test_HessVec(int infolevel) {
-#ifdef HAVE_CUDA
-  Genten_Test_HessVec_Space<Kokkos::Cuda>(infolevel);
-#endif
-#ifdef HAVE_SYCL
-  Genten_Test_HessVec_Space<Kokkos::Experimental::SYCL>(infolevel);
-#endif
-#ifdef HAVE_HIP
-  Genten_Test_HessVec_Space<Kokkos::Experimental::HIP>(infolevel);
-#endif
-#ifdef HAVE_OPENMP
-  Genten_Test_HessVec_Space<Kokkos::OpenMP>(infolevel);
-#endif
-#ifdef HAVE_THREADS
-  Genten_Test_HessVec_Space<Kokkos::Threads>(infolevel);
-#endif
-#ifdef HAVE_SERIAL
-  Genten_Test_HessVec_Space<Kokkos::Serial>(infolevel);
-#endif
-}
+} // namespace UnitTests
+} // namespace Genten

@@ -173,6 +173,7 @@ public:
 
   // Comparison operators (according to lexicographic order)
   ttb_bool operator==(const IndxArrayT & a) const;
+  ttb_bool operator!=(const IndxArrayT & a) const;
   ttb_bool operator<=(const IndxArrayT & a) const;
 
   // Returns product of all the entries (total size).

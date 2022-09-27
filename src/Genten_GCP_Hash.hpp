@@ -199,6 +199,8 @@ namespace Genten {
 
     template <typename map_type>
     void print_histogram_map(std::ostream& out, map_type& map) const {
+      /* Currently does not compile on Cuda with UVM enabled, so commenting
+       * out for now.
       auto h = map.get_histogram();
       h.calculate();
       out << "length:" << std::endl;
@@ -207,6 +209,8 @@ namespace Genten {
       h.print_distance(out);
       out << "block distance:" << std::endl;
       h.print_block_distance(out);
+      */
+      Genten::error("histogram is currently disabled!");
     }
   };
 

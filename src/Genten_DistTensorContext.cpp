@@ -271,12 +271,25 @@ redistributeTensor(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
 
   if (amount_to_allocate_for_window == 0) {
     const auto my_rank = pmap.gridRank();
+    const auto ndims = blocking.size();
     std::stringstream ss;
-    ss << "WARNING Node(" << my_rank
-       << "), recieved zero nnz in the current blocking\n";
+    ss << "WARNING MPI rank(" << my_rank
+       << "), received zero nnz in the current blocking.\n\tTensor block: [ ";
+    for (auto i=0; i<ndims; i++)
+      ss << pmap.gridCoord(i) << " ";
+    ss << "],  range: [ ";
+    for (auto i=0; i<ndims; i++)
+      ss << blocking[i][pmap.gridCoord(i)] << " ";
+    ss << "] to [ ";
+    for (auto i=0; i<ndims; i++)
+      ss << blocking[i][pmap.gridCoord(i)+1] << " ";
+    ss << "]\n";
     std::cout << ss.str() << std::flush;
     // TODO Handle this better than just aborting, but I don't have another
     // good solution for now.
+    // NOTE (ETP, 9/19/22):  Having an empty proc does not appear to hurt
+    // anything so commenting this out for now.
+    /*
     if (pmap.gridSize() > 1) {
       MPI_Abort(pmap.gridComm(), MPI_ERR_UNKNOWN);
     } else {
@@ -285,6 +298,7 @@ redistributeTensor(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
                 << std::endl;
       std::abort();
     }
+    */
   }
 
   // Let's leave this onesided because IMO it makes life easier. This is self

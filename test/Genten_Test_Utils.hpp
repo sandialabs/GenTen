@@ -38,58 +38,177 @@
 // ************************************************************************
 //@HEADER
 
+#pragma once
 
-#include <string>
-#include <vector>
-#include <cmath>
-#include "Genten_Util.hpp"
+#include <Genten_Util.hpp>
 
+#include <gtest/gtest.h>
 
-namespace Genten
-{
-  namespace Test
-  {
-    void initialize(const::std::string & msg, int infolevel = 0);
-    void message(const std::string & msg, int line, const char * fname);
-    bool assertcheck(bool test, const std::string & desc,
-                     int line, const char * fname);
-    void finalize();
-    /* timing routines which only work on Linux
-       void gettime(timeval * timer);
-       double timediff(timeval start, timeval end);
-    */
+namespace Genten {
+namespace UnitTests {
 
-    int num_failed();
+template <typename NewType, typename DummyType> struct TestingTypesPack {};
 
-    inline ttb_real max_abs(const ttb_real a, const ttb_real b) {
-      return std::fabs(a) > std::fabs(b) ? std::fabs(a) : std::fabs(b);
-    }
-    inline ttb_real rel_diff(const ttb_real a, const ttb_real b) {
-      return std::fabs(a-b)/max_abs(ttb_real(1.0),max_abs(a,b));
-    }
-    inline bool float_eq(const ttb_real a, const ttb_real b) {
-      return rel_diff(a, b) < ttb_real(10.0)*MACHINE_EPSILON;
-    }
-    inline bool float_eq(const ttb_real a, const ttb_real b, const ttb_real tol)
-    {
-      return rel_diff(a, b) < tol;
-    }
-  }
+template <typename NewType, typename... Args>
+struct TestingTypesPack<NewType, ::testing::Types<Args...>> {
+  using type = ::testing::Types<Args..., NewType>;
+};
+
+using testing_types_pack_0 = ::testing::Types<>;
+
+#if defined(HAVE_CUDA)
+using testing_types_pack_1 =
+    TestingTypesPack<Kokkos::Cuda, testing_types_pack_0>::type;
+#else
+using testing_types_pack_1 = testing_types_pack_0;
+#endif
+
+#if defined(HAVE_HIP)
+using testing_types_pack_2 =
+    TestingTypesPack<Kokkos::Experimental::HIP, testing_types_pack_1>::type;
+#else
+using testing_types_pack_2 = testing_types_pack_1;
+#endif
+
+#if defined(HAVE_SYCL)
+using testing_types_pack_3 =
+    TestingTypesPack<Kokkos::Experimental::SYCL, testing_types_pack_2>::type;
+#else
+using testing_types_pack_3 = testing_types_pack_2;
+#endif
+
+#if defined(HAVE_OPENMP)
+using testing_types_pack_4 =
+    TestingTypesPack<Kokkos::OpenMP, testing_types_pack_3>::type;
+#else
+using testing_types_pack_4 = testing_types_pack_3;
+#endif
+
+#if defined(HAVE_THREADS)
+using testing_types_pack_5 =
+    TestingTypesPack<Kokkos::Threads, testing_types_pack_4>::type;
+#else
+using testing_types_pack_5 = testing_types_pack_4;
+#endif
+
+#if defined(HAVE_SERIAL)
+using testing_types_pack_6 =
+    TestingTypesPack<Kokkos::Serial, testing_types_pack_5>::type;
+#else
+using testing_types_pack_6 = testing_types_pack_5;
+#endif
+
+using genten_test_types = testing_types_pack_6;
+
+#define INFO_MSG(msg) Impl::info_message(msg, __LINE__, __FILE__)
+
+#define TEST_MSG(msg) Impl::test_message(msg, __LINE__, __FILE__)
+
+#define GENTEN_EQ(lhs, rhs, msg)                                               \
+  Impl::test_message(msg, __LINE__, __FILE__);                                 \
+  ASSERT_EQ(lhs, rhs)
+
+#define GENTEN_NE(lhs, rhs, msg)                                               \
+  Impl::test_message(msg, __LINE__, __FILE__);                                 \
+  ASSERT_NE(lhs, rhs)
+
+#define GENTEN_TRUE(cond, msg)                                                 \
+  Impl::test_message(msg, __LINE__, __FILE__);                                 \
+  ASSERT_TRUE(cond)
+
+#define GENTEN_FALSE(cond, msg)                                                \
+  Impl::test_message(msg, __LINE__, __FILE__);                                 \
+  ASSERT_FALSE(cond)
+
+#define GENTEN_FLOAT_EQ(lhs, rhs, msg)                                         \
+  Impl::test_message(msg, __LINE__, __FILE__);                                 \
+  ASSERT_FLOAT_EQ(lhs, rhs)
+
+#define GENTEN_THROW(statement, expected_exception, msg)                       \
+  Impl::test_message(msg, __LINE__, __FILE__);                                 \
+  ASSERT_THROW(statement, expected_exception)
+
+#define GENTEN_ANY_THROW(statement, msg)                                       \
+  Impl::test_message(msg, __LINE__, __FILE__);                                 \
+  ASSERT_ANY_THROW(statement)
+
+#define GENTEN_LE(lhs, rhs, msg)                                               \
+  Impl::test_message(msg, __LINE__, __FILE__);                                 \
+  ASSERT_LE(lhs, rhs)
+
+#define GENTEN_GE(lhs, rhs, msg)                                               \
+  Impl::test_message(msg, __LINE__, __FILE__);                                 \
+  ASSERT_GE(lhs, rhs)
+
+#define EQ(a, b) Impl::float_eq(a, b)
+
+#define FLOAT_EQ(a, b, tol) Impl::float_eq(a, b, tol)
+
+namespace Impl {
+
+enum class MsgColor { Green, Yellow };
+
+const char *terminal_color(const MsgColor msg_color);
+std::string make_verbose_message(const char *msg, const int line,
+                                 const char *file_name);
+
+void info_message(const char *msg, const int line, const char *file_name) {
+  printf("%s[   INFO   ] \033[m", terminal_color(MsgColor::Green));
+  printf("%s\n", make_verbose_message(msg, line, file_name).c_str());
 }
 
-#define ASSERT(cond,msg) Genten::Test::assertcheck(cond,msg,__LINE__,__FILE__)
-#define MESSAGE(msg) Genten::Test::message(msg,__LINE__,__FILE__)
+void test_message(const char *msg, const int line, const char *file_name) {
+  printf("%s[   TEST   ] \033[m", terminal_color(MsgColor::Yellow));
+  printf("%s\n", make_verbose_message(msg, line, file_name).c_str());
+}
 
+const char *terminal_color(const MsgColor msg_color) {
+  static const bool print_in_color = isatty((fileno(stdout)));
+  if (not print_in_color) {
+    return "\033[m";
+  }
 
-/* It's useful to disable cerr when doing error testing.
-   Amazingly, the /dev/null seems to work even in windows. */
-#include <fstream>
-#define SETUP_DISABLE_CERR std::ofstream file("/dev/null"); std::streambuf * strm_buffer;
-#define DISABLE_CERR strm_buffer = std::cerr.rdbuf(); std::cerr.rdbuf(file.rdbuf());
-#define REENABLE_CERR std::cerr.rdbuf (strm_buffer);
+  switch (msg_color) {
+  case MsgColor::Green: {
+    return "\033[0;32m";
+  }
 
-// For comparing real numbers
-#define MAXABS(a,b) (Genten::Test::max_abs(a,b))
-#define RELDIFF(a,b) (Genten::Test::rel_diff(a,b))
-#define EQ(a,b) (Genten::Test::float_eq(a,b))
-#define FLOAT_EQ(a,b,tol) (Genten::Test::float_eq(a,b,tol))
+  case MsgColor::Yellow: {
+    return "\033[0;33m";
+  }
+  }
+
+  return "";
+}
+
+std::string make_verbose_message(const char *msg, const int line,
+                                 const char *file_name) {
+  std::ostringstream oss;
+  oss << msg << " (File: " << file_name << ", Line: " << line << ")";
+
+  return oss.str();
+}
+
+KOKKOS_INLINE_FUNCTION
+ttb_real max_abs(const ttb_real a, const ttb_real b) {
+  return std::fabs(a) > std::fabs(b) ? std::fabs(a) : std::fabs(b);
+}
+
+KOKKOS_INLINE_FUNCTION
+ttb_real rel_diff(const ttb_real a, const ttb_real b) {
+  return std::fabs(a - b) / max_abs(ttb_real(1.0), max_abs(a, b));
+}
+
+KOKKOS_INLINE_FUNCTION
+bool float_eq(const ttb_real a, const ttb_real b) {
+  return rel_diff(a, b) < ttb_real(10.0) * MACHINE_EPSILON;
+}
+
+KOKKOS_INLINE_FUNCTION
+bool float_eq(const ttb_real a, const ttb_real b, const ttb_real tol) {
+  return rel_diff(a, b) < tol;
+}
+
+} // namespace Impl
+} // namespace UnitTests
+} // namespace Genten

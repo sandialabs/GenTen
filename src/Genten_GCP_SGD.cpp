@@ -219,8 +219,7 @@ namespace Genten {
       ttb_real fit_prev = fit;
 
       if (printIter > 0) {
-        out << "Begin main loop\n"
-            << "Initial f-est: "
+        out << "Initial f-est: "
             << std::setw(13) << std::setprecision(6) << std::scientific
             << fest;
         if (compute_fit)
@@ -382,8 +381,7 @@ namespace Genten {
       timer.stop(timer_sgd);
 
       if (printIter > 0) {
-        out << "End main loop\n"
-            << "Final f-est: "
+        out << "Final f-est: "
             << std::setw(13) << std::setprecision(6) << std::scientific
             << fest;
         if (compute_fit)
