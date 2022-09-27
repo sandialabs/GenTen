@@ -743,6 +743,49 @@ add_subdirectory(tools)
 #---- Testing
 #------------------------------------------------------------
 enable_testing()
+
+# Sets up a test command to possibly launch with MPI if PARALLEL is defined.
+# For serial tests, still use MPI to launch if MPI is enabled, since the
+# machine may not be able to run tests without it (e.g., when launching from a
+# head node) but don't include MPI pre/post flags so there is no binding.
+# usage:
+#    genten_add_test(NAME <name>
+#                    COMMAND <command>
+#                    [ARGS <arg>...]
+#                    [WORKING_DIRECTORY <dir>]
+#                    [PARALLEL])
+function(genten_add_test)
+  set(options PARALLEL)
+  set(oneValueArgs NAME COMMAND WORKING_DIRECTORY)
+  set(multiValueArgs ARGS)
+  cmake_parse_arguments(GENTEN_ADD_TEST "${options}" "${oneValueArgs}"
+                        "${multiValueArgs}" ${ARGN})
+
+  separate_arguments(GENTEN_ADD_TEST_ARGS) # Replaces spaces with semi-colons
+  set(test_cmd "${GENTEN_ADD_TEST_COMMAND}")
+  list(APPEND test_cmd ${GENTEN_ADD_TEST_ARGS})
+  if (HAVE_MPI)
+    set(test_cmd ${MPIEXEC_EXECUTABLE})
+    list(APPEND test_cmd ${MPIEXEC_NUMPROC_FLAG})
+    if (GENTEN_ADD_TEST_PARALLEL)
+      list(APPEND test_cmd ${MPIEXEC_MAX_NUMPROCS})
+    else()
+      list(APPEND test_cmd 1)
+    endif()
+    if (GENTEN_ADD_TEST_PARALLEL)
+      separate_arguments(MPIEXEC_PREFLAGS)
+      list(APPEND test_cmd ${MPIEXEC_PREFLAGS})
+    endif()
+    list(APPEND test_cmd ${GENTEN_ADD_TEST_COMMAND})
+    if (GENTEN_ADD_TEST_PARALLEL)
+      separate_arguments(MPIEXEC_POSTFLAGS)
+      list(APPEND test_cmd ${MPIEXEC_POSTFLAGS})
+    endif()
+    list(APPEND test_cmd ${GENTEN_ADD_TEST_ARGS})
+  endif()
+  add_test(NAME ${GENTEN_ADD_TEST_NAME} COMMAND ${test_cmd} WORKING_DIRECTORY ${GENTEN_ADD_TEST_WORKING_DIRECTORY})
+endfunction(genten_add_test)
+
 add_subdirectory(tpls/googletest)
 add_subdirectory(test)
 
@@ -750,33 +793,20 @@ function(add_genten_perf_tests name cmd args spaces)
   foreach(space ${spaces})
     string(CONCAT test_name ${name} "_" ${space})
     string(CONCAT test_args ${args} " --exec-space " ${space})
-    separate_arguments(test_args)
-    add_test(${test_name} ${cmd} ${test_args})
+    genten_add_test(NAME ${test_name} COMMAND ${cmd} ARGS ${test_args})
   endforeach()
 endfunction(add_genten_perf_tests)
 
 function(add_genten_mpi_tests name cmd args spaces)
-  set(my_args "${args}")
-  set(test_cmd "${cmd}")
-  if (HAVE_MPI)
-    set(my_args " ${MPIEXEC_NUMPROC_FLAG}")
-    string(CONCAT my_args ${my_args} " " ${MPIEXEC_MAX_NUMPROCS})
-    string(CONCAT my_args ${my_args} " " ${MPIEXEC_PREFLAGS})
-    string(CONCAT my_args ${my_args} " " ${cmd})
-    string(CONCAT my_args ${my_args} " " ${MPIEXEC_POSTFLAGS})
-    string(CONCAT my_args ${my_args} " " ${args})
-    set(test_cmd ${MPIEXEC_EXECUTABLE})
-  endif()
   foreach(space ${spaces})
     string(CONCAT test_name ${name} "_" ${space})
-    string(CONCAT test_args ${my_args} " --exec-space " ${space})
+    string(CONCAT test_args ${args} " --exec-space " ${space})
     # The tests can run VERY slowly with multiple threads and MPI ranks,
     # so run with a single thread for OpenMP and Threads
     if (HAVE_MPI AND (space STREQUAL "openmp") OR (space STREQUAL "threads"))
       string(CONCAT test_args ${test_args} " --kokkos-threads=1")
     endif()
-    separate_arguments(test_args)
-    add_test(${test_name} ${test_cmd} ${test_args})
+    genten_add_test(NAME ${test_name} COMMAND ${cmd} ARGS ${test_args} PARALLEL)
   endforeach()
 endfunction(add_genten_mpi_tests)
 
