@@ -82,7 +82,7 @@ namespace Genten {
     virtual void update(const ROL::Vector<ttb_real>& xx, ROL::UpdateType type,
                         int iter) override;
 
-    virtual void update(const ROL::Vector<ttb_real> &xx, bool flag, int iter);
+    virtual void update(const ROL::Vector<ttb_real> &xx, bool flag, int iter) override;
 
     virtual ttb_real value(const ROL::Vector<ttb_real>& x,
                            ttb_real& tol) override;
