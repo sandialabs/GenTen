@@ -33,8 +33,10 @@ build-gitlab-clang-image:
   script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
     - docker pull ${CI_REGISTRY_IMAGE}/genten-clang-openmp-snb:latest || true
+    - echo "ctest;ctest -VV -R Genten_driver_aminoacid_sgd_openmp" > run.sh
+    - chmod 755 run.sh
     - docker build --cache-from ${CI_REGISTRY_IMAGE}/genten-clang-openmp-snb:latest -t genten-clang-openmp-snb:latest --build-arg ARCH=SNB -f docker/Dockerfile_clang_openmp_image .
-    - docker run --name gt -w /build/genten -t genten-clang-openmp-snb:latest "ctest -VV -R Genten_driver_aminoacid_sgd_openmp"
+    - docker run --name gt -w /build/genten -t genten-clang-openmp-snb:latest /src/genten/run.sh
     - docker tag genten-clang-openmp-snb:latest ${CI_REGISTRY_IMAGE}/genten-clang-openmp-snb:latest
     - docker push ${CI_REGISTRY_IMAGE}/genten-clang-openmp-snb:latest
     - docker rmi ${CI_REGISTRY_IMAGE}/genten-clang-openmp-snb:latest
