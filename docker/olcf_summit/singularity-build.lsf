@@ -1,0 +1,10 @@
+#BSUB -P AST153
+#BSUB -W 0:30
+#BSUB -nnodes 1
+#BSUB -q debug
+#BSUB -J singularity-build
+#BSUB -o singularity-build.%J
+#BSUB -e singularity-build.%J
+
+source genten/docker/olcf_summit/setup_env.sh
+jsrun -n1 -c42 -brs singularity build gentenimage.sif docker-archive://gentenimage.tar
