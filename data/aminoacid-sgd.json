@@ -26,6 +26,7 @@
         },
         "type": "gaussian",
         "sampling": "stratified",
+        "seed": 31415,
         "fuse": false,
         "hash": true,
         "gnzs": 100,
