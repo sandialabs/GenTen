@@ -60,6 +60,8 @@
 #include "Genten_Util.hpp"
 #include "Genten_Pmap.hpp"
 
+#include "Genten_DistMttkrp.hpp"
+
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
 #endif
@@ -125,6 +127,8 @@ namespace Genten {
     const bool full = algParams.full_gram;
     const UploType uplo = Upper;
     bool spd = true; // Use SPD solver if possible
+
+    DistMttkrp<TensorT> distMttkrp(x, u, algParams);
 
     const ttb_real tol = algParams.tol;
     const ttb_indx maxIters = algParams.maxiters;
@@ -239,7 +243,8 @@ namespace Genten {
         // Update u[n] via MTTKRP with x (Khattri-Rao product).
         // The size of u[n] is dim(n) rows by R columns.
         timer.start(timer_mttkrp);
-        Genten::mttkrp (x, u, n, algParams);
+        //Genten::mttkrp (x, u, n, algParams);
+        distMttkrp.mttkrp(u,n,u[n]);
         Kokkos::fence();
         timer.stop(timer_mttkrp);
 

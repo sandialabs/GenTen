@@ -154,6 +154,11 @@ namespace Genten {
         out << timer.getTotalTime(0) << " seconds" << std::endl;
     }
 
+    virtual ttb_indx getNumGradSamples() const override
+    {
+      return global_num_samples_grad;
+    }
+
     virtual void print(std::ostream& out) override
     {
       out << "  Function sampler:  stratified with "

@@ -77,7 +77,8 @@ namespace Genten {
     unsigned mttkrp_nnz_tile_size; // Nonzero tile size (i.e., RowBlockSize)
     unsigned mttkrp_duplicated_factor_matrix_tile_size; // Tile size for MTTKRP
     ttb_real mttkrp_duplicated_threshold;  // Theshold for when dup is used
-    bool warmup; // Warmup by calling MTTKRP before decompsition
+    Dist_Update_Method::type dist_update_method;
+    bool warmup; // Warmup by calling MTTKRP before decomposition
 
     // TTM options
     TTM_Method::type ttm_method; // TTM algorithm

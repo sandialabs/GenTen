@@ -141,6 +141,54 @@ public:
     }
   }
 
+  // In-place Allgather
+  template <typename T> void gridAllGather(T* element, const int count) const {
+    static_assert(std::is_arithmetic<T>::value,
+                  "gridAllGather requires something like a double, or int");
+
+    if (grid_nprocs_ > 1) {
+      MPI_Allgather(MPI_IN_PLACE, count, DistContext::toMpiType<T>(),
+                     element, count, DistContext::toMpiType<T>(), cart_comm_);
+    }
+  }
+
+  // In-place Allgather
+  template <typename T> void subGridAllGather(int i, T* element, const int count) const {
+    static_assert(std::is_arithmetic<T>::value,
+                  "subGridAllGather requires something like a double, or int");
+
+    if (sub_comm_sizes_[i] > 1) {
+      MPI_Allgather(MPI_IN_PLACE, count, DistContext::toMpiType<T>(),
+                    element, count, DistContext::toMpiType<T>(), sub_maps_[i]);
+    }
+  }
+
+  // In-place Allgatherv
+  template <typename T> void gridAllGather(T* element, const int counts[], const int offsets[]) const {
+    static_assert(std::is_arithmetic<T>::value,
+                  "gridAllGather requires something like a double, or int");
+
+    if (grid_nprocs_ > 1) {
+      // Note, 2nd argument (send_count) is ignored in this version and
+      // internally extracted from counts[proc_id]
+      MPI_Allgatherv(MPI_IN_PLACE, 0, DistContext::toMpiType<T>(), element,
+                     counts, offsets, DistContext::toMpiType<T>(), cart_comm_);
+    }
+  }
+
+  // In-place Allgatherv
+  template <typename T> void subGridAllGather(int i, T* element, const int counts[], const int offsets[]) const {
+    static_assert(std::is_arithmetic<T>::value,
+                  "subGridAllGather requires something like a double, or int");
+
+    if (sub_comm_sizes_[i] > 1) {
+      // Note, 2nd argument (send_count) is ignored in this version and
+      // internally extracted from counts[proc_id]
+      MPI_Allgatherv(MPI_IN_PLACE, 0, DistContext::toMpiType<T>(), element,
+                     counts, offsets, DistContext::toMpiType<T>(), sub_maps_[i]);
+    }
+  }
+
   class FacMap {
   public:
     FacMap() = default;
@@ -174,6 +222,17 @@ public:
                       convertOp(op), comm_);
       }
     }
+
+    // In-place Allgatherv
+      template <typename T> void allGather(T* element, const int counts[], const int offsets[]) const {
+        static_assert(std::is_arithmetic<T>::value,
+                    "allGather requires something like a double, or int");
+
+        // Note, 2nd argument (send_count) is ignored in this version and
+        // internally extracted from counts[proc_id]
+        MPI_Allgatherv(MPI_IN_PLACE, 0, DistContext::toMpiType<T>(), element,
+                       counts, offsets, DistContext::toMpiType<T>(), comm_);
+      }
   private:
     MPI_Comm comm_;
     int size_;

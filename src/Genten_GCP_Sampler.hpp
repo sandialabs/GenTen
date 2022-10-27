@@ -66,6 +66,8 @@ namespace Genten {
     virtual void initialize(const pool_type& rand_pool,
                             std::ostream& out) = 0;
 
+    virtual ttb_indx getNumGradSamples() const = 0;
+
     virtual void print(std::ostream& out) = 0;
 
     virtual void sampleTensor(const bool gradient,

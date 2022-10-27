@@ -51,6 +51,8 @@
 #include "Genten_SystemTimer.hpp"
 #include "Genten_MixedFormatOps.hpp"
 
+#include "Genten_DistMttkrp.hpp"
+
 namespace Genten {
 
   namespace Impl {
@@ -98,6 +100,9 @@ namespace Genten {
                        GCP_SGD_Step<ExecSpace,LossFunction>& stepper,
                        ttb_indx& total_iters)
       {
+        DistMttkrp< SptensorT<ExecSpace> > distMttkrp(
+          X_grad, ut, sampler.getNumGradSamples(), algParams);
+
         for (ttb_indx iter=0; iter<algParams.epoch_iters; ++iter) {
 
           // Update stepper for next iteration
@@ -130,7 +135,8 @@ namespace Genten {
             }
             else {
               gt.weights() = 1.0; // gt is zeroed in mttkrp
-              mttkrp_all(X_grad, ut, gt, algParams);
+              //mttkrp_all(X_grad, ut, gt, algParams);
+              distMttkrp.mttkrp_all(ut, gt);
             }
             timer.stop(timer_grad);
 

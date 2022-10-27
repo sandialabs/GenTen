@@ -236,6 +236,23 @@ namespace Genten {
     static constexpr type default_type = Default;
   };
 
+  // Distributed Ktensor update algorithm
+  struct Dist_Update_Method {
+    enum type {
+      AllReduce,
+      AllGather
+    };
+    static constexpr unsigned num_types = 2;
+    static constexpr type types[] = {
+      AllReduce,
+      AllGather
+    };
+    static constexpr const char* names[] = {
+      "all-reduce", "all-gather"
+    };
+    static constexpr type default_type = AllReduce;
+  };
+
   // Hessian-vector product method for CP-OPT w/ROL
   struct Hess_Vec_Method {
     enum type {

@@ -65,6 +65,7 @@ Genten::AlgParams::AlgParams() :
   mttkrp_nnz_tile_size(128),
   mttkrp_duplicated_factor_matrix_tile_size(0),
   mttkrp_duplicated_threshold(-1.0),
+  dist_update_method(Dist_Update_Method::default_type),
   warmup(false),
   ttm_method(TTM_Method::default_type),
   opt_method(Opt_Method::default_type),
@@ -159,9 +160,13 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   mttkrp_duplicated_factor_matrix_tile_size =
     parse_ttb_indx(args, "--mttkrp-duplicated-tile-size",
                    mttkrp_duplicated_factor_matrix_tile_size, 0, INT_MAX);
-   mttkrp_duplicated_threshold =
+  mttkrp_duplicated_threshold =
     parse_ttb_real(args, "--mttkrp-duplicated-threshold",
                    mttkrp_duplicated_factor_matrix_tile_size, -1.0, DOUBLE_MAX);
+  dist_update_method = parse_ttb_enum(args, "--dist-method", dist_update_method,
+                                 Genten::Dist_Update_Method::num_types,
+                                 Genten::Dist_Update_Method::types,
+                                 Genten::Dist_Update_Method::names);
   warmup = parse_ttb_bool(args, "--warmup", "--no-warmup", warmup);
 
   // TTM options
@@ -292,6 +297,7 @@ void Genten::AlgParams::parse(const ptree& input)
                         mttkrp_duplicated_factor_matrix_tile_size, 0, INT_MAX);
       parse_ptree_value(mttkrp_input, "duplicated-threshold",
                         mttkrp_duplicated_threshold, -1.0, DOUBLE_MAX);
+      parse_ptree_enum<Dist_Update_Method>(mttkrp_input, "dist-method", dist_update_method);
       parse_ptree_value(mttkrp_input, "warmup", warmup);
     }
   };
@@ -441,6 +447,13 @@ void Genten::AlgParams::print_help(std::ostream& out)
       << std::endl;
   out << "  --mttkrp-duplicated-tile-size <int> Factor matrix tile size for duplicated mttkrp algorithm" << std::endl;
   out << "  --mttkrp-duplicated-threshold <float> Theshold for determining when to not use duplicated mttkrp algorithm (set to -1.0 to always use duplicated)" << std::endl;
+  out << "  --dist-method <method> Distributed Ktensor update method: ";
+  for (unsigned i=0; i<Genten::Dist_Update_Method::num_types; ++i) {
+    out << Genten::Dist_Update_Method::names[i];
+    if (i != Genten::Dist_Update_Method::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
   out << "  --warmup           do an iteration of mttkrp to warmup (useful for generating accurate timing information)" << std::endl;
 
   out << std::endl;
@@ -576,6 +589,8 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  mttkrp-nnz-tile-size = " << mttkrp_nnz_tile_size << std::endl;
   out << "  mttkrp-duplicated-tile-size = " << mttkrp_duplicated_factor_matrix_tile_size << std::endl;
   out << "  mttkrp-duplicated-threshold = " << mttkrp_duplicated_threshold << std::endl;
+  out << "  dist-method = " << Genten::Dist_Update_Method::names[dist_update_method]
+      << std::endl;
   out << "  warmup = " << (warmup ? "true" : "false") << std::endl;
 
   out << std::endl;
