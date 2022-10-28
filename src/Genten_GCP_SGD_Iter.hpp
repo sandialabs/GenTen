@@ -73,6 +73,9 @@ namespace Genten {
         timer_grad_nzs = num_timers++;
         timer_grad_zs = num_timers++;
         timer_grad_init = num_timers++;
+        timer_grad_mttkrp = num_timers++;
+        timer_grad_comm = num_timers++;
+        timer_grad_update = num_timers++;
         timer_step = num_timers++;
         timer_sample_g_z_nz = num_timers++;
         timer_sample_g_perm = num_timers++;
@@ -101,7 +104,8 @@ namespace Genten {
                        ttb_indx& total_iters)
       {
         DistMttkrp< SptensorT<ExecSpace> > distMttkrp(
-          X_grad, ut, sampler.getNumGradSamples(), algParams);
+          X_grad, ut, sampler.getNumGradSamples(), algParams,
+          timer, timer_grad_mttkrp, timer_grad_comm, timer_grad_update);
 
         for (ttb_indx iter=0; iter<algParams.epoch_iters; ++iter) {
 
@@ -136,7 +140,7 @@ namespace Genten {
             else {
               gt.weights() = 1.0; // gt is zeroed in mttkrp
               //mttkrp_all(X_grad, ut, gt, algParams);
-              distMttkrp.mttkrp_all(ut, gt);
+              distMttkrp.mttkrp_all(X_grad, ut, gt);
             }
             timer.stop(timer_grad);
 
@@ -168,6 +172,14 @@ namespace Genten {
         }
         out << "\tgradient:  " << timer.getTotalTime(timer_grad)
             << " seconds\n";
+        if (!algParams.fuse) {
+          out << "\t\tmttkrp:  " << timer.getTotalTime(timer_grad_mttkrp)
+              << " seconds\n"
+              << "\t\tcomm.:   " << timer.getTotalTime(timer_grad_comm)
+              << " seconds\n"
+              << "\t\tupdate:  " << timer.getTotalTime(timer_grad_update)
+              << " seconds\n";
+        }
         if (algParams.fuse) {
           out << "\t\tinit:    " << timer.getTotalTime(timer_grad_init)
               << " seconds\n"
@@ -188,6 +200,9 @@ namespace Genten {
       int timer_grad_nzs;
       int timer_grad_zs;
       int timer_grad_init;
+      int timer_grad_mttkrp;
+      int timer_grad_comm;
+      int timer_grad_update;
       int timer_step;
       int timer_sample_g_z_nz;
       int timer_sample_g_perm;

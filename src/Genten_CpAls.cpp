@@ -128,8 +128,6 @@ namespace Genten {
     const UploType uplo = Upper;
     bool spd = true; // Use SPD solver if possible
 
-    DistMttkrp<TensorT> distMttkrp(x, u, algParams);
-
     const ttb_real tol = algParams.tol;
     const ttb_indx maxIters = algParams.maxiters;
     const ttb_real maxSecs = algParams.maxsecs;
@@ -147,15 +145,22 @@ namespace Genten {
     }
 
     // Start timer for total execution time of the algorithm.
-    const int timer_cpals = 0;
-    const int timer_mttkrp = 1;
-    const int timer_ip = 2;
-    const int timer_gramian = 3;
-    const int timer_solve = 4;
-    const int timer_scale = 5;
-    const int timer_norm = 6;
-    const int timer_arrange = 7;
+    int num_timers = 0;
+    const int timer_cpals = num_timers++;
+    const int timer_mttkrp = num_timers++;
+    const int timer_mttkrp_local = num_timers++;
+    const int timer_mttkrp_comm = num_timers++;
+    const int timer_mttkrp_update = num_timers++;
+    const int timer_ip = num_timers++;
+    const int timer_gramian = num_timers++;
+    const int timer_solve = num_timers++;
+    const int timer_scale = num_timers++;
+    const int timer_norm = num_timers++;
+    const int timer_arrange = num_timers++;
     Genten::SystemTimer timer(8, algParams.timings, pmap);
+
+    DistMttkrp<TensorT> distMttkrp(x, u, algParams, timer, timer_mttkrp_local,
+                                   timer_mttkrp_comm, timer_mttkrp_update);
 
     timer.start(timer_cpals);
 
@@ -244,7 +249,7 @@ namespace Genten {
         // The size of u[n] is dim(n) rows by R columns.
         timer.start(timer_mttkrp);
         //Genten::mttkrp (x, u, n, algParams);
-        distMttkrp.mttkrp(u,n,u[n]);
+        distMttkrp.mttkrp(x, u, n, u[n]);
         Kokkos::fence();
         timer.stop(timer_mttkrp);
 
