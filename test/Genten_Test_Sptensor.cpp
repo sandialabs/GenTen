@@ -38,6 +38,7 @@
 // ************************************************************************
 //@HEADER
 
+#include <Genten_DistTensorContext.hpp>
 #include <Genten_Sptensor.hpp>
 
 #include "Genten_Test_Utils.hpp"
@@ -63,6 +64,20 @@ TEST(TestSptensor, LengthConstructor) {
   dims[2] = 5;
   Sptensor st_b(dims, 5);
   ASSERT_EQ(st_b.nnz(), 5);
+
+  Genten::DistTensorContext dtc;
+  Sptensor st_distributed =
+      dtc.distributeTensor<DefaultHostExecutionSpace>(st_b);
+
+  const ProcessorMap *pmap = dtc.pmap_ptr().get();
+  st_distributed.setProcessorMap(pmap);
+
+  ASSERT_EQ(st_distributed.global_nnz(), 5);
+  ASSERT_EQ(st_distributed.global_numel(), 3 * 4 * 5);
+  ASSERT_FLOAT_EQ(st_distributed.global_numel_float(), 3 * 4 * 5);
+  if (DistContext::nranks() > 1) {
+    ASSERT_NE(st_distributed.global_numel(), st_distributed.numel());
+  }
 }
 
 TEST(TestSptensor, DataConstructorFromMatlab) {
