@@ -268,6 +268,11 @@ namespace Genten {
   {
     val = Genten::parse_enum<T>(input.get<std::string>(name, T::names[val]));
   }
+  template <typename T>
+  typename T::type parse_ptree_enum(const Genten::ptree& input, const std::string& name)
+  {
+    return Genten::parse_enum<T>(input.get<std::string>(name, T::names[T::default_type]));
+  }
 
   // Convert (argc,argv) to list of strings
   std::vector<std::string> build_arg_list(int argc, char** argv);

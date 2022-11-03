@@ -69,7 +69,7 @@ namespace Genten {
 
 template<typename ExecSpace>
 KtensorT<ExecSpace>
-driver(const DistTensorContext& dtc,
+driver(const DistTensorContext<ExecSpace>& dtc,
        SptensorT<ExecSpace>& x,
        KtensorT<ExecSpace>& u,
        AlgParams& algParams,
@@ -94,9 +94,9 @@ driver(const DistTensorContext& dtc,
   // Generate a random starting point if initial guess is empty
   if (u.ncomponents() == 0 && u.ndims() == 0) {
     timer.start(0);
-    u = dtc.randomInitialGuess<ExecSpace>(x, algParams.rank, algParams.seed,
-                                          algParams.prng,
-                                          algParams.dist_guess_method);
+    u = dtc.randomInitialGuess(x, algParams.rank, algParams.seed,
+                               algParams.prng,
+                               algParams.dist_guess_method);
     timer.stop(0);
     if (algParams.timings)
       out << "Creating random initial guess took " << timer.getTotalTime(0)
@@ -152,7 +152,7 @@ driver(const DistTensorContext& dtc,
     // Run CP-ALS
     ttb_indx iter;
     ttb_real resNorm;
-    cpals_core(x, u, algParams, iter, resNorm, 1, history, out);
+    cpals_core(dtc, x, u, algParams, iter, resNorm, 1, history, out);
   }
   else if (algParams.method == Genten::Solver_Method::CP_OPT) {
     timer.start(2);
@@ -192,7 +192,7 @@ driver(const DistTensorContext& dtc,
     // Run GCP-SGD
     ttb_indx iter;
     ttb_real resNorm;
-    gcp_sgd(x, u, algParams, iter, resNorm, history, out);
+    gcp_sgd(dtc, x, u, algParams, iter, resNorm, history, out);
   }
   else if (algParams.method == Genten::Solver_Method::GCP_SGD &&
            algParams.fuse_sa) {
@@ -321,11 +321,13 @@ driver(TensorT<ExecSpace>& x,
       Genten::mttkrp(x, u, n, tmp[n], ap);
   }
 
+  DistTensorContext<ExecSpace> dtc;
+
   if (algParams.method == Genten::Solver_Method::CP_ALS) {
     // Run CP-ALS
     ttb_indx iter;
     ttb_real resNorm;
-    cpals_core(x, u, algParams, iter, resNorm, 1, history, out);
+    cpals_core(dtc, x, u, algParams, iter, resNorm, 1, history, out);
   }
   else if (algParams.method == Genten::Solver_Method::CP_OPT) {
     timer.start(2);
@@ -372,7 +374,7 @@ driver(TensorT<ExecSpace>& x,
 #define INST_MACRO(SPACE)                                               \
   template KtensorT<SPACE>                                              \
   driver<SPACE>(                                                        \
-    const DistTensorContext& dtc,                                       \
+    const DistTensorContext<SPACE>& dtc,                                \
     SptensorT<SPACE>& x,                                                \
     KtensorT<SPACE>& u_init,                                            \
     AlgParams& algParams,                                               \

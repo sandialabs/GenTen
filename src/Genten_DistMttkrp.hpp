@@ -40,8 +40,8 @@
 
 #pragma once
 
+#include "CMakeInclude.h"
 #include "Genten_MixedFormatOps.hpp"
-#include "Genten_DistKtensorUpdate.hpp"
 #include "Genten_DistKtensorUpdate.hpp"
 #include "Genten_TinyVec.hpp"
 #include "Genten_AlgParams.hpp"
@@ -69,7 +69,8 @@ private:
   int timer_update_;
 
 public:
-  DistMttkrp(const TensorType& X,
+  DistMttkrp(const DistTensorContext<exec_space>& dtc,
+             const TensorType& X,
              const KtensorT<exec_space>& u,
              const AlgParams& algParams,
              SystemTimer& timer,
@@ -87,11 +88,10 @@ public:
 
   void mttkrp(const TensorType& X,
               KtensorT<exec_space>& u,
-              const ttb_indx n,
-              const FacMatrixT<exec_space>& v) const
+              const ttb_indx n) const
   {
     timer_.start(timer_mttkrp_);
-    Genten::mttkrp(X,u,n,v,algParams_);
+    Genten::mttkrp(X,u,n,algParams_);
     timer_.stop(timer_mttkrp_);
   }
 
@@ -102,6 +102,13 @@ public:
     timer_.start(timer_mttkrp_);
     Genten::mttkrp_all(X, u, v, algParams_);
     timer_.stop(timer_mttkrp_);
+  }
+
+  ttb_real innerprod(const TensorType& X,
+                     const KtensorT<exec_space>& u,
+                     const Genten::ArrayT<exec_space>& lambda)
+  {
+    return Genten::innerprod(X,u,lambda);
   }
 };
 
@@ -120,7 +127,8 @@ private:
 
 public:
 
-  DistMttkrp(const SptensorT<exec_space>& X,
+  DistMttkrp(const DistTensorContext<ExecSpace>& dtc,
+             const SptensorT<exec_space>& X,
              const KtensorT<exec_space>& u,
              const ttb_indx nnz,
              const AlgParams& algParams,
@@ -136,18 +144,24 @@ public:
     else if (algParams_.dist_update_method == Dist_Update_Method::AllGather) {
       distUpdate_ = new KtensorAllGatherUpdate<exec_space>(u, nnz);
     }
+#ifdef HAVE_TPETRA
+    else if (algParams_.dist_update_method == Dist_Update_Method::Tpetra) {
+    distUpdate_ = new KtensorTpetraUpdate<exec_space>(dtc, u);
+    }
+#endif
     else
       Genten::error("Unknown distributed update method");
   }
 
-  DistMttkrp(const SptensorT<exec_space>& X,
+  DistMttkrp(const DistTensorContext<ExecSpace>& dtc,
+             const SptensorT<exec_space>& X,
              const KtensorT<exec_space>& u,
              const AlgParams& algParams,
              SystemTimer& timer,
              const int timer_mttkrp,
              const int timer_comm,
              const int timer_update) :
-    DistMttkrp(X, u, X.nnz(), algParams, timer, timer_mttkrp, timer_comm,
+    DistMttkrp(dtc, X, u, X.nnz(), algParams, timer, timer_mttkrp, timer_comm,
                timer_update) {}
 
   ~DistMttkrp()
@@ -163,8 +177,7 @@ public:
 
   void mttkrp(const SptensorT<exec_space>& X,
               KtensorT<exec_space>& u,
-              const ttb_indx n,
-              const FacMatrixT<exec_space>& v) const
+              const ttb_indx n) const
   {
     assert(distUpdate_ != nullptr);
 
@@ -180,11 +193,13 @@ public:
       auto vals = allGatherUpdate->getValUpdates(n);
       row_val_mttkrp(X, u, n, rows, vals, algParams_);
     }
-    else
-      Genten::mttkrp(X, u, n, v, algParams_);
+    else {
+      distUpdate_->import(u, timer_, timer_comm_);
+      Genten::mttkrp(X, distUpdate_->getOverlapKtensor(), n, algParams_);
+    }
     timer_.stop(timer_mttkrp_);
 
-    distUpdate_->update(v,n,timer_,timer_comm_,timer_update_);
+    distUpdate_->update(u,n,timer_,timer_comm_,timer_update_);
 
     u.setProcessorMap(pmap);
   }
@@ -207,13 +222,26 @@ public:
       auto vals = allGatherUpdate->getValUpdates();
       row_val_mttkrp_all(X, u, rows, vals, algParams_);
     }
-    else
-      Genten::mttkrp_all(X, u, v, algParams_);
+    else {
+      distUpdate_->import(u, timer_, timer_comm_);
+      // Fix this
+      Genten::mttkrp_all(X, distUpdate_->getOverlapKtensor(), v, algParams_);
+    }
     timer_.stop(timer_mttkrp_);
 
     distUpdate_->update(v,timer_,timer_comm_,timer_update_);
 
     u.setProcessorMap(pmap);
+  }
+
+  ttb_real innerprod(const SptensorT<exec_space>& X,
+                     const KtensorT<exec_space>& u,
+                     const Genten::ArrayT<ExecSpace>& lambda)
+  {
+    assert(distUpdate_ != nullptr);
+
+    distUpdate_->import(u, timer_, timer_comm_);
+    return Genten::innerprod(X,distUpdate_->getOverlapKtensor(),lambda);
   }
 
 };

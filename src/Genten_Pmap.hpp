@@ -53,9 +53,11 @@ namespace Genten {
 
 class ProcessorMap {
 public:
-  ProcessorMap(std::vector<std::uint32_t> const &tensor_dims);
   ProcessorMap(std::vector<std::uint32_t> const &tensor_dims,
-               small_vector<int> const &predetermined_grid);
+               const bool use_tpetra);
+  ProcessorMap(std::vector<std::uint32_t> const &tensor_dims,
+               small_vector<int> const &predetermined_grid,
+               const bool use_tpetra);
   ~ProcessorMap();
 
   ProcessorMap() = delete;

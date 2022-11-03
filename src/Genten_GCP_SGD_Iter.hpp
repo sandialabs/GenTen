@@ -97,14 +97,15 @@ namespace Genten {
 
       virtual VectorType getSolution() const { return u; }
 
-      virtual void run(SptensorT<ExecSpace>& X,
+      virtual void run(const DistTensorContext<ExecSpace>& dtc,
+                       SptensorT<ExecSpace>& X,
                        const LossFunction& loss_func,
                        Sampler<ExecSpace,LossFunction>& sampler,
                        GCP_SGD_Step<ExecSpace,LossFunction>& stepper,
                        ttb_indx& total_iters)
       {
         DistMttkrp< SptensorT<ExecSpace> > distMttkrp(
-          X_grad, ut, sampler.getNumGradSamples(), algParams,
+          dtc, X_grad, ut, sampler.getNumGradSamples(), algParams,
           timer, timer_grad_mttkrp, timer_grad_comm, timer_grad_update);
 
         for (ttb_indx iter=0; iter<algParams.epoch_iters; ++iter) {

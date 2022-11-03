@@ -240,15 +240,17 @@ namespace Genten {
   struct Dist_Update_Method {
     enum type {
       AllReduce,
-      AllGather
+      AllGather,
+      Tpetra
     };
-    static constexpr unsigned num_types = 2;
+    static constexpr unsigned num_types = 3;
     static constexpr type types[] = {
       AllReduce,
-      AllGather
+      AllGather,
+      Tpetra
     };
     static constexpr const char* names[] = {
-      "all-reduce", "all-gather"
+      "all-reduce", "all-gather", "tpetra"
     };
     static constexpr type default_type = AllReduce;
   };

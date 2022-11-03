@@ -202,7 +202,8 @@ small_vector<int> CartGrid(int nprocs,
 } // namespace
 
 ProcessorMap::ProcessorMap(std::vector<std::uint32_t> const &tensor_dims,
-                           small_vector<int> const &predetermined_grid)
+                           small_vector<int> const &predetermined_grid,
+                           const bool use_tpetra)
     : dimension_sizes_(predetermined_grid) {
   const auto ndims = dimension_sizes_.size();
 
@@ -235,19 +236,28 @@ ProcessorMap::ProcessorMap(std::vector<std::uint32_t> const &tensor_dims,
   small_vector<int> dim_filter2(ndims, 0);
   fac_maps_.resize(ndims);
 
-  // Get information for the MPI Subgrid for each Dimension
-  for (auto i = 0; i < ndims; ++i) {
-    dim_filter2[i] = 1; // Get only this dim
-    MPI_Comm lcl_comm;
-    MPI_Cart_sub(cart_comm_, dim_filter2.data(), &lcl_comm);
-    fac_maps_[i] = FacMap(lcl_comm);
-    dim_filter2[i] = 0; // Reset the dim_filter
+  // For Tpetra approach, factor matrices are distributed across all procs
+  if (use_tpetra) {
+    for (auto i = 0; i < ndims; ++i)
+      fac_maps_[i] = FacMap(cart_comm_);
+  }
+  else {
+    // Get information for the MPI Subgrid for each Dimension
+    for (auto i = 0; i < ndims; ++i) {
+      dim_filter2[i] = 1; // Get only this dim
+      MPI_Comm lcl_comm;
+      MPI_Cart_sub(cart_comm_, dim_filter2.data(), &lcl_comm);
+      fac_maps_[i] = FacMap(lcl_comm);
+      dim_filter2[i] = 0; // Reset the dim_filter
+    }
   }
 }
 
-ProcessorMap::ProcessorMap(std::vector<std::uint32_t> const &tensor_dims)
+ProcessorMap::ProcessorMap(std::vector<std::uint32_t> const &tensor_dims,
+                           const bool use_tpetra)
     : ProcessorMap(tensor_dims,
-                   CartGrid(DistContext::nranks(), tensor_dims)) {}
+                   CartGrid(DistContext::nranks(), tensor_dims),
+                   use_tpetra) {}
 
 void ProcessorMap::gridBarrier() const {
   if (grid_nprocs_ > 1) {

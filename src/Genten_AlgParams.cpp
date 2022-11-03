@@ -297,7 +297,6 @@ void Genten::AlgParams::parse(const ptree& input)
                         mttkrp_duplicated_factor_matrix_tile_size, 0, INT_MAX);
       parse_ptree_value(mttkrp_input, "duplicated-threshold",
                         mttkrp_duplicated_threshold, -1.0, DOUBLE_MAX);
-      parse_ptree_enum<Dist_Update_Method>(mttkrp_input, "dist-method", dist_update_method);
       parse_ptree_value(mttkrp_input, "warmup", warmup);
     }
   };
@@ -310,6 +309,7 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_value(ktensor_input, "seed", seed, 0, ULONG_MAX);
     parse_ptree_value(ktensor_input, "prng", prng);
     parse_ptree_value(ktensor_input, "distributed-guess", dist_guess_method);
+    parse_ptree_enum<Dist_Update_Method>(ktensor_input, "dist-method", dist_update_method);
   }
 
   // CP-ALS

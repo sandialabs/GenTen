@@ -106,7 +106,8 @@ namespace Genten {
    *                        or tensor arguments are incompatible.
    */
   template<typename TensorT, typename ExecSpace>
-  void cpals_core (const TensorT& x,
+  void cpals_core (const DistTensorContext<ExecSpace>& dtc,
+                   const TensorT& x,
                    KtensorT<ExecSpace>& u,
                    const AlgParams& algParams,
                    ttb_indx& numIters,
@@ -138,11 +139,11 @@ namespace Genten {
       Genten::error("Genten::cpals_core - ktensor u is not consistent");
     if (x.ndims() != u.ndims())
       Genten::error("Genten::cpals_core - u and x have different num dims");
-    for (ttb_indx  i = 0; i < x.ndims(); i++)
-    {
-      if (x.size(i) != u[i].nRows())
-        Genten::error("Genten::cpals_core - u and x have different size");
-    }
+    // for (ttb_indx  i = 0; i < x.ndims(); i++)
+    // {
+    //   if (x.size(i) != u[i].nRows())
+    //     Genten::error("Genten::cpals_core - u and x have different size");
+    // }
 
     // Start timer for total execution time of the algorithm.
     int num_timers = 0;
@@ -159,7 +160,8 @@ namespace Genten {
     const int timer_arrange = num_timers++;
     Genten::SystemTimer timer(8, algParams.timings, pmap);
 
-    DistMttkrp<TensorT> distMttkrp(x, u, algParams, timer, timer_mttkrp_local,
+    DistMttkrp<TensorT> distMttkrp(dtc, x, u, algParams,
+                                   timer, timer_mttkrp_local,
                                    timer_mttkrp_comm, timer_mttkrp_update);
 
     timer.start(timer_cpals);
@@ -223,7 +225,8 @@ namespace Genten {
     if (perfIter > 0) {
       perfInfo.addEmpty();
       ttb_real dUnorm = sqrt(u.normFsq());
-      ttb_real dXtU = innerprod (x, u, lambda);
+      //ttb_real dXtU = innerprod (x, u, lambda);
+      ttb_real dXtU = distMttkrp.innerprod (x, u, lambda);
       ttb_real dRes = computeResNorm(xNorm, dUnorm, dXtU);
       fit = 1.0 - (dRes / xNorm);
       if (fit < 0.0)
@@ -249,7 +252,7 @@ namespace Genten {
         // The size of u[n] is dim(n) rows by R columns.
         timer.start(timer_mttkrp);
         //Genten::mttkrp (x, u, n, algParams);
-        distMttkrp.mttkrp(x, u, n, u[n]);
+        distMttkrp.mttkrp(x, u, n);
         Kokkos::fence();
         timer.stop(timer_mttkrp);
 
@@ -497,6 +500,7 @@ namespace Genten {
 
 #define INST_MACRO(SPACE)                                               \
   template void cpals_core<SptensorT<SPACE>,SPACE>(                     \
+    const DistTensorContext<SPACE>& dtc,                                \
     const SptensorT<SPACE>& x,                                          \
     KtensorT<SPACE>& u,                                                 \
     const AlgParams& algParams,                                         \
@@ -507,6 +511,7 @@ namespace Genten {
     std::ostream& out);                                                 \
                                                                         \
   template void cpals_core<TensorT<SPACE>,SPACE>(                       \
+    const DistTensorContext<SPACE>& dtc,                                \
     const TensorT<SPACE>& x,                                            \
     KtensorT<SPACE>& u,                                                 \
     const AlgParams& algParams,                                         \

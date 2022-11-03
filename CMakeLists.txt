@@ -189,6 +189,11 @@ IF (ENABLE_GCP)
     INCLUDE_DIRECTORIES(SYSTEM ${ROL_INCLUDE_DIRS} ${ROL_TPL_INCLUDE_DIRS})
     LINK_DIRECTORIES(${ROL_LIBRARY_DIRS} ${ROL_TPL_LIBRARY_DIRS} )
     SET(HAVE_ROL ${ENABLE_ROL})
+
+    # To do:
+    #  * setup proper options and checks for Tpetra indepenent of ROL
+    #  * make sure HAVE_DIST is on when Tpetra is on
+    SET(HAVE_TPETRA ${ENABLE_ROL})
   ENDIF()
 ENDIF()
 

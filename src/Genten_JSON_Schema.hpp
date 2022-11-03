@@ -85,11 +85,6 @@ static nlohmann::json json_schema = R"(
                   "minimum": -1.0,
                   "default": -1.0
               },
-              "dist-method": {
-                  "description": "Distributed Ktensor update method",
-                  "enum": ["all-reduce", "all-gather"],
-                  "default": "all-reduce"
-              },
               "warmup": {
                   "description": "Do an iteration of mttkrp to warmup for generating accurate timing information",
                   "type": "boolean",
@@ -215,6 +210,11 @@ static nlohmann::json json_schema = R"(
                   "description": "Use parallel random number generator",
                   "type": "boolean",
                   "default": false
+              },
+              "dist-method": {
+                  "description": "Distributed Ktensor update method",
+                  "enum": ["all-reduce", "all-gather", "tpetra"],
+                  "default": "all-reduce"
               }
           }
       },

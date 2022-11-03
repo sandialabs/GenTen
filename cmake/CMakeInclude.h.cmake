@@ -79,6 +79,9 @@
 //---- DEFINED IF ROL IS ENABLED.
 #cmakedefine HAVE_ROL
 
+//---- DEFINED IF Tpetra IS ENABLED.
+#cmakedefine HAVE_TPETRA
+
 //---- DEFINED IF GCP IS ENABLED.
 #cmakedefine HAVE_GCP
 

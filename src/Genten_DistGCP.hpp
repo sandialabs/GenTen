@@ -60,7 +60,7 @@ namespace Genten {
 template <typename ExecSpace>
 class DistGCP {
 public:
-  DistGCP(const DistTensorContext& dtc,
+  DistGCP(const DistTensorContext<ExecSpace>& dtc,
           const SptensorT<ExecSpace>& spTensor,
           const KtensorT<ExecSpace>& kTensor,
           const ptree& tree,
@@ -86,7 +86,7 @@ private:
   template <typename Loss> ttb_real pickMethod(Loss const &loss);
   AlgParams setAlgParams();
 
-  DistTensorContext dtc_;
+  DistTensorContext<ExecSpace> dtc_;
   SptensorT<ExecSpace> spTensor_;
   KtensorT<ExecSpace> Kfac_;
   ptree input_;
@@ -104,7 +104,7 @@ private:
 };
 
 template <typename ExecSpace>
-DistGCP<ExecSpace>::DistGCP(const DistTensorContext& dtc,
+DistGCP<ExecSpace>::DistGCP(const DistTensorContext<ExecSpace>& dtc,
                             const SptensorT<ExecSpace>& spTensor,
                             const KtensorT<ExecSpace>& kTensor,
                             const ptree& tree,

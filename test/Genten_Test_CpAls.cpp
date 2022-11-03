@@ -302,7 +302,8 @@ void RunCpAlsTest(MTTKRP_Method::type mttkrp_method, const std::string &label) {
     // Allocation adds two more for start and stop states of the algorithm.
     PerfHistory perfInfo;
     deep_copy(result_dev, initialBasis_dev);
-    cpals_core(X_dev, result_dev, algParams, itersCompleted, resNorm, 3,
+    DistTensorContext<exec_space> dtc;
+    cpals_core(dtc, X_dev, result_dev, algParams, itersCompleted, resNorm, 3,
                perfInfo);
     // Check performance information.
     for (ttb_indx i = 0; i < perfInfo.size(); i++) {
@@ -332,7 +333,8 @@ void RunCpAlsTest(MTTKRP_Method::type mttkrp_method, const std::string &label) {
   INFO_MSG("Checking if linear solver detects singular guess");
   deep_copy(result_dev, initialZero_dev);
   PerfHistory history;
-  ASSERT_ANY_THROW(cpals_core(X_dev, result_dev, algParams, itersCompleted,
+  DistTensorContext<exec_space> dtc;
+  ASSERT_ANY_THROW(cpals_core(dtc, X_dev, result_dev, algParams, itersCompleted,
                               resNorm, 0, history));
 
   // Repeat the tests using the same data, but in a dense Tensor.
@@ -344,7 +346,8 @@ void RunCpAlsTest(MTTKRP_Method::type mttkrp_method, const std::string &label) {
   EXPECT_NO_THROW({
     deep_copy(result_dev, initialBasis_dev);
     PerfHistory history;
-    cpals_core(Xd_dev, result_dev, algParams, itersCompleted, resNorm, 0,
+    DistTensorContext<exec_space> dtc;
+    cpals_core(dtc, Xd_dev, result_dev, algParams, itersCompleted, resNorm, 0,
                history);
   });
 

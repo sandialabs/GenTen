@@ -207,7 +207,8 @@ int main(int argc, char* argv[])
     {
       result = initialGuess;
       Genten::PerfHistory history;
-      Genten::cpals_core (data, result, algParams, itersCompleted, resNorm,
+      Genten::DistTensorContext<Genten::DefaultExecutionSpace> dtc;
+      Genten::cpals_core (dtc, data, result, algParams, itersCompleted, resNorm,
                           0, history);
     }
     catch(std::string sExc)
