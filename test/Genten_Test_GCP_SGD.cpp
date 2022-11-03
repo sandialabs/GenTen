@@ -38,6 +38,7 @@
 // ************************************************************************
 //@HEADER
 
+#include <Genten_DistTensorContext.hpp>
 #include <Genten_GCP_SGD.hpp>
 #include <Genten_GCP_SGD_SA.hpp>
 #include <Genten_Sptensor.hpp>
@@ -130,8 +131,8 @@ void RunGcpSgdTest(const std::string &label, GCP_Sampling::type sampling_type,
 
   GENTEN_EQ(X.nnz(), 11, "Data tensor has 11 nonzeroes");
 
-  SptensorT<exec_space> X_dev = create_mirror_view(exec_space(), X);
-  deep_copy(X_dev, X);
+  Genten::DistTensorContext dtc;
+  SptensorT<exec_space> X_dev = dtc.distributeTensor<exec_space>(X);
   if (mttkrp_method == MTTKRP_Method::Perm) {
     X_dev.createPermutation();
   }
@@ -144,9 +145,14 @@ void RunGcpSgdTest(const std::string &label, GCP_Sampling::type sampling_type,
   initialBasis.setMatricesScatter(false, false, cRMT);
   initialBasis.setWeights(1.0);
 
-  KtensorT<exec_space> initialBasis_dev =
-      create_mirror_view(exec_space(), initialBasis);
-  deep_copy(initialBasis_dev, initialBasis);
+  KtensorT<exec_space> ib_dev = create_mirror_view(exec_space(), initialBasis);
+  deep_copy(ib_dev, initialBasis);
+
+  KtensorT<exec_space> initialBasis_dev = dtc.exportFromRoot(ib_dev);
+
+  // Set parallel maps
+  const ProcessorMap *pmap = dtc.pmap_ptr().get();
+  X_dev.setProcessorMap(pmap);
 
   // Factorize.
   AlgParams algParams;
@@ -164,10 +170,12 @@ void RunGcpSgdTest(const std::string &label, GCP_Sampling::type sampling_type,
 
   ttb_indx numIters;
   ttb_real resNorm;
-  KtensorT<exec_space> result_dev;
+  KtensorT<exec_space> result_dev =
+      create_mirror_view(exec_space(), initialBasis_dev);
+  deep_copy(result_dev, initialBasis_dev);
+  result_dev.setProcessorMap(pmap);
   PerfHistory history;
   EXPECT_NO_THROW({
-    result_dev = initialBasis_dev;
     if (!fuse_sa) {
       gcp_sgd(X_dev, result_dev, algParams, numIters, resNorm, history,
               std::cout);
@@ -177,18 +185,21 @@ void RunGcpSgdTest(const std::string &label, GCP_Sampling::type sampling_type,
     }
   });
 
-  Ktensor result = initialBasis;
-  deep_copy(result, result_dev);
+  KtensorT<exec_space> result = dtc.importToRoot(result_dev);
+  if (dtc.gridRank() == 0) {
+    Ktensor result_host = create_mirror_view(host_exec_space(), result);
+    deep_copy(result_host, result);
 
-  // Multiply Ktensor entries and compare to tensor
-  const ttb_real tol = 1.0e-3;
-  const ttb_indx nnz = X.nnz();
-  const IndxArray subs(3);
-  for (ttb_indx i = 0; i < nnz; ++i) {
-    X.getSubscripts(i, subs);
-    const ttb_real x_val = X.value(i);
-    const ttb_real val = result.entry(subs);
-    GENTEN_LE(fabs(x_val - val), tol, "Result matches");
+    // Multiply Ktensor entries and compare to tensor
+    const ttb_real tol = 1.0e-3;
+    const ttb_indx nnz = X.nnz();
+    const IndxArray subs(3);
+    for (ttb_indx i = 0; i < nnz; ++i) {
+      X.getSubscripts(i, subs);
+      const ttb_real x_val = X.value(i);
+      const ttb_real val = result_host.entry(subs);
+      GENTEN_LE(fabs(x_val - val), tol, "Result matches");
+    }
   }
 }
 
