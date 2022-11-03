@@ -258,6 +258,37 @@ exportFromRoot(const KtensorT<ExecSpace>& u) const
   return exp;
 }
 
+namespace {
+
+template <typename T> bool isValueSame(T x) {
+  T p[]{-x, x};
+  MPI_Allreduce(MPI_IN_PLACE, p, 2, DistContext::toMpiType<T>(), MPI_MIN,
+                MPI_COMM_WORLD);
+  return p[0] == -p[1];
+}
+
+template <typename ExecSpace>
+bool weightsAreSame(const KtensorT<ExecSpace> &u) {
+#ifdef NDEBUG
+  return true;
+#else
+  const auto wspan = u.weights().values().span();
+  if (!isValueSame(wspan)) {
+    return false;
+  }
+
+  for (std::size_t i = 0; i < wspan; ++i) {
+    if (!isValueSame(u.weights(i))) {
+      return false;
+    }
+  }
+
+  return true;
+#endif
+}
+
+} // namespace
+
 template <typename ExecSpace>
 KtensorT<ExecSpace>
 DistTensorContext::
@@ -278,6 +309,13 @@ importToRoot(const KtensorT<ExecSpace>& u) const
   }
   deep_copy(sizes_idx, sizes_idx_host);
   out = KtensorT<ExecSpace>(nc, nd, sizes_idx);
+
+  if (!weightsAreSame(u)) {
+    throw std::string(
+        "Ktensor weights are expected to be the same on all ranks");
+  }
+
+  deep_copy(out.weights(), u.weights());
 
   if (print)
     std::cout << "Blocking:\n";

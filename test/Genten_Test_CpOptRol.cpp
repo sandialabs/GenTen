@@ -38,9 +38,12 @@
 // ************************************************************************
 //@HEADER
 
+#include "CMakeInclude.h"
+
 #ifdef HAVE_ROL
 
 #include <Genten_CP_Opt_Rol.hpp>
+#include <Genten_DistTensorContext.hpp>
 #include <Genten_Sptensor.hpp>
 #include <Genten_Tensor.hpp>
 
@@ -241,8 +244,8 @@ void RunCpOptRolTest(MTTKRP_All_Method::type mttkrp_method,
 
   GENTEN_EQ(X.nnz(), 11, "Data tensor has 11 nonzeroes");
 
-  SptensorT<exec_space> X_dev = create_mirror_view(exec_space(), X);
-  deep_copy(X_dev, X);
+  Genten::DistTensorContext dtc;
+  SptensorT<exec_space> X_dev = dtc.distributeTensor<exec_space>(X);
 
   INFO_MSG("Creating a ktensor with initial guess of lin indep basis vectors");
 
@@ -270,9 +273,14 @@ void RunCpOptRolTest(MTTKRP_All_Method::type mttkrp_method,
   initialBasis[2].entry(3, 1) = 0.7;
   initialBasis.weights(0) = 2.0; // Test with weights different from one.
 
-  KtensorT<exec_space> initialBasis_dev =
-      create_mirror_view(exec_space(), initialBasis);
-  deep_copy(initialBasis_dev, initialBasis);
+  KtensorT<exec_space> ib_dev = create_mirror_view(exec_space(), initialBasis);
+  deep_copy(ib_dev, initialBasis);
+
+  KtensorT<exec_space> initialBasis_dev = dtc.exportFromRoot(ib_dev);
+
+  // Set parallel maps
+  const ProcessorMap *pmap = dtc.pmap_ptr().get();
+  X_dev.setProcessorMap(pmap);
 
   // Factorize.
   AlgParams algParams;
@@ -281,32 +289,37 @@ void RunCpOptRolTest(MTTKRP_All_Method::type mttkrp_method,
   algParams.maxiters = 100;
   algParams.printitn = 0;
   algParams.mttkrp_all_method = mttkrp_method;
-  Ktensor result(nNumComponents, dims.size(), dims);
-  KtensorT<exec_space> result_dev = create_mirror_view(exec_space(), result);
+  KtensorT<exec_space> result_dev =
+      create_mirror_view(exec_space(), initialBasis_dev);
+  deep_copy(result_dev, initialBasis_dev);
+  result_dev.setProcessorMap(pmap);
   EXPECT_NO_THROW({
-    deep_copy(result_dev, initialBasis_dev);
     PerfHistory history;
     cp_opt_rol(X_dev, result_dev, algParams, history);
   });
 
-  deep_copy(result, result_dev);
+  KtensorT<exec_space> result = dtc.importToRoot(result_dev);
 
-  evaluateResult(algParams.tol, result);
+  if (dtc.gridRank() == 0) {
+    evaluateResult(algParams.tol, result);
+  }
 
-  // Repeat the tests using the same data, but in a dense Tensor.
+  if (DistContext::nranks() == 1) {
+    // Repeat the tests using the same data, but in a dense Tensor.
 
-  INFO_MSG("Creating a dense tensor with data to model");
-  TensorT<exec_space> Xd_dev(X_dev);
+    INFO_MSG("Creating a dense tensor with data to model");
+    TensorT<exec_space> Xd_dev(X_dev);
 
-  // Factorize.
-  EXPECT_NO_THROW({
-    deep_copy(result_dev, initialBasis_dev);
-    PerfHistory history;
-    cp_opt_rol(Xd_dev, result_dev, algParams, history);
-  });
+    // Factorize.
+    EXPECT_NO_THROW({
+      deep_copy(result_dev, initialBasis_dev);
+      PerfHistory history;
+      cp_opt_rol(Xd_dev, result_dev, algParams, history);
+    });
 
-  deep_copy(result, result_dev);
-  evaluateResult(algParams.tol, result);
+    deep_copy(result, result_dev);
+    evaluateResult(algParams.tol, result);
+  }
 }
 
 TYPED_TEST(TestCpOptRolT, CpOptRol) {
