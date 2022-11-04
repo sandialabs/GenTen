@@ -160,10 +160,6 @@ namespace Genten {
     const int timer_arrange = num_timers++;
     Genten::SystemTimer timer(8, algParams.timings, pmap);
 
-    DistMttkrp<TensorT> distMttkrp(dtc, x, u, algParams,
-                                   timer, timer_mttkrp_local,
-                                   timer_mttkrp_comm, timer_mttkrp_update);
-
     timer.start(timer_cpals);
 
     ttb_indx nc = u.ncomponents();     // number of components
@@ -186,6 +182,10 @@ namespace Genten {
     // Distribute the initial guess to have weights of one.
     u.distribute(0);
     Genten::ArrayT<ExecSpace> lambda(nc, (ttb_real) 1.0);
+
+    DistMttkrp<TensorT> distMttkrp(dtc, x, u, algParams,
+                                   timer, timer_mttkrp_local,
+                                   timer_mttkrp_comm, timer_mttkrp_update);
 
     // Define gamma, an array of Gramian Matrices corresponding to the
     // factor matrices in u.

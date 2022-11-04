@@ -652,6 +652,8 @@ distributeTensorData(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
     tpetra_comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap_->gridComm()));
 
     // Distribute each factor matrix uniformly across all processors
+    // ToDo:  consider possibly not doing this when the number of rows is
+    // small.  It might be better to replicate rows instead
     factorMap.resize(ndims);
     for (auto dim=0; dim<ndims; ++dim) {
       const tpetra_go_type numGlobalElements = global_dims_[dim];
@@ -707,8 +709,10 @@ distributeTensorData(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
       }
       overlapFactorMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(invalid, gids, indexBase, tpetra_comm));
       indices[dim] = overlapFactorMap[dim]->getLocalNumElements();
-      //Teuchos::FancyOStream fos(Teuchos::rcpFromRef(std::cout));
-      //overlapFactorMap[dim]->describe(fos, Teuchos::VERB_EXTREME);
+
+      // ToDo:  add option for calling Tpetra's makeOptimizedColMap
+      // That requires reordering nonzeros by looping through all of the new
+      // maps GIDs and setting the corresponding LIDs in the tensor
     }
 
     // Build maps and importers for importing factor matrices to/from root

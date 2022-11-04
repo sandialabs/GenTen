@@ -124,6 +124,8 @@ private:
   int timer_comm_;
   int timer_update_;
   DistKtensorUpdate<exec_space>* distUpdate_;
+  KtensorT<exec_space> u_overlapped;
+  KtensorT<exec_space> v_overlapped;
 
 public:
 
@@ -176,13 +178,14 @@ public:
   DistMttkrp& operator=(const DistMttkrp&) = delete;
 
   void mttkrp(const SptensorT<exec_space>& X,
-              KtensorT<exec_space>& u,
-              const ttb_indx n) const
+              const KtensorT<exec_space>& u,
+              const ttb_indx n)
   {
     assert(distUpdate_ != nullptr);
 
-    auto pmap = u.getProcessorMap();
-    u.setProcessorMap(nullptr);
+    if (u.ndims() != u_overlapped.ndims() ||
+        u.ncomponents() != u_overlapped.ncomponents())
+      u_overlapped = distUpdate_->createOverlapKtensor(u);
 
     timer_.start(timer_mttkrp_);
     if (algParams_.dist_update_method == Dist_Update_Method::AllGather) {
@@ -194,24 +197,26 @@ public:
       row_val_mttkrp(X, u, n, rows, vals, algParams_);
     }
     else {
-      distUpdate_->import(u, timer_, timer_comm_);
-      Genten::mttkrp(X, distUpdate_->getOverlapKtensor(), n, algParams_);
+      distUpdate_->doImport(u_overlapped, u, timer_, timer_comm_);
+      Genten::mttkrp(X, u_overlapped, n, algParams_);
     }
     timer_.stop(timer_mttkrp_);
 
-    distUpdate_->update(u,n,timer_,timer_comm_,timer_update_);
-
-    u.setProcessorMap(pmap);
+    distUpdate_->doExport(u, u_overlapped, n, timer_, timer_comm_, timer_update_);
   }
 
   void mttkrp_all(const SptensorT<exec_space>& X,
-                  KtensorT<exec_space>& u,
-                  const KtensorT<exec_space>& v) const
+                  const KtensorT<exec_space>& u,
+                  const KtensorT<exec_space>& v)
   {
     assert(distUpdate_ != nullptr);
 
-    auto pmap = u.getProcessorMap();
-    u.setProcessorMap(nullptr);
+    if (u.ndims() != u_overlapped.ndims() ||
+        u.ncomponents() != u_overlapped.ncomponents())
+      u_overlapped = distUpdate_->createOverlapKtensor(u);
+    if (v.ndims() != v_overlapped.ndims() ||
+        v.ncomponents() != v_overlapped.ncomponents())
+      v_overlapped = distUpdate_->createOverlapKtensor(v);
 
     timer_.start(timer_mttkrp_);
     if (algParams_.dist_update_method == Dist_Update_Method::AllGather) {
@@ -223,15 +228,12 @@ public:
       row_val_mttkrp_all(X, u, rows, vals, algParams_);
     }
     else {
-      distUpdate_->import(u, timer_, timer_comm_);
-      // Fix this
-      Genten::mttkrp_all(X, distUpdate_->getOverlapKtensor(), v, algParams_);
+      distUpdate_->doImport(u_overlapped, u, timer_, timer_comm_);
+      Genten::mttkrp_all(X, u_overlapped, v_overlapped, algParams_);
     }
     timer_.stop(timer_mttkrp_);
 
-    distUpdate_->update(v,timer_,timer_comm_,timer_update_);
-
-    u.setProcessorMap(pmap);
+    distUpdate_->doExport(v, v_overlapped, timer_, timer_comm_, timer_update_);
   }
 
   ttb_real innerprod(const SptensorT<exec_space>& X,
@@ -240,8 +242,12 @@ public:
   {
     assert(distUpdate_ != nullptr);
 
-    distUpdate_->import(u, timer_, timer_comm_);
-    return Genten::innerprod(X,distUpdate_->getOverlapKtensor(),lambda);
+    if (u.ndims() != u_overlapped.ndims() ||
+        u.ncomponents() != u_overlapped.ncomponents())
+      u_overlapped = distUpdate_->createOverlapKtensor(u);
+
+    distUpdate_->doImport(u_overlapped, u, timer_, timer_comm_);
+    return Genten::innerprod(X, u_overlapped, lambda);
   }
 
 };
