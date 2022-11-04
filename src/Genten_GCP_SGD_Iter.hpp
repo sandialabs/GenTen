@@ -118,6 +118,7 @@ namespace Genten {
             timer.start(timer_sample_g);
             timer.start(timer_sample_g_z_nz);
             sampler.sampleTensor(true, ut, loss_func,  X_grad, w_grad);
+            distMttkrp.updateTensor(X_grad);
             timer.stop(timer_sample_g_z_nz);
             timer.start(timer_sample_g_perm);
             if (algParams.mttkrp_method == MTTKRP_Method::Perm &&

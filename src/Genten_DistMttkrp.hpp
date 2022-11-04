@@ -86,6 +86,8 @@ public:
   DistMttkrp& operator=(DistMttkrp&&) = delete;
   DistMttkrp& operator=(const DistMttkrp&) = delete;
 
+  void updateTensor(TensorType& X) {}
+
   void mttkrp(const TensorType& X,
               KtensorT<exec_space>& u,
               const ttb_indx n) const
@@ -148,7 +150,7 @@ public:
     }
 #ifdef HAVE_TPETRA
     else if (algParams_.dist_update_method == Dist_Update_Method::Tpetra) {
-    distUpdate_ = new KtensorTpetraUpdate<exec_space>(dtc, u);
+      distUpdate_ = new KtensorTpetraUpdate<exec_space>(dtc, X, u);
     }
 #endif
     else
@@ -176,6 +178,14 @@ public:
   DistMttkrp(const DistMttkrp&) = delete;
   DistMttkrp& operator=(DistMttkrp&&) = delete;
   DistMttkrp& operator=(const DistMttkrp&) = delete;
+
+  void updateTensor(SptensorT<exec_space>& X)
+  {
+    assert(distUpdate_ != nullptr);
+    distUpdate_->updateTensor(X);
+    u_overlapped = KtensorT<ExecSpace>();
+    v_overlapped = KtensorT<ExecSpace>();
+  }
 
   void mttkrp(const SptensorT<exec_space>& X,
               const KtensorT<exec_space>& u,
