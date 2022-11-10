@@ -44,6 +44,7 @@
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_HessVec.hpp"
 #include "Genten_Pmap.hpp"
+#include "Genten_DistKtensorUpdate.hpp"
 
 namespace Genten {
 
@@ -61,7 +62,7 @@ namespace Genten {
     CP_Model(const tensor_type& X, const ktensor_type& M,
              const AlgParams& algParms);
 
-    ~CP_Model() {}
+    ~CP_Model();
 
     // Compute information that is common to both value() and gradient()
     // when a new design vector is computed
@@ -99,6 +100,9 @@ namespace Genten {
     std::vector< FacMatrixT<exec_space> > hada;
     ArrayT<exec_space> ones;
 
+    DistKtensorUpdate<exec_space> *dku;
+    mutable ktensor_type M_overlap, G_overlap;
+
   };
 
   template <typename Tensor>
@@ -107,21 +111,37 @@ namespace Genten {
            const ktensor_type& M,
            const AlgParams& algParms) :
       X(x), algParams(algParms)
-    {
-      const ttb_indx nc = M.ncomponents();
-      const ttb_indx nd = M.ndims();
-      const ttb_real nrm_X = X.global_norm();
-      nrm_X_sq = nrm_X*nrm_X;
+  {
+    const ttb_indx nc = M.ncomponents();
+    const ttb_indx nd = M.ndims();
+    const ttb_real nrm_X = X.global_norm();
+    nrm_X_sq = nrm_X*nrm_X;
 
-      // Note gram and hada are not distributed, so we don't set the pmap
-      gram.resize(nd);
-      hada.resize(nd);
-      for (ttb_indx i=0; i<nd; ++i) {
-        gram[i] = FacMatrixT<exec_space>(nc,nc);
-        hada[i] = FacMatrixT<exec_space>(nc,nc);
-      }
-      ones = ArrayT<exec_space>(nc, 1.0);
+    // Note gram and hada are not distributed, so we don't set the pmap
+    gram.resize(nd);
+    hada.resize(nd);
+    for (ttb_indx i=0; i<nd; ++i) {
+      gram[i] = FacMatrixT<exec_space>(nc,nc);
+      hada[i] = FacMatrixT<exec_space>(nc,nc);
     }
+    ones = ArrayT<exec_space>(nc, 1.0);
+
+    dku = createKtensorUpdate(x, M, algParams);
+    M_overlap = dku->createOverlapKtensor(M);
+
+    for (ttb_indx  i = 0; i < x.ndims(); i++)
+    {
+      if (x.size(i) != M_overlap[i].nRows())
+        Genten::error("Genten::CP_Model - M and x have different size");
+    }
+  }
+
+  template <typename Tensor>
+  CP_Model<Tensor>::
+  ~CP_Model()
+  {
+    delete dku;
+  }
 
   template <typename Tensor>
   void
@@ -142,6 +162,7 @@ namespace Genten {
       }
     }
 
+    dku->doImport(M_overlap, M);
   }
 
   template <typename Tensor>
@@ -155,7 +176,7 @@ namespace Genten {
 
     // <X,M>.  Unfortunately can't use MTTKRP trick since we don't want to
     // compute MTTKRP in update()
-    const ttb_real ip = innerprod(X,M);
+    const ttb_real ip = innerprod(X,M_overlap);
 
     ttb_real f = ttb_real(0.5)*(nrm_X_sq + nrm_M_sq) - ip;
 
@@ -172,8 +193,12 @@ namespace Genten {
   CP_Model<Tensor>::
   gradient(ktensor_type& G, const ktensor_type& M) const
   {
+    if (G_overlap.ndims() != G.ndims() ||
+        G_overlap.ncomponents() != G.ncomponents())
+      G_overlap = dku->createOverlapKtensor(G);
     const ttb_indx nd = M.ndims();
-    mttkrp_all(X, M, G, algParams);
+    mttkrp_all(X, M_overlap, G_overlap, algParams);
+    dku->doExport(G, G_overlap);
 
     for (ttb_indx n=0; n<nd; ++n)
       G[n].gemm(false, false, ttb_real(1.0), M[n], hada[n], ttb_real(-1.0));
@@ -189,8 +214,13 @@ namespace Genten {
   CP_Model<Tensor>::
   value_and_gradient(ktensor_type& G, const ktensor_type& M) const
   {
+    if (G_overlap.ndims() != G.ndims() ||
+        G_overlap.ncomponents() != G.ncomponents())
+      G_overlap = dku->createOverlapKtensor(G);
+
     // MTTKRP
-    mttkrp_all(X, M, G, algParams);
+    mttkrp_all(X, M_overlap, G_overlap, algParams);
+    dku->doExport(G, G_overlap);
 
     // <X,M> using 'MTTKRP' trick
     const ttb_indx nd = M.ndims();

@@ -45,7 +45,7 @@
 #include "Genten_IndxArray.hpp"
 #include "Genten_Pmap.hpp"
 #include "Genten_DistFacMatrix.hpp"
-#include "Genten_DistTensorContext.hpp"
+#include "Genten_SystemTimer.hpp"
 
 namespace Genten {
 
@@ -69,11 +69,26 @@ public:
   };
 
   virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
+                        const KtensorT<ExecSpace>& u) const
+  {
+    deep_copy(u_overlapped, u); // no-op if u and u_overlapped are the same
+  }
+
+  virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
+                        const KtensorT<ExecSpace>& u,
+                        const ttb_indx n) const
+  {
+    deep_copy(u_overlapped[n], u[n]); // no-op if u and u_overlapped are the same
+  }
+
+  virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
                         const KtensorT<ExecSpace>& u,
                         SystemTimer& timer,
                         const int timer_comm) const
   {
-    deep_copy(u_overlapped, u); // no-op if u and u_overlapped are the same
+    timer.start(timer_comm);
+    this->doImport(u_overlapped, u);
+    timer.stop(timer_comm);
   }
 
   virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
@@ -82,21 +97,40 @@ public:
                         SystemTimer& timer,
                         const int timer_comm) const
   {
-    deep_copy(u_overlapped[n], u[n]); // no-op if u and u_overlapped are the same
+    timer.start(timer_comm);
+    this->doImport(u_overlapped, u, n);
+    timer.stop(timer_comm);
   }
+
+  virtual void doExport(const KtensorT<ExecSpace>& u,
+                        const KtensorT<ExecSpace>& u_overlapped) const = 0;
+
+  virtual void doExport(const KtensorT<ExecSpace>& u,
+                        const KtensorT<ExecSpace>& u_overlapped,
+                        const ttb_indx n) const = 0;
 
   virtual void doExport(const KtensorT<ExecSpace>& u,
                         const KtensorT<ExecSpace>& u_overlapped,
                         SystemTimer& timer,
                         const int timer_comm,
-                        const int timer_update) const = 0;
+                        const int timer_update) const
+  {
+    timer.start(timer_comm);
+    this->doExport(u, u_overlapped);
+    timer.stop(timer_comm);
+  }
 
   virtual void doExport(const KtensorT<ExecSpace>& u,
                         const KtensorT<ExecSpace>& u_overlapped,
                         const ttb_indx n,
                         SystemTimer& timer,
                         const int timer_comm,
-                        const int timer_update) const = 0;
+                        const int timer_update) const
+  {
+    timer.start(timer_comm);
+    this->doExport(u, u_overlapped, n);
+    timer.stop(timer_comm);
+  }
 };
 
 template <typename ExecSpace>
@@ -115,17 +149,13 @@ public:
   KtensorAllReduceUpdate& operator=(const KtensorAllReduceUpdate&) = default;
 
   virtual void doExport(const KtensorT<ExecSpace>& u,
-                        const KtensorT<ExecSpace>& u_overlapped,
-                        SystemTimer& timer,
-                        const int timer_comm,
-                        const int timer_update) const override
+                        const KtensorT<ExecSpace>& u_overlapped) const override
   {
     deep_copy(u, u_overlapped); // no-op if u and u_overlapped are the same
 
     if (pmap != nullptr)
       Kokkos::fence();
 
-    timer.start(timer_comm);
     if (pmap != nullptr) {
       const unsigned nd = u.ndims();
       for (unsigned n=0; n<nd; ++n) {
@@ -133,27 +163,21 @@ public:
         pmap->subGridAllReduce(n, uv.data(), uv.span());
       }
     }
-    timer.stop(timer_comm);
   }
 
   virtual void doExport(const KtensorT<ExecSpace>& u,
                         const KtensorT<ExecSpace>& u_overlapped,
-                        const ttb_indx n,
-                        SystemTimer& timer,
-                        const int timer_comm,
-                        const int timer_update) const override
+                        const ttb_indx n) const override
   {
     deep_copy(u[n], u_overlapped[n]); // no-op if u and u_overlapped are the same
 
     if (pmap != nullptr)
       Kokkos::fence();
 
-    timer.start(timer_comm);
     if (pmap != nullptr) {
       auto uv = u[n].view();
       pmap->subGridAllReduce(n, uv.data(), uv.span());
     }
-    timer.stop(timer_comm);
   }
 
 };
@@ -333,6 +357,61 @@ public:
   KtensorAllGatherUpdate& operator=(const KtensorAllGatherUpdate&) = default;
 
   virtual void doExport(const KtensorT<ExecSpace>& u,
+                        const KtensorT<ExecSpace>& u_overlapped) const override
+  {
+    deep_copy(u, u_overlapped); // no-op if u and u_overlapped are the same
+
+    if (pmap != nullptr)
+      Kokkos::fence();
+
+    for (unsigned n=0; n<nd; ++n) {
+      auto row_n = rows[n];
+      auto val_n = vals[n];
+
+      // Gather contributions from each processor
+      if (pmap != nullptr) {
+        pmap->subGridAllGather(n, row_n.data(), row_counts[n].data(),
+                               row_offsets[n].data());
+        pmap->subGridAllGather(n, val_n.data(), val_counts[n].data(),
+                               val_offsets[n].data());
+      }
+    }
+
+    // Apply contributions to u
+    // In the future, sort vals based on increasing indices in rows and do
+    // a thread-local accumulation, which will drastically reduce atomic
+    // throughput requirements.  Also use TinyVec.
+    u.setMatrices(0.0);
+    typedef SpaceProperties<ExecSpace> space_prop;
+    for (unsigned n=0; n<nd; ++n) {
+      auto row_n = rows[n];
+      auto val_n = vals[n];
+      auto& u_n = u[n];
+      const ttb_indx nrow = row_n.extent(0);
+      if (space_prop::concurrency() == 1) {
+        Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrow),
+                             KOKKOS_LAMBDA(const ttb_indx i)
+        {
+          auto row = row_n[i];
+          for (int j=0; j<nc; ++j) {
+            u_n.entry(row,j) += val_n(i,j);
+          }
+        }, "KtensorAllGatherUpdate");
+      }
+      else {
+        Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrow),
+                             KOKKOS_LAMBDA(const ttb_indx i)
+        {
+          auto row = row_n[i];
+          for (int j=0; j<nc; ++j) {
+            Kokkos::atomic_add(&(u_n.entry(row,j)), val_n(i,j));
+          }
+        }, "KtensorAllGatherUpdate");
+      }
+    }
+  }
+
+  virtual void doExport(const KtensorT<ExecSpace>& u,
                         const KtensorT<ExecSpace>& u_overlapped,
                         SystemTimer& timer,
                         const int timer_comm,
@@ -396,10 +475,7 @@ public:
 
   virtual void doExport(const KtensorT<ExecSpace>& u,
                         const KtensorT<ExecSpace>& u_overlapped,
-                        const ttb_indx n,
-                        SystemTimer& timer,
-                        const int timer_comm,
-                        const int timer_update) const override
+                        const ttb_indx n) const override
   {
     assert(u[n].nCols() == nc);
 
@@ -412,20 +488,17 @@ public:
     auto val_n = vals[n];
 
     // Gather contributions from each processor
-    timer.start(timer_comm);
     if (pmap != nullptr) {
       pmap->subGridAllGather(n, row_n.data(), row_counts[n].data(),
                              row_offsets[n].data());
       pmap->subGridAllGather(n, val_n.data(), val_counts[n].data(),
                              val_offsets[n].data());
     }
-    timer.stop(timer_comm);
 
     // Apply contributions to u
     // In the future, sort vals based on increasing indices in rows and do
     // a thread-local accumulation, which will drastically reduce atomic
     // throughput requirements.  Also use TinyVec.
-    timer.start(timer_update);
     u[n] = ttb_real(0.0);
     const ttb_indx nrow = row_n.extent(0);
     typedef SpaceProperties<ExecSpace> space_prop;
@@ -449,7 +522,61 @@ public:
         }
       }, "KtensorAllGatherUpdate");
     }
-    timer.stop(timer_update);
+  }
+
+  virtual void doExport(const KtensorT<ExecSpace>& u,
+                        const KtensorT<ExecSpace>& u_overlapped,
+                        const ttb_indx n,
+                        SystemTimer& timer,
+                        const int timer_comm,
+                        const int timer_update) const override
+  {
+    assert(u[n].nCols() == nc);
+
+    deep_copy(u[n], u_overlapped[n]); // no-op if u and u_overlapped are the same
+
+    if (pmap != nullptr)
+      Kokkos::fence();
+
+    auto row_n = rows[n];
+    auto val_n = vals[n];
+
+    // Gather contributions from each processor
+    if (pmap != nullptr) {
+      pmap->subGridAllGather(n, row_n.data(), row_counts[n].data(),
+                             row_offsets[n].data());
+      pmap->subGridAllGather(n, val_n.data(), val_counts[n].data(),
+                             val_offsets[n].data());
+    }
+    timer.stop(timer_comm);
+
+    // Apply contributions to u
+    // In the future, sort vals based on increasing indices in rows and do
+    // a thread-local accumulation, which will drastically reduce atomic
+    // throughput requirements.  Also use TinyVec.
+    u[n] = ttb_real(0.0);
+    const ttb_indx nrow = row_n.extent(0);
+    typedef SpaceProperties<ExecSpace> space_prop;
+    if (space_prop::concurrency() == 1) {
+      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrow),
+                           KOKKOS_LAMBDA(const ttb_indx i)
+      {
+        auto row = row_n[i];
+        for (int j=0; j<nc; ++j) {
+          u[n].entry(row,j) += val_n(i,j);
+        }
+      }, "KtensorAllGatherUpdate");
+    }
+    else {
+      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrow),
+                           KOKKOS_LAMBDA(const ttb_indx i)
+      {
+        auto row = row_n[i];
+        for (int j=0; j<nc; ++j) {
+          Kokkos::atomic_add(&(u[n].entry(row_n[i],j)), val_n(i,j));
+        }
+      }, "KtensorAllGatherUpdate");
+    }
   }
 
   row_type getRowUpdates(const ttb_indx n) const { return my_rows[n]; }
@@ -486,37 +613,27 @@ public:
   }
 
   virtual void doImport(const KtensorT<exec_space>& u_overlapped,
-                        const KtensorT<exec_space>& u,
-                        SystemTimer& timer,
-                        const int timer_comm) const override
+                        const KtensorT<exec_space>& u) const override
   {
     deep_copy(u_overlapped, u);
   }
 
   virtual void doImport(const KtensorT<exec_space>& u_overlapped,
                         const KtensorT<exec_space>& u,
-                        const ttb_indx n,
-                        SystemTimer& timer,
-                        const int timer_comm) const override
+                        const ttb_indx n) const override
   {
     deep_copy(u_overlapped[n], u[n]);
   }
 
   virtual void doExport(const KtensorT<exec_space>& u,
-                        const KtensorT<exec_space>& u_overlapped,
-                        SystemTimer& timer,
-                        const int timer_comm,
-                        const int timer_update) const override
+                        const KtensorT<exec_space>& u_overlapped) const override
   {
     deep_copy(u, u_overlapped);
   }
 
   virtual void doExport(const KtensorT<exec_space>& u,
                         const KtensorT<exec_space>& u_overlapped,
-                        const ttb_indx n,
-                        SystemTimer& timer,
-                        const int timer_comm,
-                        const int timer_update) const override
+                        const ttb_indx n) const override
   {
     deep_copy(u[n], u_overlapped[n]);
   }
@@ -560,12 +677,9 @@ public:
   }
 
   virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
-                        const KtensorT<ExecSpace>& u,
-                        SystemTimer& timer,
-                        const int timer_comm) const override
+                        const KtensorT<ExecSpace>& u) const override
   {
     deep_copy(u_overlapped.weights(), u.weights());
-    timer.start(timer_comm);
     const unsigned nd = u.ndims();
     for (unsigned n=0; n<nd; ++n) {
       if (X.importer(n) != Teuchos::null) {
@@ -576,16 +690,12 @@ public:
       else
         deep_copy(u_overlapped[n], u[n]);
     }
-    timer.stop(timer_comm);
   }
 
   virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
                         const KtensorT<ExecSpace>& u,
-                        const ttb_indx n,
-                        SystemTimer& timer,
-                        const int timer_comm) const override
+                        const ttb_indx n) const override
   {
-    timer.start(timer_comm);
     if (X.importer(n) != Teuchos::null) {
       DistFacMatrix<ExecSpace> src(u[n], X.factorMap(n));
       DistFacMatrix<ExecSpace> dst(u_overlapped[n], X.tensorMap(n));
@@ -593,18 +703,13 @@ public:
     }
     else
       deep_copy(u_overlapped[n], u[n]);
-    timer.stop(timer_comm);
   }
 
   virtual void doExport(const KtensorT<ExecSpace>& u,
-                        const KtensorT<ExecSpace>& u_overlapped,
-                        SystemTimer& timer,
-                        const int timer_comm,
-                        const int timer_update) const override
+                        const KtensorT<ExecSpace>& u_overlapped) const override
   {
     deep_copy(u.weights(), u_overlapped.weights());
 
-    timer.start(timer_comm);
     const unsigned nd = u.ndims();
     for (unsigned n=0; n<nd; ++n) {
       if (X.importer(n) != Teuchos::null) {
@@ -616,17 +721,12 @@ public:
       else
         deep_copy(u[n], u_overlapped[n]);
     }
-    timer.stop(timer_comm);
   }
 
   virtual void doExport(const KtensorT<ExecSpace>& u,
                         const KtensorT<ExecSpace>& u_overlapped,
-                        const ttb_indx n,
-                        SystemTimer& timer,
-                        const int timer_comm,
-                        const int timer_update) const override
+                        const ttb_indx n) const override
   {
-    timer.start(timer_comm);
     if (X.importer(n) != Teuchos::null) {
       DistFacMatrix<ExecSpace> src(u_overlapped[n], X.tensorMap(n));
       DistFacMatrix<ExecSpace> dst(u[n], X.factorMap(n));
@@ -635,7 +735,6 @@ public:
     }
     else
       deep_copy(u[n], u_overlapped[n]);
-    timer.stop(timer_comm);
   }
 
 };
