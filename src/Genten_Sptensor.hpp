@@ -42,10 +42,12 @@
 
 #include <assert.h>
 
+#include "CMakeInclude.h"
 #include "Genten_Array.hpp"
 #include "Genten_IndxArray.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_Pmap.hpp"
+#include "Genten_Tpetra.hpp"
 
 namespace Genten
 {
@@ -73,16 +75,22 @@ public:
   // Empty construtor.
   /* Creates an empty tensor with an empty size. */
   KOKKOS_INLINE_FUNCTION
-  SptensorT() : siz(),siz_host(),nNumDims(0),values(),subs(),perm(),
-                is_sorted(false), pmap(nullptr) {}
+  SptensorT() : siz(),siz_host(),nNumDims(0),values(),subs(),subs_gids(),perm(),
+                is_sorted(false), pmap(nullptr), lower_bound(), upper_bound() {}
 
   // Constructor for a given size and number of nonzeros
   SptensorT(const IndxArrayT<ExecSpace>& sz, ttb_indx nz) :
     siz(sz.clone()), nNumDims(sz.size()), values(nz),
-    subs("Genten::Sptensor::subs",nz,sz.size()), perm(),
-    is_sorted(false), pmap(nullptr) {
+    subs("Genten::Sptensor::subs",nz,sz.size()), subs_gids(subs), perm(),
+    is_sorted(false), pmap(nullptr),
+    lower_bound(nNumDims,ttb_indx(0)), upper_bound(siz.clone()) {
     siz_host = create_mirror_view(siz);
     deep_copy(siz_host, siz);
+#ifdef HAVE_TPETRA
+    factorMaps.resize(nNumDims);
+    tensorMaps.resize(nNumDims);
+    importers.resize(nNumDims);
+#endif
   }
 
   /* Constructor from complete raw data indexed C-wise in C types.
@@ -112,23 +120,72 @@ public:
             const std::vector<ttb_real>& vals,
             const std::vector< std::vector<ttb_indx> >& subscripts);
 
+  /* Constructor from complete raw data indexed C-wise using STL types.
+     All input are deep copied.
+     @param dims length of each dimension.
+     @param vals nonzero values.
+     @param subscripts 2-d array of subscripts.
+     @param global_subscripts 2-d array of subscript global IDs
+     @param global_lower_bound Lower bound of global subscripts
+     @param global_upper_bound Upper bound of global subscripts
+  */
+  SptensorT(const std::vector<ttb_indx>& dims,
+            const std::vector<ttb_real>& vals,
+            const std::vector< std::vector<ttb_indx> >& subscripts,
+            const std::vector< std::vector<ttb_indx> >& global_subscripts,
+            const std::vector<ttb_indx>& global_lower_bound,
+            const std::vector<ttb_indx>& global_upper_bound);
+
   // Create tensor from supplied dimensions, values, and subscripts
   SptensorT(const IndxArrayT<ExecSpace>& d, const vals_view_type& vals,
             const subs_view_type& s,
             const subs_view_type& p = subs_view_type(),
             const bool sorted = false) :
-    siz(d), nNumDims(d.size()), values(vals), subs(s), perm(p),
-    is_sorted(sorted), pmap(nullptr) {
+    siz(d), nNumDims(d.size()), values(vals), subs(s), subs_gids(s), perm(p),
+    is_sorted(sorted), pmap(nullptr),
+    lower_bound(nNumDims,ttb_indx(0)), upper_bound(siz.clone()) {
     siz_host = create_mirror_view(siz);
     deep_copy(siz_host, siz);
+#ifdef HAVE_TPETRA
+    factorMaps.resize(nNumDims);
+    tensorMaps.resize(nNumDims);
+    importers.resize(nNumDims);
+#endif
+  }
+
+  // Create tensor from supplied dimensions, values, and subscripts
+  SptensorT(const IndxArrayT<ExecSpace>& d,
+            const vals_view_type& vals,
+            const subs_view_type& s,
+            const subs_view_type& p,
+            const bool sorted,
+            const subs_view_type& s_g,
+            const IndxArrayT<ExecSpace>& l,
+            const IndxArrayT<ExecSpace>& u) :
+    siz(d), nNumDims(d.size()), values(vals), subs(s), subs_gids(s_g), perm(p),
+    is_sorted(sorted), pmap(nullptr),
+    lower_bound(l), upper_bound(u) {
+    siz_host = create_mirror_view(siz);
+    deep_copy(siz_host, siz);
+#ifdef HAVE_TPETRA
+    factorMaps.resize(nNumDims);
+    tensorMaps.resize(nNumDims);
+    importers.resize(nNumDims);
+#endif
   }
 
   // Create tensor from supplied dimensions and subscripts, zero values
   SptensorT(const IndxArrayT<ExecSpace>& d, const subs_view_type& s) :
     siz(d), nNumDims(d.size()), values(s.extent(0),ttb_real(0.0)), subs(s),
-    perm(), is_sorted(false), pmap(nullptr) {
+    subs_gids(subs), perm(), is_sorted(false), pmap(nullptr),
+    lower_bound(nNumDims,ttb_indx(0)), upper_bound(siz.clone()) {
     siz_host = create_mirror_view(siz);
     deep_copy(siz_host, siz);
+#ifdef HAVE_TPETRA
+    factorMaps.resize(nNumDims);
+    tensorMaps.resize(nNumDims);
+    importers.resize(nNumDims);
+#endif
   }
 
   // Copy constructor.
@@ -275,6 +332,50 @@ public:
   KOKKOS_INLINE_FUNCTION
   subs_view_type getSubscripts() const { return subs; }
 
+  // Allocate global subscripts array
+  void allocGlobalSubscripts() {
+    subs_gids = subs_view_type(
+      "Genten::Sptensor::subs_gids", subs.extent(0), subs.extent(1));
+  }
+
+  // Return reference to n-th subscript of i-th nonzero
+  template <typename IType, typename NType>
+  KOKKOS_INLINE_FUNCTION
+  ttb_indx & globalSubscript(IType i, NType n) const
+  {
+    assert((i < values.size()) && (n < nNumDims));
+    return subs_gids(i,n);
+  }
+
+  // Get subscripts of i-th nonzero, place into IndxArray object
+  KOKKOS_INLINE_FUNCTION
+  void getGlobalSubscripts(ttb_indx i,  const IndxArrayT<ExecSpace> & sub) const
+  {
+    assert(i < values.size());
+
+    // This can be accomplished using subview() as below, but is a fair
+    // amount slower than just manually copying into the given index array
+    //sub = Kokkos::subview( subs, i, Kokkos::ALL() );
+
+    assert(sub.size() == nNumDims);
+    for (ttb_indx n = 0; n < nNumDims; n++)
+    {
+      sub[n] = subs_gids(i,n);
+    }
+  }
+
+  // Get subscripts of i-th nonzero
+  KOKKOS_INLINE_FUNCTION
+  auto getGlobalSubscripts(ttb_indx i) const
+  {
+    assert(i < values.size());
+    return Kokkos::subview( subs_gids, i, Kokkos::ALL() );
+  }
+
+  // Get whole subscripts array
+  KOKKOS_INLINE_FUNCTION
+  subs_view_type getGlobalSubscripts() const { return subs_gids; }
+
   // Return the norm (sqrt of the sum of the squares of all entries).
   ttb_real norm() const
   {
@@ -361,6 +462,54 @@ public:
   void setProcessorMap(const ProcessorMap* pmap_) { pmap = pmap_; }
   const ProcessorMap* getProcessorMap() const { return pmap; }
 
+#ifdef HAVE_TPETRA
+  Teuchos::RCP<tpetra_map_type<ExecSpace> >
+  factorMap(const unsigned n) const {
+    assert(n < factorMaps.size());
+    return factorMaps[n];
+  }
+  Teuchos::RCP<tpetra_map_type<ExecSpace> >
+  tensorMap(const unsigned n) const {
+    assert(n < tensorMaps.size());
+    return tensorMaps[n];
+  }
+  Teuchos::RCP<tpetra_import_type<ExecSpace> >
+  importer(const unsigned n) const {
+    assert(n < importers.size());
+    return importers[n];
+  }
+  Teuchos::RCP<tpetra_map_type<ExecSpace> >&
+  factorMap(const unsigned n) {
+    assert(n < factorMaps.size());
+    return factorMaps[n];
+  }
+  Teuchos::RCP<tpetra_map_type<ExecSpace> >&
+  tensorMap(const unsigned n) {
+    assert(n < tensorMaps.size());
+    return tensorMaps[n];
+  }
+  Teuchos::RCP<tpetra_import_type<ExecSpace> >&
+  importer(const unsigned n) {
+    assert(n < importers.size());
+    return importers[n];
+  }
+#endif
+
+  KOKKOS_INLINE_FUNCTION
+  ttb_indx lowerBound(const unsigned n) const {
+    assert(n < lower_bound.size());
+    return lower_bound[n];
+  }
+  KOKKOS_INLINE_FUNCTION
+  ttb_indx upperBound(const unsigned n) const {
+    assert(n < upper_bound.size());
+    return upper_bound[n];
+  }
+  KOKKOS_INLINE_FUNCTION
+  IndxArrayT<ExecSpace> getLowerBounds() const { return lower_bound; }
+  KOKKOS_INLINE_FUNCTION
+  IndxArrayT<ExecSpace> getUpperBounds() const { return upper_bound; }
+
 protected:
 
   // Size of the tensor
@@ -374,8 +523,13 @@ protected:
   ArrayT<ExecSpace> values;
 
   // Subscript array of nonzero elements.  This vector is treated as a 2D array
-  // of size nnz by nNumDims.
+  // of size nnz by nNumDims.  In MPI-parallel contexts, subs stores the
+  // local indices of each nonzero (which is usually what you want)
   subs_view_type subs;
+
+  // Global indices for nonzeros, which is assumed equal to subs unless
+  // otherwise specified
+  subs_view_type subs_gids;
 
   // Permutation array for iterating over subs in non-decreasing fashion
   subs_view_type perm;
@@ -384,6 +538,14 @@ protected:
   bool is_sorted;
 
   const ProcessorMap* pmap;
+
+  IndxArrayT<ExecSpace> lower_bound;
+  IndxArrayT<ExecSpace> upper_bound;
+#ifdef HAVE_TPETRA
+  std::vector< Teuchos::RCP< tpetra_map_type<ExecSpace> > > factorMaps;
+  std::vector< Teuchos::RCP< tpetra_map_type<ExecSpace> > > tensorMaps;
+  std::vector< Teuchos::RCP< tpetra_import_type<ExecSpace> > > importers;
+#endif
 
 };
 
@@ -403,11 +565,29 @@ template <typename Space, typename ExecSpace>
 SptensorT<Space>
 create_mirror_view(const Space& s, const SptensorT<ExecSpace>& a)
 {
-  return SptensorT<Space>( create_mirror_view(s, a.size()),
-                           create_mirror_view(s, a.getValues()),
-                           create_mirror_view(s, a.getSubscripts()),
-                           create_mirror_view(s, a.getPerm()),
-                           a.isSorted() );
+  SptensorT<Space> v;
+  if (a.getGlobalSubscripts().data() == a.getSubscripts().data()) {
+    // When subs_gids aliases gids, don't create a new view for subs_gids
+    auto sv = create_mirror_view(s, a.getSubscripts());
+    v = SptensorT<Space>( create_mirror_view(s, a.size()),
+                          create_mirror_view(s, a.getValues()),
+                          sv,
+                          create_mirror_view(s, a.getPerm()),
+                          a.isSorted(),
+                          sv,
+                          create_mirror_view(s, a.getLowerBounds()),
+                          create_mirror_view(s, a.getUpperBounds()) );
+  }
+  else
+    v = SptensorT<Space>( create_mirror_view(s, a.size()),
+                          create_mirror_view(s, a.getValues()),
+                          create_mirror_view(s, a.getSubscripts()),
+                          create_mirror_view(s, a.getPerm()),
+                          a.isSorted(),
+                          create_mirror_view(s, a.getGlobalSubscripts()),
+                          create_mirror_view(s, a.getLowerBounds()),
+                          create_mirror_view(s, a.getUpperBounds()) );
+  return v;
 }
 
 template <typename E1, typename E2>
@@ -419,6 +599,13 @@ void deep_copy(SptensorT<E1>& dst, const SptensorT<E2>& src)
   deep_copy( dst.getSubscripts(), src.getSubscripts() );
   deep_copy( dst.getPerm(), src.getPerm() );
   dst.setIsSorted( src.isSorted() );
+
+  // Only deep copy subs_gids if it points to unique data
+  if (dst.getGlobalSubscripts().data() != dst.getSubscripts().data())
+    deep_copy( dst.getGlobalSubscripts(), src.getGlobalSubscripts() );
+
+  deep_copy( dst.getLowerBounds(), src.getLowerBounds() );
+  deep_copy( dst.getUpperBounds(), src.getUpperBounds() );
 }
 
 template <typename ExecSpace>

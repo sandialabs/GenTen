@@ -46,7 +46,6 @@
 #include "Genten_Pmap.hpp"
 #include "Genten_DistFacMatrix.hpp"
 #include "Genten_DistTensorContext.hpp"
-#include "Kokkos_UnorderedMap.hpp"
 
 namespace Genten {
 
@@ -66,31 +65,38 @@ public:
   virtual KtensorT<ExecSpace>
   createOverlapKtensor(const KtensorT<ExecSpace>& u) const
   {
-    KtensorT<ExecSpace> v = u;
-    v.setProcessorMap(nullptr);
-    return v;
+    return u;
   };
 
   virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
-                      const KtensorT<ExecSpace>& u,
-                      SystemTimer& timer,
-                      const int timer_comm) const
+                        const KtensorT<ExecSpace>& u,
+                        SystemTimer& timer,
+                        const int timer_comm) const
   {
     deep_copy(u_overlapped, u); // no-op if u and u_overlapped are the same
   }
 
-  virtual void doExport(const KtensorT<ExecSpace>& u,
-                      const KtensorT<ExecSpace>& u_overlapped,
-                      SystemTimer& timer,
-                      const int timer_comm,
-                      const int timer_update) const = 0;
+  virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
+                        const KtensorT<ExecSpace>& u,
+                        const ttb_indx n,
+                        SystemTimer& timer,
+                        const int timer_comm) const
+  {
+    deep_copy(u_overlapped[n], u[n]); // no-op if u and u_overlapped are the same
+  }
 
   virtual void doExport(const KtensorT<ExecSpace>& u,
-                      const KtensorT<ExecSpace>& u_overlapped,
-                      const ttb_indx n,
-                      SystemTimer& timer,
-                      const int timer_comm,
-                      const int timer_update) const = 0;
+                        const KtensorT<ExecSpace>& u_overlapped,
+                        SystemTimer& timer,
+                        const int timer_comm,
+                        const int timer_update) const = 0;
+
+  virtual void doExport(const KtensorT<ExecSpace>& u,
+                        const KtensorT<ExecSpace>& u_overlapped,
+                        const ttb_indx n,
+                        SystemTimer& timer,
+                        const int timer_comm,
+                        const int timer_update) const = 0;
 };
 
 template <typename ExecSpace>
@@ -109,10 +115,10 @@ public:
   KtensorAllReduceUpdate& operator=(const KtensorAllReduceUpdate&) = default;
 
   virtual void doExport(const KtensorT<ExecSpace>& u,
-                      const KtensorT<ExecSpace>& u_overlapped,
-                      SystemTimer& timer,
-                      const int timer_comm,
-                      const int timer_update) const override
+                        const KtensorT<ExecSpace>& u_overlapped,
+                        SystemTimer& timer,
+                        const int timer_comm,
+                        const int timer_update) const override
   {
     deep_copy(u, u_overlapped); // no-op if u and u_overlapped are the same
 
@@ -131,11 +137,11 @@ public:
   }
 
   virtual void doExport(const KtensorT<ExecSpace>& u,
-                      const KtensorT<ExecSpace>& u_overlapped,
-                      const ttb_indx n,
-                      SystemTimer& timer,
-                      const int timer_comm,
-                      const int timer_update) const override
+                        const KtensorT<ExecSpace>& u_overlapped,
+                        const ttb_indx n,
+                        SystemTimer& timer,
+                        const int timer_comm,
+                        const int timer_update) const override
   {
     deep_copy(u[n], u_overlapped[n]); // no-op if u and u_overlapped are the same
 
@@ -327,10 +333,10 @@ public:
   KtensorAllGatherUpdate& operator=(const KtensorAllGatherUpdate&) = default;
 
   virtual void doExport(const KtensorT<ExecSpace>& u,
-                      const KtensorT<ExecSpace>& u_overlapped,
-                      SystemTimer& timer,
-                      const int timer_comm,
-                      const int timer_update) const override
+                        const KtensorT<ExecSpace>& u_overlapped,
+                        SystemTimer& timer,
+                        const int timer_comm,
+                        const int timer_update) const override
   {
     deep_copy(u, u_overlapped); // no-op if u and u_overlapped are the same
 
@@ -389,11 +395,11 @@ public:
   }
 
   virtual void doExport(const KtensorT<ExecSpace>& u,
-                      const KtensorT<ExecSpace>& u_overlapped,
-                      const ttb_indx n,
-                      SystemTimer& timer,
-                      const int timer_comm,
-                      const int timer_update) const override
+                        const KtensorT<ExecSpace>& u_overlapped,
+                        const ttb_indx n,
+                        SystemTimer& timer,
+                        const int timer_comm,
+                        const int timer_update) const override
   {
     assert(u[n].nCols() == nc);
 
@@ -455,31 +461,14 @@ public:
 
 #ifdef HAVE_TPETRA
 
-template <typename ExecSpace>
-class KtensorTpetraUpdate : public DistKtensorUpdate<ExecSpace> {
-private:
-  DistTensorContext<ExecSpace> dtc;
-  std::vector< Teuchos::RCP< tpetra_map_type<ExecSpace> > > overlapMap;
-  std::vector< Teuchos::RCP< tpetra_import_type<ExecSpace> > > importer;
-
+template <typename TensorType>
+class KtensorTpetraUpdate :
+    public DistKtensorUpdate<typename TensorType::exec_space> {
 public:
-  KtensorTpetraUpdate(const DistTensorContext<ExecSpace>& dtc_,
-                      const SptensorT<ExecSpace>& X,
-                      const KtensorT<ExecSpace>& u) : dtc(dtc_)
-  {
-    // build importers if needed
-    const unsigned nd = u.ndims();
-    overlapMap.resize(nd);
-    importer.resize(nd);
-    if (X.nnz() > 0 && dtc.nprocs() > 1) {
-      for (unsigned n=0; n<nd; ++n) {
-        overlapMap[n] = dtc.getOverlapFactorMap(n);
-        if (!overlapMap[n]->isSameAs(*(dtc.getFactorMap(n))))
-          importer[n] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(
-            dtc.getFactorMap(n), overlapMap[n]));
-      }
-    }
-  }
+  using exec_space = typename TensorType::exec_space;
+
+  KtensorTpetraUpdate(const TensorType& X,
+                      const KtensorT<exec_space>& u) {}
 
   virtual ~KtensorTpetraUpdate() {}
 
@@ -488,117 +477,101 @@ public:
   KtensorTpetraUpdate& operator=(KtensorTpetraUpdate&&) = default;
   KtensorTpetraUpdate& operator=(const KtensorTpetraUpdate&) = default;
 
-  virtual void updateTensor(SptensorT<ExecSpace>& X) override
+  virtual void updateTensor(SptensorT<exec_space>& X_) override {}
+
+  virtual KtensorT<exec_space>
+  createOverlapKtensor(const KtensorT<exec_space>& u) const override
   {
-    using unordered_map_type = Kokkos::UnorderedMap<tpetra_go_type,tpetra_lo_type,DefaultHostExecutionSpace>;
+    return u;
+  }
 
-    // Build new overlap maps and importers if needed.
-    // For now we are assuming X is subsampled from the original tensor
+  virtual void doImport(const KtensorT<exec_space>& u_overlapped,
+                        const KtensorT<exec_space>& u,
+                        SystemTimer& timer,
+                        const int timer_comm) const override
+  {
+    deep_copy(u_overlapped, u);
+  }
 
-    if (X.nnz() > 0 && dtc.nprocs() > 1) {
-      auto Xh = create_mirror_view(X);
-      deep_copy(Xh, X);
+  virtual void doImport(const KtensorT<exec_space>& u_overlapped,
+                        const KtensorT<exec_space>& u,
+                        const ttb_indx n,
+                        SystemTimer& timer,
+                        const int timer_comm) const override
+  {
+    deep_copy(u_overlapped[n], u[n]);
+  }
 
-      // Build gid -> lid mappings for entries in the new tensor
-      // ToDo:  run this on the device
-      const unsigned nd = X.ndims();
-      const ttb_indx nnz = X.nnz();
-      std::vector<unordered_map_type> map(nd);
-      std::vector<tpetra_lo_type> cnt(nd, 0);
-      for (auto dim=0; dim<nd; ++dim)
-        map[dim].rehash(dtc.getOverlapFactorMap(dim)->getLocalNumElements());
-      for (ttb_indx i=0; i<nnz; ++i) {
-        for (unsigned dim=0; dim<nd; ++dim) {
-          const tpetra_lo_type x_lid = Xh.subscript(i,dim);
-          const tpetra_go_type gid =
-            dtc.getOverlapFactorMap(dim)->getGlobalElement(x_lid);
-          auto idx = map[dim].find(gid);
-          if (!map[dim].valid_at(idx)) {
-            const tpetra_lo_type lid = cnt[dim]++;
-            if (map[dim].insert(gid,lid).failed())
-              Genten::error("Insertion of GID failed, something is wrong!");
-          }
-        }
-      }
-      for (unsigned dim=0; dim<nd; ++dim)
-        assert(cnt[dim] == map[dim].size());
+  virtual void doExport(const KtensorT<exec_space>& u,
+                        const KtensorT<exec_space>& u_overlapped,
+                        SystemTimer& timer,
+                        const int timer_comm,
+                        const int timer_update) const override
+  {
+    deep_copy(u, u_overlapped);
+  }
 
-      // Construct new overlap maps
-      overlapMap.resize(nd);
-      const tpetra_go_type indexBase = tpetra_go_type(0);
-      const Tpetra::global_size_t invalid =
-        Teuchos::OrdinalTraits<Tpetra::global_size_t>::invalid();
-      for (auto dim=0; dim<nd; ++dim) {
-        Kokkos::View<tpetra_go_type*,DefaultHostExecutionSpace> gids(
-          "gids", cnt[dim]);
-        const auto sz = map[dim].capacity();
-        for (auto idx=0; idx<sz; ++idx) {
-          if (map[dim].valid_at(idx)) {
-            const auto gid = map[dim].key_at(idx);
-            const auto lid = map[dim].value_at(idx);
-            gids[lid] = gid;
-          }
-        }
-        overlapMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(invalid, gids, indexBase, dtc.getOverlapFactorMap(dim)->getComm()));
-      }
+  virtual void doExport(const KtensorT<exec_space>& u,
+                        const KtensorT<exec_space>& u_overlapped,
+                        const ttb_indx n,
+                        SystemTimer& timer,
+                        const int timer_comm,
+                        const int timer_update) const override
+  {
+    deep_copy(u[n], u_overlapped[n]);
+  }
 
-      // Build new importers
-      for (unsigned n=0; n<nd; ++n)
-        if (!overlapMap[n]->isSameAs(*(dtc.getFactorMap(n))))
-          importer[n] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(
-            dtc.getFactorMap(n), overlapMap[n]));
+};
 
-      // Replace tensor subscripts with new LIDs to match the new LIDs in the
-      // overlap maps
-      for (ttb_indx i=0; i<nnz; ++i) {
-        for (unsigned dim=0; dim<nd; ++dim) {
-          const tpetra_lo_type x_lid = Xh.subscript(i,dim);
-          const tpetra_go_type gid =
-            dtc.getOverlapFactorMap(dim)->getGlobalElement(x_lid);
-          const auto idx = map[dim].find(gid);
-          const tpetra_lo_type lid = map[dim].value_at(idx);
-          Xh.subscript(i,dim) = lid;
-        }
-      }
-      for (unsigned dim=0; dim<nd; ++dim)
-        Xh.size()[dim] = cnt[dim];
-      deep_copy(X, Xh);
-    }
+template <typename ExecSpace>
+class KtensorTpetraUpdate< SptensorT<ExecSpace> > :
+    public DistKtensorUpdate<ExecSpace> {
+private:
+  SptensorT<ExecSpace> X;
+
+public:
+  KtensorTpetraUpdate(const SptensorT<ExecSpace>& X_,
+                      const KtensorT<ExecSpace>& u) : X(X_) {}
+
+  virtual ~KtensorTpetraUpdate() {}
+
+  KtensorTpetraUpdate(KtensorTpetraUpdate&&) = default;
+  KtensorTpetraUpdate(const KtensorTpetraUpdate&) = default;
+  KtensorTpetraUpdate& operator=(KtensorTpetraUpdate&&) = default;
+  KtensorTpetraUpdate& operator=(const KtensorTpetraUpdate&) = default;
+
+  virtual void updateTensor(SptensorT<ExecSpace>& X_) override
+  {
+    X = X_;
   }
 
   virtual KtensorT<ExecSpace>
   createOverlapKtensor(const KtensorT<ExecSpace>& u) const override
   {
-    KtensorT<ExecSpace> u_overlapped;
-    if (dtc.nprocs() == 1) {
-      u_overlapped = u;
-      u_overlapped.setProcessorMap(nullptr);
+    const unsigned nd = u.ndims();
+    const unsigned nc = u.ncomponents();
+    KtensorT<ExecSpace> u_overlapped = KtensorT<ExecSpace>(nc, nd);
+    for (unsigned n=0; n<nd; ++n) {
+      FacMatrixT<ExecSpace> mat(X.tensorMap(n)->getLocalNumElements(), nc);
+      u_overlapped.set_factor(n, mat);
     }
-    else {
-      const unsigned nd = u.ndims();
-      const unsigned nc = u.ncomponents();
-      u_overlapped = KtensorT<ExecSpace>(nc, nd);
-      for (unsigned n=0; n<nd; ++n) {
-        FacMatrixT<ExecSpace> mat(overlapMap[n]->getLocalNumElements(), nc);
-        u_overlapped.set_factor(n, mat);
-      }
-    }
+    u_overlapped.setProcessorMap(u.getProcessorMap());
     return u_overlapped;
   }
 
   virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
-                      const KtensorT<ExecSpace>& u,
-                      SystemTimer& timer,
-                      const int timer_comm) const override
+                        const KtensorT<ExecSpace>& u,
+                        SystemTimer& timer,
+                        const int timer_comm) const override
   {
     deep_copy(u_overlapped.weights(), u.weights());
     timer.start(timer_comm);
     const unsigned nd = u.ndims();
     for (unsigned n=0; n<nd; ++n) {
-      if (importer[n] != Teuchos::null) {
-        DistFacMatrix<ExecSpace> src(u[n], dtc.getFactorMap(n));
-        DistFacMatrix<ExecSpace> dst(u_overlapped[n], overlapMap[n]);
-        dst.doImport(src, *(importer[n]), Tpetra::INSERT);
+      if (X.importer(n) != Teuchos::null) {
+        DistFacMatrix<ExecSpace> src(u[n], X.factorMap(n));
+        DistFacMatrix<ExecSpace> dst(u_overlapped[n], X.tensorMap(n));
+        dst.doImport(src, *(X.importer(n)), Tpetra::INSERT);
       }
       else
         deep_copy(u_overlapped[n], u[n]);
@@ -606,22 +579,39 @@ public:
     timer.stop(timer_comm);
   }
 
+  virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
+                        const KtensorT<ExecSpace>& u,
+                        const ttb_indx n,
+                        SystemTimer& timer,
+                        const int timer_comm) const override
+  {
+    timer.start(timer_comm);
+    if (X.importer(n) != Teuchos::null) {
+      DistFacMatrix<ExecSpace> src(u[n], X.factorMap(n));
+      DistFacMatrix<ExecSpace> dst(u_overlapped[n], X.tensorMap(n));
+      dst.doImport(src, *(X.importer(n)), Tpetra::INSERT);
+    }
+    else
+      deep_copy(u_overlapped[n], u[n]);
+    timer.stop(timer_comm);
+  }
+
   virtual void doExport(const KtensorT<ExecSpace>& u,
-                      const KtensorT<ExecSpace>& u_overlapped,
-                      SystemTimer& timer,
-                      const int timer_comm,
-                      const int timer_update) const override
+                        const KtensorT<ExecSpace>& u_overlapped,
+                        SystemTimer& timer,
+                        const int timer_comm,
+                        const int timer_update) const override
   {
     deep_copy(u.weights(), u_overlapped.weights());
 
     timer.start(timer_comm);
     const unsigned nd = u.ndims();
     for (unsigned n=0; n<nd; ++n) {
-      if (importer[n] != Teuchos::null) {
-        DistFacMatrix<ExecSpace> src(u_overlapped[n], overlapMap[n]);
-        DistFacMatrix<ExecSpace> dst(u[n], dtc.getFactorMap(n));
+      if (X.importer(n) != Teuchos::null) {
+        DistFacMatrix<ExecSpace> src(u_overlapped[n], X.tensorMap(n));
+        DistFacMatrix<ExecSpace> dst(u[n], X.factorMap(n));
         u[n] = ttb_real(0.0);
-        dst.doExport(src, *(importer[n]), Tpetra::ADD);
+        dst.doExport(src, *(X.importer(n)), Tpetra::ADD);
       }
       else
         deep_copy(u[n], u_overlapped[n]);
@@ -630,18 +620,18 @@ public:
   }
 
   virtual void doExport(const KtensorT<ExecSpace>& u,
-                      const KtensorT<ExecSpace>& u_overlapped,
-                      const ttb_indx n,
-                      SystemTimer& timer,
-                      const int timer_comm,
-                      const int timer_update) const override
+                        const KtensorT<ExecSpace>& u_overlapped,
+                        const ttb_indx n,
+                        SystemTimer& timer,
+                        const int timer_comm,
+                        const int timer_update) const override
   {
     timer.start(timer_comm);
-    if (importer[n] != Teuchos::null) {
-      DistFacMatrix<ExecSpace> src(u_overlapped[n], overlapMap[n]);
-      DistFacMatrix<ExecSpace> dst(u[n], dtc.getFactorMap(n));
+    if (X.importer(n) != Teuchos::null) {
+      DistFacMatrix<ExecSpace> src(u_overlapped[n], X.tensorMap(n));
+      DistFacMatrix<ExecSpace> dst(u[n], X.factorMap(n));
       u[n] = ttb_real(0.0);
-      dst.doExport(src, *(importer[n]), Tpetra::ADD);
+      dst.doExport(src, *(X.importer(n)), Tpetra::ADD);
     }
     else
       deep_copy(u[n], u_overlapped[n]);
@@ -651,5 +641,48 @@ public:
 };
 
 #endif
+
+template <typename TensorType>
+DistKtensorUpdate<typename TensorType::exec_space>*
+createKtensorUpdate(const TensorType& X,
+                    const KtensorT<typename TensorType::exec_space>& u,
+                    const AlgParams& algParams)
+{
+  using exec_space = typename TensorType::exec_space;
+  DistKtensorUpdate<exec_space>* dku = nullptr;
+  if (algParams.dist_update_method == Dist_Update_Method::AllReduce)
+    dku = new KtensorAllReduceUpdate<exec_space>(u);
+  else if (algParams.dist_update_method == Dist_Update_Method::AllGather)
+    dku = new KtensorAllGatherUpdate<exec_space>(u, X.nnz());
+#ifdef HAVE_TPETRA
+  else if (algParams.dist_update_method == Dist_Update_Method::Tpetra)
+    dku = new KtensorTpetraUpdate<TensorType>(X, u);
+#endif
+  else
+    Genten::error("Unknown distributed Ktensor update method");
+  return dku;
+}
+
+template <typename TensorType>
+DistKtensorUpdate<typename TensorType::exec_space>*
+createKtensorUpdate(const TensorType& X,
+                    const KtensorT<typename TensorType::exec_space>& u,
+                    const ttb_indx nnz,
+                    const AlgParams& algParams)
+{
+  using exec_space = typename TensorType::exec_space;
+  DistKtensorUpdate<exec_space>* dku = nullptr;
+  if (algParams.dist_update_method == Dist_Update_Method::AllReduce)
+    dku = new KtensorAllReduceUpdate<exec_space>(u);
+  else if (algParams.dist_update_method == Dist_Update_Method::AllGather)
+    dku = new KtensorAllGatherUpdate<exec_space>(u, nnz);
+#ifdef HAVE_TPETRA
+  else if (algParams.dist_update_method == Dist_Update_Method::Tpetra)
+    dku = new KtensorTpetraUpdate<TensorType>(X, u);
+#endif
+  else
+    Genten::error("Unknown distributed Ktensor update method");
+  return dku;
+}
 
 }

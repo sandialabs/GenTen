@@ -431,7 +431,8 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
   SptensorT<ExecSpace> X_val;
   ArrayT<ExecSpace> w_val;
   timer.start(timer_sample_f);
-  sampler.sampleTensor(false, ut, loss, X_val, w_val);
+  KtensorT<ExecSpace> ut_overlap;
+  sampler.sampleTensor(false, ut, loss, X_val, w_val, ut_overlap);
   timer.stop(timer_sample_f);
 
   // Fit stuff
@@ -716,7 +717,8 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
 
   SptensorT<ExecSpace> X_val;
   ArrayT<ExecSpace> w_val;
-  sampler.sampleTensor(false, ut, loss, X_val, w_val);
+  KtensorT<ExecSpace> ut_overlap;
+  sampler.sampleTensor(false, ut, loss, X_val, w_val, ut_overlap);
 
   // Stuff for the timer that we can'g avoid providing
   SystemTimer timer;

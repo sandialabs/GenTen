@@ -57,6 +57,7 @@
 #include "Genten_Sptensor.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_MixedFormatOps.hpp"
+#include "Genten_DistKtensorUpdate.hpp"
 
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
@@ -67,8 +68,7 @@ namespace Genten {
   namespace Impl {
 
     template <typename TensorT, typename ExecSpace, typename LossFunction>
-    void gcp_sgd_impl(const DistTensorContext<ExecSpace>& dtc,
-                      TensorT& X, KtensorT<ExecSpace>& u0,
+    void gcp_sgd_impl(TensorT& X, KtensorT<ExecSpace>& u0,
                       const LossFunction& loss_func,
                       const AlgParams& algParams,
                       ttb_indx& numEpochs,
@@ -152,6 +152,7 @@ namespace Genten {
       const int timer_sort = num_timers++;
       const int timer_sample_f = num_timers++;
       const int timer_fest = num_timers++;
+      const int timer_comm = num_timers++;
       SystemTimer timer(num_timers, algParams.timings, pmap);
 
       // Start timer for total execution time of the algorithm.
@@ -193,8 +194,19 @@ namespace Genten {
       SptensorT<ExecSpace> X_val;
       ArrayT<ExecSpace> w_val;
       timer.start(timer_sample_f);
-      sampler->sampleTensor(false, ut, loss_func, X_val, w_val);
+      KtensorT<ExecSpace> ut_overlap_val;
+      sampler->sampleTensor(false, ut, loss_func, X_val, w_val, ut_overlap_val);
       timer.stop(timer_sample_f);
+
+      // Overlapped Ktensors for distributed gcp_value and fit
+      DistKtensorUpdate<ExecSpace> *dku_val =
+        createKtensorUpdate(X_val, ut, algParams);
+      DistKtensorUpdate<ExecSpace> *dku_fit = nullptr;
+      KtensorT<ExecSpace> ut_overlap_fit;
+      if (compute_fit) {
+        dku_fit = createKtensorUpdate(X, ut, algParams);
+        ut_overlap_fit = dku_fit->createOverlapKtensor(ut);
+      }
 
       ttb_real x_norm = X.global_norm();
       auto u_norm = std::sqrt(ut.normFsq());
@@ -202,11 +214,12 @@ namespace Genten {
       // Objective estimates
       ttb_real fit = 0.0;
       timer.start(timer_fest);
-      fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
+      fest = Impl::gcp_value(X_val, ut_overlap_val, w_val, loss_func);
       auto fitter = [&]{
         const auto x_norm2 = x_norm * x_norm;
         const auto u_norm2 = ut.normFsq();
-        const auto dot = innerprod(X, ut);
+        dku_fit->doImport(ut_overlap_fit, ut, timer, timer_comm);
+        const auto dot = innerprod(X, ut_overlap_fit);
         const auto numerator = sqrt(x_norm2 + u_norm2 - 2.0 * dot);
         const auto denom = x_norm;
         return 1.0 - numerator/denom;
@@ -311,11 +324,12 @@ namespace Genten {
         }
 
         // Epoch iterations
-        it.run(dtc, X, loss_func, *sampler, *stepper, total_iters);
+        it.run(X, loss_func, *sampler, *stepper, total_iters);
 
         // compute objective estimate
         timer.start(timer_fest);
-        fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
+        dku_val->doImport(ut_overlap_val, ut, timer, timer_comm);
+        fest = Impl::gcp_value(X_val, ut_overlap_val, w_val, loss_func);
         if (compute_fit) {
           fit = fitter();
         }
@@ -414,14 +428,16 @@ namespace Genten {
       delete stepper;
       delete sampler;
       delete itp;
+      delete dku_val;
+      if (dku_fit != nullptr)
+        delete dku_fit;
     }
 
   }
 
 
   template<typename TensorT, typename ExecSpace>
-  void gcp_sgd(const DistTensorContext<ExecSpace>& dtc,
-               TensorT& x, KtensorT<ExecSpace>& u,
+  void gcp_sgd(TensorT& x, KtensorT<ExecSpace>& u,
                const AlgParams& algParams,
                ttb_indx& numIters,
                ttb_real& resNorm,
@@ -445,19 +461,19 @@ namespace Genten {
 
     // Dispatch implementation based on loss function type
     if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
-      Impl::gcp_sgd_impl(dtc, x, u, GaussianLossFunction(algParams.loss_eps),
+      Impl::gcp_sgd_impl(x, u, GaussianLossFunction(algParams.loss_eps),
                          algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Rayleigh)
-      Impl::gcp_sgd_impl(dtc, x, u, RayleighLossFunction(algParams.loss_eps),
+      Impl::gcp_sgd_impl(x, u, RayleighLossFunction(algParams.loss_eps),
                          algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Gamma)
-      Impl::gcp_sgd_impl(dtc, x, u, GammaLossFunction(algParams.loss_eps),
+      Impl::gcp_sgd_impl(x, u, GammaLossFunction(algParams.loss_eps),
                          algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Bernoulli)
-      Impl::gcp_sgd_impl(dtc, x, u, BernoulliLossFunction(algParams.loss_eps),
+      Impl::gcp_sgd_impl(x, u, BernoulliLossFunction(algParams.loss_eps),
                          algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Poisson)
-      Impl::gcp_sgd_impl(dtc, x, u, PoissonLossFunction(algParams.loss_eps),
+      Impl::gcp_sgd_impl(x, u, PoissonLossFunction(algParams.loss_eps),
                          algParams, numIters, resNorm, perfInfo, out);
     else
        Genten::error("Genten::gcp_sgd - unknown loss function");
@@ -467,7 +483,6 @@ namespace Genten {
 
 #define INST_MACRO(SPACE)                                               \
   template void gcp_sgd<SptensorT<SPACE>,SPACE>(                        \
-    const DistTensorContext<SPACE>& dtc,                                \
     SptensorT<SPACE>& x,                                                \
     KtensorT<SPACE>& u,                                                 \
     const AlgParams& algParams,                                         \

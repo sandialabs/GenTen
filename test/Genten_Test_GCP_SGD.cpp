@@ -166,11 +166,10 @@ void RunGcpSgdTest(const std::string &label, GCP_Sampling::type sampling_type,
   ttb_real resNorm;
   KtensorT<exec_space> result_dev;
   PerfHistory history;
-  DistTensorContext<exec_space> dtc;
   EXPECT_NO_THROW({
     result_dev = initialBasis_dev;
     if (!fuse_sa) {
-      gcp_sgd(dtc, X_dev, result_dev, algParams, numIters, resNorm, history,
+      gcp_sgd(X_dev, result_dev, algParams, numIters, resNorm, history,
               std::cout);
     } else {
       gcp_sgd_sa(X_dev, result_dev, algParams, numIters, resNorm, history,

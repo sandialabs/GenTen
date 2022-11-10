@@ -110,6 +110,23 @@ namespace Genten {
       const AlgParams& algParams);
 
     template <typename ExecSpace, typename LossFunction>
+    void stratified_sample_tensor_hash_tpetra(
+      const SptensorT<ExecSpace>& X,
+      const TensorHashMap<ExecSpace>& hash,
+      const ttb_indx num_samples_nonzeros,
+      const ttb_indx num_samples_zeros,
+      const ttb_real weight_nonzeros,
+      const ttb_real weight_zeros,
+      const KtensorT<ExecSpace>& u,
+      const LossFunction& loss_func,
+      const bool compute_gradient,
+      SptensorT<ExecSpace>& Y,
+      ArrayT<ExecSpace>& w,
+      KtensorT<ExecSpace>& u_overlap,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams);
+
+    template <typename ExecSpace, typename LossFunction>
     void semi_stratified_sample_tensor(
       const SptensorT<ExecSpace>& X,
       const ttb_indx num_samples_nonzeros,

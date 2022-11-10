@@ -161,8 +161,7 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
   // Allocation adds two more for start and stop states of the algorithm.
   Genten::PerfHistory perfInfo;
   cResult = cInitialGuess;
-  Genten::DistTensorContext<Space> dtc;
-  Genten::cpals_core (dtc, cData, cResult, algParams, nItersCompleted, dResNorm,
+  Genten::cpals_core (cData, cResult, algParams, nItersCompleted, dResNorm,
                       1, perfInfo);
   printf ("Performance information per iteration:\n");
   for (ttb_indx i = 0; i < perfInfo.size(); i++)

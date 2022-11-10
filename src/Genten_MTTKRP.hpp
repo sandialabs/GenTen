@@ -780,11 +780,6 @@ void mttkrp(const SptensorT<ExecSpace>& X,
     Impl::MTTKRP_Kernel<ExecSpace> kernel(X,u,n,v,algParams,zero_v);
     Impl::run_row_simd_kernel(kernel, nc);
   }
-
-  if (u.getProcessorMap() != nullptr) {
-    Kokkos::fence();
-    u.getProcessorMap()->subGridAllReduce(n,v.view().data(), v.view().span());
-  }
 }
 
 template <typename ExecSpace>
@@ -848,16 +843,6 @@ void mttkrp_all(const SptensorT<ExecSpace>& X,
   else
     Genten::error(std::string("Unknown MTTKRP-all method:  ") +
                   std::string(MTTKRP_All_Method::names[method]));
-
-  // We don't need to do the inter-process reduction for iterated, because it
-  // does it itself
-  if (u.getProcessorMap() != nullptr &&
-      algParams.mttkrp_all_method != MTTKRP_All_Method::Iterated) {
-    Kokkos::fence();
-    for (ttb_indx n=0; n<nd; ++n)
-      u.getProcessorMap()->subGridAllReduce(n, v[n].view().data(),
-                                            v[n].view().span());
-  }
 }
 
 }

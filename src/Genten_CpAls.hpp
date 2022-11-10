@@ -98,8 +98,7 @@ namespace Genten {
    */
 
   template<typename TensorT, typename ExecSpace>
-  void cpals_core (const DistTensorContext<ExecSpace>& dtc,
-                   const TensorT& x,
+  void cpals_core (const TensorT& x,
                    KtensorT<ExecSpace>& u,
                    const AlgParams& algParams,
                    ttb_indx& numIters,
@@ -109,15 +108,14 @@ namespace Genten {
                    std::ostream& out);
 
   template<typename TensorT, typename ExecSpace>
-  void cpals_core (const DistTensorContext<ExecSpace>& dtc,
-                   const TensorT& x,
+  void cpals_core (const TensorT& x,
                    KtensorT<ExecSpace>& u,
                    const AlgParams& algParams,
                    ttb_indx& numIters,
                    ttb_real& resNorm,
                    const ttb_indx perfIter,
                    PerfHistory& perfInfo) {
-    cpals_core(dtc,x,u,algParams,numIters,resNorm,perfIter,perfInfo,std::cout);
+    cpals_core(x,u,algParams,numIters,resNorm,perfIter,perfInfo,std::cout);
   }
 
 }

@@ -203,6 +203,8 @@ public:
                 const Teuchos::RCP< tpetra_map_type<ExecSpace> >& map) :
     dist_object_type(map), mat(mat_) {}
 
+  virtual ~DistFacMatrix() {}
+
 protected:
   using buffer_device_type = typename dist_object_type::buffer_device_type;
   FacMatrixT<ExecSpace> mat;

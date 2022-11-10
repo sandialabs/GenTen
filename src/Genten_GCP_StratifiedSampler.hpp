@@ -194,8 +194,31 @@ namespace Genten {
                               const KtensorT<ExecSpace>& u,
                               const LossFunction& loss_func,
                               SptensorT<ExecSpace>& Xs,
-                              ArrayT<ExecSpace>& w) override
+                              ArrayT<ExecSpace>& w,
+                              KtensorT<ExecSpace>& u_overlap) override
     {
+      if (algParams.dist_update_method == Dist_Update_Method::Tpetra) {
+        if (algParams.hash) {
+          if (gradient)
+            Impl::stratified_sample_tensor_hash_tpetra(
+              this->X, hash_map,
+              this->num_samples_nonzeros_grad, this->num_samples_zeros_grad,
+              this->weight_nonzeros_grad, this->weight_zeros_grad,
+              u, loss_func, true,
+              Xs, w, u_overlap, this->rand_pool, this->algParams);
+          else
+            Impl::stratified_sample_tensor_hash_tpetra(
+              this->X, hash_map,
+              this->num_samples_nonzeros_value, this->num_samples_zeros_value,
+              this->weight_nonzeros_value, this->weight_zeros_value,
+              u, loss_func, false,
+              Xs, w, u_overlap, this->rand_pool, this->algParams);
+        }
+        else
+          Genten::error("Stratified sampling with dist-update-method == tpetra requires hash!");
+        return;
+      }
+
       if (algParams.hash) {
         if (gradient)
           Impl::stratified_sample_tensor_hash(
@@ -227,6 +250,7 @@ namespace Genten {
             u, loss_func, false,
             Xs, w, rand_pool, algParams);
       }
+      u_overlap = u;
     }
 
     virtual void fusedGradient(const KtensorT<ExecSpace>& u,

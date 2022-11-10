@@ -74,7 +74,8 @@ namespace Genten {
                               const KtensorT<ExecSpace>& u,
                               const LossFunction& loss_func,
                               SptensorT<ExecSpace>& Xs,
-                              ArrayT<ExecSpace>& w) = 0;
+                              ArrayT<ExecSpace>& w,
+                              KtensorT<ExecSpace>& u_overlap) = 0;
 
     virtual void fusedGradient(const KtensorT<ExecSpace>& u,
                                const LossFunction& loss_func,
@@ -92,7 +93,7 @@ namespace Genten {
       Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nnz),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
-        auto key = X.getSubscripts(i);
+        auto key = X.getGlobalSubscripts(i);
         hash_map.insert(key, X.value(i));
       }, "Genten::GCP_SGD::hash_kernel");
 

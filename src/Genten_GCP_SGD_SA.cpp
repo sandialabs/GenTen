@@ -53,6 +53,7 @@
 #include "Genten_Sptensor.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_MixedFormatOps.hpp"
+#include "Genten_DistKtensorUpdate.hpp"
 
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
@@ -146,6 +147,7 @@ namespace Genten {
       const int timer_step = num_timers++;
       const int timer_sample_g_z_nz = num_timers++;
       const int timer_sample_g_perm = num_timers++;
+      const int timer_comm = num_timers++;
       SystemTimer timer(num_timers, algParams.timings, pmap);
 
       // Start timer for total execution time of the algorithm.
@@ -197,18 +199,30 @@ namespace Genten {
       SptensorT<ExecSpace> X_val, X_grad;
       ArrayT<ExecSpace> w_val, w_grad;
       timer.start(timer_sample_f);
-      sampler.sampleTensor(false, ut, loss_func, X_val, w_val);
+      KtensorT<ExecSpace> ut_overlap_val;
+      sampler.sampleTensor(false, ut, loss_func, X_val, w_val, ut_overlap_val);
       timer.stop(timer_sample_f);
+
+      // Overlapped Ktensors for distributed gcp_value and fit
+      DistKtensorUpdate<ExecSpace> *dku_val =
+        createKtensorUpdate(X_val, ut, algParams);
+      DistKtensorUpdate<ExecSpace> *dku_fit = nullptr;
+      KtensorT<ExecSpace> ut_overlap_fit;
+      if (compute_fit) {
+        dku_fit = createKtensorUpdate(X, ut, algParams);
+        ut_overlap_fit = dku_fit->createOverlapKtensor(ut);
+      }
 
       // Objective estimates
       ttb_real fit = 0.0;
       ttb_real x_norm = 0.0;
       timer.start(timer_fest);
-      fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
+      fest = Impl::gcp_value(X_val, ut_overlap_val, w_val, loss_func);
       if (compute_fit) {
         x_norm = X.global_norm();
         ttb_real u_norm = sqrt(u.normFsq());
-        ttb_real dot = innerprod(X, ut);
+        dku_fit->doImport(ut_overlap_fit, ut, timer, timer_comm);
+        ttb_real dot = innerprod(X, ut_overlap_fit);
         fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
       }
       timer.stop(timer_fest);
@@ -280,10 +294,12 @@ namespace Genten {
 
         // compute objective estimate
         timer.start(timer_fest);
-        fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
+        dku_val->doImport(ut_overlap_val, ut, timer, timer_comm);
+        fest = Impl::gcp_value(X_val, ut_overlap_val, w_val, loss_func);
         if (compute_fit) {
           ttb_real u_norm = sqrt(u.normFsq());
-          ttb_real dot = innerprod(X, ut);
+          dku_fit->doImport(ut_overlap_fit, ut, timer, timer_comm);
+          ttb_real dot = innerprod(X, ut_overlap_fit);
           fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
         }
         timer.stop(timer_fest);

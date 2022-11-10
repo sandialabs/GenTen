@@ -97,16 +97,15 @@ namespace Genten {
 
       virtual VectorType getSolution() const { return u; }
 
-      virtual void run(const DistTensorContext<ExecSpace>& dtc,
-                       SptensorT<ExecSpace>& X,
+      virtual void run(SptensorT<ExecSpace>& X,
                        const LossFunction& loss_func,
                        Sampler<ExecSpace,LossFunction>& sampler,
                        GCP_SGD_Step<ExecSpace,LossFunction>& stepper,
                        ttb_indx& total_iters)
       {
-        DistMttkrp< SptensorT<ExecSpace> > distMttkrp(
-          dtc, X_grad, ut, sampler.getNumGradSamples(), algParams,
-          timer, timer_grad_mttkrp, timer_grad_comm, timer_grad_update);
+        DistKtensorUpdate<ExecSpace> *dku =
+          createKtensorUpdate(X_grad, ut, algParams);
+        KtensorT<ExecSpace> ut_overlap;
 
         for (ttb_indx iter=0; iter<algParams.epoch_iters; ++iter) {
 
@@ -117,8 +116,9 @@ namespace Genten {
           if (!algParams.fuse) {
             timer.start(timer_sample_g);
             timer.start(timer_sample_g_z_nz);
-            sampler.sampleTensor(true, ut, loss_func,  X_grad, w_grad);
-            distMttkrp.updateTensor(X_grad);
+            sampler.sampleTensor(true, ut, loss_func,  X_grad, w_grad,
+                                 ut_overlap);
+            dku->updateTensor(X_grad);
             timer.stop(timer_sample_g_z_nz);
             timer.start(timer_sample_g_perm);
             if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
@@ -141,8 +141,11 @@ namespace Genten {
             }
             else {
               gt.weights() = 1.0; // gt is zeroed in mttkrp
-              //mttkrp_all(X_grad, ut, gt, algParams);
-              distMttkrp.mttkrp_all(X_grad, ut, gt);
+              KtensorT<ExecSpace> gt_overlap = dku->createOverlapKtensor(gt);
+              mttkrp_all(X_grad, ut_overlap, gt_overlap, algParams);
+              dku->doExport(gt, gt_overlap, timer, timer_grad_comm,
+                            timer_grad_update);
+              //distMttkrp.mttkrp_all(X_grad, ut, gt);
             }
             timer.stop(timer_grad);
 

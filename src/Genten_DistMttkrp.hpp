@@ -69,8 +69,7 @@ private:
   int timer_update_;
 
 public:
-  DistMttkrp(const DistTensorContext<exec_space>& dtc,
-             const TensorType& X,
+  DistMttkrp(const TensorType& X,
              const KtensorT<exec_space>& u,
              const AlgParams& algParams,
              SystemTimer& timer,
@@ -131,8 +130,7 @@ private:
 
 public:
 
-  DistMttkrp(const DistTensorContext<ExecSpace>& dtc,
-             const SptensorT<exec_space>& X,
+  DistMttkrp(const SptensorT<exec_space>& X,
              const KtensorT<exec_space>& u,
              const ttb_indx nnz,
              const AlgParams& algParams,
@@ -143,29 +141,17 @@ public:
     algParams_(algParams), timer_(timer), timer_mttkrp_(timer_mttkrp),
     timer_comm_(timer_comm), timer_update_(timer_update), distUpdate_(nullptr)
   {
-    if (algParams_.dist_update_method == Dist_Update_Method::AllReduce)
-      distUpdate_ = new KtensorAllReduceUpdate<exec_space>(u);
-    else if (algParams_.dist_update_method == Dist_Update_Method::AllGather) {
-      distUpdate_ = new KtensorAllGatherUpdate<exec_space>(u, nnz);
-    }
-#ifdef HAVE_TPETRA
-    else if (algParams_.dist_update_method == Dist_Update_Method::Tpetra) {
-      distUpdate_ = new KtensorTpetraUpdate<exec_space>(dtc, X, u);
-    }
-#endif
-    else
-      Genten::error("Unknown distributed update method");
+    distUpdate_ = createKtensorUpdate(X, u, nnz, algParams);
   }
 
-  DistMttkrp(const DistTensorContext<ExecSpace>& dtc,
-             const SptensorT<exec_space>& X,
+  DistMttkrp(const SptensorT<exec_space>& X,
              const KtensorT<exec_space>& u,
              const AlgParams& algParams,
              SystemTimer& timer,
              const int timer_mttkrp,
              const int timer_comm,
              const int timer_update) :
-    DistMttkrp(dtc, X, u, X.nnz(), algParams, timer, timer_mttkrp, timer_comm,
+    DistMttkrp(X, u, X.nnz(), algParams, timer, timer_mttkrp, timer_comm,
                timer_update) {}
 
   ~DistMttkrp()

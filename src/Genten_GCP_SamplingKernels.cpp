@@ -41,11 +41,11 @@
 #include <cmath>
 
 #include "Genten_GCP_SamplingKernels.hpp"
+#include "Genten_Tpetra.hpp"
+#include "Genten_DistFacMatrix.hpp"
 
 #include "Kokkos_Random.hpp"
 #include "Kokkos_UnorderedMap.hpp"
-
-#include "Genten_IOtext.hpp"
 
 namespace Genten {
 
@@ -551,6 +551,236 @@ namespace Genten {
         }
         rand_pool.free_state(gen);
       }, "Genten::GCP_SGD::Stratified_Sample_Zeros");
+    }
+
+    template <typename ExecSpace, typename LossFunction>
+    void stratified_sample_tensor_hash_tpetra(
+      const SptensorT<ExecSpace>& X,
+      const TensorHashMap<ExecSpace>& hash,
+      const ttb_indx num_samples_nonzeros,
+      const ttb_indx num_samples_zeros,
+      const ttb_real weight_nonzeros,
+      const ttb_real weight_zeros,
+      const KtensorT<ExecSpace>& u,
+      const LossFunction& loss_func,
+      const bool compute_gradient,
+      SptensorT<ExecSpace>& Y,
+      ArrayT<ExecSpace>& w,
+      KtensorT<ExecSpace>& u_overlap,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams)
+    {
+#ifdef HAVE_TPETRA
+      typedef Kokkos::TeamPolicy<ExecSpace> Policy;
+      typedef typename Policy::member_type TeamMember;
+      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
+      typedef typename RandomPool::generator_type generator_type;
+      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
+      typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+      static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+      static const unsigned RowBlockSize = 1;
+      static const unsigned FacBlockSize = 16; // FIXME
+      static const unsigned VectorSize = is_gpu ? 16 : 1; //FIXME
+      static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
+      static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
+
+      /*const*/ ttb_indx nnz = X.nnz();
+      /*const*/ unsigned nd = u.ndims();
+      /*const*/ ttb_indx ns_nz = num_samples_nonzeros;
+      /*const*/ ttb_indx ns_z = num_samples_zeros;
+      /*const*/ ttb_indx ns_t = num_samples_nonzeros+num_samples_zeros;
+      const ttb_indx N_nz = (ns_nz+RowsPerTeam-1)/RowsPerTeam;
+      const ttb_indx N_z = (ns_z+RowsPerTeam-1)/RowsPerTeam;
+      const ttb_indx N_t = (ns_t+RowsPerTeam-1)/RowsPerTeam;
+      const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
+
+      // Resize Y if necessary
+      const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
+      if (Y.nnz() < total_samples) {
+        Y = SptensorT<ExecSpace>(X.size(), total_samples); // Correct size is set later
+        Y.allocGlobalSubscripts();
+        Y.setProcessorMap(X.getProcessorMap());
+        w = ArrayT<ExecSpace>(total_samples);
+      }
+
+      // Generate samples of nonzeros
+      Policy policy_nz(N_nz, TeamSize, VectorSize);
+      Kokkos::parallel_for(
+        policy_nz,
+        KOKKOS_LAMBDA(const TeamMember& team)
+      {
+        generator_type gen = rand_pool.get_state();
+
+        const ttb_indx offset =
+          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+          const ttb_indx idx = offset + ii;
+          if (idx >= ns_nz)
+            continue;
+
+          // Generate random tensor index
+          Kokkos::single( Kokkos::PerThread( team ), [&] ()
+          {
+            const ttb_indx i = Rand::draw(gen,0,nnz);
+            for (ttb_indx m=0; m<nd; ++m)
+              Y.globalSubscript(idx,m) = X.globalSubscript(i,m);
+            Y.value(idx) = X.value(i);
+            w[idx] = weight_nonzeros;
+          });
+        }
+        rand_pool.free_state(gen);
+      }, "Genten::GCP_SGD::Stratified_Sample_Nonzeros");
+
+      // Generate samples of zeros
+      Policy policy_z(N_z, TeamSize, VectorSize);
+      Kokkos::parallel_for(
+        policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+        KOKKOS_LAMBDA(const TeamMember& team)
+      {
+        generator_type gen = rand_pool.get_state();
+        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
+        ttb_indx *ind = &(team_ind(team.team_rank(),0));
+
+        const ttb_indx offset =
+          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+          const ttb_indx idx = offset + ii;
+          if (idx >= ns_z)
+            continue;
+
+          // Keep generating samples until we get one not in the tensor
+          int found = 1;
+          while (found) {
+            Kokkos::single( Kokkos::PerThread( team ), [&] (int& f)
+            {
+              // Generate index
+              for (ttb_indx m=0; m<nd; ++m)
+                ind[m] = Rand::draw(gen,X.lowerBound(m),X.upperBound(m));
+
+              // Search for index
+              f = hash.exists(ind);
+            }, found);
+          }
+
+          // Add new nonzero
+          const ttb_indx row = num_samples_nonzeros + idx;
+          Kokkos::single( Kokkos::PerThread( team ), [&] ()
+          {
+            for (ttb_indx m=0; m<nd; ++m)
+              Y.globalSubscript(row,m) = ind[m];
+            Y.value(row) = 0.0;
+            w[row] = weight_zeros;
+          });
+        }
+        rand_pool.free_state(gen);
+      }, "Genten::GCP_SGD::Stratified_Sample_Zeros");
+
+      // Build new communication maps for sampled tensor.
+      // ToDo:  run this on the device
+      using unordered_map_type = Kokkos::UnorderedMap<tpetra_go_type,tpetra_lo_type,DefaultHostExecutionSpace>;
+      std::vector<unordered_map_type> map(nd);
+      std::vector<tpetra_lo_type> cnt(nd, 0);
+      auto subs_lids = Y.getSubscripts();
+      auto subs_gids = Y.getGlobalSubscripts();
+      auto subs_lids_host = create_mirror_view(subs_lids);
+      auto subs_gids_host = create_mirror_view(subs_gids);
+      deep_copy(subs_gids_host, subs_gids);
+      for (unsigned n=0; n<nd; ++n)
+        map[n].rehash(total_samples); // min(total_samples, X.upperBound(n)-X.lowerBound(n)) might be a more accurate bound, but that requires a device-host transfer
+      for (ttb_indx i=0; i<total_samples; ++i) {
+        for (unsigned n=0; n<nd; ++n) {
+          const tpetra_go_type gid = subs_gids_host(i,n);
+          auto idx = map[n].find(gid);
+          tpetra_lo_type lid;
+          if (map[n].valid_at(idx))
+            lid = map[n].value_at(idx);
+          else {
+            lid = cnt[n]++;
+            if (map[n].insert(gid,lid).failed())
+              Genten::error("Insertion of GID failed, something is wrong!");
+          }
+          subs_lids_host(i,n) = lid;
+        }
+      }
+      for (unsigned n=0; n<nd; ++n)
+        assert(cnt[n] == map[n].size());
+      deep_copy(subs_lids, subs_lids_host);
+
+      // Construct sampled tpetra maps
+      const tpetra_go_type indexBase = tpetra_go_type(0);
+      const Tpetra::global_size_t invalid =
+        Teuchos::OrdinalTraits<Tpetra::global_size_t>::invalid();
+      for (unsigned n=0; n<nd; ++n) {
+        Kokkos::View<tpetra_go_type*,ExecSpace> gids("gids", cnt[n]);
+        const unordered_map_type map_n = map[n];
+        const ttb_indx sz = map_n.capacity();
+        Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+                             KOKKOS_LAMBDA(const ttb_indx idx)
+        {
+          if (map_n.valid_at(idx)) {
+            const tpetra_go_type gid = map_n.key_at(idx);
+            const tpetra_lo_type lid = map_n.value_at(idx);
+            gids[lid] = gid;
+          }
+        }, "Genten::GCP_SGD::Stratified_Build_Maps");
+        Y.factorMap(n) = X.factorMap(n);
+        Y.tensorMap(n) = Teuchos::rcp(new tpetra_map_type<ExecSpace>(
+          invalid, gids, indexBase, X.tensorMap(n)->getComm()));
+        Y.importer(n) = Teuchos::rcp(new tpetra_import_type<ExecSpace>(
+          Y.factorMap(n), Y.tensorMap(n)));
+      }
+
+      // Set correct size in tensor
+      auto sz_host = Y.size_host();
+      for (unsigned n=0; n<nd; ++n)
+        sz_host[n] = Y.tensorMap(n)->getLocalNumElements();
+      deep_copy(Y.size(), sz_host);
+
+      // Import u to overlapped tensor map
+      const unsigned nc = u.ncomponents();
+      u_overlap = KtensorT<ExecSpace>(nc, nd);
+      for (unsigned n=0; n<nd; ++n) {
+        FacMatrixT<ExecSpace> mat(Y.tensorMap(n)->getLocalNumElements(), nc);
+        u_overlap.set_factor(n, mat);
+      }
+      for (unsigned n=0; n<nd; ++n) {
+        DistFacMatrix<ExecSpace> src(u[n], Y.factorMap(n));
+        DistFacMatrix<ExecSpace> dst(u_overlap[n], Y.tensorMap(n));
+        dst.doImport(src, *(Y.importer(n)), Tpetra::INSERT);
+      }
+      u_overlap.setProcessorMap(u.getProcessorMap());
+
+      // Set gradient values in sampled tensor
+      if (compute_gradient) {
+        Policy policy_t(N_t, TeamSize, VectorSize);
+        Kokkos::parallel_for(
+          policy_t,
+          KOKKOS_LAMBDA(const TeamMember& team)
+        {
+          const ttb_indx offset =
+            (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+          for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+            const ttb_indx idx = offset + ii;
+            if (idx >= ns_t)
+              continue;
+
+            // Compute Ktensor value
+            const ttb_real m_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u_overlap, Y.getSubscripts(idx));
+
+            // Set value in tensor
+            Kokkos::single( Kokkos::PerThread( team ), [&] ()
+            {
+              const ttb_real x_val = Y.value(idx);
+              Y.value(idx) = w[idx] * loss_func.deriv(x_val, m_val);
+            });
+          }
+        }, "Genten::GCP_SGD::Stratified_Gradient");
+      }
+#else
+      Genten::error("Stratified sampling with dist-update-method == tpetra requires tpetra!");
+#endif
     }
 
     template <typename ExecSpace, typename LossFunction>
@@ -1125,7 +1355,7 @@ namespace Genten {
                                                                         \
   template void Impl::stratified_sample_tensor_hash(                    \
     const SptensorT<SPACE>& X,                                          \
-    const TensorHashMap<SPACE>& hash, \
+    const TensorHashMap<SPACE>& hash,                                   \
     const ttb_indx num_samples_nonzeros,                                \
     const ttb_indx num_samples_zeros,                                   \
     const ttb_real weight_nonzeros,                                     \
@@ -1135,6 +1365,22 @@ namespace Genten {
     const bool compute_gradient,                                        \
     SptensorT<SPACE>& Y,                                                \
     ArrayT<SPACE>& w,                                                   \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template void Impl::stratified_sample_tensor_hash_tpetra(             \
+    const SptensorT<SPACE>& X,                                          \
+    const TensorHashMap<SPACE>& hash,                                   \
+    const ttb_indx num_samples_nonzeros,                                \
+    const ttb_indx num_samples_zeros,                                   \
+    const ttb_real weight_nonzeros,                                     \
+    const ttb_real weight_zeros,                                        \
+    const KtensorT<SPACE>& u,                                           \
+    const LOSS& loss_func,                                              \
+    const bool compute_gradient,                                        \
+    SptensorT<SPACE>& Y,                                                \
+    ArrayT<SPACE>& w,                                                   \
+    KtensorT<SPACE>& u_overlap,                                         \
     Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
     const AlgParams& algParams);                                        \
                                                                         \

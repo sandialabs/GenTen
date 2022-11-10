@@ -40,6 +40,7 @@
 
 #include "Genten_GCP_ValueKernels.hpp"
 #include "Genten_SimdKernel.hpp"
+#include "Genten_DistFacMatrix.hpp"
 
 namespace Genten {
 

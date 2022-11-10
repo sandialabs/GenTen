@@ -59,8 +59,7 @@
 #include "Genten_SystemTimer.hpp"
 #include "Genten_Util.hpp"
 #include "Genten_Pmap.hpp"
-
-#include "Genten_DistMttkrp.hpp"
+#include "Genten_DistKtensorUpdate.hpp"
 
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
@@ -106,8 +105,7 @@ namespace Genten {
    *                        or tensor arguments are incompatible.
    */
   template<typename TensorT, typename ExecSpace>
-  void cpals_core (const DistTensorContext<ExecSpace>& dtc,
-                   const TensorT& x,
+  void cpals_core (const TensorT& x,
                    KtensorT<ExecSpace>& u,
                    const AlgParams& algParams,
                    ttb_indx& numIters,
@@ -139,19 +137,14 @@ namespace Genten {
       Genten::error("Genten::cpals_core - ktensor u is not consistent");
     if (x.ndims() != u.ndims())
       Genten::error("Genten::cpals_core - u and x have different num dims");
-    // for (ttb_indx  i = 0; i < x.ndims(); i++)
-    // {
-    //   if (x.size(i) != u[i].nRows())
-    //     Genten::error("Genten::cpals_core - u and x have different size");
-    // }
 
     // Start timer for total execution time of the algorithm.
     int num_timers = 0;
     const int timer_cpals = num_timers++;
     const int timer_mttkrp = num_timers++;
     const int timer_mttkrp_local = num_timers++;
-    const int timer_mttkrp_comm = num_timers++;
-    const int timer_mttkrp_update = num_timers++;
+    const int timer_comm = num_timers++;
+    const int timer_update = num_timers++;
     const int timer_ip = num_timers++;
     const int timer_gramian = num_timers++;
     const int timer_solve = num_timers++;
@@ -183,9 +176,15 @@ namespace Genten {
     u.distribute(0);
     Genten::ArrayT<ExecSpace> lambda(nc, (ttb_real) 1.0);
 
-    DistMttkrp<TensorT> distMttkrp(dtc, x, u, algParams,
-                                   timer, timer_mttkrp_local,
-                                   timer_mttkrp_comm, timer_mttkrp_update);
+    DistKtensorUpdate<ExecSpace> *dku = createKtensorUpdate(x, u, algParams);
+    KtensorT<ExecSpace> u_overlap = dku->createOverlapKtensor(u);
+    dku->doImport(u_overlap, u, timer, timer_comm);
+
+    for (ttb_indx  i = 0; i < x.ndims(); i++)
+    {
+      if (x.size(i) != u_overlap[i].nRows())
+        Genten::error("Genten::cpals_core - u and x have different size");
+    }
 
     // Define gamma, an array of Gramian Matrices corresponding to the
     // factor matrices in u.
@@ -225,8 +224,7 @@ namespace Genten {
     if (perfIter > 0) {
       perfInfo.addEmpty();
       ttb_real dUnorm = sqrt(u.normFsq());
-      //ttb_real dXtU = innerprod (x, u, lambda);
-      ttb_real dXtU = distMttkrp.innerprod (x, u, lambda);
+      ttb_real dXtU = innerprod (x, u_overlap, lambda);
       ttb_real dRes = computeResNorm(xNorm, dUnorm, dXtU);
       fit = 1.0 - (dRes / xNorm);
       if (fit < 0.0)
@@ -251,9 +249,8 @@ namespace Genten {
         // Update u[n] via MTTKRP with x (Khattri-Rao product).
         // The size of u[n] is dim(n) rows by R columns.
         timer.start(timer_mttkrp);
-        //Genten::mttkrp (x, u, n, algParams);
-        distMttkrp.mttkrp(x, u, n);
-        Kokkos::fence();
+        Genten::mttkrp (x, u_overlap, n, algParams);
+        dku->doExport(u, u_overlap, n, timer, timer_comm, timer_update);
         timer.stop(timer_mttkrp);
 
         // Save result of MTTKRP for the last mode for computing <x,u>
@@ -279,7 +276,6 @@ namespace Genten {
         spd = u[n].solveTransposeRHS (upsilon, full, uplo, spd, algParams);
         if (algParams.penalty != ttb_real(0.0))
           upsilon.diagonalShift(-algParams.penalty);
-        Kokkos::fence();
         timer.stop(timer_solve);
 
         // Compute lambda.
@@ -294,7 +290,6 @@ namespace Genten {
           // L0 norm (max) on other iterations.
           u[n].colNorms(NormInf, lambda, 1.0);
         }
-        Kokkos::fence();
         timer.stop(timer_norm);
 
         // Scale u[n] by the inverse of lambda.
@@ -303,14 +298,14 @@ namespace Genten {
         //      I caused it with an unfortunate initial ktensor guess
         timer.start(timer_scale);
         u[n].colScale(lambda, true);
-        Kokkos::fence();
         timer.stop(timer_scale);
 
         // Update u[n]'s corresponding Gramian matrix.
         timer.start(timer_gramian);
         gamma[n].gramian(u[n], full, uplo);
-        Kokkos::fence();
         timer.stop(timer_gramian);
+
+        dku->doImport(u_overlap, u, n, timer, timer_comm);
       }
 
       // Compute Frobenius norm of "p", the current factorization
@@ -325,7 +320,6 @@ namespace Genten {
       timer.start(timer_ip);
       //ttb_real xpip = innerprod (x, u, lambda);
       ttb_real xpip = un.innerprod(u[nd-1], lambda);
-      Kokkos::fence();
       timer.stop(timer_ip);
 
       // Compute the Frobenius norm of the residual using quantities
@@ -379,7 +373,6 @@ namespace Genten {
     u.setWeights(lambda);
     timer.start(timer_arrange);
     u.arrange();
-    Kokkos::fence();
     timer.stop(timer_arrange);
 
     timer.stop(timer_cpals);
@@ -420,6 +413,9 @@ namespace Genten {
           << " seconds, average time = " << mttkrp_avg_time << " seconds\n";
       out << "\tMTTKRP throughput = " << mttkrp_tput
           << " GFLOP/s, bandwidth factor = " << mttkrp_factor << "\n";
+      out << "\tCommunication total time = " << timer.getTotalTime(timer_comm)
+          << " seconds, average time = " << timer.getAvgTime(timer_comm)
+          << " seconds\n";
       out << "\tInner product total time = " << timer.getTotalTime(timer_ip)
           << " seconds, average time = " << timer.getAvgTime(timer_ip)
           << " seconds\n";
@@ -440,6 +436,8 @@ namespace Genten {
           << " seconds\n";
     }
     out << std::endl;
+
+    delete dku;
 
     return;
   }
@@ -500,7 +498,6 @@ namespace Genten {
 
 #define INST_MACRO(SPACE)                                               \
   template void cpals_core<SptensorT<SPACE>,SPACE>(                     \
-    const DistTensorContext<SPACE>& dtc,                                \
     const SptensorT<SPACE>& x,                                          \
     KtensorT<SPACE>& u,                                                 \
     const AlgParams& algParams,                                         \
@@ -511,7 +508,6 @@ namespace Genten {
     std::ostream& out);                                                 \
                                                                         \
   template void cpals_core<TensorT<SPACE>,SPACE>(                       \
-    const DistTensorContext<SPACE>& dtc,                                \
     const TensorT<SPACE>& x,                                            \
     KtensorT<SPACE>& u,                                                 \
     const AlgParams& algParams,                                         \

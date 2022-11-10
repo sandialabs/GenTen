@@ -52,8 +52,7 @@ namespace Genten {
 
   //! Compute the generalized CP decomposition of a tensor using SGD approach
   template<typename TensorT, typename ExecSpace>
-  void gcp_sgd (const DistTensorContext<ExecSpace>& dtc,
-                TensorT& x,
+  void gcp_sgd (TensorT& x,
                 KtensorT<ExecSpace>& u,
                 const AlgParams& algParams,
                 ttb_indx& numIters,

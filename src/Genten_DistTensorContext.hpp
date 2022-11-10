@@ -259,9 +259,13 @@ exportFromRoot(const KtensorT<ExecSpace>& u) const
     exp.setMatrices(0.0);
     deep_copy(exp.weights(), exp.weights());
     for (int i=0; i<nd; ++i) {
-      DistFacMatrix<ExecSpace> dist_u(u[i], rootMap[i]);
-      DistFacMatrix<ExecSpace> dist_exp(exp[i], factorMap[i]);
-      dist_exp.doExport(dist_u, *(rootImporter[i]), Tpetra::INSERT);
+      if (rootImporter[i] != Teuchos::null) {
+        DistFacMatrix<ExecSpace> dist_u(u[i], rootMap[i]);
+        DistFacMatrix<ExecSpace> dist_exp(exp[i], factorMap[i]);
+        dist_exp.doExport(dist_u, *(rootImporter[i]), Tpetra::INSERT);
+      }
+      else
+        deep_copy(exp[i], u[i]);
     }
   }
   else
@@ -317,9 +321,13 @@ importToRoot(const KtensorT<ExecSpace>& u) const
 #ifdef HAVE_TPETRA
   if (tpetra_comm != Teuchos::null) {
     for (int i=0; i<nd; ++i) {
-      DistFacMatrix<ExecSpace> dist_u(u[i], factorMap[i]);
-      DistFacMatrix<ExecSpace> dist_out(out[i], rootMap[i]);
-      dist_out.doImport(dist_u, *(rootImporter[i]), Tpetra::INSERT);
+      if (rootImporter[i] != Teuchos::null) {
+        DistFacMatrix<ExecSpace> dist_u(u[i], factorMap[i]);
+        DistFacMatrix<ExecSpace> dist_out(out[i], rootMap[i]);
+        dist_out.doImport(dist_u, *(rootImporter[i]), Tpetra::INSERT);
+      }
+      else
+        deep_copy(out[i], u[i]);
     }
   }
   else
@@ -643,6 +651,13 @@ distributeTensorData(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
         subs[i][j] -= range[j].lower;
   }
 
+  SptensorT<ExecSpace> sptensor;
+  if (!use_tpetra) {
+    Sptensor sptensor_host(indices, values, subs);
+    sptensor = create_mirror_view(ExecSpace(), sptensor_host);
+    deep_copy(sptensor, sptensor_host);
+  }
+
 #ifdef HAVE_TPETRA
   // Setup Tpetra parallel maps
   if (use_tpetra) {
@@ -685,29 +700,35 @@ distributeTensorData(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
     // Map tensor GIDs to LIDs.  We use the hash-map for this instead of just
     // subtracting off the lower bound because there may be empty slices
     // in our block (and LIDs must be contiguous)
+    std::vector<std::vector<ttb_indx>> subs_gids(local_nnz);
     for (auto i=0; i<local_nnz; ++i) {
+      subs_gids[i].resize(ndims);
       for (auto dim=0; dim<ndims; ++dim) {
         const auto gid = subs[i][dim];
         const auto idx = map[dim].find(gid);
         const auto lid = map[dim].value_at(idx);
         subs[i][dim] = lid;
+        subs_gids[i][dim] = gid;
       }
     }
 
     // Construct overlap maps for each dimension
     overlapFactorMap.resize(ndims);
     for (auto dim=0; dim<ndims; ++dim) {
-      Kokkos::View<tpetra_go_type*,DefaultHostExecutionSpace> gids(
-        "gids", cnt[dim]);
+      Kokkos::View<tpetra_go_type*,ExecSpace> gids("gids", cnt[dim]);
+      auto gids_host = create_mirror_view(gids);
       const auto sz = map[dim].capacity();
       for (auto idx=0; idx<sz; ++idx) {
         if (map[dim].valid_at(idx)) {
           const auto gid = map[dim].key_at(idx);
           const auto lid = map[dim].value_at(idx);
-          gids[lid] = gid;
+          gids_host[lid] = gid;
         }
       }
-      overlapFactorMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(invalid, gids, indexBase, tpetra_comm));
+      deep_copy(gids, gids_host);
+      overlapFactorMap[dim] =
+        Teuchos::rcp(new tpetra_map_type<ExecSpace>(invalid, gids, indexBase,
+                                                    tpetra_comm));
       indices[dim] = overlapFactorMap[dim]->getLocalNumElements();
 
       // ToDo:  add option for calling Tpetra's makeOptimizedColMap
@@ -715,12 +736,31 @@ distributeTensorData(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
       // maps GIDs and setting the corresponding LIDs in the tensor
     }
 
+    // Build sparse tensor
+    std::vector<ttb_indx> lower(ndims), upper(ndims);
+    for (auto dim=0; dim<ndims; ++dim) {
+      lower[dim] = range[dim].lower;
+      upper[dim] = range[dim].upper;
+    }
+    Sptensor sptensor_host(indices, values, subs, subs_gids, lower, upper);
+    sptensor = create_mirror_view(ExecSpace(), sptensor_host);
+    deep_copy(sptensor, sptensor_host);
+    for (auto dim=0; dim<ndims; ++dim) {
+      sptensor.factorMap(dim) = factorMap[dim];
+      sptensor.tensorMap(dim) = overlapFactorMap[dim];
+      if (!overlapFactorMap[dim]->isSameAs(*factorMap[dim]))
+        sptensor.importer(dim) =
+          Teuchos::rcp(new tpetra_import_type<ExecSpace>(
+                         factorMap[dim], overlapFactorMap[dim]));
+    }
+
     // Build maps and importers for importing factor matrices to/from root
     rootMap.resize(ndims);
     rootImporter.resize(ndims);
     for (auto dim=0; dim<ndims; ++dim) {
       const Tpetra::global_size_t numGlobalElements = global_dims_[dim];
-      const size_t numLocalElements = (gridRank() == 0) ? global_dims_[dim] : 0;
+      const size_t numLocalElements =
+        (gridRank() == 0) ? global_dims_[dim] : 0;
       rootMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(numGlobalElements, numLocalElements, indexBase, tpetra_comm));
       rootImporter[dim] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(factorMap[dim], rootMap[dim]));
     }
@@ -729,10 +769,6 @@ distributeTensorData(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
   if (use_tpetra)
     Genten::error("Cannot use tpetra distribution approach without enabling Tpetra!");
 #endif
-
-  Sptensor sptensor_host(indices, values, subs);
-  SptensorT<ExecSpace> sptensor = create_mirror_view(ExecSpace(), sptensor_host);
-  deep_copy(sptensor, sptensor_host);
 
   if (DistContext::isDebug()) {
     if (gridRank() == 0) {
@@ -747,10 +783,6 @@ distributeTensorData(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
 
   DistContext::Barrier();
   auto t7 = MPI_Wtime();
-
-  // if (gridRank() == 0) {
-  //   std::cout << "Copied to data struct in: " << t7 - t6 << "s" << std::endl;
-  // }
 
   return sptensor;
 }

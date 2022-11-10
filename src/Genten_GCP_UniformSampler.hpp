@@ -177,7 +177,8 @@ namespace Genten {
                               const KtensorT<ExecSpace>& u,
                               const LossFunction& loss_func,
                               SptensorT<ExecSpace>& Xs,
-                              ArrayT<ExecSpace>& w) override
+                              ArrayT<ExecSpace>& w,
+                              KtensorT<ExecSpace>& u_overlap) override
     {
       if (gradient) {
         if (algParams.hash)
@@ -204,6 +205,7 @@ namespace Genten {
             u, loss_func, false,
             Xs, w, rand_pool, algParams);
       }
+      u_overlap = u;
     }
 
     virtual void fusedGradient(const KtensorT<ExecSpace>& u,

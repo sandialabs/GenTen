@@ -152,7 +152,7 @@ driver(const DistTensorContext<ExecSpace>& dtc,
     // Run CP-ALS
     ttb_indx iter;
     ttb_real resNorm;
-    cpals_core(dtc, x, u, algParams, iter, resNorm, 1, history, out);
+    cpals_core(x, u, algParams, iter, resNorm, 1, history, out);
   }
   else if (algParams.method == Genten::Solver_Method::CP_OPT) {
     timer.start(2);
@@ -192,7 +192,7 @@ driver(const DistTensorContext<ExecSpace>& dtc,
     // Run GCP-SGD
     ttb_indx iter;
     ttb_real resNorm;
-    gcp_sgd(dtc, x, u, algParams, iter, resNorm, history, out);
+    gcp_sgd(x, u, algParams, iter, resNorm, history, out);
   }
   else if (algParams.method == Genten::Solver_Method::GCP_SGD &&
            algParams.fuse_sa) {
@@ -321,13 +321,11 @@ driver(TensorT<ExecSpace>& x,
       Genten::mttkrp(x, u, n, tmp[n], ap);
   }
 
-  DistTensorContext<ExecSpace> dtc;
-
   if (algParams.method == Genten::Solver_Method::CP_ALS) {
     // Run CP-ALS
     ttb_indx iter;
     ttb_real resNorm;
-    cpals_core(dtc, x, u, algParams, iter, resNorm, 1, history, out);
+    cpals_core(x, u, algParams, iter, resNorm, 1, history, out);
   }
   else if (algParams.method == Genten::Solver_Method::CP_OPT) {
     timer.start(2);
