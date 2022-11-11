@@ -109,10 +109,10 @@ namespace Genten {
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams);
 
-    template <typename ExecSpace, typename LossFunction>
+    template <typename ExecSpace, typename Searcher, typename LossFunction>
     void stratified_sample_tensor_hash_tpetra(
       const SptensorT<ExecSpace>& X,
-      const TensorHashMap<ExecSpace>& hash,
+      const Searcher& searcher,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
@@ -190,6 +190,36 @@ namespace Genten {
                                const SptensorT<ExecSpace>& X_z,
                                SptensorT<ExecSpace>& X,
                                const AlgParams& algParams);
+
+    template <typename ExecSpace>
+    class SortSearcher {
+    public:
+      SortSearcher(const SptensorT<ExecSpace>& X_) : X(X_), nnz(X.nnz()) {}
+
+      template <typename IndexType>
+      KOKKOS_INLINE_FUNCTION
+      bool search(const IndexType& ind) const {
+        return (X.index(ind) < nnz);
+      }
+    private:
+      const SptensorT<ExecSpace> X;
+      const ttb_real nnz;
+    };
+
+    template <typename ExecSpace>
+    class HashSearcher {
+    public:
+      HashSearcher(const TensorHashMap<ExecSpace>& hash_) : hash(hash_) {}
+
+      template <typename IndexType>
+      KOKKOS_INLINE_FUNCTION
+      bool search(const IndexType& ind) const {
+        return hash.exists(ind);
+      }
+    private:
+      const TensorHashMap<ExecSpace> hash;
+    };
+
   }
 
 }

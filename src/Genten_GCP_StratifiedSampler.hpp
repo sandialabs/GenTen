@@ -197,59 +197,41 @@ namespace Genten {
                               ArrayT<ExecSpace>& w,
                               KtensorT<ExecSpace>& u_overlap) override
     {
+      ttb_indx num_nz = this->num_samples_nonzeros_value;
+      ttb_indx num_z  = this->num_samples_zeros_value;
+      ttb_real w_nz = this->weight_nonzeros_value;
+      ttb_real w_z  = this->weight_zeros_value;
+      if (gradient) {
+        num_nz = this->num_samples_nonzeros_grad;
+        num_z  = this->num_samples_zeros_grad;
+        w_nz = this->weight_nonzeros_grad;
+        w_z  = this->weight_zeros_grad;
+      }
+
       if (algParams.dist_update_method == Dist_Update_Method::Tpetra) {
-        if (algParams.hash) {
-          if (gradient)
-            Impl::stratified_sample_tensor_hash_tpetra(
-              this->X, hash_map,
-              this->num_samples_nonzeros_grad, this->num_samples_zeros_grad,
-              this->weight_nonzeros_grad, this->weight_zeros_grad,
-              u, loss_func, true,
-              Xs, w, u_overlap, this->rand_pool, this->algParams);
-          else
-            Impl::stratified_sample_tensor_hash_tpetra(
-              this->X, hash_map,
-              this->num_samples_nonzeros_value, this->num_samples_zeros_value,
-              this->weight_nonzeros_value, this->weight_zeros_value,
-              u, loss_func, false,
-              Xs, w, u_overlap, this->rand_pool, this->algParams);
-        }
+        if (algParams.hash)
+          Impl::stratified_sample_tensor_hash_tpetra(
+            this->X, Impl::HashSearcher(hash_map), num_nz, num_z, w_nz, w_z,
+            u, loss_func, gradient,
+            Xs, w, u_overlap, this->rand_pool, this->algParams);
         else
-          Genten::error("Stratified sampling with dist-update-method == tpetra requires hash!");
+          Impl::stratified_sample_tensor_hash_tpetra(
+            this->X, Impl::SortSearcher(this->X), num_nz, num_z, w_nz, w_z,
+            u, loss_func, gradient,
+            Xs, w, u_overlap, this->rand_pool, this->algParams);
         return;
       }
 
-      if (algParams.hash) {
-        if (gradient)
-          Impl::stratified_sample_tensor_hash(
-            this->X, hash_map,
-            this->num_samples_nonzeros_grad, this->num_samples_zeros_grad,
-            this->weight_nonzeros_grad, this->weight_zeros_grad,
-            u, loss_func, true,
-            Xs, w, this->rand_pool, this->algParams);
-        else
-          Impl::stratified_sample_tensor_hash(
-            this->X, hash_map,
-            this->num_samples_nonzeros_value, this->num_samples_zeros_value,
-            this->weight_nonzeros_value, this->weight_zeros_value,
-            u, loss_func, false,
-            Xs, w, this->rand_pool, this->algParams);
-      }
-      else {
-        if (gradient) {
-          Impl::stratified_sample_tensor(
-            X, num_samples_nonzeros_grad, num_samples_zeros_grad,
-            weight_nonzeros_grad, weight_zeros_grad,
-            u, loss_func, true,
-            Xs, w, rand_pool, algParams);
-        }
-        else
-          Impl::stratified_sample_tensor(
-            X, num_samples_nonzeros_value, num_samples_zeros_value,
-            weight_nonzeros_value, weight_zeros_value,
-            u, loss_func, false,
-            Xs, w, rand_pool, algParams);
-      }
+      if (algParams.hash)
+        Impl::stratified_sample_tensor_hash(
+          this->X, hash_map, num_nz, num_z, w_nz, w_z,
+          u, loss_func, gradient,
+          Xs, w, this->rand_pool, this->algParams);
+      else
+        Impl::stratified_sample_tensor(
+          this->X, num_nz, num_z, w_nz, w_z,
+          u, loss_func, gradient,
+          Xs, w, rand_pool, algParams);
       u_overlap = u;
     }
 

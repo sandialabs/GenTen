@@ -553,10 +553,10 @@ namespace Genten {
       }, "Genten::GCP_SGD::Stratified_Sample_Zeros");
     }
 
-    template <typename ExecSpace, typename LossFunction>
+    template <typename ExecSpace, typename Searcher, typename LossFunction>
     void stratified_sample_tensor_hash_tpetra(
       const SptensorT<ExecSpace>& X,
-      const TensorHashMap<ExecSpace>& hash,
+      const Searcher& searcher,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
@@ -659,7 +659,7 @@ namespace Genten {
                 ind[m] = Rand::draw(gen,X.lowerBound(m),X.upperBound(m));
 
               // Search for index
-              f = hash.exists(ind);
+              f = searcher.search(ind);
             }, found);
           }
 
@@ -1370,7 +1370,23 @@ namespace Genten {
                                                                         \
   template void Impl::stratified_sample_tensor_hash_tpetra(             \
     const SptensorT<SPACE>& X,                                          \
-    const TensorHashMap<SPACE>& hash,                                   \
+    const Impl::SortSearcher<SPACE>& searcher,                          \
+    const ttb_indx num_samples_nonzeros,                                \
+    const ttb_indx num_samples_zeros,                                   \
+    const ttb_real weight_nonzeros,                                     \
+    const ttb_real weight_zeros,                                        \
+    const KtensorT<SPACE>& u,                                           \
+    const LOSS& loss_func,                                              \
+    const bool compute_gradient,                                        \
+    SptensorT<SPACE>& Y,                                                \
+    ArrayT<SPACE>& w,                                                   \
+    KtensorT<SPACE>& u_overlap,                                         \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template void Impl::stratified_sample_tensor_hash_tpetra(             \
+    const SptensorT<SPACE>& X,                                          \
+    const Impl::HashSearcher<SPACE>& searcher,                          \
     const ttb_indx num_samples_nonzeros,                                \
     const ttb_indx num_samples_zeros,                                   \
     const ttb_real weight_nonzeros,                                     \
