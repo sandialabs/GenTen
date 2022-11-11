@@ -453,11 +453,6 @@ namespace Genten {
       Genten::error("Genten::gcp_sgd - ktensor u is not consistent");
     if (x.ndims() != u.ndims())
       Genten::error("Genten::gcp_sgd - u and x have different num dims");
-    for (ttb_indx  i = 0; i < x.ndims(); i++)
-    {
-      if (x.size(i) != u[i].nRows())
-        Genten::error("Genten::gcp_sgd - u and x have different size");
-    }
 
     // Dispatch implementation based on loss function type
     if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
