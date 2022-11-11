@@ -554,7 +554,7 @@ namespace Genten {
     }
 
     template <typename ExecSpace, typename Searcher, typename LossFunction>
-    void stratified_sample_tensor_hash_tpetra(
+    void stratified_sample_tensor_tpetra(
       const SptensorT<ExecSpace>& X,
       const Searcher& searcher,
       const ttb_indx num_samples_nonzeros,
@@ -1368,7 +1368,7 @@ namespace Genten {
     Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
     const AlgParams& algParams);                                        \
                                                                         \
-  template void Impl::stratified_sample_tensor_hash_tpetra(             \
+  template void Impl::stratified_sample_tensor_tpetra(                  \
     const SptensorT<SPACE>& X,                                          \
     const Impl::SortSearcher<SPACE>& searcher,                          \
     const ttb_indx num_samples_nonzeros,                                \
@@ -1384,7 +1384,7 @@ namespace Genten {
     Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
     const AlgParams& algParams);                                        \
                                                                         \
-  template void Impl::stratified_sample_tensor_hash_tpetra(             \
+  template void Impl::stratified_sample_tensor_tpetra(                  \
     const SptensorT<SPACE>& X,                                          \
     const Impl::HashSearcher<SPACE>& searcher,                          \
     const ttb_indx num_samples_nonzeros,                                \

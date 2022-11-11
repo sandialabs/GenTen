@@ -110,7 +110,7 @@ namespace Genten {
       const AlgParams& algParams);
 
     template <typename ExecSpace, typename Searcher, typename LossFunction>
-    void stratified_sample_tensor_hash_tpetra(
+    void stratified_sample_tensor_tpetra(
       const SptensorT<ExecSpace>& X,
       const Searcher& searcher,
       const ttb_indx num_samples_nonzeros,
