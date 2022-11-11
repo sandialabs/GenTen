@@ -141,11 +141,12 @@ namespace Genten {
             }
             else {
               gt.weights() = 1.0; // gt is zeroed in mttkrp
+              timer.start(timer_grad_mttkrp);
               KtensorT<ExecSpace> gt_overlap = dku->createOverlapKtensor(gt);
               mttkrp_all(X_grad, ut_overlap, gt_overlap, algParams);
+              timer.stop(timer_grad_mttkrp);
               dku->doExport(gt, gt_overlap, timer, timer_grad_comm,
                             timer_grad_update);
-              //distMttkrp.mttkrp_all(X_grad, ut, gt);
             }
             timer.stop(timer_grad);
 
