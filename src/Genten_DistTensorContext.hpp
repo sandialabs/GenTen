@@ -465,7 +465,22 @@ randomInitialGuess(const SptensorT<ExecSpace>& X,
   }
   else if (dist_method == "parallel") {
     // Compute random ktensor on each node
-    KtensorT<ExecSpace> u(rank, nd, X.size());
+    IndxArrayT<ExecSpace> sz;
+#ifdef HAVE_TPETRA
+    if (tpetra_comm != Teuchos::null) {
+      const int nd = X.ndims();
+      sz = IndxArrayT<ExecSpace>(nd);
+      auto hsz = create_mirror_view(sz);
+      for (int i=0; i<nd; ++i)
+        hsz[i] = factorMap[i]->getLocalNumElements();
+      deep_copy(sz,hsz);
+    }
+    else
+#endif
+    {
+      sz = X.size();
+    }
+    KtensorT<ExecSpace> u(rank, nd, sz);
     u.setWeights(1.0);
     u.setMatricesScatter(false, prng, cRMT);
     const ttb_real norm_k = globalNorm(u);
@@ -474,13 +489,34 @@ randomInitialGuess(const SptensorT<ExecSpace>& X,
     return u;
   }
   else if (dist_method == "parallel-drew") {
-    // Drew's funky random ktensor that I don't understand
-    KtensorT<ExecSpace> u(rank, nd, X.size());
-    u.setWeights(1.0);
-    u.setMatricesScatter(false, prng, cRMT);
-    u.weights().times(1.0 / norm_x);
-    u.distribute();
-    allReduce(u, true);
+    // Drew's funky random ktensor that I don't understand.  For tpetra,
+    // it is the same as "parallel"
+    KtensorT<ExecSpace> u;
+#ifdef HAVE_TPETRA
+    if (tpetra_comm != Teuchos::null) {
+      const int nd = X.ndims();
+      IndxArrayT<ExecSpace> sz(nd);
+      auto hsz = create_mirror_view(sz);
+      for (int i=0; i<nd; ++i)
+        hsz[i] = factorMap[i]->getLocalNumElements();
+      deep_copy(sz,hsz);
+      u = KtensorT<ExecSpace>(rank, nd, sz);
+      u.setWeights(1.0);
+      u.setMatricesScatter(false, prng, cRMT);
+      const ttb_real norm_k = globalNorm(u);
+      u.weights().times(norm_x / norm_k);
+      u.distribute();
+    }
+    else
+#endif
+    {
+      u = KtensorT<ExecSpace>(rank, nd, X.size());
+      u.setWeights(1.0);
+      u.setMatricesScatter(false, prng, cRMT);
+      u.weights().times(1.0 / norm_x);
+      u.distribute();
+      allReduce(u, true);
+    }
     return u;
   }
   else
