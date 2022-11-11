@@ -60,6 +60,7 @@ Genten::AlgParams::AlgParams() :
   rcond(1e-8),
   penalty(0.0),
   dist_guess_method("serial"),
+  scale_guess_by_norm_x(true),
   mttkrp_method(MTTKRP_Method::default_type),
   mttkrp_all_method(MTTKRP_All_Method::default_type),
   mttkrp_nnz_tile_size(128),
@@ -143,6 +144,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   rcond = parse_ttb_real(args, "--rcond", rcond, 0.0, DOUBLE_MAX);
   penalty = parse_ttb_real(args, "--penalty", penalty, 0.0, DOUBLE_MAX);
   dist_guess_method = parse_string(args, "--dist-guess", dist_guess_method);
+  scale_guess_by_norm_x = parse_ttb_bool(args, "--scale-guess-by-norm-x", "--no-scale-guess-by-norm-x", scale_guess_by_norm_x);
 
   // MTTKRP options
   mttkrp_method = parse_ttb_enum(args, "--mttkrp-method", mttkrp_method,
@@ -309,6 +311,7 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_value(ktensor_input, "seed", seed, 0, ULONG_MAX);
     parse_ptree_value(ktensor_input, "prng", prng);
     parse_ptree_value(ktensor_input, "distributed-guess", dist_guess_method);
+    parse_ptree_value(ktensor_input, "scale-guess-by-norm-x", scale_guess_by_norm_x);
     parse_ptree_enum<Dist_Update_Method>(ktensor_input, "dist-method", dist_update_method);
   }
 
@@ -426,6 +429,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --rcond <float>    truncation parameter for rank-deficient solver" << std::endl;
   out << "  --penalty <float>  penalty term for regularization (useful if gram matrix is singular)" << std::endl;
   out << "  --dist-guess <string> method for distributed initial guess" << std::endl;
+  out << "  --scale-guess-by-norm-x scale initial guess by norm of the tensor" << std::endl;
 
   out << std::endl;
   out << "MTTKRP options:" << std::endl;
@@ -579,6 +583,7 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  rcond = " << rcond << std::endl;
   out << "  penalty = " << penalty << std::endl;
   out << "  dist-guess = " << dist_guess_method << std::endl;
+  out << "  scale-guess-by-norm-x = " << (scale_guess_by_norm_x ? "true" : "false") << std::endl;
 
   out << std::endl;
   out << "MTTKRP options:" << std::endl;

@@ -211,6 +211,11 @@ static nlohmann::json json_schema = R"(
                   "type": "boolean",
                   "default": false
               },
+              "scale-guess-by-norm-x": {
+                  "description": "Scale initial guess by norm of the tensor",
+                  "type": "boolean",
+                  "default": true
+              },
               "dist-method": {
                   "description": "Distributed Ktensor update method",
                   "enum": ["all-reduce", "all-gather", "tpetra"],

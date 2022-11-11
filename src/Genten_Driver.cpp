@@ -96,6 +96,7 @@ driver(const DistTensorContext<ExecSpace>& dtc,
     timer.start(0);
     u = dtc.randomInitialGuess(x, algParams.rank, algParams.seed,
                                algParams.prng,
+                               algParams.scale_guess_by_norm_x,
                                algParams.dist_guess_method);
     timer.stop(0);
     if (algParams.timings)

@@ -70,6 +70,7 @@ namespace Genten {
     ttb_real rcond;      // Truncation threshold in rank-deficient solver
     ttb_real penalty;    // Regularization penalty
     std::string dist_guess_method; // Method for distributed initial guess
+    bool scale_guess_by_norm_x; // Scale initial guess by norm of the tensor
 
     // MTTKRP options
     MTTKRP_Method::type mttkrp_method; // MTTKRP algorithm

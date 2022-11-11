@@ -137,6 +137,7 @@ public:
                                          const int rank,
                                          const int seed,
                                          const bool prng,
+                                         const bool scale_guess_by_norm_x,
                                          const std::string& dist_method) const;
   KtensorT<ExecSpace> computeInitialGuess(const SptensorT<ExecSpace>& X,
                                           const ptree& input) const;
@@ -401,128 +402,6 @@ allReduce(KtensorT<ExecSpace>& u, const bool divide_by_grid_size) const
       u[n].times(scale);
     }
   }
-}
-
-template <typename ExecSpace>
-void
-DistTensorContext<ExecSpace>::
-exportToFile(const KtensorT<ExecSpace>& u, const std::string& file_name) const
-{
-  KtensorT<ExecSpace> out = importToRoot(u);
-  if (pmap_->gridRank() == 0) {
-    // Normalize Ktensor u before writing out
-    out.normalize(Genten::NormTwo);
-    out.arrange();
-
-    std::cout << "Saving final Ktensor to " << file_name << std::endl;
-    auto out_h = create_mirror_view(Genten::DefaultHostExecutionSpace(), out);
-    deep_copy(out_h, out);
-    Genten::export_ktensor(file_name, out_h);
-  }
-}
-
-template <typename ExecSpace>
-KtensorT<ExecSpace>
-DistTensorContext<ExecSpace>::
-readInitialGuess(const std::string& file_name) const
-{
-  KtensorT<DefaultHostExecutionSpace> u_host;
-  import_ktensor(file_name, u_host);
-  KtensorT<ExecSpace> u = create_mirror_view(ExecSpace(), u_host);
-  deep_copy(u, u_host);
-  return exportFromRoot(u);
-}
-
-template <typename ExecSpace>
-KtensorT<ExecSpace>
-DistTensorContext<ExecSpace>::
-randomInitialGuess(const SptensorT<ExecSpace>& X,
-                   const int rank,
-                   const int seed,
-                   const bool prng,
-                   const std::string& dist_method) const
-{
-  const ttb_indx nd = X.ndims();
-  const ttb_real norm_x = globalNorm(X);
-  RandomMT cRMT(seed);
-
-  if (dist_method == "serial") {
-    // Compute random ktensor on rank 0 and broadcast to all proc's
-    IndxArrayT<ExecSpace> sz(nd);
-    auto hsz = create_mirror_view(sz);
-    for (int i=0; i<nd; ++i)
-      hsz[i] = global_dims_[i];
-    deep_copy(sz,hsz);
-    Genten::KtensorT<ExecSpace> u(rank, nd, sz);
-    if (pmap_->gridRank() == 0) {
-      u.setWeights(1.0);
-      u.setMatricesScatter(false, prng, cRMT);
-      const auto norm_k = std::sqrt(u.normFsq());
-      u.weights().times(norm_x / norm_k);
-      u.distribute();
-    }
-    return exportFromRoot(u);
-  }
-  else if (dist_method == "parallel") {
-    // Compute random ktensor on each node
-    IndxArrayT<ExecSpace> sz;
-#ifdef HAVE_TPETRA
-    if (tpetra_comm != Teuchos::null) {
-      const int nd = X.ndims();
-      sz = IndxArrayT<ExecSpace>(nd);
-      auto hsz = create_mirror_view(sz);
-      for (int i=0; i<nd; ++i)
-        hsz[i] = factorMap[i]->getLocalNumElements();
-      deep_copy(sz,hsz);
-    }
-    else
-#endif
-    {
-      sz = X.size();
-    }
-    KtensorT<ExecSpace> u(rank, nd, sz);
-    u.setWeights(1.0);
-    u.setMatricesScatter(false, prng, cRMT);
-    const ttb_real norm_k = globalNorm(u);
-    u.weights().times(norm_x / norm_k);
-    u.distribute();
-    return u;
-  }
-  else if (dist_method == "parallel-drew") {
-    // Drew's funky random ktensor that I don't understand.  For tpetra,
-    // it is the same as "parallel"
-    KtensorT<ExecSpace> u;
-#ifdef HAVE_TPETRA
-    if (tpetra_comm != Teuchos::null) {
-      const int nd = X.ndims();
-      IndxArrayT<ExecSpace> sz(nd);
-      auto hsz = create_mirror_view(sz);
-      for (int i=0; i<nd; ++i)
-        hsz[i] = factorMap[i]->getLocalNumElements();
-      deep_copy(sz,hsz);
-      u = KtensorT<ExecSpace>(rank, nd, sz);
-      u.setWeights(1.0);
-      u.setMatricesScatter(false, prng, cRMT);
-      const ttb_real norm_k = globalNorm(u);
-      u.weights().times(norm_x / norm_k);
-      u.distribute();
-    }
-    else
-#endif
-    {
-      u = KtensorT<ExecSpace>(rank, nd, X.size());
-      u.setWeights(1.0);
-      u.setMatricesScatter(false, prng, cRMT);
-      u.weights().times(1.0 / norm_x);
-      u.distribute();
-      allReduce(u, true);
-    }
-    return u;
-  }
-  else
-    Genten::error("Unknown distributed-guess method: " + dist_method);
-
-  return Genten::KtensorT<ExecSpace>();
 }
 
 template <typename ExecSpace>
@@ -980,73 +859,14 @@ public:
   void allReduce(KtensorT<ExecSpace>& u,
                  const bool divide_by_grid_size = false) const {}
   void exportToFile(const KtensorT<ExecSpace>& out,
-                    const std::string& file_name) const {
-    out.normalize(Genten::NormTwo);
-    out.arrange();
-
-    std::cout << "Saving final Ktensor to " << file_name << std::endl;
-    auto out_h = create_mirror_view(out);
-    deep_copy(out_h, out);
-    Genten::export_ktensor(file_name, out_h);
-  }
-
-  KtensorT<ExecSpace> readInitialGuess(const std::string& file_name) const {
-    KtensorT<DefaultHostExecutionSpace> u_host;
-    import_ktensor(file_name, u_host);
-    KtensorT<ExecSpace> u = create_mirror_view(ExecSpace(), u_host);
-    deep_copy(u, u_host);
-    return u;
-  }
+                    const std::string& file_name) const;
+  KtensorT<ExecSpace> readInitialGuess(const std::string& file_name) const;
   KtensorT<ExecSpace> randomInitialGuess(const SptensorT<ExecSpace>& X,
                                          const int rank,
                                          const int seed,
                                          const bool prng,
-                                         const std::string& dist_method) const {
-    const ttb_indx nd = X.ndims();
-    const ttb_real norm_x = globalNorm(X);
-    RandomMT cRMT(seed);
-
-    if (dist_method == "serial") {
-      // Compute random ktensor on rank 0 and broadcast to all proc's
-      IndxArrayT<ExecSpace> sz(nd);
-      auto hsz = create_mirror_view(sz);
-      for (int i=0; i<nd; ++i)
-        hsz[i] = global_dims_[i];
-      deep_copy(sz,hsz);
-      Genten::KtensorT<ExecSpace> u(rank, nd, sz);
-      if (pmap_->gridRank() == 0) {
-        u.setWeights(1.0);
-        u.setMatricesScatter(false, prng, cRMT);
-        const auto norm_k = std::sqrt(u.normFsq());
-        u.weights().times(norm_x / norm_k);
-        u.distribute();
-      }
-      return u;
-    }
-    else if (dist_method == "parallel") {
-      // Compute random ktensor on each node
-      KtensorT<ExecSpace> u(rank, nd, X.size());
-      u.setWeights(1.0);
-      u.setMatricesScatter(false, prng, cRMT);
-      const ttb_real norm_k = globalNorm(u);
-      u.weights().times(norm_x / norm_k);
-      u.distribute();
-      return u;
-    }
-    else if (dist_method == "parallel-drew") {
-      // Drew's funky random ktensor that I don't understand
-      KtensorT<ExecSpace> u(rank, nd, X.size());
-      u.setWeights(1.0);
-      u.setMatricesScatter(false, prng, cRMT);
-      u.weights().times(1.0 / norm_x);
-      u.distribute();
-      allReduce(u, true);
-      return u;
-    }
-    else
-      Genten::error("Unknown distributed-guess method: " + dist_method);
-    return Genten::KtensorT<ExecSpace>();
-  }
+                                         const bool scale_guess_by_norm_x,
+                                         const std::string& dist_method) const;
   template <typename ExecSpace>
   KtensorT<ExecSpace> computeInitialGuess(const SptensorT<ExecSpace>& X,
                                           const ptree& input) const;
@@ -1076,6 +896,103 @@ distributeTensor(const ptree& tree)
 }
 
 template <typename ExecSpace>
+void
+DistTensorContext<ExecSpace>::
+exportToFile(const KtensorT<ExecSpace>& u, const std::string& file_name) const
+{
+  KtensorT<ExecSpace> out = importToRoot(u);
+  if (pmap_->gridRank() == 0) {
+    // Normalize Ktensor u before writing out
+    out.normalize(Genten::NormTwo);
+    out.arrange();
+
+    std::cout << "Saving final Ktensor to " << file_name << std::endl;
+    auto out_h = create_mirror_view(Genten::DefaultHostExecutionSpace(), out);
+    deep_copy(out_h, out);
+    Genten::export_ktensor(file_name, out_h);
+  }
+}
+
+template <typename ExecSpace>
+KtensorT<ExecSpace>
+DistTensorContext<ExecSpace>::
+readInitialGuess(const std::string& file_name) const
+{
+  KtensorT<DefaultHostExecutionSpace> u_host;
+  import_ktensor(file_name, u_host);
+  KtensorT<ExecSpace> u = create_mirror_view(ExecSpace(), u_host);
+  deep_copy(u, u_host);
+  return exportFromRoot(u);
+}
+
+template <typename ExecSpace>
+KtensorT<ExecSpace>
+DistTensorContext<ExecSpace>::
+randomInitialGuess(const SptensorT<ExecSpace>& X,
+                   const int rank,
+                   const int seed,
+                   const bool prng,
+                   const bool scale_guess_by_norm_x,
+                   const std::string& dist_method) const
+{
+  const ttb_indx nd = X.ndims();
+  const ttb_real norm_x = globalNorm(X);
+  RandomMT cRMT(seed);
+
+  Genten::KtensorT<ExecSpace> u;
+
+  if (dist_method == "serial") {
+    // Compute random ktensor on rank 0 and broadcast to all proc's
+    IndxArrayT<ExecSpace> sz(nd);
+    auto hsz = create_mirror_view(sz);
+    for (int i=0; i<nd; ++i)
+      hsz[i] = global_dims_[i];
+    deep_copy(sz,hsz);
+    Genten::KtensorT<ExecSpace> u0(rank, nd, sz);
+    if (pmap_->gridRank() == 0) {
+      u0.setWeights(1.0);
+      u0.setMatricesScatter(false, prng, cRMT);
+    }
+    u = exportFromRoot(u0);
+  }
+  else if (dist_method == "parallel" || dist_method == "parallel-drew") {
+#ifdef HAVE_TPETRA
+    if (tpetra_comm != Teuchos::null) {
+      const int nd = X.ndims();
+      IndxArrayT<ExecSpace> sz(nd);
+      auto hsz = create_mirror_view(sz);
+      for (int i=0; i<nd; ++i)
+        hsz[i] = factorMap[i]->getLocalNumElements();
+      deep_copy(sz,hsz);
+      u = KtensorT<ExecSpace>(rank, nd, sz);
+      u.setWeights(1.0);
+      u.setMatricesScatter(false, prng, cRMT);
+    }
+    else
+#endif
+    {
+      u = KtensorT<ExecSpace>(rank, nd, X.size());
+      u.setWeights(1.0);
+      u.setMatricesScatter(false, prng, cRMT);
+      allReduce(u, true); // make replicated proc's consistent
+    }
+  }
+  else
+    Genten::error("Unknown distributed-guess method: " + dist_method);
+
+  if (dist_method == "parallel-drew")
+    u.weights().times(1.0 / norm_x); // don't understand this
+  else {
+    const ttb_real norm_u = globalNorm(u);
+    const ttb_real scale =
+      scale_guess_by_norm_x ? norm_x / norm_u : ttb_real(1.0) / norm_u;
+    u.weights().times(scale);
+  }
+  u.distribute(); // distribute weights across factor matrices
+  return u;
+}
+
+template <typename ExecSpace>
 KtensorT<ExecSpace>
 DistTensorContext<ExecSpace>::
 computeInitialGuess(const SptensorT<ExecSpace>& X, const ptree& input) const
@@ -1091,10 +1008,11 @@ computeInitialGuess(const SptensorT<ExecSpace>& X, const ptree& input) const
   else if (init_method == "rand") {
     const int seed = kt_input.get<int>("seed",std::random_device{}());
     const bool prng = kt_input.get<bool>("prng",true);
+    const bool scale_by_x = kt_input.get<bool>("scale-guess-by-norm-x", false);
     const int nc = kt_input.get<int>("rank");
     const std::string dist_method =
       kt_input.get<std::string>("distributed-guess", "serial");
-    u = randomInitialGuess(X, nc, seed, prng, dist_method);
+    u = randomInitialGuess(X, nc, seed, prng, scale_by_x, dist_method);
   }
   else
     Genten::error("Unknown initial-guess method: " + init_method);
