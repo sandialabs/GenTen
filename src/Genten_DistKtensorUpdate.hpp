@@ -68,6 +68,10 @@ public:
     return u;
   };
 
+  virtual bool overlapAliasesArg() const { return true; }
+
+  virtual bool isReplicated() const { return true; }
+
   virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
                         const KtensorT<ExecSpace>& u) const
   {
@@ -612,6 +616,9 @@ public:
     return u;
   }
 
+  virtual bool overlapAliasesArg() const override { return true; }
+  virtual bool isReplicated() const override { return true; }
+
   virtual void doImport(const KtensorT<exec_space>& u_overlapped,
                         const KtensorT<exec_space>& u) const override
   {
@@ -675,6 +682,10 @@ public:
     u_overlapped.setProcessorMap(u.getProcessorMap());
     return u_overlapped;
   }
+
+  virtual bool overlapAliasesArg() const override { return false; }
+
+  virtual bool isReplicated() const override { return false; }
 
   virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
                         const KtensorT<ExecSpace>& u) const override

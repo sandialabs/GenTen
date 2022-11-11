@@ -90,6 +90,11 @@ namespace Genten {
     void prec_vec(ktensor_type& U, const ktensor_type& M,
                   const ktensor_type& V);
 
+    // Whether the ktensor is replicated across sub-grids
+    const DistKtensorUpdate<exec_space> *getDistKtensorUpdate() const {
+      return dku;
+    }
+
   protected:
 
     tensor_type X;
@@ -101,7 +106,7 @@ namespace Genten {
     ArrayT<exec_space> ones;
 
     DistKtensorUpdate<exec_space> *dku;
-    mutable ktensor_type M_overlap, G_overlap;
+    mutable ktensor_type M_overlap, G_overlap, V_overlap, U_overlap;
 
   };
 
@@ -128,7 +133,9 @@ namespace Genten {
 
     dku = createKtensorUpdate(x, M, algParams);
     M_overlap = dku->createOverlapKtensor(M);
-
+    G_overlap = dku->createOverlapKtensor(M);
+    V_overlap = dku->createOverlapKtensor(M);
+    U_overlap = dku->createOverlapKtensor(M);
     for (ttb_indx  i = 0; i < x.ndims(); i++)
     {
       if (x.size(i) != M_overlap[i].nRows())
@@ -162,6 +169,8 @@ namespace Genten {
       }
     }
 
+    if (dku->overlapAliasesArg())
+      M_overlap = dku->createOverlapKtensor(M);
     dku->doImport(M_overlap, M);
   }
 
@@ -193,13 +202,12 @@ namespace Genten {
   CP_Model<Tensor>::
   gradient(ktensor_type& G, const ktensor_type& M) const
   {
-    if (G_overlap.ndims() != G.ndims() ||
-        G_overlap.ncomponents() != G.ncomponents())
+    if (dku->overlapAliasesArg())
       G_overlap = dku->createOverlapKtensor(G);
-    const ttb_indx nd = M.ndims();
     mttkrp_all(X, M_overlap, G_overlap, algParams);
     dku->doExport(G, G_overlap);
 
+    const ttb_indx nd = M.ndims();
     for (ttb_indx n=0; n<nd; ++n)
       G[n].gemm(false, false, ttb_real(1.0), M[n], hada[n], ttb_real(-1.0));
 
@@ -214,11 +222,9 @@ namespace Genten {
   CP_Model<Tensor>::
   value_and_gradient(ktensor_type& G, const ktensor_type& M) const
   {
-    if (G_overlap.ndims() != G.ndims() ||
-        G_overlap.ncomponents() != G.ncomponents())
-      G_overlap = dku->createOverlapKtensor(G);
-
     // MTTKRP
+    if (dku->overlapAliasesArg())
+      G_overlap = dku->createOverlapKtensor(G);
     mttkrp_all(X, M_overlap, G_overlap, algParams);
     dku->doExport(G, G_overlap);
 
@@ -251,8 +257,14 @@ namespace Genten {
   CP_Model<Tensor>::
   hess_vec(ktensor_type& U, const ktensor_type& M, const ktensor_type& V)
   {
-    if (algParams.hess_vec_method == Hess_Vec_Method::Full)
-      Genten::hess_vec(X, M, V, U, algParams);
+    if (algParams.hess_vec_method == Hess_Vec_Method::Full) {
+      if (dku->overlapAliasesArg()) {
+        V_overlap = dku->createOverlapKtensor(V);
+        U_overlap = dku->createOverlapKtensor(U);
+      }
+      Genten::hess_vec(X, M, V, U, M_overlap, V_overlap, U_overlap, *dku,
+                       algParams);
+    }
     else if (algParams.hess_vec_method == Hess_Vec_Method::GaussNewton)
       gauss_newton_hess_vec(X, M, V, U, algParams);
     else if (algParams.hess_vec_method == Hess_Vec_Method::FiniteDifference)
