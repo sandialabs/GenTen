@@ -294,6 +294,8 @@ exportFromRoot(const KtensorT<ExecSpace>& u) const
       deep_copy(exp[i].view(), sub);
     }
   }
+
+  exp.setProcessorMap(&pmap());
   return exp;
 }
 
@@ -699,6 +701,7 @@ distributeTensorData(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
   DistContext::Barrier();
   auto t7 = MPI_Wtime();
 
+  sptensor.setProcessorMap(&pmap);
   return sptensor;
 }
 
@@ -828,11 +831,11 @@ public:
 
     return x;
   }
-  template <typename ExecSpaceDst, typename ExecSpaceSrc>
-  SptensorT<ExecSpaceDst> distributeTensor(const SptensorT<ExecSpaceSrc>& X,
+  template <typename ExecSpaceSrc>
+  SptensorT<ExecSpace> distributeTensor(const SptensorT<ExecSpaceSrc>& X,
                                            const bool use_tpetra = false)
   {
-    SptensorT<ExecSpaceDst> X_dst = create_mirror_view(ExecSpaceDst(), X);
+    SptensorT<ExecSpace> X_dst = create_mirror_view(ExecSpace(), X);
     deep_copy(X_dst, X);
     return X_dst;
   }
@@ -867,7 +870,6 @@ public:
                                          const bool prng,
                                          const bool scale_guess_by_norm_x,
                                          const std::string& dist_method) const;
-  template <typename ExecSpace>
   KtensorT<ExecSpace> computeInitialGuess(const SptensorT<ExecSpace>& X,
                                           const ptree& input) const;
 
@@ -967,6 +969,7 @@ randomInitialGuess(const SptensorT<ExecSpace>& X,
       u = KtensorT<ExecSpace>(rank, nd, sz);
       u.setWeights(1.0);
       u.setMatricesScatter(false, prng, cRMT);
+      u.setProcessorMap(&pmap());
     }
     else
 #endif
@@ -974,6 +977,7 @@ randomInitialGuess(const SptensorT<ExecSpace>& X,
       u = KtensorT<ExecSpace>(rank, nd, X.size());
       u.setWeights(1.0);
       u.setMatricesScatter(false, prng, cRMT);
+      u.setProcessorMap(&pmap());
       allReduce(u, true); // make replicated proc's consistent
     }
   }

@@ -152,6 +152,8 @@ public:
   KtensorAllReduceUpdate& operator=(KtensorAllReduceUpdate&&) = default;
   KtensorAllReduceUpdate& operator=(const KtensorAllReduceUpdate&) = default;
 
+  using DistKtensorUpdate<ExecSpace>::doExport;
+
   virtual void doExport(const KtensorT<ExecSpace>& u,
                         const KtensorT<ExecSpace>& u_overlapped) const override
   {
@@ -392,12 +394,13 @@ public:
       auto val_n = vals[n];
       auto& u_n = u[n];
       const ttb_indx nrow = row_n.extent(0);
+      const ttb_indx ncom = nc;
       if (space_prop::concurrency() == 1) {
         Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrow),
                              KOKKOS_LAMBDA(const ttb_indx i)
         {
           auto row = row_n[i];
-          for (int j=0; j<nc; ++j) {
+          for (int j=0; j<ncom; ++j) {
             u_n.entry(row,j) += val_n(i,j);
           }
         }, "KtensorAllGatherUpdate");
@@ -407,7 +410,7 @@ public:
                              KOKKOS_LAMBDA(const ttb_indx i)
         {
           auto row = row_n[i];
-          for (int j=0; j<nc; ++j) {
+          for (int j=0; j<ncom; ++j) {
             Kokkos::atomic_add(&(u_n.entry(row,j)), val_n(i,j));
           }
         }, "KtensorAllGatherUpdate");
@@ -453,12 +456,13 @@ public:
       auto val_n = vals[n];
       auto& u_n = u[n];
       const ttb_indx nrow = row_n.extent(0);
+      const ttb_indx ncom = nc;
       if (space_prop::concurrency() == 1) {
         Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrow),
                              KOKKOS_LAMBDA(const ttb_indx i)
         {
           auto row = row_n[i];
-          for (int j=0; j<nc; ++j) {
+          for (int j=0; j<ncom; ++j) {
             u_n.entry(row,j) += val_n(i,j);
           }
         }, "KtensorAllGatherUpdate");
@@ -468,7 +472,7 @@ public:
                              KOKKOS_LAMBDA(const ttb_indx i)
         {
           auto row = row_n[i];
-          for (int j=0; j<nc; ++j) {
+          for (int j=0; j<ncom; ++j) {
             Kokkos::atomic_add(&(u_n.entry(row,j)), val_n(i,j));
           }
         }, "KtensorAllGatherUpdate");
@@ -505,13 +509,14 @@ public:
     // throughput requirements.  Also use TinyVec.
     u[n] = ttb_real(0.0);
     const ttb_indx nrow = row_n.extent(0);
+    const ttb_indx ncom = nc;
     typedef SpaceProperties<ExecSpace> space_prop;
     if (space_prop::concurrency() == 1) {
       Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrow),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         auto row = row_n[i];
-        for (int j=0; j<nc; ++j) {
+        for (int j=0; j<ncom; ++j) {
           u[n].entry(row,j) += val_n(i,j);
         }
       }, "KtensorAllGatherUpdate");
@@ -521,7 +526,7 @@ public:
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         auto row = row_n[i];
-        for (int j=0; j<nc; ++j) {
+        for (int j=0; j<ncom; ++j) {
           Kokkos::atomic_add(&(u[n].entry(row_n[i],j)), val_n(i,j));
         }
       }, "KtensorAllGatherUpdate");
@@ -560,13 +565,14 @@ public:
     // throughput requirements.  Also use TinyVec.
     u[n] = ttb_real(0.0);
     const ttb_indx nrow = row_n.extent(0);
+    const ttb_indx ncom = nc;
     typedef SpaceProperties<ExecSpace> space_prop;
     if (space_prop::concurrency() == 1) {
       Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrow),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         auto row = row_n[i];
-        for (int j=0; j<nc; ++j) {
+        for (int j=0; j<ncom; ++j) {
           u[n].entry(row,j) += val_n(i,j);
         }
       }, "KtensorAllGatherUpdate");
@@ -576,7 +582,7 @@ public:
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         auto row = row_n[i];
-        for (int j=0; j<nc; ++j) {
+        for (int j=0; j<ncom; ++j) {
           Kokkos::atomic_add(&(u[n].entry(row_n[i],j)), val_n(i,j));
         }
       }, "KtensorAllGatherUpdate");
@@ -619,6 +625,8 @@ public:
   virtual bool overlapAliasesArg() const override { return true; }
   virtual bool isReplicated() const override { return true; }
 
+  using DistKtensorUpdate<exec_space>::doImport;
+
   virtual void doImport(const KtensorT<exec_space>& u_overlapped,
                         const KtensorT<exec_space>& u) const override
   {
@@ -631,6 +639,8 @@ public:
   {
     deep_copy(u_overlapped[n], u[n]);
   }
+
+  using DistKtensorUpdate<exec_space>::doExport;
 
   virtual void doExport(const KtensorT<exec_space>& u,
                         const KtensorT<exec_space>& u_overlapped) const override

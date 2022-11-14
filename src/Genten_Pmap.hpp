@@ -294,6 +294,10 @@ public:
   template <typename T> void subGridAllReduce(int i, T* element, int n, MpiOp op = Sum) const {}
   template <typename T> void gridBcast(T* element, int n, int root) const {}
   template <typename T> void subGridBcast(int i, T* element, int n, int root) const {}
+  template <typename T> void gridAllGather(T* element, const int count) const {}
+  template <typename T> void subGridAllGather(int i, T* element, const int count) const {}
+  template <typename T> void gridAllGather(T* element, const int counts[], const int offsets[]) const {}
+  template <typename T> void subGridAllGather(int i, T* element, const int counts[], const int offsets[]) const {}
 
   class FacMap {
   public:

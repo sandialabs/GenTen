@@ -211,12 +211,14 @@ namespace Genten {
       if (algParams.dist_update_method == Dist_Update_Method::Tpetra) {
         if (algParams.hash)
           Impl::stratified_sample_tensor_tpetra(
-            this->X, Impl::HashSearcher(hash_map), num_nz, num_z, w_nz, w_z,
+            this->X, Impl::HashSearcher<ExecSpace>(hash_map),
+            num_nz, num_z, w_nz, w_z,
             u, loss_func, gradient,
             Xs, w, u_overlap, this->rand_pool, this->algParams);
         else
           Impl::stratified_sample_tensor_tpetra(
-            this->X, Impl::SortSearcher(this->X), num_nz, num_z, w_nz, w_z,
+            this->X, Impl::SortSearcher<ExecSpace>(this->X),
+            num_nz, num_z, w_nz, w_z,
             u, loss_func, gradient,
             Xs, w, u_overlap, this->rand_pool, this->algParams);
         return;
