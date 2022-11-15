@@ -452,7 +452,8 @@ struct MTTKRP_Dense_Kernel {
 
     const size_t bytes = TmpScratchSpace::shmem_size(TeamSize, nd);
     Policy policy(N, TeamSize, VectorSize);
-    Kokkos::parallel_for(policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+    Kokkos::parallel_for("mttkrp_kernel",
+                         policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
                          KOKKOS_LAMBDA(const TeamMember& team)
     {
       // Row of v we write to
@@ -515,7 +516,7 @@ struct MTTKRP_Dense_Kernel {
           row_func(j, nj, std::integral_constant<unsigned,0>());
         }
       }
-    }, "mttkrp_kernel");
+    });
   }
 
 };

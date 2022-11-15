@@ -95,6 +95,7 @@ namespace Genten {
 
       Policy policy(N, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "gcp_sgd_iter_asyn_kernel",
         policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -184,7 +185,7 @@ namespace Genten {
         }
         stepper.update_async(RowBlockSize, team);
         rand_pool.free_state(gen);
-      }, "gcp_sgd_iter_asyn_kernel");
+      });
 
       // Fence to make sure kernel is finished before updates to stepper
       Kokkos::fence();

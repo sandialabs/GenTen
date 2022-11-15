@@ -233,10 +233,11 @@ public:
     auto v = data;
     if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename exec_space::memory_space >::accessible) {
       Kokkos::RangePolicy<exec_space> policy(0,1);
-      Kokkos::parallel_for( policy, KOKKOS_LAMBDA(const ttb_indx j)
+      Kokkos::parallel_for("Genten::ViewContainer::set_view",
+                           policy, KOKKOS_LAMBDA(const ttb_indx j)
       {
         v[i] = src;
-      }, "Genten::ViewContainer::set_view");
+      });
     }
   }
 
@@ -396,24 +397,26 @@ public:
       const ttb_indx nrow = row_n.extent(0);
       const ttb_indx ncom = nc;
       if (space_prop::concurrency() == 1) {
-        Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrow),
+        Kokkos::parallel_for("KtensorAllGatherUpdate",
+                             Kokkos::RangePolicy<ExecSpace>(0,nrow),
                              KOKKOS_LAMBDA(const ttb_indx i)
         {
           auto row = row_n[i];
           for (int j=0; j<ncom; ++j) {
             u_n.entry(row,j) += val_n(i,j);
           }
-        }, "KtensorAllGatherUpdate");
+        });
       }
       else {
-        Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrow),
+        Kokkos::parallel_for("KtensorAllGatherUpdate",
+                             Kokkos::RangePolicy<ExecSpace>(0,nrow),
                              KOKKOS_LAMBDA(const ttb_indx i)
         {
           auto row = row_n[i];
           for (int j=0; j<ncom; ++j) {
             Kokkos::atomic_add(&(u_n.entry(row,j)), val_n(i,j));
           }
-        }, "KtensorAllGatherUpdate");
+        });
       }
     }
   }
@@ -458,24 +461,26 @@ public:
       const ttb_indx nrow = row_n.extent(0);
       const ttb_indx ncom = nc;
       if (space_prop::concurrency() == 1) {
-        Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrow),
+        Kokkos::parallel_for("KtensorAllGatherUpdate",
+                             Kokkos::RangePolicy<ExecSpace>(0,nrow),
                              KOKKOS_LAMBDA(const ttb_indx i)
         {
           auto row = row_n[i];
           for (int j=0; j<ncom; ++j) {
             u_n.entry(row,j) += val_n(i,j);
           }
-        }, "KtensorAllGatherUpdate");
+        });
       }
       else {
-        Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrow),
+        Kokkos::parallel_for("KtensorAllGatherUpdate",
+                             Kokkos::RangePolicy<ExecSpace>(0,nrow),
                              KOKKOS_LAMBDA(const ttb_indx i)
         {
           auto row = row_n[i];
           for (int j=0; j<ncom; ++j) {
             Kokkos::atomic_add(&(u_n.entry(row,j)), val_n(i,j));
           }
-        }, "KtensorAllGatherUpdate");
+        });
       }
     }
     timer.stop(timer_update);
@@ -512,24 +517,26 @@ public:
     const ttb_indx ncom = nc;
     typedef SpaceProperties<ExecSpace> space_prop;
     if (space_prop::concurrency() == 1) {
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrow),
+      Kokkos::parallel_for("KtensorAllGatherUpdate",
+                           Kokkos::RangePolicy<ExecSpace>(0,nrow),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         auto row = row_n[i];
         for (int j=0; j<ncom; ++j) {
           u[n].entry(row,j) += val_n(i,j);
         }
-      }, "KtensorAllGatherUpdate");
+      });
     }
     else {
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrow),
+      Kokkos::parallel_for("KtensorAllGatherUpdate",
+                           Kokkos::RangePolicy<ExecSpace>(0,nrow),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         auto row = row_n[i];
         for (int j=0; j<ncom; ++j) {
           Kokkos::atomic_add(&(u[n].entry(row_n[i],j)), val_n(i,j));
         }
-      }, "KtensorAllGatherUpdate");
+      });
     }
   }
 
@@ -568,24 +575,26 @@ public:
     const ttb_indx ncom = nc;
     typedef SpaceProperties<ExecSpace> space_prop;
     if (space_prop::concurrency() == 1) {
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrow),
+      Kokkos::parallel_for("KtensorAllGatherUpdate",
+                           Kokkos::RangePolicy<ExecSpace>(0,nrow),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         auto row = row_n[i];
         for (int j=0; j<ncom; ++j) {
           u[n].entry(row,j) += val_n(i,j);
         }
-      }, "KtensorAllGatherUpdate");
+      });
     }
     else {
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrow),
+      Kokkos::parallel_for("KtensorAllGatherUpdate",
+                           Kokkos::RangePolicy<ExecSpace>(0,nrow),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         auto row = row_n[i];
         for (int j=0; j<ncom; ++j) {
           Kokkos::atomic_add(&(u[n].entry(row_n[i],j)), val_n(i,j));
         }
-      }, "KtensorAllGatherUpdate");
+      });
     }
   }
 

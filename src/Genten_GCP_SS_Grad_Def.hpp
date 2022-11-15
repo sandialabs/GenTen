@@ -111,6 +111,7 @@ namespace Genten {
       timer.start(timer_nzs);
       Policy policy_nz(N_nz, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "gcp_sgd_ss_grad_sv_nonzero_kernel",
         policy_nz.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -173,12 +174,13 @@ namespace Genten {
           } // n
         } // i
         rand_pool.free_state(gen);
-      }, "gcp_sgd_ss_grad_sv_nonzero_kernel");
+      });
       timer.stop(timer_nzs);
 
       timer.start(timer_zs);
       Policy policy_z(N_z, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "gcp_sgd_ss_grad_sv_zero_kernel",
         policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -239,7 +241,7 @@ namespace Genten {
           } // n
         } // i
         rand_pool.free_state(gen);
-      }, "gcp_sgd_ss_grad_sv_zero_kernel");
+      });
       timer.stop(timer_zs);
 
       for (unsigned n=0; n<nd; ++n)
@@ -294,6 +296,7 @@ namespace Genten {
       timer.start(timer_nzs);
       Policy policy_nz(N_nz, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "gcp_sgd_ss_grad_atomic_nonzero_kernel",
         policy_nz.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -353,12 +356,13 @@ namespace Genten {
           } // n
         } // i
         rand_pool.free_state(gen);
-      }, "gcp_sgd_ss_grad_atomic_nonzero_kernel");
+      });
       timer.stop(timer_nzs);
 
       timer.start(timer_zs);
       Policy policy_z(N_z, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "gcp_sgd_ss_grad_atomic_zero_kernel",
         policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -417,7 +421,7 @@ namespace Genten {
           } // n
         } // i
         rand_pool.free_state(gen);
-      }, "gcp_sgd_ss_grad_atomic_zero_kernel");
+      });
       timer.stop(timer_zs);
     }
 

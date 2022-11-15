@@ -128,7 +128,8 @@ struct HessVec_Kernel {
                                   std::make_pair(nc_beg,nc_end));
         su[n] = ScatterViewType(uu);
       }
-      Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+      Kokkos::parallel_for("hessvec_kernel",
+                           policy, KOKKOS_LAMBDA(const TeamMember& team)
       {
         // Loop over tensor non-zeros with a large stride on the GPU to
         // reduce atomic contention when the non-zeros are in a nearly sorted
@@ -187,7 +188,7 @@ struct HessVec_Kernel {
           row_func(j, nj, std::integral_constant<unsigned,0>());
         }
         }
-      }, "hessvec_kernel");
+      });
 
       for (unsigned n=0; n<nd; ++n) {
         auto uu = Kokkos::subview(u[n].view(),Kokkos::ALL,
@@ -246,7 +247,8 @@ struct HessVec_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
     typedef typename Policy::member_type TeamMember;
     Policy policy(N, TeamSize, VectorSize);
 
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+    Kokkos::parallel_for("hessvec_kernel",
+                         policy, KOKKOS_LAMBDA(const TeamMember& team)
     {
       // Loop over tensor non-zeros with a large stride on the GPU to
       // reduce atomic contention when the non-zeros are in a nearly sorted
@@ -295,7 +297,7 @@ struct HessVec_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
           row_func(j, nj, std::integral_constant<unsigned,0>());
         }
       }
-    }, "hessvec_kernel");
+    });
   }
 };
 #endif
@@ -344,7 +346,8 @@ struct HessVec_PermKernel {
     // Perm only works for a single dimension at a time, so loop over them
     // outside the kernel
     for (unsigned k=0; k<nd; ++k) {
-      Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+      Kokkos::parallel_for("hessvec_perm_kernel",
+                           policy, KOKKOS_LAMBDA(const TeamMember& team)
       {
         /*const*/ ttb_indx invalid_row = ttb_indx(-1);
         /*const*/ ttb_indx i_block =
@@ -419,7 +422,7 @@ struct HessVec_PermKernel {
           row_func(j, nj, std::integral_constant<unsigned,0>());
         }
         }
-      }, "hessvec_perm_kernel");
+      });
     }
   }
 };
@@ -467,7 +470,8 @@ struct HessVec_Dense_Kernel {
       /*const*/ ttb_indx ns = X.size(k);
       const ttb_indx N = (ns+TeamSize-1)/TeamSize;
       Policy policy(N, TeamSize, VectorSize);
-      Kokkos::parallel_for(policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+      Kokkos::parallel_for("hessvec_kernel",
+                           policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
                            KOKKOS_LAMBDA(const TeamMember& team)
       {
         // Row of u we write to
@@ -535,7 +539,7 @@ struct HessVec_Dense_Kernel {
             row_func(j, nj, std::integral_constant<unsigned,0>());
           }
         }
-      }, "hessvec_kernel");
+      });
     }
   }
 };
@@ -570,7 +574,8 @@ void hess_vec_ktensor_term(const KtensorT<ExecSpace>& a,
   for (unsigned k=0; k<nd; ++k) {
     const ttb_indx I_k = a[k].nRows();
     Kokkos::RangePolicy<ExecSpace> policy(0,I_k);
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ttb_indx i)
+    Kokkos::parallel_for("hessvec_ktensor_kernel",
+                         policy, KOKKOS_LAMBDA(const ttb_indx i)
     {
       for (unsigned j=0; j<nc; ++j) {
         for (unsigned s=0; s<nd; ++s) {
@@ -615,7 +620,7 @@ void hess_vec_ktensor_term(const KtensorT<ExecSpace>& a,
         // Add in regularization term
         u[k].entry(i,j) += lambda*v[k].entry(i,j);
       } // j
-    }, "hessvec_ktensor_kernel");
+    });
   }
 }
 
@@ -792,7 +797,8 @@ void gauss_newton_hess_vec(const TensorType& X,
   for (unsigned k=0; k<nd; ++k) {
     const ttb_indx I_k = a[k].nRows();
     Kokkos::RangePolicy<ExecSpace> policy(0,I_k);
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ttb_indx i)
+    Kokkos::parallel_for("hessvec_ktensor_kernel",
+                         policy, KOKKOS_LAMBDA(const ttb_indx i)
     {
       for (unsigned j=0; j<nc; ++j) {
         for (unsigned s=0; s<nd; ++s) {
@@ -821,7 +827,7 @@ void gauss_newton_hess_vec(const TensorType& X,
         // Add in regularization term
         u[k].entry(i,j) += lambda*v[k].entry(i,j);
       } // j
-    }, "hessvec_ktensor_kernel");
+    });
   }
 }
 

@@ -94,6 +94,7 @@ namespace Genten {
       // Generate samples of tensor
       Policy policy(N, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "Genten::GCP_SGD::Uniform_Sample",
         policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -144,7 +145,7 @@ namespace Genten {
           });
         }
         rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::Uniform_Sample");
+      });
     }
 
     template <typename ExecSpace, typename LossFunction>
@@ -192,6 +193,7 @@ namespace Genten {
       // Generate samples of tensor
       Policy policy(N, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "Genten::GCP_SGD::Uniform_Sample",
         policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -244,7 +246,7 @@ namespace Genten {
           });
         }
         rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::Uniform_Sample");
+      });
     }
 
     template <typename ExecSpace, typename LossFunction>
@@ -294,6 +296,7 @@ namespace Genten {
       // Generate samples of nonzeros
       Policy policy_nz(N_nz, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "Genten::GCP_SGD::Stratified_Sample_Nonzeros",
         policy_nz.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -340,12 +343,13 @@ namespace Genten {
           });
         }
         rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::Stratified_Sample_Nonzeros");
+      });
 
 
       // Generate samples of zeros
       Policy policy_z(N_z, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "Genten::GCP_SGD::Stratified_Sample_Zeros",
         policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -397,7 +401,7 @@ namespace Genten {
           });
         }
         rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::Stratified_Sample_Zeros");
+      });
     }
 
     template <typename ExecSpace, typename LossFunction>
@@ -448,6 +452,7 @@ namespace Genten {
       // Generate samples of nonzeros
       Policy policy_nz(N_nz, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "Genten::GCP_SGD::Stratified_Sample_Nonzeros",
         policy_nz.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -494,11 +499,12 @@ namespace Genten {
           });
         }
         rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::Stratified_Sample_Nonzeros");
+      });
 
       // Generate samples of zeros
       Policy policy_z(N_z, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "Genten::GCP_SGD::Stratified_Sample_Zeros",
         policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -550,7 +556,7 @@ namespace Genten {
           });
         }
         rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::Stratified_Sample_Zeros");
+      });
     }
 
     template <typename ExecSpace, typename Searcher, typename LossFunction>
@@ -607,6 +613,7 @@ namespace Genten {
       // Generate samples of nonzeros
       Policy policy_nz(N_nz, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "Genten::GCP_SGD::Stratified_Sample_Nonzeros",
         policy_nz,
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -630,11 +637,12 @@ namespace Genten {
           });
         }
         rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::Stratified_Sample_Nonzeros");
+      });
 
       // Generate samples of zeros
       Policy policy_z(N_z, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "Genten::GCP_SGD::Stratified_Sample_Zeros",
         policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -674,7 +682,7 @@ namespace Genten {
           });
         }
         rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::Stratified_Sample_Zeros");
+      });
 
       // Build new communication maps for sampled tensor.
       // ToDo:  run this on the device
@@ -715,7 +723,8 @@ namespace Genten {
         Kokkos::View<tpetra_go_type*,ExecSpace> gids("gids", cnt[n]);
         const unordered_map_type map_n = map[n];
         const ttb_indx sz = map_n.capacity();
-        Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+        Kokkos::parallel_for("Genten::GCP_SGD::Stratified_Build_Maps",
+                             Kokkos::RangePolicy<ExecSpace>(0,sz),
                              KOKKOS_LAMBDA(const ttb_indx idx)
         {
           if (map_n.valid_at(idx)) {
@@ -723,7 +732,7 @@ namespace Genten {
             const tpetra_lo_type lid = map_n.value_at(idx);
             gids[lid] = gid;
           }
-        }, "Genten::GCP_SGD::Stratified_Build_Maps");
+        });
         Y.factorMap(n) = X.factorMap(n);
         Y.tensorMap(n) = Teuchos::rcp(new tpetra_map_type<ExecSpace>(
           invalid, gids, indexBase, X.tensorMap(n)->getComm()));
@@ -755,6 +764,7 @@ namespace Genten {
       if (compute_gradient) {
         Policy policy_t(N_t, TeamSize, VectorSize);
         Kokkos::parallel_for(
+          "Genten::GCP_SGD::Stratified_Gradient",
           policy_t,
           KOKKOS_LAMBDA(const TeamMember& team)
         {
@@ -776,7 +786,7 @@ namespace Genten {
               Y.value(idx) = w[idx] * loss_func.deriv(x_val, m_val);
             });
           }
-        }, "Genten::GCP_SGD::Stratified_Gradient");
+        });
       }
 #else
       Genten::error("Stratified sampling with dist-update-method == tpetra requires tpetra!");
@@ -830,6 +840,7 @@ namespace Genten {
       // Generate samples of nonzeros
       Policy policy_nz(N_nz, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "Genten::GCP_SGD::SemiStratified_Sample_Nonzeros",
         policy_nz.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -877,11 +888,12 @@ namespace Genten {
           });
         }
         rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::SemiStratified_Sample_Nonzeros");
+      });
 
       // Generate samples of zeros
       Policy policy_z(N_z, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "Genten::GCP_SGD::SemiStratified_Sample_Zeros",
         policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -929,7 +941,7 @@ namespace Genten {
           });
         }
         rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::SemiStratified_Sample_Zeros");
+      });
     }
 
     template <typename ExecSpace, typename LossFunction>
@@ -959,7 +971,8 @@ namespace Genten {
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
       const ttb_indx nloops = algParams.rng_iters;
       const ttb_indx N_nonzeros = (num_samples+nloops-1)/nloops;
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
+      Kokkos::parallel_for("Genten::GCP_SGD::sample_tensor_nonzeros",
+                           Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
                            KOKKOS_LAMBDA(const ttb_indx k)
       {
         generator_type gen = rand_pool.get_state();
@@ -981,7 +994,7 @@ namespace Genten {
           }
         }
         rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::sample_tensor_nonzeros");
+      });
 
     }
 
@@ -1010,7 +1023,8 @@ namespace Genten {
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
       const ttb_indx nloops = algParams.rng_iters;
       const ttb_indx N_nonzeros = (num_samples+nloops-1)/nloops;
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
+      Kokkos::parallel_for("Genten::GCP_SGD::sample_tensor_nonzeros",
+                           Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
                            KOKKOS_LAMBDA(const ttb_indx k)
       {
         generator_type gen = rand_pool.get_state();
@@ -1026,7 +1040,7 @@ namespace Genten {
           }
         }
         rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::sample_tensor_nonzeros");
+      });
 
     }
 
@@ -1055,7 +1069,8 @@ namespace Genten {
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
       const ttb_indx nloops = algParams.rng_iters;
       const ttb_indx N_nonzeros = (num_samples+nloops-1)/nloops;
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
+      Kokkos::parallel_for("Genten::GCP_SGD::sample_tensor_nonzeros",
+                           Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
                            KOKKOS_LAMBDA(const ttb_indx k)
       {
         generator_type gen = rand_pool.get_state();
@@ -1070,7 +1085,7 @@ namespace Genten {
           }
         }
         rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::sample_tensor_nonzeros");
+      });
 
     }
 
@@ -1108,7 +1123,8 @@ namespace Genten {
         Z = SptensorT<ExecSpace>(X.size(), total_samples);
       }
       const ttb_indx N_zeros_gen = (total_samples+nloops-1)/nloops;
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_zeros_gen),
+      Kokkos::parallel_for("Genten::GCP_SGD::sample_tensor_zeros_bulk",
+                           Kokkos::RangePolicy<ExecSpace>(0,N_zeros_gen),
                            KOKKOS_LAMBDA(const ttb_indx k)
       {
         generator_type gen = rand_pool.get_state();
@@ -1121,7 +1137,7 @@ namespace Genten {
           }
         }
         rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::sample_tensor_zeros_bulk");
+      });
 
       // Sort Z
       Z.setIsSorted(false);
@@ -1163,7 +1179,8 @@ namespace Genten {
       // Parallel version using a hash map
       // Determine unique entries in Z
       Kokkos::UnorderedMap<ttb_indx,void,ExecSpace> unique_map(total_samples);
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,total_samples),
+      Kokkos::parallel_for("Genten::GCP_SGD::sample_tensor_zeros_duplicates",
+                           Kokkos::RangePolicy<ExecSpace>(0,total_samples),
                            KOKKOS_LAMBDA(const ttb_indx n)
       {
         bool duplicate = false;
@@ -1180,11 +1197,12 @@ namespace Genten {
           if (unique_map.insert(n).failed())
             Kokkos::abort("Unordered map insert failed!");
         }
-      }, "Genten::GCP_SGD::sample_tensor_zeros_duplicates");
+      });
 
       // Determine which entries in Z are not in X
       Kokkos::UnorderedMap<ttb_indx,void,ExecSpace> map(total_samples);
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_zeros_gen),
+      Kokkos::parallel_for("Genten::GCP_SGD::sample_tensor_zeros_search",
+                           Kokkos::RangePolicy<ExecSpace>(0,N_zeros_gen),
                            KOKKOS_LAMBDA(const ttb_indx k)
       {
         ttb_indx ind = 0;
@@ -1202,13 +1220,14 @@ namespace Genten {
             }
           }
         }
-      }, "Genten::GCP_SGD::sample_tensor_zeros_search");
+      });
 
       // Add entries in Z not in X into Y, eliminating duplicates
       const ttb_indx sz = map.capacity();
       Kokkos::View<ttb_indx,ExecSpace> idx("idx");
       // for (ttb_indx m=0; m<sz; ++m)
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+      Kokkos::parallel_for("Genten::GCP_SGD::sample_tensor_zeros_search",
+                           Kokkos::RangePolicy<ExecSpace>(0,sz),
                            KOKKOS_LAMBDA(const ttb_indx m)
       {
         if (map.valid_at(m)) {
@@ -1220,7 +1239,7 @@ namespace Genten {
             Y.value(offset+i) = 0.0;
           }
         }
-      }, "Genten::GCP_SGD::sample_tensor_zeros_search");
+      });
       typename Kokkos::View<ttb_indx,ExecSpace>::HostMirror idx_h =
         create_mirror_view(idx);
       deep_copy(idx_h, idx);
@@ -1229,7 +1248,8 @@ namespace Genten {
 #else
       // Direct parallel version
       Kokkos::View<ttb_indx,ExecSpace> idx("idx");
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_zeros_gen),
+      Kokkos::parallel_for("Genten::GCP_SGD::sample_tensor_zeros_search",
+                           Kokkos::RangePolicy<ExecSpace>(0,N_zeros_gen),
                            KOKKOS_LAMBDA(const ttb_indx k)
       {
         ttb_indx ind = 0;
@@ -1262,7 +1282,7 @@ namespace Genten {
             }
           }
         }
-      }, "Genten::GCP_SGD::sample_tensor_zeros_search");
+      });
       typename Kokkos::View<ttb_indx,ExecSpace>::HostMirror idx_h =
         create_mirror_view(idx);
       deep_copy(idx_h, idx);
@@ -1289,22 +1309,24 @@ namespace Genten {
       }
 
       // Copy X_nz
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,xnz),
+      Kokkos::parallel_for("Genten::GCP_SGD::merge_sampled_tensors_nz",
+                           Kokkos::RangePolicy<ExecSpace>(0,xnz),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         for (ttb_indx j=0; j<nd; ++j)
           X.subscript(i,j) = X_nz.subscript(i,j);
         X.value(i) = X_nz.value(i);
-      }, "Genten::GCP_SGD::merge_sampled_tensors_nz");
+      });
 
       // Copy X_z
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,xz),
+      Kokkos::parallel_for("Genten::GCP_SGD::merge_sampled_tensors_z",
+                           Kokkos::RangePolicy<ExecSpace>(0,xz),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         for (ttb_indx j=0; j<nd; ++j)
           X.subscript(i+xnz,j) = X_z.subscript(i,j);
         X.value(i+xnz) = X_z.value(i);
-      }, "Genten::GCP_SGD::merge_sampled_tensors_z");
+      });
     }
 
   }

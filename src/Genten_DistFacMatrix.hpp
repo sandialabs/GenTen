@@ -68,11 +68,12 @@ copyAndPermute(
   if (numSameIDs > 0) {
     Kokkos::RangePolicy<ExecSpace> policy(0,numSameIDs);
     if (combineMode == Tpetra::ADD_ASSIGN) {
-      Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ttb_indx i)
+      Kokkos::parallel_for("Genten::DistFacMatrix::copyAndPermute::copy",
+                           policy, KOKKOS_LAMBDA(const ttb_indx i)
       {
         for (unsigned j=0; j<nc; ++j)
           dst.entry(i,j) += src.entry(i,j);
-      }, "Genten::DistFacMatrix::copyAndPermute::copy");
+      });
     }
     else {
       const std::pair<size_t, size_t> rows(0, numSameIDs);
@@ -87,22 +88,24 @@ copyAndPermute(
     auto permTo = permuteToLIDs.view_device();
     auto permFrom = permuteFromLIDs.view_device();
     if (combineMode == Tpetra::ADD_ASSIGN) {
-      Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ttb_indx i)
+      Kokkos::parallel_for("Genten::DistFacMatrix::copyAndPermute::permute",
+                           policy, KOKKOS_LAMBDA(const ttb_indx i)
       {
         auto row_to = permTo(i);
         auto row_from = permFrom(i);
         for (unsigned j=0; j<nc; ++j)
           dst.entry(row_to,j) += src.entry(row_from,j);
-      }, "Genten::DistFacMatrix::copyAndPermute::permute");
+      });
     }
     else {
-      Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ttb_indx i)
+      Kokkos::parallel_for("Genten::DistFacMatrix::copyAndPermute::permute",
+                           policy, KOKKOS_LAMBDA(const ttb_indx i)
       {
         auto row_to = permTo(i);
         auto row_from = permFrom(i);
         for (unsigned j=0; j<nc; ++j)
           dst.entry(row_to,j) = src.entry(row_from,j);
-      }, "Genten::DistFacMatrix::copyAndPermute::permute");
+      });
     }
   }
 }
@@ -129,12 +132,13 @@ packAndPrepare(
     exports.modify_device();
     auto e = exports.view_device();
     auto e_lids = exportLIDs.view_device();
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ttb_indx i)
+    Kokkos::parallel_for("Genten::DistFacMatrix::packAndPrepare",
+                         policy, KOKKOS_LAMBDA(const ttb_indx i)
     {
       auto row = e_lids(i);
       for (unsigned j=0; j<nc; ++j)
         e(i*nc+j) = src.entry(row,j);
-    }, "Genten::DistFacMatrix::packAndPrepare");
+    });
   }
 }
 
@@ -157,29 +161,35 @@ unpackAndCombine(
     auto im_lids = importLIDs.view_device();
     if (combineMode == Tpetra::ADD || combineMode == Tpetra::ADD_ASSIGN) {
       if (space_prop::concurrency() > 1) {
-        Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ttb_indx i)
+        Kokkos::parallel_for(
+          "Genten::DistFacMatrix::unpackAndCombine::add_atomic",
+          policy, KOKKOS_LAMBDA(const ttb_indx i)
         {
           auto row = im_lids(i);
           for (unsigned j=0; j<nc; ++j)
             Kokkos::atomic_add(&(dst.entry(row,j)), im(i*nc+j));
-        }, "Genten::DistFacMatrix::unpackAndCombine::add_atomic");
+        });
       }
       else {
-        Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ttb_indx i)
+        Kokkos::parallel_for(
+          "Genten::DistFacMatrix::unpackAndCombine::add",
+          policy, KOKKOS_LAMBDA(const ttb_indx i)
         {
           auto row = im_lids(i);
           for (unsigned j=0; j<nc; ++j)
             dst.entry(row,j) += im(i*nc+j);
-        }, "Genten::DistFacMatrix::unpackAndCombine::add");
+        });
       }
     }
     else if (combineMode == Tpetra::INSERT || combineMode == Tpetra::REPLACE) {
-      Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ttb_indx i)
+      Kokkos::parallel_for(
+        "Genten::DistFacMatrix::unpackAndCombine::insert",
+        policy, KOKKOS_LAMBDA(const ttb_indx i)
       {
         auto row = im_lids(i);
         for (unsigned j=0; j<nc; ++j)
           dst.entry(row,j) = im(i*nc+j);
-      }, "Genten::DistFacMatrix::unpackAndCombine::insert");
+      });
     }
     else
       Genten::error("DistFacMatrix only supports ADD and INSERT combine modes");

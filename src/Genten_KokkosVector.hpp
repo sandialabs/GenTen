@@ -372,7 +372,7 @@ namespace Genten {
     {
       const ttb_indx n = v.extent(0);
       Kokkos::RangePolicy<exec_space> policy(0,n);
-      Kokkos::parallel_for(policy, f, name);
+      Kokkos::parallel_for(name, policy, f);
     }
 
     template <typename Func>

@@ -100,6 +100,7 @@ namespace Genten {
       timer.start(timer_nzs);
       Policy policy_nz(N_nz, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "gcp_sgd_ss_grad_sa_nonzero_kernel",
         policy_nz.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -162,12 +163,13 @@ namespace Genten {
           } // n
         } // i
         rand_pool.free_state(gen);
-      }, "gcp_sgd_ss_grad_sa_nonzero_kernel");
+      }); 
       timer.stop(timer_nzs);
 
       timer.start(timer_zs);
       Policy policy_z(N_z, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "gcp_sgd_ss_grad_sa_zero_kernel",
         policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -228,7 +230,7 @@ namespace Genten {
           } // n
         } // i
         rand_pool.free_state(gen);
-      }, "gcp_sgd_ss_grad_sa_zero_kernel");
+      });
       timer.stop(timer_zs);
     }
 
@@ -360,7 +362,8 @@ namespace Genten {
         typedef Kokkos::TeamPolicy<ExecSpace> Policy;
         typedef typename Policy::member_type TeamMember;
         Policy policy(league_size, team_size, vector_size);
-        Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+        Kokkos::parallel_for("Genten::Impl::gcp_sgd_ss_grad_sa::step_clip",
+                             policy, KOKKOS_LAMBDA(const TeamMember& team)
         {
           using std::sqrt;
           const ttb_indx i =
@@ -396,7 +399,7 @@ namespace Genten {
               });
             }
           }
-        }, "Genten::Impl::gcp_sgd_ss_grad_sa::step_clip");
+        });
         timer.stop(timer_step);
       }
     }

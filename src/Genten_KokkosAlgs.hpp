@@ -88,11 +88,12 @@ void perm_sort_op(const PermType& perm, const Op& op)
 
   // Initialize perm
   const size_type sz = perm.extent(0);
-  Kokkos::parallel_for(Kokkos::RangePolicy<exec_space>(0,sz),
+  Kokkos::parallel_for("Genten::perm_sort::perm_init",
+                       Kokkos::RangePolicy<exec_space>(0,sz),
                        KOKKOS_LAMBDA(const size_type i)
   {
     perm(i) = i;
-  }, "Genten::perm_sort::perm_init");
+  } );
 
 #if defined(KOKKOS_ENABLE_CUDA) || (defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCTHRUST))
   if (is_gpu_space<exec_space>::value) {
@@ -206,6 +207,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
     KeyViewType block_keys("block_keys", num_blocks);
     Kokkos::TeamPolicy<exec_space> policy(league_size,team_size,vector_size);
     Kokkos::parallel_for(
+      "Genten::key_scan::parallel_scan",
       policy.set_scratch_size(0,Kokkos::PerThread(bytes)),
       KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -251,13 +253,14 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
         {
           block_vals(block,j) = s[j];
         });
-      }, "Genten::key_scan::parallel_scan");
+      });
 
     // Scan the block results that are in the same segment
     key_scan(block_vals, block_keys, check);
 
     // Update scans for blocks [1,num_blocks) from inter-block scans
     Kokkos::parallel_for(
+      "Genten::key_scan::block_scan",
       policy.set_scratch_size(0,Kokkos::PerThread(bytes)),
       KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -281,12 +284,13 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
           });
           ++i;
         }
-      }, "Genten::key_scan::block_scan");
+      });
   }
   else {
     // Serial scan
     Kokkos::TeamPolicy<exec_space> policy(1,1,vector_size);
     Kokkos::parallel_for(
+      "Genten::key_scan::serial_scan",
       policy.set_scratch_size(0,Kokkos::PerThread(bytes)),
       KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -319,7 +323,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
             vals(i,j) = s[j];
           });
         }
-      }, "Genten::key_scan::serial_scan");
+      });
   }
 
   if (check) {
@@ -482,6 +486,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
     KeyViewType block_keys("block_keys", num_blocks);
     Kokkos::TeamPolicy<exec_space> policy(league_size,team_size,vector_size);
     Kokkos::parallel_for(
+      "Genten::key_scan_perm::parallel_scan",
       policy.set_scratch_size(0,Kokkos::PerThread(bytes)),
       KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -529,7 +534,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
         {
           block_vals(block,j) = s[j];
         });
-      }, "Genten::key_scan_perm::parallel_scan");
+      });
 
     // Scan the block results that are in the same segment (does not use
     // permutation)
@@ -537,6 +542,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
 
     // Update scans for blocks [1,num_blocks) from inter-block scans
     Kokkos::parallel_for(
+      "Genten::key_scan_perm::block_scan",
       policy.set_scratch_size(0,Kokkos::PerThread(bytes)),
       KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -562,12 +568,13 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
           ++i;
           p = perm(i);
         }
-      }, "Genten::key_scan_perm::block_scan");
+      });
   }
   else {
     // Serial scan
     Kokkos::TeamPolicy<exec_space> policy(1,1,vector_size);
     Kokkos::parallel_for(
+      "Genten::key_scan_perm::serial_scan",
       policy.set_scratch_size(0,Kokkos::PerThread(bytes)),
       KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -602,7 +609,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
             vals(p,j) = s[j];
           });
         }
-      }, "Genten::key_scan_perm::serial_scan");
+      });
   }
 
   if (check) {

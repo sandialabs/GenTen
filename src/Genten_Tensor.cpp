@@ -23,12 +23,13 @@ void copyFromSptensor(const TensorT<ExecSpace>& x,
                       const SptensorT<ExecSpace>& src)
 {
   const ttb_indx nnz = src.nnz();
-  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nnz),
+  Kokkos::parallel_for("copyFromSptensor",
+                       Kokkos::RangePolicy<ExecSpace>(0,nnz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
     const ttb_indx k = x.sub2ind(src.getSubscripts(i));
     x[k] = src.value(i);
-  }, "copyFromSptensor");
+  });
 }
 
 template <typename ExecSpace>
@@ -51,7 +52,8 @@ void copyFromKtensor(const TensorT<ExecSpace>& x,
 
   const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
   Policy policy(N, TeamSize, VectorSize);
-  Kokkos::parallel_for(policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+  Kokkos::parallel_for("copyFromKtensor",
+                       policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
                        KOKKOS_LAMBDA(const TeamMember& team)
   {
     // Compute indices for entry "i"
@@ -86,7 +88,7 @@ void copyFromKtensor(const TensorT<ExecSpace>& x,
       x[i] = src_val;
     });
 
-  }, "copyFromKtensor");
+  });
 }
 
 }

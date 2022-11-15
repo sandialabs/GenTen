@@ -103,7 +103,8 @@ copyFrom(ttb_indx n, const ttb_real * src) const
   //unmanaged_const_view_type src_view(src,n);
   //deep_copy(data, src_view);
   view_type my_data = data;
-  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,n),
+  Kokkos::parallel_for("Genten::Array::copyFrom",
+                       Kokkos::RangePolicy<ExecSpace>(0,n),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
     my_data(i) = src[i];
@@ -358,11 +359,12 @@ times(ttb_real a) const
   const ttb_indx sz = data.extent(0);
   //Genten::scal(sz, a, data.data(), 1);
   view_type d = data;
-  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+  Kokkos::parallel_for("Genten::Array::scalar_times_kernel",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
     d[i] *= a;
-  }, "Genten::Array::scalar_times_kernel");
+  });
 }
 
 template <typename ExecSpace>
@@ -410,7 +412,8 @@ power(ttb_real a) const
 {
   view_type d = data;
   const ttb_indx sz = data.extent(0);
-  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+  Kokkos::parallel_for("Genten::Array::power_kernel",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
 #if defined(__SYCL_DEVICE_ONLY__)
@@ -420,7 +423,7 @@ power(ttb_real a) const
 #endif
 
     d[i] = pow(d[i], a);
-  }, "Genten::Array::power_kernel");
+  });
 }
 
 template <typename ExecSpace>
@@ -444,11 +447,12 @@ shift(ttb_real a) const
 {
   const ttb_indx sz = data.extent(0);
   view_type d = data;
-  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+  Kokkos::parallel_for("Genten::Array::scalar_shift_kernel",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
     d[i] += a;
-  }, "Genten::Array::scalar_shift_kernel");
+  });
 }
 
 template <typename ExecSpace>
@@ -479,11 +483,12 @@ update(const ttb_real a, const Genten::ArrayT<ExecSpace> & y,
 
   view_type d = data;
   view_type yd = y.data;
-  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+  Kokkos::parallel_for("Genten::Array::update_kernel",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
  {
    d[i] = a*yd[i] + b*d[i];
- }, "Genten::Array::update_kernel");
+ });
 }
 
 template <typename ExecSpace>
@@ -499,11 +504,12 @@ plus(const Genten::ArrayT<ExecSpace> & y, const ttb_real s) const
   //Genten::axpy(sz, s, y.data.data(), 1, data.data(), 1);
   view_type d = data;
   view_type yd = y.data;
-  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+  Kokkos::parallel_for("Genten::Array::plus_kernel",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
     d[i] += s*yd[i];
-  }, "Genten::Array::plus_kernel");
+  });
 }
 
 // x = x + sum(y[i] )
@@ -594,11 +600,12 @@ times(const Genten::ArrayT<ExecSpace> & y) const
   //vmul(sz, data.data(), y.data.data());
   view_type d = data;
   view_type yd = y.data;
-  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+  Kokkos::parallel_for("Genten::Array::times_kernel",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
     d[i] *= yd[i];
-  }, "Genten::Array::times_kernel");
+  });
 }
 
 template <typename ExecSpace>

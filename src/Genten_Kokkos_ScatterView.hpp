@@ -1102,7 +1102,7 @@ struct ReduceDuplicates<
     const size_t row_block_size = 128;
     const size_t N1 = (n1+row_block_size-1) / row_block_size;
     policy_type policy(N1,team_size,vector_size);
-    Kokkos::parallel_for( policy, KOKKOS_LAMBDA(const member_type& team)
+    Kokkos::parallel_for( "reduce_"+name, policy, KOKKOS_LAMBDA(const member_type& team)
     {
       for (size_t ii=team.team_rank(); ii<row_block_size; ii+=team_size) {
         const size_t i = team.league_rank()*row_block_size + ii;
@@ -1118,7 +1118,7 @@ struct ReduceDuplicates<
           }
         }
       }
-    }, "reduce_"+name );
+    } );
   }
 };
 } } }

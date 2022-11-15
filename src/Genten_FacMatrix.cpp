@@ -222,12 +222,13 @@ update(const ttb_real a, const Genten::FacMatrixT<ExecSpace> & y,
     assert(data.extent(0) == y.data.extent(0));
     assert(data.extent(1) == y.data.extent(1));
     auto d = data;
-    Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,d.extent(0)),
+    Kokkos::parallel_for("FacMatrix::update",
+                         Kokkos::RangePolicy<ExecSpace>(0,d.extent(0)),
                          KOKKOS_LAMBDA(const ttb_indx i)
     {
       for (ttb_indx j=0; j<d.extent(1); ++j)
         d(i,j) = a*y.data(i,j) + b*d(i,j);
-    }, "FacMatrix::update");
+    });
   }
 }
 
@@ -431,7 +432,8 @@ void gramian_kernel(const ViewC& C, const ViewA& A)
   typedef typename Kernel::TeamMember TeamMember;
 
   deep_copy( C, 0.0 );
-  Kokkos::parallel_for(Kernel::policy(m),
+  Kokkos::parallel_for("Genten::FacMatrix::gramian_kernel",
+                       Kernel::policy(m),
                        KOKKOS_LAMBDA(TeamMember team)
   {
     GramianKernel<ExecSpace,ViewC,ViewA,ColBlockSize,RowBlockSize,TeamSize,VectorSize> kernel(C, A, team);
@@ -443,7 +445,7 @@ void gramian_kernel(const ViewC& C, const ViewA& A)
           kernel.template run<0>(i_block, j_block, n-j_block);
       }
     }
-  }, "Genten::FacMatrix::gramian_kernel");
+  });
 }
 
 template <typename ExecSpace, typename ViewC, typename ViewA>
@@ -755,13 +757,14 @@ oprod(const Genten::ArrayT<ExecSpace> & v) const
   assert(data.extent(1) == n);
 
   view_type d = data;
-  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,n),
+  Kokkos::parallel_for("Genten::FacMatrix::oprod_kernel",
+                       Kokkos::RangePolicy<ExecSpace>(0,n),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
     const ttb_real vi = v[i];
     for (ttb_indx j=0; j<n; ++j)
       d(i,j) = vi * v[j];
-  }, "Genten::FacMatrix::oprod_kernel");
+  });
 }
 
 template <typename ExecSpace>
@@ -779,13 +782,14 @@ oprod(const Genten::ArrayT<ExecSpace> & v1,
   assert(data.extent(1) == n);
 
   view_type d = data;
-  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,m),
+  Kokkos::parallel_for("Genten::FacMatrix::oprod_kernel",
+                       Kokkos::RangePolicy<ExecSpace>(0,m),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
     const ttb_real vi = v1[i];
     for (ttb_indx j=0; j<n; ++j)
       d(i,j) = vi * v2[j];
-  }, "Genten::FacMatrix::oprod_kernel");
+  });
 }
 
 namespace Genten {
@@ -1068,7 +1072,8 @@ void colNorms_kernel(
   {
     typedef ColNormsKernel_Inf<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> Kernel;
     typedef typename Kernel::TeamMember TeamMember;
-    Kokkos::parallel_for(Kernel::policy(m),
+    Kokkos::parallel_for("Genten::FacMatrix::colNorms_inf_kernel",
+                         Kernel::policy(m),
                          KOKKOS_LAMBDA(TeamMember team)
     {
       ColNormsKernel_Inf<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> kernel(data, norms, team);
@@ -1078,7 +1083,7 @@ void colNorms_kernel(
         else
           kernel.template run<0>(j_block, n-j_block);
       }
-    }, "Genten::FacMatrix::colNorms_inf_kernel");
+    });
     if (pmap != nullptr) {
       Kokkos::fence();
       pmap->allReduce(norms.data(), norms.size(), ProcessorMap::Max);
@@ -1091,7 +1096,8 @@ void colNorms_kernel(
   {
     typedef ColNormsKernel_1<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> Kernel;
     typedef typename Kernel::TeamMember TeamMember;
-    Kokkos::parallel_for(Kernel::policy(m),
+    Kokkos::parallel_for("Genten::FacMatrix::colNorms_1_kernel",
+                         Kernel::policy(m),
                          KOKKOS_LAMBDA(TeamMember team)
     {
       ColNormsKernel_1<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> kernel(data, norms, team);
@@ -1101,7 +1107,7 @@ void colNorms_kernel(
         else
           kernel.template run<0>(j_block, n-j_block);
       }
-    }, "Genten::FacMatrix::colNorms_1_kernel");
+    });
     if (pmap != nullptr) {
       Kokkos::fence();
       pmap->allReduce(norms.data(), norms.size());
@@ -1113,7 +1119,8 @@ void colNorms_kernel(
   {
     typedef ColNormsKernel_2<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> Kernel;
     typedef typename Kernel::TeamMember TeamMember;
-    Kokkos::parallel_for(Kernel::policy(m),
+    Kokkos::parallel_for("Genten::FacMatrix::colNorms_2_kernel",
+                         Kernel::policy(m),
                          KOKKOS_LAMBDA(TeamMember team)
     {
       ColNormsKernel_2<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> kernel(data, norms, team);
@@ -1123,7 +1130,7 @@ void colNorms_kernel(
         else
           kernel.template run<0>(j_block, n-j_block);
       }
-    }, "Genten::FacMatrix::colNorms_2_kernel");
+    });
     if (pmap != nullptr) {
       Kokkos::fence();
       pmap->allReduce(norms.data(), norms.size());
@@ -1259,7 +1266,8 @@ void colScale_kernel(const ViewType& data, const Genten::ArrayT<ExecSpace>& v)
   typedef ColScaleKernel<ExecSpace,ViewType,ColBlockSize,RowBlockSize,TeamSize,VectorSize> Kernel;
   typedef typename Kernel::TeamMember TeamMember;
 
-  Kokkos::parallel_for(Kernel::policy(m), KOKKOS_LAMBDA(TeamMember team)
+  Kokkos::parallel_for("Genten::FacMatrix::colScale_kernel",
+                       Kernel::policy(m), KOKKOS_LAMBDA(TeamMember team)
   {
     ColScaleKernel<ExecSpace,ViewType,ColBlockSize,RowBlockSize,TeamSize,VectorSize> kernel(data, v, team);
     for (unsigned j_block=0; j_block<n; j_block+=ColBlockSize) {
@@ -1268,7 +1276,7 @@ void colScale_kernel(const ViewType& data, const Genten::ArrayT<ExecSpace>& v)
       else
         kernel.template run<0>(j_block, n-j_block);
     }
-  }, "Genten::FacMatrix::colScale_kernel");
+  });
 }
 
 }
@@ -1622,13 +1630,14 @@ permute(const Genten::IndxArray& perm_indices) const
       // be much more efficient to move the j-loop inside the parallel_for
       // and use vector parallelism
       view_type d = data;
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrows),
+      Kokkos::parallel_for("Genten::FacMatrix::permute_kernel",
+                           Kokkos::RangePolicy<ExecSpace>(0,nrows),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         const ttb_real temp = d(i,loc);
         d(i,loc) = d(i,j);
         d(i,j) = temp;
-      }, "Genten::FacMatrix::permute_kernel");
+      });
 
       // Swap curr_indices to mark where data was moved.
       ttb_indx  k = curr_indices[j];

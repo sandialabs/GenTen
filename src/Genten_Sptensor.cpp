@@ -338,11 +338,12 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
 #else
 
     // Sort tmp=[1:sz] using subs(:,n) as a comparator
-    Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+    Kokkos::parallel_for("Genten::Sptensor::createPermutationImpl_init_kernel",
+                         Kokkos::RangePolicy<ExecSpace>(0,sz),
                          KOKKOS_LAMBDA(const ttb_indx i)
     {
       tmp(i) = i;
-    }, "Genten::Sptensor::createPermutationImpl_init_kernel");
+    });
 
 #if defined(KOKKOS_ENABLE_CUDA) || (defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCTHRUST))
     if (is_gpu_space<ExecSpace>::value) {
@@ -439,11 +440,12 @@ sortImpl(vals_type& vals, subs_type& subs)
   // to lexicographically sorted order
 
   // Initialize tmp to unsorted order
-  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+  Kokkos::parallel_for("Genten::Sptensor::sortImpl_init_kernel",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
     tmp(i) = i;
-  }, "Genten::Sptensor::sortImpl_init_kernel");
+  });
 
   // Comparison functor for lexicographic sorting
   auto cmp =
@@ -502,13 +504,14 @@ sortImpl(vals_type& vals, subs_type& subs)
   subs_type sorted_subs(
     Kokkos::view_alloc("Genten::Sptensor::subs", Kokkos::WithoutInitializing),
     sz, nd);
-  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+  Kokkos::parallel_for("Genten::Sptensor::sortImpl_copy_kernel",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
     sorted_vals(i) = vals[tmp(i)];
     for (unsigned n=0; n<nd; ++n)
       sorted_subs(i,n) = subs(tmp(i),n);
-  }, "Genten::Sptensor::sortImpl_copy_kernel");
+  });
 
   vals = vals_type(sorted_vals);
   subs = sorted_subs;

@@ -112,7 +112,8 @@ mttkrp_kernel(const SptensorT<ExecSpace>& X,
     auto vv = Kokkos::subview(v.view(),Kokkos::ALL,
                               std::make_pair(nc_beg,nc_end));
     auto sv = create_scatter_view<ScatterSum,Dupl,Cont>(vv);
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+    Kokkos::parallel_for("mttkrp_kernel",
+                         policy, KOKKOS_LAMBDA(const TeamMember& team)
     {
       auto va = sv.access();
 
@@ -164,7 +165,7 @@ mttkrp_kernel(const SptensorT<ExecSpace>& X,
           row_func(j, nj, std::integral_constant<unsigned,0>());
         }
       }
-    }, "mttkrp_kernel");
+    });
 
     sv.contribute_into(vv);
   }
@@ -198,7 +199,8 @@ mttkrp_kernel_perm(const SptensorT<ExecSpace>& X,
   typedef Kokkos::TeamPolicy<ExecSpace> Policy;
   typedef typename Policy::member_type TeamMember;
   Policy policy(N, TeamSize, VectorSize);
-  Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+  Kokkos::parallel_for("mttkrp_kernel",
+                       policy, KOKKOS_LAMBDA(const TeamMember& team)
   {
     /*const*/ ttb_indx invalid_row = ttb_indx(-1);
     /*const*/ ttb_indx i_block =
@@ -270,7 +272,7 @@ mttkrp_kernel_perm(const SptensorT<ExecSpace>& X,
         row_func(j, nj, std::integral_constant<unsigned,0>());
       }
     }
-  }, "mttkrp_kernel");
+  });
 }
 
 template <typename ExecSpace>
@@ -412,7 +414,8 @@ struct MTTKRP_All_Kernel {
                                   std::make_pair(nc_beg,nc_end));
         sa[n] = ScatterViewType(vv);
       }
-      Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+      Kokkos::parallel_for("mttkrp_all_kernel",
+                           policy, KOKKOS_LAMBDA(const TeamMember& team)
       {
         // Loop over tensor non-zeros with a large stride on the GPU to
         // reduce atomic contention when the non-zeros are in a nearly sorted
@@ -465,7 +468,7 @@ struct MTTKRP_All_Kernel {
           row_func(j, nj, std::integral_constant<unsigned,0>());
         }
         }
-      }, "mttkrp_all_kernel");
+      });
 
       for (unsigned n=0; n<nm; ++n) {
         auto vv = Kokkos::subview(v[n].view(),Kokkos::ALL,
@@ -532,7 +535,8 @@ struct MTTKRP_All_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
     typedef typename Policy::member_type TeamMember;
     Policy policy(N, TeamSize, VectorSize);
 
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+    Kokkos::parallel_for("mttkrp_all_kernel",
+                         policy, KOKKOS_LAMBDA(const TeamMember& team)
     {
       // Loop over tensor non-zeros with a large stride on the GPU to
       // reduce atomic contention when the non-zeros are in a nearly sorted
@@ -575,7 +579,7 @@ struct MTTKRP_All_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
           row_func(j, nj, std::integral_constant<unsigned,0>());
         }
       }
-    }, "mttkrp_all_kernel");
+    });
   }
 };
 #endif
@@ -679,7 +683,8 @@ void orig_kokkos_mttkrp_kernel(const SptensorT<ExecSpace>& X,
   typedef MTTKRP_OrigKokkosKernelBlock<ExecSpace, FacBlockSize, TeamSize, VectorSize> Kernel;
   typedef typename Kernel::TeamMember TeamMember;
 
-  Kokkos::parallel_for(Kernel::policy(nnz),
+  Kokkos::parallel_for("Genten::mttkrp_kernel",
+                       Kernel::policy(nnz),
                        KOKKOS_LAMBDA(TeamMember team)
   {
     const ttb_indx i = team.league_rank()*team.team_size()+team.team_rank();
@@ -695,7 +700,7 @@ void orig_kokkos_mttkrp_kernel(const SptensorT<ExecSpace>& X,
         kernel.template run<0>(j, nc-j);
     }
 
-  }, "Genten::mttkrp_kernel");
+  });
 
   return;
 }

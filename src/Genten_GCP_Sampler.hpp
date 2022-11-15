@@ -90,12 +90,13 @@ namespace Genten {
       const ttb_indx nnz = X.nnz();
       const ttb_indx nd = X.ndims();
       map_type hash_map(nd, ttb_indx(1.1*nnz));
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nnz),
+      Kokkos::parallel_for("Genten::GCP_SGD::hash_kernel",
+                           Kokkos::RangePolicy<ExecSpace>(0,nnz),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         auto key = X.getGlobalSubscripts(i);
         hash_map.insert(key, X.value(i));
-      }, "Genten::GCP_SGD::hash_kernel");
+      });
 
       const bool print_histogram = false;
       if (print_histogram) {
