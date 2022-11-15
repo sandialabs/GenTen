@@ -706,6 +706,8 @@ public:
 
   virtual bool isReplicated() const override { return false; }
 
+  using DistKtensorUpdate<ExecSpace>::doImport;
+
   virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
                         const KtensorT<ExecSpace>& u) const override
   {
@@ -734,6 +736,8 @@ public:
     else
       deep_copy(u_overlapped[n], u[n]);
   }
+
+  using DistKtensorUpdate<ExecSpace>::doExport;
 
   virtual void doExport(const KtensorT<ExecSpace>& u,
                         const KtensorT<ExecSpace>& u_overlapped) const override
