@@ -85,6 +85,12 @@ namespace Genten {
       if (algParams.async &&
           algParams.sampling_type != GCP_Sampling::SemiStratified)
         Genten::error("Must use semi-stratified sampling with asynchronous solver!");
+      if (algParams.async &&
+          algParams.dist_update_method == Dist_Update_Method::Tpetra)
+        Genten::error("Asynchronous GCP-SGD does not work with Tpetra distributed parallelism");
+      if (algParams.fuse &&
+          algParams.dist_update_method == Dist_Update_Method::Tpetra)
+        Genten::error("Fused sampling does not work with Tpetra distributed parallelism");
 
       const ttb_indx nd = u0.ndims();
       const ttb_indx nc = u0.ncomponents();

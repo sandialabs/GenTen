@@ -197,6 +197,8 @@ driver(const DistTensorContext<ExecSpace>& dtc,
   }
   else if (algParams.method == Genten::Solver_Method::GCP_SGD &&
            algParams.fuse_sa) {
+    if (algParams.dist_update_method == Dist_Update_Method::Tpetra)
+      Genten::error("Fused-SA GCP-SGD method does not work with Tpetra distributed parallelism");
     // Run GCP-SGD
     ttb_indx iter;
     ttb_real resNorm;
