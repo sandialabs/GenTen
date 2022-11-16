@@ -347,7 +347,7 @@ void deep_copy(const KtensorT<E1>& dst, const KtensorT<E2>& src)
   deep_copy( dst.factors(), src.factors() );
 }
 
-template <typename ExecSpace> class SptensorT;
+template <typename ExecSpace> class SptensorImpl;
 
 // Compute Ktensor value using Sptensor subscripts
 // Len and WarpOrWavefrontSize are for nested parallelism using TinyVec
@@ -355,7 +355,7 @@ template <typename ExecSpace, unsigned Len, unsigned WarpOrWavefrontSize>
 KOKKOS_INLINE_FUNCTION
 ttb_real compute_Ktensor_value(const typename Kokkos::TeamPolicy<ExecSpace>::member_type& team,
                                const KtensorT<ExecSpace>& M,
-                               const SptensorT<ExecSpace>& X,
+                               const SptensorImpl<ExecSpace>& X,
                                const ttb_indx i) {
   typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, Len, Len, WarpOrWavefrontSize> TVM1;
 

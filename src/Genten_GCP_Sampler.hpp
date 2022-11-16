@@ -84,9 +84,10 @@ namespace Genten {
                                const int timer_nzs,
                                const int timer_zs) = 0;
 
-    static map_type buildHashMap(const SptensorT<ExecSpace>& X,
+    static map_type buildHashMap(const SptensorT<ExecSpace>& Xd,
                                  std::ostream& out)
     {
+      const auto X = Xd.impl();
       const ttb_indx nnz = X.nnz();
       const ttb_indx nd = X.ndims();
       map_type hash_map(nd, ttb_indx(1.1*nnz));

@@ -68,13 +68,13 @@ namespace Impl {
 // Because of problems with ScatterView, doesn't work on the GPU
 template <int Dupl, int Cont, typename ExecSpace>
 struct HessVec_Kernel {
-  const SptensorT<ExecSpace> XX;
+  const SptensorImpl<ExecSpace> XX;
   const KtensorT<ExecSpace> aa;
   const KtensorT<ExecSpace> vv;
   const KtensorT<ExecSpace> uu;
   const AlgParams algParams;
 
-  HessVec_Kernel(const SptensorT<ExecSpace>& X_,
+  HessVec_Kernel(const SptensorImpl<ExecSpace>& X_,
                  const KtensorT<ExecSpace>& a_,
                  const KtensorT<ExecSpace>& v_,
                  const KtensorT<ExecSpace>& u_,
@@ -83,7 +83,7 @@ struct HessVec_Kernel {
 
   template <unsigned FBS, unsigned VS>
   void run() const {
-    const SptensorT<ExecSpace> X = XX;
+    const SptensorImpl<ExecSpace> X = XX;
     const KtensorT<ExecSpace> a = aa;
     const KtensorT<ExecSpace> v = vv;
     const KtensorT<ExecSpace> u = uu;
@@ -207,13 +207,13 @@ template <int Dupl, int Cont>
 struct HessVec_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
   typedef Kokkos_GPU_Space ExecSpace;
 
-  const SptensorT<ExecSpace> XX;
+  const SptensorImpl<ExecSpace> XX;
   const KtensorT<ExecSpace> aa;
   const KtensorT<ExecSpace> vv;
   const KtensorT<ExecSpace> uu;
   const AlgParams algParams;
 
-  HessVec_Kernel(const SptensorT<ExecSpace>& X_,
+  HessVec_Kernel(const SptensorImpl<ExecSpace>& X_,
                  const KtensorT<ExecSpace>& a_,
                  const KtensorT<ExecSpace>& v_,
                  const KtensorT<ExecSpace>& u_,
@@ -222,7 +222,7 @@ struct HessVec_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
 
   template <unsigned FBS, unsigned VS>
   void run() const {
-    const SptensorT<ExecSpace> X = XX;
+    const SptensorImpl<ExecSpace> X = XX;
     const KtensorT<ExecSpace> a = aa;
     const KtensorT<ExecSpace> v = vv;
     const KtensorT<ExecSpace> u = uu;
@@ -305,13 +305,13 @@ struct HessVec_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
 // HessVec permutation-based kernel for Sptensor for all modes simultaneously
 template <typename ExecSpace>
 struct HessVec_PermKernel {
-  const SptensorT<ExecSpace> XX;
+  const SptensorImpl<ExecSpace> XX;
   const KtensorT<ExecSpace> aa;
   const KtensorT<ExecSpace> vv;
   const KtensorT<ExecSpace> uu;
   const AlgParams algParams;
 
-  HessVec_PermKernel(const SptensorT<ExecSpace>& X_,
+  HessVec_PermKernel(const SptensorImpl<ExecSpace>& X_,
                      const KtensorT<ExecSpace>& a_,
                      const KtensorT<ExecSpace>& v_,
                      const KtensorT<ExecSpace>& u_,
@@ -320,7 +320,7 @@ struct HessVec_PermKernel {
 
   template <unsigned FBS, unsigned VS>
   void run() const {
-    const SptensorT<ExecSpace> X = XX;
+    const SptensorImpl<ExecSpace> X = XX;
     const KtensorT<ExecSpace> a = aa;
     const KtensorT<ExecSpace> v = vv;
     const KtensorT<ExecSpace> u = uu;
@@ -675,21 +675,21 @@ void hess_vec(const SptensorT<ExecSpace>& X,
     Genten::error("Single and duplicated hess-vec tensor methods are invalid on Cuda and HIP!");
 
   if (method == Hess_Vec_Tensor_Method::Single) {
-    Impl::HessVec_Kernel<ScatterNonDuplicated,ScatterNonAtomic,ExecSpace> kernel(X,a_overlap,v_overlap,u_overlap,algParams);
+    Impl::HessVec_Kernel<ScatterNonDuplicated,ScatterNonAtomic,ExecSpace> kernel(X.impl(),a_overlap,v_overlap,u_overlap,algParams);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else if (method == Hess_Vec_Tensor_Method::Atomic) {
-    Impl::HessVec_Kernel<ScatterNonDuplicated,ScatterAtomic,ExecSpace> kernel(X,a_overlap,v_overlap,u_overlap,algParams);
+    Impl::HessVec_Kernel<ScatterNonDuplicated,ScatterAtomic,ExecSpace> kernel(X.impl(),a_overlap,v_overlap,u_overlap,algParams);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else if (method == Hess_Vec_Tensor_Method::Duplicated) {
-    Impl::HessVec_Kernel<ScatterDuplicated,ScatterNonAtomic,ExecSpace> kernel(X,a_overlap,v_overlap,u_overlap,algParams);
+    Impl::HessVec_Kernel<ScatterDuplicated,ScatterNonAtomic,ExecSpace> kernel(X.impl(),a_overlap,v_overlap,u_overlap,algParams);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else if (method == Hess_Vec_Tensor_Method::Perm) {
     if (!X.havePerm())
       Genten::error("Perm hess-vec tensor method selected, but permutation array not computed!");
-    Impl::HessVec_PermKernel<ExecSpace> kernel(X,a_overlap,v_overlap,u_overlap,algParams);
+    Impl::HessVec_PermKernel<ExecSpace> kernel(X.impl(),a_overlap,v_overlap,u_overlap,algParams);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else

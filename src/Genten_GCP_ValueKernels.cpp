@@ -48,7 +48,7 @@ namespace Genten {
 
     template <typename ExecSpace, typename loss_type>
     struct GCP_Value {
-      typedef SptensorT<ExecSpace> tensor_type;
+      typedef SptensorImpl<ExecSpace> tensor_type;
       typedef KtensorT<ExecSpace> Ktensor_type;
       typedef ArrayT<ExecSpace> weights_type;
 
@@ -110,12 +110,13 @@ namespace Genten {
     };
 
     template <typename ExecSpace, typename loss_type>
-    ttb_real gcp_value(const SptensorT<ExecSpace>& X,
+    ttb_real gcp_value(const SptensorT<ExecSpace>& Xd,
                        const KtensorT<ExecSpace>& M,
                        const ArrayT<ExecSpace>& w,
                        const loss_type& f)
     {
       ttb_real val = 0.0;
+      const auto X = Xd.impl();
 #if 1
       GCP_Value<ExecSpace,loss_type> kernel(X,M,w,f);
       run_row_simd_kernel(kernel, M.ncomponents());

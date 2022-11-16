@@ -217,7 +217,7 @@ namespace Genten {
             Xs, w, u_overlap, this->rand_pool, this->algParams);
         else
           Impl::stratified_sample_tensor_tpetra(
-            this->X, Impl::SortSearcher<ExecSpace>(this->X),
+            this->X, Impl::SortSearcher<ExecSpace>(this->X.impl()),
             num_nz, num_z, w_nz, w_z,
             u, loss_func, gradient,
             Xs, w, u_overlap, this->rand_pool, this->algParams);

@@ -20,8 +20,9 @@ namespace Impl {
 
 template <typename ExecSpace>
 void copyFromSptensor(const TensorT<ExecSpace>& x,
-                      const SptensorT<ExecSpace>& src)
+                      const SptensorT<ExecSpace>& src_dist)
 {
+  const auto src = src_dist.impl();
   const ttb_indx nnz = src.nnz();
   Kokkos::parallel_for("copyFromSptensor",
                        Kokkos::RangePolicy<ExecSpace>(0,nnz),

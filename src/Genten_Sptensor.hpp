@@ -46,8 +46,7 @@
 #include "Genten_Array.hpp"
 #include "Genten_IndxArray.hpp"
 #include "Genten_Ktensor.hpp"
-#include "Genten_Pmap.hpp"
-#include "Genten_Tpetra.hpp"
+#include "Genten_DistTensor.hpp"
 
 namespace Genten
 {
@@ -61,36 +60,30 @@ template <typename ExecSpace> class SptensorT;
 typedef SptensorT<DefaultHostExecutionSpace> Sptensor;
 
 template <typename ExecSpace>
-class SptensorT
+class SptensorImpl
 {
-
 public:
 
   typedef ExecSpace exec_space;
   typedef Kokkos::View<ttb_indx**,Kokkos::LayoutRight,ExecSpace> subs_view_type;
   typedef Kokkos::View<ttb_real*,Kokkos::LayoutRight,ExecSpace> vals_view_type;
   typedef typename ArrayT<ExecSpace>::host_mirror_space host_mirror_space;
-  typedef SptensorT<host_mirror_space> HostMirror;
+  typedef SptensorImpl<host_mirror_space> HostMirror;
 
   // Empty construtor.
   /* Creates an empty tensor with an empty size. */
   KOKKOS_INLINE_FUNCTION
-  SptensorT() : siz(),siz_host(),nNumDims(0),values(),subs(),subs_gids(),perm(),
-                is_sorted(false), pmap(nullptr), lower_bound(), upper_bound() {}
+  SptensorImpl() : siz(),siz_host(),nNumDims(0),values(),subs(),subs_gids(),perm(),
+                is_sorted(false), lower_bound(), upper_bound() {}
 
   // Constructor for a given size and number of nonzeros
-  SptensorT(const IndxArrayT<ExecSpace>& sz, ttb_indx nz) :
+  SptensorImpl(const IndxArrayT<ExecSpace>& sz, ttb_indx nz) :
     siz(sz.clone()), nNumDims(sz.size()), values(nz),
     subs("Genten::Sptensor::subs",nz,sz.size()), subs_gids(subs), perm(),
-    is_sorted(false), pmap(nullptr),
+    is_sorted(false),
     lower_bound(nNumDims,ttb_indx(0)), upper_bound(siz.clone()) {
     siz_host = create_mirror_view(siz);
     deep_copy(siz_host, siz);
-#ifdef HAVE_TPETRA
-    factorMaps.resize(nNumDims);
-    tensorMaps.resize(nNumDims);
-    importers.resize(nNumDims);
-#endif
   }
 
   /* Constructor from complete raw data indexed C-wise in C types.
@@ -101,14 +94,14 @@ public:
      @param vals values [nz] of nonzeros.
      @param subscripts [nz*nd] coordinates of each nonzero, grouped by indices of each nonzero adjacent.
   */
-  SptensorT(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals, ttb_indx *subscripts);
+  SptensorImpl(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals, ttb_indx *subscripts);
 
   // Constructor (for data from MATLAB).
   /* a) Copies everything locally.
      b) There are no checks for duplicate entries. Call sort() to dedup.
      c) It is assumed that sbs starts numbering at one,
      and so one is subtracted to make it start at zero. */
-  SptensorT(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls, ttb_real * sbs);
+  SptensorImpl(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls, ttb_real * sbs);
 
   /* Constructor from complete raw data indexed C-wise using STL types.
      All input are deep copied.
@@ -116,9 +109,9 @@ public:
      @param vals nonzero values.
      @param subscripts 2-d array of subscripts.
   */
-  SptensorT(const std::vector<ttb_indx>& dims,
-            const std::vector<ttb_real>& vals,
-            const std::vector< std::vector<ttb_indx> >& subscripts);
+  SptensorImpl(const std::vector<ttb_indx>& dims,
+               const std::vector<ttb_real>& vals,
+               const std::vector< std::vector<ttb_indx> >& subscripts);
 
   /* Constructor from complete raw data indexed C-wise using STL types.
      All input are deep copied.
@@ -129,76 +122,61 @@ public:
      @param global_lower_bound Lower bound of global subscripts
      @param global_upper_bound Upper bound of global subscripts
   */
-  SptensorT(const std::vector<ttb_indx>& dims,
-            const std::vector<ttb_real>& vals,
-            const std::vector< std::vector<ttb_indx> >& subscripts,
-            const std::vector< std::vector<ttb_indx> >& global_subscripts,
-            const std::vector<ttb_indx>& global_lower_bound,
-            const std::vector<ttb_indx>& global_upper_bound);
+  SptensorImpl(const std::vector<ttb_indx>& dims,
+               const std::vector<ttb_real>& vals,
+               const std::vector< std::vector<ttb_indx> >& subscripts,
+               const std::vector< std::vector<ttb_indx> >& global_subscripts,
+               const std::vector<ttb_indx>& global_lower_bound,
+               const std::vector<ttb_indx>& global_upper_bound);
 
   // Create tensor from supplied dimensions, values, and subscripts
-  SptensorT(const IndxArrayT<ExecSpace>& d, const vals_view_type& vals,
+  SptensorImpl(const IndxArrayT<ExecSpace>& d, const vals_view_type& vals,
             const subs_view_type& s,
             const subs_view_type& p = subs_view_type(),
             const bool sorted = false) :
     siz(d), nNumDims(d.size()), values(vals), subs(s), subs_gids(s), perm(p),
-    is_sorted(sorted), pmap(nullptr),
+    is_sorted(sorted),
     lower_bound(nNumDims,ttb_indx(0)), upper_bound(siz.clone()) {
     siz_host = create_mirror_view(siz);
     deep_copy(siz_host, siz);
-#ifdef HAVE_TPETRA
-    factorMaps.resize(nNumDims);
-    tensorMaps.resize(nNumDims);
-    importers.resize(nNumDims);
-#endif
   }
 
   // Create tensor from supplied dimensions, values, and subscripts
-  SptensorT(const IndxArrayT<ExecSpace>& d,
-            const vals_view_type& vals,
-            const subs_view_type& s,
-            const subs_view_type& p,
-            const bool sorted,
-            const subs_view_type& s_g,
-            const IndxArrayT<ExecSpace>& l,
-            const IndxArrayT<ExecSpace>& u) :
+  SptensorImpl(const IndxArrayT<ExecSpace>& d,
+               const vals_view_type& vals,
+               const subs_view_type& s,
+               const subs_view_type& p,
+               const bool sorted,
+               const subs_view_type& s_g,
+               const IndxArrayT<ExecSpace>& l,
+               const IndxArrayT<ExecSpace>& u) :
     siz(d), nNumDims(d.size()), values(vals), subs(s), subs_gids(s_g), perm(p),
-    is_sorted(sorted), pmap(nullptr),
+    is_sorted(sorted),
     lower_bound(l), upper_bound(u) {
     siz_host = create_mirror_view(siz);
     deep_copy(siz_host, siz);
-#ifdef HAVE_TPETRA
-    factorMaps.resize(nNumDims);
-    tensorMaps.resize(nNumDims);
-    importers.resize(nNumDims);
-#endif
   }
 
   // Create tensor from supplied dimensions and subscripts, zero values
-  SptensorT(const IndxArrayT<ExecSpace>& d, const subs_view_type& s) :
+  SptensorImpl(const IndxArrayT<ExecSpace>& d, const subs_view_type& s) :
     siz(d), nNumDims(d.size()), values(s.extent(0),ttb_real(0.0)), subs(s),
-    subs_gids(subs), perm(), is_sorted(false), pmap(nullptr),
+    subs_gids(subs), perm(), is_sorted(false),
     lower_bound(nNumDims,ttb_indx(0)), upper_bound(siz.clone()) {
     siz_host = create_mirror_view(siz);
     deep_copy(siz_host, siz);
-#ifdef HAVE_TPETRA
-    factorMaps.resize(nNumDims);
-    tensorMaps.resize(nNumDims);
-    importers.resize(nNumDims);
-#endif
   }
 
   // Copy constructor.
   KOKKOS_DEFAULTED_FUNCTION
-  SptensorT (const SptensorT & arg) = default;
+  SptensorImpl (const SptensorImpl & arg) = default;
 
   // Assignment operator.
   KOKKOS_DEFAULTED_FUNCTION
-  SptensorT & operator= (const SptensorT & arg) = default;
+  SptensorImpl & operator= (const SptensorImpl & arg) = default;
 
   // Destructor.
   KOKKOS_DEFAULTED_FUNCTION
-  ~SptensorT() = default;
+  ~SptensorImpl() = default;
 
   // Return the number of dimensions (i.e., the order).
   KOKKOS_INLINE_FUNCTION
@@ -230,13 +208,6 @@ public:
   {
     return siz_host.prod();
   }
-  ttb_indx global_numel() const
-  {
-    ttb_indx numel = siz_host.prod();
-    if (pmap != nullptr)
-      numel = pmap->gridAllReduce(numel);
-    return numel;
-  }
 
   // Return the total number of (zero and nonzero) elements in the tensor as
   // a float (to avoid overflow for large tensors)
@@ -244,26 +215,12 @@ public:
   {
     return siz_host.prod_float();
   }
-  ttb_real global_numel_float() const
-  {
-    ttb_real numel = siz_host.prod_float();
-    if (pmap != nullptr)
-      numel = pmap->gridAllReduce(numel);
-    return numel;
-  }
 
   // Return the number of structural nonzeros.
   KOKKOS_INLINE_FUNCTION
   ttb_indx nnz() const
   {
     return values.size();
-  }
-  ttb_indx global_nnz() const
-  {
-    ttb_indx nnz = values.size();
-    if (pmap != nullptr)
-      nnz = pmap->gridAllReduce(nnz);
-    return nnz;
   }
 
   // get count of ints and reals stored by implementation
@@ -277,7 +234,7 @@ public:
         ---------------------------------   < TOL .
         max(1, fabs(a(i,j)), fabs(b(i,j))
   */
-  bool isEqual(const SptensorT & b, ttb_real tol) const;
+  bool isEqual(const SptensorT<ExecSpace> & b, ttb_real tol) const;
 
   // Return reference to i-th nonzero
   KOKKOS_INLINE_FUNCTION
@@ -381,13 +338,6 @@ public:
   {
     return values.norm(NormTwo);
   }
-  ttb_real global_norm() const
-  {
-    ttb_real nrm_sqrd = values.dot(values);
-    if (pmap != nullptr)
-      nrm_sqrd = pmap->gridAllReduce(nrm_sqrd);
-    return std::sqrt(nrm_sqrd);
-  }
 
   // Return the i-th linearly indexed element.
   KOKKOS_INLINE_FUNCTION
@@ -397,11 +347,11 @@ public:
   }
 
   /* Result stored in this tensor */
-  void times(const KtensorT<ExecSpace> & K, const SptensorT & X);
+  void times(const KtensorT<ExecSpace> & K, const SptensorT<ExecSpace> & X);
 
   // Elementwise division of input tensor X and Ktensor K.
   /* Result stored in this tensor. The argument epsilon is the minimum value allowed for the division. */
-  void divide(const KtensorT<ExecSpace> & K, const SptensorT & X, ttb_real epsilon);
+  void divide(const KtensorT<ExecSpace> & K, const SptensorT<ExecSpace> & X, ttb_real epsilon);
 
   KOKKOS_INLINE_FUNCTION
   ttb_indx getPerm(ttb_indx i, ttb_indx n) const
@@ -459,42 +409,6 @@ public:
   KOKKOS_INLINE_FUNCTION
   bool isSubscriptEqual(const ttb_indx i, const sub_type& sub) const;
 
-  void setProcessorMap(const ProcessorMap* pmap_) { pmap = pmap_; }
-  const ProcessorMap* getProcessorMap() const { return pmap; }
-
-#ifdef HAVE_TPETRA
-  Teuchos::RCP<tpetra_map_type<ExecSpace> >
-  factorMap(const unsigned n) const {
-    assert(n < factorMaps.size());
-    return factorMaps[n];
-  }
-  Teuchos::RCP<tpetra_map_type<ExecSpace> >
-  tensorMap(const unsigned n) const {
-    assert(n < tensorMaps.size());
-    return tensorMaps[n];
-  }
-  Teuchos::RCP<tpetra_import_type<ExecSpace> >
-  importer(const unsigned n) const {
-    assert(n < importers.size());
-    return importers[n];
-  }
-  Teuchos::RCP<tpetra_map_type<ExecSpace> >&
-  factorMap(const unsigned n) {
-    assert(n < factorMaps.size());
-    return factorMaps[n];
-  }
-  Teuchos::RCP<tpetra_map_type<ExecSpace> >&
-  tensorMap(const unsigned n) {
-    assert(n < tensorMaps.size());
-    return tensorMaps[n];
-  }
-  Teuchos::RCP<tpetra_import_type<ExecSpace> >&
-  importer(const unsigned n) {
-    assert(n < importers.size());
-    return importers[n];
-  }
-#endif
-
   KOKKOS_INLINE_FUNCTION
   ttb_indx lowerBound(const unsigned n) const {
     assert(n < lower_bound.size());
@@ -537,16 +451,102 @@ protected:
   // Whether tensor has been sorted
   bool is_sorted;
 
-  const ProcessorMap* pmap;
-
+  // Lower and upper bounds of tensor global indices
   IndxArrayT<ExecSpace> lower_bound;
   IndxArrayT<ExecSpace> upper_bound;
-#ifdef HAVE_TPETRA
-  std::vector< Teuchos::RCP< tpetra_map_type<ExecSpace> > > factorMaps;
-  std::vector< Teuchos::RCP< tpetra_map_type<ExecSpace> > > tensorMaps;
-  std::vector< Teuchos::RCP< tpetra_import_type<ExecSpace> > > importers;
-#endif
+};
 
+template <typename ExecSpace>
+class SptensorT : public SptensorImpl<ExecSpace>, public DistTensor<ExecSpace>
+{
+public:
+
+  using impl_type = SptensorImpl<ExecSpace>;
+  using dist_type = DistTensor<ExecSpace>;
+  using exec_space = typename impl_type::exec_space;
+  using subs_view_type = typename impl_type::subs_view_type;
+  using vals_view_type = typename impl_type::vals_view_type;
+  using host_mirror_space = typename impl_type::host_mirror_space;
+  using HostMirror = SptensorT<host_mirror_space>;
+
+  SptensorT() = default;
+  SptensorT(const IndxArrayT<ExecSpace>& sz, ttb_indx nz) :
+    impl_type(sz, nz), dist_type(sz.size()) {}
+  SptensorT(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals,
+            ttb_indx *subscripts) :
+    impl_type(nd,dims,nz,vals,subscripts), dist_type(nd) {}
+  SptensorT(ttb_indx nd, ttb_real *sz, ttb_indx nz, ttb_real *vls,
+            ttb_real *sbs) :
+    impl_type(nd,sz,nz,vls,sbs), dist_type(nd) {}
+  SptensorT(const std::vector<ttb_indx>& dims,
+            const std::vector<ttb_real>& vals,
+            const std::vector< std::vector<ttb_indx> >& subscripts) :
+    impl_type(dims,vals,subscripts), dist_type(dims.size()) {}
+  SptensorT(const std::vector<ttb_indx>& dims,
+            const std::vector<ttb_real>& vals,
+            const std::vector< std::vector<ttb_indx> >& subscripts,
+            const std::vector< std::vector<ttb_indx> >& global_subscripts,
+            const std::vector<ttb_indx>& global_lower_bound,
+            const std::vector<ttb_indx>& global_upper_bound) :
+    impl_type(dims,vals,subscripts,global_subscripts,global_lower_bound,
+              global_upper_bound), dist_type(dims.size()) {}
+  SptensorT(const IndxArrayT<ExecSpace>& d, const vals_view_type& vals,
+            const subs_view_type& s,
+            const subs_view_type& p = subs_view_type(),
+            const bool sorted = false) :
+    impl_type(d,vals,s,p,sorted), dist_type(d.size()) {}
+  SptensorT(const IndxArrayT<ExecSpace>& d,
+            const vals_view_type& vals,
+            const subs_view_type& s,
+            const subs_view_type& p,
+            const bool sorted,
+            const subs_view_type& s_g,
+            const IndxArrayT<ExecSpace>& l,
+            const IndxArrayT<ExecSpace>& u) :
+    impl_type(d,vals,s,p,sorted,s_g,l,u), dist_type(d.size()) {}
+  SptensorT(const IndxArrayT<ExecSpace>& d, const subs_view_type& s) :
+    impl_type(d,s), dist_type(d.size()) {}
+
+  SptensorT(SptensorT&&) = default;
+  SptensorT(const SptensorT&) = default;
+  SptensorT& operator=(SptensorT&&) = default;
+  SptensorT& operator=(const SptensorT&) = default;
+  ~SptensorT() = default;
+
+  impl_type& impl() { return *this; }
+  const impl_type& impl() const { return *this; }
+
+  ttb_indx global_numel() const
+  {
+    ttb_indx numel = impl_type::numel();
+    if (this->pmap != nullptr)
+      numel = this->pmap->gridAllReduce(numel);
+    return numel;
+  }
+
+  ttb_real global_numel_float() const
+  {
+    ttb_real numel = impl_type::numel_float();
+    if (this->pmap != nullptr)
+      numel = this->pmap->gridAllReduce(numel);
+    return numel;
+  }
+
+  ttb_indx global_nnz() const
+  {
+    ttb_indx nnz = impl_type::nnz();
+    if (this->pmap != nullptr)
+      nnz = this->pmap->gridAllReduce(nnz);
+    return nnz;
+  }
+
+  ttb_real global_norm() const
+  {
+    ttb_real nrm_sqrd = this->values.dot(this->values);
+    if (this->pmap != nullptr)
+      nrm_sqrd = this->pmap->gridAllReduce(nrm_sqrd);
+    return std::sqrt(nrm_sqrd);
+  }
 };
 
 template <typename ExecSpace>
@@ -591,7 +591,7 @@ create_mirror_view(const Space& s, const SptensorT<ExecSpace>& a)
 }
 
 template <typename E1, typename E2>
-void deep_copy(SptensorT<E1>& dst, const SptensorT<E2>& src)
+void deep_copy(SptensorImpl<E1>& dst, const SptensorImpl<E2>& src)
 {
   deep_copy( dst.size(), src.size() );
   deep_copy( dst.size_host(), src.size_host() );
@@ -608,10 +608,18 @@ void deep_copy(SptensorT<E1>& dst, const SptensorT<E2>& src)
   deep_copy( dst.getUpperBounds(), src.getUpperBounds() );
 }
 
+template <typename E1, typename E2>
+void deep_copy(SptensorT<E1>& dst, const SptensorT<E2>& src)
+{
+  deep_copy( dst.impl(), src.impl() );
+
+  // Should we do anything about copying dist_type?
+}
+
 template <typename ExecSpace>
 template <typename ind_type>
 KOKKOS_INLINE_FUNCTION
-ttb_indx SptensorT<ExecSpace>::index(const ind_type& ind) const
+ttb_indx SptensorImpl<ExecSpace>::index(const ind_type& ind) const
 {
   const ttb_indx nz = subs.extent(0);
   const ttb_indx nd = subs.extent(1);
@@ -643,8 +651,8 @@ ttb_indx SptensorT<ExecSpace>::index(const ind_type& ind) const
 template <typename ExecSpace>
 template <typename ind_type>
 KOKKOS_INLINE_FUNCTION
-ttb_indx SptensorT<ExecSpace>::sorted_lower_bound(const ind_type& ind,
-                                                  const ttb_indx start) const
+ttb_indx SptensorImpl<ExecSpace>::sorted_lower_bound(const ind_type& ind,
+                                                     const ttb_indx start) const
 {
   const ttb_indx nz = subs.extent(0);
   /*const*/ ttb_indx nd = subs.extent(1);
@@ -687,8 +695,8 @@ ttb_indx SptensorT<ExecSpace>::sorted_lower_bound(const ind_type& ind,
 template <typename ExecSpace>
 template <typename sub_type>
 KOKKOS_INLINE_FUNCTION
-bool SptensorT<ExecSpace>::isSubscriptEqual(const ttb_indx i,
-                                            const sub_type& sub) const
+bool SptensorImpl<ExecSpace>::isSubscriptEqual(const ttb_indx i,
+                                               const sub_type& sub) const
 {
   if (i >= subs.extent(0))
     return false;

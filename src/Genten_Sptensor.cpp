@@ -82,13 +82,13 @@ void init_subs(const SubsViewType& subs, const T* sbs, const ttb_indx shift)
 }
 
 template <typename ExecSpace>
-Genten::SptensorT<ExecSpace>::
-SptensorT(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls,
-          ttb_real * sbs):
+Genten::SptensorImpl<ExecSpace>::
+SptensorImpl(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls,
+             ttb_real * sbs):
   siz(nd,sz), nNumDims(nd), values(nz,vls,false),
   subs(Kokkos::view_alloc("Genten::Sptensor::subs",
                           Kokkos::WithoutInitializing),nz,nd),
-  subs_gids(subs), perm(), is_sorted(false), pmap(nullptr),
+  subs_gids(subs), perm(), is_sorted(false),
   lower_bound(nNumDims,ttb_indx(0)), upper_bound(siz.clone())
 {
   siz_host = create_mirror_view(siz);
@@ -97,22 +97,16 @@ SptensorT(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls,
   // convert subscripts to ttb_indx with zero indexing and transpose subs array
   // to store each nonzero's subscripts contiguously
   Impl::init_subs(subs, sbs, 1);
-
-#ifdef HAVE_TPETRA
-  factorMaps.resize(nNumDims);
-  tensorMaps.resize(nNumDims);
-  importers.resize(nNumDims);
-#endif
 }
 
 template <typename ExecSpace>
-Genten::SptensorT<ExecSpace>::
-SptensorT(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals,
-          ttb_indx *subscripts):
+Genten::SptensorImpl<ExecSpace>::
+SptensorImpl(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals,
+             ttb_indx *subscripts):
   siz(nd,dims), nNumDims(nd), values(nz,vals,false),
   subs(Kokkos::view_alloc("Genten::Sptensor::subs",
                           Kokkos::WithoutInitializing),nd,nz),
-  subs_gids(subs), perm(), is_sorted(false), pmap(nullptr),
+  subs_gids(subs), perm(), is_sorted(false),
   lower_bound(nNumDims,ttb_indx(0)), upper_bound(siz.clone())
 {
   siz_host = create_mirror_view(siz);
@@ -121,24 +115,18 @@ SptensorT(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals,
   // Copy subscripts into subs.  Because of polymorphic layout, we can't
   // assume subs and subscripts are ordered in the same way
   Impl::init_subs(subs, subscripts, 0);
-
-#ifdef HAVE_TPETRA
-  factorMaps.resize(nNumDims);
-  tensorMaps.resize(nNumDims);
-  importers.resize(nNumDims);
-#endif
 }
 
 template <typename ExecSpace>
-Genten::SptensorT<ExecSpace>::
-SptensorT(const std::vector<ttb_indx>& dims,
-          const std::vector<ttb_real>& vals,
-          const std::vector< std::vector<ttb_indx> >& subscripts):
+Genten::SptensorImpl<ExecSpace>::
+SptensorImpl(const std::vector<ttb_indx>& dims,
+             const std::vector<ttb_real>& vals,
+             const std::vector< std::vector<ttb_indx> >& subscripts):
   siz(ttb_indx(dims.size()),const_cast<ttb_indx*>(dims.data())),
   nNumDims(dims.size()),
   values(vals.size(),const_cast<ttb_real*>(vals.data()),false),
   subs("Genten::Sptensor::subs",subscripts.size(),dims.size()),
-  subs_gids(subs), perm(), is_sorted(false), pmap(nullptr),
+  subs_gids(subs), perm(), is_sorted(false),
   lower_bound(nNumDims,ttb_indx(0)), upper_bound(siz.clone())
 {
   assert(vals.size() == subscripts.size());
@@ -155,28 +143,22 @@ SptensorT(const std::vector<ttb_indx>& dims,
     }
   }
   deep_copy(subs, subs_host);
-
-#ifdef HAVE_TPETRA
-  factorMaps.resize(nNumDims);
-  tensorMaps.resize(nNumDims);
-  importers.resize(nNumDims);
-#endif
 }
 
 template <typename ExecSpace>
-Genten::SptensorT<ExecSpace>::
-SptensorT(const std::vector<ttb_indx>& dims,
-          const std::vector<ttb_real>& vals,
-          const std::vector< std::vector<ttb_indx> >& subscripts,
-          const std::vector< std::vector<ttb_indx> >& global_subscripts,
-          const std::vector<ttb_indx>& global_lower_bound,
-          const std::vector<ttb_indx>& global_upper_bound):
+Genten::SptensorImpl<ExecSpace>::
+SptensorImpl(const std::vector<ttb_indx>& dims,
+             const std::vector<ttb_real>& vals,
+             const std::vector< std::vector<ttb_indx> >& subscripts,
+             const std::vector< std::vector<ttb_indx> >& global_subscripts,
+             const std::vector<ttb_indx>& global_lower_bound,
+             const std::vector<ttb_indx>& global_upper_bound):
   siz(ttb_indx(dims.size()),const_cast<ttb_indx*>(dims.data())),
   nNumDims(dims.size()),
   values(vals.size(),const_cast<ttb_real*>(vals.data()),false),
   subs("Genten::Sptensor::subs",subscripts.size(),dims.size()),
   subs_gids("Genten::Sptensor::subs_gids",global_subscripts.size(),dims.size()),
-  perm(), is_sorted(false), pmap(nullptr),
+  perm(), is_sorted(false),
   lower_bound(ttb_indx(dims.size()),const_cast<ttb_indx*>(global_lower_bound.data())),
   upper_bound(ttb_indx(dims.size()),const_cast<ttb_indx*>(global_upper_bound.data()))
 {
@@ -200,16 +182,10 @@ SptensorT(const std::vector<ttb_indx>& dims,
   }
   deep_copy(subs, subs_host);
   deep_copy(subs_gids, subs_gids_host);
-
-#ifdef HAVE_TPETRA
-  factorMaps.resize(nNumDims);
-  tensorMaps.resize(nNumDims);
-  importers.resize(nNumDims);
-#endif
 }
 
 template <typename ExecSpace>
-void Genten::SptensorT<ExecSpace>::
+void Genten::SptensorImpl<ExecSpace>::
 words(ttb_indx& iw, ttb_indx& rw) const
 {
   rw = values.size();
@@ -217,7 +193,7 @@ words(ttb_indx& iw, ttb_indx& rw) const
 }
 
 template <typename ExecSpace>
-bool Genten::SptensorT<ExecSpace>::
+bool Genten::SptensorImpl<ExecSpace>::
 isEqual(const Genten::SptensorT<ExecSpace> & b, ttb_real tol) const
 {
   // Check for equal sizes.
@@ -250,7 +226,7 @@ isEqual(const Genten::SptensorT<ExecSpace> & b, ttb_real tol) const
 }
 
 template <typename ExecSpace>
-void Genten::SptensorT<ExecSpace>::
+void Genten::SptensorImpl<ExecSpace>::
 times(const Genten::KtensorT<ExecSpace> & K,
       const Genten::SptensorT<ExecSpace> & X)
 {
@@ -273,7 +249,7 @@ times(const Genten::KtensorT<ExecSpace> & K,
 }
 
 template <typename ExecSpace>
-void Genten::SptensorT<ExecSpace>::
+void Genten::SptensorImpl<ExecSpace>::
 divide(const Genten::KtensorT<ExecSpace> & K,
        const Genten::SptensorT<ExecSpace> & X, ttb_real epsilon)
 {
@@ -520,7 +496,7 @@ sortImpl(vals_type& vals, subs_type& subs)
 }
 
 template <typename ExecSpace>
-void Genten::SptensorT<ExecSpace>::
+void Genten::SptensorImpl<ExecSpace>::
 createPermutation()
 {
 #ifdef HAVE_CALIPER
@@ -539,7 +515,7 @@ createPermutation()
 }
 
 template <typename ExecSpace>
-void Genten::SptensorT<ExecSpace>::
+void Genten::SptensorImpl<ExecSpace>::
 sort()
 {
 #ifdef HAVE_CALIPER
@@ -552,5 +528,5 @@ sort()
   }
 }
 
-#define INST_MACRO(SPACE) template class Genten::SptensorT<SPACE>;
+#define INST_MACRO(SPACE) template class Genten::SptensorImpl<SPACE>;
 GENTEN_INST(INST_MACRO)

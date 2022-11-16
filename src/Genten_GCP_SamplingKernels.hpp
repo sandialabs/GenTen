@@ -194,7 +194,7 @@ namespace Genten {
     template <typename ExecSpace>
     class SortSearcher {
     public:
-      SortSearcher(const SptensorT<ExecSpace>& X_) : X(X_), nnz(X.nnz()) {}
+      SortSearcher(const SptensorImpl<ExecSpace>& X_) : X(X_), nnz(X.nnz()) {}
 
       template <typename IndexType>
       KOKKOS_INLINE_FUNCTION
@@ -202,7 +202,7 @@ namespace Genten {
         return (X.index(ind) < nnz);
       }
     private:
-      const SptensorT<ExecSpace> X;
+      const SptensorImpl<ExecSpace> X;
       const ttb_real nnz;
     };
 

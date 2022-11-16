@@ -157,6 +157,7 @@ unpackAndCombine(
   const size_t numImports = importLIDs.extent(0);
   if (numImports > 0) {
     Kokkos::RangePolicy<ExecSpace> policy(0, numImports);
+    imports.sync_device();
     auto im = imports.view_device();
     auto im_lids = importLIDs.view_device();
     if (combineMode == Tpetra::ADD || combineMode == Tpetra::ADD_ASSIGN) {

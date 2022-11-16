@@ -53,13 +53,13 @@ namespace Genten {
 
     template <typename ExecSpace, typename LossFunction>
     void uniform_sample_tensor(
-      const SptensorT<ExecSpace>& X,
+      const SptensorT<ExecSpace>& Xd,
       const ttb_indx num_samples,
       const ttb_real weight,
       const KtensorT<ExecSpace>& u,
       const LossFunction& loss_func,
       const bool compute_gradient,
-      SptensorT<ExecSpace>& Y,
+      SptensorT<ExecSpace>& Yd,
       ArrayT<ExecSpace>& w,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams)
@@ -78,6 +78,8 @@ namespace Genten {
       static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
+      const auto X = Xd.impl();
+
       /*const*/ ttb_indx nnz = X.nnz();
       /*const*/ unsigned nd = u.ndims();
       /*const*/ ttb_indx ns = num_samples;
@@ -86,10 +88,11 @@ namespace Genten {
 
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples;
-      if (Y.nnz() < total_samples) {
-        Y = SptensorT<ExecSpace>(X.size(), total_samples);
+      if (Yd.nnz() < total_samples) {
+        Yd = SptensorT<ExecSpace>(X.size(), total_samples);
         w = ArrayT<ExecSpace>(total_samples);
       }
+      const auto Y = Yd.impl();
 
       // Generate samples of tensor
       Policy policy(N, TeamSize, VectorSize);
@@ -150,14 +153,14 @@ namespace Genten {
 
     template <typename ExecSpace, typename LossFunction>
     void uniform_sample_tensor_hash(
-      const SptensorT<ExecSpace>& X,
+      const SptensorT<ExecSpace>& Xd,
       const TensorHashMap<ExecSpace>& hash,
       const ttb_indx num_samples,
       const ttb_real weight,
       const KtensorT<ExecSpace>& u,
       const LossFunction& loss_func,
       const bool compute_gradient,
-      SptensorT<ExecSpace>& Y,
+      SptensorT<ExecSpace>& Yd,
       ArrayT<ExecSpace>& w,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams)
@@ -176,6 +179,8 @@ namespace Genten {
       static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
+      const auto X = Xd.impl();
+
       /*const*/ ttb_indx nnz = X.nnz();
       /*const*/ unsigned nd = u.ndims();
       /*const*/ ttb_indx ns = num_samples;
@@ -185,10 +190,11 @@ namespace Genten {
 
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples;
-      if (Y.nnz() < total_samples) {
-        Y = SptensorT<ExecSpace>(X.size(), total_samples);
+      if (Yd.nnz() < total_samples) {
+        Yd = SptensorT<ExecSpace>(X.size(), total_samples);
         w = ArrayT<ExecSpace>(total_samples);
       }
+      const auto Y = Yd.impl();
 
       // Generate samples of tensor
       Policy policy(N, TeamSize, VectorSize);
@@ -251,7 +257,7 @@ namespace Genten {
 
     template <typename ExecSpace, typename LossFunction>
     void stratified_sample_tensor(
-      const SptensorT<ExecSpace>& X,
+      const SptensorT<ExecSpace>& Xd,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
@@ -259,7 +265,7 @@ namespace Genten {
       const KtensorT<ExecSpace>& u,
       const LossFunction& loss_func,
       const bool compute_gradient,
-      SptensorT<ExecSpace>& Y,
+      SptensorT<ExecSpace>& Yd,
       ArrayT<ExecSpace>& w,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams)
@@ -278,6 +284,8 @@ namespace Genten {
       static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
+      const auto X = Xd.impl();
+
       /*const*/ ttb_indx nnz = X.nnz();
       /*const*/ unsigned nd = u.ndims();
       /*const*/ ttb_indx ns_nz = num_samples_nonzeros;
@@ -288,10 +296,11 @@ namespace Genten {
 
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
-      if (Y.nnz() < total_samples) {
-        Y = SptensorT<ExecSpace>(X.size(), total_samples);
+      if (Yd.nnz() < total_samples) {
+        Yd = SptensorT<ExecSpace>(X.size(), total_samples);
         w = ArrayT<ExecSpace>(total_samples);
       }
+      const auto Y = Yd.impl();
 
       // Generate samples of nonzeros
       Policy policy_nz(N_nz, TeamSize, VectorSize);
@@ -406,7 +415,7 @@ namespace Genten {
 
     template <typename ExecSpace, typename LossFunction>
     void stratified_sample_tensor_hash(
-      const SptensorT<ExecSpace>& X,
+      const SptensorT<ExecSpace>& Xd,
       const TensorHashMap<ExecSpace>& hash,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
@@ -415,7 +424,7 @@ namespace Genten {
       const KtensorT<ExecSpace>& u,
       const LossFunction& loss_func,
       const bool compute_gradient,
-      SptensorT<ExecSpace>& Y,
+      SptensorT<ExecSpace>& Yd,
       ArrayT<ExecSpace>& w,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams)
@@ -434,6 +443,8 @@ namespace Genten {
       static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
+      const auto X = Xd.impl();
+
       /*const*/ ttb_indx nnz = X.nnz();
       /*const*/ unsigned nd = u.ndims();
       /*const*/ ttb_indx ns_nz = num_samples_nonzeros;
@@ -444,10 +455,11 @@ namespace Genten {
 
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
-      if (Y.nnz() < total_samples) {
-        Y = SptensorT<ExecSpace>(X.size(), total_samples);
+      if (Yd.nnz() < total_samples) {
+        Yd = SptensorT<ExecSpace>(X.size(), total_samples);
         w = ArrayT<ExecSpace>(total_samples);
       }
+      const auto Y = Yd.impl();
 
       // Generate samples of nonzeros
       Policy policy_nz(N_nz, TeamSize, VectorSize);
@@ -561,7 +573,7 @@ namespace Genten {
 
     template <typename ExecSpace, typename Searcher, typename LossFunction>
     void stratified_sample_tensor_tpetra(
-      const SptensorT<ExecSpace>& X,
+      const SptensorT<ExecSpace>& Xd,
       const Searcher& searcher,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
@@ -570,7 +582,7 @@ namespace Genten {
       const KtensorT<ExecSpace>& u,
       const LossFunction& loss_func,
       const bool compute_gradient,
-      SptensorT<ExecSpace>& Y,
+      SptensorT<ExecSpace>& Yd,
       ArrayT<ExecSpace>& w,
       KtensorT<ExecSpace>& u_overlap,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
@@ -591,6 +603,8 @@ namespace Genten {
       static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
+      const auto X = Xd.impl();
+
       /*const*/ ttb_indx nnz = X.nnz();
       /*const*/ unsigned nd = u.ndims();
       /*const*/ ttb_indx ns_nz = num_samples_nonzeros;
@@ -603,12 +617,13 @@ namespace Genten {
 
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
-      if (Y.nnz() < total_samples) {
-        Y = SptensorT<ExecSpace>(X.size(), total_samples); // Correct size is set later
-        Y.allocGlobalSubscripts();
-        Y.setProcessorMap(X.getProcessorMap());
+      if (Yd.nnz() < total_samples) {
+        Yd = SptensorT<ExecSpace>(X.size(), total_samples); // Correct size is set later
+        Yd.allocGlobalSubscripts();
+        Yd.setProcessorMap(Xd.getProcessorMap());
         w = ArrayT<ExecSpace>(total_samples);
       }
+      const auto Y = Yd.impl();
 
       // Generate samples of nonzeros
       Policy policy_nz(N_nz, TeamSize, VectorSize);
@@ -723,40 +738,43 @@ namespace Genten {
         Kokkos::View<tpetra_go_type*,ExecSpace> gids("gids", cnt[n]);
         const unordered_map_type map_n = map[n];
         const ttb_indx sz = map_n.capacity();
-        Kokkos::parallel_for("Genten::GCP_SGD::Stratified_Build_Maps",
-                             Kokkos::RangePolicy<ExecSpace>(0,sz),
-                             KOKKOS_LAMBDA(const ttb_indx idx)
+        // Kokkos::parallel_for("Genten::GCP_SGD::Stratified_Build_Maps",
+        //                      Kokkos::RangePolicy<ExecSpace>(0,sz),
+        //                      KOKKOS_LAMBDA(const ttb_indx idx)
+        auto gids_host = create_mirror_view(gids);
+        for (ttb_indx idx=0; idx<sz; ++idx)
         {
           if (map_n.valid_at(idx)) {
             const tpetra_go_type gid = map_n.key_at(idx);
             const tpetra_lo_type lid = map_n.value_at(idx);
-            gids[lid] = gid;
+            gids_host[lid] = gid;
           }
-        });
-        Y.factorMap(n) = X.factorMap(n);
-        Y.tensorMap(n) = Teuchos::rcp(new tpetra_map_type<ExecSpace>(
-          invalid, gids, indexBase, X.tensorMap(n)->getComm()));
-        Y.importer(n) = Teuchos::rcp(new tpetra_import_type<ExecSpace>(
-          Y.factorMap(n), Y.tensorMap(n)));
+        }//);
+        deep_copy(gids, gids_host);
+        Yd.factorMap(n) = Xd.factorMap(n);
+        Yd.tensorMap(n) = Teuchos::rcp(new tpetra_map_type<ExecSpace>(
+          invalid, gids, indexBase, Xd.tensorMap(n)->getComm()));
+        Yd.importer(n) = Teuchos::rcp(new tpetra_import_type<ExecSpace>(
+          Yd.factorMap(n), Yd.tensorMap(n)));
       }
 
       // Set correct size in tensor
       auto sz_host = Y.size_host();
       for (unsigned n=0; n<nd; ++n)
-        sz_host[n] = Y.tensorMap(n)->getLocalNumElements();
+        sz_host[n] = Yd.tensorMap(n)->getLocalNumElements();
       deep_copy(Y.size(), sz_host);
 
       // Import u to overlapped tensor map
       const unsigned nc = u.ncomponents();
       u_overlap = KtensorT<ExecSpace>(nc, nd);
       for (unsigned n=0; n<nd; ++n) {
-        FacMatrixT<ExecSpace> mat(Y.tensorMap(n)->getLocalNumElements(), nc);
+        FacMatrixT<ExecSpace> mat(Yd.tensorMap(n)->getLocalNumElements(), nc);
         u_overlap.set_factor(n, mat);
       }
       for (unsigned n=0; n<nd; ++n) {
-        DistFacMatrix<ExecSpace> src(u[n], Y.factorMap(n));
-        DistFacMatrix<ExecSpace> dst(u_overlap[n], Y.tensorMap(n));
-        dst.doImport(src, *(Y.importer(n)), Tpetra::INSERT);
+        DistFacMatrix<ExecSpace> src(u[n], Yd.factorMap(n));
+        DistFacMatrix<ExecSpace> dst(u_overlap[n], Yd.tensorMap(n));
+        dst.doImport(src, *(Yd.importer(n)), Tpetra::INSERT);
       }
       u_overlap.setProcessorMap(u.getProcessorMap());
 
@@ -795,7 +813,7 @@ namespace Genten {
 
     template <typename ExecSpace, typename LossFunction>
     void semi_stratified_sample_tensor(
-      const SptensorT<ExecSpace>& X,
+      const SptensorT<ExecSpace>& Xd,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
@@ -803,7 +821,7 @@ namespace Genten {
       const KtensorT<ExecSpace>& u,
       const LossFunction& loss_func,
       const bool compute_gradient,
-      SptensorT<ExecSpace>& Y,
+      SptensorT<ExecSpace>& Yd,
       ArrayT<ExecSpace>& w,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams)
@@ -822,6 +840,8 @@ namespace Genten {
       static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
+      const auto X = Xd.impl();
+
       /*const*/ ttb_indx nnz = X.nnz();
       /*const*/ unsigned nd = u.ndims();
       /*const*/ ttb_indx ns_nz = num_samples_nonzeros;
@@ -832,10 +852,11 @@ namespace Genten {
 
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
-      if (Y.nnz() < total_samples) {
-        Y = SptensorT<ExecSpace>(X.size(), total_samples);
+      if (Yd.nnz() < total_samples) {
+        Yd = SptensorT<ExecSpace>(X.size(), total_samples);
         w = ArrayT<ExecSpace>(total_samples);
       }
+      const auto Y = Yd.impl();
 
       // Generate samples of nonzeros
       Policy policy_nz(N_nz, TeamSize, VectorSize);
@@ -946,24 +967,27 @@ namespace Genten {
 
     template <typename ExecSpace, typename LossFunction>
     void sample_tensor_nonzeros(
-      const SptensorT<ExecSpace>& X,
+      const SptensorT<ExecSpace>& Xd,
       const ttb_indx offset,
       const ttb_indx num_samples,
       const ttb_real weight,
       const KtensorT<ExecSpace>& u,
       const LossFunction& loss_func,
       const bool compute_gradient,
-      SptensorT<ExecSpace>& Y,
+      SptensorT<ExecSpace>& Yd,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams)
     {
+      const auto X = Xd.impl();
+
       const ttb_indx nnz = X.nnz();
       const ttb_indx nd = X.ndims();
 
       // Resize Y if necessary
-      if (Y.nnz() < offset+num_samples) {
-        Y = SptensorT<ExecSpace>(X.size(), offset+num_samples);
+      if (Yd.nnz() < offset+num_samples) {
+        Yd = SptensorT<ExecSpace>(X.size(), offset+num_samples);
       }
+      const auto Y = Yd.impl();
 
       // Parallel sampling on the device
       typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
@@ -1000,22 +1024,25 @@ namespace Genten {
 
     template <typename ExecSpace, typename LossFunction>
     void sample_tensor_nonzeros(
-      const SptensorT<ExecSpace>& X,
+      const SptensorT<ExecSpace>& Xd,
       const ArrayT<ExecSpace>& w,
       const ttb_indx num_samples,
       const KtensorT<ExecSpace>& u,
       const LossFunction& loss_func,
-      SptensorT<ExecSpace>& Y,
+      SptensorT<ExecSpace>& Yd,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams)
     {
+      const auto X = Xd.impl();
+
       const ttb_indx nnz = X.nnz();
       const ttb_indx nd = X.ndims();
 
       // Resize Y if necessary
-      if (Y.nnz() < num_samples) {
-        Y = SptensorT<ExecSpace>(X.size(), num_samples);
+      if (Yd.nnz() < num_samples) {
+        Yd = SptensorT<ExecSpace>(X.size(), num_samples);
       }
+      const auto Y = Yd.impl();
 
       // Parallel sampling on the device
       typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
@@ -1046,22 +1073,26 @@ namespace Genten {
 
     template <typename ExecSpace>
     void sample_tensor_nonzeros(
-      const SptensorT<ExecSpace>& X,
+      const SptensorT<ExecSpace>& Xd,
       const ArrayT<ExecSpace>& w,
       const ttb_indx num_samples,
-      SptensorT<ExecSpace>& Y,
+      SptensorT<ExecSpace>& Yd,
       ArrayT<ExecSpace>& z,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams)
     {
+      const auto X = Xd.impl();
+
       const ttb_indx nnz = X.nnz();
       const ttb_indx nd = X.ndims();
 
       // Resize Y if necessary
-      if (Y.nnz() < num_samples) {
-        Y = SptensorT<ExecSpace>(X.size(), num_samples);
+      if (Yd.nnz() < num_samples) {
+        Yd = SptensorT<ExecSpace>(X.size(), num_samples);
         z = ArrayT<ExecSpace>(num_samples);
       }
+
+      const auto Y = Yd.impl();
 
       // Parallel sampling on the device
       typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
@@ -1091,23 +1122,27 @@ namespace Genten {
 
     template <typename ExecSpace>
     void sample_tensor_zeros(
-      const SptensorT<ExecSpace>& X,
+      const SptensorT<ExecSpace>& Xd,
       const ttb_indx offset,
       const ttb_indx num_samples,
-      SptensorT<ExecSpace>& Y,
-      SptensorT<ExecSpace>& Z,
+      SptensorT<ExecSpace>& Yd,
+      SptensorT<ExecSpace>& Zd,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams)
     {
+      const auto X = Xd.impl();
+
       const ttb_indx nnz = X.nnz();
       const ttb_indx nd = X.ndims();
       const ttb_real ne = X.numel_float();
       const ttb_indx ns = std::min(num_samples, ttb_indx(ne-nnz));
 
       // Resize Y if necessary
-      if (Y.nnz() < offset+ns) {
-        Y = SptensorT<ExecSpace>(X.size(), offset+ns);
+      if (Yd.nnz() < offset+ns) {
+        Yd = SptensorT<ExecSpace>(X.size(), offset+ns);
       }
+
+      const auto Y = Yd.impl();
 
       // Parallel sampling on the device
       typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
@@ -1119,9 +1154,10 @@ namespace Genten {
       const ttb_real oversample = algParams.oversample_factor;
       const ttb_indx total_samples =
         static_cast<ttb_indx>(oversample*num_samples);
-      if (Z.nnz() < total_samples) {
-        Z = SptensorT<ExecSpace>(X.size(), total_samples);
+      if (Zd.nnz() < total_samples) {
+        Zd = SptensorT<ExecSpace>(X.size(), total_samples);
       }
+      auto& Z = Zd.impl();
       const ttb_indx N_zeros_gen = (total_samples+nloops-1)/nloops;
       Kokkos::parallel_for("Genten::GCP_SGD::sample_tensor_zeros_bulk",
                            Kokkos::RangePolicy<ExecSpace>(0,N_zeros_gen),
@@ -1293,20 +1329,25 @@ namespace Genten {
     }
 
     template <typename ExecSpace>
-    void merge_sampled_tensors(const SptensorT<ExecSpace>& X_nz,
-                               const SptensorT<ExecSpace>& X_z,
-                               SptensorT<ExecSpace>& X,
+    void merge_sampled_tensors(const SptensorT<ExecSpace>& Xd_nz,
+                               const SptensorT<ExecSpace>& Xd_z,
+                               SptensorT<ExecSpace>& Xd,
                                const AlgParams& algParams)
     {
+      const auto X_nz = Xd_nz.impl();
+      const auto X_z = Xd_z.impl();
+
       const ttb_indx xnz = X_nz.nnz();
       const ttb_indx xz = X_z.nnz();
       const ttb_indx nz = xnz+xz;
       const ttb_indx nd = X_nz.ndims();
 
       // Resize X if necessary
-      if (X.nnz() < nz) {
-        X = SptensorT<ExecSpace>(X_nz.size(), nz);
+      if (Xd.nnz() < nz) {
+        Xd = SptensorT<ExecSpace>(X_nz.size(), nz);
       }
+
+      const auto X = Xd.impl();
 
       // Copy X_nz
       Kokkos::parallel_for("Genten::GCP_SGD::merge_sampled_tensors_nz",

@@ -59,7 +59,7 @@ namespace Genten {
     template <unsigned FBS, unsigned VS,
               typename ExecSpace, typename loss_type>
     void gcp_sgd_ss_grad_sa_kernel(
-      const SptensorT<ExecSpace>& X,
+      const SptensorImpl<ExecSpace>& X,
       const KtensorT<ExecSpace>& M,
       const loss_type& f,
       const ttb_indx num_samples_nonzeros,
@@ -237,7 +237,7 @@ namespace Genten {
     template <typename ExecSpace, typename loss_type>
     struct GCP_SS_Grad_SA {
       typedef ExecSpace exec_space;
-      typedef SptensorT<exec_space> tensor_type;
+      typedef SptensorImpl<exec_space> tensor_type;
       typedef KtensorT<exec_space> Ktensor_type;
       typedef Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,ExecSpace> grad_index_type;
 
@@ -321,7 +321,7 @@ namespace Genten {
       KtensorT<ExecSpace> Mt = M.getKtensor();
       KtensorT<ExecSpace> Gt = G.getKtensor();
       GCP_SS_Grad_SA<ExecSpace,loss_type> kernel(
-        X,Mt,f,num_samples_nonzeros,num_samples_zeros,
+        X.impl(),Mt,f,num_samples_nonzeros,num_samples_zeros,
         weight_nonzeros,weight_zeros,Gt,Gind,rand_pool,algParams,
         timer,timer_nzs,timer_zs);
       run_row_simd_kernel(kernel, Mt.ncomponents());
