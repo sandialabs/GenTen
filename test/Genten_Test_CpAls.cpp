@@ -286,10 +286,8 @@ void RunCpAlsTest(MTTKRP_Method::type mttkrp_method, const std::string &label) {
   initialBasis[2].entry(3, 1) = 0.7;
   initialBasis.weights(0) = 2.0; // Test with weights different from one.
 
-  KtensorT<exec_space> ib_dev = create_mirror_view(exec_space(), initialBasis);
-  deep_copy(ib_dev, initialBasis);
-
-  KtensorT<exec_space> initialBasis_dev = dtc.exportFromRoot(ib_dev);
+  KtensorT<exec_space> initialBasis_dev =
+    dtc.exportFromRoot<exec_space>(initialBasis);
 
   // Factorize.
   AlgParams algParams;
@@ -329,12 +327,9 @@ void RunCpAlsTest(MTTKRP_Method::type mttkrp_method, const std::string &label) {
       INFO_MSG("Performance info from cpals_core is reasonable.");
     });
 
-    KtensorT<exec_space> result = dtc.importToRoot(result_dev);
+    Ktensor result = dtc.importToRoot<host_exec_space>(result_dev);
     if (dtc.gridRank() == 0) {
-      Ktensor result_host = create_mirror_view(host_exec_space(), result);
-      deep_copy(result_host, result);
-
-      evaluateResult(itersCompleted, algParams.tol, result_host);
+      evaluateResult(itersCompleted, algParams.tol, result);
     }
   }
 
@@ -346,10 +341,8 @@ void RunCpAlsTest(MTTKRP_Method::type mttkrp_method, const std::string &label) {
     initialZero.setWeights(0.0);
     initialZero.setMatrices(0.0);
 
-    KtensorT<exec_space> iz_dev = create_mirror_view(exec_space(), initialZero);
-    deep_copy(iz_dev, initialZero);
-
-    KtensorT<exec_space> initialZero_dev = dtc.exportFromRoot(iz_dev);
+    KtensorT<exec_space> initialZero_dev =
+      dtc.exportFromRoot<exec_space>(initialZero);
     KtensorT<exec_space> result_dev =
         create_mirror_view(exec_space(), initialZero_dev);
     deep_copy(result_dev, initialZero_dev);
@@ -376,12 +369,9 @@ void RunCpAlsTest(MTTKRP_Method::type mttkrp_method, const std::string &label) {
                    history);
       });
 
-      KtensorT<exec_space> result = dtc.importToRoot(result_dev);
+      Ktensor result = dtc.importToRoot<host_exec_space>(result_dev);
       if (dtc.gridRank() == 0) {
-        Ktensor result_host = create_mirror_view(host_exec_space(), result);
-        deep_copy(result_host, result);
-
-        evaluateResult(itersCompleted, algParams.tol, result_host);
+        evaluateResult(itersCompleted, algParams.tol, result);
       }
     }
   }

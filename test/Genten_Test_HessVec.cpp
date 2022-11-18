@@ -40,6 +40,8 @@
 
 #include <Genten_CP_Model.hpp>
 #include <Genten_CpAls.hpp>
+#include <Genten_DistContext.hpp>
+#include <Genten_DistTensorContext.hpp>
 #include <Genten_FacTestSetGenerator.hpp>
 #include <Genten_Ktensor.hpp>
 #include <Genten_Sptensor.hpp>
@@ -60,8 +62,10 @@ template <typename ExecSpace> struct TestHessVecT : public ::testing::Test {
 TYPED_TEST_SUITE(TestHessVecT, genten_test_types);
 
 template <typename exec_space>
-void RunHessVecTest(Genten::Hess_Vec_Tensor_Method::type hess_vec_method,
-                    const std::string &label) {
+void RunHessVecDenseTest(Genten::Hess_Vec_Tensor_Method::type hess_vec_method,
+                         const std::string &label) {
+  DistContext::Barrier();
+
   const ttb_indx nd = 4;
   const ttb_indx nc = 3;
   const ttb_indx nnz = 20;
@@ -106,25 +110,6 @@ void RunHessVecTest(Genten::Hess_Vec_Tensor_Method::type hess_vec_method,
   cp_model_fd.update(a);
   cp_model_fd.hess_vec(u_fd, a, v);
 
-  // Check values
-  const ttb_real tol = 1e-6;
-  auto u_host = create_mirror_view(u);
-  auto u_fd_host = create_mirror_view(u_fd);
-  deep_copy(u_host, u);
-  deep_copy(u_fd_host, u_fd);
-  for (ttb_indx n = 0; n < nd; ++n) {
-    for (ttb_indx i = 0; i < x.size(n); ++i) {
-      for (ttb_indx j = 0; j < nc; ++j) {
-        std::stringstream ss;
-        ss << "hess-vec values correct for dim " << n << ", entry (" << i << ","
-           << j << ")";
-        GENTEN_TRUE(
-            FLOAT_EQ(u_host[n].entry(i, j), u_fd_host[n].entry(i, j), tol),
-            ss.str().c_str());
-      }
-    }
-  }
-
   // Compute dense hess_vec
   algParams.hess_vec_method = Hess_Vec_Method::Full;
   TensorT<exec_space> x_dense(x);
@@ -135,6 +120,8 @@ void RunHessVecTest(Genten::Hess_Vec_Tensor_Method::type hess_vec_method,
 
   // Check hess-vec values
   const ttb_real tol2 = 100.0 * MACHINE_EPSILON;
+  auto u_host = create_mirror_view(u);
+  deep_copy(u_host, u);
   auto u_dense_host = create_mirror_view(u_dense);
   deep_copy(u_dense_host, u_dense);
   for (ttb_indx n = 0; n < nd; ++n) {
@@ -146,6 +133,123 @@ void RunHessVecTest(Genten::Hess_Vec_Tensor_Method::type hess_vec_method,
         GENTEN_TRUE(
             FLOAT_EQ(u_host[n].entry(i, j), u_dense_host[n].entry(i, j), tol2),
             ss.str().c_str());
+      }
+    }
+  }
+}
+
+TYPED_TEST(TestHessVecT, HessVecDense) {
+  using exec_space = typename TestFixture::exec_space;
+
+  struct TestCase {
+    TestCase(const Hess_Vec_Tensor_Method::type hess_vec_method,
+             const char *label)
+        : hess_vec_method{hess_vec_method}, label{label} {}
+
+    const Hess_Vec_Tensor_Method::type hess_vec_method;
+    const char *label;
+
+    const bool run{not SpaceProperties<exec_space>::is_gpu ||
+                   hess_vec_method != Hess_Vec_Tensor_Method::type::Duplicated};
+  };
+
+  TestCase test_cases[]{
+      TestCase{Hess_Vec_Tensor_Method::type::Atomic, "Atomic"},
+      TestCase{Hess_Vec_Tensor_Method::type::Duplicated, "Duplicated"}};
+
+  for (const auto &tc : test_cases) {
+    if (tc.run) {
+      RunHessVecDenseTest<exec_space>(tc.hess_vec_method, tc.label);
+    }
+  }
+}
+
+template <typename exec_space>
+void RunHessVecTest(Genten::Hess_Vec_Tensor_Method::type hess_vec_method,
+                    const std::string &label) {
+  DistContext::Barrier();
+  Genten::DistTensorContext dtc;
+
+  const ttb_indx nd = 4;
+  const ttb_indx nc = 3;
+  const ttb_indx nnz = 20;
+  IndxArray dims = {3, 4, 5, 6};
+  RandomMT rng(12345);
+  Ktensor sol_host;
+  Sptensor x_host;
+  FacTestSetGenerator testGen;
+  ASSERT_TRUE(
+      testGen.genSpFromRndKtensor(dims, nc, nnz, rng, x_host, sol_host));
+
+  SptensorT<exec_space> x_dist = dtc.distributeTensor<exec_space>(x_host);
+  const ProcessorMap *pmap = dtc.pmap_ptr().get();
+  x_dist.setProcessorMap(pmap);
+
+  // Create random Ktensors for multiply
+  KtensorT<exec_space> a_dev(nc, nd, x_dist.size()),
+      v_dev(nc, nd, x_dist.size());
+  auto a_host = create_mirror_view(a_dev);
+  auto v_host = create_mirror_view(v_dev);
+  a_host.setMatricesScatter(true, false, rng);
+  v_host.setMatricesScatter(true, false, rng);
+  a_host.setWeights(1.0);
+  v_host.setWeights(1.0);
+  deep_copy(a_dev, a_host);
+  deep_copy(v_dev, v_host);
+
+  KtensorT<exec_space> a_dev_dist = dtc.exportFromRoot<exec_space>(a_dev);
+  a_dev_dist.setProcessorMap(pmap);
+  KtensorT<exec_space> v_dev_dist = dtc.exportFromRoot<exec_space>(v_dev);
+  v_dev_dist.setProcessorMap(pmap);
+
+  AlgParams algParams;
+  algParams.hess_vec_tensor_method = hess_vec_method;
+  algParams.mttkrp_method = MTTKRP_Method::Atomic;
+  algParams.mttkrp_all_method = Genten::MTTKRP_All_Method::Atomic;
+
+  // Compute full hess-vec
+  algParams.hess_vec_method = Hess_Vec_Method::Full;
+  CP_Model<SptensorT<exec_space>> cp_model_full(x_dist, a_dev_dist, algParams);
+  KtensorT<exec_space> u(nc, nd, x_dist.size());
+  KtensorT<exec_space> u_dist = dtc.exportFromRoot<exec_space>(u);
+  u_dist.setProcessorMap(pmap);
+  cp_model_full.update(a_dev_dist);
+  cp_model_full.hess_vec(u_dist, a_dev_dist, v_dev_dist);
+
+  // Compute finite-difference approximation to hess-vec
+  algParams.hess_vec_method = Hess_Vec_Method::FiniteDifference;
+  CP_Model<SptensorT<exec_space>> cp_model_fd(x_dist, a_dev_dist, algParams);
+  KtensorT<exec_space> u_fd(nc, nd, x_dist.size());
+  KtensorT<exec_space> u_fd_dist = dtc.exportFromRoot<exec_space>(u_fd);
+  u_fd_dist.setProcessorMap(pmap);
+  cp_model_fd.update(a_dev_dist);
+  cp_model_fd.hess_vec(u_fd_dist, a_dev_dist, v_dev_dist);
+
+  // Check values
+  u = dtc.importToRoot<exec_space>(u_dist);
+  u_fd = dtc.importToRoot<exec_space>(u_fd_dist);
+
+  if (DistContext::rank() == 0) {
+    const ttb_real tol = 1e-6;
+
+    auto u_host = create_mirror_view(u);
+    deep_copy(u_host, u);
+    auto u_fd_host = create_mirror_view(u_fd);
+    deep_copy(u_fd_host, u_fd);
+
+    for (ttb_indx n = 0; n < nd; ++n) {
+      for (ttb_indx i = 0; i < x_dist.size(n); ++i) {
+        for (ttb_indx j = 0; j < nc; ++j) {
+          const auto uh_ij = u_host[n].entry(i, j);
+          const auto ufdh_ij = u_fd_host[n].entry(i, j);
+
+          std::stringstream ss;
+          ss << "hess-vec values correct for dim " << n << ", entry (" << i
+             << "," << j << "), u_host[n].entry(i, j): " << uh_ij
+             << ", u_fd_host[n].entry(i, j): " << ufdh_ij;
+
+          GENTEN_TRUE(FLOAT_EQ(uh_ij, ufdh_ij, tol), ss.str().c_str());
+        }
       }
     }
   }
@@ -178,6 +282,8 @@ TYPED_TEST(TestHessVecT, HessVec) {
 }
 
 TYPED_TEST(TestHessVecT, HessVecGaussNewton) {
+  DistContext::Barrier();
+
   using exec_space = typename TestFixture::exec_space;
 
   const ttb_indx nd = 3;
@@ -208,6 +314,7 @@ TYPED_TEST(TestHessVecT, HessVecGaussNewton) {
   algParams.hess_vec_method = Hess_Vec_Method::Full;
   CP_Model<TensorT<exec_space>> cp_model_full(x, sol, algParams);
   KtensorT<exec_space> u_full(nc, nd, x.size());
+
   cp_model_full.update(sol);
   cp_model_full.hess_vec(u_full, sol, v);
 
