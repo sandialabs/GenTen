@@ -145,11 +145,6 @@ void RunGcpSgdTest(const std::string &label, GCP_Sampling::type sampling_type,
   initialBasis.setMatricesScatter(false, false, cRMT);
   initialBasis.setWeights(1.0);
 
-  KtensorT<exec_space> ib_dev = create_mirror_view(exec_space(), initialBasis);
-  deep_copy(ib_dev, initialBasis);
-
-  KtensorT<exec_space> initialBasis_dev = dtc.exportFromRoot(ib_dev);
-
   // Set parallel maps
   const ProcessorMap *pmap = dtc.pmap_ptr().get();
   X_dev.setProcessorMap(pmap);
@@ -167,12 +162,13 @@ void RunGcpSgdTest(const std::string &label, GCP_Sampling::type sampling_type,
   algParams.fuse = fuse;
   algParams.loss_function_type = loss_type;
   algParams.oversample_factor = 5;
+  algParams.gcp_seed = 12345;
 
   ttb_indx numIters;
   ttb_real resNorm;
-  KtensorT<exec_space> result_dev =
-      create_mirror_view(exec_space(), initialBasis_dev);
-  deep_copy(result_dev, initialBasis_dev);
+  Ktensor result(nNumComponents, dims.size(), dims);
+  deep_copy(result, initialBasis);
+  KtensorT<exec_space> result_dev = dtc.exportFromRoot<exec_space>(result);
   result_dev.setProcessorMap(pmap);
   PerfHistory history;
   EXPECT_NO_THROW({
@@ -185,11 +181,8 @@ void RunGcpSgdTest(const std::string &label, GCP_Sampling::type sampling_type,
     }
   });
 
-  KtensorT<exec_space> result = dtc.importToRoot(result_dev);
+  result = dtc.importToRoot<typename Ktensor::exec_space>(result_dev);
   if (dtc.gridRank() == 0) {
-    Ktensor result_host = create_mirror_view(host_exec_space(), result);
-    deep_copy(result_host, result);
-
     // Multiply Ktensor entries and compare to tensor
     const ttb_real tol = 1.0e-3;
     const ttb_indx nnz = X.nnz();
@@ -197,7 +190,7 @@ void RunGcpSgdTest(const std::string &label, GCP_Sampling::type sampling_type,
     for (ttb_indx i = 0; i < nnz; ++i) {
       X.getSubscripts(i, subs);
       const ttb_real x_val = X.value(i);
-      const ttb_real val = result_host.entry(subs);
+      const ttb_real val = result.entry(subs);
       GENTEN_LE(fabs(x_val - val), tol, "Result matches");
     }
   }
