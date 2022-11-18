@@ -46,6 +46,8 @@
 #include "Genten_CpAls.hpp"
 #ifdef HAVE_ROL
 #include "Genten_CP_Opt_Rol.hpp"
+#include "Teuchos_RCP.hpp"
+#include "Teuchos_XMLParameterListHelpers.hpp"
 #endif
 #ifdef HAVE_LBFGSB
 #include "Genten_CP_Opt_Lbfgsb.hpp"
@@ -59,10 +61,10 @@
 #endif
 #ifdef HAVE_ROL
 #include "Genten_GCP_Opt.hpp"
-#include "Teuchos_RCP.hpp"
-#include "Teuchos_XMLParameterListHelpers.hpp"
-#include "Teuchos_TimeMonitor.hpp"
 #endif
+#endif
+#ifdef HAVE_TEUCHOS
+#include "Teuchos_TimeMonitor.hpp"
 #endif
 
 namespace Genten {
@@ -245,9 +247,8 @@ driver(const DistTensorContext<ExecSpace>& dtc,
     Genten::print_ktensor(u0_host, out, "Solution");
   }
 
-#if defined(HAVE_GCP) && defined(HAVE_ROL)
-  if (algParams.method == Genten::Solver_Method::GCP_OPT)
-    Teuchos::TimeMonitor::summarize();
+#if defined(HAVE_TEUCHOS)
+  Teuchos::TimeMonitor::summarize();
 #endif
 
   x.setProcessorMap(nullptr);
