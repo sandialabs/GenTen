@@ -52,13 +52,17 @@ namespace Genten {
 
 class CusolverHandle {
 public:
-  CusolverHandle();
-  ~CusolverHandle();
+  CusolverHandle(const CusolverHandle&) = delete;
+  CusolverHandle(CusolverHandle&&) = delete;
+  CusolverHandle& operator=(const CusolverHandle&) = delete;
+  CusolverHandle& operator=(CusolverHandle&&) = delete;
 
-  cusolverDnHandle_t get() const;
+  ~CusolverHandle();
+  static cusolverDnHandle_t get();
 
 private:
-  cusolverDnHandle_t handle = 0;
+  CusolverHandle();
+  cusolverDnHandle_t handle;
 };
 
 } // namespace Genten

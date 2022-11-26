@@ -357,13 +357,12 @@ namespace Genten
         const ttb_real alpha = ttb_real(1.0);
         const ttb_real beta = ttb_real(0.0);
         cublasStatus_t status;
-        CublasHandle handle;
 
         // We need Z = V*Y, where Z/Y are matricised tensors, and V is input matrix.
         // But since Z and Y (matricised) are logically LayoutRight, we instead seek Z'=Y'*V'
         // This way, Y' is LayoutLeft. V, naturally LayoutLeft needs the transpose flag.
         // The result Z' also comes out LayoutLeft, as desired. All LayoutLeft is what Gemm expects
-        status = cublasDgemmStridedBatched(handle.get(), CUBLAS_OP_N, CUBLAS_OP_T,
+        status = cublasDgemmStridedBatched(CublasHandle::get(), CUBLAS_OP_N, CUBLAS_OP_T,
                                            m, n, k,
                                            &alpha,
                                            Y.getValues().values().data(), lda, strideA,
@@ -431,13 +430,12 @@ namespace Genten
       const double alpha = 1.0;
       const double beta = 0.0;
       cublasStatus_t status;
-      CublasHandle handle;
 
       // We need Z = V*Y, where Z/Y are matricised tensors, and V is input matrix.
       // But since Z and Y (matricised) are logically LayoutRight, we instead seek Z'=Y'*V'
       // This way, Y' is LayoutLeft. V, naturally LayoutLeft needs the transpose flag.
       // The result Z' also comes out LayoutLeft, as desired. All LayoutLeft is what Gemm expects
-      status = cublasDgemm(handle.get(), CUBLAS_OP_N, CUBLAS_OP_T, m, n, k,
+      status = cublasDgemm(CublasHandle::get(), CUBLAS_OP_N, CUBLAS_OP_T, m, n, k,
                            &alpha, Y.getValues().values().data(), lda, V.getValues().values().data(), ldb,
                            &beta, Z.getValues().values().data(), ldc);
 

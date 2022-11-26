@@ -52,13 +52,17 @@ namespace Genten {
 
 class CublasHandle {
 public:
-  CublasHandle();
-  ~CublasHandle();
+  CublasHandle(const CublasHandle&) = delete;
+  CublasHandle(CublasHandle&&) = delete;
+  CublasHandle& operator=(const CublasHandle&) = delete;
+  CublasHandle& operator=(CublasHandle&&) = delete;
 
-  cublasHandle_t get() const;
+  ~CublasHandle();
+  static cublasHandle_t get();
 
 private:
-  cublasHandle_t handle = 0;
+  CublasHandle();
+  cublasHandle_t handle;
 };
 
 } // namespace Genten

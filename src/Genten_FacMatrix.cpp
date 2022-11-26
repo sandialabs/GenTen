@@ -488,21 +488,20 @@ void gramianImpl(const ViewC& C, const ViewA& A,
     const double alpha = 1.0;
     const double beta = 0.0;
     cublasStatus_t status;
-    CublasHandle handle;
 
     // We compute C = A'*A.  But since A is LayoutRight, and GEMM/SYRK
     // assumes layout left we compute this as C = A*A'.  Since SYRK writes
     // C', uplo == Upper means we call SYRK with 'L', and vice versa.
 
     if (full) {
-      status = cublasDgemm(handle.get(), CUBLAS_OP_N, CUBLAS_OP_T, n, n, m,
+      status = cublasDgemm(CublasHandle::get(), CUBLAS_OP_N, CUBLAS_OP_T, n, n, m,
                            &alpha, A.data(), lda, A.data(), lda,
                            &beta, C.data(), ldc);
     }
     else {
       cublasFillMode_t cu_uplo =
         uplo == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
-      status = cublasDsyrk(handle.get(), cu_uplo, CUBLAS_OP_N, n, m,
+      status = cublasDsyrk(CublasHandle::get(), cu_uplo, CUBLAS_OP_N, n, m,
                            &alpha, A.data(), lda, &beta, C.data(), ldc);
     }
     if (status != CUBLAS_STATUS_SUCCESS) {
@@ -532,21 +531,20 @@ void gramianImpl(const ViewC& C, const ViewA& A,
     const float alpha = 1.0;
     const float beta = 0.0;
     cublasStatus_t status;
-    CublasHandle handle;
 
     // We compute C = A'*A.  But since A is LayoutRight, and GEMM/SYRK
     // assumes layout left we compute this as C = A*A'.  Since SYRK writes
     // C', uplo == Upper means we call SYRK with 'L', and vice versa.
 
     if (full) {
-      status = cublasSgemm(handle.get(), CUBLAS_OP_N, CUBLAS_OP_T, n, n, m,
+      status = cublasSgemm(CublasHandle::get(), CUBLAS_OP_N, CUBLAS_OP_T, n, n, m,
                            &alpha, A.data(), lda, A.data(), lda,
                            &beta, C.data(), ldc);
     }
     else {
       cublasFillMode_t cu_uplo =
         uplo == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
-      status = cublasSsyrk(handle.get(), cu_uplo, CUBLAS_OP_N, n, m,
+      status = cublasSsyrk(CublasHandle::get(), cu_uplo, CUBLAS_OP_N, n, m,
                            &alpha, A.data(), lda, &beta, C.data(), ldc);
     }
     if (status != CUBLAS_STATUS_SUCCESS) {
@@ -1718,11 +1716,10 @@ gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
   const ttb_indx ldb = B.stride(0);
   const ttb_indx ldc = C.stride(0);
 
-  CublasHandle handle;
   cublasStatus_t status;
 
   status = cublasDgemm(
-    handle.get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
+    CublasHandle::get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
     &beta, C.data(), ldc);
   if (status != CUBLAS_STATUS_SUCCESS) {
     std::stringstream ss;
@@ -1756,11 +1753,10 @@ gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
   const ttb_indx ldb = B.stride(0);
   const ttb_indx ldc = C.stride(0);
 
-  CublasHandle handle;
   cublasStatus_t status;
 
   status = cublasSgemm(
-    handle.get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
+    CublasHandle::get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
     &beta, C.data(), ldc);
   if (status != CUBLAS_STATUS_SUCCESS) {
     std::stringstream ss;
@@ -1986,11 +1982,9 @@ namespace Genten {
       assert(A.extent(0) == n);
       assert(A.extent(1) == n);
 
-      CusolverHandle handle;
-
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
-      status = cusolverDnDpotrf_bufferSize(handle.get(), uplo, n, A.data(), lda, &lwork);
+      status = cusolverDnDpotrf_bufferSize(CusolverHandle::get(), uplo, n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnDpotrf_bufferSize() failed with status "
@@ -2001,7 +1995,7 @@ namespace Genten {
 
       Kokkos::View<double *, Kokkos::LayoutRight, exec_space> work("work", lwork);
       Kokkos::View<int, Kokkos::LayoutRight, exec_space> info("info");
-      status = cusolverDnDpotrf(handle.get(), uplo, n, A.data(), lda, work.data(),
+      status = cusolverDnDpotrf(CusolverHandle::get(), uplo, n, A.data(), lda, work.data(),
                                 lwork, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2021,7 +2015,7 @@ namespace Genten {
       if (info_host() > 0)
         return false;  // Matrix is not SPD
 
-      status = cusolverDnDpotrs(handle.get(), uplo, n, m, A.data(), lda,
+      status = cusolverDnDpotrs(CusolverHandle::get(), uplo, n, m, A.data(), lda,
                                 B.data(), ldb, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2071,11 +2065,9 @@ namespace Genten {
       assert(A.extent(0) == n);
       assert(A.extent(1) == n);
 
-      CusolverHandle handle;
-
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
-      status = cusolverDnDsytrf_bufferSize(handle.get(), n, A.data(), lda, &lwork);
+      status = cusolverDnDsytrf_bufferSize(CusolverHandle::get(), n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnDsytrf_bufferSize() failed with status "
@@ -2087,7 +2079,7 @@ namespace Genten {
       Kokkos::View<double*,Kokkos::LayoutRight,exec_space> work("work",lwork);
       Kokkos::View<int*,Kokkos::LayoutRight,exec_space> piv("piv",n);
       Kokkos::View<int,Kokkos::LayoutRight,exec_space> info("info");
-      status = cusolverDnDsytrf(handle.get(), uplo, n, A.data(), lda, piv.data(),
+      status = cusolverDnDsytrf(CusolverHandle::get(), uplo, n, A.data(), lda, piv.data(),
                                 work.data(), lwork, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2105,7 +2097,7 @@ namespace Genten {
         throw ss.str();
       }
 
-      status = cusolverDnDsytrs_bufferSize(handle.get(), uplo, n, m, A.data(), lda,
+      status = cusolverDnDsytrs_bufferSize(CusolverHandle::get(), uplo, n, m, A.data(), lda,
                                            piv.data(), B.data(), ldb, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2115,7 +2107,7 @@ namespace Genten {
         throw ss.str();
       }
       Kokkos::View<double*,Kokkos::LayoutRight,exec_space> work2("work2",lwork);
-      status = cusolverDnDsytrs(handle.get(), uplo, n, m, A.data(), lda,
+      status = cusolverDnDsytrs(CusolverHandle::get(), uplo, n, m, A.data(), lda,
                                 piv.data(), B.data(), ldb, work2.data(), lwork,
                                 info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
@@ -2165,11 +2157,9 @@ namespace Genten {
       assert(A.extent(0) == n);
       assert(A.extent(1) == n);
 
-      CusolverHandle handle;
-
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
-      status = cusolverDnDgetrf_bufferSize(handle.get(), n, n, A.data(), lda, &lwork);
+      status = cusolverDnDgetrf_bufferSize(CusolverHandle::get(), n, n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnDgetrf_bufferSize() failed with status "
@@ -2181,7 +2171,7 @@ namespace Genten {
       Kokkos::View<double *, Kokkos::LayoutRight, exec_space> work("work", lwork);
       Kokkos::View<int *, Kokkos::LayoutRight, exec_space> piv("piv", n);
       Kokkos::View<int, Kokkos::LayoutRight, exec_space> info("info");
-      status = cusolverDnDgetrf(handle.get(), n, n, A.data(), lda, work.data(),
+      status = cusolverDnDgetrf(CusolverHandle::get(), n, n, A.data(), lda, work.data(),
                                 piv.data(), info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2199,7 +2189,7 @@ namespace Genten {
         throw ss.str();
       }
 
-      status = cusolverDnDgetrs(handle.get(), CUBLAS_OP_N, n, m, A.data(), lda,
+      status = cusolverDnDgetrs(CusolverHandle::get(), CUBLAS_OP_N, n, m, A.data(), lda,
                                 piv.data(), B.data(), ldb, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2245,11 +2235,9 @@ namespace Genten {
       assert(A.extent(0) == n);
       assert(A.extent(1) == n);
 
-      CusolverHandle handle;
-
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
-      status = cusolverDnSpotrf_bufferSize(handle.get(), uplo, n, A.data(), lda, &lwork);
+      status = cusolverDnSpotrf_bufferSize(CusolverHandle::get(), uplo, n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnSpotrf_bufferSize() failed with status "
@@ -2260,7 +2248,7 @@ namespace Genten {
 
       Kokkos::View<float *, Kokkos::LayoutRight, exec_space> work("work", lwork);
       Kokkos::View<int, Kokkos::LayoutRight, exec_space> info("info");
-      status = cusolverDnSpotrf(handle.get(), uplo, n, A.data(), lda, work.data(),
+      status = cusolverDnSpotrf(CusolverHandle::get(), uplo, n, A.data(), lda, work.data(),
                                 lwork, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2280,7 +2268,7 @@ namespace Genten {
       if (info_host() > 0)
         return false;  // Matrix is not SPD
 
-      status = cusolverDnSpotrs(handle.get(), uplo, n, m, A.data(), lda,
+      status = cusolverDnSpotrs(CusolverHandle::get(), uplo, n, m, A.data(), lda,
                                 B.data(), ldb, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2328,11 +2316,9 @@ namespace Genten {
       assert(A.extent(0) == n);
       assert(A.extent(1) == n);
 
-      CusolverHandle handle;
-
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
-      status = cusolverDnSsytrf_bufferSize(handle.get(), n, A.data(), lda, &lwork);
+      status = cusolverDnSsytrf_bufferSize(CusolverHandle::get(), n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnSsytrf_bufferSize() failed with status "
@@ -2344,7 +2330,7 @@ namespace Genten {
       Kokkos::View<float*,Kokkos::LayoutRight,exec_space> work("work",lwork);
       Kokkos::View<int*,Kokkos::LayoutRight,exec_space> piv("piv",n);
       Kokkos::View<int,Kokkos::LayoutRight,exec_space> info("info");
-      status = cusolverDnSsytrf(handle.get(), uplo, n, A.data(), lda, piv.data(),
+      status = cusolverDnSsytrf(CusolverHandle::get(), uplo, n, A.data(), lda, piv.data(),
                                 work.data(), lwork, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2362,7 +2348,7 @@ namespace Genten {
         throw ss.str();
       }
 
-      status = cusolverDnSsytrs_bufferSize(handle.get(), uplo, n, m, A.data(), lda,
+      status = cusolverDnSsytrs_bufferSize(CusolverHandle::get(), uplo, n, m, A.data(), lda,
                                            piv.data(), B.data(), ldb, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2372,7 +2358,7 @@ namespace Genten {
         throw ss.str();
       }
       Kokkos::View<float*,Kokkos::LayoutRight,exec_space> work2("work2",lwork);
-      status = cusolverDnSsytrs(handle.get(), uplo, n, m, A.data(), lda,
+      status = cusolverDnSsytrs(CusolverHandle::get(), uplo, n, m, A.data(), lda,
                                 piv.data(), B.data(), ldb, work2.data(), lwork,
                                 info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
@@ -2422,11 +2408,9 @@ namespace Genten {
       assert(A.extent(0) == n);
       assert(A.extent(1) == n);
 
-      CusolverHandle handle;
-
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
-      status = cusolverDnSgetrf_bufferSize(handle.get(), n, n, A.data(), lda, &lwork);
+      status = cusolverDnSgetrf_bufferSize(CusolverHandle::get(), n, n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnSgetrf_bufferSize() failed with status "
@@ -2438,7 +2422,7 @@ namespace Genten {
       Kokkos::View<float *, Kokkos::LayoutRight, exec_space> work("work", lwork);
       Kokkos::View<int *, Kokkos::LayoutRight, exec_space> piv("piv", n);
       Kokkos::View<int, Kokkos::LayoutRight, exec_space> info("info");
-      status = cusolverDnSgetrf(handle.get(), n, n, A.data(), lda, work.data(),
+      status = cusolverDnSgetrf(CusolverHandle::get(), n, n, A.data(), lda, work.data(),
                                 piv.data(), info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2456,7 +2440,7 @@ namespace Genten {
         throw ss.str();
       }
 
-      status = cusolverDnSgetrs(handle.get(), CUBLAS_OP_N, n, m, A.data(), lda,
+      status = cusolverDnSgetrs(CusolverHandle::get(), CUBLAS_OP_N, n, m, A.data(), lda,
                                 piv.data(), B.data(), ldb, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
