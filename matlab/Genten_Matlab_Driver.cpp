@@ -90,11 +90,16 @@ void matlab_driver(int nlhs, mxArray *plhs[],
   else
     throw std::string("Invalid type for initial guess specification.");
 
+  // To do:  initialize this
+  Genten::DistTensorContext dtc;
+
   // Call driver
   Genten::PerfHistory history;
   Genten::KtensorT<ExecSpace> u;
+  Genten::ptree tree;
   if (sparse)
-    u = Genten::driver(X_sparse, u_init, algParams, history, std::cout);
+    u = Genten::driver(dtc, X_sparse, u_init, algParams, tree, history,
+                       std::cout);
   else
     u = Genten::driver(X_dense, u_init, algParams, history, std::cout);
 
@@ -133,23 +138,27 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
     if (algParams.exec_space == Genten::Execution_Space::Default)
       matlab_driver<Genten::DefaultExecutionSpace>(nlhs, plhs, nrhs, prhs,
                                                    algParams);
-#ifdef KOKKOS_ENABLE_CUDA
+#ifdef HAVE_CUDA
     else if (algParams.exec_space == Genten::Execution_Space::Cuda)
       matlab_driver<Kokkos::Cuda>(nlhs, plhs, nrhs, prhs, algParams);
 #endif
-#ifdef KOKKOS_ENABLE_HIP
+#ifdef HAVE_HIP
     else if (algParams.exec_space == Genten::Execution_Space::HIP)
       matlab_driver<Kokkos::Experimental::HIP>(nlhs, plhs, nrhs, prhs, algParams);
 #endif
-#ifdef KOKKOS_ENABLE_OPENMP
+#ifdef HAVE_SYCL
+    else if (algParams.exec_space == Genten::Execution_Space::SYCL)
+      matlab_driver<Kokkos::Experimental::SYCL>(nlhs, plhs, nrhs, prhs, algParams);
+#endif
+#ifdef HAVE_OPENMP
     else if (algParams.exec_space == Genten::Execution_Space::OpenMP)
       matlab_driver<Kokkos::OpenMP>(nlhs, plhs, nrhs, prhs, algParams);
 #endif
-#ifdef KOKKOS_ENABLE_THREADS
+#ifdef HAVE_THREADS
     else if (algParams.exec_space == Genten::Execution_Space::Threads)
       matlab_driver<Kokkos::Threads>(nlhs, plhs, nrhs, prhs, algParams);
 #endif
-#ifdef KOKKOS_ENABLE_SERIAL
+#ifdef HAVE_SERIAL
     else if (algParams.exec_space == Genten::Execution_Space::Serial)
       matlab_driver<Kokkos::Serial>(nlhs, plhs, nrhs, prhs, algParams);
 #endif

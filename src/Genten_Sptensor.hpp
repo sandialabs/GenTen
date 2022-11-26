@@ -45,6 +45,7 @@
 #include "Genten_Array.hpp"
 #include "Genten_IndxArray.hpp"
 #include "Genten_Ktensor.hpp"
+#include "Genten_Pmap.hpp"
 
 namespace Genten
 {
@@ -73,13 +74,13 @@ public:
   /* Creates an empty tensor with an empty size. */
   KOKKOS_INLINE_FUNCTION
   SptensorT() : siz(),siz_host(),nNumDims(0),values(),subs(),perm(),
-                is_sorted(false) {}
+                is_sorted(false), pmap(nullptr) {}
 
   // Constructor for a given size and number of nonzeros
   SptensorT(const IndxArrayT<ExecSpace>& sz, ttb_indx nz) :
     siz(sz.clone()), nNumDims(sz.size()), values(nz),
     subs("Genten::Sptensor::subs",nz,sz.size()), perm(),
-    is_sorted(false) {
+    is_sorted(false), pmap(nullptr) {
     siz_host = create_mirror_view(siz);
     deep_copy(siz_host, siz);
   }
@@ -117,7 +118,7 @@ public:
             const subs_view_type& p = subs_view_type(),
             const bool sorted = false) :
     siz(d), nNumDims(d.size()), values(vals), subs(s), perm(p),
-    is_sorted(sorted) {
+    is_sorted(sorted), pmap(nullptr) {
     siz_host = create_mirror_view(siz);
     deep_copy(siz_host, siz);
   }
@@ -125,7 +126,7 @@ public:
   // Create tensor from supplied dimensions and subscripts, zero values
   SptensorT(const IndxArrayT<ExecSpace>& d, const subs_view_type& s) :
     siz(d), nNumDims(d.size()), values(s.extent(0),ttb_real(0.0)), subs(s),
-    perm(), is_sorted(false) {
+    perm(), is_sorted(false), pmap(nullptr) {
     siz_host = create_mirror_view(siz);
     deep_copy(siz_host, siz);
   }
@@ -153,10 +154,8 @@ public:
   KOKKOS_INLINE_FUNCTION
   ttb_indx size(ttb_indx i) const
   {
-    if (Kokkos::Impl::MemorySpaceAccess< typename Kokkos::Impl::ActiveExecutionMemorySpace::memory_space, typename ExecSpace::memory_space >::accessible)
-      return siz[i];
-    else
-      return siz_host[i];
+    KOKKOS_IF_ON_DEVICE(return siz[i];)
+    KOKKOS_IF_ON_HOST(return siz_host[i];)
   }
 
   // Return the entire size array.
@@ -174,6 +173,13 @@ public:
   {
     return siz_host.prod();
   }
+  ttb_indx global_numel() const
+  {
+    ttb_indx numel = siz_host.prod();
+    if (pmap != nullptr)
+      numel = pmap->gridAllReduce(numel);
+    return numel;
+  }
 
   // Return the total number of (zero and nonzero) elements in the tensor as
   // a float (to avoid overflow for large tensors)
@@ -181,12 +187,26 @@ public:
   {
     return siz_host.prod_float();
   }
+  ttb_real global_numel_float() const
+  {
+    ttb_real numel = siz_host.prod_float();
+    if (pmap != nullptr)
+      numel = pmap->gridAllReduce(numel);
+    return numel;
+  }
 
   // Return the number of structural nonzeros.
   KOKKOS_INLINE_FUNCTION
   ttb_indx nnz() const
   {
     return values.size();
+  }
+  ttb_indx global_nnz() const
+  {
+    ttb_indx nnz = values.size();
+    if (pmap != nullptr)
+      nnz = pmap->gridAllReduce(nnz);
+    return nnz;
   }
 
   // get count of ints and reals stored by implementation
@@ -213,6 +233,9 @@ public:
   // Get whole values array
   KOKKOS_INLINE_FUNCTION
   vals_view_type getValues() const { return values.values(); }
+
+  KOKKOS_INLINE_FUNCTION
+  ArrayT<ExecSpace> const& getValArray() const { return values; }
 
   // Return reference to n-th subscript of i-th nonzero
   template <typename IType, typename NType>
@@ -256,6 +279,13 @@ public:
   ttb_real norm() const
   {
     return values.norm(NormTwo);
+  }
+  ttb_real global_norm() const
+  {
+    ttb_real nrm_sqrd = values.dot(values);
+    if (pmap != nullptr)
+      nrm_sqrd = pmap->gridAllReduce(nrm_sqrd);
+    return std::sqrt(nrm_sqrd);
   }
 
   // Return the i-th linearly indexed element.
@@ -328,6 +358,9 @@ public:
   KOKKOS_INLINE_FUNCTION
   bool isSubscriptEqual(const ttb_indx i, const sub_type& sub) const;
 
+  void setProcessorMap(const ProcessorMap* pmap_) { pmap = pmap_; }
+  const ProcessorMap* getProcessorMap() const { return pmap; }
+
 protected:
 
   // Size of the tensor
@@ -349,6 +382,8 @@ protected:
 
   // Whether tensor has been sorted
   bool is_sorted;
+
+  const ProcessorMap* pmap;
 
 };
 

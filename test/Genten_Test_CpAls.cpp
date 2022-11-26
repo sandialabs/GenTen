@@ -38,133 +38,131 @@
 // ************************************************************************
 //@HEADER
 
+#include <Genten_CpAls.hpp>
+#include <Genten_DistTensorContext.hpp>
+#include <Genten_FacTestSetGenerator.hpp>
+#include <Genten_Kokkos.hpp>
+#include <Genten_Ktensor.hpp>
+#include <Genten_Sptensor.hpp>
+#include <Genten_Tensor.hpp>
+#include <Genten_Util.hpp>
 
-#include <sstream>
-
-#include "Genten_CpAls.hpp"
-#include "Genten_IndxArray.hpp"
-#include "Genten_IOtext.hpp"
-#include "Genten_Ktensor.hpp"
-#include "Genten_MixedFormatOps.hpp"
-#include "Genten_Sptensor.hpp"
-#include "Genten_Tensor.hpp"
 #include "Genten_Test_Utils.hpp"
 
-using namespace Genten::Test;
+#include <gtest/gtest.h>
 
+namespace Genten {
+namespace UnitTests {
 
-static void  evaluateResult (const int             infolevel,
-                             const ttb_indx        itersCompleted,
-                             const ttb_real        stopTol,
-                             const Genten::Ktensor &  result)
-{
-  std::stringstream  sMsg;
+template <typename ExecSpace> struct TestCpAlsT : public ::testing::Test {
+  using exec_space = ExecSpace;
+};
+
+TYPED_TEST_SUITE(TestCpAlsT, genten_test_types);
+
+static void evaluateResult(const ttb_indx itersCompleted,
+                           const ttb_real stopTol, const Ktensor &result) {
+  std::stringstream sMsg;
   sMsg << "CpAls finished after " << itersCompleted << " iterations";
-  MESSAGE(sMsg.str());
-  ttb_real tol = 2.5e-3;
+  INFO_MSG(sMsg.str().c_str());
 
-  if (infolevel == 1)
-    print_ktensor(result, std::cout,"Factorization result in ktensor form");
+  constexpr ttb_real tol = 2.5e-3;
 
   // Check the final weights, which can be in any order.
-  ttb_real  wght0 = result.weights(0);
-  ttb_real  wght1 = result.weights(1);
-  if (wght0 >= wght1)
-  {
-    ttb_real  diffA = fabs(wght0 - 2.828427);
-    ttb_real  diffB = fabs(wght1 - 2.0);
-    ASSERT( (diffA <= tol) && (diffB <= tol),
-            "Result ktensor weights match" );
+  const ttb_real wght0 = result.weights(0);
+  const ttb_real wght1 = result.weights(1);
+  if (wght0 >= wght1) {
+    const ttb_real diffA = fabs(wght0 - 2.828427);
+    const ttb_real diffB = fabs(wght1 - 2.0);
+    ASSERT_LE(diffA, tol);
+    ASSERT_LE(diffB, tol);
+    INFO_MSG("Result ktensor weights match");
 
-    ASSERT( fabs(result[0].entry(0,0)-0.7071) <= tol,
-            "Result ktensor[0](0,0) matches");
-    ASSERT( fabs(result[0].entry(1,0)-0.7071) <= tol,
-            "Result ktensor[0](1,0) matches");
-    ASSERT( fabs(result[0].entry(0,1)-1.0) <= tol,
-            "Result ktensor[0](0,1) matches");
-    ASSERT( fabs(result[0].entry(1,1)-0.0) <= tol,
-            "Result ktensor[0](1,1) matches");
+    GENTEN_LE(fabs(result[0].entry(0, 0) - 0.7071), tol,
+              "Result ktensor[0](0,0) matches");
+    GENTEN_LE(fabs(result[0].entry(1, 0) - 0.7071), tol,
+              "Result ktensor[0](1,0) matches");
+    GENTEN_LE(fabs(result[0].entry(0, 1) - 1.0), tol,
+              "Result ktensor[0](0,1) matches");
+    GENTEN_LE(fabs(result[0].entry(1, 1) - 0.0), tol,
+              "Result ktensor[0](1,1) matches");
 
-    ASSERT( fabs(result[1].entry(0,0)-0.7071) <= tol,
-            "Result ktensor[1](0,0) matches");
-    ASSERT( fabs(result[1].entry(1,0)-0.7071) <= tol,
-            "Result ktensor[1](1,0) matches");
-    ASSERT( fabs(result[1].entry(2,0)-0.0) <= tol,
-            "Result ktensor[1](2,0) matches");
-    ASSERT( fabs(result[1].entry(0,1)-0.7071) <= tol,
-            "Result ktensor[1](0,1) matches");
-    ASSERT( fabs(result[1].entry(1,1)-0.0) <= tol,
-            "Result ktensor[1](1,1) matches");
-    ASSERT( fabs(result[1].entry(2,1)-0.7071) <= tol,
-            "Result ktensor[1](2,1) matches");
+    GENTEN_LE(fabs(result[1].entry(0, 0) - 0.7071), tol,
+              "Result ktensor[1](0,0) matches");
+    GENTEN_LE(fabs(result[1].entry(1, 0) - 0.7071), tol,
+              "Result ktensor[1](1,0) matches");
+    GENTEN_LE(fabs(result[1].entry(2, 0) - 0.0), tol,
+              "Result ktensor[1](2,0) matches");
+    GENTEN_LE(fabs(result[1].entry(0, 1) - 0.7071), tol,
+              "Result ktensor[1](0,1) matches");
+    GENTEN_LE(fabs(result[1].entry(1, 1) - 0.0), tol,
+              "Result ktensor[1](1,1) matches");
+    GENTEN_LE(fabs(result[1].entry(2, 1) - 0.7071), tol,
+              "Result ktensor[1](2,1) matches");
 
-    ASSERT( fabs(result[2].entry(0,0)-0.7071) <= tol,
-            "Result ktensor[2](0,0) matches");
-    ASSERT( fabs(result[2].entry(1,0)-0.0) <= tol,
-            "Result ktensor[2](1,0) matches");
-    ASSERT( fabs(result[2].entry(2,0)-0.0) <= tol,
-            "Result ktensor[2](2,0) matches");
-    ASSERT( fabs(result[2].entry(3,0)-0.7071) <= tol,
-            "Result ktensor[2](3,0) matches");
-    ASSERT( fabs(result[2].entry(0,1)-0.7071) <= tol,
-            "Result ktensor[2](0,1) matches");
-    ASSERT( fabs(result[2].entry(1,1)-0.7071) <= tol,
-            "Result ktensor[2](1,1) matches");
-    ASSERT( fabs(result[2].entry(2,1)-0.0) <= tol,
-            "Result ktensor[2](2,1) matches");
-    ASSERT( fabs(result[2].entry(3,1)-0.0) <= tol,
-            "Result ktensor[2](2,1) matches");
+    GENTEN_LE(fabs(result[2].entry(0, 0) - 0.7071), tol,
+              "Result ktensor[2](0,0) matches");
+    GENTEN_LE(fabs(result[2].entry(1, 0) - 0.0), tol,
+              "Result ktensor[2](1,0) matches");
+    GENTEN_LE(fabs(result[2].entry(2, 0) - 0.0), tol,
+              "Result ktensor[2](2,0) matches");
+    GENTEN_LE(fabs(result[2].entry(3, 0) - 0.7071), tol,
+              "Result ktensor[2](3,0) matches");
+    GENTEN_LE(fabs(result[2].entry(0, 1) - 0.7071), tol,
+              "Result ktensor[2](0,1) matches");
+    GENTEN_LE(fabs(result[2].entry(1, 1) - 0.7071), tol,
+              "Result ktensor[2](1,1) matches");
+    GENTEN_LE(fabs(result[2].entry(2, 1) - 0.0), tol,
+              "Result ktensor[2](2,1) matches");
+    GENTEN_LE(fabs(result[2].entry(3, 1) - 0.0), tol,
+              "Result ktensor[2](2,1) matches");
+  } else {
+    const ttb_real diffA = fabs(wght0 - 2.0);
+    const ttb_real diffB = fabs(wght1 - 2.8284);
+    ASSERT_LE(diffA, tol);
+    ASSERT_LE(diffB, tol);
+    INFO_MSG("Result ktensor weights match");
+
+    GENTEN_LE(fabs(result[0].entry(0, 0) - 1.0), tol,
+              "Result ktensor[0](0,0) matches");
+    GENTEN_LE(fabs(result[0].entry(1, 0) - 0.0), tol,
+              "Result ktensor[0](1,0) matches");
+    GENTEN_LE(fabs(result[0].entry(0, 1) - 0.7071), tol,
+              "Result ktensor[0](0,1) matches");
+    GENTEN_LE(fabs(result[0].entry(1, 1) - 0.7071), tol,
+              "Result ktensor[0](1,1) matches");
+
+    GENTEN_LE(fabs(result[1].entry(0, 0) - 0.7071), tol,
+              "Result ktensor[1](0,0) matches");
+    GENTEN_LE(fabs(result[1].entry(1, 0) - 0.0), tol,
+              "Result ktensor[1](1,0) matches");
+    GENTEN_LE(fabs(result[1].entry(2, 0) - 0.7071), tol,
+              "Result ktensor[1](2,0) matches");
+    GENTEN_LE(fabs(result[1].entry(0, 1) - 0.7071), tol,
+              "Result ktensor[1](0,1) matches");
+    GENTEN_LE(fabs(result[1].entry(1, 1) - 0.7071), tol,
+              "Result ktensor[1](1,1) matches");
+    GENTEN_LE(fabs(result[1].entry(2, 1) - 0.0), tol,
+              "Result ktensor[1](2,1) matches");
+
+    GENTEN_LE(fabs(result[2].entry(0, 0) - 0.7071), tol,
+              "Result ktensor[2](0,0) matches");
+    GENTEN_LE(fabs(result[2].entry(1, 0) - 0.7071), tol,
+              "Result ktensor[2](1,0) matches");
+    GENTEN_LE(fabs(result[2].entry(2, 0) - 0.0), tol,
+              "Result ktensor[2](2,0) matches");
+    GENTEN_LE(fabs(result[2].entry(3, 0) - 0.0), tol,
+              "Result ktensor[2](2,0) matches");
+    GENTEN_LE(fabs(result[2].entry(0, 1) - 0.7071), tol,
+              "Result ktensor[2](0,1) matches");
+    GENTEN_LE(fabs(result[2].entry(1, 1) - 0.0), tol,
+              "Result ktensor[2](1,1) matches");
+    GENTEN_LE(fabs(result[2].entry(2, 1) - 0.0), tol,
+              "Result ktensor[2](2,1) matches");
+    GENTEN_LE(fabs(result[2].entry(3, 1) - 0.7071), tol,
+              "Result ktensor[2](3,1) matches");
   }
-  else
-  {
-    ttb_real  diffA = fabs(wght0 - 2.0);
-    ttb_real  diffB = fabs(wght1 - 2.8284);
-    ASSERT( (diffA <= tol) && (diffB <= tol),
-            "Result ktensor weights match" );
-
-    ASSERT( fabs(result[0].entry(0,1)-0.7071) <= tol,
-            "Result ktensor[0](0,1) matches");
-    ASSERT( fabs(result[0].entry(1,1)-0.7071) <= tol,
-            "Result ktensor[0](1,1) matches");
-    ASSERT( fabs(result[0].entry(0,0)-1.0) <= tol,
-            "Result ktensor[0](0,0) matches");
-    ASSERT( fabs(result[0].entry(1,0)-0.0) <= tol,
-            "Result ktensor[0](1,0) matches");
-
-    ASSERT( fabs(result[1].entry(0,1)-0.7071) <= tol,
-            "Result ktensor[1](0,1) matches");
-    ASSERT( fabs(result[1].entry(1,1)-0.7071) <= tol,
-            "Result ktensor[1](1,1) matches");
-    ASSERT( fabs(result[1].entry(2,1)-0.0) <= tol,
-            "Result ktensor[1](2,1) matches");
-    ASSERT( fabs(result[1].entry(0,0)-0.7071) <= tol,
-            "Result ktensor[1](0,0) matches");
-    ASSERT( fabs(result[1].entry(1,0)-0.0) <= tol,
-            "Result ktensor[1](1,0) matches");
-    ASSERT( fabs(result[1].entry(2,0)-0.7071) <= tol,
-            "Result ktensor[1](2,0) matches");
-
-    ASSERT( fabs(result[2].entry(0,1)-0.7071) <= tol,
-            "Result ktensor[2](0,1) matches");
-    ASSERT( fabs(result[2].entry(1,1)-0.0) <= tol,
-            "Result ktensor[2](1,1) matches");
-    ASSERT( fabs(result[2].entry(2,1)-0.0) <= tol,
-            "Result ktensor[2](2,1) matches");
-    ASSERT( fabs(result[2].entry(3,1)-0.7071) <= tol,
-            "Result ktensor[2](3,1) matches");
-    ASSERT( fabs(result[2].entry(0,0)-0.7071) <= tol,
-            "Result ktensor[2](0,0) matches");
-    ASSERT( fabs(result[2].entry(1,0)-0.7071) <= tol,
-            "Result ktensor[2](1,0) matches");
-    ASSERT( fabs(result[2].entry(2,0)-0.0) <= tol,
-            "Result ktensor[2](2,0) matches");
-    ASSERT( fabs(result[2].entry(3,0)-0.0) <= tol,
-            "Result ktensor[2](2,0) matches");
-  }
-
-  return;
 }
-
 
 /*!
  *  The test factors a simple 2x3x4 sparse tensor into known components.
@@ -196,223 +194,213 @@ static void  evaluateResult (const int             infolevel,
  * the factor matrix columns shown above.  This is consistent with what the code
  * produces.
  */
-template <typename ExecSpace>
-void Genten_Test_CpAls_Type (Genten::MTTKRP_Method::type mttkrp_method,
-                             int infolevel, const std::string& label)
-{
-  typedef ExecSpace exec_space;
-  typedef Genten::DefaultHostExecutionSpace host_exec_space;
-  typedef Genten::SptensorT<exec_space> Sptensor_type;
-  typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
-  typedef Genten::TensorT<exec_space> Tensor_type;
-  typedef Genten::TensorT<host_exec_space> Tensor_host_type;
 
-  SETUP_DISABLE_CERR;
+template <typename exec_space>
+void RunCpAlsTest(MTTKRP_Method::type mttkrp_method, const std::string &label) {
+  using host_exec_space = DefaultHostExecutionSpace;
 
-  std::string space_name = Genten::SpaceProperties<exec_space>::name();
-  initialize("Test of Genten::CpAls ("+label+", "+space_name+")", infolevel);
+  IndxArray dims(3);
+  dims[0] = 2;
+  dims[1] = 3;
+  dims[2] = 4;
 
-  MESSAGE("Creating a sparse tensor with data to model");
-  Genten::IndxArray  dims(3);
-  dims[0] = 2;  dims[1] = 3;  dims[2] = 4;
-  Sptensor_host_type  X(dims,11);
-  X.subscript(0,0) = 0;  X.subscript(0,1) = 0;  X.subscript(0,2) = 0;
+  SptensorT<host_exec_space> X(dims, 11);
+
+  X.subscript(0, 0) = 0;
+  X.subscript(0, 1) = 0;
+  X.subscript(0, 2) = 0;
   X.value(0) = 2.0;
-  X.subscript(1,0) = 1;  X.subscript(1,1) = 0;  X.subscript(1,2) = 0;
+  X.subscript(1, 0) = 1;
+  X.subscript(1, 1) = 0;
+  X.subscript(1, 2) = 0;
   X.value(1) = 1.0;
-  X.subscript(2,0) = 0;  X.subscript(2,1) = 1;  X.subscript(2,2) = 0;
+  X.subscript(2, 0) = 0;
+  X.subscript(2, 1) = 1;
+  X.subscript(2, 2) = 0;
   X.value(2) = 1.0;
-  X.subscript(3,0) = 1;  X.subscript(3,1) = 1;  X.subscript(3,2) = 0;
+  X.subscript(3, 0) = 1;
+  X.subscript(3, 1) = 1;
+  X.subscript(3, 2) = 0;
   X.value(3) = 1.0;
-  X.subscript(4,0) = 0;  X.subscript(4,1) = 2;  X.subscript(4,2) = 0;
+  X.subscript(4, 0) = 0;
+  X.subscript(4, 1) = 2;
+  X.subscript(4, 2) = 0;
   X.value(4) = 1.0;
-  X.subscript(5,0) = 0;  X.subscript(5,1) = 0;  X.subscript(5,2) = 1;
+  X.subscript(5, 0) = 0;
+  X.subscript(5, 1) = 0;
+  X.subscript(5, 2) = 1;
   X.value(5) = 1.0;
-  X.subscript(6,0) = 0;  X.subscript(6,1) = 2;  X.subscript(6,2) = 1;
+  X.subscript(6, 0) = 0;
+  X.subscript(6, 1) = 2;
+  X.subscript(6, 2) = 1;
   X.value(6) = 1.0;
-  X.subscript(7,0) = 0;  X.subscript(7,1) = 0;  X.subscript(7,2) = 3;
+  X.subscript(7, 0) = 0;
+  X.subscript(7, 1) = 0;
+  X.subscript(7, 2) = 3;
   X.value(7) = 1.0;
-  X.subscript(8,0) = 1;  X.subscript(8,1) = 0;  X.subscript(8,2) = 3;
+  X.subscript(8, 0) = 1;
+  X.subscript(8, 1) = 0;
+  X.subscript(8, 2) = 3;
   X.value(8) = 1.0;
-  X.subscript(9,0) = 0;  X.subscript(9,1) = 1;  X.subscript(9,2) = 3;
+  X.subscript(9, 0) = 0;
+  X.subscript(9, 1) = 1;
+  X.subscript(9, 2) = 3;
   X.value(9) = 1.0;
-  X.subscript(10,0) = 1;  X.subscript(10,1) = 1;  X.subscript(10,2) = 3;
+  X.subscript(10, 0) = 1;
+  X.subscript(10, 1) = 1;
+  X.subscript(10, 2) = 3;
   X.value(10) = 1.0;
-  ASSERT(X.nnz() == 11, "Data tensor has 11 nonzeroes");
 
-  // Copy X to device
-  Sptensor_type X_dev = create_mirror_view( exec_space(), X );
-  deep_copy( X_dev, X );
-  if (mttkrp_method == Genten::MTTKRP_Method::Perm)
+  GENTEN_EQ(X.nnz(), 11, "Data tensor has 11 nonzeroes");
+
+  Genten::DistTensorContext dtc;
+  SptensorT<exec_space> X_dev = dtc.distributeTensor<exec_space>(X);
+  const ProcessorMap *pmap = dtc.pmap_ptr().get();
+  X_dev.setProcessorMap(pmap);
+  if (mttkrp_method == MTTKRP_Method::Perm) {
     X_dev.createPermutation();
+  }
 
-  // Load a known initial guess.
-  MESSAGE("Creating a ktensor with initial guess of lin indep basis vectors");
-  ttb_indx  nNumComponents = 2;
-  Genten::Ktensor  initialBasis (nNumComponents, dims.size(), dims);
+  INFO_MSG("Creating a ktensor with initial guess of lin indep basis vectors");
+  ttb_indx nNumComponents = 2;
+  Ktensor initialBasis(nNumComponents, dims.size(), dims);
   initialBasis.setWeights(1.0);
   initialBasis.setMatrices(0.0);
-  initialBasis[0].entry(0,0) = 0.8;
-  initialBasis[0].entry(1,0) = 0.2;
-  initialBasis[0].entry(0,1) = 0.5;
-  initialBasis[0].entry(1,1) = 0.5;
-  initialBasis[1].entry(0,0) = 0.5;
-  initialBasis[1].entry(1,0) = 0.1;
-  initialBasis[1].entry(2,0) = 0.5;
-  initialBasis[1].entry(0,1) = 0.5;
-  initialBasis[1].entry(1,1) = 0.5;
-  initialBasis[1].entry(2,1) = 0.1;
-  initialBasis[2].entry(0,0) = 0.7;
-  initialBasis[2].entry(1,0) = 0.7;
-  initialBasis[2].entry(2,0) = 0.1;
-  initialBasis[2].entry(3,0) = 0.1;
-  initialBasis[2].entry(0,1) = 0.7;
-  initialBasis[2].entry(1,1) = 0.1;
-  initialBasis[2].entry(2,1) = 0.1;
-  initialBasis[2].entry(3,1) = 0.7;
+  initialBasis[0].entry(0, 0) = 0.8;
+  initialBasis[0].entry(1, 0) = 0.2;
+  initialBasis[0].entry(0, 1) = 0.5;
+  initialBasis[0].entry(1, 1) = 0.5;
+  initialBasis[1].entry(0, 0) = 0.5;
+  initialBasis[1].entry(1, 0) = 0.1;
+  initialBasis[1].entry(2, 0) = 0.5;
+  initialBasis[1].entry(0, 1) = 0.5;
+  initialBasis[1].entry(1, 1) = 0.5;
+  initialBasis[1].entry(2, 1) = 0.1;
+  initialBasis[2].entry(0, 0) = 0.7;
+  initialBasis[2].entry(1, 0) = 0.7;
+  initialBasis[2].entry(2, 0) = 0.1;
+  initialBasis[2].entry(3, 0) = 0.1;
+  initialBasis[2].entry(0, 1) = 0.7;
+  initialBasis[2].entry(1, 1) = 0.1;
+  initialBasis[2].entry(2, 1) = 0.1;
+  initialBasis[2].entry(3, 1) = 0.7;
   initialBasis.weights(0) = 2.0; // Test with weights different from one.
-  if (infolevel == 1)
-    print_ktensor(initialBasis,std::cout,"Initial guess for CpAls");
 
-  // Copy initialBasis to the device
-  Genten::KtensorT<exec_space> initialBasis_dev =
-    create_mirror_view( exec_space(), initialBasis );
-  deep_copy( initialBasis_dev, initialBasis );
+  KtensorT<exec_space> initialBasis_dev =
+    dtc.exportFromRoot<exec_space>(initialBasis);
 
   // Factorize.
-  Genten::AlgParams algParams;
+  AlgParams algParams;
   algParams.rank = nNumComponents;
   algParams.tol = 1.0e-6;
   algParams.maxiters = 100;
   algParams.maxsecs = -1.0;
-  algParams.printitn = infolevel;
+  algParams.printitn = 0;
   algParams.mttkrp_method = mttkrp_method;
-  Genten::Ktensor result(nNumComponents, dims.size(), dims);
-  Genten::KtensorT<exec_space> result_dev =
-    create_mirror_view( exec_space(), result );
-  ttb_indx  itersCompleted;
-  ttb_real  resNorm;
-  try
+  ttb_indx itersCompleted;
+  ttb_real resNorm;
+
   {
-    // Request performance information on every 3rd iteration.
-    // Allocation adds two more for start and stop states of the algorithm.
-    Genten::PerfHistory perfInfo;
-    deep_copy(result_dev, initialBasis_dev);
-    Genten::cpals_core(X_dev, result_dev, algParams, itersCompleted, resNorm,
-                       3, perfInfo);
-    // Check performance information.
-    bool  bIsOK = true;
-    for (ttb_indx i = 0; i < perfInfo.size(); i++)
-    {
-      if ((perfInfo[i].iteration > 0))
-      {
-        if ((perfInfo[i].fit < 0.99) || (perfInfo[i].fit > 1.00))
-          bIsOK = false;
-        if (perfInfo[i].residual > 0.03)
-          bIsOK = false;
-        if (perfInfo[i].cum_time < 0.0)
-          bIsOK = false;
+    KtensorT<exec_space> result_dev =
+        create_mirror_view(exec_space(), initialBasis_dev);
+
+    EXPECT_NO_THROW({
+      // Request performance information on every 3rd iteration.
+      // Allocation adds two more for start and stop states of the algorithm.
+      PerfHistory perfInfo;
+
+      deep_copy(result_dev, initialBasis_dev);
+      result_dev.setProcessorMap(pmap);
+
+      cpals_core(X_dev, result_dev, algParams, itersCompleted, resNorm, 3,
+                 perfInfo);
+      // Check performance information.
+      for (ttb_indx i = 0; i < perfInfo.size(); i++) {
+        if ((perfInfo[i].iteration > 0)) {
+          ASSERT_GE(perfInfo[i].fit, 0.99);
+          ASSERT_LE(perfInfo[i].fit, 1.00);
+          ASSERT_LE(perfInfo[i].residual, 0.03);
+          ASSERT_GE(perfInfo[i].cum_time, 0.0);
+        }
+      }
+
+      INFO_MSG("Performance info from cpals_core is reasonable.");
+    });
+
+    Ktensor result = dtc.importToRoot<host_exec_space>(result_dev);
+    if (dtc.gridRank() == 0) {
+      evaluateResult(itersCompleted, algParams.tol, result);
+    }
+  }
+
+  {
+    // Test factorization from a bad initial guess.
+    INFO_MSG("Creating a ktensor with initial guess all zero");
+
+    Ktensor initialZero(nNumComponents, dims.size(), dims);
+    initialZero.setWeights(0.0);
+    initialZero.setMatrices(0.0);
+
+    KtensorT<exec_space> initialZero_dev =
+      dtc.exportFromRoot<exec_space>(initialZero);
+    KtensorT<exec_space> result_dev =
+        create_mirror_view(exec_space(), initialZero_dev);
+    deep_copy(result_dev, initialZero_dev);
+    result_dev.setProcessorMap(pmap);
+
+    INFO_MSG("Checking if linear solver detects singular guess");
+
+    PerfHistory history;
+    EXPECT_ANY_THROW(cpals_core(X_dev, result_dev, algParams, itersCompleted,
+                                resNorm, 0, history));
+
+    if (DistContext::nranks() == 1) {
+      // Repeat the tests using the same data, but in a dense Tensor.
+
+      INFO_MSG("Creating a dense tensor with data to model");
+
+      TensorT<exec_space> Xd_dev(X_dev);
+
+      // Factorize.
+      EXPECT_NO_THROW({
+        deep_copy(result_dev, initialBasis_dev);
+        PerfHistory history;
+        cpals_core(Xd_dev, result_dev, algParams, itersCompleted, resNorm, 0,
+                   history);
+      });
+
+      Ktensor result = dtc.importToRoot<host_exec_space>(result_dev);
+      if (dtc.gridRank() == 0) {
+        evaluateResult(itersCompleted, algParams.tol, result);
       }
     }
-    ASSERT( bIsOK, "Performance info from cpals_core is reasonable." );
   }
-  catch(std::string sExc)
-  {
-    // Should not happen.
-    MESSAGE(sExc);
-    ASSERT( true, "Call to cpals_core threw an exception." );
-    return;
-  }
-
-  // Copy result to host
-  deep_copy(result, result_dev);
-
-  evaluateResult(infolevel, itersCompleted, algParams.tol, result);
-
-  // Test factorization from a bad initial guess.
-  MESSAGE("Creating a ktensor with initial guess all zero");
-  Genten::Ktensor  initialZero (nNumComponents, dims.size(), dims);
-  initialZero.setWeights(0.0);
-  initialZero.setMatrices(0.0);
-  Genten::KtensorT<exec_space> initialZero_dev =
-    create_mirror_view( exec_space(), initialZero );
-  deep_copy( initialZero_dev, initialZero );
-  MESSAGE("Checking if linear solver detects singular guess");
-  DISABLE_CERR;
-  try
-  {
-    deep_copy(result_dev, initialZero_dev);
-    algParams.printitn = 0;
-    Genten::PerfHistory history;
-    Genten::cpals_core(X_dev, result_dev, algParams, itersCompleted, resNorm,
-                       0, history);
-  }
-  catch(std::string sExc)
-  {
-    // The test expects this to happen.
-    std::stringstream  sMsg;
-    sMsg << "Exception caught: " << sExc;
-    ASSERT( true, sMsg.str() );
-  }
-  REENABLE_CERR;
-
-  // Repeat the tests using the same data, but in a dense Tensor.
-
-  MESSAGE("Creating a dense tensor with data to model");
-  Tensor_type Xd_dev(X_dev);
-
-  // Factorize.
-  try
-  {
-    algParams.printitn = infolevel;
-    deep_copy(result_dev, initialBasis_dev);
-    Genten::PerfHistory history;
-    Genten::cpals_core(Xd_dev, result_dev, algParams, itersCompleted, resNorm,
-                       0, history);
-  }
-  catch(std::string sExc)
-  {
-    // Should not happen.
-    MESSAGE(sExc);
-    ASSERT( true, "Call to cpals_core threw an exception." );
-    return;
-  }
-
-  deep_copy(result, result_dev);
-  evaluateResult(infolevel, itersCompleted, algParams.tol, result);
-
-  finalize();
-  return;
 }
 
-template <typename ExecSpace>
-void Genten_Test_CpAls_Space (int infolevel)
-{
-  typedef Genten::SpaceProperties<ExecSpace> space_prop;
+TYPED_TEST(TestCpAlsT, CpAls) {
+  using exec_space = typename TestFixture::exec_space;
 
-  Genten_Test_CpAls_Type<ExecSpace>(Genten::MTTKRP_Method::Atomic,infolevel,
-                                    "Atomic");
-  if (!space_prop::is_gpu)
-    Genten_Test_CpAls_Type<ExecSpace>(
-      Genten::MTTKRP_Method::Duplicated,infolevel, "Duplicated");
-  Genten_Test_CpAls_Type<ExecSpace>(Genten::MTTKRP_Method::Perm,infolevel,
-                                    "Perm");
+  struct TestCase {
+    TestCase(const MTTKRP_Method::type mttkrp_method, const char *label)
+        : mttkrp_method{mttkrp_method}, label{label} {}
+
+    const MTTKRP_Method::type mttkrp_method;
+    const char *label;
+
+    const bool run{not SpaceProperties<exec_space>::is_gpu ||
+                   mttkrp_method != MTTKRP_Method::Duplicated};
+  };
+
+  TestCase test_cases[]{TestCase{MTTKRP_Method::type::Atomic, "Atomic"},
+                        TestCase{MTTKRP_Method::type::Duplicated, "Duplicated"},
+                        TestCase{MTTKRP_Method::type::Perm, "Perm"}};
+
+  for (const auto &tc : test_cases) {
+    if (tc.run) {
+      RunCpAlsTest<exec_space>(tc.mttkrp_method, tc.label);
+    }
+  }
 }
 
-void Genten_Test_CpAls(int infolevel) {
-#ifdef KOKKOS_ENABLE_CUDA
-  Genten_Test_CpAls_Space<Kokkos::Cuda>(infolevel);
-#endif
-#ifdef KOKKOS_ENABLE_HIP
-  Genten_Test_CpAls_Space<Kokkos::Experimental::HIP>(infolevel);
-#endif
-#ifdef KOKKOS_ENABLE_OPENMP
-  Genten_Test_CpAls_Space<Kokkos::OpenMP>(infolevel);
-#endif
-#ifdef KOKKOS_ENABLE_THREADS
-  Genten_Test_CpAls_Space<Kokkos::Threads>(infolevel);
-#endif
-#ifdef KOKKOS_ENABLE_SERIAL
-  Genten_Test_CpAls_Space<Kokkos::Serial>(infolevel);
-#endif
-}
+} // namespace UnitTests
+} // namespace Genten

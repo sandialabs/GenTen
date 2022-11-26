@@ -57,6 +57,7 @@
 
 #include "CMakeInclude.h"
 #ifdef HAVE_BOOST
+#define BOOST_BIND_GLOBAL_PLACEHOLDERS
 #include <boost/iostreams/filtering_stream.hpp>
 #include <boost/iostreams/copy.hpp>
 #include <boost/iostreams/filter/gzip.hpp>
@@ -362,6 +363,38 @@ void Genten::print_tensor (const Genten::TensorT<ExecSpace>& X,
 //----------------------------------------------------------------------
 //  METHODS FOR Sptensor (type "sptensor")
 //----------------------------------------------------------------------
+
+Genten::TensorInfo Genten::read_sptensor_header (std::istream& fIn){
+  Genten::TensorInfo header;
+
+  // Header must always be first thing in file
+  fIn.seekg(0);
+  std::string line;
+
+  // Check that first line is sptensor
+  std::getline(fIn, line);
+  if(line != "sptensor"){
+    Genten::error("First line in file wasn't sptensor");
+  }
+
+  // Next line should be number of modes
+  auto number_of_modes = 0;
+  fIn >> number_of_modes;
+
+  // Next line contains all of the dimension sizes
+  header.dim_sizes.resize(number_of_modes);
+  for(auto i = 0; i < number_of_modes; ++i){
+    fIn >> header.dim_sizes[i];
+  }
+
+  // Next line is the nnz
+  fIn >> header.nnz;
+
+  // TODO actually use this in the import code
+  fIn.seekg(0); // Reset this because it is not yet used by import_sptensor
+ 
+  return header;
+}
 
 void Genten::import_sptensor (std::istream& fIn,
                               Genten::Sptensor& X,

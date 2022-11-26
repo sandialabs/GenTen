@@ -59,7 +59,7 @@ ttb_indx sub2ind(const SubType& sub,
 {
   const ttb_indx nd = siz.size();
   for (ttb_indx i=0; i<nd; ++i)
-    assert((sub[i] >= 0) && (sub[i] < siz[i]));
+    assert(/*(sub[i] >= 0) &&*/ (sub[i] < siz[i])); // pointless comparison
 
   ttb_indx idx = 0;
   ttb_indx cumprod = 1;
@@ -150,10 +150,8 @@ public:
   // Return size of dimension i.
   KOKKOS_INLINE_FUNCTION
   ttb_indx size(ttb_indx i) const {
-    if (Kokkos::Impl::MemorySpaceAccess< typename Kokkos::Impl::ActiveExecutionMemorySpace::memory_space, typename ExecSpace::memory_space >::accessible)
-      return siz[i];
-    else
-      return siz_host[i];
+    KOKKOS_IF_ON_DEVICE(return siz[i];)
+    KOKKOS_IF_ON_HOST(return siz_host[i];)
   }
 
   // Return the entire size array.
@@ -231,9 +229,11 @@ public:
   // We don't actually look at the values, and assume all are nonzero.
   KOKKOS_INLINE_FUNCTION
   ttb_indx nnz() const { return values.size(); }
+  ttb_indx global_nnz() const { return values.size(); }
 
   // Return the norm (sqrt of the sum of the squares of all entries).
   ttb_real norm() const { return values.norm(NormTwo); }
+  ttb_real global_norm() const { return values.norm(NormTwo); }
 
   // Return const reference to values array
   KOKKOS_INLINE_FUNCTION

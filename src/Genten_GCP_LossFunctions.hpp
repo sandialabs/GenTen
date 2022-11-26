@@ -82,8 +82,14 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     ttb_real value(const ttb_real& x, const ttb_real& m) const {
+#if defined(__SYCL_DEVICE_ONLY__)
+      using sycl::log;
+#else
+      using std::log;
+#endif
+
       const ttb_real me = m + eps;
-      return ttb_real(2.0)*std::log(me) + pi_over_4*(x/me)*(x/me);
+      return ttb_real(2.0)*log(me) + pi_over_4*(x/me)*(x/me);
     }
 
     KOKKOS_INLINE_FUNCTION
@@ -110,8 +116,14 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     ttb_real value(const ttb_real& x, const ttb_real& m) const {
+#if defined(__SYCL_DEVICE_ONLY__)
+      using sycl::log;
+#else
+      using std::log;
+#endif
+
       const ttb_real me = m + eps;
-      return x/me + std::log(me);
+      return x/me + log(me);
     }
 
     KOKKOS_INLINE_FUNCTION
@@ -139,7 +151,12 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     ttb_real value(const ttb_real& x, const ttb_real& m) const {
-      return std::log(m + ttb_real(1.0)) - x*std::log(m+eps);
+#if defined(__SYCL_DEVICE_ONLY__)
+      using sycl::log;
+#else
+      using std::log;
+#endif
+      return log(m + ttb_real(1.0)) - x*log(m+eps);
     }
 
     KOKKOS_INLINE_FUNCTION
@@ -164,7 +181,13 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     ttb_real value(const ttb_real& x, const ttb_real& m) const {
-      return m - x*std::log(m+eps);
+#if defined(__SYCL_DEVICE_ONLY__)
+      using sycl::log;
+#else
+      using std::log;
+#endif
+
+      return m - x*log(m+eps);
     }
 
     KOKKOS_INLINE_FUNCTION
@@ -191,15 +214,25 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     ttb_real value(const ttb_real& x, const ttb_real& m) const {
+#if defined(__SYCL_DEVICE_ONLY__)
+      using sycl::exp;
+      using sycl::log;
+#else
       using std::exp;
       using std::log;
+#endif
+
       return log(exp(m)+ttb_real(1.0)) - x*m;
     }
 
     KOKKOS_INLINE_FUNCTION
     ttb_real deriv(const ttb_real& x, const ttb_real& m) const {
+#if defined(__SYCL_DEVICE_ONLY__)
+      using sycl::exp;
+#else
       using std::exp;
-      using std::log;
+#endif
+
       return exp(m)/(exp(m)+ttb_real(1.0)) - x;
     }
 
@@ -217,13 +250,23 @@ namespace Genten {
 
     KOKKOS_INLINE_FUNCTION
     ttb_real value(const ttb_real& x, const ttb_real& m) const {
+#if defined(__SYCL_DEVICE_ONLY__)
+      using sycl::exp;
+#else
       using std::exp;
+#endif
+
       return exp(m) - x*m;
     }
 
     KOKKOS_INLINE_FUNCTION
     ttb_real deriv(const ttb_real& x, const ttb_real& m) const {
+#if defined(__SYCL_DEVICE_ONLY__)
+      using sycl::exp;
+#else
       using std::exp;
+#endif
+
       return exp(m) - x;
     }
 

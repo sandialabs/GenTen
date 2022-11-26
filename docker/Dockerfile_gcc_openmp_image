@@ -1,0 +1,59 @@
+# Generates a Docker container with an installed GenTen built with clang
+# compilers and OpenMP thread parallelism.
+#
+# This is intended to be run from the top-level genten source tree
+
+# Base image
+FROM debian:stable
+MAINTAINER Eric Phipps <etphipp@sandia.gov>
+
+# Change to bash so we have, e.g., -o pipefail
+SHELL ["/bin/bash", "-c"]
+
+# Install GenTen dependencies
+RUN \
+  apt-get update --yes && \
+  apt-get dist-upgrade --yes && \
+  apt-get install --yes \
+    cmake \
+    libblas-dev \
+    liblapack-dev \
+    libboost-iostreams-dev \
+    libomp-dev \
+    gcc \
+    g++ \
+    libopenmpi-dev \
+    && \
+  rm -rf /var/lib/apt/lists/*
+
+# Install useful utilities
+RUN \
+  apt-get update --yes && \
+  apt-get install --yes \
+    vim \
+    && \
+    rm -rf /var/lib/apt/lists/*
+
+# Add genten src
+RUN mkdir -p /src
+COPY . /src/genten
+
+ARG ARCH=BDW
+
+# Setup environment
+ENV \
+  OMP_PROC_BIND=spread \
+  OMP_PLACES=threads \
+  GENTEN_ARCH=${ARCH} \
+  GENTEN_SRC_PATH=/src/genten \
+  GENTEN_INSTALL_PATH=/usr \
+  OMPI_ALLOW_RUN_AS_ROOT=1 \
+  OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
+
+# Build and install genten
+RUN \
+  set -o pipefail && \
+  mkdir -p /build/genten  && \
+  cd /build/genten && \
+  /src/genten/scripts/gitlab_gcc/do_configure.sh 2>&1 | tee cmake_output.txt && \
+  make -j8 install 2>&1 | tee make_output.txt

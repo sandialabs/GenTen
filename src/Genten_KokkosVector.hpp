@@ -58,10 +58,10 @@ namespace Genten {
     typedef Kokkos::View<ttb_real*,exec_space> view_type;
     typedef KtensorT<exec_space> Ktensor_type;
 
-    KokkosVector() : nc(0), nd(0), sz(0) {}
+    KokkosVector() : nc(0), nd(0), sz(0), pmap(nullptr) {}
 
     KokkosVector(const Ktensor_type& V_) :
-      nc(V_.ncomponents()), nd(V_.ndims()), sz(nd)
+      nc(V_.ncomponents()), nd(V_.ndims()), sz(nd), pmap(V_.getProcessorMap())
     {
       for (unsigned j=0; j<nd; ++j)
         sz[j] = V_[j].nRows();
@@ -70,8 +70,9 @@ namespace Genten {
 
     template <typename Space>
     KokkosVector(const unsigned nc_, const unsigned nd_,
-                 const IndxArrayT<Space> & sz_) :
-      nc(nc_), nd(nd_), sz(sz_.size())
+                 const IndxArrayT<Space> & sz_,
+                 const ProcessorMap* pmap_ = nullptr) :
+      nc(nc_), nd(nd_), sz(sz_.size()), pmap(pmap_)
     {
       deep_copy(sz, sz_);
       initialize();
@@ -79,7 +80,7 @@ namespace Genten {
 
     KokkosVector(const KokkosVector& x, const ttb_indx mode_beg,
                  const ttb_indx mode_end) :
-      nc(x.nc), nd(mode_end-mode_beg)
+      nc(x.nc), nd(mode_end-mode_beg), pmap(x.pmap)
     {
       auto sub =
         Kokkos::subview(x.sz.values(), std::make_pair(mode_beg,mode_end));
@@ -95,7 +96,11 @@ namespace Genten {
       v = Kokkos::subview(x.v, std::make_pair(nb, ne));
     }
 
-    ~KokkosVector() {}
+    KokkosVector(const KokkosVector&) = default;
+    KokkosVector(KokkosVector&&) = default;
+    ~KokkosVector() = default;
+    KokkosVector& operator=(const KokkosVector&) = default;
+    KokkosVector& operator=(KokkosVector&&) = default;
 
     view_type getView() const { return v; }
 
@@ -104,13 +109,15 @@ namespace Genten {
     {
       // Create Ktensor from subviews of 1-D data
       typedef FacMatrixT<exec_space> fac_matrix_type;
-      Ktensor_type V(nc, nd);
+      Ktensor_type V(nc, nd, pmap);
       ttb_real *d = v.data();
       ttb_indx offset = 0;
       for (unsigned i=0; i<nd; ++i) {
         const unsigned nr = sz[i];
         typename fac_matrix_type::view_type s(d+offset, nr, nc);
         fac_matrix_type A(s);
+        if (pmap != nullptr)
+          A.setProcessorMap(pmap->facMap(i));
         V.set_factor(i, A);
         offset += nr*nc;
       }
@@ -120,7 +127,7 @@ namespace Genten {
 
     KokkosVector clone() const
     {
-      return KokkosVector<exec_space>(nc,nd,sz);
+      return KokkosVector<exec_space>(nc,nd,sz,pmap);
     }
 
     KokkosVector clone(const ttb_indx mode_beg, const ttb_indx mode_end) const
@@ -128,7 +135,7 @@ namespace Genten {
       const ttb_indx nm = mode_end-mode_beg;
       auto sub =
         Kokkos::subview(sz.values(), std::make_pair(mode_beg,mode_end));
-      return KokkosVector(nc,nm,IndxArray(sub));
+      return KokkosVector(nc,nm,IndxArray(sub),pmap);
     }
 
     KokkosVector subview(const ttb_indx mode_beg, const ttb_indx mode_end) const
@@ -155,6 +162,29 @@ namespace Genten {
       }, "Genten::KokkosVector::plus");
     }
 
+    void plus(const KokkosVector& x, const ttb_real alpha)
+    {
+      view_type my_v = v;
+      view_type xv = x.v;
+      apply_func(KOKKOS_LAMBDA(const ttb_indx i)
+      {
+        my_v(i) += alpha * xv(i);
+      }, "Genten::KokkosVector::plus_alpha");
+    }
+
+    void elastic_difference(KokkosVector &diff,
+                            const KokkosVector& center,
+                            const ttb_real alpha)
+    {
+      view_type my_v = v;
+      view_type diff_v = diff.v;
+      view_type c_v = center.v;
+      apply_func(KOKKOS_LAMBDA(const ttb_indx i)
+      {
+        diff_v(i) = alpha * (my_v(i) - c_v(i));
+      }, "Genten::KokkosVector::elastic_difference");
+    }
+
     void scale(const ttb_real alpha)
     {
       view_type my_v = v;
@@ -169,10 +199,31 @@ namespace Genten {
       view_type my_v = v;
       view_type xv = x.v;
       ttb_real result = 0.0;
-      reduce_func(KOKKOS_LAMBDA(const ttb_indx i, ttb_real& d)
-      {
-        d += my_v(i)*xv(i);
-      }, result, "Genten::KokkosVector::dot");
+      if (pmap == nullptr || pmap->gridSize() == 1) {
+        reduce_func(KOKKOS_LAMBDA(const ttb_indx i, ttb_real& d)
+        {
+          d += my_v(i)*xv(i);
+        }, result, "Genten::KokkosVector::dot");
+      }
+      else {
+        ttb_indx n_beg = 0;
+        ttb_indx n_end = 0;
+        for (ttb_indx i=0; i<nd; ++i) {
+          n_beg = n_end;
+          n_end = n_end + sz[i]*nc;
+          ttb_real r = 0.0;
+          Kokkos::parallel_reduce("Genten::KokkosVector::dot",
+                                  Kokkos::RangePolicy<exec_space>(n_beg,n_end),
+                                  KOKKOS_LAMBDA(const ttb_indx j, ttb_real& d)
+          {
+            d += my_v(j)*xv(j);
+          }, r);
+          Kokkos::fence();
+          r = pmap->facMap(i)->allReduce(r);
+          result = result + r;
+        }
+      }
+
       return result;
     }
 
@@ -189,15 +240,39 @@ namespace Genten {
     ttb_real normInf() const
     {
       view_type my_v = v;
-      ttb_real result = 0.0;
-      Kokkos::parallel_reduce("Genten::KokkosVector::normInf",
-                              Kokkos::RangePolicy<exec_space>(0,v.extent(0)),
-                              KOKKOS_LAMBDA(const ttb_indx i, ttb_real& d)
-      {
-        using std::abs;
-        if (abs(my_v(i)) > d)
-          d = abs(my_v(i));
-      }, Kokkos::Max<ttb_real>(result));
+      ttb_real result = -DBL_MAX;
+      if (pmap == nullptr || pmap->gridSize() == 1) {
+        Kokkos::parallel_reduce("Genten::KokkosVector::normInf",
+                                Kokkos::RangePolicy<exec_space>(0,v.extent(0)),
+                                KOKKOS_LAMBDA(const ttb_indx i, ttb_real& d)
+        {
+          using std::abs;
+          if (abs(my_v(i)) > d)
+            d = abs(my_v(i));
+        }, Kokkos::Max<ttb_real>(result));
+      }
+      else {
+        ttb_indx n_beg = 0;
+        ttb_indx n_end = 0;
+        for (ttb_indx i=0; i<nd; ++i) {
+          n_beg = n_end;
+          n_end = n_end + sz[i]*nc;
+          ttb_real r = -DBL_MAX;
+          Kokkos::parallel_reduce("Genten::KokkosVector::normInf",
+                                  Kokkos::RangePolicy<exec_space>(n_beg,n_end),
+                                  KOKKOS_LAMBDA(const ttb_indx j, ttb_real& d)
+          {
+            using std::abs;
+            if (abs(my_v(j)) > d)
+              d = abs(my_v(j));
+          }, Kokkos::Max<ttb_real>(r));
+          Kokkos::fence();
+          r = pmap->facMap(i)->allReduce(r, ProcessorMap::Max);
+          if (r > result)
+            result = r;
+        }
+      }
+
       return result;
     }
 
@@ -209,6 +284,17 @@ namespace Genten {
       {
         my_v(i) += alpha*xv(i);
       }, "Genten::KokkosVector::axpy");
+    }
+
+    void axpby(const ttb_real alpha, const KokkosVector& x, const ttb_real beta, const KokkosVector& y)
+    {
+      view_type my_v = v;
+      view_type xv = x.v;
+      view_type yv = y.v;
+      apply_func(KOKKOS_LAMBDA(const ttb_indx i)
+      {
+        my_v(i) = alpha*xv(i) + beta*yv(i);
+      }, "Genten::KokkosVector::axpby");
     }
 
     void zero()
@@ -259,6 +345,18 @@ namespace Genten {
       const ttb_indx seed = std::rand();
       Kokkos::Random_XorShift64_Pool<exec_space> rand_pool(seed);
       Kokkos::fill_random(v, rand_pool, l, u);
+
+      // Broadcast values across each sub-grid from sub-grid root to ensure
+      // consistency
+      if (pmap != nullptr) {
+        ttb_indx n_beg = 0;
+        ttb_indx n_end = 0;
+        for (ttb_indx i=0; i<nd; ++i) {
+          n_beg = n_end;
+          n_end = n_end + sz[i]*nc;
+          pmap->subGridBcast(i, v.data()+n_beg, n_end-n_beg, 0);
+        }
+      }
     }
 
     template <typename Func>
@@ -295,6 +393,7 @@ namespace Genten {
     unsigned nd;
     IndxArray sz;  // this is on the host
     view_type v;
+    const ProcessorMap* pmap;
 
   };
 

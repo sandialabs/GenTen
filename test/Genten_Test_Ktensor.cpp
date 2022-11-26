@@ -38,111 +38,133 @@
 // ************************************************************************
 //@HEADER
 
+#include <Genten_Ktensor.hpp>
 
-#include "Genten_IndxArray.hpp"
-#include "Genten_IOtext.hpp"
-#include "Genten_Ktensor.hpp"
 #include "Genten_Test_Utils.hpp"
 
-using namespace Genten::Test;
+#include <gtest/gtest.h>
 
-// These tests are just on the host, so not templated on the space
-void Genten_Test_Ktensor(int infolevel)
-{
-  bool tf;
+namespace Genten {
+namespace UnitTests {
 
-  initialize("Tests on Genten::Ktensor", infolevel);
+template <typename ExecSpace> struct TestKtensorT : public ::testing::Test {
+  using exec_space = ExecSpace;
+};
 
-  // Test empty constructor.
-  MESSAGE("Creating an empty Ktensor");
-  Genten::Ktensor a;
-  ASSERT((a.ncomponents() == 0) && (a.ndims() == 0),
-         "Ktensor is empty");
+TYPED_TEST_SUITE(TestKtensorT, genten_test_types);
 
-  // Test constructor with arguments.
-  MESSAGE("Creating a new Ktensor");
-  ttb_indx  nc = 2;
-  Genten::Ktensor b(nc, 3);
-  ASSERT((b.ncomponents() == nc) && (b.ndims() == 3),
-         "Ktensor has correct size");
-
-  MESSAGE("Setting factor matrices with correct size");
-  Genten::IndxArray dims = {1, 2, 3};
-  Genten::Ktensor c(nc, 3, dims);
-  ASSERT(c.isConsistent(), "Ktensor is consistent");
-  ASSERT((c[0].nRows() == 1) && (c[0].nCols() == nc),
-         "Ktensor factor 0 has correct size");
-  ASSERT((c[1].nRows() == 2) && (c[1].nCols() == nc),
-         "Ktensor factor 0 has correct size");
-  ASSERT((c[2].nRows() == 3) && (c[2].nCols() == nc),
-         "Ktensor factor 0 has correct size");
-
-  // Test element access of weights and factors.
-  MESSAGE("Setting factors and weights");
-  c.weights(0) = 1.0;
-  c.weights(1) = 2.0;
-  c[0].entry(0,0) = 1.0;
-  c[0].entry(0,1) = 2.0;
-  c[2].entry(2,1) = 3.0;
-  c[1].entry(1,1) = 4.0;
-  ASSERT(c[2].entry(2,1) == 3.0, "Ktensor element set");
-  ASSERT( EQ(c.normFsq(), 48*48), "Ktensor normFsq correct");
-
-  // Test copy constructor.
-  Genten::Ktensor cCopy1 (c);
-  tf = true;
-  if (cCopy1.ncomponents() != c.ncomponents())  tf = false;
-  if (cCopy1.ndims() != c.ndims())  tf = false;
-  if (cCopy1.weights(0) != 1.0)  tf = false;
-  if (cCopy1[0].entry(0,0) != 1.0)  tf = false;
-  ASSERT(tf, "Copy constructor works");
-
-  // Test assignment operator.
-  Genten::Ktensor cCopy2;
-  cCopy2 = c;
-  tf = true;
-  if (cCopy2.ncomponents() != c.ncomponents())  tf = false;
-  if (cCopy2.ndims() != c.ndims())  tf = false;
-  if (cCopy2.weights(0) != 1.0)  tf = false;
-  if (cCopy2[0].entry(0,0) != 1.0)  tf = false;
-  ASSERT(tf, "Assignment operator works");
-
-  // Test arrange.
-  // Weights {1,2,3} should reorder to {3,2,1}.
-  Genten::Ktensor c2(3, 3, dims);
-  c2.weights(0) = 1.0;
-  c2.weights(1) = 2.0;
-  c2.weights(2) = 3.0;
-  c2[0].entry(0,0) = 1.0;
-  c2[0].entry(0,1) = 2.0;
-  c2[0].entry(0,2) = 3.0;
-  c2[1].entry(0,0) = 4.0;
-  c2[1].entry(1,0) = 5.0;
-  c2[1].entry(0,1) = 6.0;
-  c2[1].entry(1,1) = 7.0;
-  c2[1].entry(0,2) = 8.0;
-  c2[1].entry(1,2) = 9.0;
-  c2[2].entry(0,0) = 1.0;
-  c2[2].entry(1,0) = 2.0;
-  c2[2].entry(2,0) = 3.0;
-  c2[2].entry(0,1) = 4.0;
-  c2[2].entry(1,1) = 5.0;
-  c2[2].entry(2,1) = 6.0;
-  c2[2].entry(0,2) = 7.0;
-  c2[2].entry(1,2) = 8.0;
-  c2[2].entry(2,2) = 9.0;
-  ASSERT( EQ(c2.normFsq(), 3443252.0), "Ktensor normFsq correct");
-  c2.arrange();
-  ASSERT(   (c2.weights(0) == 3.0)
-            && (c2.weights(1) == 2.0)
-            && (c2.weights(2) == 1.0),
-            "Arrange reordered weights correctly");
-  ASSERT(   (c2[0].entry(0,0) == 3.0)
-            && (c2[0].entry(0,1) == 2.0)
-            && (c2[0].entry(0,2) == 1.0),
-            "Arrange reordered factor[0] correctly");
-  ASSERT( EQ(c2.normFsq(), 3443252.0), "Ktensor normFsq correct after arrange");
-
-  finalize();
-  return;
+TEST(TestKtensor, EmptyConstructor) {
+  Ktensor kt;
+  ASSERT_EQ(kt.ncomponents(), 0);
+  ASSERT_EQ(kt.ndims(), 0);
 }
+
+TEST(TestKtensor, ConstructorWithArguments) {
+  const ttb_indx nc = 2;
+  Ktensor kt_a(nc, 3);
+  ASSERT_EQ(kt_a.ncomponents(), nc);
+  ASSERT_EQ(kt_a.ndims(), 3);
+
+  IndxArray dims{1, 2, 3};
+  Ktensor kt_b(nc, 3, dims);
+  ASSERT_TRUE(kt_b.isConsistent());
+  ASSERT_EQ(kt_b[0].nRows(), 1);
+  ASSERT_EQ(kt_b[0].nCols(), nc);
+  ASSERT_EQ(kt_b[1].nRows(), 2);
+  ASSERT_EQ(kt_b[1].nCols(), nc);
+  ASSERT_EQ(kt_b[2].nRows(), 3);
+  ASSERT_EQ(kt_b[2].nCols(), nc);
+}
+
+TEST(TestKtensor, FactorsAndWeights) {
+  const ttb_indx nc = 2;
+  IndxArray dims{1, 2, 3};
+  Ktensor kt(nc, 3, dims);
+
+  kt.weights(0) = 1.0;
+  kt.weights(1) = 2.0;
+  kt[0].entry(0, 0) = 1.0;
+  kt[0].entry(0, 1) = 2.0;
+  kt[2].entry(2, 1) = 3.0;
+  kt[1].entry(1, 1) = 4.0;
+  ASSERT_EQ(kt[2].entry(2, 1), 3.0);
+  ASSERT_FLOAT_EQ(kt.normFsq(), 48 * 48);
+}
+
+TEST(TestKtensor, CopyConstructor) {
+  const ttb_indx nc = 2;
+  IndxArray dims{1, 2, 3};
+  Ktensor kt(nc, 3, dims);
+  kt[0].entry(0, 0) = 1.0;
+  kt[0].entry(0, 1) = 2.0;
+  kt[2].entry(2, 1) = 3.0;
+  kt[1].entry(1, 1) = 4.0;
+
+  Ktensor kt_copy(kt);
+
+  ASSERT_EQ(kt_copy.ncomponents(), kt.ncomponents());
+  ASSERT_EQ(kt_copy.ndims(), kt.ndims());
+  ASSERT_EQ(kt_copy.weights(0), 1.0);
+  ASSERT_FLOAT_EQ(kt_copy[0].entry(0, 0), 1.0);
+}
+
+TEST(TestKtensor, AssignmentOperator) {
+  const ttb_indx nc = 2;
+  IndxArray dims{1, 2, 3};
+  Ktensor kt(nc, 3, dims);
+  kt[0].entry(0, 0) = 1.0;
+  kt[0].entry(0, 1) = 2.0;
+  kt[2].entry(2, 1) = 3.0;
+  kt[1].entry(1, 1) = 4.0;
+
+  Ktensor kt_copy;
+  kt_copy = kt;
+
+  ASSERT_EQ(kt_copy.ncomponents(), kt.ncomponents());
+  ASSERT_EQ(kt_copy.ndims(), kt.ndims());
+  ASSERT_EQ(kt_copy.weights(0), 1.0);
+  ASSERT_FLOAT_EQ(kt_copy[0].entry(0, 0), 1.0);
+}
+
+TEST(TestKtensor, Arrange) {
+  IndxArray dims{1, 2, 3};
+  Ktensor kt(3, 3, dims);
+
+  kt.weights(0) = 1.0;
+  kt.weights(1) = 2.0;
+  kt.weights(2) = 3.0;
+
+  kt[0].entry(0, 0) = 1.0;
+  kt[0].entry(0, 1) = 2.0;
+  kt[0].entry(0, 2) = 3.0;
+  kt[1].entry(0, 0) = 4.0;
+  kt[1].entry(1, 0) = 5.0;
+  kt[1].entry(0, 1) = 6.0;
+  kt[1].entry(1, 1) = 7.0;
+  kt[1].entry(0, 2) = 8.0;
+  kt[1].entry(1, 2) = 9.0;
+  kt[2].entry(0, 0) = 1.0;
+  kt[2].entry(1, 0) = 2.0;
+  kt[2].entry(2, 0) = 3.0;
+  kt[2].entry(0, 1) = 4.0;
+  kt[2].entry(1, 1) = 5.0;
+  kt[2].entry(2, 1) = 6.0;
+  kt[2].entry(0, 2) = 7.0;
+  kt[2].entry(1, 2) = 8.0;
+  kt[2].entry(2, 2) = 9.0;
+
+  ASSERT_FLOAT_EQ(kt.normFsq(), 3443252.0);
+
+  kt.arrange();
+
+  ASSERT_FLOAT_EQ(kt.weights(0), 3.0);
+  ASSERT_FLOAT_EQ(kt.weights(1), 2.0);
+  ASSERT_FLOAT_EQ(kt.weights(2), 1.0);
+  ASSERT_FLOAT_EQ(kt[0].entry(0, 0), 3.0);
+  ASSERT_FLOAT_EQ(kt[0].entry(0, 1), 2.0);
+  ASSERT_FLOAT_EQ(kt[0].entry(0, 2), 1.0);
+  ASSERT_FLOAT_EQ(kt.normFsq(), 3443252.0);
+}
+
+} // namespace UnitTests
+} // namespace Genten

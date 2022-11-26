@@ -1,0 +1,37 @@
+{
+    "solver-method": "cp-opt",
+    "timings": true,
+    "tensor":
+    {
+        "input-file": "data/aminoacid_data_nn.txt",
+        "index-base": 0
+    },
+    "k-tensor":
+    {
+        "rank": 16,
+        "output-file": "aminoacid.ktn",
+        "initial-guess": "rand",
+        "distributed-guess": "serial",
+        "seed": 12345,
+        "prng": false
+    },
+    "cp-opt":
+    {
+        "method": "rol",
+        "rol-file": "data/rol_truncated_cg.xml",
+        "hess-vec": "full"
+    },
+    "testing":
+    {
+        "final-fit":
+        {
+            "value": 1.0,
+            "absolute-tolerance": 0.1
+        },
+        "iterations":
+        {
+            "value": 17,
+            "absolute-tolerance": 3
+        }
+    }
+}

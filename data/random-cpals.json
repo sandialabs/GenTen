@@ -1,0 +1,28 @@
+{
+    "solver-method": "cp-als",
+    "debug": false,
+    "timings": true,
+    "tensor":
+    {
+        "rand-dims": [30,30,5],
+        "rand-nnz": 1000
+    },
+    "k-tensor":
+    {
+        "rank": 4,
+        "output": "random.ktn",
+        "initial-guess": "rand",
+        "distributed-guess": "serial",
+        "seed": 12345,
+        "prng": false
+    },
+    "cp-als":
+    {
+        "maxiters": 10,
+        "tol": 1e-300,
+        "mttkrp":
+        {
+            "method": "single"
+        }
+    }
+}

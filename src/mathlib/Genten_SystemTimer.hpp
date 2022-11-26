@@ -48,6 +48,7 @@
 
 #include <string>
 
+#include "Genten_Pmap.hpp"
 
 namespace Genten
 {
@@ -81,7 +82,8 @@ namespace Genten
      *  @param[in] fence       Call Kokkos::fence() when stopping timer
      */
     SystemTimer (const int  nNumTimers = 0,
-                 const bool fence = false);
+                 const bool fence = false,
+                 const ProcessorMap *pmap = nullptr);
 
     //! Destructor.
     ~SystemTimer ();
@@ -91,7 +93,8 @@ namespace Genten
      *  @param[in] nNumTimers  Number of timers to allocate.
      *  @param[in] fence       Call Kokkos::fence() when stopping timer
      */
-    void init (const int nNumTimers, const bool fence);
+    void init (const int nNumTimers, const bool fence,
+               const ProcessorMap *pmap = nullptr);
 
     //! Destroy
     void destroy();
@@ -174,6 +177,7 @@ namespace Genten
 
     int       _nNumTimers;
     bool      _fence;
+    const ProcessorMap *_pmap;
     bool *    _baIsStarted;
     double *  _daCumTimes;
     int *     _naNumCalls;

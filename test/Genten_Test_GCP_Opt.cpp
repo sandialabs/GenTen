@@ -38,17 +38,25 @@
 // ************************************************************************
 //@HEADER
 
-#include <sstream>
+#ifdef HAVE_ROL
 
-#include "Genten_GCP_Opt.hpp"
-#include "Genten_IndxArray.hpp"
-#include "Genten_IOtext.hpp"
-#include "Genten_Ktensor.hpp"
-#include "Genten_MixedFormatOps.hpp"
-#include "Genten_Sptensor.hpp"
+#include <Genten_GCP_Opt.hpp>
+#include <Genten_IndxArray.hpp>
+#include <Genten_Ktensor.hpp>
+#include <Genten_Sptensor.hpp>
+
 #include "Genten_Test_Utils.hpp"
 
-using namespace Genten::Test;
+#include <gtest/gtest.h>
+
+namespace Genten {
+namespace UnitTests {
+
+template <typename ExecSpace> struct TestGcpOptT : public ::testing::Test {
+  using exec_space = ExecSpace;
+};
+
+TYPED_TEST_SUITE(TestGcpOptT, genten_test_types);
 
 /*!
  *  The test factors a simple 2x3x4 sparse tensor into known components.
@@ -63,146 +71,138 @@ using namespace Genten::Test;
  *  solution, just check that when you multiply the factors together, you
  *  get the original tensor.
  */
-template <typename ExecSpace>
-void Genten_Test_GCP_Opt_Type (int infolevel, const std::string& label,
-                               Genten::MTTKRP_Method::type mttkrp_method,
-                               const Genten::GCP_LossFunction::type loss_type)
-{
-  typedef ExecSpace exec_space;
-  typedef Genten::DefaultHostExecutionSpace host_exec_space;
-  typedef Genten::SptensorT<exec_space> Sptensor_type;
-  typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
+template <typename exec_space>
+void RunGCPOptTest(const std::string &label, MTTKRP_Method::type mttkrp_method,
+                   const GCP_LossFunction::type loss_type) {
+  using host_exec_space = DefaultHostExecutionSpace;
 
-  std::string space_name = Genten::SpaceProperties<exec_space>::name();
-  initialize("Test of Genten::GCP_Opt ("+label+", "+space_name+")", infolevel);
+  INFO_MSG("Creating a sparse tensor with data to model");
 
-  MESSAGE("Creating a sparse tensor with data to model");
-  Genten::IndxArray  dims(3);
-  dims[0] = 2;  dims[1] = 3;  dims[2] = 4;
-  Sptensor_host_type  X(dims,11);
-  X.subscript(0,0) = 0;  X.subscript(0,1) = 0;  X.subscript(0,2) = 0;
+  IndxArray dims(3);
+  dims[0] = 2;
+  dims[1] = 3;
+  dims[2] = 4;
+
+  SptensorT<host_exec_space> X(dims, 11);
+  X.subscript(0, 0) = 0;
+  X.subscript(0, 1) = 0;
+  X.subscript(0, 2) = 0;
   X.value(0) = 2.0;
-  X.subscript(1,0) = 1;  X.subscript(1,1) = 0;  X.subscript(1,2) = 0;
+  X.subscript(1, 0) = 1;
+  X.subscript(1, 1) = 0;
+  X.subscript(1, 2) = 0;
   X.value(1) = 1.0;
-  X.subscript(2,0) = 0;  X.subscript(2,1) = 1;  X.subscript(2,2) = 0;
+  X.subscript(2, 0) = 0;
+  X.subscript(2, 1) = 1;
+  X.subscript(2, 2) = 0;
   X.value(2) = 1.0;
-  X.subscript(3,0) = 1;  X.subscript(3,1) = 1;  X.subscript(3,2) = 0;
+  X.subscript(3, 0) = 1;
+  X.subscript(3, 1) = 1;
+  X.subscript(3, 2) = 0;
   X.value(3) = 1.0;
-  X.subscript(4,0) = 0;  X.subscript(4,1) = 2;  X.subscript(4,2) = 0;
+  X.subscript(4, 0) = 0;
+  X.subscript(4, 1) = 2;
+  X.subscript(4, 2) = 0;
   X.value(4) = 1.0;
-  X.subscript(5,0) = 0;  X.subscript(5,1) = 0;  X.subscript(5,2) = 1;
+  X.subscript(5, 0) = 0;
+  X.subscript(5, 1) = 0;
+  X.subscript(5, 2) = 1;
   X.value(5) = 1.0;
-  X.subscript(6,0) = 0;  X.subscript(6,1) = 2;  X.subscript(6,2) = 1;
+  X.subscript(6, 0) = 0;
+  X.subscript(6, 1) = 2;
+  X.subscript(6, 2) = 1;
   X.value(6) = 1.0;
-  X.subscript(7,0) = 0;  X.subscript(7,1) = 0;  X.subscript(7,2) = 3;
+  X.subscript(7, 0) = 0;
+  X.subscript(7, 1) = 0;
+  X.subscript(7, 2) = 3;
   X.value(7) = 1.0;
-  X.subscript(8,0) = 1;  X.subscript(8,1) = 0;  X.subscript(8,2) = 3;
+  X.subscript(8, 0) = 1;
+  X.subscript(8, 1) = 0;
+  X.subscript(8, 2) = 3;
   X.value(8) = 1.0;
-  X.subscript(9,0) = 0;  X.subscript(9,1) = 1;  X.subscript(9,2) = 3;
+  X.subscript(9, 0) = 0;
+  X.subscript(9, 1) = 1;
+  X.subscript(9, 2) = 3;
   X.value(9) = 1.0;
-  X.subscript(10,0) = 1;  X.subscript(10,1) = 1;  X.subscript(10,2) = 3;
+  X.subscript(10, 0) = 1;
+  X.subscript(10, 1) = 1;
+  X.subscript(10, 2) = 3;
   X.value(10) = 1.0;
-  ASSERT(X.nnz() == 11, "Data tensor has 11 nonzeroes");
 
-  // Copy X to device
-  Sptensor_type X_dev = create_mirror_view( exec_space(), X );
-  deep_copy( X_dev, X );
-  if (mttkrp_method == Genten::MTTKRP_Method::Perm)
+  GENTEN_EQ(X.nnz(), 11, "Data tensor has 11 nonzeroes");
+
+  SptensorT<exec_space> X_dev = create_mirror_view(exec_space(), X);
+  deep_copy(X_dev, X);
+  if (mttkrp_method == MTTKRP_Method::Perm) {
     X_dev.createPermutation();
+  }
 
-  // Load a known initial guess.
-  MESSAGE("Creating a ktensor with initial guess of lin indep basis vectors");
-  ttb_indx  nNumComponents = 2;
-  Genten::Ktensor  initialBasis (nNumComponents, dims.size(), dims);
+  INFO_MSG("Creating a ktensor with initial guess of lin indep basis vectors");
+  ttb_indx nNumComponents = 2;
+  Ktensor initialBasis(nNumComponents, dims.size(), dims);
   ttb_indx seed = 12345;
-  Genten::RandomMT cRMT(seed);
+  RandomMT cRMT(seed);
   initialBasis.setMatricesScatter(false, false, cRMT);
   initialBasis.setWeights(1.0);
 
-  if (infolevel == 1)
-    print_ktensor(initialBasis,std::cout,"Initial guess for GCP-Opt");
-
-  // Copy initialBasis to the device
-  Genten::KtensorT<exec_space> initialBasis_dev =
-    create_mirror_view( exec_space(), initialBasis );
-  deep_copy( initialBasis_dev, initialBasis );
+  KtensorT<exec_space> initialBasis_dev =
+      create_mirror_view(exec_space(), initialBasis);
+  deep_copy(initialBasis_dev, initialBasis);
 
   // Factorize.
-  Genten::AlgParams algParams;
+  AlgParams algParams;
   algParams.tol = 1.0e-6;
   algParams.maxiters = 100;
   algParams.mttkrp_method = mttkrp_method;
-  Genten::KtensorT<exec_space> result_dev;
-  std::ostream* stream = (infolevel == 1) ? &std::cout : nullptr;
-  try
-  {
+  KtensorT<exec_space> result_dev;
+  std::ostream *stream = nullptr;
+  EXPECT_NO_THROW({
     result_dev = initialBasis_dev;
-    Genten::gcp_opt <Sptensor_type> (X_dev, result_dev, algParams, stream);
-  }
-  catch(std::string sExc)
-  {
-    // Should not happen.
-    MESSAGE(sExc);
-    ASSERT( true, "Call to gcp_opt threw an exception." );
-    return;
-  }
+    gcp_opt<SptensorT<exec_space>>(X_dev, result_dev, algParams, stream);
+  });
 
-  // Copy result to host
-  Genten::Ktensor result = initialBasis;
-  deep_copy( result, result_dev );
-
-  if (infolevel == 1)
-    print_ktensor(result, std::cout, "Factorization result in ktensor form");
+  Ktensor result = initialBasis;
+  deep_copy(result, result_dev);
 
   // Multiply Ktensor entries and compare to tensor
-  if (infolevel == 1)
-    std::cout << "Checking factorization matches original tensor:" << std::endl;
   const ttb_real tol = 1.0e-3;
   const ttb_indx nnz = X.nnz();
-  const Genten::IndxArray subs(3);
-  for (ttb_indx i=0; i<nnz; ++i) {
+  const IndxArray subs(3);
+  for (ttb_indx i = 0; i < nnz; ++i) {
     X.getSubscripts(i, subs);
     const ttb_real x_val = X.value(i);
     const ttb_real val = result.entry(subs);
-    if (infolevel == 1) {
-      std::cout << "X(" << subs[0] << "," << subs[1] << "," << subs[2] << ") = "
-                << x_val << ", Ktensor = " << val << std::endl;
-    }
-    ASSERT( fabs(x_val-val) <= tol, "Result matches" );
+    GENTEN_LE(fabs(x_val - val), tol, "Result matches");
   }
-
-  finalize();
-  return;
 }
 
-template <typename ExecSpace>
-void Genten_Test_GCP_Opt_Space (int infolevel)
-{
-  Genten_Test_GCP_Opt_Type<ExecSpace>(infolevel,"Atomic, Gaussian",
-                                      Genten::MTTKRP_Method::Atomic,
-                                      Genten::GCP_LossFunction::Gaussian);
-  Genten_Test_GCP_Opt_Type<ExecSpace>(infolevel,"Duplicated, Gaussian",
-                                      Genten::MTTKRP_Method::Duplicated,
-                                      Genten::GCP_LossFunction::Gaussian);
-  Genten_Test_GCP_Opt_Type<ExecSpace>(infolevel,"Perm, Gaussian",
-                                      Genten::MTTKRP_Method::Perm,
-                                      Genten::GCP_LossFunction::Gaussian);
+TYPED_TEST(TestGcpOptT, GCPOpt) {
+  using exec_space = typename TestFixture::exec_space;
+
+  struct TestCase {
+    TestCase(const char *label, const MTTKRP_Method::type mttkrp_method,
+             const GCP_LossFunction::type loss_type)
+        : label{label}, mttkrp_method{mttkrp_method}, loss_type{loss_type} {}
+
+    const char *label;
+    const MTTKRP_Method::type mttkrp_method;
+    const GCP_LossFunction::type loss_type;
+  };
+
+  TestCase test_cases[]{TestCase{"Atomic, Gaussian", MTTKRP_Method::Atomic,
+                                 GCP_LossFunction::Gaussian},
+                        TestCase{"Duplicated, Gaussian",
+                                 MTTKRP_Method::Duplicated,
+                                 GCP_LossFunction::Gaussian},
+                        TestCase{"Perm, Gaussian", MTTKRP_Method::Perm,
+                                 GCP_LossFunction::Gaussian}};
+
+  for (const auto &tc : test_cases) {
+    RunGCPOptTest<exec_space>(tc.label, tc.mttkrp_method, tc.loss_type);
+  }
 }
 
-void Genten_Test_GCP_Opt(int infolevel) {
-#ifdef KOKKOS_ENABLE_CUDA
-  Genten_Test_GCP_Opt_Space<Kokkos::Cuda>(infolevel);
+} // namespace UnitTests
+} // namespace Genten
+
 #endif
-#ifdef KOKKOS_ENABLE_HIP
-  Genten_Test_GCP_Opt_Space<Kokkos::Experimental::HIP>(infolevel);
-#endif
-#ifdef KOKKOS_ENABLE_OPENMP
-  Genten_Test_GCP_Opt_Space<Kokkos::OpenMP>(infolevel);
-#endif
-#ifdef KOKKOS_ENABLE_THREADS
-  Genten_Test_GCP_Opt_Space<Kokkos::Threads>(infolevel);
-#endif
-#ifdef KOKKOS_ENABLE_SERIAL
-  Genten_Test_GCP_Opt_Space<Kokkos::Serial>(infolevel);
-#endif
-}

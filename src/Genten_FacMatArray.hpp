@@ -47,6 +47,7 @@
 #include "Genten_Util.hpp"
 #include "Genten_IndxArray.hpp"
 #include "Genten_FacMatrix.hpp"
+#include "Genten_Pmap.hpp"
 
 namespace Genten
 {
@@ -98,12 +99,17 @@ public:
 
   // Construct an array to hold n factor matrices.
   FacMatArrayT(ttb_indx n, const IndxArrayT<ExecSpace> & nrow,
-               ttb_indx ncol) : FacMatArrayT(n)
+               ttb_indx ncol, const ProcessorMap* pmap = nullptr) :
+    FacMatArrayT(n)
   {
     auto nrow_host = create_mirror_view(nrow);
     deep_copy(nrow_host, nrow);
-    for (ttb_indx i=0; i<n; ++i)
-      set_factor( i, FacMatrixT<ExecSpace>(nrow_host[i],ncol) );
+    for (ttb_indx i=0; i<n; ++i) {
+      if (pmap != nullptr)
+        set_factor( i, FacMatrixT<ExecSpace>(nrow_host[i],ncol,pmap->facMap(i)) );
+      else
+        set_factor( i, FacMatrixT<ExecSpace>(nrow_host[i],ncol) );
+    }
   }
 
   // Create array from supplied view
@@ -159,10 +165,16 @@ public:
   KOKKOS_INLINE_FUNCTION
   const FacMatrixT<ExecSpace>& operator[](ttb_indx n) const
   {
-    if (Kokkos::Impl::MemorySpaceAccess< typename Kokkos::Impl::ActiveExecutionMemorySpace::memory_space, typename ExecSpace::memory_space >::accessible)
-      return data[n];
-    else
-      return host_data[n];
+    KOKKOS_IF_ON_DEVICE(return data[n];)
+    KOKKOS_IF_ON_HOST(return host_data[n];)
+  }
+
+  // Return n-th factor matrix
+  KOKKOS_INLINE_FUNCTION
+  FacMatrixT<ExecSpace>& operator[](ttb_indx n)
+  {
+    KOKKOS_IF_ON_DEVICE(return data[n];)
+    KOKKOS_IF_ON_HOST(return host_data[n];)
   }
 
   KOKKOS_INLINE_FUNCTION

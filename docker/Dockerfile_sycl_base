@@ -1,0 +1,62 @@
+ARG BASE=nvidia/cuda:11.7.0-devel-ubuntu22.04
+FROM $BASE
+
+# Note, older cuda images may need the following due to some repo changes that
+# were not backported to the older images.  However, GenTen may not build with
+# older images due to errors about a missing C++17 "execution" header. Changing
+# the image also requires updating the CUDA_LIB_PATH below.
+#RUN rm /etc/apt/sources.list.d/cuda.list && rm /etc/apt/sources.list.d/nvidia-ml.list
+
+RUN apt-get update && apt-get install -y \
+        bc \
+        wget \
+        ccache \
+        ninja-build \
+        python3 \
+        git \
+        vim \
+        gdb \
+        && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN KEYDUMP_URL=https://cloud.cees.ornl.gov/download && \
+    KEYDUMP_FILE=keydump && \
+    wget --quiet ${KEYDUMP_URL}/${KEYDUMP_FILE} && \
+    wget --quiet ${KEYDUMP_URL}/${KEYDUMP_FILE}.sig && \
+    gpg --import ${KEYDUMP_FILE} && \
+    gpg --verify ${KEYDUMP_FILE}.sig ${KEYDUMP_FILE} && \
+    rm ${KEYDUMP_FILE}*
+
+ARG CMAKE_VERSION=3.23.2
+ENV CMAKE_DIR=/opt/cmake
+RUN CMAKE_URL=https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION} && \
+    CMAKE_SCRIPT=cmake-${CMAKE_VERSION}-Linux-x86_64.sh && \
+    CMAKE_SHA256=cmake-${CMAKE_VERSION}-SHA-256.txt && \
+    wget --quiet ${CMAKE_URL}/${CMAKE_SHA256} && \
+    wget --quiet ${CMAKE_URL}/${CMAKE_SHA256}.asc && \
+    wget --quiet ${CMAKE_URL}/${CMAKE_SCRIPT} && \
+    gpg --verify ${CMAKE_SHA256}.asc ${CMAKE_SHA256} && \
+    grep -i ${CMAKE_SCRIPT} ${CMAKE_SHA256} | sed -e s/linux/Linux/ | sha256sum --check && \
+    mkdir -p ${CMAKE_DIR} && \
+    sh ${CMAKE_SCRIPT} --skip-license --prefix=${CMAKE_DIR} && \
+    rm cmake*
+ENV PATH=${CMAKE_DIR}/bin:$PATH
+
+ENV SYCL_DIR=/opt/sycl
+ENV CUDA_LIB_PATH=/usr/local/cuda-11.7/targets/x86_64-linux/lib/stubs/
+RUN SYCL_VERSION=20220112 && \
+    SYCL_URL=https://github.com/intel/llvm/archive/sycl-nightly && \
+    SYCL_ARCHIVE=${SYCL_VERSION}.tar.gz && \
+    SCRATCH_DIR=/scratch && mkdir -p ${SCRATCH_DIR} && cd ${SCRATCH_DIR} && \
+    wget --quiet --no-check-certificate ${SYCL_URL}/${SYCL_ARCHIVE} && \
+    mkdir llvm && \
+    tar -xf ${SYCL_ARCHIVE} -C llvm --strip-components=1 && \
+    cd llvm && \
+    python3 buildbot/configure.py --cuda && \
+    python3 buildbot/compile.py && \
+    mkdir -p ${SYCL_DIR} && \
+    mv ${SCRATCH_DIR}/llvm/build/install/* ${SYCL_DIR} && \
+    echo "${SYCL_DIR}/lib" > /etc/ld.so.conf.d/sycl.conf && ldconfig && \
+    rm -rf ${SCRATCH_DIR}
+ENV PATH=${SYCL_DIR}/bin:$PATH

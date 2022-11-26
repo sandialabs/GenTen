@@ -38,131 +38,89 @@
 // ************************************************************************
 //@HEADER
 
-/*!
-  @file Genten_Test_IOtext.cpp
-  @brief Unit tests for methods in Genten_IOtext.
-*/
+#include <Genten_FacMatrix.hpp>
+#include <Genten_IOtext.hpp>
+#include <Genten_Ktensor.hpp>
+#include <Genten_Sptensor.hpp>
 
-#include "Genten_IndxArray.hpp"
-#include "Genten_IOtext.hpp"
-#include "Genten_Ktensor.hpp"
-#include "Genten_Sptensor.hpp"
 #include "Genten_Test_Utils.hpp"
-#include "Genten_Util.hpp"
 
-using namespace std;
-using namespace Genten::Test;
+#include <gtest/gtest.h>
 
-// These tests are just on the host, so not templated on the space
-void Genten_Test_IO(int            infolevel,
-                    const string & dirname)
-{
-  initialize("Tests of tensor I/O methods", infolevel);
+namespace Genten {
+namespace UnitTests {
 
-  string fname;
-  bool  bIsOK;
-  double  dExpectedValue;
+template <typename ExecSpace> struct TestIOtextT : public ::testing::Test {
+  using exec_space = ExecSpace;
+};
 
-  // Test I/O methods for Sptensor.
+TYPED_TEST_SUITE(TestIOtextT, genten_test_types);
 
-  MESSAGE("Reading sparse tensor from file");
-  Genten::Sptensor oSpt;
-  fname = "C_sptensor.txt";
-  Genten::import_sptensor (dirname + fname, oSpt);
-  ASSERT((oSpt.ndims() == 3) && (oSpt.nnz() == 5) && (oSpt.numel() == 24),
-         "Sptensor size verified");
-  ASSERT(   (oSpt.subscript(4,0) == 3) && (oSpt.subscript(4,1) == 0)
-            && (oSpt.subscript(4,2) == 1) && EQ(oSpt.value(4), 5.0),
-            "Verified an Sptensor element read from file");
+TEST(TestIOtext, Sptensor) {
+  Sptensor oSpt;
+  const std::string input_path = "data/C_sptensor.txt";
+  import_sptensor(input_path, oSpt);
 
-  if (infolevel == 1)
-  {
-    MESSAGE("Printing sparse tensor");
-    Genten::print_sptensor (oSpt, cout, "From " + fname);
-    MESSAGE("Done");
-  }
+  ASSERT_EQ(oSpt.ndims(), 3);
+  ASSERT_EQ(oSpt.nnz(), 5);
+  ASSERT_EQ(oSpt.numel(), 24);
+  ASSERT_EQ(oSpt.subscript(4, 0), 3);
+  ASSERT_EQ(oSpt.subscript(4, 1), 0);
+  ASSERT_EQ(oSpt.subscript(4, 2), 1);
+  ASSERT_FLOAT_EQ(oSpt.value(4), 5.0);
 
-  MESSAGE("Writing Sptensor to temporary file");
-  fname = "tmp_Test_IOtext.txt";
-  Genten::export_sptensor (fname, oSpt);
-  Genten::Sptensor oSpt2;
-  Genten::import_sptensor (fname, oSpt2);
-  ASSERT(oSpt.isEqual(oSpt2, MACHINE_EPSILON),
-         "Sptensor unchanged after write and read");
-  ASSERT(remove (fname.c_str()) == 0, "Temp file for export_sptensor deleted");
+  const std::string output_path = "tmp_Test_IOtext.txt";
+  export_sptensor(output_path, oSpt);
 
+  Sptensor oSpt2;
+  import_sptensor(output_path, oSpt2);
+  ASSERT_TRUE(oSpt.isEqual(oSpt2, MACHINE_EPSILON));
+  ASSERT_EQ(remove(output_path.c_str()), 0);
+}
 
-  // Test I/O methods for FacMatrix.
+TEST(TestIOtext, FacMatrix) {
+  FacMatrix oFM;
+  const std::string input_path = "data/B_matrix.txt";
+  import_matrix(input_path, oFM);
+  ASSERT_EQ(oFM.nRows(), 3);
+  ASSERT_EQ(oFM.nCols(), 2);
 
-  MESSAGE("Reading matrix from file");
-  Genten::FacMatrix oFM;
-  fname = "B_matrix.txt";
-  Genten::import_matrix (dirname + fname, oFM);
-  ASSERT((oFM.nRows() == 3) && (oFM.nCols() == 2), "Matrix size verified");
-  MESSAGE("Verifying contents of matrix read from file");
-  bIsOK = true;
-  dExpectedValue = 0.1;
-  for (ttb_indx j = 0; j < oFM.nCols(); j++)
-  {
-    for (ttb_indx i = 0; i < oFM.nRows(); i++)
-    {
-      if (EQ(oFM.entry(i,j),dExpectedValue) == false)
-      {
-        bIsOK = false;
-        break;
-      }
+  double dExpectedValue = 0.1;
+  for (ttb_indx j = 0; j < oFM.nCols(); j++) {
+    for (ttb_indx i = 0; i < oFM.nRows(); i++) {
+      ASSERT_FLOAT_EQ(oFM.entry(i, j), dExpectedValue);
       dExpectedValue += 0.1;
     }
-    if (bIsOK == false)
-    {
-      break;
-    }
-  }
-  ASSERT(bIsOK, "All matrix elements verified");
-
-  if (infolevel == 1)
-  {
-    MESSAGE("Printing matrix");
-    Genten::print_matrix (oFM, cout, "Contents of " + dirname + fname);
-    MESSAGE("Done");
   }
 
-  MESSAGE("Writing matrix to temporary file");
-  fname = "tmp_Test_IOtext.txt";
-  Genten::export_matrix (fname, oFM);
-  Genten::FacMatrix oFM2;
-  Genten::import_matrix (fname, oFM2);
-  ASSERT(oFM.isEqual(oFM2, MACHINE_EPSILON),
-         "Matrix unchanged after write and read");
-  ASSERT(remove (fname.c_str()) == 0, "Temp file for export_matrix deleted");
-
-
-  // Test I/O methods for Ktensor.
-
-  MESSAGE("Reading Ktensor from file");
-  Genten::Ktensor oK;
-  fname = "E_ktensor.txt";
-  Genten::import_ktensor (dirname + fname, oK);
-  ASSERT((oK.ndims() == 3) && (oK.ncomponents() == 2),
-         "Ktensor size verified");
-  ASSERT(EQ(oK.weights(0),1.0) && EQ(oK.weights(1),2.0),
-         "Ktensor weights verified");
-  bIsOK = true;
-  bIsOK =    (EQ(oK[0].entry(1,1), 0.9))
-    && (EQ(oK[1].entry(0,1), 2.0))
-    && (EQ(oK[2].entry(2,0), 0.03));
-  ASSERT(bIsOK, "Verified selected Ktensor elements read from file");
-
-  MESSAGE("Writing Ktensor to temporary file");
-  fname = "tmp_Test_IOtext.txt";
-  Genten::export_ktensor (fname, oK);
-  Genten::Ktensor oK2;
-  Genten::import_ktensor (fname, oK2);
-  ASSERT(oK.isEqual(oK2, MACHINE_EPSILON),
-         "Ktensor unchanged after write and read");
-  ASSERT(remove (fname.c_str()) == 0, "Temp file for export_matrix deleted");
-
-
-  finalize();
-  return;
+  const std::string output_path = "tmp_Test_IOtext.txt";
+  export_matrix(output_path, oFM);
+  FacMatrix oFM2;
+  import_matrix(output_path, oFM2);
+  ASSERT_TRUE(oFM.isEqual(oFM2, MACHINE_EPSILON));
+  ASSERT_EQ(remove(output_path.c_str()), 0);
 }
+
+TEST(TestIOtext, Ktensor) {
+  Ktensor oK;
+  const std::string input_path = "data/E_ktensor.txt";
+  import_ktensor(input_path, oK);
+  ASSERT_EQ(oK.ndims(), 3);
+  ASSERT_EQ(oK.ncomponents(), 2);
+  ASSERT_FLOAT_EQ(oK.weights(0), 1.0);
+  ASSERT_FLOAT_EQ(oK.weights(1), 2.0);
+
+  ASSERT_FLOAT_EQ(oK[0].entry(1, 1), 0.9);
+  ASSERT_FLOAT_EQ(oK[1].entry(0, 1), 2.0);
+  ASSERT_FLOAT_EQ(oK[2].entry(2, 0), 0.03);
+
+  const std::string output_path = "tmp_Test_IOtext.txt";
+  export_ktensor(output_path, oK);
+  Genten::Ktensor oK2;
+  import_ktensor(output_path, oK2);
+  ASSERT_TRUE(oK.isEqual(oK2, MACHINE_EPSILON));
+  ASSERT_EQ(remove(output_path.c_str()), 0);
+}
+
+} // namespace UnitTests
+} // namespace Genten

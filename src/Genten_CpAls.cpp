@@ -58,6 +58,7 @@
 #include "Genten_Tensor.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_Util.hpp"
+#include "Genten_Pmap.hpp"
 
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
@@ -118,6 +119,8 @@ namespace Genten {
 
     using std::sqrt;
 
+    const ProcessorMap* pmap = u.getProcessorMap();
+
     // Whether to use full or symmetric Gram matrix
     const bool full = algParams.full_gram;
     const UploType uplo = Upper;
@@ -148,7 +151,7 @@ namespace Genten {
     const int timer_scale = 5;
     const int timer_norm = 6;
     const int timer_arrange = 7;
-    Genten::SystemTimer timer(8, algParams.timings);
+    Genten::SystemTimer timer(8, algParams.timings, pmap);
 
     timer.start(timer_cpals);
 
@@ -156,16 +159,17 @@ namespace Genten {
     ttb_indx nd = x.ndims();           // number of dimensions
 
     if (printIter > 0) {
-      out << "\nCP-ALS (rank " << nc << ", "
-          << Genten::MTTKRP_Method::names[algParams.mttkrp_method]
-          << " MTTKRP method, ";
+      out << std::endl
+             << "CP-ALS:" << std::endl;
+      out << "  CP Rank: " << nc << std::endl
+          << "  MTTKRP method: "
+          << Genten::MTTKRP_Method::names[algParams.mttkrp_method] << std::endl
+          << "  Gram formulation: ";
       if (algParams.full_gram)
-        out << "full-gram";
+        out << "full";
       else
-        out << "symmetric-gram";
-      out << " formulation, "
-          << Genten::SpaceProperties<ExecSpace>::verbose_name()
-          << "):" << std::endl;
+        out << "symmetric";
+      out << std::endl << std::endl;
     }
 
     // Distribute the initial guess to have weights of one.
@@ -196,9 +200,11 @@ namespace Genten {
     // Matrix to store the result of MTTKRP for the last mode
     // (Used to compute <x,u> using the trick described by Smith & Karypis)
     Genten::FacMatrixT<ExecSpace> un(u[nd-1].nRows(), nc);
+    if (pmap != nullptr)
+      un.setProcessorMap(pmap->facMap(nd-1));
 
     // Pre-calculate the Frobenius norm of the tensor x.
-    ttb_real xNorm = x.norm();
+    ttb_real xNorm = x.global_norm();
 
     ttb_real fit;
     ttb_real fitold;
@@ -372,9 +378,9 @@ namespace Genten {
     // Use double for these to ensure sufficient precision
     const double atomic = 1.0; // cost of atomic measured in flops
     const double mttkrp_flops =
-      x.nnz()*nc*(nd+atomic);
+      x.global_nnz()*nc*(nd+atomic);
     const double mttkrp_reads =
-      x.nnz()*((nd*nc+3)*sizeof(ttb_real)+nd*sizeof(ttb_indx));
+      x.global_nnz()*((nd*nc+3)*sizeof(ttb_real)+nd*sizeof(ttb_indx));
     const double mttkrp_tput =
       ( mttkrp_flops / mttkrp_avg_time ) / (1024.0 * 1024.0 * 1024.0);
     const double mttkrp_factor = mttkrp_flops / mttkrp_reads;
@@ -395,7 +401,7 @@ namespace Genten {
     {
       out.setf(std::ios_base::scientific);
       out.precision(2);
-      out << "CpAls completed " << numIters << " iterations in "
+      out << "\nCP-ALS completed " << numIters << " iterations in "
           << timer.getTotalTime(timer_cpals) << " seconds\n";
       out << "\tMTTKRP total time = " << mttkrp_total_time
           << " seconds, average time = " << mttkrp_avg_time << " seconds\n";
@@ -420,6 +426,7 @@ namespace Genten {
           << " seconds, average time = " << timer.getAvgTime(timer_arrange)
           << " seconds\n";
     }
+    out << std::endl;
 
     return;
   }

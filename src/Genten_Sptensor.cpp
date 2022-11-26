@@ -55,6 +55,10 @@
 #include <caliper/cali.h>
 #endif
 
+#if defined(ENABLE_SYCL_FOR_CUDA)
+#include <execution>
+#endif
+
 namespace Genten {
 namespace Impl {
 
@@ -84,7 +88,7 @@ SptensorT(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls,
   siz(nd,sz), nNumDims(nd), values(nz,vls,false),
   subs(Kokkos::view_alloc("Genten::Sptensor::subs",
                           Kokkos::WithoutInitializing),nz,nd),
-  perm(), is_sorted(false)
+  perm(), is_sorted(false), pmap(nullptr)
 {
   siz_host = create_mirror_view(siz);
   deep_copy(siz_host, siz);
@@ -101,7 +105,7 @@ SptensorT(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals,
   siz(nd,dims), nNumDims(nd), values(nz,vals,false),
   subs(Kokkos::view_alloc("Genten::Sptensor::subs",
                           Kokkos::WithoutInitializing),nd,nz),
-  perm(), is_sorted(false)
+  perm(), is_sorted(false), pmap(nullptr)
 {
   siz_host = create_mirror_view(siz);
   deep_copy(siz_host, siz);
@@ -120,7 +124,7 @@ SptensorT(const std::vector<ttb_indx>& dims,
   nNumDims(dims.size()),
   values(vals.size(),const_cast<ttb_real*>(vals.data()),false),
   subs("Genten::Sptensor::subs",vals.size(),dims.size()),
-  perm(), is_sorted(false)
+  perm(), is_sorted(false), pmap(nullptr)
 {
   siz_host = create_mirror_view(siz);
   deep_copy(siz_host, siz);
@@ -282,6 +286,26 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
     else
 #endif
 
+#if defined(ENABLE_SYCL_FOR_CUDA)
+  if (is_sycl_space<ExecSpace>::value) {
+    auto subs_mir = create_mirror_view(subs);
+    deep_copy(subs_mir, subs);
+
+    auto tmp_mir = create_mirror_view(tmp);
+    deep_copy(tmp_mir, tmp);
+
+    std::stable_sort(
+      std::execution::par, tmp_mir.data(), tmp_mir.data() + sz,
+      KOKKOS_LAMBDA(const ttb_indx& a, const ttb_indx& b) {
+        return (subs_mir(a,n) < subs_mir(b,n));
+      }
+    );
+
+    deep_copy(tmp, tmp_mir);
+  }
+  else
+#endif
+
 #if defined(KOKKOS_ENABLE_OPENMP)
     if (std::is_same<ExecSpace, Kokkos::OpenMP>::value) {
       pss::parallel_stable_sort(tmp.data(), tmp.data()+sz,
@@ -370,14 +394,36 @@ sortImpl(vals_type& vals, subs_type& subs)
   else
 #endif
 
-#if defined(KOKKOS_ENABLE_OPENMP)
-    if (std::is_same<ExecSpace, Kokkos::OpenMP>::value) {
-      pss::parallel_stable_sort(tmp.data(), tmp.data()+sz, cmp);
-    }
-    else
-#endif
-      std::stable_sort(tmp.data(), tmp.data()+sz, cmp);
+#if defined(ENABLE_SYCL_FOR_CUDA)
+  if (is_sycl_space<ExecSpace>::value) {
+    auto subs_mir = create_mirror_view(subs);
+    deep_copy(subs_mir, subs);
 
+    auto tmp_mir = create_mirror_view(tmp);
+    deep_copy(tmp_mir, tmp);
+
+    std::stable_sort(
+      std::execution::par, tmp_mir.data(), tmp_mir.data() + sz,
+      KOKKOS_LAMBDA(const ttb_indx& a, const ttb_indx& b) {
+        unsigned n = 0;
+        while ((n < nd) && (subs_mir(a,n) == subs_mir(b,n))) ++n;
+        if (n == nd || subs_mir(a,n) >= subs_mir(b,n)) return false;
+        return true;
+      }
+    );
+
+    deep_copy(tmp, tmp_mir);
+  }
+  else
+#endif
+
+#if defined(KOKKOS_ENABLE_OPENMP)
+  if (std::is_same<ExecSpace, Kokkos::OpenMP>::value) {
+    pss::parallel_stable_sort(tmp.data(), tmp.data()+sz, cmp);
+  }
+  else
+#endif
+  std::stable_sort(tmp.data(), tmp.data() + sz, cmp);
 
   // Now copy vals and subs to sorted order
   typename vals_type::view_type sorted_vals(

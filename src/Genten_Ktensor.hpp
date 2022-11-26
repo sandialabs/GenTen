@@ -48,6 +48,7 @@
 #include "Genten_Util.hpp"
 #include "Genten_TinyVec.hpp"
 #include "Genten_SimdKernel.hpp"
+#include "Genten_Pmap.hpp"
 
 namespace Genten
 {
@@ -71,15 +72,17 @@ public:
 
   // Constructor with number of components and dimensions, but
   // factor matrix sizes are still undetermined.
-  KtensorT(ttb_indx nc, ttb_indx nd);
+  KtensorT(ttb_indx nc, ttb_indx nd, const ProcessorMap* pmap_ = nullptr);
 
   // Constructor with number of components, dimensions and factor matrix sizes
-  KtensorT(ttb_indx nc, ttb_indx nd, const IndxArrayT<ExecSpace> & sz);
+  KtensorT(ttb_indx nc, ttb_indx nd, const IndxArrayT<ExecSpace> & sz,
+             const ProcessorMap* pmap_ = nullptr);
 
   // Create Ktensor from supplied weights and values
   KOKKOS_INLINE_FUNCTION
-  KtensorT(const ArrayT<ExecSpace>& w, const FacMatArrayT<ExecSpace>& vals) :
-    lambda(w), data(vals) {}
+  KtensorT(const ArrayT<ExecSpace>& w, const FacMatArrayT<ExecSpace>& vals,
+             const ProcessorMap* pmap_ = nullptr) :
+    lambda(w), data(vals), pmap(pmap_) {}
 
   // Destructor
   KOKKOS_DEFAULTED_FUNCTION
@@ -170,6 +173,9 @@ public:
   // For small column sizes, inappropriate fractions may generate a warning.
   void scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise) const;
 
+  void setProcessorMap(const ProcessorMap* pmap_);
+  const ProcessorMap* getProcessorMap() const { return pmap; }
+
 
   // ----- PROPERTIES -----
 
@@ -229,6 +235,12 @@ public:
   // Return reference to factor matrix array
   KOKKOS_INLINE_FUNCTION
   const FacMatArrayT<ExecSpace> & factors() const
+  {
+    return data;
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  FacMatArrayT<ExecSpace> & factors() 
   {
     return data;
   }
@@ -305,6 +317,8 @@ private:
   // See comments for access method operator[].
   FacMatArrayT<ExecSpace> data;
 
+  const ProcessorMap* pmap;
+
 };
 
 template <typename ExecSpace>
@@ -313,7 +327,8 @@ create_mirror_view(const KtensorT<ExecSpace>& a)
 {
   typedef typename KtensorT<ExecSpace>::HostMirror HostMirror;
   return HostMirror( create_mirror_view(a.weights()),
-                     create_mirror_view(a.factors()) );
+                     create_mirror_view(a.factors()),
+                     a.getProcessorMap() );
 }
 
 template <typename Space, typename ExecSpace>
@@ -321,7 +336,8 @@ KtensorT<Space>
 create_mirror_view(const Space& s, const KtensorT<ExecSpace>& a)
 {
   return KtensorT<Space>( create_mirror_view(s, a.weights()),
-                          create_mirror_view(s, a.factors()) );
+                          create_mirror_view(s, a.factors()),
+                          a.getProcessorMap() );
 }
 
 template <typename E1, typename E2>
@@ -337,19 +353,21 @@ template <typename ExecSpace> class SptensorT;
 // Len and WarpOrWavefrontSize are for nested parallelism using TinyVec
 template <typename ExecSpace, unsigned Len, unsigned WarpOrWavefrontSize>
 KOKKOS_INLINE_FUNCTION
-ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
+ttb_real compute_Ktensor_value(const typename Kokkos::TeamPolicy<ExecSpace>::member_type& team,
+                               const KtensorT<ExecSpace>& M,
                                const SptensorT<ExecSpace>& X,
                                const ttb_indx i) {
-  typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Len, WarpOrWavefrontSize> TV1;
+  typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, Len, Len, WarpOrWavefrontSize> TVM1;
 
   /*const*/ unsigned nd = M.ndims();
   /*const*/ unsigned nc = M.ncomponents();
 
-  TV1 m_val(Len,0.0);
+  auto m_val = TVM1::make(team, Len, 0.0);
 
   auto row_func = [&](auto j, auto nj, auto Nj) {
-    typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Nj(), WarpOrWavefrontSize> TV2;
-    TV2 tmp(nj, 0.0);
+    typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, Len, Nj(), WarpOrWavefrontSize> TVM2;
+    auto tmp = TVM2::make(team, nj, 0.0);
+
     tmp.load(&(M.weights(j)));
     for (unsigned m=0; m<nd; ++m) {
       tmp *= &(M[m].entry(X.subscript(i,m),j));
@@ -376,18 +394,19 @@ ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
 template <typename ExecSpace, unsigned Len, unsigned WarpOrWavefrontSize,
           typename IndexArray>
 KOKKOS_INLINE_FUNCTION
-ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
+ttb_real compute_Ktensor_value(const typename Kokkos::TeamPolicy<ExecSpace>::member_type& team,
+                               const KtensorT<ExecSpace>& M,
                                const IndexArray& ind) {
-  typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Len, WarpOrWavefrontSize> TV1;
+  typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, Len, Len, WarpOrWavefrontSize> TVM1;
 
   /*const*/ unsigned nd = M.ndims();
   /*const*/ unsigned nc = M.ncomponents();
 
-  TV1 m_val(Len,0.0);
+  auto m_val = TVM1::make(team, Len, 0.0);
 
   auto row_func = [&](auto j, auto nj, auto Nj) {
-    typedef TinyVec<ExecSpace, ttb_real, unsigned, Len, Nj(), WarpOrWavefrontSize> TV2;
-    TV2 tmp(nj, 0.0);
+    typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, Len, Nj(), WarpOrWavefrontSize> TVM2;
+    auto tmp = TVM2::make(team, nj, 0.0);
     tmp.load(&(M.weights(j)));
     for (unsigned m=0; m<nd; ++m) {
       tmp *= &(M[m].entry(ind[m],j));

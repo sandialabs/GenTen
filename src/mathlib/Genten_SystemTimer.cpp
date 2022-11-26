@@ -88,9 +88,10 @@ namespace Genten
 //  Constructor
 //----------------------------------------------------------------------
   SystemTimer::SystemTimer (const int  nNumTimers,
-                            const bool fence) : _nNumTimers(0)
+                            const bool fence,
+                            const ProcessorMap *pmap) : _nNumTimers(0), _pmap(pmap)
   {
-    init(nNumTimers, fence);
+    init(nNumTimers, fence, pmap);
   }
 
 //----------------------------------------------------------------------
@@ -105,10 +106,13 @@ namespace Genten
 //  Initialize
 //----------------------------------------------------------------------
   void SystemTimer::init(const int  nNumTimers,
-                         const bool fence)
+                         const bool fence,
+                         const ProcessorMap *pmap)
   {
     // Destroy any previous initialization
     destroy();
+
+    _pmap = pmap;
 
 #if defined(HAVE_REALTIME_CLOCK)
     if (nNumTimers <= 0)
@@ -312,6 +316,10 @@ namespace Genten
     double  dResult = _daCumTimes[nTimerID];
     if (_baIsStarted[nTimerID] == true)
       dResult += getTimeSinceLastStart_ (nTimerID);
+
+    if (_pmap != nullptr)
+      dResult = _pmap->gridAllReduce(dResult, ProcessorMap::Max);
+
     return( dResult );
   }
 
@@ -339,7 +347,12 @@ namespace Genten
     if (getNumStarts (nTimerID) == 0)
       return( 0.0 );
 
-    return( _daCumTimes[nTimerID] / ((double) getNumStarts (nTimerID)) );
+    double dResult = _daCumTimes[nTimerID] / ((double) getNumStarts (nTimerID));
+
+    if (_pmap != nullptr)
+      dResult = _pmap->gridAllReduce(dResult, ProcessorMap::Max);
+
+    return dResult;
   }
 
 

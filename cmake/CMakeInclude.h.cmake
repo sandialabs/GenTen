@@ -85,6 +85,12 @@
 //---- DEFINED IF LBFGSB IS ENABLED.
 #cmakedefine HAVE_LBFGSB
 
+//---- DEFINED IF MPI IS ENABLED.
+#cmakedefine HAVE_MPI
+
+//---- DEFINED IF DISTRIBUTED CODE IS ENABLED.
+#cmakedefine HAVE_DIST
+
 #include <cstddef>
 
 // Floating-point type
@@ -92,3 +98,11 @@ typedef @GENTEN_FLOAT_TYPE@ ttb_real;
 
 // Tensor index type
 typedef @GENTEN_INDEX_TYPE@ ttb_indx;
+
+// Which execution spaces are enabled in executables
+#cmakedefine HAVE_SERIAL
+#cmakedefine HAVE_THREADS
+#cmakedefine HAVE_OPENMP
+#cmakedefine HAVE_CUDA
+#cmakedefine HAVE_HIP
+#cmakedefine HAVE_SYCL

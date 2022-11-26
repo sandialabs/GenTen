@@ -43,6 +43,7 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_HessVec.hpp"
+#include "Genten_Pmap.hpp"
 
 namespace Genten {
 
@@ -84,6 +85,10 @@ namespace Genten {
     void hess_vec(ktensor_type& U, const ktensor_type& M,
                   const ktensor_type& V);
 
+    // Apply the preconditioner to the given vector
+    void prec_vec(ktensor_type& U, const ktensor_type& M,
+                  const ktensor_type& V);
+
   protected:
 
     tensor_type X;
@@ -105,9 +110,10 @@ namespace Genten {
     {
       const ttb_indx nc = M.ncomponents();
       const ttb_indx nd = M.ndims();
-      const ttb_real nrm_X = X.norm();
+      const ttb_real nrm_X = X.global_norm();
       nrm_X_sq = nrm_X*nrm_X;
 
+      // Note gram and hada are not distributed, so we don't set the pmap
       gram.resize(nd);
       hada.resize(nd);
       for (ttb_indx i=0; i<nd; ++i) {
@@ -151,7 +157,14 @@ namespace Genten {
     // compute MTTKRP in update()
     const ttb_real ip = innerprod(X,M);
 
-    return ttb_real(0.5)*(nrm_X_sq + nrm_M_sq) - ip;
+    ttb_real f = ttb_real(0.5)*(nrm_X_sq + nrm_M_sq) - ip;
+
+    if (algParams.penalty != ttb_real(0.0)) {
+      for (ttb_indx n=0; n<nd; ++n)
+        f += (algParams.penalty / ttb_real(2.0)) * M[n].normFsq();
+    }
+
+    return f;
   }
 
   template <typename Tensor>
@@ -161,8 +174,14 @@ namespace Genten {
   {
     const ttb_indx nd = M.ndims();
     mttkrp_all(X, M, G, algParams);
+
     for (ttb_indx n=0; n<nd; ++n)
       G[n].gemm(false, false, ttb_real(1.0), M[n], hada[n], ttb_real(-1.0));
+
+    if (algParams.penalty != ttb_real(0.0)) {
+      for (ttb_indx n=0; n<nd; ++n)
+        G[n].plus(M[n], algParams.penalty);
+    }
   }
 
   template <typename Tensor>
@@ -180,12 +199,21 @@ namespace Genten {
     // ||M||^2 = <M,M>
     const ttb_real nrm_M_sq = gram[nd-1].innerprod(hada[nd-1], ones);
 
+    // Compute objective
+    ttb_real f = ttb_real(0.5)*(nrm_X_sq + nrm_M_sq) - ip;
+
     // Compute gradient
     for (ttb_indx n=0; n<nd; ++n)
       G[n].gemm(false, false, ttb_real(1.0), M[n], hada[n], ttb_real(-1.0));
 
-    // Compute objective
-    return ttb_real(0.5)*(nrm_X_sq + nrm_M_sq) - ip;
+    if (algParams.penalty != ttb_real(0.0)) {
+      for (ttb_indx n=0; n<nd; ++n) {
+        f += (algParams.penalty / ttb_real(2.0)) * M[n].normFsq();
+        G[n].plus(M[n], algParams.penalty);
+      }
+    }
+
+    return f;
   }
 
   template <typename Tensor>
@@ -203,7 +231,8 @@ namespace Genten {
       const ttb_indx nc = M.ncomponents();
       const ttb_indx nd = M.ndims();
 
-      KtensorT<exec_space> Mp(nc, nd, X.size()), Up(nc, nd, X.size());
+      KtensorT<exec_space> Mp(nc, nd, X.size(), M.getProcessorMap()),
+        Up(nc, nd, X.size(), U.getProcessorMap());
       Mp.setWeights(1.0);
       U.setWeights(1.0);
       for (ttb_indx n=0; n<nd; ++n) {
@@ -221,6 +250,19 @@ namespace Genten {
     }
     else
       Genten::error("Unknown Hessian method");
+  }
+
+    template <typename Tensor>
+  void
+  CP_Model<Tensor>::
+  prec_vec(ktensor_type& U, const ktensor_type& M, const ktensor_type& V)
+  {
+    if (algParams.hess_vec_prec_method == Hess_Vec_Prec_Method::ApproxBlockDiag)
+      blk_diag_prec_vec(X, M, V, U, algParams);
+    else if (algParams.hess_vec_prec_method == Hess_Vec_Prec_Method::None)
+      deep_copy(U, V);
+    else
+      Genten::error("Unknown hess-vec preconditioner method");
   }
 
 }

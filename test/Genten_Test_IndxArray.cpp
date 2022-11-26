@@ -38,230 +38,269 @@
 // ************************************************************************
 //@HEADER
 
+#include <Genten_IndxArray.hpp>
 
-#include "Genten_IndxArray.hpp"
-#include "Genten_Test_Utils.hpp"
+#include <gtest/gtest.h>
 
-using namespace Genten::Test;
+namespace Genten {
+namespace UnitTests {
 
-// These tests are just on the host, so not templated on the space
-void Genten_Test_IndxArray(int infolevel)
-{
-  //SETUP_DISABLE_CERR;
-
-  bool tf;
-
-  initialize("Tests on Genten::IndxArray", infolevel);
-
-  // Empty constructor
-  // a = []
-  MESSAGE("Testing empty constructor");
-  Genten::IndxArray a;
-  ASSERT(a.empty(), "Empty constructor works as expected");
-
-  // Constructor of length n
-  // b = []
-  MESSAGE("Testing Constructor of length n");
-  Genten::IndxArray b(0);
-  ASSERT(b.empty(), "Constructor of length n works for zero size");
-
-  // Constructor of length n
-  // c = [ ? ? ? ]
-  MESSAGE("Testing Constructor of length n");
-  Genten::IndxArray c(3);
-  ASSERT(c.size() == 3, "Constructor of length n for positive size");
-
-  // Copy constructor from array
-  // d = [ 1 2 3 ]
-  MESSAGE("Testing Copy constructor from array");
-  ttb_indx ddata[] = {1, 2, 3};
-  Genten::IndxArray d(3, ddata);
-  ASSERT(d.size() == 3, "Size correct for Copy constructor from array");
-  tf = true;
-  for (int i = 0; i < 3; i ++)
-  {
-    if (d[i] != (i+1))
-    {
-      tf = false;
-      break;
-    }
-  }
-  ASSERT(tf, "Data correct for Copy constructor from array");
-
-  // Copy constructor from double array
-  // de= [ 0 1 2 ]
-  MESSAGE("Testing Copy constructor from double array");
-  ttb_indx edata[] = {0, 1, 2};
-  Genten::IndxArray e(3, edata);
-  ASSERT(e.size() == 3, "Size correct for Copy constructor from double array");
-  tf = true;
-  for (int i = 0; i < 3; i ++)
-  {
-    if (e[i] != i)
-    {
-      tf = false;
-      break;
-    }
-  }
-  ASSERT(tf, "Data correct for Copy constructor from double array");
-
-  // Copy Constructor
-  // f = [ 1 2 3 ]
-  MESSAGE("Testing copy constructor");
-  Genten::IndxArray f(d.size());
-  deep_copy(f,d);
-  ASSERT(f == d, "Copy constructor works");
-
-  // Leave-one-out copy constructor
-  // g = [1 3]
-  MESSAGE("Testing leave-one-out copy constructor");
-  Genten::IndxArray g(f,1);
-  ASSERT(g.size() == (f.size() - 1), "Array size correct for leave-one-out copy constructor");
-  ASSERT((g[0] == 1) && (g[1] == 3), "Entries correct for leave-one-out copy constructor");
-
-  // Destructor (but there is no real test here)
-  MESSAGE("Testing deletion of IndxArray");
-  Genten::IndxArray * h = new Genten::IndxArray(d);
-  delete h;
-
-  // OPERATOR==
-  ASSERT(d == f, "Operator== works as expected");
-  ASSERT(!(a == c), "Operator== works as expected");
-  ASSERT(!(e == d), "Operator== works as expected");
-
-  // OPERATOR<=
-  ASSERT(d <= f, "Operator<= works as expected");
-  f[1] = d[1]+1;
-  ASSERT(d <= f, "Operator<= works as expected");
-
-  // EMPTY
-  ASSERT(a.empty(), "Empty works as expected");
-  ASSERT(b.empty(), "Empty works as expected");
-
-  // SIZE
-  ASSERT(a.size() == 0, "Size works as expected");
-  ASSERT(b.size() == 0, "Size works as expected");
-  ASSERT(c.size() == 3, "Size works as expected");
-  ASSERT(d.size() == 3, "Size works as expected");
-  ASSERT(e.size() == 3, "Size works as expected");
-  ASSERT(f.size() == 3, "Size works as expected");
-  ASSERT(g.size() == 2, "Size works as expected");
-
-  // RESIZE
-  b = Genten::IndxArray(5);
-  ASSERT(b.size() == 5, "Resize works as expected");
-  f = Genten::IndxArray(0);
-  ASSERT(f.empty(), "Resize works as expected");
-
-  // OPERATOR[] CONST
-  const Genten::IndxArray i(e);
-  tf = true;
-  for (ttb_indx ii = 0; ii < i.size(); ii ++)
-  {
-    if (i[ii] != ii)
-    {
-      tf = false;
-      break;
-    }
-  }
-  ASSERT(tf, "Operator[] for const works as expected");
-
-  // OPERATOR[] Non-Const
-  for (ttb_indx i = 0; i < b.size(); i ++)
-  {
-    b[i] = i+5;
-  }
-  tf = true;
-  for (ttb_indx i = 0; i < b.size(); i ++)
-  {
-    if (b[i] != i+5)
-    {
-      tf = false;
-      break;
-    }
-  }
-  ASSERT(tf, "Operator[] for non-const works as expected");
-
-  // PROD
-  ASSERT(b.prod() == 15120, "Prod works as expected");
-  ASSERT(i.prod() == 0, "Prod works as expected");
-  ASSERT(d.prod() == 6, "Prod works as expected");
-  ASSERT(a.prod() == 0, "Prod works as expected");
-
-  // PROD w/ default
-  ASSERT(b.prod(1) == 15120, "Prod works as expected");
-  ASSERT(i.prod(1) == 0, "Prod works as expected");
-  ASSERT(d.prod(1) == 6, "Prod works as expected");
-  ASSERT(a.prod(1) == 1, "Prod works as expected");
-
-  // PROD w / start & end
-  ASSERT(b.prod(1,5) == 3024, "Prod works as expected");
-  ASSERT(b.prod(2,2) == 0, "Prod works as expected");
-
-  // PROD w / start & end & default
-  ASSERT(b.prod(2,2,1) == 1, "Prod works as expected");
-
-  // CUMPROD
-  c = Genten::IndxArray(b.size()+1);
-  c.cumprod(b);
-  ASSERT(c.size() == (b.size() + 1), "Size correct for cumprod");
-  ttb_real tmp = 1;
-  tf = true;
-  for (ttb_indx i = 0; i < c.size(); i ++)
-  {
-    if (c[i] != tmp)
-    {
-      tf = false;
-      break;
-    }
-    if (i < b.size())
-    {
-      tmp = tmp * b[i];
-    }
-  }
-  ASSERT(tf, "Cumprod works as expected");
-
-  // OPERATOR=
-  a = c;
-  ASSERT(a == c, "Operator= works as expected");
-
-  // ZERO
-  e.zero();
-  tf = true;
-  for (ttb_indx i = 0; i < e.size(); i ++)
-  {
-    if (e[i] != 0)
-    {
-      tf = false;
-      break;
-    }
-  }
-  ASSERT(tf, "zero works as expected");
-
-  // ISPERMUTATION
-  f = Genten::IndxArray(5);
-  for (int i = 0; i < 5; i ++)
-  {
-    f[i] = 4-i;
-  }
-  ASSERT(f.isPermutation(), "ispermuation works as expected");
-  ASSERT(!g.isPermutation(), "ispermuation works as expected");
-
-  MESSAGE("Testing increment function");
-  Genten::IndxArray dims(4), check(4), ii(4);
-  dims[0] = 2; dims[1] = 3; dims[2] = 2; dims[3] = 4;
-  ii[0] = 0; ii[1] = 0; ii[2] = 0; ii[3] = 0;
-  ii.increment(dims);
-  check[0] = 0; check[1] = 0; check[2] = 0; check[3] = 1;
-  ASSERT(ii == check, "increment works as expected (a)");
-  ii[0] = 0; ii[1] = 2; ii[2] = 1; ii[3] = 3;
-  ii.increment(dims);
-  check[0] = 1; check[1] = 0; check[2] = 0; check[3] = 0;
-  ASSERT(ii == check, "increment works as expected (b)");
-  ii[0] = 1; ii[1] = 2; ii[2] = 1; ii[3] = 3;
-  ii.increment(dims);
-  check[0] = 2; check[1] = 0; check[2] = 0; check[3] = 0;
-  ASSERT(ii == check, "increment works as expected (c)");
-
-  finalize();
+TEST(TestIndxArray, EmptyConstruct) {
+  IndxArray arr;
+  ASSERT_TRUE(arr.empty());
 }
+
+TEST(TestIndxArray, ConstructorOfLengthZero) {
+  IndxArray arr(0);
+  ASSERT_TRUE(arr.empty());
+  ASSERT_EQ(arr.size(), 0);
+}
+
+TEST(TestIndxArray, ConstructorOfLengthN) {
+  IndxArray arr(3);
+  ASSERT_FALSE(arr.empty());
+  ASSERT_EQ(arr.size(), 3);
+}
+
+TEST(TestIndxArray, CopyConstructorFromArray) {
+  ttb_indx arr_data[]{1, 2, 3};
+  IndxArray arr(3, arr_data);
+  ASSERT_EQ(arr.size(), 3);
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_EQ(arr[i], i + 1);
+  }
+}
+
+TEST(TestIndxArray, CopyConstructorFromDoubleArray) {
+  ttb_indx arr_data[]{0, 1, 2};
+  IndxArray arr(3, arr_data);
+  ASSERT_EQ(arr.size(), 3);
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_EQ(arr[i], i);
+  }
+}
+
+TEST(TestIndxArray, CopyConstruct) {
+  ttb_indx arr_data[]{1, 2, 3};
+  IndxArray arr_a(3, arr_data);
+
+  IndxArray arr_b(arr_a.size());
+  deep_copy(arr_b, arr_a);
+  ASSERT_EQ(arr_a, arr_b);
+}
+
+TEST(TestIndxArray, LeaveOneOutCopyConstructor) {
+  ttb_indx arr_data[]{1, 2, 3};
+  IndxArray arr_a(3, arr_data);
+
+  IndxArray arr_b(arr_a, 1);
+  ASSERT_EQ(arr_b.size(), 2);
+  ASSERT_EQ(arr_b.size(), arr_a.size() - 1);
+  ASSERT_EQ(arr_b[0], 1);
+  ASSERT_EQ(arr_b[1], 3);
+}
+
+TEST(TestIndxArray, OperatorIsEqual) {
+  IndxArray arr_a;
+  ASSERT_TRUE(arr_a.empty());
+  ASSERT_EQ(arr_a.size(), 0);
+
+  ttb_indx arr_data[]{1, 2, 3};
+
+  IndxArray arr_b(3, arr_data);
+  ASSERT_FALSE(arr_b.empty());
+  ASSERT_EQ(arr_b.size(), 3);
+
+  IndxArray arr_c(3, arr_data);
+  ASSERT_FALSE(arr_c.empty());
+  ASSERT_EQ(arr_c.size(), 3);
+
+  ASSERT_NE(arr_a, arr_b);
+  ASSERT_NE(arr_a, arr_c);
+  ASSERT_EQ(arr_b, arr_c);
+}
+
+TEST(TestIndxArray, Resize) {
+  IndxArray arr_a(0);
+  ASSERT_TRUE(arr_a.empty());
+  ASSERT_EQ(arr_a.size(), 0);
+
+  arr_a = IndxArray(5);
+  ASSERT_FALSE(arr_a.empty());
+  ASSERT_EQ(arr_a.size(), 5);
+
+  ttb_indx arr_data[]{1, 2, 3};
+
+  IndxArray arr_b(3, arr_data);
+  ASSERT_FALSE(arr_b.empty());
+  ASSERT_EQ(arr_b.size(), 3);
+
+  arr_b = IndxArray(0);
+  ASSERT_TRUE(arr_b.empty());
+  ASSERT_EQ(arr_b.size(), 0);
+}
+
+TEST(TestIndxArray, OperatorSubscriptConst) {
+  ttb_indx arr_data[]{0, 1, 2};
+  IndxArray arr_a(3, arr_data);
+  const IndxArray arr_b(arr_a);
+  for (ttb_indx i = 0; i < arr_b.size(); i++) {
+    ASSERT_EQ(arr_b[i], i);
+  }
+}
+
+TEST(TestIndxArray, OperatorSubscriptNonCost) {
+  ttb_indx arr_data[]{0, 1, 2};
+  IndxArray arr_a(3, arr_data);
+  IndxArray arr_b(arr_a);
+
+  for (ttb_indx i = 0; i < arr_b.size(); i++) {
+    arr_b[i] = i + 5;
+  }
+
+  for (ttb_indx i = 0; i < arr_b.size(); i++) {
+    ASSERT_EQ(arr_b[i], i + 5);
+  }
+}
+
+TEST(TestIndxArray, Prod) {
+  IndxArray arr_a;
+
+  ttb_indx arr_b_data[]{5, 6, 7, 8, 9};
+  IndxArray arr_b(5, arr_b_data);
+
+  ttb_indx arr_c_data[]{1, 2, 3};
+  IndxArray arr_c(3, arr_c_data);
+
+  ttb_indx arr_d_data[]{0, 1, 2};
+  const IndxArray arr_d(3, arr_d_data);
+
+  ASSERT_EQ(arr_a.prod(), 0);
+  ASSERT_EQ(arr_b.prod(), 15120);
+  ASSERT_EQ(arr_c.prod(), 6);
+  ASSERT_EQ(arr_d.prod(), 0);
+}
+
+TEST(TestIndxArray, ProdWithDefault) {
+  IndxArray arr_a;
+
+  ttb_indx arr_b_data[]{5, 6, 7, 8, 9};
+  IndxArray arr_b(5, arr_b_data);
+
+  ttb_indx arr_c_data[]{1, 2, 3};
+  IndxArray arr_c(3, arr_c_data);
+
+  ttb_indx arr_d_data[]{0, 1, 2};
+  const IndxArray arr_d(3, arr_d_data);
+
+  ASSERT_EQ(arr_a.prod(1), 1);
+  ASSERT_EQ(arr_b.prod(1), 15120);
+  ASSERT_EQ(arr_c.prod(1), 6);
+  ASSERT_EQ(arr_d.prod(1), 0);
+}
+
+TEST(TestIndxArray, ProdWithStartEnd) {
+  ttb_indx arr_data[]{5, 6, 7, 8, 9};
+  IndxArray arr(5, arr_data);
+
+  ASSERT_EQ(arr.prod(1, 5), 3024);
+  ASSERT_EQ(arr.prod(2, 2), 0);
+}
+
+TEST(TestIndxArray, ProdWithStartEndAndDefault) {
+  ttb_indx arr_data[]{5, 6, 7, 8, 9};
+  IndxArray arr(5, arr_data);
+  ASSERT_EQ(arr.prod(2, 2, 1), 1);
+}
+
+TEST(TestIndxArray, Cumprod) {
+  ttb_indx arr_a_data[]{5, 6, 7, 8, 9};
+  IndxArray arr_a(5, arr_a_data);
+  IndxArray arr_b(arr_a.size() + 1);
+  arr_b.cumprod(arr_a);
+  ASSERT_EQ(arr_b.size(), arr_a.size() + 1);
+
+  ttb_real tmp = 1;
+  for (ttb_indx i = 0; i < arr_b.size(); i++) {
+    ASSERT_EQ(arr_b[i], tmp);
+
+    if (i < arr_a.size()) {
+      tmp = tmp * arr_a[i];
+    }
+  }
+}
+
+TEST(TestIndxArray, Zero) {
+  ttb_indx arr_data[]{0, 1, 2};
+  IndxArray arr(3, arr_data);
+  ASSERT_FALSE(arr.empty());
+  ASSERT_EQ(arr.size(), 3);
+
+  arr.zero();
+  for (ttb_indx i = 0; i < arr.size(); i++) {
+    ASSERT_EQ(arr[i], 0);
+  }
+}
+
+TEST(TestIndxArray, IsPermutation) {
+  IndxArray arr_a(5);
+  for (int i = 0; i < 5; i++) {
+    arr_a[i] = 4 - i;
+  }
+
+  ASSERT_TRUE(arr_a.isPermutation());
+
+  IndxArray arr_b(2);
+  arr_b[0] = 1;
+  arr_b[1] = 3;
+
+  ASSERT_FALSE(arr_b.isPermutation());
+}
+
+TEST(TestIndxArray, Increment) {
+  IndxArray dims(4), check(4), ii(4);
+
+  dims[0] = 2;
+  dims[1] = 3;
+  dims[2] = 2;
+  dims[3] = 4;
+
+  ii[0] = 0;
+  ii[1] = 0;
+  ii[2] = 0;
+  ii[3] = 0;
+  ii.increment(dims);
+
+  check[0] = 0;
+  check[1] = 0;
+  check[2] = 0;
+  check[3] = 1;
+  ASSERT_EQ(ii, check);
+
+  ii[0] = 0;
+  ii[1] = 2;
+  ii[2] = 1;
+  ii[3] = 3;
+  ii.increment(dims);
+
+  check[0] = 1;
+  check[1] = 0;
+  check[2] = 0;
+  check[3] = 0;
+  ASSERT_EQ(ii, check);
+
+  ii[0] = 1;
+  ii[1] = 2;
+  ii[2] = 1;
+  ii[3] = 3;
+  ii.increment(dims);
+
+  check[0] = 2;
+  check[1] = 0;
+  check[2] = 0;
+  check[3] = 0;
+  ASSERT_EQ(ii, check);
+}
+
+} // namespace UnitTests
+} // namespace Genten

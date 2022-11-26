@@ -41,6 +41,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <cmath>
+#include <random>
 
 #include "Genten_GCP_SGD.hpp"
 #include "Genten_GCP_SemiStratifiedSampler.hpp"
@@ -50,7 +51,6 @@
 
 #include "Genten_Sptensor.hpp"
 #include "Genten_SystemTimer.hpp"
-#include "Genten_RandomMT.hpp"
 #include "Genten_MixedFormatOps.hpp"
 
 #ifdef HAVE_CALIPER
@@ -70,6 +70,7 @@ namespace Genten {
                          const AlgParams& algParams,
                          ttb_indx& numEpochs,
                          ttb_real& fest,
+                         PerfHistory& perfInfo,
                          std::ostream& out)
     {
       typedef KokkosVector<ExecSpace> VectorType;
@@ -79,6 +80,7 @@ namespace Genten {
 
       const ttb_indx nd = u0.ndims();
       const ttb_indx nc = u0.ncomponents();
+      const ProcessorMap* pmap = u0.getProcessorMap();
 
       // Constants for the algorithm
       const ttb_real tol = algParams.tol;
@@ -87,7 +89,7 @@ namespace Genten {
       const ttb_indx max_fails = algParams.max_fails;
       const ttb_indx epoch_iters = algParams.epoch_iters;
       const ttb_indx frozen_iters = algParams.frozen_iters;
-      const ttb_indx seed = algParams.seed;
+      const ttb_indx seed = algParams.gcp_seed > 0 ? algParams.gcp_seed : std::random_device{}();
       const ttb_indx maxEpochs = algParams.maxiters;
       const ttb_indx printIter = algParams.printitn;
       const bool compute_fit = algParams.compute_fit;
@@ -100,7 +102,7 @@ namespace Genten {
 
       // Create sampler
       Genten::SemiStratifiedSampler<ExecSpace,LossFunction> sampler(
-        X, algParams);
+        X, algParams, true);
       const ttb_indx tot_num_grad_samples = sampler.totalNumGradSamples();
 
       // bounds
@@ -110,31 +112,19 @@ namespace Genten {
       constexpr ttb_real ub = LossFunction::upper_bound();
 
       if (printIter > 0) {
-        const ttb_indx nnz = X.nnz();
-        const ttb_real tsz = X.numel_float();
+        const ttb_indx nnz = X.global_nnz();
+        const ttb_real tsz = X.global_numel_float();
         const ttb_real nz = tsz - nnz;
-        out << "\nGCP-SGD (Generalized CP Tensor Decomposition)\n\n"
-            << "Tensor size: ";
-        for (ttb_indx i=0; i<nd; ++i) {
-          out << X.size(i) << " ";
-          if (i<nd-1)
-            out << "x ";
-        }
-        out << "(" << tsz << " total entries)\n"
-            << "Sparse tensor: " << nnz << " ("
-            << std::setprecision(1) << std::fixed << 100.0*(nnz/tsz)
-            << "%) Nonzeros" << " and ("
-            << std::setprecision(1) << std::fixed << 100.0*(nz/tsz)
-            << "%) Zeros\n"
-            << "Generalized function type: " << loss_func.name() << std::endl
-            << "Optimization method: " << (use_adam ? "adam\n" : "sgd\n")
-            << "Max iterations (epochs): " << maxEpochs << std::endl
-            << "Iterations per epoch: " << epoch_iters << std::endl
-            << "Learning rate / decay / maxfails: "
+        out << "\nGCP-SGD (Generalized CP Tensor Decomposition):\n"
+            << "  Generalized function type: " << loss_func.name() << std::endl
+            << "  Optimization method: " << (use_adam ? "adam\n" : "sgd\n")
+            << "  Max iterations (epochs): " << maxEpochs << std::endl
+            << "  Iterations per epoch: " << epoch_iters << std::endl
+            << "  Learning rate / decay / maxfails: "
             << std::setprecision(1) << std::scientific
             << rate << " " << decay << " " << max_fails << std::endl;
         sampler.print(out);
-        out << "Gradient method: Fused sampling and sparse array MTTKRP\n";
+        out << "  Gradient method: Fused sampling and sparse array MTTKRP\n";
         out << std::endl;
       }
 
@@ -155,24 +145,27 @@ namespace Genten {
       const int timer_step = num_timers++;
       const int timer_sample_g_z_nz = num_timers++;
       const int timer_sample_g_perm = num_timers++;
-      SystemTimer timer(num_timers, algParams.timings);
+      SystemTimer timer(num_timers, algParams.timings, pmap);
 
       // Start timer for total execution time of the algorithm.
       timer.start(timer_sgd);
 
       // Distribute the initial guess to have weights of one.
-      u0.normalize(Genten::NormTwo);
+      if (algParams.normalize)
+        u0.normalize(NormTwo);
       u0.distribute();
 
       // Ktensor-vector for solution
       VectorType u(u0);
       u.copyFromKtensor(u0);
       KtensorT<ExecSpace> ut = u.getKtensor();
+      ut.setProcessorMap(pmap);
 
       // Gradient Ktensor
       IndxArrayT<ExecSpace> gsz(nd, tot_num_grad_samples);
       VectorType g(nc, nd, gsz);
       KtensorT<ExecSpace> gt = g.getKtensor();
+      gt.setProcessorMap(pmap);
       Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,ExecSpace> gind("Gradient index", tot_num_grad_samples, nd);
       Kokkos::View<ttb_indx*,ExecSpace> perm("perm", tot_num_grad_samples);
 
@@ -199,9 +192,8 @@ namespace Genten {
 
       // Initialize sampler (sorting, hashing, ...)
       timer.start(timer_sort);
-      RandomMT rng(seed);
-      Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(rng.genrnd_int32());
-      sampler.initialize(rand_pool, printIter > 0, out);
+      Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
+      sampler.initialize(rand_pool, out);
       timer.stop(timer_sort);
 
       // Sample X for f-estimate
@@ -216,8 +208,8 @@ namespace Genten {
       ttb_real ften = 0.0;
       sampler.value(ut, hist, factor_penalty, loss_func, fest, ften);
       if (compute_fit) {
-        x_norm = X.norm();
-        ttb_real u_norm = u.normFsq();
+        x_norm = X.global_norm();
+        ttb_real u_norm = sqrt(u.normFsq());
         ttb_real dot = innerprod(X, ut);
         fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
       }
@@ -235,6 +227,16 @@ namespace Genten {
               << std::setw(10) << std::setprecision(3) << std::scientific
               << fit;
         out << std::endl;
+      }
+
+      {
+        perfInfo.addEmpty();
+        auto& p = perfInfo.lastEntry();
+        p.iteration = 0;
+        p.residual = fest;
+        if (compute_fit)
+          p.fit = fit;
+        p.cum_time = timer.getTotalTime(timer_sgd);
       }
 
       // SGD epoch loop
@@ -279,7 +281,7 @@ namespace Genten {
         timer.start(timer_fest);
         sampler.value(ut, hist, factor_penalty, loss_func, fest, ften);
         if (compute_fit) {
-          ttb_real u_norm = u.normFsq();
+          ttb_real u_norm = sqrt(u.normFsq());
           ttb_real dot = innerprod(X, ut);
           fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
         }
@@ -307,6 +309,16 @@ namespace Genten {
             out << ", nfails = " << nfails
                 << " (resetting to solution from last epoch)";
           out << std::endl;
+        }
+
+        {
+          perfInfo.addEmpty();
+          auto& p = perfInfo.lastEntry();
+          p.iteration = numEpochs+1;
+          p.residual = fest;
+          if (compute_fit)
+            p.fit = fit;
+          p.cum_time = timer.getTotalTime(timer_sgd);
         }
 
         if (failed_epoch) {
@@ -348,7 +360,7 @@ namespace Genten {
           out << ", fit: "
               << std::setw(10) << std::setprecision(3) << std::scientific
               << fit;
-        out << std::endl
+        out << std::endl << std::endl
             << "GCP-SGD completed " << total_iters << " iterations in "
             << std::setw(8) << std::setprecision(2) << std::scientific
             << timer.getTotalTime(timer_sgd) << " seconds" << std::endl;
@@ -374,6 +386,7 @@ namespace Genten {
               << "\tstep/clip: " << timer.getTotalTime(timer_step)
               << " seconds\n";
         }
+        out << std::endl;
       }
 
       u.copyToKtensor(u0);
@@ -391,6 +404,7 @@ namespace Genten {
                   const AlgParams& algParams,
                   ttb_indx& numIters,
                   ttb_real& resNorm,
+                  PerfHistory& perfInfo,
                   std::ostream& out)
   {
 #ifdef HAVE_CALIPER
@@ -411,19 +425,19 @@ namespace Genten {
     // Dispatch implementation based on loss function type
     if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
       Impl::gcp_sgd_sa_impl(x, u, GaussianLossFunction(algParams.loss_eps),
-                            algParams, numIters, resNorm, out);
+                            algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Rayleigh)
       Impl::gcp_sgd_sa_impl(x, u, RayleighLossFunction(algParams.loss_eps),
-                            algParams, numIters, resNorm, out);
+                            algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Gamma)
       Impl::gcp_sgd_sa_impl(x, u, GammaLossFunction(algParams.loss_eps),
-                            algParams, numIters, resNorm, out);
+                            algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Bernoulli)
       Impl::gcp_sgd_sa_impl(x, u, BernoulliLossFunction(algParams.loss_eps),
-                            algParams, numIters, resNorm, out);
+                            algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Poisson)
       Impl::gcp_sgd_sa_impl(x, u, PoissonLossFunction(algParams.loss_eps),
-                           algParams, numIters, resNorm, out);
+                           algParams, numIters, resNorm, perfInfo, out);
     else
        Genten::error("Genten::gcp_sgd - unknown loss function");
   }
@@ -437,6 +451,7 @@ namespace Genten {
     const AlgParams& algParams,                                         \
     ttb_indx& numIters,                                                 \
     ttb_real& resNorm,                                                  \
+    PerfHistory& perfInfo,                                              \
     std::ostream& out);
 
 GENTEN_INST(INST_MACRO)

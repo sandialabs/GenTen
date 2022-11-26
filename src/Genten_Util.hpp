@@ -72,6 +72,13 @@ namespace Genten {
 #define GENTEN_INST_HIP(INSTMACRO) /* */
 #endif
 
+#ifdef ENABLE_SYCL_FOR_CUDA
+#define GENTEN_INST_SYCL(INSTMACRO) \
+  INSTMACRO(Kokkos::Experimental::SYCL)
+#else
+#define GENTEN_INST_SYCL(INSTMACRO) /* */
+#endif
+
 #ifdef KOKKOS_ENABLE_OPENMP
 #define GENTEN_INST_OPENMP(INSTMACRO) \
   INSTMACRO(Kokkos::OpenMP)
@@ -97,6 +104,7 @@ namespace Genten {
 namespace Genten {                              \
   GENTEN_INST_CUDA(INSTMACRO)                   \
   GENTEN_INST_HIP(INSTMACRO)                    \
+  GENTEN_INST_SYCL(INSTMACRO)                   \
   GENTEN_INST_OPENMP(INSTMACRO)                 \
   GENTEN_INST_THREADS(INSTMACRO)                \
   GENTEN_INST_SERIAL(INSTMACRO)                 \
@@ -129,17 +137,18 @@ namespace Genten {
     enum type {
       Cuda,
       HIP,
+      SYCL,
       OpenMP,
       Threads,
       Serial,
       Default
     };
     static constexpr type types[] = {
-      Cuda, HIP, OpenMP, Threads, Serial, Default
+      Cuda, HIP, SYCL, OpenMP, Threads, Serial, Default
     };
     static constexpr unsigned num_types = sizeof(types) / sizeof(types[0]);
     static constexpr const char* names[] = {
-      "cuda", "hip", "openmp", "threads", "serial", "default"
+      "cuda", "hip", "sycl", "openmp", "threads", "serial", "default"
     };
     static constexpr type default_type = Default;
   };
@@ -150,14 +159,15 @@ namespace Genten {
       CP_ALS,
       CP_OPT,
       GCP_SGD,
+      GCP_SGD_DIST,
       GCP_OPT
     };
     static constexpr unsigned num_types = 4;
     static constexpr type types[] = {
-      CP_ALS, CP_OPT, GCP_SGD, GCP_OPT
+      CP_ALS, CP_OPT, GCP_SGD, GCP_SGD_DIST, GCP_OPT
     };
     static constexpr const char* names[] = {
-      "cp-als", "cp-opt", "gcp-sgd", "gcp-opt"
+      "cp-als", "cp-opt", "gcp-sgd", "gcp-sgd-dist", "gcp-opt"
     };
     static constexpr type default_type = CP_ALS;
   };
@@ -226,7 +236,7 @@ namespace Genten {
     static constexpr type default_type = Default;
   };
 
-  // Sampling functions supported by GCP
+  // Hessian-vector product method for CP-OPT w/ROL
   struct Hess_Vec_Method {
     enum type {
       Full,
@@ -241,6 +251,46 @@ namespace Genten {
       "full", "gauss-newton", "finite-difference"
     };
     static constexpr type default_type = FiniteDifference;
+  };
+
+  // Method for handling race conditions in tensor term for full hess-vec
+  struct Hess_Vec_Tensor_Method {
+    enum type {
+      Default,     // Use default method based on architecture
+      Atomic,      // Use atomics factor matrix update
+      Duplicated,  // Duplicate factor matrix then inter-thread reduce
+      Single,      // Single-thread algorithm (no atomics or duplication)
+      Perm         // Use permutation array approach, similar to MTTKRP
+    };
+    static constexpr unsigned num_types = 5;
+    static constexpr type types[] = {
+      Default,
+      Atomic,
+      Duplicated,
+      Single,
+      Perm
+    };
+    static constexpr const char* names[] = {
+      "default", "atomic", "duplicated", "single", "perm"
+    };
+    static constexpr type default_type = Default;
+  };
+
+  // Method for preconditioning hessian-vector products
+  struct Hess_Vec_Prec_Method {
+    enum type {
+      None,           // No preconditioning
+      ApproxBlockDiag // Precondition with inverse of approximate block diagonal
+    };
+    static constexpr unsigned num_types = 2;
+    static constexpr type types[] = {
+      None,
+      ApproxBlockDiag
+    };
+    static constexpr const char* names[] = {
+      "none", "approx-block-diag"
+    };
+    static constexpr type default_type = None;
   };
 
   // TTM algorithm
@@ -303,14 +353,16 @@ namespace Genten {
       SGD,
       ADAM,
       AdaGrad,
-      AMSGrad
+      AMSGrad,
+      SGDMomentum,
+      DEMON
     };
-    static constexpr unsigned num_types = 4;
+    static constexpr unsigned num_types = 6;
     static constexpr type types[] = {
-      SGD, ADAM, AdaGrad, AMSGrad
+      SGD, ADAM, AdaGrad, AMSGrad, SGDMomentum, DEMON
     };
     static constexpr const char* names[] = {
-      "sgd", "adam", "adagrad", "amsgrad"
+      "sgd", "adam", "adagrad", "amsgrad", "sgd-momentum", "demon"
     };
     static constexpr type default_type = ADAM;
   };
@@ -397,4 +449,13 @@ namespace Genten {
   // Connect executable to vtune for profiling
   void connect_vtune(const int p_rank = 0);
 
+  // A stream that drops all of its input (useful for parallel output)
+  class oblackholestream :
+    public virtual std::basic_ostream<char,std::char_traits<char> >
+  {
+    typedef std::basic_ostream<char,std::char_traits<char> > base;
+  public:
+    explicit oblackholestream() : base(nullptr) {}
+  };
+  extern oblackholestream bhcout;
 }

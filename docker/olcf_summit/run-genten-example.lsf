@@ -1,0 +1,12 @@
+#BSUB -P AST153
+#BSUB -W 0:30
+#BSUB -nnodes 2
+#BSUB -q debug
+#BSUB -J genten
+#BSUB -o genten.%J
+#BSUB -e genten.%J
+
+source genten/docker/olcf_summit/setup_env.sh
+source /gpfs/alpine/stf007/world-shared/containers/utils/requiredmpilibs.source
+
+jsrun --smpiargs="-gpu" -n 2 -a 1 -r 1 -c 42 -g 6 singularity exec --nv --bind $MPI_ROOT:$MPI_ROOT,/autofs/nccs-svm1_home1,/autofs/nccs-svm1_home1:/ccs/home gentenimage.sif genten --json genten/data/aminoacid-cpals.json --input genten/data/aminoacid_data.txt

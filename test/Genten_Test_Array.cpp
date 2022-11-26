@@ -38,352 +38,384 @@
 // ************************************************************************
 //@HEADER
 
+#include <Genten_Array.hpp>
+#include <Genten_Util.hpp>
 
-#include <iostream>
-#include <cmath>
-#include "Genten_Array.hpp"
 #include "Genten_Test_Utils.hpp"
-#include "Genten_Util.hpp"
 
-using namespace Genten::Test;
+#include <gtest/gtest.h>
 
-template <typename ExecSpace>
-void Genten_Test_Array_Space(int infolevel)
-{
-  typedef ExecSpace exec_space;
-  typedef Genten::DefaultHostExecutionSpace host_exec_space;
+namespace Genten {
+namespace UnitTests {
 
-  //SETUP_DISABLE_CERR;
+template <typename ExecSpace> struct TestArrayT : public ::testing::Test {
+  using exec_space = ExecSpace;
+};
 
-  bool tf;
+TYPED_TEST_SUITE(TestArrayT, genten_test_types);
 
-  std::string space_name = Genten::SpaceProperties<exec_space>::name();
-  initialize("Tests on Genten::Array (" + space_name + ")", infolevel);
+TEST(TestArray, EmptyConstructor) {
+  Array arr;
+  ASSERT_TRUE(arr.empty());
+}
 
-  // EMPTY CONSTRUCTOR
-  // a = []
-  MESSAGE("Creating empty array");
-  Genten::Array a;
-  ASSERT(a.empty(), "Array is emtpy");
+TEST(TestArray, ArrayWithLengthOfZero) {
+  Array arr(0);
+  ASSERT_TRUE(arr.empty());
+}
 
-  // LENGTH CONSTRUCTOR
-  // b = []
-  MESSAGE("Creating Array with a specified length of 0");
-  Genten::Array b(0);
-  ASSERT(b.empty(), "Array is empty");
+TEST(TestArray, ArrayWithSpecifiedLength) {
+  Array arr(5);
+  ASSERT_EQ(arr.size(), 5);
+}
 
-  // c = [? ? ? ? ?]
-  MESSAGE("Creating Array with a specified length");
-  Genten::Array c(5);
-  ASSERT(c.size() == 5, "Array has correct length");
-
-  // DATA CONSTRUCTOR W/ SHADOWING
-  // d = [ 0 1 2 3 4 ] SHADOW
-  MESSAGE("Creating an array that *shadows* existing ttb_real* data");
-  ttb_real ddata[] = {0,1,2,3,4};
-  Genten::Array d(5, ddata);
-  ASSERT(d.size() == 5, "Array has correct length");
-  tf = true;
-  for (ttb_indx i = 0; i < 5; i ++)
-  {
-    if (d[i] != i)
-    {
-      tf = false;
-      break;
-    }
+TEST(TestArray, ArrayWithShadowing) {
+  // arr = [ 0 1 2 3 4 ] SHADOW
+  ttb_real arr_data[]{0, 1, 2, 3, 4};
+  Array arr(5, arr_data);
+  ASSERT_EQ(arr.size(), 5);
+  for (int i = 0; i < 5; ++i) {
+    ASSERT_EQ(arr[i], i);
   }
-  ASSERT(tf, "Data is correct");
 
-  // d = [ -5 1 2 3 4 ] SHADOW
-  ddata[0] = -5;
-  ASSERT(d[0] == -5, "Entry is changed when shadowed data is changed");
+  // arr = [ -5 1 2 3 4 ] SHADOW
+  arr_data[0] = -5;
+  ASSERT_EQ(arr[0], -5);
+}
 
-  // d = [ 0 1 2 3 4 ] SHADOW
-  ddata[0] = 0;
-
-  // DATA CONSTRUCTOR W/O SHADOWING
-  // e = [ 0 1 2 3 4 ]
-  MESSAGE("Creating an array named that *copies* existing ttb_real* data");
-  ttb_real * edata = (ttb_real *) malloc(5 * sizeof(ttb_real));
-  for (int i = 0; i < 5; i ++)
-  {
-    edata[i] = i;
+TEST(TestArray, ArrayWithoutShadowing) {
+  ttb_real *arr_data = (ttb_real *)malloc(5 * sizeof(ttb_real));
+  for (int i = 0; i < 5; i++) {
+    arr_data[i] = i;
   }
-  Genten::Array e(5, edata, false);
-  free(edata);
-  ASSERT(e == d, "Arrays are equal");
 
-  // COPY CONSTRUCTOR
-  // f = [ 0 1 2 3 4 ]
-  MESSAGE("Creating an array that copies an existing array");
-  Genten::Array f(d.size());
-  deep_copy(f,d);
-  ASSERT(f == d, "Arrays are equal");
+  const bool with_shadowing = false;
+  Array arr(5, arr_data, with_shadowing);
+  free(arr_data);
 
-  // f = [ -1 1 2 3 4 ]
-  MESSAGE("Checking for deep copy, even against a shadow'd array");
-  f[0] = -1;
-  ASSERT(f[0] != d[0], "Deep copy successful");
-
-  // f = [ 0 1 2 3 4 ]
-  f[0] = 0;
-
-  // DESTRUCTOR
-  // g (created and deleted)
-  MESSAGE("Creating and freeing an Array that *shadows* existing data");
-  ttb_real * gdata = (ttb_real *) malloc(5 * sizeof(ttb_real));
-  for (int i = 0; i < 5; i ++)
-  {
-    gdata[i] = i;
+  ASSERT_EQ(arr.size(), 5);
+  for (int i = 0; i < 5; ++i) {
+    ASSERT_EQ(arr[i], i);
   }
-  Genten::Array * g = new Genten::Array(5, gdata);
-  delete g;
-  ASSERT(gdata != 0, "Shadowed gdata is still non-null");
+}
 
-  // d = [ 1 2 3 ] *
-  MESSAGE("Resizing shadow'd Array to less than its current length");
-  d = Genten::Array(3);
-  ASSERT(d.size() == 3, "Resized array has correct length");
+TEST(TestArray, CopyConstructor) {
+  ttb_real arr_data[]{0, 1, 2, 3, 4};
+  Array arr(5, arr_data);
+  Array new_arr(arr.size());
+  deep_copy(new_arr, arr);
+  ASSERT_EQ(new_arr, arr);
 
-  // OPERATOR= (Array input)
-  // a = [ 1 2 3 ]
-  MESSAGE("Testing operator= with Array");
-  a = d;
-  ASSERT(a == d, "Arrays are equal");
+  new_arr[0] = -1;
+  ASSERT_NE(new_arr[0], arr[0]);
+}
 
-  // OPERATOR= (scalar input)
-  // a = [0.5 0.5 0.5]
-  MESSAGE("Testing operator= with scalar");
-  a = 0.5;
-  ASSERT(a.size() == 3, "Size of Array is correct");
-  tf = true;
-  for (int i = 0; i < 3; i ++)
-  {
-    if (a[i] != 0.5)
-    {
-      tf = false;
-      break;
-    }
+TEST(TestArray, Destructor) {
+  ttb_real *arr_data = (ttb_real *)malloc(5 * sizeof(ttb_real));
+  for (int i = 0; i < 5; i++) {
+    arr_data[i] = i;
   }
-  ASSERT(tf, "All entries of Array are equal correct");
 
-  // RESET
-  MESSAGE("Testing reset");
-  b = Genten::Array(3, ttb_real(0.5));
-  ASSERT(a==b, "Reset worked as expected");
-  e = Genten::Array(0, ttb_real(0.0));
-  ASSERT(e.empty(), "Reset to empty worked as expected");
+  Array *arr = new Array(5, arr_data);
+  delete arr;
+  ASSERT_NE(arr_data, nullptr);
 
-  // SIZE
-  ASSERT(a.size() == 3, "Correct size reported, case 1");
-  ASSERT(b.size() == 3, "Correct size reported, case 2");
-  ASSERT(c.size() == 5, "Correct size reported, case 3");
-  ASSERT(d.size() == 3, "Correct size reported, case 4");
-  ASSERT(e.size() == 0, "Correct size reported, case 5");
-  ASSERT(f.size() == 5, "Correct size reported, case 6");
+  free(arr_data);
+}
 
-  // EMPTY
-  ASSERT(e.empty(), "Empty worked as expected");
-  ASSERT(!f.empty(), "Empty worked as exptected");
+TEST(TestArray, ResizingShadowdArray) {
+  ttb_real arr_data[]{0, 1, 2, 3, 4};
+  Array arr(5, arr_data);
 
-  // OPERATOR[] for CONST
-  // h = [ 1 2 3 4 5 ? ? ? ? ? ] CONST
-  const Genten::Array h(f);
-  ASSERT(h == f, "Const copy constructor worked");
-  tf = true;
-  for (int i = 0; i < 5; i ++)
-  {
-    if (h[i] != i)
-    {
-      tf = false;
-      break;
-    }
+  arr = Array(3);
+  ASSERT_EQ(arr.size(), 3);
+}
+
+TEST(TestArray, AssignmentOperatorArray) {
+  ttb_real arr_data_lhs[]{0, 1, 2, 3, 4};
+  Array arr_lhs(5, arr_data_lhs);
+  ASSERT_EQ(arr_lhs.size(), 5);
+
+  Array arr_rhs;
+  ASSERT_EQ(arr_rhs.size(), 0);
+
+  arr_rhs = arr_lhs;
+  ASSERT_EQ(arr_lhs, arr_rhs);
+}
+
+TEST(TestArray, AssignmentOperatorScalar) {
+  Array arr(5, 0.0);
+  ASSERT_EQ(arr.size(), 5);
+  for (int i = 0; i < arr.size(); ++i) {
+    ASSERT_FLOAT_EQ(arr[i], 0.0);
   }
-  ASSERT(tf, "Operator[] works for const arrays");
 
-  // OPERATOR[] for non-const
-  for (ttb_indx i = 0; i < f.size(); i ++)
-  {
-    f[i] = (ttb_real) i;
+  arr = 0.5;
+  ASSERT_EQ(arr.size(), 5);
+  for (int i = 0; i < arr.size(); ++i) {
+    ASSERT_FLOAT_EQ(arr[i], 0.5);
   }
-  tf = true;
-  for (ttb_indx i = 0; i < f.size(); i ++)
-  {
-    if (f[i] != i)
-    {
-      tf = false;
-      break;
-    }
-  }
-  ASSERT(tf, "Operator[] works for non-const arrays");
+}
 
-  // NORM_TWO
-  MESSAGE("Testing norm_two");
-  a = Genten::Array(5);
-  ttb_real ans = 0;
-  for (ttb_indx i = 0; i < 5; i ++)
-  {
-    a[i] = i/11.0;
-    ans += (i/11.0)*(i/11.0);
+TEST(TestArray, Reset) {
+  ttb_real arr_data[]{0, 1, 2, 3, 4};
+  Array arr(5, arr_data);
+  ASSERT_EQ(arr.size(), 5);
+
+  arr = Array(3, 0.5);
+  ASSERT_EQ(arr.size(), 3);
+  for (int i = 0; i < arr.size(); ++i) {
+    ASSERT_FLOAT_EQ(arr[i], 0.5);
+  }
+
+  arr = Array(0, 0.0);
+  ASSERT_TRUE(arr.empty());
+  ASSERT_EQ(arr.size(), 0);
+}
+
+TEST(TestArray, OperatorSubscriptConst) {
+  ttb_real arr_data[]{0, 1, 2, 3, 4};
+  Array arr(5, arr_data);
+
+  const Array new_arr(arr);
+  ASSERT_EQ(new_arr, arr);
+  for (int i = 0; i < 5; ++i) {
+    ASSERT_EQ(new_arr[i], i);
+  }
+}
+
+TEST(TestArray, OperatorSubscriptNonConst) {
+  Array arr(5);
+  for (int i = 0; i < 5; ++i) {
+    arr[i] = static_cast<ttb_real>(i);
+  }
+
+  for (int i = 0; i < 5; ++i) {
+    ASSERT_FLOAT_EQ(arr[i], static_cast<ttb_real>(i));
+  }
+}
+
+TYPED_TEST(TestArrayT, NormTwo) {
+  Array arr(5);
+  ttb_real ans = 0.0;
+  for (int i = 0; i < 5; i++) {
+    arr[i] = i / 11.0;
+    ans += (i / 11.0) * (i / 11.0);
   }
   ans = sqrt(ans);
-  Genten::ArrayT<exec_space> a_dev = create_mirror_view( exec_space(), a );
-  deep_copy( a_dev, a );
-  ASSERT( EQ(a_dev.norm(Genten::NormTwo), ans), "norm_two works as expected");
 
-
-  // NORM_ONE
-  // a = [0 -1/11 2/11 -3/11 4/11]
-  MESSAGE("Testing norm_one");
-  a = Genten::Array(5);
-  ans = 0;
-  for (ttb_indx i = 0; i < 5; i ++)
-  {
-    a[i] = pow((ttb_real)-1,(int)i)*i/11.0;
-    ans += i/11.0;
-  }
-  a_dev = create_mirror_view( exec_space(), a );
-  deep_copy( a_dev, a );
-  ASSERT( EQ(a_dev.norm(Genten::NormOne), ans), "norm_one works as expected");
-
-  // NORM_INF -- Not on device
-  MESSAGE("Testing norm_inf");
-  ans = 4.0/11.0;
-  ASSERT( EQ(a.norm(Genten::NormInf), ans), "norm_inf works as expected");
-
-  // NNZ
-  ASSERT(a.nnz() == 4, "nnz works as expected");
-
-  // DOT
-  // b = [2 2 2 2 2]
-  b = Genten::Array(5,ttb_real(2.0));
-  ans = 0;
-  for (ttb_indx i = 0; i < 5; i ++)
-  {
-    ans += 2 * a[i];
-  }
-  ASSERT( EQ(a.dot(b), ans), "dot works as expected");
-
-  // EQUAL
-  ASSERT(!b.isEqual(a,MACHINE_EPSILON), "equal in the false case");
-  c = a;
-  ASSERT(c.isEqual(a,MACHINE_EPSILON), "equal in the true case");
-
-  // TIMES
-  Genten::Array answ;
-  a = Genten::Array(5, ttb_real(2.5));
-  a.times(3);
-  answ = Genten::Array(a.size(), ttb_real(7.5));
-  ASSERT(a.isEqual(answ,MACHINE_EPSILON), "times with scalar argument");
-
-  // INVERT
-  a.invert(9.375);
-  answ = Genten::Array(a.size(), ttb_real(1.25));
-  ASSERT(a.isEqual(answ,MACHINE_EPSILON), "invert with scalar argument");
-
-  // SHIFT
-  a.shift(3);
-  answ = Genten::Array(5, ttb_real(4.25));
-  ASSERT(a.isEqual(answ,MACHINE_EPSILON), "shift with scalar argument");
-
-  // POWER
-  a.power(2);
-  answ = Genten::Array(5, ttb_real(18.0625));
-  ASSERT(a.isEqual(answ,MACHINE_EPSILON), "power with scalar argument");
-
-  // TIMES
-  b = Genten::Array(5, ttb_real(2.5));
-  a.times(3, b);
-  answ = Genten::Array(5, ttb_real(7.5));
-  ASSERT(a.isEqual(answ,MACHINE_EPSILON), "times with two arguments");
-
-  // INVERT
-  b = a;
-  a.invert(9.375, b);
-  answ = Genten::Array(5, ttb_real(1.25));
-  ASSERT(a.isEqual(answ,MACHINE_EPSILON), "a = 9.375 ./ b");
-
-  // SHIFT
-  b = a;
-  a.shift(3, b);
-  answ = Genten::Array(5, ttb_real(4.25));
-  ASSERT(a.isEqual(answ,MACHINE_EPSILON), "shift with two arguments");
-
-  // POWER
-  b = a;
-  a.power(2, b);
-  answ = Genten::Array(5, ttb_real(18.0625));
-  ASSERT(a.isEqual(answ,MACHINE_EPSILON), "power with two arguments");
-
-  // PLUS
-  a = Genten::Array(5, ttb_real(2.3));
-  b = Genten::Array(5, ttb_real(2.5));
-  a.plus(b);
-  answ = Genten::Array(5, ttb_real(4.8));
-  ASSERT(a.isEqual(answ, MACHINE_EPSILON), "plus with one input");
-
-  // MINUS
-  a = Genten::Array(5, ttb_real(2.3));
-  a.minus(b);
-  answ = Genten::Array(5, ttb_real(-0.2));
-  ASSERT(a.isEqual(answ, MACHINE_EPSILON), "minus with one input");
-
-  // TIMES
-  a = Genten::Array(5, ttb_real(2.3));
-  a_dev = create_mirror_view( exec_space(), a );
-  Genten::ArrayT<exec_space> b_dev = create_mirror_view( exec_space(), b );
-  deep_copy( a_dev, a );
-  deep_copy( b_dev, b );
-  a_dev.times(b_dev);
-  deep_copy( a, a_dev );
-  answ = Genten::Array(5, ttb_real(5.75));
-  ASSERT(a.isEqual(answ, MACHINE_EPSILON), "a = a.* b");
-
-  // DIVIDE
-  a = Genten::Array(5, ttb_real(2.3));
-  a.divide(b);
-  answ = Genten::Array(5, ttb_real(.92));
-  ASSERT(a.isEqual(answ, MACHINE_EPSILON), "a = a ./ b");
-
-  // PLUS
-  a = Genten::Array(5, ttb_real(2.3));
-  b = Genten::Array(5, ttb_real(2.5));
-  c.plus(a,b);
-  answ = Genten::Array(5, ttb_real(4.8));
-  ASSERT(c.isEqual(answ, MACHINE_EPSILON), "c = a + b");
-
-  // MINUS
-  c.minus(a,b);
-  answ = Genten::Array(5, ttb_real(-0.2));
-  ASSERT(c.isEqual(answ, MACHINE_EPSILON), "c = a - b");
-
-  // TIMES
-  c.times(a,b);
-  answ = Genten::Array(5, ttb_real(5.75));
-  ASSERT(c.isEqual(answ, MACHINE_EPSILON), "c = a .* b");
-
-  // DIVIDE
-  c.divide(a,b);
-  answ = Genten::Array(5, ttb_real(.92));
-  ASSERT(c.isEqual(answ, MACHINE_EPSILON), "c = a ./ b");
-
-  finalize();
+  using exec_space = typename TestFixture::exec_space;
+  ArrayT<exec_space> arr_dev = create_mirror_view(exec_space(), arr);
+  deep_copy(arr_dev, arr);
+  ASSERT_FLOAT_EQ(arr_dev.norm(NormTwo), ans);
 }
 
-void Genten_Test_Array(int infolevel) {
-#ifdef KOKKOS_ENABLE_CUDA
-  Genten_Test_Array_Space<Kokkos::Cuda>(infolevel);
-#endif
-#ifdef KOKKOS_ENABLE_HIP
-  Genten_Test_Array_Space<Kokkos::Experimental::HIP>(infolevel);
-#endif
-#ifdef KOKKOS_ENABLE_OPENMP
-  Genten_Test_Array_Space<Kokkos::OpenMP>(infolevel);
-#endif
-#ifdef KOKKOS_ENABLE_THREADS
-  Genten_Test_Array_Space<Kokkos::Threads>(infolevel);
-#endif
-#ifdef KOKKOS_ENABLE_SERIAL
-  Genten_Test_Array_Space<Kokkos::Serial>(infolevel);
-#endif
+TYPED_TEST(TestArrayT, NormOne) {
+  Array arr(5);
+  ttb_real ans = 0.0;
+  for (int i = 0; i < 5; i++) {
+    arr[i] = pow(-1.0, i) * i / 11.0;
+    ans += i / 11.0;
+  }
+
+  using exec_space = typename TestFixture::exec_space;
+  ArrayT<exec_space> arr_dev = create_mirror_view(exec_space(), arr);
+  deep_copy(arr_dev, arr);
+  ASSERT_FLOAT_EQ(arr_dev.norm(NormOne), ans);
 }
+
+TEST(TestArray, NormInf) {
+  Array arr(5);
+  ttb_real ans = 0.0;
+  for (int i = 0; i < 5; i++) {
+    arr[i] = pow(-1.0, i) * i / 11.0;
+    ans += i / 11.0;
+  }
+
+  ans = 4.0 / 11.0;
+
+  ASSERT_FLOAT_EQ(arr.norm(NormInf), ans);
+}
+
+TEST(TestArray, NNZ) {
+  Array arr(5);
+  for (int i = 0; i < 5; i++) {
+    arr[i] = pow(-1.0, i) * i / 11.0;
+  }
+
+  ASSERT_EQ(arr.nnz(), 4);
+}
+
+TEST(TestArray, Dot) {
+  Array arr_a(5);
+  for (int i = 0; i < 5; i++) {
+    arr_a[i] = pow(-1.0, i) * i / 11.0;
+  }
+
+  Array arr_b(5, 2.0);
+
+  ttb_real ans = 0.0;
+  for (int i = 0; i < 5; i++) {
+    ans += 2.0 * arr_a[i];
+  }
+
+  ASSERT_FLOAT_EQ(arr_a.dot(arr_b), ans);
+}
+
+TEST(TestArray, Equal) {
+  Array arr_a(5);
+  for (int i = 0; i < 5; i++) {
+    arr_a[i] = pow(-1.0, i) * i / 11.0;
+  }
+
+  Array arr_b(5, 2.0);
+  ASSERT_FALSE(arr_b.isEqual(arr_a, MACHINE_EPSILON));
+
+  Array arr_c = arr_a;
+  ASSERT_TRUE(arr_c.isEqual(arr_a, MACHINE_EPSILON));
+}
+
+TEST(TestArray, Times) {
+  Array arr_a(5, 2.5);
+  arr_a.times(3.0);
+  Array arr_answ(arr_a.size(), 7.5);
+  ASSERT_TRUE(arr_a.isEqual(arr_answ, MACHINE_EPSILON));
+}
+
+TEST(TestArray, Invert) {
+  Array arr_a(5, 7.5);
+  arr_a.invert(9.375);
+  Array arr_answ(arr_a.size(), 1.25);
+  ASSERT_TRUE(arr_a.isEqual(arr_answ, MACHINE_EPSILON));
+}
+
+TEST(TestArray, Shift) {
+  Array arr_a(5, 1.25);
+  arr_a.shift(3.0);
+  Array arr_answ(5, 4.25);
+  ASSERT_TRUE(arr_a.isEqual(arr_answ, MACHINE_EPSILON));
+}
+
+TEST(TestArray, Power) {
+  Array arr_a(5, 4.25);
+  arr_a.power(2.0);
+  Array arr_answ(5, 18.0625);
+  ASSERT_TRUE(arr_a.isEqual(arr_answ, MACHINE_EPSILON));
+}
+
+TEST(TestArray, TimesArray) {
+  Array arr_a(5, 18.0625);
+  Array arr_b(5, 2.5);
+  arr_a.times(3.0, arr_b);
+  Array arr_answ(5, 7.5);
+  ASSERT_TRUE(arr_a.isEqual(arr_answ, MACHINE_EPSILON));
+}
+
+TEST(TestArray, InvertArray) {
+  Array arr_a(5, 7.5);
+  Array arr_b = arr_a;
+  arr_a.invert(9.375, arr_b);
+  Array arr_answ(5, 1.25);
+  ASSERT_TRUE(arr_a.isEqual(arr_answ, MACHINE_EPSILON));
+}
+
+TEST(TestArray, ShiftArray) {
+  Array arr_a(5, 1.25);
+  Array arr_b = arr_a;
+  arr_a.shift(3.0, arr_b);
+  Array arr_answ(5, 4.25);
+  ASSERT_TRUE(arr_a.isEqual(arr_answ, MACHINE_EPSILON));
+}
+
+TEST(TestArray, PowerArray) {
+  Array arr_a(5, 4.25);
+  Array arr_b = arr_a;
+  arr_a.power(2.0, arr_b);
+  Array arr_answ(5, 18.0625);
+  ASSERT_TRUE(arr_a.isEqual(arr_answ, MACHINE_EPSILON));
+}
+
+TEST(TestArray, PlusArray) {
+  Array arr_a(5, 2.3);
+  Array arr_b(5, 2.5);
+  arr_a.plus(arr_b);
+  Array arr_answ(5, 4.8);
+  ASSERT_TRUE(arr_a.isEqual(arr_answ, MACHINE_EPSILON));
+}
+
+TEST(TestArray, MinusArray) {
+  Array arr_a(5, 2.3);
+  Array arr_b(5, 2.5);
+  arr_a.minus(arr_b);
+  Array arr_answ(5, -0.2);
+  ASSERT_TRUE(arr_a.isEqual(arr_answ, MACHINE_EPSILON));
+}
+
+TYPED_TEST(TestArrayT, TimesArray) {
+  using exec_space = typename TestFixture::exec_space;
+
+  Array arr_a(5, 2.3);
+  ArrayT<exec_space> arr_a_dev = create_mirror_view(exec_space(), arr_a);
+  deep_copy(arr_a_dev, arr_a);
+
+  Array arr_b(5, 2.5);
+  ArrayT<exec_space> arr_b_dev = create_mirror_view(exec_space(), arr_b);
+  deep_copy(arr_b_dev, arr_b);
+
+  arr_a_dev.times(arr_b_dev);
+  deep_copy(arr_a, arr_a_dev);
+
+  Array arr_answ(5, 5.75);
+  ASSERT_TRUE(arr_a.isEqual(arr_answ, MACHINE_EPSILON));
+}
+
+TEST(TestArray, Divide) {
+  Array arr_a(5, 2.3);
+  Array arr_b(5, 2.5);
+  arr_a.divide(arr_b);
+  Array arr_answ(5, 0.92);
+  ASSERT_TRUE(arr_a.isEqual(arr_answ, MACHINE_EPSILON));
+}
+
+TEST(TestArray, ArrayEqualsArrayPlusArray) {
+  Array arr_a(5, 2.3);
+  Array arr_b(5, 2.5);
+  Array arr_c(5);
+
+  arr_c.plus(arr_a, arr_b);
+  Array arr_answ(5, 4.8);
+  ASSERT_TRUE(arr_c.isEqual(arr_answ, MACHINE_EPSILON));
+}
+
+TEST(TestArray, ArrayEqualsArrayMinusArray) {
+  Array arr_a(5, 2.3);
+  Array arr_b(5, 2.5);
+  Array arr_c(5);
+
+  arr_c.minus(arr_a, arr_b);
+  Array arr_answ(5, -0.2);
+  ASSERT_TRUE(arr_c.isEqual(arr_answ, MACHINE_EPSILON));
+}
+
+TEST(TestArray, ArrayEqualsArrayTimesArray) {
+  Array arr_a(5, 2.3);
+  Array arr_b(5, 2.5);
+  Array arr_c(5);
+
+  arr_c.times(arr_a, arr_b);
+  Array arr_answ(5, 5.75);
+  ASSERT_TRUE(arr_c.isEqual(arr_answ, MACHINE_EPSILON));
+}
+
+TEST(TestArray, ArrayEqualsArrayDivideArray) {
+  Array arr_a(5, 2.3);
+  Array arr_b(5, 2.5);
+  Array arr_c(5);
+
+  arr_c.divide(arr_a, arr_b);
+  Array arr_answ(5, 0.92);
+  ASSERT_TRUE(arr_c.isEqual(arr_answ, MACHINE_EPSILON));
+}
+
+} // namespace UnitTests
+} // namespace Genten

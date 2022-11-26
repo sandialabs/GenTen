@@ -46,6 +46,7 @@
 
 #include "Genten_Util.hpp"
 #include "Genten_IndxArray.hpp"
+#include "Genten_Ptree.hpp"
 
 namespace Genten {
 
@@ -56,7 +57,7 @@ namespace Genten {
     Execution_Space::type exec_space; // Chosen execution space
     Solver_Method::type method; // Solver method ("cp-als", "gcp-sgd", ...)
     ttb_indx rank;       // Rank of decomposition
-    unsigned long seed;  // Random number seed
+    unsigned long seed;  // Random number seed for initial guess
     bool prng;           // Use parallel random number generator
     ttb_indx maxiters;   // Maximum number of iterations
     ttb_real maxsecs;    // Maximum amount of time
@@ -68,6 +69,7 @@ namespace Genten {
     bool rank_def_solver; // Use rank-deficient least-squares solver
     ttb_real rcond;      // Truncation threshold in rank-deficient solver
     ttb_real penalty;    // Regularization penalty
+    std::string dist_guess_method; // Method for distributed initial guess
 
     // MTTKRP options
     MTTKRP_Method::type mttkrp_method; // MTTKRP algorithm
@@ -90,6 +92,8 @@ namespace Genten {
     ttb_indx memory;             // memory parameter for L-BFGS-B
     ttb_indx max_total_iters;    // maximum total iterations for L-BFGS-B
     Hess_Vec_Method::type hess_vec_method; // Hessian-vector product method
+    Hess_Vec_Tensor_Method::type hess_vec_tensor_method; // Hessian-vector product method for tensor-only term
+    Hess_Vec_Prec_Method::type hess_vec_prec_method; // Preconditoning method for hessian-vector product
 
     // GCP options
     GCP_LossFunction::type loss_function_type; // Loss function for GCP
@@ -104,6 +108,7 @@ namespace Genten {
     ttb_indx epoch_iters;                // Number of iterations per epoch
     ttb_indx frozen_iters;               // Number of iterations w/frozen grad
     ttb_indx rng_iters;                  // Number of loops in RNG
+    unsigned long gcp_seed;              // Random number seed for GCP
     ttb_indx num_samples_nonzeros_value; // Nonzero samples for f-est
     ttb_indx num_samples_zeros_value;    // Zero sampels for f-est
     ttb_indx num_samples_nonzeros_grad;  // Nonzero samples for gradient
@@ -114,6 +119,7 @@ namespace Genten {
     ttb_real w_f_z;                      // Zero sample weight for f
     ttb_real w_g_nz;                     // Nonzero sample weight for grad
     ttb_real w_g_z;                      // Zero sample weight for grad
+    bool normalize;                      // Normalize initial Ktensor
     bool hash;                           // Hash tensor instead of sorting
     bool fuse;                           // Fuse sampling and gradient kernels
     bool fuse_sa;                        // Fused with sparse array gradient
@@ -123,6 +129,9 @@ namespace Genten {
     ttb_real adam_beta2;                 // Decay rate of second moment avg.
     ttb_real adam_eps;                   // Shift in ADAM/AdaGrad step
     bool async;                          // Asynchronous SGD solver
+    bool anneal;                         // Do Cosine annealing
+    ttb_real anneal_min_lr;
+    ttb_real anneal_max_lr;
 
     // Streaming GCP options
     GCP_Streaming_Solver::type streaming_solver;  // Streaming solver
@@ -138,6 +147,7 @@ namespace Genten {
 
     // Parse options
     void parse(std::vector<std::string>& args);
+    void parse(const ptree& tree);
 
     // Print help string
     static void print_help(std::ostream& out);
@@ -220,6 +230,53 @@ namespace Genten {
     return T::default_type;
   }
 
+  // A helper function for parsing standard values out of a ptree
+  // where the default value is the current value in val
+  template <typename T, typename U, typename V>
+  void parse_ptree_value(const Genten::ptree& input, const std::string& name,
+                         T& val, const U& lower, const V& upper)
+  {
+    val = input.get<T>(name, val);
+    if (val < lower || val > upper) {
+      std::ostringstream error_string;
+      error_string << "Bad input: " << name << " " << val
+                   << ",  must be in the range (" << lower << ", " << upper
+                   << ")" << std::endl;
+      Genten::error(error_string.str());
+    }
+  }
+  void parse_ptree_value(const Genten::ptree& input, const std::string& name,
+                         bool& val);
+  void parse_ptree_value(const Genten::ptree& input, const std::string& name,
+                         std::string& val);
+
+  template <typename T, typename U, typename V>
+  void parse_ptree_value(const Genten::ptree& input, const std::string& name,
+                         std::vector<T>& val,
+                         const U& lower, const V& upper)
+  {
+    val = input.get<std::vector<T> >(name);
+    int nv = val.size();
+    for (const auto& v : val) {
+      if (v < lower || v > upper) {
+        std::ostringstream error_string;
+        error_string << "Bad input: " << name << " " << v
+                     << ",  must be in the range (" << lower << ", " << upper
+                     << ")" << std::endl;
+        Genten::error(error_string.str());
+      }
+    }
+  }
+
+  // A helper function for parsing an enum out of a ptree where T is the
+  // struct using the pattern in Genten_Util.hpp
+  template <typename T>
+  void parse_ptree_enum(const Genten::ptree& input, const std::string& name,
+                        typename T::type& val)
+  {
+    val = Genten::parse_enum<T>(input.get<std::string>(name, T::names[val]));
+  }
+
   // Convert (argc,argv) to list of strings
   std::vector<std::string> build_arg_list(int argc, char** argv);
 
@@ -252,6 +309,9 @@ namespace Genten {
       else if (space_prop::is_hip)
         mttkrp_method = MTTKRP_Method::Perm;
 
+      else if (space_prop::is_sycl)
+        mttkrp_method = MTTKRP_Method::Perm;
+
       // Otherwise use Perm or Duplicated on CPU depending on the method
       else {
         if (method == Solver_Method::GCP_SGD)
@@ -269,9 +329,9 @@ namespace Genten {
         mttkrp_all_method = MTTKRP_All_Method::Single;
 
       // Always use atomic on Cuda if fused
-      if (space_prop::is_cuda &&
-          method == Solver_Method::GCP_SGD &&
-          sampling_type == GCP_Sampling::SemiStratified && fuse)
+      else if (space_prop::is_cuda &&
+               method == Solver_Method::GCP_SGD &&
+               sampling_type == GCP_Sampling::SemiStratified && fuse)
         mttkrp_all_method = MTTKRP_All_Method::Atomic;
 
       // Use Atomic on Cuda if it supports fast atomics for ttb_real.
@@ -287,6 +347,9 @@ namespace Genten {
       else if (space_prop::is_hip)
         mttkrp_all_method = MTTKRP_All_Method::Iterated;
 
+      else if (space_prop::is_sycl)
+        mttkrp_all_method = MTTKRP_All_Method::Iterated;
+
       // Otherwise use Iterated or Duplicated depending on the method
       else {
         if (method == Solver_Method::GCP_SGD)
@@ -294,6 +357,24 @@ namespace Genten {
         else
           mttkrp_all_method = MTTKRP_All_Method::Iterated;
       }
+    }
+
+    // Compute default hess-vec-tensor method
+    if (hess_vec_tensor_method == Hess_Vec_Tensor_Method::Default) {
+
+      // Always use Single if there is only a single thread
+      if (space_prop::concurrency() == 1)
+        hess_vec_tensor_method = Hess_Vec_Tensor_Method::Single;
+
+      // Use Atomic on Cuda if it supports fast atomics for ttb_real.
+      // This is true with float on all arch's or float/double on Pascal (6.0)
+      // or later
+      else if (space_prop::is_cuda && (space_prop::cuda_arch() >= 600 ||
+                                  sizeof(ttb_real) == 4))
+        hess_vec_tensor_method = Hess_Vec_Tensor_Method::Atomic;
+
+      else
+        hess_vec_tensor_method = Hess_Vec_Tensor_Method::Perm;
     }
 
     // Fix invalid choices from the user:
@@ -331,6 +412,14 @@ namespace Genten {
         out << "Fused semi-stratified sampling/MTTKRP method requires atomic"
             << " on Cuda.  Changing MTTKRP-All method to atomic." << std::endl;
       }
+      if (method == Solver_Method::CP_OPT &&
+          hess_vec_method == Hess_Vec_Method::Full &&
+          (hess_vec_tensor_method == Hess_Vec_Tensor_Method::Single ||
+           hess_vec_tensor_method == Hess_Vec_Tensor_Method::Duplicated)) {
+        out << "hess-vec tensor method " << Hess_Vec_Tensor_Method::names[hess_vec_tensor_method]
+            << " is invalid on Cuda.  Changing method to atomic." << std::endl;
+        hess_vec_tensor_method = Hess_Vec_Tensor_Method::Atomic;
+      }
     } else if (space_prop::is_hip) {
       if (mttkrp_method == MTTKRP_Method::Single ||
           mttkrp_method == MTTKRP_Method::Duplicated) {
@@ -353,6 +442,45 @@ namespace Genten {
         mttkrp_all_method = MTTKRP_All_Method::Atomic;
         out << "Fused semi-stratified sampling/MTTKRP method requires atomic"
             << " on HIP.  Changing MTTKRP-All method to atomic." << std::endl;
+      }
+      if (method == Solver_Method::CP_OPT &&
+          hess_vec_method == Hess_Vec_Method::Full &&
+          (hess_vec_tensor_method == Hess_Vec_Tensor_Method::Single ||
+           hess_vec_tensor_method == Hess_Vec_Tensor_Method::Duplicated)) {
+        out << "hess-vec tensor method " << Hess_Vec_Tensor_Method::names[hess_vec_tensor_method]
+            << " is invalid on HIP.  Changing method to atomic." << std::endl;
+        hess_vec_tensor_method = Hess_Vec_Tensor_Method::Atomic;
+      }
+    } else if (space_prop::is_sycl) {
+      if (mttkrp_method == MTTKRP_Method::Single ||
+          mttkrp_method == MTTKRP_Method::Duplicated) {
+        out << "MTTKRP method " << MTTKRP_Method::names[mttkrp_method]
+            << " is invalid for SYCL, changing to ";
+        mttkrp_method = MTTKRP_Method::Perm;
+        out << MTTKRP_Method::names[mttkrp_method] << "." << std::endl;
+      }
+      if (mttkrp_all_method == MTTKRP_All_Method::Single ||
+          mttkrp_all_method == MTTKRP_All_Method::Duplicated) {
+        out << "MTTKRP-All method "
+            << MTTKRP_All_Method::names[mttkrp_all_method]
+            << " is invalid for SYCL, changing to ";
+        mttkrp_all_method = MTTKRP_All_Method::Iterated;
+        out << MTTKRP_All_Method::names[mttkrp_all_method] << "." << std::endl;
+      }
+      if (method == Solver_Method::GCP_SGD &&
+          sampling_type == GCP_Sampling::SemiStratified &&
+          fuse && mttkrp_all_method != MTTKRP_All_Method::Atomic) {
+        mttkrp_all_method = MTTKRP_All_Method::Atomic;
+        out << "Fused semi-stratified sampling/MTTKRP method requires atomic"
+            << " on SYCL.  Changing MTTKRP-All method to atomic." << std::endl;
+      }
+      if (method == Solver_Method::CP_OPT &&
+          hess_vec_method == Hess_Vec_Method::Full &&
+          (hess_vec_tensor_method == Hess_Vec_Tensor_Method::Single ||
+           hess_vec_tensor_method == Hess_Vec_Tensor_Method::Duplicated)) {
+        out << "hess-vec tensor method " << Hess_Vec_Tensor_Method::names[hess_vec_tensor_method]
+            << " is invalid on SYCL.  Changing method to atomic." << std::endl;
+        hess_vec_tensor_method = Hess_Vec_Tensor_Method::Atomic;
       }
     }
   }

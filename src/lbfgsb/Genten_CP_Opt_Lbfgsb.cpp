@@ -180,6 +180,32 @@ namespace Genten {
     // does not include gradients w.r.t. weights
     u.distribute(0);
 
+    if (algParams.printitn > 0) {
+      const ttb_indx nc = u.ncomponents();
+      std::cout << std::endl
+                << "CP-OPT (L-BFGS-B):" << std::endl;
+      std::cout << "  CP Rank: " << nc << std::endl
+                << "  Lower bound: ";
+      if (algParams.lower == -DBL_MAX)
+        std::cout << "-infinity";
+      else
+        std::cout << std::setprecision(2) << std::scientific
+                  << algParams.lower;
+      std::cout << std::endl
+                << "  Upper bound: ";
+      if (algParams.upper == DBL_MAX)
+        std::cout << "infinity";
+      else
+        std::cout << std::setprecision(2) << std::scientific
+                  << algParams.upper;
+      std::cout  << std::endl
+                 << "  Gradient method: "
+                 << MTTKRP_All_Method::names[algParams.mttkrp_all_method];
+      if (algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated)
+        std::cout << " (" << MTTKRP_Method::names[algParams.mttkrp_method] << ")";
+      std::cout << " MTTKRP" << std::endl << std::endl;
+    }
+
     // Solution vector
     kokkos_vector z(u); // this is doesn't copy the values
     z.copyFromKtensor(u);
@@ -318,7 +344,8 @@ namespace Genten {
         std::cout << Impl::findTaskString(task) << std::endl;
       const ttb_real fit = ttb_real(1.0) - f / (ttb_real(0.5)*nrm_X_sq);
       std::cout << "Final fit = " << fit << std::endl;
-      std::cout << "Total time = " << timer.getTotalTime(0) << std::endl;
+      std::cout << "Total time = " << timer.getTotalTime(0) << std::endl
+                << std::endl;
     }
   }
 

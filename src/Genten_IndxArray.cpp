@@ -113,6 +113,13 @@ operator==(const Genten::IndxArrayT<ExecSpace> & a) const
 
 template <typename ExecSpace>
 ttb_bool Genten::IndxArrayT<ExecSpace>::
+operator!=(const Genten::IndxArrayT<ExecSpace> & a) const
+{
+  return !operator==(a);
+}
+
+template <typename ExecSpace>
+ttb_bool Genten::IndxArrayT<ExecSpace>::
 operator<=(const Genten::IndxArrayT<ExecSpace> & a) const
 {
   const ttb_indx sz = data.extent(0);

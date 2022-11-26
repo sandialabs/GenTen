@@ -40,6 +40,8 @@
 
 #include "Genten_AlgParams.hpp"
 #include "Genten_FacMatrix.hpp"
+#include "Genten_JSON_Schema.hpp"
+#include "Genten_DistContext.hpp"
 
 Genten::AlgParams::AlgParams() :
   exec_space(Execution_Space::default_type),
@@ -57,6 +59,7 @@ Genten::AlgParams::AlgParams() :
   rank_def_solver(false),
   rcond(1e-8),
   penalty(0.0),
+  dist_guess_method("serial"),
   mttkrp_method(MTTKRP_Method::default_type),
   mttkrp_all_method(MTTKRP_All_Method::default_type),
   mttkrp_nnz_tile_size(128),
@@ -73,6 +76,8 @@ Genten::AlgParams::AlgParams() :
   memory(5),
   max_total_iters(5000),
   hess_vec_method(Hess_Vec_Method::default_type),
+  hess_vec_tensor_method(Hess_Vec_Tensor_Method::default_type),
+  hess_vec_prec_method(Hess_Vec_Prec_Method::default_type),
   loss_function_type(Genten::GCP_LossFunction::default_type),
   loss_eps(1.0e-10),
   gcp_tol(-DOUBLE_MAX),
@@ -83,6 +88,7 @@ Genten::AlgParams::AlgParams() :
   epoch_iters(1000),
   frozen_iters(1),
   rng_iters(128),
+  gcp_seed(0),
   num_samples_nonzeros_value(0),
   num_samples_zeros_value(0),
   num_samples_nonzeros_grad(0),
@@ -93,6 +99,7 @@ Genten::AlgParams::AlgParams() :
   w_f_z(-1.0),
   w_g_nz(-1.0),
   w_g_z(-1.0),
+  normalize(true),
   hash(false),
   fuse(false),
   fuse_sa(false),
@@ -102,6 +109,9 @@ Genten::AlgParams::AlgParams() :
   adam_beta2(0.999),
   adam_eps(1.0e-8),
   async(false),
+  anneal(false),
+  anneal_min_lr(1e-14),
+  anneal_max_lr(1e-10),
   streaming_solver(Genten::GCP_Streaming_Solver::default_type),
   history_method(Genten::GCP_Streaming_History_Method::default_type),
   window_method(Genten::GCP_Streaming_Window_Method::default_type),
@@ -125,7 +135,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                           Genten::Solver_Method::types,
                           Genten::Solver_Method::names);
   rank = parse_ttb_indx(args, "--rank", rank, 1, INT_MAX);
-  seed = parse_ttb_indx(args, "--seed", seed, 0, INT_MAX);
+  seed = parse_ttb_indx(args, "--seed", seed, 0, ULONG_MAX);
   prng = parse_ttb_bool(args, "--prng", "--no-prng", prng);
   maxiters = parse_ttb_indx(args, "--maxiters", maxiters, 1, INT_MAX);
   maxsecs = parse_ttb_real(args, "--maxsecs", maxsecs, -1.0, DOUBLE_MAX);
@@ -138,6 +148,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                                    "--no-rank-def-solver", rank_def_solver);
   rcond = parse_ttb_real(args, "--rcond", rcond, 0.0, DOUBLE_MAX);
   penalty = parse_ttb_real(args, "--penalty", penalty, 0.0, DOUBLE_MAX);
+  dist_guess_method = parse_string(args, "--dist-guess", dist_guess_method);
 
   // MTTKRP options
   mttkrp_method = parse_ttb_enum(args, "--mttkrp-method", mttkrp_method,
@@ -178,10 +189,22 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   pgtol = parse_ttb_real(args, "--pgtol", pgtol, 0.0, DOUBLE_MAX);
   memory = parse_ttb_indx(args, "--memory", memory, 0, INT_MAX);
   max_total_iters = parse_ttb_indx(args, "--total-iters", max_total_iters, 0, INT_MAX);
-  hess_vec_method = parse_ttb_enum(args, "--hessian", hess_vec_method,
-                                 Genten::Hess_Vec_Method::num_types,
-                                 Genten::Hess_Vec_Method::types,
-                                 Genten::Hess_Vec_Method::names);
+  hess_vec_method = parse_ttb_enum(args, "--hess-vec", hess_vec_method,
+                                   Genten::Hess_Vec_Method::num_types,
+                                   Genten::Hess_Vec_Method::types,
+                                   Genten::Hess_Vec_Method::names);
+  hess_vec_tensor_method = parse_ttb_enum(
+    args, "--hess-vec-tensor",
+    hess_vec_tensor_method,
+    Genten::Hess_Vec_Tensor_Method::num_types,
+    Genten::Hess_Vec_Tensor_Method::types,
+    Genten::Hess_Vec_Tensor_Method::names);
+  hess_vec_prec_method = parse_ttb_enum(
+    args, "--hess-vec-prec",
+    hess_vec_prec_method,
+    Genten::Hess_Vec_Prec_Method::num_types,
+    Genten::Hess_Vec_Prec_Method::types,
+    Genten::Hess_Vec_Prec_Method::names);
 
   // GCP options
   loss_function_type = parse_ttb_enum(args, "--type", loss_function_type,
@@ -206,6 +229,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
     parse_ttb_indx(args, "--frozeniters", frozen_iters, 1, INT_MAX);
   rng_iters =
     parse_ttb_indx(args, "--rngiters", rng_iters, 1, INT_MAX);
+  gcp_seed = parse_ttb_indx(args, "--gcp-seed", gcp_seed, 0, ULONG_MAX);
   num_samples_nonzeros_value =
     parse_ttb_indx(args, "--fnzs", num_samples_nonzeros_value, 0, INT_MAX);
   num_samples_zeros_value =
@@ -222,6 +246,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   w_f_z = parse_ttb_real(args, "--fzw", w_f_z, -1.0, DOUBLE_MAX);
   w_g_nz = parse_ttb_real(args, "--gnzw", w_g_nz, -1.0, DOUBLE_MAX);
   w_g_z = parse_ttb_real(args, "--gzw", w_g_z, -1.0, DOUBLE_MAX);
+  normalize = parse_ttb_bool(args, "--normalize", "--no-normalize", normalize);
   hash = parse_ttb_bool(args, "--hash", "--no-hash", hash);
   fuse = parse_ttb_bool(args, "--fuse", "--no-fuse", fuse);
   fuse_sa = parse_ttb_bool(args, "--fuse-sa", "--no-fuse-sa", fuse_sa);
@@ -234,6 +259,11 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   adam_beta2 = parse_ttb_real(args, "--adam-beta2", adam_beta2, 0.0, 1.0);
   adam_eps = parse_ttb_real(args, "--adam-eps", adam_eps, 0.0, 1.0);
   async = parse_ttb_bool(args, "--async", "--sync", async);
+  anneal = parse_ttb_bool(args, "--anneal", "--no-anneal", anneal);
+  anneal_min_lr = parse_ttb_real(args, "--anneal-min-lr", anneal_min_lr, 0.0, 1.0);
+  anneal_max_lr = parse_ttb_real(args, "--anneal-max-lr", anneal_max_lr, 0.0, 1.0);
+
+  // Streaming GCP
   streaming_solver = parse_ttb_enum(args, "--streaming-solver",
                                     streaming_solver,
                                     Genten::GCP_Streaming_Solver::num_types,
@@ -256,6 +286,150 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                                   DOUBLE_MAX);
   factor_penalty = parse_ttb_real(args, "--factor-penalty", factor_penalty, 0.0,
                                   DOUBLE_MAX);
+}
+
+void Genten::AlgParams::parse(const ptree& input)
+{
+  // validate input
+  ptree schema(json_schema);
+  input.validate(schema);
+
+  // Generic options
+  parse_ptree_enum<Execution_Space>(input, "exec-space", exec_space);
+  parse_ptree_enum<Solver_Method>(input, "solver-method", method);
+  parse_ptree_value(input, "debug", debug);
+  parse_ptree_value(input, "timings", timings);
+
+  // generic solver params may appear in multiple places, so make a lambda to
+  // parse them
+  auto parse_generic_solver_params = [&](const ptree& tree) {
+    parse_ptree_value(tree, "maxiters", maxiters, 1, INT_MAX);
+    parse_ptree_value(tree, "maxsecs", maxsecs, -1.0, DOUBLE_MAX);
+    parse_ptree_value(tree, "tol", tol, 0.0, DOUBLE_MAX);
+    parse_ptree_value(tree, "printitn", printitn, 0, INT_MAX);
+
+  };
+
+  // mttkrp tree may appear in multiple places, so make a lambda to parse it
+  auto parse_mttkrp = [&](const ptree& tree) {
+    auto mttkrp_input_o = tree.get_child_optional("mttkrp");
+    if (mttkrp_input_o) {
+      auto& mttkrp_input = *mttkrp_input_o;
+      parse_ptree_enum<MTTKRP_Method>(mttkrp_input, "method", mttkrp_method);
+      parse_ptree_enum<MTTKRP_All_Method>(mttkrp_input, "all-method", mttkrp_all_method);
+      parse_ptree_value(mttkrp_input, "nnz-tile-size", mttkrp_nnz_tile_size,
+                        1, INT_MAX);
+      parse_ptree_value(mttkrp_input, "duplicated-tile-size",
+                        mttkrp_duplicated_factor_matrix_tile_size, 0, INT_MAX);
+      parse_ptree_value(mttkrp_input, "duplicated-threshold",
+                        mttkrp_duplicated_threshold, -1.0, DOUBLE_MAX);
+      parse_ptree_value(mttkrp_input, "warmup", warmup);
+    }
+  };
+
+  // ktensor
+  auto ktensor_input_o = input.get_child_optional("k-tensor");
+  if (ktensor_input_o) {
+    auto& ktensor_input = *ktensor_input_o;
+    parse_ptree_value(ktensor_input, "rank", rank, 1, INT_MAX);
+    parse_ptree_value(ktensor_input, "seed", seed, 0, ULONG_MAX);
+    parse_ptree_value(ktensor_input, "prng", prng);
+    parse_ptree_value(ktensor_input, "distributed-guess", dist_guess_method);
+  }
+
+  // CP-ALS
+  auto cpals_input_o = input.get_child_optional("cp-als");
+  if (cpals_input_o) {
+    auto& cpals_input = *cpals_input_o;
+    parse_generic_solver_params(cpals_input);
+    parse_ptree_value(cpals_input, "full-gram", full_gram);
+    parse_ptree_value(cpals_input, "rank-def-solver", rank_def_solver);
+    parse_ptree_value(cpals_input, "rcond", rcond, 0.0, DOUBLE_MAX);
+    parse_ptree_value(cpals_input, "penalty", penalty, 0.0, DOUBLE_MAX);
+    parse_mttkrp(cpals_input);
+  }
+
+  // TTM
+  auto ttm_input_o = input.get_child_optional("ttm");
+  if (ttm_input_o) {
+    auto& ttm_input = *ttm_input_o;
+    parse_ptree_enum<TTM_Method>(ttm_input, "method", ttm_method);
+  }
+
+  // CP-OPT
+  auto cpopt_input_o = input.get_child_optional("cp-opt");
+  if (cpopt_input_o) {
+    auto& cpopt_input = *cpopt_input_o;
+    parse_ptree_enum<Opt_Method>(cpopt_input, "method", opt_method);
+    parse_generic_solver_params(cpopt_input);
+    parse_ptree_value(cpopt_input, "lower", lower, -DOUBLE_MAX, DOUBLE_MAX);
+    parse_ptree_value(cpopt_input, "upper", upper, -DOUBLE_MAX, DOUBLE_MAX);
+    parse_ptree_value(cpopt_input, "rol-file", rolfilename);
+    parse_ptree_value(cpopt_input, "factr", factr, 0.0, DOUBLE_MAX);
+    parse_ptree_value(cpopt_input, "pgtol", pgtol, 0.0, DOUBLE_MAX);
+    parse_ptree_value(cpopt_input, "memory", memory, 0, INT_MAX);
+    parse_ptree_value(cpopt_input, "total-iters", max_total_iters, 0, INT_MAX);
+    parse_ptree_enum<Hess_Vec_Method>(cpopt_input, "hess-vec", hess_vec_method);
+    parse_ptree_enum<Hess_Vec_Tensor_Method>(cpopt_input, "hess-vec-tensor", hess_vec_tensor_method);
+    parse_ptree_enum<Hess_Vec_Prec_Method>(cpopt_input, "hess-vec-prec", hess_vec_prec_method);
+    parse_ptree_value(cpopt_input, "penalty", penalty, 0.0, DOUBLE_MAX);
+    parse_mttkrp(cpopt_input);
+  }
+
+  // GCP
+  auto gcp_input_o = input.get_child_optional("gcp-sgd");
+  if (gcp_input_o) {
+    auto& gcp_input = *gcp_input_o;
+    parse_generic_solver_params(gcp_input);
+    parse_mttkrp(gcp_input);
+    parse_ptree_enum<GCP_LossFunction>(gcp_input, "type", loss_function_type);
+    parse_ptree_value(gcp_input, "eps", loss_eps, 0.0, 1.0);
+
+    // GCP-SGD
+    parse_ptree_enum<GCP_Sampling>(gcp_input, "sampling", sampling_type);
+    parse_ptree_value(gcp_input, "rate", rate, 0.0, DOUBLE_MAX);
+    parse_ptree_value(gcp_input, "decay", decay, 0.0, 1.0);
+    parse_ptree_value(gcp_input, "fails", max_fails, 0, INT_MAX);
+    parse_ptree_value(gcp_input, "epochiters", epoch_iters, 1, INT_MAX);
+    parse_ptree_value(gcp_input, "frozeniters", frozen_iters, 1, INT_MAX);
+    parse_ptree_value(gcp_input, "rngiters", rng_iters, 1, INT_MAX);
+    parse_ptree_value(gcp_input, "seed", gcp_seed, 0, ULONG_MAX);
+    parse_ptree_value(gcp_input, "fnzs", num_samples_nonzeros_value, 0, INT_MAX);
+    parse_ptree_value(gcp_input, "fzs", num_samples_zeros_value, 0, INT_MAX);
+    parse_ptree_value(gcp_input, "gnzs", num_samples_nonzeros_grad, 0, INT_MAX);
+    parse_ptree_value(gcp_input, "gzs", num_samples_zeros_grad, 0, INT_MAX);
+    parse_ptree_value(gcp_input, "oversample", oversample_factor, 1.0, DOUBLE_MAX);
+    parse_ptree_value(gcp_input, "bulk-factor", bulk_factor, 1, INT_MAX);
+    parse_ptree_value(gcp_input, "fnzw", w_f_nz, -1.0, DOUBLE_MAX);
+    parse_ptree_value(gcp_input, "fzw", w_f_z, -1.0, DOUBLE_MAX);
+    parse_ptree_value(gcp_input, "gnzw", w_g_nz, -1.0, DOUBLE_MAX);
+    parse_ptree_value(gcp_input, "gzw", w_g_z, -1.0, DOUBLE_MAX);
+    parse_ptree_value(gcp_input, "normalize", normalize);
+    parse_ptree_value(gcp_input, "hash", hash);
+    parse_ptree_value(gcp_input, "fuse", fuse);
+    parse_ptree_value(gcp_input, "fuse-sa", fuse_sa);
+    parse_ptree_value(gcp_input, "fit", compute_fit);
+    parse_ptree_enum<GCP_Step>(gcp_input, "step", step_type);
+    parse_ptree_value(gcp_input, "adam-beta1", adam_beta1, 0.0, 1.0);
+    parse_ptree_value(gcp_input, "adam-beta2", adam_beta2, 0.0, 1.0);
+    parse_ptree_value(gcp_input, "adam-eps", adam_eps, 0.0, 1.0);
+    parse_ptree_value(gcp_input, "async", async);
+    parse_ptree_value(gcp_input, "anneal", anneal);
+    parse_ptree_value(gcp_input, "anneal-min-lr", anneal_min_lr, 0.0, 1.0);
+    parse_ptree_value(gcp_input, "anneal-max-lr", anneal_max_lr, 0.0, 1.0);
+  }
+
+  // Streaming GCP
+  auto sgcp_input_o = input.get_child_optional("streaming-gcp");
+  if (sgcp_input_o) {
+    parse_ptree_enum<GCP_Streaming_Solver>(sgcp_input, "solver", streaming-solver);
+    parse_ptree_enum<GCP_Streaming_History_Method>(sgcp_input, "history-method", history_method);
+    parse_ptree_enum<GCP_Streaming_Window_Method>(sgcp_input, "window-method", window_method);
+    parse_ptree_value(sgcp_input, "window-size", window_size, 0, INT_MAX);
+    parse_ptree_value(sgcp_input, "window-weight", window_weight, 0.0, DOUBLE_MAX);
+    parse_ptree_value(sgcp_input, "window-penalty", window_penalty, 0.0, DOUBLE_MAX);
+    parse_ptree_value(sgcp_input, "factor-penalty", factor_penalty, 0.0, DOUBLE_MAX);
+  }
 }
 
 void Genten::AlgParams::print_help(std::ostream& out)
@@ -288,6 +462,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --rank-def-solver  use rank-deficient least-squares solver (GELSY) with full-gram formluation (useful when gram matrix is singular)" << std::endl;
   out << "  --rcond <float>    truncation parameter for rank-deficient solver" << std::endl;
   out << "  --penalty <float>  penalty term for regularization (useful if gram matrix is singular)" << std::endl;
+  out << "  --dist-guess <string> method for distributed initial guess" << std::endl;
 
   out << std::endl;
   out << "MTTKRP options:" << std::endl;
@@ -334,13 +509,29 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --factr <float>    factr parameter for L-BFGS-B" << std::endl;
   out << "  --pgtol <float>    pgtol parameter for L-BFGS-B" << std::endl;
   out << "  --memory <int>     memory parameter for L-BFGS-B" << std::endl;
-  out << "  --total-iters <int>  max total iterations for L-BFGS-B" << std::endl;
-  out << "  --hessian <method> Hessian-vector product method: ";
+  out << "  --total-iters <int> max total iterations for L-BFGS-B" << std::endl;
+  out << "  --hess-vec <method> Hessian-vector product method: ";
   for (unsigned i=0; i<Genten::Hess_Vec_Method::num_types; ++i) {
     out << Genten::Hess_Vec_Method::names[i];
     if (i != Genten::Hess_Vec_Method::num_types-1)
       out << ", ";
   }
+  out << std::endl;
+  out << "  --hess-vec-tensor <method> Hessian-vector product method for tensor term: ";
+  for (unsigned i=0; i<Genten::Hess_Vec_Tensor_Method::num_types; ++i) {
+    out << Genten::Hess_Vec_Tensor_Method::names[i];
+    if (i != Genten::Hess_Vec_Tensor_Method::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
+  out << "  --hess-vec-prec <method> Preconditioning method for Hessian-vector product: ";
+  for (unsigned i=0; i<Genten::Hess_Vec_Prec_Method::num_types; ++i) {
+    out << Genten::Hess_Vec_Prec_Method::names[i];
+    if (i != Genten::Hess_Vec_Prec_Method::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
+  out << "  --penalty <float>  Tikhonov regularization penalty multiplier" << std::endl;
   out << std::endl;
   out << "GCP options:" << std::endl;
   out << "  --type <type>      loss function type for GCP: ";
@@ -369,6 +560,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --frozeniters <int> inner iterations with frozen gradient"
       << std::endl;
   out << "  --rngiters <int>   iteration loops in parallel RNG" << std::endl;
+  out << "  --gcp-seed <int>   seed for sampling in GCP (set to 0 for random seed)" << std::endl;
   out << "  --fnzs <int>       nonzero samples for f-est" << std::endl;
   out << "  --fzs <int>        zero samples for f-est" << std::endl;
   out << "  --gnzs <int>       nonzero samples for gradient" << std::endl;
@@ -379,6 +571,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --fzw <float>      zero sample weight for f-est" << std::endl;
   out << "  --gnzw <float>     nonzero sample weight for gradient" << std::endl;
   out << "  --gzw <float>      zero sample weight for gradient" << std::endl;
+  out << "  --normalize        normalize initial Ktensor" << std::endl;
   out << "  --hash             compute hash map for zero sampling" << std::endl;
   out << "  --bulk-factor <int> factor for bulk zero sampling" << std::endl;
   out << "  --fuse             fuse gradient sampling and MTTKRP" << std::endl;
@@ -390,6 +583,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
     if (i != Genten::GCP_Step::num_types-1)
       out << ", ";
   }
+  out << std::endl;
   out << "  --adam-beta1       Decay rate for 1st moment avg." << std::endl;
   out << "  --adam-beta2       Decay rate for 2nd moment avg." << std::endl;
   out << "  --adam-eps         Shift in ADAM step." << std::endl;
@@ -418,7 +612,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
       out << ", ";
   }
   out << std::endl;
-  out << "  --window-size       Number of terms in streaming history window."
+  out << "  --window-size       Number of slices in streaming history window."
       << std::endl;
   out << "  --window-weight     Multiplier for each streaming window term."
       << std::endl;
@@ -446,6 +640,7 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  rank-def-solver = " << (rank_def_solver ? "true" : "false") << std::endl;
   out << "  rcond = " << rcond << std::endl;
   out << "  penalty = " << penalty << std::endl;
+  out << "  dist-guess = " << dist_guess_method << std::endl;
 
   out << std::endl;
   out << "MTTKRP options:" << std::endl;
@@ -469,18 +664,21 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  lower = " << lower << std::endl;
   out << "  upper = " << upper << std::endl;
   out << "  rol = " << rolfilename << std::endl;
-  out <<   "factr = " << factr << std::endl;
-  out <<   "pgtol = " << pgtol << std::endl;
-  out <<   "memory = " << memory << std::endl;
-  out <<   "total-iters = " << max_total_iters << std::endl;
-  out << "  hessian = " << Genten::Hess_Vec_Method::names[hess_vec_method] << std::endl;
+  out << "  factr = " << factr << std::endl;
+  out << "  pgtol = " << pgtol << std::endl;
+  out << "  memory = " << memory << std::endl;
+  out << "  total-iters = " << max_total_iters << std::endl;
+  out << "  hess-vec = " << Genten::Hess_Vec_Method::names[hess_vec_method] << std::endl;
+  out << "  hess-vec-tensor = " << Genten::Hess_Vec_Tensor_Method::names[hess_vec_tensor_method] << std::endl;
+  out << "  hess-vec-prec = " << Genten::Hess_Vec_Prec_Method::names[hess_vec_prec_method] << std::endl;
+  out << "  penalty = " << penalty << std::endl;
 
   out << std::endl;
   out << "GCP options:" << std::endl;
   out << "  type = " << Genten::GCP_LossFunction::names[loss_function_type]
       << std::endl;
-  out <<   "eps = " << loss_eps << std::endl;
-  out <<   "gcp-tol = " << gcp_tol << std::endl;
+  out << "  eps = " << loss_eps << std::endl;
+  out << "  gcp-tol = " << gcp_tol << std::endl;
 
   out << std::endl;
   out << "GCP-Opt options:" << std::endl;
@@ -496,6 +694,7 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  epochiters = " << epoch_iters << std::endl;
   out << "  frozeniters = " << frozen_iters << std::endl;
   out << "  rngiters = " << rng_iters << std::endl;
+  out << "  gcp-seed = " << gcp_seed << std::endl;
   out << "  fnzs = " << num_samples_nonzeros_value << std::endl;
   out << "  fzs = " << num_samples_zeros_value << std::endl;
   out << "  gnzs = " << num_samples_nonzeros_grad << std::endl;
@@ -506,6 +705,7 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  gnzw = " << w_g_nz << std::endl;
   out << "  gzw = " << w_g_z << std::endl;
   out << "  bulk-factor = " << bulk_factor << std::endl;
+  out << "  normalize = " << (normalize ? "true" : "false") << std::endl;
   out << "  hash = " << (hash ? "true" : "false") << std::endl;
   out << "  fuse = " << (fuse ? "true" : "false") << std::endl;
   out << "  fuse-sa = " << (fuse_sa ? "true" : "false") << std::endl;
@@ -515,6 +715,11 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  adam-beta2 = " << adam_beta2 << std::endl;
   out << "  adam-eps = " << adam_eps << std::endl;
   out << "  async = " << (async ? "true" : "false") << std::endl;
+  out << "  anneal = " << (anneal ? "true" : "false") << std::endl;
+  if(anneal){
+    out << "  anneal-min-lr = " << anneal_min_lr << std::endl;
+    out << "  anneal-max-lr = " << anneal_max_lr << std::endl;
+  }
 
   out << std::endl;
   out << "Streaming GCP options:" << std::endl;
@@ -756,6 +961,20 @@ Genten::parse_ttb_indx_array(std::vector<std::string>& args,
   return default_value;
 }
 
+void
+Genten::parse_ptree_value(const Genten::ptree& input, const std::string& name,
+                          bool& val)
+{
+  val = input.get<bool>(name, val);
+}
+
+void
+Genten::parse_ptree_value(const Genten::ptree& input, const std::string& name,
+                          std::string& val)
+{
+  val = input.get<std::string>(name, val);
+}
+
 std::vector<std::string>
 Genten::build_arg_list(int argc, char** argv)
 {
@@ -772,9 +991,11 @@ Genten::check_and_print_unused_args(const std::vector<std::string>& args,
   if (args.size() == 0)
     return false;
 
-  out << std::endl << "Error!  Unknown command line arguments: ";
-  for (auto arg : args)
-    out << arg << " ";
-  out << std::endl << std::endl;
+  if (Genten::DistContext::rank() == 0) {
+    out << std::endl << "Error!  Unknown command line arguments: ";
+    for (auto arg : args)
+      out << arg << " ";
+    out << std::endl << std::endl;
+  }
   return true;
 }

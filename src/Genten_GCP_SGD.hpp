@@ -47,6 +47,7 @@
 #include "Genten_AlgParams.hpp"
 #include "Genten_GCP_SGD_Step.hpp"
 #include "Genten_GCP_StreamingHistory.hpp"
+#include "Genten_PerfHistory.hpp"
 
 namespace Genten {
 
@@ -105,6 +106,7 @@ namespace Genten {
                 const AlgParams& algParams,
                 ttb_indx& numIters,
                 ttb_real& resNorm,
+                PerfHistory& perfInfo,
                 std::ostream& out);
 
 }

@@ -47,8 +47,8 @@ CMAKE_MINIMUM_REQUIRED (VERSION 3.16)
 #---- to the directory where cmake has been invoked.
 project(Genten VERSION "0.0.0")
 
-#---- Require C++14 without GNU extensions
-SET(CMAKE_CXX_STANDARD 14)
+#---- Require C++17 without GNU extensions
+SET(CMAKE_CXX_STANDARD 17)
 SET(CMAKE_CXX_EXTENSIONS OFF)
 
 #------------------------------------------------------------
@@ -56,7 +56,8 @@ SET(CMAKE_CXX_EXTENSIONS OFF)
 #------------------------------------------------------------
 # Note: OPTION is a binary thing and can't have string in them
 OPTION(BUILD_SHARED_LIBS "Build shared libraries." OFF)
-OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files" OFF)
+OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files and distributed memory functionality" OFF)
+OPTION(ENABLE_MPI "Enable MPI distributed memory functionality" OFF)
 OPTION(ENABLE_CALIPER "Enable Caliper for application profiling" OFF)
 OPTION(ENABLE_MATLAB "Enable MATLAB linkage to Tensor Toolbox" OFF)
 OPTION(FLOAT_TYPE "C++ data type used for floating-point values" OFF)
@@ -85,12 +86,17 @@ ENDIF()
 # Check minimum compiler version
 INCLUDE (cmake/CheckCompilerVersion.cmake)
 
+
 # If we are doing an inline build of Kokkos
 IF(KOKKOS_INLINE_BUILD)
 
   # We must enable Lambda support in Kokkos
   IF(Kokkos_ENABLE_CUDA)
     SET(Kokkos_ENABLE_CUDA_LAMBDA ON CACHE BOOL "Enable lambdas for CUDA.")
+  ENDIF()
+
+  IF(GENTEN_ENABLE_SYCL_FOR_CUDA)
+    SET(Kokkos_ENABLE_SYCL ON CACHE BOOL "Enable SYCL for CUDA.")
   ENDIF()
 
   # Configure kokkos
@@ -105,14 +111,38 @@ ELSE()
 ENDIF()
 SET(HAVE_KOKKOS ON)
 
+# Embedded "JSON for Modern C++" library
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+add_subdirectory(tpls/json)
+
+# Embedded "JSON schema validator for JSON for Modern C++"
+set(JSON_VALIDATOR_BUILD_TESTS OFF CACHE INTERNAL "")
+set(JSON_VALIDATOR_BUILD_EXAMPLES OFF CACHE INTERNAL "")
+add_subdirectory(tpls/json-validator)
+
 SET(GENTEN_LIBS "")
 
-IF (ENABLE_BOOST)
-  OPTION(BOOST_PATH "Path to BOOST installation")
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -isystem ${BOOST_PATH}/include")
-  SET(GENTEN_LIBS "${GENTEN_LIBS} -L${BOOST_PATH}/lib -lboost_iostreams -lz")
-  SET(HAVE_BOOST ${ENABLE_BOOST})
-ENDIF()
+if(ENABLE_MPI)
+  find_package(MPI REQUIRED)
+endif()
+if (MPI_FOUND)
+  set(HAVE_MPI ON)
+endif()
+
+if(ENABLE_BOOST)
+  find_package(Boost REQUIRED COMPONENTS iostreams)
+  find_package(ZLIB REQUIRED)
+endif()
+if (BOOST_FOUND AND ZLIB_FOUND)
+  set(HAVE_BOOST ON)
+endif()
+
+if(MPI_FOUND)
+  set(HAVE_DIST ON)
+endif()
+
+OPTION(ENABLE_LAPACK "Enable BLAS/LAPACK.  Only required for CPU (cuBLAS/cuSolver are used on Cuda and rocBLAS/rocSolver on HIP)." ON)
+INCLUDE (cmake/ConfigureLapack.cmake)
 
 IF (ENABLE_CALIPER)
   OPTION(CALIPER_PATH "Path to Caliper installation")
@@ -176,26 +206,75 @@ IF(ENABLE_MATLAB)
   ENDIF()
 ENDIF()
 
-IF(Kokkos_ENABLE_CUDA)
+IF(Kokkos_ENABLE_CUDA OR GENTEN_ENABLE_SYCL_FOR_CUDA)
   OPTION(ENABLE_CUBLAS "Flag to enable cuBLAS for Kokkos with Cuda (do not turn this off unless you know what you are doing)" ON)
   OPTION(ENABLE_CUSOLVER "Flag to enable cuSolver for Kokkos with Cuda (do not turn this off unless you know what you are doing)" ON)
-  IF (ENABLE_CUBLAS)
-    SET(GENTEN_LIBS "${GENTEN_LIBS} -lcublas")
+
+  IF(ENABLE_CUBLAS)
+    IF(LIBCUBLAS_PATH)
+      SET(GENTEN_LIBS "${GENTEN_LIBS} -L${LIBCUBLAS_PATH} -lcublas")
+    ELSE()
+      SET(GENTEN_LIBS "${GENTEN_LIBS} -lcublas")
+    ENDIF()
+
     SET(HAVE_CUBLAS ${ENABLE_CUBLAS})
-    MESSAGE (STATUS "GenTen: Using cuBLAS")
+    MESSAGE(STATUS "GenTen: Using cuBLAS")
   ENDIF()
-  IF (ENABLE_CUSOLVER)
-    SET(GENTEN_LIBS "${GENTEN_LIBS} -lcusolver")
+
+  IF(ENABLE_CUSOLVER)
+    IF(LIBCUSOLVER_PATH)
+      SET(GENTEN_LIBS "${GENTEN_LIBS} -L${LIBCUSOLVER_PATH} -lcusolver")
+    ELSE()
+      SET(GENTEN_LIBS "${GENTEN_LIBS} -lcusolver")
+    ENDIF()
+
     SET(HAVE_CUSOLVER ${ENABLE_CUSOLVER})
     MESSAGE (STATUS "GenTen: Using cuSolver")
   ENDIF()
-  # Add useful CXX flags when building with Cuda
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --expt-relaxed-constexpr")
-  IF (KOKKOS_CXX_COMPILER_ID STREQUAL NVIDIA)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Xcudafe --diag_suppress=code_is_unreachable")
-    #message("CMAKE_CXX_FLAGS = ${CMAKE_CXX_FLAGS}")
+
+  IF(Kokkos_ENABLE_CUDA)
+    # Add useful CXX flags when building with Cuda
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --expt-relaxed-constexpr")
+    IF (KOKKOS_CXX_COMPILER_ID STREQUAL NVIDIA)
+      SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Xcudafe --diag_suppress=code_is_unreachable")
+      #message("CMAKE_CXX_FLAGS = ${CMAKE_CXX_FLAGS}")
+    ENDIF()
   ENDIF()
 ENDIF()
+
+# Determine which execution spaces are enabled in executables (these are not
+# use to determine what is enabled in the code itself).  This prevents the use
+# of host-side execution spaces when LAPACK was not found (which will fail).
+if(Kokkos_ENABLE_SERIAL)
+  if(LAPACK_FOUND)
+    set(HAVE_SERIAL ON)
+  else()
+    message(STATUS "GenTen: Kokkos Serial execution space enabled but LAPACK was not found.  Disabling Serial in GenTen.")
+  endif()
+endif()
+if(Kokkos_ENABLE_THREADS)
+  if(LAPACK_FOUND)
+    set(HAVE_THREADS ON)
+  else()
+    message(STATUS "GenTen: Kokkos Threads execution space enabled but LAPACK was not found.  Disabling Threads in GenTen.")
+  endif()
+endif()
+if(Kokkos_ENABLE_OPENMP)
+  if(LAPACK_FOUND)
+    set(HAVE_OPENMP ON)
+  else()
+    message(STATUS "GenTen: Kokkos OpenMP execution space enabled but LAPACK was not found.  Disabling OpenMP in GenTen.")
+  endif()
+endif()
+if(Kokkos_ENABLE_CUDA)
+  set(HAVE_CUDA ON)
+endif()
+if(Kokkos_ENABLE_HIP)
+  set(HAVE_HIP ON)
+endif()
+if(Kokkos_ENABLE_SYCL)
+  set(HAVE_SYCL ON)
+endif()
 
 # Strip leading/trailing whitespace from GENTEN_LIBS
 STRING(STRIP "${GENTEN_LIBS}" GENTEN_LIBS)
@@ -244,6 +323,9 @@ INCLUDE_DIRECTORIES (
   ${Genten_BINARY_DIR}/CMakeInclude/
   ${Genten_SOURCE_DIR}/driver/
   ${Genten_SOURCE_DIR}/tpls/lbfgsb/
+  ${Genten_SOURCE_DIR}/tpls/json/single_include/nlohmann/
+  ${Genten_SOURCE_DIR}/tpls/json-validator/src/
+  ${Genten_SOURCE_DIR}/tpls/json-validator/src/nlohmann/
   )
 FILE (GLOB genten_headers
   ${Genten_SOURCE_DIR}/src/*.h
@@ -292,8 +374,6 @@ INSTALL (
 # Separate pure c code from c++ code so CMake doesn't add Kokkos CXX flags
 # to compile of c code (since the c code can't depend on kokkos)
 #------------------------------------------------------------
-OPTION(ENABLE_LAPACK "Enable BLAS/LAPACK.  Only required for CPU (cuBLAS/cuSolver are used on Cuda and rocBLAS/rocSolver on HIP)." ON)
-INCLUDE (cmake/ConfigureLapack.cmake)
 IF (LAPACK_FOUND)
   ADD_DEFINITIONS (-DLAPACK_FOUND)
   ADD_LIBRARY (genten_mathlibs_c
@@ -376,6 +456,8 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_Tensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_HessVec.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_CublasHandle.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_CusolverHandle.cpp
   )
 
 IF (ENABLE_LBFGSB)
@@ -418,10 +500,39 @@ IF (ENABLE_GCP)
   # ENDIF()
 ENDIF()
 
-
 #---- Tell CMake to build the library.
 ADD_LIBRARY (gentenlib ${Genten_SOURCE_LIST})
 TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkos)
+TARGET_LINK_LIBRARIES(gentenlib nlohmann_json_schema_validator)
+TARGET_LINK_LIBRARIES(gentenlib nlohmann_json::nlohmann_json)
+IF(HAVE_BOOST)
+  TARGET_LINK_LIBRARIES(gentenlib Boost::iostreams ZLIB::ZLIB)
+ENDIF()
+
+ADD_LIBRARY(DistContextLib
+    ${Genten_SOURCE_DIR}/src/Genten_DistContext.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_Pmap.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_DistTensorContext.cpp
+    )
+TARGET_LINK_LIBRARIES(DistContextLib Kokkos::kokkos)
+TARGET_LINK_LIBRARIES(DistContextLib nlohmann_json_schema_validator)
+TARGET_LINK_LIBRARIES(DistContextLib nlohmann_json::nlohmann_json)
+TARGET_LINK_LIBRARIES(gentenlib DistContextLib )
+IF(HAVE_MPI)
+  TARGET_LINK_LIBRARIES(DistContextLib MPI::MPI_C)
+  IF(HAVE_BOOST)
+    TARGET_LINK_LIBRARIES(DistContextLib Boost::boost)
+  ENDIF()
+  ADD_LIBRARY(GentenMpiIoLib
+    ${Genten_SOURCE_DIR}/src/Genten_SpTn_Util.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_MPI_IO.cpp
+    )
+  TARGET_LINK_LIBRARIES(GentenMpiIoLib MPI::MPI_C)
+  IF(HAVE_BOOST)
+    TARGET_LINK_LIBRARIES(GentenMpiIoLib Boost::boost)
+  ENDIF()
+  TARGET_LINK_LIBRARIES(gentenlib GentenMpiIoLib)
+ENDIF()
 
 IF(Kokkos_ENABLE_HIP)
   IF(ROCM_SEARCH_PATH)
@@ -453,75 +564,28 @@ IF(Kokkos_ENABLE_HIP)
   ENDIF()
 ENDIF()
 
+IF(GENTEN_ENABLE_SYCL_FOR_CUDA)
+  TARGET_COMPILE_DEFINITIONS(gentenlib PUBLIC ENABLE_SYCL_FOR_CUDA)
+ENDIF()
+
 SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${ROL_LIBRARIES} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
 TARGET_LINK_LIBRARIES(${GENTEN_LINK_LIBS})
 INSTALL (
-  TARGETS gentenlib
+  TARGETS gentenlib DistContextLib nlohmann_json_schema_validator nlohmann_json
   EXPORT genten
   DESTINATION ${CMAKE_INSTALL_LIBDIR}
   )
+IF(HAVE_DIST)
+  INSTALL (
+    TARGETS GentenMpiIoLib
+    EXPORT genten
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  )
+ENDIF()
 
 #---- Adding the higher moment interface to the Library sources
 #---- Must be a better way to do this. Inside an IF??
 ADD_SUBDIRECTORY(joint_moments)
-
-# FIND_PACKAGE(GTest REQUIRED)
-# IF (${GTest_FOUND})
-#   MESSAGE(STATUS "FOUND GTEST")
-#   MESSAGE(STATUS "GTEST_INCLUDE_DIR: " ${GTEST_INCLUDE_DIR})
-# ELSE (${GTest_FOUND})
-#   MESSAGE(STATUS "DID NOT FIND GTEST")
-# ENDIF (${GTest_FOUND})
-# include_directories(${GTEST_INCLUDE_DIR})
-
-#------------------------------------------------------------
-#---- Unit Test Executables (not installed)
-#------------------------------------------------------------
-
-#---- Specifications for building unit_tests.
-
-SET(UNIT_TEST_SRCS
-  ${Genten_SOURCE_DIR}/test/Genten_Test_TTM.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_Array.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_CpAls.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_FacMatrix.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_IndxArray.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_IOtext.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_Ktensor.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_MixedFormats.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_Sptensor.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_Tensor.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_HessVec.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_UnitTests.cpp
-  ${Genten_SOURCE_DIR}/test/Genten_Test_Utils.cpp
-  )
-IF(ENABLE_LBFGSB)
-  SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
-    ${Genten_SOURCE_DIR}/test/Genten_Test_CpOptLbfgsb.cpp
-    )
-ENDIF()
-IF(ENABLE_ROL)
-  SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
-    ${Genten_SOURCE_DIR}/test/Genten_Test_CpOptRol.cpp
-    )
-ENDIF()
-IF (ENABLE_GCP)
-   SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
-     ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_SGD.cpp
-     )
-  # IF(ENABLE_ROL)
-  #   SET(UNIT_TEST_SRCS ${UNIT_TEST_SRCS}
-  #     ${Genten_SOURCE_DIR}/test/Genten_Test_GCP_Opt.cpp
-  #     )
-  # ENDIF()
-ENDIF()
-
-ADD_EXECUTABLE (
-  unit_tests
-  ${UNIT_TEST_SRCS}
-  )
-TARGET_LINK_LIBRARIES (unit_tests ${GENTEN_LINK_LIBS})
-
 
 #------------------------------------------------------------
 #---- Performance Test Executables (not installed)
@@ -699,48 +763,119 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
 
 ENDIF()
 
+add_subdirectory(tools)
+
 #------------------------------------------------------------
 #---- Testing
 #------------------------------------------------------------
 enable_testing()
 
-# Unit tests -- tests don't return nonzero on failure, so have to grep output
-add_test(Genten_Unit_Tests ${Genten_BINARY_DIR}/bin/unit_tests)
-SET_TESTS_PROPERTIES(Genten_Unit_Tests PROPERTIES FAIL_REGULAR_EXPRESSION "Error")
+# Sets up a test command to possibly launch with MPI if PARALLEL is defined.
+# For serial tests, still use MPI to launch if MPI is enabled, since the
+# machine may not be able to run tests without it (e.g., when launching from a
+# head node) but don't include MPI pre/post flags so there is no binding.
+# usage:
+#    genten_add_test(NAME <name>
+#                    COMMAND <command>
+#                    [ARGS <arg>...]
+#                    [WORKING_DIRECTORY <dir>]
+#                    [PARALLEL])
+function(genten_add_test)
+  set(options PARALLEL)
+  set(oneValueArgs NAME COMMAND WORKING_DIRECTORY)
+  set(multiValueArgs ARGS)
+  cmake_parse_arguments(GENTEN_ADD_TEST "${options}" "${oneValueArgs}"
+                        "${multiValueArgs}" ${ARGN})
 
-function(add_mttkrp_tests name cmd args spaces)
+  separate_arguments(GENTEN_ADD_TEST_ARGS) # Replaces spaces with semi-colons
+  set(test_cmd "${GENTEN_ADD_TEST_COMMAND}")
+  list(APPEND test_cmd ${GENTEN_ADD_TEST_ARGS})
+  if (HAVE_MPI)
+    separate_arguments(MPIEXEC_PREFLAGS)
+    separate_arguments(MPIEXEC_POSTFLAGS)
+    set(test_cmd ${MPIEXEC_EXECUTABLE})
+    list(APPEND test_cmd ${MPIEXEC_NUMPROC_FLAG})
+    if (GENTEN_ADD_TEST_PARALLEL)
+      list(APPEND test_cmd ${MPIEXEC_MAX_NUMPROCS})
+    else()
+      list(APPEND test_cmd 1)
+    endif()
+    list(APPEND test_cmd ${MPIEXEC_PREFLAGS})
+    list(APPEND test_cmd ${GENTEN_ADD_TEST_COMMAND})
+    list(APPEND test_cmd ${MPIEXEC_POSTFLAGS})
+    list(APPEND test_cmd ${GENTEN_ADD_TEST_ARGS})
+  endif()
+  add_test(NAME ${GENTEN_ADD_TEST_NAME} COMMAND ${test_cmd} WORKING_DIRECTORY ${GENTEN_ADD_TEST_WORKING_DIRECTORY})
+endfunction(genten_add_test)
+
+# Kokkos devices to run tests on.
+set(kokkos_devices "")
+if (HAVE_SERIAL)
+  list(APPEND kokkos_devices "serial")
+endif()
+if (HAVE_OPENMP)
+  list(APPEND kokkos_devices "openmp")
+endif()
+if (HAVE_THREADS)
+  list(APPEND kokkos_devices "threads")
+endif()
+if (HAVE_CUDA)
+  list(APPEND kokkos_devices "cuda")
+endif()
+if (HAVE_HIP)
+  list(APPEND kokkos_devices "hip")
+endif()
+if (HAVE_SYCL)
+  list(APPEND kokkos_devices "sycl")
+endif()
+
+add_subdirectory(tpls/googletest)
+add_subdirectory(test)
+
+function(add_genten_perf_tests name cmd args spaces)
   foreach(space ${spaces})
     string(CONCAT test_name ${name} "_" ${space})
     string(CONCAT test_args ${args} " --exec-space " ${space})
-    separate_arguments(test_args)
-    add_test(${test_name} ${cmd} ${test_args})
+    genten_add_test(NAME ${test_name} COMMAND ${cmd} ARGS ${test_args})
   endforeach()
-endfunction(add_mttkrp_tests)
+endfunction(add_genten_perf_tests)
 
-set(kokkos_devices "")
-if (Kokkos_ENABLE_SERIAL)
-  list(APPEND kokkos_devices "serial")
-endif()
-if (Kokkos_ENABLE_OPENMP)
-  list(APPEND kokkos_devices "openmp")
-endif()
-if (Kokkos_ENABLE_THREADS)
-  list(APPEND kokkos_devices "threads")
-endif()
-if (Kokkos_ENABLE_CUDA)
-  list(APPEND kokkos_devices "cuda")
-endif()
-if (Kokkos_ENABLE_HIP)
-  list(APPEND kokkos_devices "hip")
-endif()
+function(add_genten_mpi_tests name cmd args spaces)
+  foreach(space ${spaces})
+    string(CONCAT test_name ${name} "_" ${space})
+    string(CONCAT test_args ${args} " --exec-space " ${space})
+    # The tests can run VERY slowly with multiple threads and MPI ranks,
+    # so run with a single thread for OpenMP and Threads
+    if (HAVE_MPI AND (space STREQUAL "openmp") OR (space STREQUAL "threads"))
+      string(CONCAT test_args ${test_args} " --kokkos-threads=1")
+    endif()
+    genten_add_test(NAME ${test_name} COMMAND ${cmd} ARGS ${test_args} PARALLEL)
+  endforeach()
+endfunction(add_genten_mpi_tests)
 
-add_mttkrp_tests(Genten_MTTKRP_random_atomic "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method atomic" "${kokkos_devices}")
-add_mttkrp_tests(Genten_MTTKRP_random_dupl "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method duplicated" "${kokkos_devices}")
-add_mttkrp_tests(Genten_MTTKRP_random_perm "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method perm" "${kokkos_devices}")
-add_mttkrp_tests(Genten_MTTKRP_aminoacid_atomic "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method atomic" "${kokkos_devices}")
-add_mttkrp_tests(Genten_MTTKRP_aminoacid_dupl "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method duplicated" "${kokkos_devices}")
-add_mttkrp_tests(Genten_MTTKRP_aminoacid_perm "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method perm" "${kokkos_devices}")
-add_mttkrp_tests(Genten_MTTKRP_random_dense "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [30,40,50] --dense" "${kokkos_devices}")
+add_genten_perf_tests(Genten_MTTKRP_random_atomic "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method atomic" "${kokkos_devices}")
+add_genten_perf_tests(Genten_MTTKRP_random_dupl "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method duplicated" "${kokkos_devices}")
+add_genten_perf_tests(Genten_MTTKRP_random_perm "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method perm" "${kokkos_devices}")
+add_genten_perf_tests(Genten_MTTKRP_aminoacid_atomic "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method atomic" "${kokkos_devices}")
+add_genten_perf_tests(Genten_MTTKRP_aminoacid_dupl "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method duplicated" "${kokkos_devices}")
+add_genten_perf_tests(Genten_MTTKRP_aminoacid_perm "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method perm" "${kokkos_devices}")
+add_genten_perf_tests(Genten_MTTKRP_random_dense "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [30,40,50] --dense" "${kokkos_devices}")
+
+add_genten_mpi_tests(Genten_driver_aminoacid_cpals "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpals.json" "${kokkos_devices}")
+if (HAVE_LBFGSB)
+  # L-BFGS-B does not work with MPI (implements its own vector operations)
+  add_genten_perf_tests(Genten_driver_aminoacid_cpopt-lbfgsb "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpopt-lbfgsb.json" "${kokkos_devices}")
+endif()
+if (HAVE_ROL)
+  add_genten_mpi_tests(Genten_driver_aminoacid_cpopt-rol "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpopt-rol.json" "${kokkos_devices}")
+  add_genten_mpi_tests(Genten_driver_aminoacid_cpopt-rol-hess "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpopt-rol-hess.json" "${kokkos_devices}")
+endif()
+if (HAVE_GCP)
+  add_genten_mpi_tests(Genten_driver_aminoacid_sgd "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-sgd.json" "${kokkos_devices}")
+  if (HAVE_MPI)
+    add_genten_mpi_tests(Genten_driver_aminoacid_sgd_dist "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-sgd-dist.json" "${kokkos_devices}")
+  endif()
+endif()
 
 #------------------------------------------------------------
 #---- Config

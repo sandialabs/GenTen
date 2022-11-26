@@ -161,6 +161,7 @@ namespace Genten {
       typedef typename BaseType::VectorType VectorType;
 
       SGDStep() {}
+      SGDStep(AlgParams const& algParams, VectorType const& u){}
 
       virtual ~SGDStep() {}
 
@@ -216,8 +217,180 @@ namespace Genten {
 
     };
 
+    template <typename ExecSpace, typename LossFunction>
+    class SGDMomentumStep : public GCP_SGD_Step<ExecSpace,LossFunction> {
+    public:
+      typedef GCP_SGD_Step<ExecSpace,LossFunction> BaseType;
+      typedef typename BaseType::VectorType VectorType;
+
+      SGDMomentumStep(AlgParams const& algParams, VectorType const& u):
+        v_scale_(0.9), 
+        v_(u.clone()),
+        vt_(v_.getKtensor())
+      {
+        v_.zero();
+      }
+
+      virtual ~SGDMomentumStep() {}
+
+      virtual void setStep(const ttb_real s) { step_ = s; }
+
+      virtual ttb_real getStep() const { return step_; }
+
+      virtual void update() {}
+
+      virtual void reset() {}
+
+      virtual void setPassed() {
+      }
+
+      virtual void setFailed() {
+        v_.zero();
+      }
+
+      virtual void setNumSamples(const ttb_indx num_samples) {}
+
+      virtual void eval(const VectorType& g, VectorType& u) const
+      {
+        const ttb_real sgd_step = step_;
+        const ttb_real v_scale = v_scale_;
+        auto uv = u.getView();
+        auto gv = g.getView();
+        auto vv = v_.getView();
+
+        constexpr bool has_bounds = (LossFunction::has_lower_bound() ||
+                                     LossFunction::has_upper_bound());
+        constexpr ttb_real lb = LossFunction::lower_bound();
+        constexpr ttb_real ub = LossFunction::upper_bound();
+
+        u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
+        {
+          vv(i) = v_scale * vv(i) + sgd_step * gv(i);
+          ttb_real uu = uv(i) - vv(i);
+          if (has_bounds){
+            uu = uu < lb ? lb : (uu > ub ? ub : uu);
+          }
+          uv(i) = uu;
+        });
+      }
+
+      template <typename TeamMember>
+      KOKKOS_INLINE_FUNCTION
+      void update_async(const ttb_indx num_iters, const TeamMember& team) const {
+        Genten::error("SGDMomentumStep is not tested in aysnc code.");
+      }
+
+      KOKKOS_INLINE_FUNCTION
+      void eval_async(const unsigned dim, const ttb_indx row,
+                      const unsigned col, const ttb_real g,
+                      const KtensorT<ExecSpace>& u) const
+      {
+        Genten::error("SGDMomentumStep is not tested in aysnc code.");
+      }
+
+    protected:
+      ttb_real v_scale_;
+      ttb_real step_;
+      VectorType v_;
+      KtensorT<ExecSpace> vt_;
+    };
+
+    template <typename ExecSpace, typename LossFunction>
+    class DEMON : public GCP_SGD_Step<ExecSpace,LossFunction> {
+    public:
+      typedef GCP_SGD_Step<ExecSpace,LossFunction> BaseType;
+      typedef typename BaseType::VectorType VectorType;
+
+      DEMON(AlgParams const& algParams, VectorType const& u):
+        v_scale_(0.9), 
+        max_iters_(algParams.maxiters),
+        v_(u.clone()),
+        vt_(v_.getKtensor())
+      {
+        v_.zero();
+      }
+
+      virtual ~DEMON() {}
+
+      virtual void setStep(const ttb_real s) { step_ = s; }
+
+      virtual ttb_real getStep() const { return step_; }
+
+      virtual void update() {}
+
+      virtual void reset() {}
+
+      virtual void setPassed() {
+        ++current_iter;
+      }
+
+      virtual void setFailed() {
+        // TODO Not sure how to handle this one
+        current_iter = 0;
+        v_.zero();
+      }
+
+      virtual void setNumSamples(const ttb_indx num_samples) {}
+
+      virtual void eval(const VectorType& g, VectorType& u) const
+      {
+        const ttb_real sgd_step = step_;
+
+        const ttb_real mom_scale = [=]{
+          const auto tmp = 1 - ttb_real(current_iter)/ttb_real(max_iters_);
+          const auto denom = (1 - v_scale_) + v_scale_ * tmp;
+          return v_scale_ * (tmp/denom);
+        }();
+
+        auto uv = u.getView();
+        auto gv = g.getView();
+        auto vv = v_.getView();
+
+        constexpr bool has_bounds = (LossFunction::has_lower_bound() ||
+                                     LossFunction::has_upper_bound());
+        constexpr ttb_real lb = LossFunction::lower_bound();
+        constexpr ttb_real ub = LossFunction::upper_bound();
+
+        u.apply_func(KOKKOS_LAMBDA(const ttb_indx i)
+        {
+          vv(i) = mom_scale * vv(i) + sgd_step * gv(i);
+          ttb_real uu = uv(i) - vv(i);
+          if (has_bounds){
+            uu = uu < lb ? lb : (uu > ub ? ub : uu);
+          }
+          uv(i) = uu;
+        });
+      }
+
+      template <typename TeamMember>
+      KOKKOS_INLINE_FUNCTION
+      void update_async(const ttb_indx num_iters, const TeamMember& team) const {
+        Genten::error("SGDMomentumStep is not tested in aysnc code.");
+      }
+
+      KOKKOS_INLINE_FUNCTION
+      void eval_async(const unsigned dim, const ttb_indx row,
+                      const unsigned col, const ttb_real g,
+                      const KtensorT<ExecSpace>& u) const
+      {
+        Genten::error("SGDMomentumStep is not tested in aysnc code.");
+      }
+
+    protected:
+      ttb_real v_scale_;
+      std::int32_t max_iters_;
+      std::int32_t current_iter = 0;
+      ttb_real step_;
+      VectorType v_;
+      KtensorT<ExecSpace> vt_;
+    };
+
+
     struct AdamOp {
-      ttb_real beta;
+      ttb_real beta = 0.0;
+
+      //KOKKOS_INLINE_FUNCTION
+      AdamOp() = default;
 
       KOKKOS_INLINE_FUNCTION
       AdamOp(const ttb_real& beta_) : beta(beta_) {}
@@ -542,8 +715,13 @@ namespace Genten {
                       const unsigned col, const ttb_real g,
                       const KtensorT<ExecSpace>& u) const
       {
-        using std::sqrt;
+#if defined(__SYCL_DEVICE_ONLY__)
+        using sycl::pow;
+#else
         using std::pow;
+#endif
+
+        using std::sqrt;
         using std::abs;
 
         // Compute exponential weighting
@@ -733,8 +911,13 @@ namespace Genten {
                       const unsigned col, const ttb_real g,
                       const KtensorT<ExecSpace>& u) const
       {
-        using std::sqrt;
+#if defined(__SYCL_DEVICE_ONLY__)
+        using cl::sycl::pow;
+#else
         using std::pow;
+#endif
+
+        using std::sqrt;
         using std::abs;
 
         // Compute our iteration index
@@ -895,6 +1078,57 @@ namespace Genten {
       VectorType s_prev;
       KtensorT<ExecSpace> st;
     };
+
+    template <typename ExecSpace, typename LossFunction>
+    GCP_SGD_Step<ExecSpace,LossFunction>*
+    createStepper(
+      const AlgParams& algParams,
+      const typename GCP_SGD_Step<ExecSpace,LossFunction>::VectorType& u)
+    {
+      GCP_SGD_Step<ExecSpace,LossFunction> *stepper = nullptr;
+      if (algParams.step_type == GCP_Step::ADAM)
+        stepper = new AdamStep<ExecSpace,LossFunction>(algParams, u);
+      else if (algParams.step_type == GCP_Step::AdaGrad)
+        stepper = new AdaGradStep<ExecSpace,LossFunction>(algParams, u);
+      else if (algParams.step_type == GCP_Step::AMSGrad)
+        stepper = new AMSGradStep<ExecSpace,LossFunction>(algParams, u);
+      else if (algParams.step_type == GCP_Step::SGDMomentum)
+        stepper = new SGDMomentumStep<ExecSpace,LossFunction>(algParams, u);
+      else if (algParams.step_type == GCP_Step::DEMON)
+        stepper = new DEMON<ExecSpace,LossFunction>(algParams, u);
+      else if (algParams.step_type == GCP_Step::SGD) {
+        stepper = new SGDStep<ExecSpace,LossFunction>();
+      }
+      else
+        Genten::error("Unknown stepper!");
+      return stepper;
+    }
+
+    template <typename ExecSpace, typename LossFunction>
+    GCP_SGD_Step<ExecSpace,LossFunction>*
+    createStepper(
+      const AlgParams& algParams,
+      const typename GCP_SGD_Step<ExecSpace,LossFunction>::VectorType& u,
+      const std::string name)
+    {
+      GCP_SGD_Step<ExecSpace,LossFunction> *stepper = nullptr;
+      if (name == "adam")
+        stepper = new AdamStep<ExecSpace,LossFunction>(algParams, u);
+      else if (name == "adagrad")
+        stepper = new AdaGradStep<ExecSpace,LossFunction>(algParams, u);
+      else if (name == "amsgrad")
+        stepper = new AMSGradStep<ExecSpace,LossFunction>(algParams, u);
+      else if (name == "sgd-momentum")
+        stepper = new SGDMomentumStep<ExecSpace,LossFunction>(algParams, u);
+      else if (name == "demon")
+        stepper = new DEMON<ExecSpace,LossFunction>(algParams, u);
+      else if (name == "sgd") {
+        stepper = new SGDStep<ExecSpace,LossFunction>();
+      }
+      else
+        Genten::error("Invalid stepper name " + name);
+      return stepper;
+    }
 
   }
 

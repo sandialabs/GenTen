@@ -1,0 +1,37 @@
+{
+    "solver-method": "cp-opt",
+    "timings": true,
+    "tensor":
+    {
+        "input-file": "data/aminoacid_data_nn.txt",
+        "index-base": 0
+    },
+    "k-tensor":
+    {
+        "rank": 16,
+        "output-file": "aminoacid.ktn",
+        "initial-guess": "rand",
+        "distributed-guess": "serial",
+        "seed": 12345,
+        "prng": false
+    },
+    "cp-opt":
+    {
+        "method": "lbfgsb",
+        "maxiters": 20,
+        "tol": 1e-4
+    },
+    "testing":
+    {
+        "final-fit":
+        {
+            "value": 0.98,
+            "absolute-tolerance": 0.1
+        },
+        "iterations":
+        {
+            "value": 19,
+            "absolute-tolerance": 2
+        }
+    }
+}

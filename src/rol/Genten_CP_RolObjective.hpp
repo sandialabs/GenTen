@@ -82,7 +82,7 @@ namespace Genten {
     virtual void update(const ROL::Vector<ttb_real>& xx, ROL::UpdateType type,
                         int iter) override;
 
-    virtual void update(const ROL::Vector<ttb_real> &xx, bool flag, int iter);
+    virtual void update(const ROL::Vector<ttb_real> &xx, bool flag, int iter) override;
 
     virtual ttb_real value(const ROL::Vector<ttb_real>& x,
                            ttb_real& tol) override;
@@ -92,6 +92,11 @@ namespace Genten {
                           ttb_real &tol) override;
 
     virtual void hessVec(ROL::Vector<ttb_real>& hv,
+                         const ROL::Vector<ttb_real>& v,
+                         const ROL::Vector<ttb_real>& x,
+                         ttb_real& tol ) override;
+
+    virtual void precond(ROL::Vector<ttb_real>& pv,
                          const ROL::Vector<ttb_real>& v,
                          const ROL::Vector<ttb_real>& x,
                          ttb_real& tol ) override;
@@ -122,12 +127,12 @@ namespace Genten {
       const ttb_indx nc = M.ncomponents();
       const ttb_indx nd = M.ndims();
 #if COPY_KTENSOR
-      V = ktensor_type(nc, nd, x.size());
-      G = ktensor_type(nc, nd, x.size());
+      V = ktensor_type(nc, nd, x.size(), M.getProcessorMap());
+      G = ktensor_type(nc, nd, x.size(), M.getProcessorMap());
 #endif
 
       timer.start(0);
-      nrm_X_sq = x.norm();
+      nrm_X_sq = x.global_norm();
       nrm_X_sq = nrm_X_sq*nrm_X_sq;
 
       history.addEmpty();
@@ -264,6 +269,35 @@ namespace Genten {
     // Convert Ktensor to vector
 #if COPY_KTENSOR
     hv.copyFromKtensor(G);
+#endif
+  }
+
+  template <typename Tensor>
+  void
+  CP_RolObjective<Tensor>::
+  precond(ROL::Vector<ttb_real>& ppv, const ROL::Vector<ttb_real>& vv,
+          const ROL::Vector<ttb_real>& xx, ttb_real &tol)
+  {
+    TEUCHOS_FUNC_TIME_MONITOR("CP_RolObjective::precond");
+
+    const vector_type& x = dynamic_cast<const vector_type&>(xx);
+    const vector_type& v = dynamic_cast<const vector_type&>(vv);
+    vector_type& pv = dynamic_cast<vector_type&>(ppv);
+
+    // Convert input vector to a Ktensor
+    M = x.getKtensor();
+    V = v.getKtensor();
+    G = pv.getKtensor();
+#if COPY_KTENSOR
+    x.copyToKtensor(M);
+    v.copyToKtensor(V);
+#endif
+
+    cp_model.prec_vec(G, M, V);
+
+    // Convert Ktensor to vector
+#if COPY_KTENSOR
+    pv.copyFromKtensor(G);
 #endif
   }
 

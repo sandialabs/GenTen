@@ -38,66 +38,72 @@
 // ************************************************************************
 //@HEADER
 
+#include <Genten_DistContext.hpp>
+#include <Genten_DistTensorContext.hpp>
+#include <Genten_IndxArray.hpp>
+#include <Genten_Ktensor.hpp>
+#include <Genten_MixedFormatOps.hpp>
+#include <Genten_Sptensor.hpp>
+#include <Genten_Util.hpp>
 
-#include "Genten_Array.hpp"
-#include "Genten_FacMatrix.hpp"
-#include "Genten_IOtext.hpp"             // In case debug lines are uncommented
-#include "Genten_Ktensor.hpp"
-#include "Genten_MixedFormatOps.hpp"
-#include "Genten_Sptensor.hpp"
-#include "Genten_Tensor.hpp"
 #include "Genten_Test_Utils.hpp"
-#include "Genten_Util.hpp"
 
-using namespace Genten::Test;
+#include <gtest/gtest.h>
 
-
-/* This file contains unit tests for operations involving mixed tensor formats.
- */
+namespace Genten {
+namespace UnitTests {
 
 template <typename ExecSpace>
-void Genten_Test_MixedFormats_Impl(int infolevel)
-{
-  typedef ExecSpace exec_space;
-  typedef Genten::DefaultHostExecutionSpace host_exec_space;
-  typedef Genten::SptensorT<exec_space> Sptensor_type;
-  typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
-  typedef Genten::KtensorT<exec_space> Ktensor_type;
-  typedef Genten::KtensorT<host_exec_space> Ktensor_host_type;
-  typedef Genten::TensorT<exec_space> Tensor_type;
-  typedef Genten::TensorT<host_exec_space> Tensor_host_type;
+struct TestMixedFormatsT : public ::testing::Test {
+  using exec_space = ExecSpace;
+};
 
-  std::string space_name = Genten::SpaceProperties<exec_space>::name();
-  initialize("Tests involving mixed format tensors (" + space_name + ")",
-             infolevel);
+TYPED_TEST_SUITE(TestMixedFormatsT, genten_test_types);
 
-  Genten::IndxArray dims;
+TYPED_TEST(TestMixedFormatsT, SptensorTensorKtensorInnerprod) {
+  DistContext::Barrier();
 
-  //----------------------------------------------------------------------
-  // Test innerprod() between Sptensor/Tensor and Ktensor.
-  //----------------------------------------------------------------------
+  using exec_space = typename TestFixture::exec_space;
+  using host_exec_space = DefaultHostExecutionSpace;
 
-  MESSAGE("Creating an Sptensor for innerprod test");
-  dims = Genten::IndxArray(3); dims[0] = 4; dims[1] = 2; dims[2] = 3;
-  Sptensor_host_type a(dims,4);
-  a.subscript(0,0) = 2;  a.subscript(0,1) = 0;  a.subscript(0,2) = 0;
+  INFO_MSG("Creating an Sptensor for innerprod test");
+  IndxArray dims(3);
+  dims[0] = 4;
+  dims[1] = 2;
+  dims[2] = 3;
+  SptensorT<host_exec_space> a(dims, 4);
+  a.subscript(0, 0) = 2;
+  a.subscript(0, 1) = 0;
+  a.subscript(0, 2) = 0;
   a.value(0) = 1.0;
-  a.subscript(1,0) = 1;  a.subscript(1,1) = 1;  a.subscript(1,2) = 1;
+  a.subscript(1, 0) = 1;
+  a.subscript(1, 1) = 1;
+  a.subscript(1, 2) = 1;
   a.value(1) = 2.0;
-  a.subscript(2,0) = 3;  a.subscript(2,1) = 0;  a.subscript(2,2) = 2;
+  a.subscript(2, 0) = 3;
+  a.subscript(2, 1) = 0;
+  a.subscript(2, 2) = 2;
   a.value(2) = 3.0;
-  a.subscript(3,0) = 0;  a.subscript(3,1) = 1;  a.subscript(3,2) = 2;
+  a.subscript(3, 0) = 0;
+  a.subscript(3, 1) = 1;
+  a.subscript(3, 2) = 2;
   a.value(3) = 4.0;
-  Sptensor_type a_dev = create_mirror_view( exec_space(), a );
-  deep_copy( a_dev, a );
 
-  MESSAGE("Creating a (dense) Tensor for innerprod test");
-  Tensor_type t_dev(a_dev);
+  Genten::DistTensorContext dtc;
+  SptensorT<exec_space> a_dev = dtc.distributeTensor<exec_space>(a);
+  const ProcessorMap *pmap = dtc.pmap_ptr().get();
+  a_dev.setProcessorMap(pmap);
 
-  MESSAGE("Creating a Ktensor of matching shape");
-  dims = Genten::IndxArray(3); dims[0] = 4; dims[1] = 2; dims[2] = 3;
-  ttb_indx  nc = 2;
-  Ktensor_host_type  oKtens(nc, 3, dims);
+  INFO_MSG("Creating a (dense) Tensor for innerprod test");
+  TensorT<exec_space> t_dev(a_dev);
+
+  INFO_MSG("Creating a Ktensor of matching shape");
+  dims = IndxArray(3);
+  dims[0] = 4;
+  dims[1] = 2;
+  dims[2] = 3;
+  ttb_indx nc = 2;
+  KtensorT<host_exec_space> oKtens(nc, 3, dims);
 
   // The sparse tensor has 4 nonzeroes.  Populate the Ktensor so that two
   // of its nonzeroes match, testing different weights.
@@ -106,93 +112,114 @@ void Genten_Test_MixedFormats_Impl(int infolevel)
   oKtens.weights(0) = 1.0;
   oKtens.weights(1) = 2.0;
 
-  oKtens[0].entry(2,0) = 1.0;
-  oKtens[1].entry(0,0) = 1.0;
-  oKtens[2].entry(0,0) = 1.0;
+  oKtens[0].entry(2, 0) = 1.0;
+  oKtens[1].entry(0, 0) = 1.0;
+  oKtens[2].entry(0, 0) = 1.0;
 
-  oKtens[0].entry(1,0) = -1.0;
+  oKtens[0].entry(1, 0) = -1.0;
 
-  oKtens[0].entry(3,1) = 0.3;
-  oKtens[1].entry(0,1) = 0.3;
-  oKtens[2].entry(2,1) = 0.3;
+  oKtens[0].entry(3, 1) = 0.3;
+  oKtens[1].entry(0, 1) = 0.3;
+  oKtens[2].entry(2, 1) = 0.3;
 
-  Ktensor_type oKtens_dev = create_mirror_view( exec_space(), oKtens );
-  deep_copy( oKtens_dev, oKtens );
+  KtensorT<exec_space> oKtens_dev = dtc.exportFromRoot<exec_space>(oKtens);
+  oKtens_dev.setProcessorMap(pmap);
 
   ttb_real d;
-  d = innerprod (a_dev, oKtens_dev);
-  ASSERT( EQ(d, 1.162), "Inner product between sptensor and ktensor");
-  d = innerprod (t_dev, oKtens_dev);
-  ASSERT( EQ(d, 1.162), "Inner product between tensor and ktensor");
+  d = innerprod(a_dev, oKtens_dev);
+  GENTEN_FLOAT_EQ(d, 1.162, "Inner product between sptensor and ktensor");
+  d = innerprod(t_dev, oKtens_dev);
+  GENTEN_FLOAT_EQ(d, 1.162, "Inner product between tensor and ktensor");
 
-  Genten::Array  altLambda(2);
+  Array altLambda(2);
   altLambda[0] = 3.0;
   altLambda[1] = 1.0;
-  Genten::ArrayT<exec_space> altLambda_dev =
-    create_mirror_view( exec_space(), altLambda );
-  deep_copy( altLambda_dev, altLambda );
+  ArrayT<exec_space> altLambda_dev =
+      create_mirror_view(exec_space(), altLambda);
+  deep_copy(altLambda_dev, altLambda);
   d = innerprod(a_dev, oKtens_dev, altLambda_dev);
-  ASSERT( EQ(d, 3.081), "Inner product with alternate lambda is correct");
+  GENTEN_FLOAT_EQ(d, 3.081, "Inner product with alternate lambda is correct");
   d = innerprod(t_dev, oKtens_dev, altLambda_dev);
-  ASSERT( EQ(d, 3.081), "Inner product with alternate lambda is correct");
+  GENTEN_FLOAT_EQ(d, 3.081, "Inner product with alternate lambda is correct");
+}
 
+TYPED_TEST(TestMixedFormatsT, SptensorKtensorTimesDivide) {
+  DistContext::Barrier();
 
-  //----------------------------------------------------------------------
-  // Test times() and divide() between Sptensor and Ktensor.
-  // (note these only run on the host currently)
-  //----------------------------------------------------------------------
+  using exec_space = typename TestFixture::exec_space;
+  using host_exec_space = DefaultHostExecutionSpace;
 
-  MESSAGE("Resizing Sptensor for times/divide test");
-  dims = Genten::IndxArray(3); dims[0] = 3; dims[1] = 4; dims[2] = 2;
-  a = Sptensor_host_type(dims,3);
-  a.subscript(0,0) = 1;  a.subscript(0,1) = 0;  a.subscript(0,2) = 0;
+  INFO_MSG("Resizing Sptensor for times/divide test");
+  IndxArray dims(3);
+  dims[0] = 3;
+  dims[1] = 4;
+  dims[2] = 2;
+  SptensorT<host_exec_space> a(dims, 3);
+  a.subscript(0, 0) = 1;
+  a.subscript(0, 1) = 0;
+  a.subscript(0, 2) = 0;
   a.value(0) = 1.0;
-  a.subscript(1,0) = 1;  a.subscript(1,1) = 0;  a.subscript(1,2) = 1;
+  a.subscript(1, 0) = 1;
+  a.subscript(1, 1) = 0;
+  a.subscript(1, 2) = 1;
   a.value(1) = 1.0;
-  a.subscript(2,0) = 1;  a.subscript(2,1) = 1;  a.subscript(2,2) = 0;
+  a.subscript(2, 0) = 1;
+  a.subscript(2, 1) = 1;
+  a.subscript(2, 2) = 0;
   a.value(2) = 1.0;
-  ASSERT(a.nnz() == 3, "Sptensor resized to correct nnz");
+  GENTEN_EQ(a.nnz(), 3, "Sptensor resized to correct nnz");
 
-  MESSAGE("Resizing Ktensor for times test");
-  dims = Genten::IndxArray(3); dims[0] = 3; dims[1] = 4; dims[2] = 2;
-  nc = 2;
-  oKtens = Genten::Ktensor(nc, 3, dims);
-  oKtens.setWeights (1.0);
-  ASSERT(oKtens.isConsistent(), "Ktensor resized consistently");
+  INFO_MSG("Resizing Ktensor for times test");
+  dims = IndxArray(3);
+  dims[0] = 3;
+  dims[1] = 4;
+  dims[2] = 2;
+  ttb_indx nc = 2;
+  KtensorT<host_exec_space> oKtens(nc, 3, dims);
+  oKtens.setWeights(1.0);
+  GENTEN_TRUE(oKtens.isConsistent(), "Ktensor resized consistently");
 
   // Set elements in the factors to unique values, counting up by 1.
   // The Ktensor has a nonzero value for every entry in the reconstructed
   // tensor; element-wise multiplication will result in modifications to
   // just the nonzeroes of the Sptensor.
-  d = 1.0;
-  for (ttb_indx i = 0; i < oKtens.ndims(); i++)
-  {
-    for (ttb_indx j = 0; j < oKtens[i].nRows(); j++)
-    {
-      for (ttb_indx r = 0; r < oKtens.ncomponents(); r++)
-      {
-        oKtens[i].entry(j,r) = d;
+  ttb_real d = 1.0;
+  for (ttb_indx i = 0; i < oKtens.ndims(); i++) {
+    for (ttb_indx j = 0; j < oKtens[i].nRows(); j++) {
+      for (ttb_indx r = 0; r < oKtens.ncomponents(); r++) {
+        oKtens[i].entry(j, r) = d;
         d = d + 1.0;
       }
     }
   }
-  /* Uncomment to manually check what the answer should be.
-     Genten::print_sptensor(a, std::cout, "Sparse tensor for times/divide test");
-     Genten::print_ktensor(oKtens, std::cout, "Ktensor for times/divide test");
-  */
+
+  // Uncomment to manually check what the answer should be.
+  // Genten::print_sptensor(a, std::cout, "Sparse tensor for times/divide
+  // test"); Genten::print_ktensor(oKtens, std::cout, "Ktensor for times/divide
+  // test");
 
   // Test times().
-  Sptensor_host_type  oTest(a.size(), a.nnz());
-  oTest.times (oKtens, a);
-  ASSERT( EQ(oTest.value(0), (3*7*15 + 4*8*16)), "times() element 0 OK");
-  ASSERT( EQ(oTest.value(1), (3*7*17 + 4*8*18)), "times() element 1 OK");
-  ASSERT( EQ(oTest.value(2), (3*9*15 + 4*10*16)), "times() element 2 OK");
+  SptensorT<host_exec_space> oTest(a.size(), a.nnz());
+  oTest.times(oKtens, a);
+  GENTEN_FLOAT_EQ(oTest.value(0), (3 * 7 * 15 + 4 * 8 * 16),
+                  "times() element 0 OK");
+  GENTEN_FLOAT_EQ(oTest.value(1), (3 * 7 * 17 + 4 * 8 * 18),
+                  "times() element 1 OK");
+  GENTEN_FLOAT_EQ(oTest.value(2), (3 * 9 * 15 + 4 * 10 * 16),
+                  "times() element 2 OK");
 
   // Test that divide() undoes the multiplication.
-  oTest.divide (oKtens, oTest, 1.0e-10);
-  ASSERT( EQ(oTest.value(0), 1.0), "divide() element 0 OK");
-  ASSERT( EQ(oTest.value(1), 1.0), "divide() element 1 OK");
-  ASSERT( EQ(oTest.value(2), 1.0), "divide() element 2 OK");
+  oTest.divide(oKtens, oTest, 1.0e-10);
+  GENTEN_FLOAT_EQ(oTest.value(0), 1.0, "divide() element 0 OK");
+  GENTEN_FLOAT_EQ(oTest.value(1), 1.0, "divide() element 1 OK");
+  GENTEN_FLOAT_EQ(oTest.value(2), 1.0, "divide() element 2 OK");
+}
+
+TYPED_TEST(TestMixedFormatsT, TensorKtensorMTTKRP) {
+  DistContext::Barrier();
+
+  using exec_space = typename TestFixture::exec_space;
+  using host_exec_space = DefaultHostExecutionSpace;
 
   //----------------------------------------------------------------------
   // Test mttkrp() between Tensor and Ktensor.
@@ -211,118 +238,125 @@ void Genten_Test_MixedFormats_Impl(int infolevel)
   //   mttkrp(Adense,K.U,3)     % Matricizes on 3rd index
   //----------------------------------------------------------------------
 
-  MESSAGE("Resizing Tensor for mttkrp test");
-  dims = Genten::IndxArray(3); dims[0] = 2; dims[1] = 3; dims[2] = 4;
-  Tensor_host_type t2(dims, 0.0);
-  t2(0,0,0) = 1.0;
-  Tensor_type t2_dev = create_mirror_view( exec_space(), t2);
+  INFO_MSG("Resizing Tensor for mttkrp test");
+  IndxArray dims(3);
+  dims[0] = 2;
+  dims[1] = 3;
+  dims[2] = 4;
+  TensorT<host_exec_space> t2(dims, 0.0);
+  t2(0, 0, 0) = 1.0;
+  TensorT<exec_space> t2_dev = create_mirror_view(exec_space(), t2);
   deep_copy(t2_dev, t2);
 
-  MESSAGE("Resizing Ktensor of matching shape");
-  nc = 1;
-  oKtens = Ktensor_host_type(nc, 3, dims);
-  oKtens.setWeights (1.0);
-  ASSERT(oKtens.isConsistent(), "Ktensor resized consistently");
+  INFO_MSG("Resizing Ktensor of matching shape");
+  ttb_indx nc = 1;
+  KtensorT<host_exec_space> oKtens(nc, 3, dims);
+  oKtens.setWeights(1.0);
+  GENTEN_TRUE(oKtens.isConsistent(), "Ktensor resized consistently");
 
   // Set elements in the factors to unique values.
-  oKtens[0](0,0) = 10.0;
-  oKtens[0](1,0) = 11.0;
-  oKtens[1](0,0) = 12.0;
-  oKtens[1](1,0) = 13.0;
-  oKtens[1](2,0) = 14.0;
-  oKtens[2](0,0) = 15.0;
-  oKtens[2](1,0) = 16.0;
-  oKtens[2](2,0) = 17.0;
-  oKtens[2](3,0) = 18.0;
-  oKtens_dev = create_mirror_view( exec_space(), oKtens );
-  deep_copy( oKtens_dev, oKtens );
-
-  Genten::FacMatrix oFM;
-  Genten::FacMatrixT<exec_space> oFM_dev;
+  oKtens[0](0, 0) = 10.0;
+  oKtens[0](1, 0) = 11.0;
+  oKtens[1](0, 0) = 12.0;
+  oKtens[1](1, 0) = 13.0;
+  oKtens[1](2, 0) = 14.0;
+  oKtens[2](0, 0) = 15.0;
+  oKtens[2](1, 0) = 16.0;
+  oKtens[2](2, 0) = 17.0;
+  oKtens[2](3, 0) = 18.0;
+  KtensorT<exec_space> oKtens_dev = create_mirror_view(exec_space(), oKtens);
+  deep_copy(oKtens_dev, oKtens);
 
   // Matricizing on index 0 has result 12*15 = 180.
-  oFM = Genten::FacMatrix(t2.size(0), oKtens.ncomponents());
-  oFM_dev = create_mirror_view( exec_space(), oFM );
-  deep_copy( oFM_dev, oFM );
-  mttkrp (t2_dev, oKtens_dev, 0, oFM_dev);
-  deep_copy( oFM, oFM_dev );
-  ASSERT((oFM.nRows() == 2) && (oFM.nCols() == 1),
-         "mttkrp result shape correct for index [0]");
-  ASSERT( EQ(oFM.entry(0,0), 180.0) && EQ(oFM.entry(1,0), 0.0),
-          "mttkrp result values correct for index [0]");
+  FacMatrix oFM(t2.size(0), oKtens.ncomponents());
+  FacMatrixT<exec_space> oFM_dev = create_mirror_view(exec_space(), oFM);
+  deep_copy(oFM_dev, oFM);
+  mttkrp(t2_dev, oKtens_dev, 0, oFM_dev);
+  deep_copy(oFM, oFM_dev);
 
-  /* Uncomment to manually check what the answer should be.
-     Genten::print_tensor(t2, std::cout, "Tensor for mttkrp test");
-     Genten::print_ktensor(oKtens, std::cout, "Ktensor for mttkrp test");
-     Genten::print_matrix(oFM, std::cout, "Matrix result from mttkrp");
-  */
+  ASSERT_EQ(oFM.nRows(), 2);
+  ASSERT_EQ(oFM.nCols(), 1);
+  INFO_MSG("mttkrp result shape correct for index [0]");
+
+  ASSERT_FLOAT_EQ(oFM.entry(0, 0), 180.0);
+  ASSERT_FLOAT_EQ(oFM.entry(1, 0), 0.0);
+  INFO_MSG("mttkrp result values correct for index [0]");
+
+  // Uncomment to manually check what the answer should be.
+  // Genten::print_tensor(t2, std::cout, "Tensor for mttkrp test");
+  // Genten::print_ktensor(oKtens, std::cout, "Ktensor for mttkrp test");
+  // Genten::print_matrix(oFM, std::cout, "Matrix result from mttkrp");
 
   // Matricizing on index 1 has result 10*15 = 150.
-  oFM = Genten::FacMatrix(t2.size(1), oKtens.ncomponents());
-  oFM_dev = create_mirror_view( exec_space(), oFM );
-  deep_copy( oFM_dev, oFM );
-  mttkrp (t2_dev, oKtens_dev, 1, oFM_dev);
-  deep_copy( oFM, oFM_dev );
-  ASSERT((oFM.nRows() == 3) && (oFM.nCols() == 1),
-         "mttkrp result shape correct for index [1]");
-  ASSERT( EQ(oFM.entry(0,0), 150.0) && EQ(oFM.entry(1,0), 0.0),
-          "mttkrp result values correct for index [1]");
+  oFM = FacMatrix(t2.size(1), oKtens.ncomponents());
+  oFM_dev = create_mirror_view(exec_space(), oFM);
+  deep_copy(oFM_dev, oFM);
+  mttkrp(t2_dev, oKtens_dev, 1, oFM_dev);
+  deep_copy(oFM, oFM_dev);
+
+  ASSERT_EQ(oFM.nRows(), 3);
+  ASSERT_EQ(oFM.nCols(), 1);
+  INFO_MSG("mttkrp result shape correct for index [1]");
+
+  ASSERT_FLOAT_EQ(oFM.entry(0, 0), 150.0);
+  ASSERT_FLOAT_EQ(oFM.entry(1, 0), 0.0);
+  INFO_MSG("mttkrp result values correct for index [1]");
 
   // Matricizing on index 2 has result 10*12 = 120.
-  oFM = Genten::FacMatrix(t2.size(2), oKtens.ncomponents());
-  oFM_dev = create_mirror_view( exec_space(), oFM );
-  deep_copy( oFM_dev, oFM );
-  mttkrp (t2_dev, oKtens_dev, 2, oFM_dev);
-  deep_copy( oFM, oFM_dev );
-  ASSERT((oFM.nRows() == 4) && (oFM.nCols() == 1),
-         "mttkrp result shape correct for index [2]");
-  ASSERT( EQ(oFM.entry(0,0), 120.0) && EQ(oFM.entry(1,0), 0.0),
-          "mttkrp result values correct for index [2]");
+  oFM = FacMatrix(t2.size(2), oKtens.ncomponents());
+  oFM_dev = create_mirror_view(exec_space(), oFM);
+  deep_copy(oFM_dev, oFM);
+  mttkrp(t2_dev, oKtens_dev, 2, oFM_dev);
+  deep_copy(oFM, oFM_dev);
+
+  ASSERT_EQ(oFM.nRows(), 4);
+  ASSERT_EQ(oFM.nCols(), 1);
+  INFO_MSG("mttkrp result shape correct for index [2]");
+
+  ASSERT_FLOAT_EQ(oFM.entry(0, 0), 120.0);
+  ASSERT_FLOAT_EQ(oFM.entry(1, 0), 0.0);
+  INFO_MSG("mttkrp result values correct for index [2]");
 
   // Add another nonzero and repeat the three tests.
-  t2(1,2,3) = 1.0;
+  t2(1, 2, 3) = 1.0;
   deep_copy(t2_dev, t2);
-  oFM = Genten::FacMatrix(t2.size(0), oKtens.ncomponents());
-  oFM_dev = create_mirror_view( exec_space(), oFM );
-  deep_copy( oFM_dev, oFM );
-  mttkrp (t2_dev, oKtens_dev, 0, oFM_dev);
-  deep_copy( oFM, oFM_dev );
-  ASSERT( EQ(oFM.entry(0,0), 180.0) && EQ(oFM.entry(1,0), 252.0),
-          "mttkrp result values correct for index [0], 2 sparse nnz");
-  oFM = Genten::FacMatrix(t2.size(1), oKtens.ncomponents());
-  oFM_dev = create_mirror_view( exec_space(), oFM );
-  deep_copy( oFM_dev, oFM );
-  mttkrp (t2_dev, oKtens_dev, 1, oFM_dev);
-  deep_copy( oFM, oFM_dev );
-  ASSERT( EQ(oFM.entry(0,0), 150.0) && EQ(oFM.entry(2,0), 198.0),
-          "mttkrp result values correct for index [0], 2 sparse nnz");
-  oFM = Genten::FacMatrix(t2.size(2), oKtens.ncomponents());
-  oFM_dev = create_mirror_view( exec_space(), oFM );
-  deep_copy( oFM_dev, oFM );
-  mttkrp (t2_dev, oKtens_dev, 2, oFM_dev);
-  deep_copy( oFM, oFM_dev );
-  ASSERT( EQ(oFM.entry(0,0), 120.0) && EQ(oFM.entry(3,0), 154.0),
-          "mttkrp result values correct for index [0], 2 sparse nnz");
+  oFM = FacMatrix(t2.size(0), oKtens.ncomponents());
+  oFM_dev = create_mirror_view(exec_space(), oFM);
+  deep_copy(oFM_dev, oFM);
+  mttkrp(t2_dev, oKtens_dev, 0, oFM_dev);
+  deep_copy(oFM, oFM_dev);
 
-  finalize();
+  ASSERT_FLOAT_EQ(oFM.entry(0, 0), 180.0);
+  ASSERT_FLOAT_EQ(oFM.entry(1, 0), 252.0);
+  INFO_MSG("mttkrp result values correct for index [0], 2 sparse nnz");
 
+  oFM = FacMatrix(t2.size(1), oKtens.ncomponents());
+  oFM_dev = create_mirror_view(exec_space(), oFM);
+  deep_copy(oFM_dev, oFM);
+  mttkrp(t2_dev, oKtens_dev, 1, oFM_dev);
+  deep_copy(oFM, oFM_dev);
+
+  ASSERT_FLOAT_EQ(oFM.entry(0, 0), 150.0);
+  ASSERT_FLOAT_EQ(oFM.entry(2, 0), 198.0);
+  INFO_MSG("mttkrp result values correct for index [0], 2 sparse nnz");
+
+  oFM = FacMatrix(t2.size(2), oKtens.ncomponents());
+  oFM_dev = create_mirror_view(exec_space(), oFM);
+  deep_copy(oFM_dev, oFM);
+  mttkrp(t2_dev, oKtens_dev, 2, oFM_dev);
+  deep_copy(oFM, oFM_dev);
+
+  ASSERT_FLOAT_EQ(oFM.entry(0, 0), 120.0);
+  ASSERT_FLOAT_EQ(oFM.entry(3, 0), 154.0);
+  INFO_MSG("mttkrp result values correct for index [0], 2 sparse nnz");
 }
 
-template <typename ExecSpace>
-void Genten_Test_MTTKRP_Type(Genten::MTTKRP_Method::type mttkrp_method,
-                             int infolevel, const std::string& label)
-{
-  typedef ExecSpace exec_space;
-  typedef Genten::DefaultHostExecutionSpace host_exec_space;
-  typedef Genten::SptensorT<exec_space> Sptensor_type;
-  typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
-  typedef Genten::KtensorT<exec_space> Ktensor_type;
-  typedef Genten::KtensorT<host_exec_space> Ktensor_host_type;
+template <typename exec_space>
+void RunMTTKRPTypeTest(MTTKRP_Method::type mttkrp_method,
+                       const std::string &label) {
+  DistContext::Barrier();
 
-  std::string space_name = Genten::SpaceProperties<exec_space>::name();
-  initialize("MTTKRP tests ("+label+", "+space_name+")", infolevel);
-
-  Genten::IndxArray dims;
+  using host_exec_space = DefaultHostExecutionSpace;
 
   //----------------------------------------------------------------------
   // Test mttkrp() between Sptensor and Ktensor.
@@ -341,135 +375,189 @@ void Genten_Test_MTTKRP_Type(Genten::MTTKRP_Method::type mttkrp_method,
   //   mttkrp(Asparse,K.U,3)     % Matricizes on 3rd index
   //----------------------------------------------------------------------
 
-  MESSAGE("Resizing Sptensor for mttkrp test");
-  dims = Genten::IndxArray(3); dims[0] = 2; dims[1] = 3; dims[2] = 4;
-  Sptensor_host_type a(dims,2);
-  a.subscript(0,0) = 0;  a.subscript(0,1) = 0;  a.subscript(0,2) = 0;
+  INFO_MSG("Resizing Sptensor for mttkrp test");
+  const ttb_indx nd = 3;
+  IndxArray dims(nd);
+  dims[0] = 2;
+  dims[1] = 3;
+  dims[2] = 4;
+  SptensorT<host_exec_space> a(dims, 2);
+  a.subscript(0, 0) = 0;
+  a.subscript(0, 1) = 0;
+  a.subscript(0, 2) = 0;
   a.value(0) = 1.0;
-  a.subscript(1,0) = 1;  a.subscript(1,1) = 2;  a.subscript(1,2) = 3;
+  a.subscript(1, 0) = 1;
+  a.subscript(1, 1) = 2;
+  a.subscript(1, 2) = 3;
   a.value(1) = 0.0;
 
-  MESSAGE("Resizing Ktensor of matching shape");
+  INFO_MSG("Resizing Ktensor of matching shape");
   ttb_indx nc = 1;
-  Genten::Ktensor oKtens(nc, 3, dims);
-  oKtens.setWeights (1.0);
-  ASSERT(oKtens.isConsistent(), "Ktensor resized consistently");
+  Ktensor oKtens(nc, 3, dims);
+  oKtens.setWeights(1.0);
+  GENTEN_TRUE(oKtens.isConsistent(), "Ktensor resized consistently");
 
   // Set elements in the factors to unique values.
   // The sparse tensor has only one nonzero value; hence, mttkrp will involve
   // just one element from two of the factor matrices.
-  oKtens[0].entry(0,0) = 10.0;
-  oKtens[0].entry(1,0) = 11.0;
-  oKtens[1].entry(0,0) = 12.0;
-  oKtens[1].entry(1,0) = 13.0;
-  oKtens[1].entry(2,0) = 14.0;
-  oKtens[2].entry(0,0) = 15.0;
-  oKtens[2].entry(1,0) = 16.0;
-  oKtens[2].entry(2,0) = 17.0;
-  oKtens[2].entry(3,0) = 18.0;
+  oKtens[0].entry(0, 0) = 10.0;
+  oKtens[0].entry(1, 0) = 11.0;
+  oKtens[1].entry(0, 0) = 12.0;
+  oKtens[1].entry(1, 0) = 13.0;
+  oKtens[1].entry(2, 0) = 14.0;
+  oKtens[2].entry(0, 0) = 15.0;
+  oKtens[2].entry(1, 0) = 16.0;
+  oKtens[2].entry(2, 0) = 17.0;
+  oKtens[2].entry(3, 0) = 18.0;
 
   // Copy a and oKtens to device
-  Sptensor_type a_dev = create_mirror_view( exec_space(), a );
-  deep_copy( a_dev, a );
-  if (mttkrp_method == Genten::MTTKRP_Method::Perm)
-    a_dev.createPermutation();
-  Ktensor_type oKtens_dev = create_mirror_view( exec_space(), oKtens );
-  deep_copy( oKtens_dev, oKtens );
+  Genten::DistTensorContext dtc;
+  SptensorT<exec_space> a_dev_dist = dtc.distributeTensor<exec_space>(a);
+  const ProcessorMap *pmap = dtc.pmap_ptr().get();
+  a_dev_dist.setProcessorMap(pmap);
+  if (mttkrp_method == MTTKRP_Method::Perm) {
+    a_dev_dist.createPermutation();
+  }
 
-  Genten::FacMatrix oFM;
-  Genten::FacMatrixT<exec_space> oFM_dev;
+  KtensorT<exec_space> oKtens_dev_dist = dtc.exportFromRoot<exec_space>(oKtens);
+  oKtens_dev_dist.setProcessorMap(pmap);
 
-  Genten::AlgParams algParams;
+  FacMatrix oFM;
+  FacMatrixT<exec_space> oFM_dev;
+
+  AlgParams algParams;
   algParams.mttkrp_method = mttkrp_method;
   algParams.mttkrp_duplicated_threshold = 1.0e6; // Ensure duplicated is used
 
   // Matricizing on index 0 has result 12*15 = 180.
-  oFM = Genten::FacMatrix(a.size(0), oKtens.ncomponents());
-  oFM_dev = create_mirror_view( exec_space(), oFM );
-  deep_copy( oFM_dev, oFM );
-  mttkrp (a_dev, oKtens_dev, 0, oFM_dev, algParams);
-  deep_copy( oFM, oFM_dev );
-  ASSERT((oFM.nRows() == 2) && (oFM.nCols() == 1),
-         "mttkrp result shape correct for index [0]");
-  ASSERT( EQ(oFM.entry(0,0), 180.0) && EQ(oFM.entry(1,0), 0.0),
-          "mttkrp result values correct for index [0]");
+  oFM_dev = FacMatrixT<exec_space>(a_dev_dist.size(0), nc, pmap->facMap(0));
+  mttkrp(a_dev_dist, oKtens_dev_dist, 0, oFM_dev, algParams);
+  oFM = dtc.importToRoot<DefaultHostExecutionSpace>(0, oFM_dev);
 
-  /* Uncomment to manually check what the answer should be.
-     Genten::print_sptensor(a, std::cout, "Sparse tensor for mttkrp test");
-     Genten::print_ktensor(oKtens, std::cout, "Ktensor for mttkrp test");
-     Genten::print_matrix(oFM, std::cout, "Matrix result from mttkrp");
-  */
+  ASSERT_EQ(oFM.nRows(), 2);
+  ASSERT_EQ(oFM.nCols(), 1);
+  INFO_MSG("mttkrp result shape correct for index [0]");
+
+  if (dtc.gridRank() == 0) {
+    ASSERT_FLOAT_EQ(oFM.entry(0, 0), 180.0);
+    ASSERT_FLOAT_EQ(oFM.entry(1, 0), 0.0);
+    INFO_MSG("mttkrp result values correct for index [0]");
+  }
+
+  // Uncomment to manually check what the answer should be.
+  // Genten::print_sptensor(a, std::cout, "Sparse tensor for mttkrp test");
+  // Genten::print_ktensor(oKtens, std::cout, "Ktensor for mttkrp test");
+  // Genten::print_matrix(oFM, std::cout, "Matrix result from mttkrp");
 
   // Matricizing on index 1 has result 10*15 = 150.
-  oFM = Genten::FacMatrix(a.size(1), oKtens.ncomponents());
-  oFM_dev = create_mirror_view( exec_space(), oFM );
-  deep_copy( oFM_dev, oFM );
-  mttkrp (a_dev, oKtens_dev, 1, oFM_dev, algParams);
-  deep_copy( oFM, oFM_dev );
-  ASSERT((oFM.nRows() == 3) && (oFM.nCols() == 1),
-         "mttkrp result shape correct for index [1]");
-  ASSERT( EQ(oFM.entry(0,0), 150.0) && EQ(oFM.entry(1,0), 0.0),
-          "mttkrp result values correct for index [1]");
+  oFM_dev = FacMatrixT<exec_space>(a_dev_dist.size(1), nc, pmap->facMap(1));
+  mttkrp(a_dev_dist, oKtens_dev_dist, 1, oFM_dev, algParams);
+  oFM = dtc.importToRoot<DefaultHostExecutionSpace>(1, oFM_dev);
+
+  ASSERT_EQ(oFM.nRows(), 3);
+  ASSERT_EQ(oFM.nCols(), 1);
+  INFO_MSG("mttkrp result shape correct for index [1]");
+
+  if (dtc.gridRank() == 0) {
+    ASSERT_FLOAT_EQ(oFM.entry(0, 0), 150.0);
+    ASSERT_FLOAT_EQ(oFM.entry(1, 0), 0.0);
+    INFO_MSG("mttkrp result values correct for index [1]");
+  }
 
   // Matricizing on index 2 has result 10*12 = 120.
-  oFM = Genten::FacMatrix(a.size(2), oKtens.ncomponents());
-  oFM_dev = create_mirror_view( exec_space(), oFM );
-  deep_copy( oFM_dev, oFM );
-  mttkrp (a_dev, oKtens_dev, 2, oFM_dev, algParams);
-  deep_copy( oFM, oFM_dev );
-  ASSERT((oFM.nRows() == 4) && (oFM.nCols() == 1),
-         "mttkrp result shape correct for index [2]");
-  ASSERT( EQ(oFM.entry(0,0), 120.0) && EQ(oFM.entry(1,0), 0.0),
-          "mttkrp result values correct for index [2]");
+  oFM_dev = FacMatrixT<exec_space>(a_dev_dist.size(2), nc, pmap->facMap(2));
+  mttkrp(a_dev_dist, oKtens_dev_dist, 2, oFM_dev, algParams);
+  oFM = dtc.importToRoot<DefaultHostExecutionSpace>(2, oFM_dev);
+
+  ASSERT_EQ(oFM.nRows(), 4);
+  ASSERT_EQ(oFM.nCols(), 1);
+  INFO_MSG("mttkrp result shape correct for index [2]");
+
+  if (dtc.gridRank() == 0) {
+    ASSERT_FLOAT_EQ(oFM.entry(0, 0), 120.0);
+    ASSERT_FLOAT_EQ(oFM.entry(1, 0), 0.0);
+    INFO_MSG("mttkrp result values correct for index [2]");
+  }
 
   // Add another nonzero and repeat the three tests.
-  a.subscript(1,0) = 1;  a.subscript(1,1) = 2;  a.subscript(1,2) = 3;
+  a.subscript(1, 0) = 1;
+  a.subscript(1, 1) = 2;
+  a.subscript(1, 2) = 3;
   a.value(1) = 1.0;
-  a_dev = create_mirror_view( exec_space(), a );
-  deep_copy( a_dev, a );
-  if (mttkrp_method == Genten::MTTKRP_Method::Perm)
-    a_dev.createPermutation();
-  oFM = Genten::FacMatrix(a.size(0), oKtens.ncomponents());
-  oFM_dev = create_mirror_view( exec_space(), oFM );
-  deep_copy( oFM_dev, oFM );
-  mttkrp (a_dev, oKtens_dev, 0, oFM_dev, algParams);
-  deep_copy( oFM, oFM_dev );
-  ASSERT( EQ(oFM.entry(0,0), 180.0) && EQ(oFM.entry(1,0), 252.0),
-          "mttkrp result values correct for index [0], 2 sparse nnz");
-  oFM = Genten::FacMatrix(a.size(1), oKtens.ncomponents());
-  oFM_dev = create_mirror_view( exec_space(), oFM );
-  deep_copy( oFM_dev, oFM );
-  mttkrp (a_dev, oKtens_dev, 1, oFM_dev, algParams);
-  deep_copy( oFM, oFM_dev );
-  ASSERT( EQ(oFM.entry(0,0), 150.0) && EQ(oFM.entry(2,0), 198.0),
-          "mttkrp result values correct for index [0], 2 sparse nnz");
-  oFM = Genten::FacMatrix(a.size(2), oKtens.ncomponents());
-  oFM_dev = create_mirror_view( exec_space(), oFM );
-  deep_copy( oFM_dev, oFM );
-  mttkrp (a_dev, oKtens_dev, 2, oFM_dev, algParams);
-  deep_copy( oFM, oFM_dev );
-  ASSERT( EQ(oFM.entry(0,0), 120.0) && EQ(oFM.entry(3,0), 154.0),
-          "mttkrp result values correct for index [0], 2 sparse nnz");
 
-  finalize();
-  return;
+  a_dev_dist = dtc.distributeTensor<exec_space>(a);
+  pmap = dtc.pmap_ptr().get();
+  a_dev_dist.setProcessorMap(pmap);
+  if (mttkrp_method == MTTKRP_Method::Perm) {
+    a_dev_dist.createPermutation();
+  }
+
+  oKtens_dev_dist = dtc.exportFromRoot<exec_space>(oKtens);
+  oKtens_dev_dist.setProcessorMap(pmap);
+
+  oFM_dev = FacMatrixT<exec_space>(a_dev_dist.size(0), nc, pmap->facMap(0));
+  mttkrp(a_dev_dist, oKtens_dev_dist, 0, oFM_dev, algParams);
+  oFM = dtc.importToRoot<DefaultHostExecutionSpace>(0, oFM_dev);
+
+  if (dtc.gridRank() == 0) {
+    ASSERT_FLOAT_EQ(oFM.entry(0, 0), 180.0);
+    ASSERT_FLOAT_EQ(oFM.entry(1, 0), 252.0);
+    INFO_MSG("mttkrp result values correct for index [0], 2 sparse nnz");
+  }
+
+  oFM_dev = FacMatrixT<exec_space>(a_dev_dist.size(1), nc, pmap->facMap(1));
+  mttkrp(a_dev_dist, oKtens_dev_dist, 1, oFM_dev, algParams);
+  oFM = dtc.importToRoot<DefaultHostExecutionSpace>(1, oFM_dev);
+
+  if (dtc.gridRank() == 0) {
+    ASSERT_FLOAT_EQ(oFM.entry(0, 0), 150.0);
+    ASSERT_FLOAT_EQ(oFM.entry(2, 0), 198.0);
+    INFO_MSG("mttkrp result values correct for index [0], 2 sparse nnz");
+  }
+
+  oFM_dev = FacMatrixT<exec_space>(a_dev_dist.size(2), nc, pmap->facMap(2));
+  mttkrp(a_dev_dist, oKtens_dev_dist, 2, oFM_dev, algParams);
+  oFM = dtc.importToRoot<DefaultHostExecutionSpace>(2, oFM_dev);
+
+  if (dtc.gridRank() == 0) {
+    ASSERT_FLOAT_EQ(oFM.entry(0, 0), 120.0);
+    ASSERT_FLOAT_EQ(oFM.entry(3, 0), 154.0);
+    INFO_MSG("mttkrp result values correct for index [0], 2 sparse nnz");
+  }
 }
 
-template <typename ExecSpace>
-void Genten_Test_MTTKRP_All_Type(Genten::MTTKRP_All_Method::type mttkrp_method,
-                                 int infolevel, const std::string& label)
-{
-  typedef ExecSpace exec_space;
-  typedef Genten::DefaultHostExecutionSpace host_exec_space;
-  typedef Genten::SptensorT<exec_space> Sptensor_type;
-  typedef Genten::SptensorT<host_exec_space> Sptensor_host_type;
-  typedef Genten::KtensorT<exec_space> Ktensor_type;
-  typedef Genten::KtensorT<host_exec_space> Ktensor_host_type;
+TYPED_TEST(TestMixedFormatsT, MTTKRP_Type) {
+  using exec_space = typename TestFixture::exec_space;
 
-  std::string space_name = Genten::SpaceProperties<exec_space>::name();
-  initialize("MTTKRP-All tests ("+label+", "+space_name+")", infolevel);
+  struct TestCase {
+    TestCase(const MTTKRP_Method::type mttkrp_method, const char *label)
+        : mttkrp_method{mttkrp_method}, label{label} {}
 
-  Genten::IndxArray dims;
+    const MTTKRP_Method::type mttkrp_method;
+    const char *label;
+
+    const bool run{not SpaceProperties<exec_space>::is_gpu ||
+                   mttkrp_method != MTTKRP_Method::type::Duplicated};
+  };
+
+  TestCase test_cases[]{
+      TestCase{MTTKRP_Method::type::Atomic, "Atomic"},
+      TestCase{MTTKRP_Method::type::Perm, "Perm"},
+      TestCase{MTTKRP_Method::type::Duplicated, "Duplicated"}};
+
+  for (const auto &tc : test_cases) {
+    if (tc.run) {
+      RunMTTKRPTypeTest<exec_space>(tc.mttkrp_method, tc.label);
+    }
+  }
+}
+
+template <typename exec_space>
+void RunMTTKRAllTypeTest(MTTKRP_All_Method::type mttkrp_method,
+                         const std::string &label) {
+  DistContext::Barrier();
+
+  using host_exec_space = DefaultHostExecutionSpace;
 
   //----------------------------------------------------------------------
   // Test mttkrp() between Sptensor and Ktensor.
@@ -488,128 +576,145 @@ void Genten_Test_MTTKRP_All_Type(Genten::MTTKRP_All_Method::type mttkrp_method,
   //   mttkrp(Asparse,K.U,3)     % Matricizes on 3rd index
   //----------------------------------------------------------------------
 
-  MESSAGE("Resizing Sptensor for mttkrp test");
-  dims = Genten::IndxArray(3); dims[0] = 2; dims[1] = 3; dims[2] = 4;
-  Sptensor_host_type a(dims,2);
-  a.subscript(0,0) = 0;  a.subscript(0,1) = 0;  a.subscript(0,2) = 0;
+  INFO_MSG("Resizing Sptensor for mttkrp test");
+  const ttb_indx nd = 3;
+  IndxArray dims(nd);
+  dims[0] = 2;
+  dims[1] = 3;
+  dims[2] = 4;
+  SptensorT<host_exec_space> a(dims, 2);
+  a.subscript(0, 0) = 0;
+  a.subscript(0, 1) = 0;
+  a.subscript(0, 2) = 0;
   a.value(0) = 1.0;
-  a.subscript(1,0) = 1;  a.subscript(1,1) = 2;  a.subscript(1,2) = 3;
+  a.subscript(1, 0) = 1;
+  a.subscript(1, 1) = 2;
+  a.subscript(1, 2) = 3;
   a.value(1) = 0.0;
 
-  MESSAGE("Resizing Ktensor of matching shape");
-  ttb_indx nc = 1;
-  Genten::Ktensor oKtens(nc, 3, dims);
-  oKtens.setWeights (1.0);
-  ASSERT(oKtens.isConsistent(), "Ktensor resized consistently");
+  INFO_MSG("Resizing Ktensor of matching shape");
+  const ttb_indx nc = 1;
+  Ktensor oKtens(nc, nd, dims);
+  oKtens.setWeights(1.0);
+  GENTEN_TRUE(oKtens.isConsistent(), "Ktensor resized consistently");
 
   // Set elements in the factors to unique values.
   // The sparse tensor has only one nonzero value; hence, mttkrp will involve
   // just one element from two of the factor matrices.
-  oKtens[0].entry(0,0) = 10.0;
-  oKtens[0].entry(1,0) = 11.0;
-  oKtens[1].entry(0,0) = 12.0;
-  oKtens[1].entry(1,0) = 13.0;
-  oKtens[1].entry(2,0) = 14.0;
-  oKtens[2].entry(0,0) = 15.0;
-  oKtens[2].entry(1,0) = 16.0;
-  oKtens[2].entry(2,0) = 17.0;
-  oKtens[2].entry(3,0) = 18.0;
+  oKtens[0].entry(0, 0) = 10.0;
+  oKtens[0].entry(1, 0) = 11.0;
+  oKtens[1].entry(0, 0) = 12.0;
+  oKtens[1].entry(1, 0) = 13.0;
+  oKtens[1].entry(2, 0) = 14.0;
+  oKtens[2].entry(0, 0) = 15.0;
+  oKtens[2].entry(1, 0) = 16.0;
+  oKtens[2].entry(2, 0) = 17.0;
+  oKtens[2].entry(3, 0) = 18.0;
 
   // Copy a and oKtens to device
-  Sptensor_type a_dev = create_mirror_view( exec_space(), a );
-  deep_copy( a_dev, a );
-  Ktensor_type oKtens_dev = create_mirror_view( exec_space(), oKtens );
-  deep_copy( oKtens_dev, oKtens );
+  Genten::DistTensorContext dtc;
+  SptensorT<exec_space> a_dev_dist = dtc.distributeTensor<exec_space>(a);
+  const ProcessorMap *pmap = dtc.pmap_ptr().get();
+  a_dev_dist.setProcessorMap(pmap);
 
-  Genten::Ktensor v(nc, 3, dims);
+  KtensorT<exec_space> oKtens_dev_dist = dtc.exportFromRoot<exec_space>(oKtens);
+  oKtens_dev_dist.setProcessorMap(pmap);
+
+  Ktensor v(nc, nd, dims);
   v.setWeights(1.0);
-  Ktensor_type v_dev = create_mirror_view( exec_space(), v );
-  deep_copy( v_dev, v );
+  KtensorT<exec_space> v_dev_dist = dtc.exportFromRoot<exec_space>(v);
+  v_dev_dist.setProcessorMap(pmap);
 
-  Genten::AlgParams algParams;
+  AlgParams algParams;
   algParams.mttkrp_all_method = mttkrp_method;
   algParams.mttkrp_method = Genten::MTTKRP_Method::Atomic;
 
   // Matricizing on index 0 has result 12*15 = 180.
   // Matricizing on index 1 has result 10*15 = 150.
   // Matricizing on index 2 has result 10*12 = 120.
-  mttkrp_all(a_dev, oKtens_dev, v_dev, algParams);
-  deep_copy( v, v_dev );
-  ASSERT((v[0].nRows() == 2) && (v[0].nCols() == 1),
-         "mttkrp result shape correct for index [0]");
-  ASSERT(EQ(v[0].entry(0,0), 180.0) && EQ(v[0].entry(1,0), 0.0),
-          "mttkrp result values correct for index [0]");
-  ASSERT((v[1].nRows() == 3) && (v[1].nCols() == 1),
-         "mttkrp result shape correct for index [1]");
-  ASSERT(EQ(v[1].entry(0,0), 150.0) && EQ(v[1].entry(1,0), 0.0),
-          "mttkrp result values correct for index [1]");
-  ASSERT((v[2].nRows() == 4) && (v[2].nCols() == 1),
-         "mttkrp result shape correct for index [2]");
-  ASSERT(EQ(v[2].entry(0,0), 120.0) && EQ(v[2].entry(1,0), 0.0),
-          "mttkrp result values correct for index [2]");
+  mttkrp_all(a_dev_dist, oKtens_dev_dist, v_dev_dist, algParams);
+  v = dtc.importToRoot<DefaultHostExecutionSpace>(v_dev_dist);
 
-  /* Uncomment to manually check what the answer should be.
-     Genten::print_sptensor(a, std::cout, "Sparse tensor for mttkrp test");
-     Genten::print_ktensor(oKtens, std::cout, "Ktensor for mttkrp test");
-     Genten::print_ktensor(v, std::cout, "Ktensor result from mttkrp_all");
-  */
+  if (DistContext::rank() == 0) {
+    ASSERT_EQ(v[0].nRows(), 2);
+    ASSERT_EQ(v[0].nCols(), 1);
+    INFO_MSG("mttkrp result shape correct for index [0]");
+
+    ASSERT_FLOAT_EQ(v[0].entry(0, 0), 180.0);
+    ASSERT_FLOAT_EQ(v[0].entry(1, 0), 0.0);
+    INFO_MSG("mttkrp result values correct for index [0]");
+
+    ASSERT_EQ(v[1].nRows(), 3);
+    ASSERT_EQ(v[1].nCols(), 1);
+    INFO_MSG("mttkrp result shape correct for index [1]");
+
+    ASSERT_FLOAT_EQ(v[1].entry(0, 0), 150.0);
+    ASSERT_FLOAT_EQ(v[1].entry(1, 0), 0.0);
+    INFO_MSG("mttkrp result values correct for index [1]");
+
+    ASSERT_EQ(v[2].nRows(), 4);
+    ASSERT_EQ(v[2].nCols(), 1);
+    INFO_MSG("mttkrp result shape correct for index [2]");
+
+    ASSERT_FLOAT_EQ(v[2].entry(0, 0), 120.0);
+    ASSERT_FLOAT_EQ(v[2].entry(1, 0), 0.0);
+    INFO_MSG("mttkrp result values correct for index [2]");
+  }
+
+  // Uncomment to manually check what the answer should be.
+  // Genten::print_sptensor(a, std::cout, "Sparse tensor for mttkrp test");
+  // Genten::print_ktensor(oKtens, std::cout, "Ktensor for mttkrp test");
+  // Genten::print_ktensor(v, std::cout, "Ktensor result from mttkrp_all");
 
   // Add another nonzero and repeat the three tests.
-  a.subscript(1,0) = 1;  a.subscript(1,1) = 2;  a.subscript(1,2) = 3;
+  a.subscript(1, 0) = 1;
+  a.subscript(1, 1) = 2;
+  a.subscript(1, 2) = 3;
   a.value(1) = 1.0;
-  a_dev = create_mirror_view( exec_space(), a );
-  deep_copy( a_dev, a );
-  mttkrp_all(a_dev, oKtens_dev, v_dev, algParams);
-  deep_copy( v, v_dev );
-  ASSERT(EQ(v[0].entry(0,0), 180.0) && EQ(v[0].entry(1,0), 252.0),
-          "mttkrp result values correct for index [0], 2 sparse nnz");
-  ASSERT(EQ(v[1].entry(0,0), 150.0) && EQ(v[1].entry(2,0), 198.0),
-          "mttkrp result values correct for index [0], 2 sparse nnz");
-  ASSERT(EQ(v[2].entry(0,0), 120.0) && EQ(v[2].entry(3,0), 154.0),
-          "mttkrp result values correct for index [0], 2 sparse nnz");
+  a_dev_dist = dtc.distributeTensor<exec_space>(a);
+  a_dev_dist.setProcessorMap(pmap);
+  mttkrp_all(a_dev_dist, oKtens_dev_dist, v_dev_dist, algParams);
+  v = dtc.importToRoot<DefaultHostExecutionSpace>(v_dev_dist);
 
-  finalize();
-  return;
+  if (DistContext::rank() == 0) {
+    ASSERT_FLOAT_EQ(v[0].entry(0, 0), 180.0);
+    ASSERT_FLOAT_EQ(v[0].entry(1, 0), 252.0);
+    INFO_MSG("mttkrp result values correct for index [0], 2 sparse nnz");
+
+    ASSERT_FLOAT_EQ(v[1].entry(0, 0), 150.0);
+    ASSERT_FLOAT_EQ(v[1].entry(2, 0), 198.0);
+    INFO_MSG("mttkrp result values correct for index [0], 2 sparse nnz");
+
+    ASSERT_FLOAT_EQ(v[2].entry(0, 0), 120.0);
+    ASSERT_FLOAT_EQ(v[2].entry(3, 0), 154.0);
+    INFO_MSG("mttkrp result values correct for index [0], 2 sparse nnz");
+  }
 }
 
-template <typename ExecSpace>
-void Genten_Test_MixedFormats_Space(int infolevel)
-{
-  typedef Genten::SpaceProperties<ExecSpace> space_prop;
+TYPED_TEST(TestMixedFormatsT, MTTKRP_All_Type) {
+  using exec_space = typename TestFixture::exec_space;
 
-  Genten_Test_MixedFormats_Impl<ExecSpace>(infolevel);
+  struct TestCase {
+    TestCase(const MTTKRP_All_Method::type mttkrp_method, const char *label)
+        : mttkrp_method{mttkrp_method}, label{label} {}
 
-  Genten_Test_MTTKRP_Type<ExecSpace>(
-    Genten::MTTKRP_Method::Atomic, infolevel, "Atomic");
-  if (!space_prop::is_gpu)
-    Genten_Test_MTTKRP_Type<ExecSpace>(
-      Genten::MTTKRP_Method::Duplicated, infolevel, "Duplicated");
-  Genten_Test_MTTKRP_Type<ExecSpace>(
-    Genten::MTTKRP_Method::Perm, infolevel, "Perm");
+    const MTTKRP_All_Method::type mttkrp_method;
+    const char *label;
 
-  Genten_Test_MTTKRP_All_Type<ExecSpace>(
-    Genten::MTTKRP_All_Method::Iterated, infolevel, "Iterated");
-  Genten_Test_MTTKRP_All_Type<ExecSpace>(
-    Genten::MTTKRP_All_Method::Atomic, infolevel, "Atomic");
-  if (!space_prop::is_gpu)
-    Genten_Test_MTTKRP_All_Type<ExecSpace>(
-      Genten::MTTKRP_All_Method::Duplicated, infolevel, "Duplicated");
+    const bool run{not SpaceProperties<exec_space>::is_gpu ||
+                   mttkrp_method != MTTKRP_All_Method::type::Duplicated};
+  };
+
+  TestCase test_cases[]{TestCase{MTTKRP_All_Method::Iterated, "Iterated"},
+                        TestCase{MTTKRP_All_Method::Atomic, "Atomic"},
+                        TestCase{MTTKRP_All_Method::Duplicated, "Duplicated"}};
+
+  for (const auto &tc : test_cases) {
+    if (tc.run) {
+      RunMTTKRAllTypeTest<exec_space>(tc.mttkrp_method, tc.label);
+    }
+  }
 }
 
-void Genten_Test_MixedFormats(int infolevel) {
-#ifdef KOKKOS_ENABLE_CUDA
-  Genten_Test_MixedFormats_Space<Kokkos::Cuda>(infolevel);
-#endif
-#ifdef KOKKOS_ENABLE_HIP
-  Genten_Test_MixedFormats_Space<Kokkos::Experimental::HIP>(infolevel);
-#endif
-#ifdef KOKKOS_ENABLE_OPENMP
-  Genten_Test_MixedFormats_Space<Kokkos::OpenMP>(infolevel);
-#endif
-#ifdef KOKKOS_ENABLE_THREADS
-  Genten_Test_MixedFormats_Space<Kokkos::Threads>(infolevel);
-#endif
-#ifdef KOKKOS_ENABLE_SERIAL
-  Genten_Test_MixedFormats_Space<Kokkos::Serial>(infolevel);
-#endif
-}
+} // namespace UnitTests
+} // namespace Genten

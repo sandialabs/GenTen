@@ -92,7 +92,7 @@ namespace Genten {
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
       static_assert(!is_gpu,
-                    "Cannot call gcp_sgd_ss_grad_sv_kernel for Cuda or HIP space!");
+                    "Cannot call gcp_sgd_ss_grad_sv_kernel for Cuda, HIP or SYCL space!");
 
       /*const*/ unsigned nd = M.ndims();
       /*const*/ unsigned nc = M.ncomponents();
@@ -137,7 +137,7 @@ namespace Genten {
 
           // Compute Ktensor value
           const ttb_real m_val =
-            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(M, ind);
+            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, M, ind);
 
           // Compute Y value
           const ttb_real y_val =
@@ -146,9 +146,9 @@ namespace Genten {
 
           auto row_func = [&](auto j, auto nj, auto Nj, auto k, auto n, auto& ga)
           {
-            typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+            typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
 
-            TV tmp(nj, y_val);
+            auto tmp = TVM::make(team, nj, y_val);
             for (unsigned m=0; m<nd; ++m) {
               if (m != n)
                 tmp *= &(M[m].entry(ind[m],j));
@@ -205,16 +205,16 @@ namespace Genten {
 
           // Compute Ktensor value
           const ttb_real m_val =
-            compute_Ktensor_value<ExecSpace, FacBlockSize, VectorSize>(M, ind);
+            compute_Ktensor_value<ExecSpace, FacBlockSize, VectorSize>(team, M, ind);
 
           // Compute Y value
           const ttb_real y_val = weight_zeros * f.deriv(ttb_real(0.0), m_val);
 
           auto row_func = [&](auto j, auto nj, auto Nj, auto k, auto n, auto& ga)
           {
-            typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+            typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
 
-            TV tmp(nj, y_val);
+            auto tmp = TVM::make(team, nj, y_val);
             for (unsigned m=0; m<nd; ++m) {
               if (m != n)
                 tmp *= &(M[m].entry(ind[m],j));
@@ -320,7 +320,7 @@ namespace Genten {
 
           // Compute Ktensor value
           const ttb_real m_val =
-            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(M, ind);
+            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, M, ind);
 
           // Compute Y value
           const ttb_real y_val =
@@ -328,9 +328,9 @@ namespace Genten {
                                 f.deriv(ttb_real(0.0), m_val) );
 
           auto row_func = [&](auto j, auto nj, auto Nj, auto k, auto n) {
-            typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+            typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
 
-            TV tmp(nj, y_val);
+            auto tmp = TVM::make(team, nj, y_val);
             for (unsigned m=0; m<nd; ++m) {
               if (m != n)
                 tmp *= &(M[m].entry(ind[m],j));
@@ -385,15 +385,16 @@ namespace Genten {
 
           // Compute Ktensor value
           const ttb_real m_val =
-            compute_Ktensor_value<ExecSpace, FacBlockSize, VectorSize>(M, ind);
+            compute_Ktensor_value<ExecSpace, FacBlockSize, VectorSize>(team, M, ind);
 
           // Compute Y value
           const ttb_real y_val = weight_zeros * f.deriv(ttb_real(0.0), m_val);
 
           auto row_func = [&](auto j, auto nj, auto Nj, auto k, auto n) {
-            typedef TinyVec<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TV;
+            typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
 
-            TV tmp(nj, y_val);
+            auto tmp = TVM::make(team, nj, y_val);
+
             for (unsigned m=0; m<nd; ++m) {
               if (m != n)
                 tmp *= &(M[m].entry(ind[m],j));
@@ -489,8 +490,8 @@ namespace Genten {
       }
     };
 
-#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP)
-    // Specialization for Cuda and HIP that always uses atomics and doesn't call
+#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || defined(ENABLE_SYCL_FOR_CUDA)
+    // Specialization for Cuda, HIP and SYCL that always uses atomics and doesn't call
     // gcp_sgd_ss_grad_sv_kernel, which won't run on the GPU
     template <typename loss_type>
     struct GCP_SS_Grad<Kokkos_GPU_Space,loss_type> {
@@ -535,7 +536,7 @@ namespace Genten {
       template <unsigned FBS, unsigned VS>
       void run() const {
         if (algParams.mttkrp_all_method != MTTKRP_All_Method::Atomic)
-          Genten::error("MTTKRP-All method must be atomic on Cuda or HIP!");
+          Genten::error("MTTKRP-All method must be atomic on Cuda, HIP or SYCL!");
 
         gcp_sgd_ss_grad_atomic_kernel<FBS,VS>(
           X,M,f,num_samples_nonzeros,num_samples_zeros,
@@ -566,6 +567,13 @@ namespace Genten {
         weight_nonzeros,weight_zeros,G,rand_pool,algParams,
         timer,timer_nzs,timer_zs);
       run_row_simd_kernel(kernel, M.ncomponents());
+
+      if (M.getProcessorMap() != nullptr) {
+        Kokkos::fence();
+        for (ttb_indx n=0; n<M.ndims(); ++n)
+          M.getProcessorMap()->subGridAllReduce(n, G[n].view().data(),
+                                                G[n].view().span());
+      }
     }
 
   }
