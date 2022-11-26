@@ -101,7 +101,7 @@ namespace Genten {
       else if (global_num_samples_nonzeros_grad == INT_MAX)
         global_num_samples_nonzeros_grad = nnz;
 
-      if (num_samples_zeros_grad == 0)
+      if (global_num_samples_zeros_grad == 0)
         global_num_samples_zeros_grad =
           ttb_indx(std::min(ttb_real(global_num_samples_nonzeros_grad), nz));
       else if (global_num_samples_zeros_grad == INT_MAX)

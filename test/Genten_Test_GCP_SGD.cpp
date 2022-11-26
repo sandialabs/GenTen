@@ -155,7 +155,7 @@ void RunGcpSgdTest(const std::string &label, GCP_Sampling::type sampling_type,
   algParams.epoch_iters = 50;
   algParams.gcp_tol = 1.0e-6;
   algParams.maxiters = 100;
-  algParams.printitn = 0;
+  algParams.printitn = 1;
   algParams.sampling_type = sampling_type;
   algParams.mttkrp_method = mttkrp_method;
   algParams.mttkrp_all_method = mttkrp_all_method;
