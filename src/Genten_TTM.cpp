@@ -52,6 +52,7 @@
 #endif
 
 #if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
+#include "Genten_RocblasHandle.hpp"
 #include "rocblas.h"
 #endif
 
@@ -505,25 +506,11 @@ namespace Genten
         const ttb_real beta = ttb_real(0.0);
         rocblas_status status;
 
-        static rocblas_handle handle = 0;
-        if (handle == 0)
-        {
-          status = rocblas_create_handle(&handle);
-          if (status != rocblas_status_success)
-          {
-            std::stringstream rocblas_create_handle_error;
-            rocblas_create_handle_error << "Error!  rocblas_create_handle() failed with status "
-                               << status;
-            std::cerr << rocblas_create_handle_error.str() << std::endl;
-            throw rocblas_create_handle_error.str();
-          }
-        }
-
         // We need Z = V*Y, where Z/Y are matricised tensors, and V is input matrix.
         // But since Z and Y (matricised) are logically LayoutRight, we instead seek Z'=Y'*V'
         // This way, Y' is LayoutLeft. V, naturally LayoutLeft needs the transpose flag.
         // The result Z' also comes out LayoutLeft, as desired. All LayoutLeft is what Gemm expects
-        status = rocblas_dgemm_strided_batched(handle, rocblas_operation_none, rocblas_operation_transpose,
+        status = rocblas_dgemm_strided_batched(RocblasHandle::get(), rocblas_operation_none, rocblas_operation_transpose,
                                            m, n, k,
                                            &alpha,
                                            Y.getValues().values().data(), lda, strideA,
@@ -592,25 +579,11 @@ namespace Genten
       const double beta = 0.0;
       rocblas_status status;
 
-      static rocblas_handle handle = 0;
-      if (handle == 0)
-      {
-        status = rocblas_create_handle(&handle);
-        if (status != rocblas_status_success)
-        {
-          std::stringstream rocblas_create_handle_error;
-          rocblas_create_handle_error << "Error!  rocblas_create_handle() failed with status "
-                             << status;
-          std::cerr << rocblas_create_handle_error.str() << std::endl;
-          throw rocblas_create_handle_error.str();
-        }
-      }
-
       // We need Z = V*Y, where Z/Y are matricised tensors, and V is input matrix.
       // But since Z and Y (matricised) are logically LayoutRight, we instead seek Z'=Y'*V'
       // This way, Y' is LayoutLeft. V, naturally LayoutLeft needs the transpose flag.
       // The result Z' also comes out LayoutLeft, as desired. All LayoutLeft is what Gemm expects
-      status = rocblas_dgemm(handle, rocblas_operation_none, rocblas_operation_transpose, m, n, k,
+      status = rocblas_dgemm(RocblasHandle::get(), rocblas_operation_none, rocblas_operation_transpose, m, n, k,
                            &alpha, Y.getValues().values().data(), lda, V.getValues().values().data(), ldb,
                            &beta, Z.getValues().values().data(), ldc);
 

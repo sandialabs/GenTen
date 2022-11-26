@@ -61,10 +61,12 @@
 #if defined(KOKKOS_ENABLE_HIP)
 
 #if defined(HAVE_ROCBLAS)
+#include "Genten_RocblasHandle.hpp"
 #include "rocblas.h"
 #endif
 
 #if defined(HAVE_ROCSOLVER)
+#include "Genten_RocblasHandle.hpp"
 #include "rocsolver.h"
 #endif
 
@@ -583,27 +585,15 @@ void gramianImpl(const ViewC& C, const ViewA& A,
     // assumes layout left we compute this as C = A*A'.  Since SYRK writes
     // C', uplo == Upper means we call SYRK with 'L', and vice versa.
 
-    static rocblas_handle handle = 0;
-    if (handle == 0) {
-      status = rocblas_create_handle(&handle);
-      if (status != rocblas_status_success) {
-        std::stringstream ss;
-        ss << "Error!  rocblas_create_handle() failed with status "
-           << status;
-        std::cerr << ss.str() << std::endl;
-        throw ss.str();
-      }
-    }
-
     if (full) {
-      status = rocblas_dgemm(handle, rocblas_operation_none, rocblas_operation_transpose, n, n, m,
+      status = rocblas_dgemm(RocblasHandle::get(), rocblas_operation_none, rocblas_operation_transpose, n, n, m,
                            &alpha, A.data(), lda, A.data(), lda,
                            &beta, C.data(), ldc);
     }
     else {
       rocblas_fill roc_uplo =
         uplo == Upper ? rocblas_fill_lower : rocblas_fill_upper;
-      status = rocblas_dsyrk(handle, roc_uplo, rocblas_operation_none, n, m,
+      status = rocblas_dsyrk(RocblasHandle::get(), roc_uplo, rocblas_operation_none, n, m,
                            &alpha, A.data(), lda, &beta, C.data(), ldc);
     }
 
@@ -639,27 +629,15 @@ void gramianImpl(const ViewC& C, const ViewA& A,
     // assumes layout left we compute this as C = A*A'.  Since SYRK writes
     // C', uplo == Upper means we call SYRK with 'L', and vice versa.
 
-    static rocblas_handle handle = 0;
-    if (handle == 0) {
-      status = rocblas_create_handle(&handle);
-      if (status != rocblas_status_success) {
-        std::stringstream ss;
-        ss << "Error!  rocblas_create_handle() failed with status "
-           << status;
-        std::cerr << ss.str() << std::endl;
-        throw ss.str();
-      }
-    }
-
     if (full) {
-      status = rocblas_sgemm(handle, rocblas_operation_none, rocblas_operation_transpose, n, n, m,
+      status = rocblas_sgemm(RocblasHandle::get(), rocblas_operation_none, rocblas_operation_transpose, n, n, m,
                            &alpha, A.data(), lda, A.data(), lda,
                            &beta, C.data(), ldc);
     }
     else {
       rocblas_fill roc_uplo =
         uplo == Upper ? rocblas_fill_lower : rocblas_fill_upper;
-      status = rocblas_ssyrk(handle, roc_uplo, rocblas_operation_none, n, m,
+      status = rocblas_ssyrk(RocblasHandle::get(), roc_uplo, rocblas_operation_none, n, m,
                            &alpha, A.data(), lda, &beta, C.data(), ldc);
     }
 
@@ -1794,21 +1772,8 @@ gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
   const ttb_indx ldb = B.stride(0);
   const ttb_indx ldc = C.stride(0);
 
-  static rocblas_handle handle = 0;
-  rocblas_status status;
-  if (handle == 0) {
-    status = rocblas_create_handle(&handle);
-    if (status != rocblas_status_success) {
-      std::stringstream ss;
-      ss << "Error!  rocblas_create_handle() failed with status "
-         << status;
-      std::cerr << ss.str() << std::endl;
-      throw ss.str();
-    }
-  }
-
   status = rocblas_dgemm(
-    handle, tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
+    RocblasHandle::get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
     &beta, C.data(), ldc);
   if (status != rocblas_status_success) {
     std::stringstream ss;
@@ -1842,21 +1807,8 @@ gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
   const ttb_indx ldb = B.stride(0);
   const ttb_indx ldc = C.stride(0);
 
-  static rocblas_handle handle = 0;
-  rocblas_status status;
-  if (handle == 0) {
-    status = rocblas_create_handle(&handle);
-    if (status != rocblas_status_success) {
-      std::stringstream ss;
-      ss << "Error!  rocblas_create_handle() failed with status "
-         << status;
-      std::cerr << ss.str() << std::endl;
-      throw ss.str();
-    }
-  }
-
   status = rocblas_sgemm(
-    handle, tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
+    RocblasHandle::get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
     &beta, C.data(), ldc);
   if (status != rocblas_status_success) {
     std::stringstream ss;
@@ -2486,20 +2438,8 @@ namespace Genten {
       assert(A.extent(0) == n);
       assert(A.extent(1) == n);
 
-      static rocblas_handle handle = 0;
-      if (handle == 0) {
-        status = rocblas_create_handle(&handle);
-        if (status != rocblas_status_success) {
-          std::stringstream ss;
-          ss << "Error!  rocblas_create_handle() failed with status "
-             << status;
-          std::cerr << ss.str() << std::endl;
-          throw ss.str();
-        }
-      }
-
       Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Experimental::HIP> info("info");
-      status = rocsolver_dpotrf(handle, uplo, n, A.data(), lda, info.data());
+      status = rocsolver_dpotrf(RocblasHandle::get(), uplo, n, A.data(), lda, info.data());
       if (status != rocblas_status_success) {
         std::stringstream ss;
         ss << "Error!  rocsolver_dpotrf() failed with status "
@@ -2518,7 +2458,7 @@ namespace Genten {
       if (info_host() > 0)
         return false;  // Matrix is not SPD
 
-      status = rocsolver_dpotrs(handle, uplo, n, m, A.data(), lda,
+      status = rocsolver_dpotrs(RocblasHandle::get(), uplo, n, m, A.data(), lda,
                                 B.data(), ldb);
       if (status != rocblas_status_success) {
         std::stringstream ss;
@@ -2574,21 +2514,9 @@ namespace Genten {
       assert(A.extent(0) == n);
       assert(A.extent(1) == n);
 
-      static rocblas_handle handle = 0;
-      if (handle == 0) {
-        status = rocblas_create_handle(&handle);
-        if (status != rocblas_status_success) {
-          std::stringstream ss;
-          ss << "Error!  rocblas_create_handle() failed with status "
-             << status;
-          std::cerr << ss.str() << std::endl;
-          throw ss.str();
-        }
-      }
-
       Kokkos::View<int*,Kokkos::LayoutRight,Kokkos::Experimental::HIP> piv("piv",n);
       Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Experimental::HIP> info("info");
-      status = rocsolver_dgetrf(handle, n, n, A.data(), lda,
+      status = rocsolver_dgetrf(RocblasHandle::get(), n, n, A.data(), lda,
                                 piv.data(), info.data());
       if (status != rocblas_status_success) {
         std::stringstream ss;
@@ -2606,7 +2534,7 @@ namespace Genten {
         throw ss.str();
       }
 
-      status = rocsolver_dgetrs(handle, rocblas_operation_none, n, m, A.data(), lda,
+      status = rocsolver_dgetrs(RocblasHandle::get(), rocblas_operation_none, n, m, A.data(), lda,
                                 piv.data(), B.data(), ldb);
       if (status != rocblas_status_success) {
         std::stringstream ss;
@@ -2641,20 +2569,8 @@ namespace Genten {
       assert(A.extent(0) == n);
       assert(A.extent(1) == n);
 
-      static rocblas_handle handle = 0;
-      if (handle == 0) {
-        status = rocblas_create_handle(&handle);
-        if (status != rocblas_status_success) {
-          std::stringstream ss;
-          ss << "Error!  rocblas_create_handle() failed with status "
-             << status;
-          std::cerr << ss.str() << std::endl;
-          throw ss.str();
-        }
-      }
-
       Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Experimental::HIP> info("info");
-      status = rocsolver_spotrf(handle, uplo, n, A.data(), lda, info.data());
+      status = rocsolver_spotrf(RocblasHandle::get(), uplo, n, A.data(), lda, info.data());
       if (status != rocblas_status_success) {
         std::stringstream ss;
         ss << "Error!  rocsolver_spotrf() failed with status "
@@ -2673,7 +2589,7 @@ namespace Genten {
       if (info_host() > 0)
         return false;  // Matrix is not SPD
 
-      status = rocsolver_spotrs(handle, uplo, n, m, A.data(), lda,
+      status = rocsolver_spotrs(RocblasHandle::get(), uplo, n, m, A.data(), lda,
                                 B.data(), ldb);
       if (status != rocblas_status_success) {
         std::stringstream ss;
@@ -2729,21 +2645,9 @@ namespace Genten {
       assert(A.extent(0) == n);
       assert(A.extent(1) == n);
 
-      static rocblas_handle handle = 0;
-      if (handle == 0) {
-        status = rocblas_create_handle(&handle);
-        if (status != rocblas_status_success) {
-          std::stringstream ss;
-          ss << "Error!  rocblas_create_handle() failed with status "
-             << status;
-          std::cerr << ss.str() << std::endl;
-          throw ss.str();
-        }
-      }
-
       Kokkos::View<int*,Kokkos::LayoutRight,Kokkos::Experimental::HIP> piv("piv",n);
       Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Experimental::HIP> info("info");
-      status = rocsolver_sgetrf(handle, n, n, A.data(), lda,
+      status = rocsolver_sgetrf(RocblasHandle::get(), n, n, A.data(), lda,
                                 piv.data(), info.data());
       if (status != rocblas_status_success) {
         std::stringstream ss;
@@ -2761,7 +2665,7 @@ namespace Genten {
         throw ss.str();
       }
 
-      status = rocsolver_sgetrs(handle, rocblas_operation_none, n, m, A.data(), lda,
+      status = rocsolver_sgetrs(RocblasHandle::get(), rocblas_operation_none, n, m, A.data(), lda,
                                 piv.data(), B.data(), ldb);
       if (status != rocblas_status_success) {
         std::stringstream ss;
