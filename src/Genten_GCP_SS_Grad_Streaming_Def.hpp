@@ -153,7 +153,7 @@ namespace Genten {
 
           // Compute Ktensor value
           const ttb_real m_val =
-            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(M, ind);
+            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, M, ind);
 
           // Compute Y value
           const ttb_real y_val =
@@ -201,9 +201,9 @@ namespace Genten {
 
             // Compute Yt value
             const ttb_real mt_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(Mt, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, Mt, ind);
             const ttb_real mp_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(Mprev, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, Mprev, ind);
             // Here we are using the corresponding formula for stratified
             // sampling, since we don't know if this corresponds to a true
             // zero or nonzero in the history slice
@@ -273,7 +273,7 @@ namespace Genten {
 
           // Compute Ktensor value
           const ttb_real m_val =
-            compute_Ktensor_value<ExecSpace, FacBlockSize, VectorSize>(M, ind);
+            compute_Ktensor_value<ExecSpace, FacBlockSize, VectorSize>(team, M, ind);
 
           // Compute Y value
           const ttb_real y_val = weight_zeros * f.deriv(ttb_real(0.0), m_val);
@@ -319,9 +319,9 @@ namespace Genten {
 
             // Compute Yt value
             const ttb_real mt_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(Mt, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, Mt, ind);
             const ttb_real mp_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(Mprev, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, Mprev, ind);
             // Here we are using the corresponding formula for stratified
             // sampling, since we don't know if this corresponds to a true
             // zero or nonzero in the history slice
@@ -456,7 +456,7 @@ namespace Genten {
 
           // Compute Ktensor value
           const ttb_real m_val =
-            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(M, ind);
+            compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, M, ind);
 
           // Compute Y value
           const ttb_real y_val =
@@ -502,9 +502,9 @@ namespace Genten {
 
             // Compute Yt value
             const ttb_real mt_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(Mt, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, Mt, ind);
             const ttb_real mp_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(Mprev, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, Mprev, ind);
             ttb_real yt_val = window_penalty * window[h] * weight_nonzeros * (
                 f.deriv(mp_val, mt_val) );
 
@@ -569,7 +569,7 @@ namespace Genten {
 
           // Compute Ktensor value
           const ttb_real m_val =
-            compute_Ktensor_value<ExecSpace, FacBlockSize, VectorSize>(M, ind);
+            compute_Ktensor_value<ExecSpace, FacBlockSize, VectorSize>(team, M, ind);
 
           // Compute Y value
           const ttb_real y_val = weight_zeros * f.deriv(ttb_real(0.0), m_val);
@@ -613,9 +613,9 @@ namespace Genten {
 
             // Compute Yt value
             const ttb_real mt_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(Mt, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, Mt, ind);
             const ttb_real mp_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(Mprev, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, Mprev, ind);
             ttb_real yt_val = window_penalty * window[h] * weight_zeros * (
                 f.deriv(mp_val, mt_val) );
 

@@ -193,7 +193,7 @@ namespace Genten {
       // Initialize sampler (sorting, hashing, ...)
       timer.start(timer_sort);
       Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
-      sampler.initialize(rand_pool, out);
+      sampler.initialize(rand_pool, printIter, out);
       timer.stop(timer_sort);
 
       // Sample X for f-estimate

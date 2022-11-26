@@ -165,8 +165,9 @@ namespace Genten {
     if (temporalAlgParams.streaming_solver == GCP_Streaming_Solver::SGD) {
       // No history for temporal solver
       temporalSolver.reset();
+      Genten::PerfHistory perf;
       temporalSolver.solve(X, u, algParams.factor_penalty,
-                           num_epoch, fest, out, false, false, print);
+                           num_epoch, fest, perf, out, false, false, print);
     }
     else if (temporalAlgParams.streaming_solver ==
              GCP_Streaming_Solver::LeastSquares ||
@@ -180,9 +181,12 @@ namespace Genten {
 
     if (print)
       out << "Updating spatial modes..." << std::endl;
-    if (spatialAlgParams.streaming_solver == GCP_Streaming_Solver::SGD)
+    if (spatialAlgParams.streaming_solver == GCP_Streaming_Solver::SGD) {
+      Genten::PerfHistory perf;
       spatialSolver.solve(X, u, hist, algParams.factor_penalty,
-                          num_epoch, fest, ften, out, false, false, print);
+                          num_epoch, fest, ften, perf, out, false, false,
+                          print);
+    }
     else if (spatialAlgParams.streaming_solver ==
              GCP_Streaming_Solver::LeastSquares)
       leastSquaresSolve(false,X,u,fest,ften,out,print);

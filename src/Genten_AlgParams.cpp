@@ -422,7 +422,8 @@ void Genten::AlgParams::parse(const ptree& input)
   // Streaming GCP
   auto sgcp_input_o = input.get_child_optional("streaming-gcp");
   if (sgcp_input_o) {
-    parse_ptree_enum<GCP_Streaming_Solver>(sgcp_input, "solver", streaming-solver);
+    auto& sgcp_input = *sgcp_input_o;
+    parse_ptree_enum<GCP_Streaming_Solver>(sgcp_input, "solver", streaming_solver);
     parse_ptree_enum<GCP_Streaming_History_Method>(sgcp_input, "history-method", history_method);
     parse_ptree_enum<GCP_Streaming_Window_Method>(sgcp_input, "window-method", window_method);
     parse_ptree_value(sgcp_input, "window-size", window_size, 0, INT_MAX);

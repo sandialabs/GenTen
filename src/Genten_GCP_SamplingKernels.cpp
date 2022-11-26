@@ -1170,9 +1170,9 @@ namespace Genten {
 
             // Compute Ktensor values
             ttb_real m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
             ttb_real mp_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(up, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, up, ind);
 
             // Compute tensor value
             Kokkos::single( Kokkos::PerThread( team ), [&] ()
@@ -1267,9 +1267,9 @@ namespace Genten {
 
             // Compute Ktensor values
             ttb_real m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(u, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
             ttb_real mp_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(up, ind);
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, up, ind);
 
             // Compute tensor value
             Kokkos::single( Kokkos::PerThread( team ), [&] ()

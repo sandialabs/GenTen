@@ -126,6 +126,7 @@ namespace Genten {
         const ttb_real penalty,
         ttb_indx& numEpochs,
         ttb_real& fest,
+        PerfHistory& perfInfo,
         std::ostream& out,
         const bool print_hdr,
         const bool print_ftr,
@@ -133,7 +134,8 @@ namespace Genten {
   {
     ttb_real ften = 0.0;
     solve(X, u0, StreamingHistory<ExecSpace>(),
-          penalty, numEpochs, fest, ften, out, print_hdr, print_ftr, print_itn);
+          penalty, numEpochs, fest, ften, perfInfo, out,
+          print_hdr, print_ftr, print_itn);
   }
 
   template <typename TensorT, typename ExecSpace, typename LossFunction>
@@ -146,6 +148,7 @@ namespace Genten {
         ttb_indx& numEpochs,
         ttb_real& fest,
         ttb_real& ften,
+        PerfHistory& perfInfo,
         std::ostream& out,
         const bool print_hdr,
         const bool print_ftr,
@@ -168,7 +171,7 @@ namespace Genten {
     const ttb_indx epoch_iters = algParams.epoch_iters;
     const ttb_indx seed = algParams.gcp_seed > 0 ? algParams.gcp_seed : std::random_device{}();
     const ttb_indx maxEpochs = algParams.maxiters;
-    const ttb_indx printIter = print_itn ? algParams.printitn : 0;
+    const ttb_indx printIter = algParams.printitn;
     const bool compute_fit = algParams.compute_fit;
 
     // Create sampler
@@ -181,7 +184,7 @@ namespace Genten {
         X, algParams);
     else if (algParams.sampling_type == GCP_Sampling::SemiStratified)
       sampler = new Genten::SemiStratifiedSampler<ExecSpace,LossFunction>(
-        X, algParams);
+        X, algParams, true);
     else if (algParams.sampling_type == GCP_Sampling::Dense)
       sampler = new Genten::DenseSampler<ExecSpace,LossFunction>(
         X, algParams);
@@ -225,7 +228,7 @@ namespace Genten {
     const int timer_sort = num_timers++;
     const int timer_sample_f = num_timers++;
     const int timer_fest = num_timers++;
-    SystemTimer timer(num_timers, algParams.timings);
+    SystemTimer timer(num_timers, algParams.timings, pmap);
 
     // Start timer for total execution time of the algorithm.
     timer.start(timer_sgd);
@@ -272,7 +275,7 @@ namespace Genten {
       const auto x_norm2 = x_norm * x_norm;
       const auto u_norm2 = ut.normFsq();
       const auto dot = innerprod(X, ut);
-      const auto numerator = std::sqrt(x_norm2 + u_norm2 - 2.0 * dot);
+      const auto numerator = sqrt(x_norm2 + u_norm2 - 2.0 * dot);
       const auto denom = x_norm;
       return 1.0 - numerator/denom;
     };
@@ -482,6 +485,7 @@ namespace Genten {
                     const AlgParams& algParams,
                     ttb_indx& numEpochs,
                     ttb_real& fest,
+                    PerfHistory& perfInfo,
                     std::ostream& out)
   {
     // Distribute the initial guess to have weights of one.
@@ -489,8 +493,8 @@ namespace Genten {
     u0.distribute();
 
     GCPSGD<TensorT,ExecSpace,LossFunction> gcpsgd(u0, loss_func, algParams);
-    gcpsgd.solve(X, u0, ttb_real(0.0),numEpochs, fest, out, true, true,
-                 algParams.printitn);
+    gcpsgd.solve(X, u0, ttb_real(0.0),numEpochs, fest, perfInfo, out,
+                 true, true, algParams.printitn);
 
     // Normalize Ktensor u
     u0.normalize(Genten::NormTwo);
@@ -522,20 +526,20 @@ namespace Genten {
 
     // Dispatch implementation based on loss function type
     if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
-      Impl::gcp_sgd_impl(x, u, GaussianLossFunction(algParams.loss_eps),
-                         algParams, numIters, resNorm, perfInfo, out);
+      gcp_sgd_impl(x, u, GaussianLossFunction(algParams.loss_eps),
+                   algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Rayleigh)
-      Impl::gcp_sgd_impl(x, u, RayleighLossFunction(algParams.loss_eps),
-                         algParams, numIters, resNorm, perfInfo, out);
+      gcp_sgd_impl(x, u, RayleighLossFunction(algParams.loss_eps),
+                   algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Gamma)
-      Impl::gcp_sgd_impl(x, u, GammaLossFunction(algParams.loss_eps),
-                         algParams, numIters, resNorm, perfInfo, out);
+      gcp_sgd_impl(x, u, GammaLossFunction(algParams.loss_eps),
+                   algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Bernoulli)
-      Impl::gcp_sgd_impl(x, u, BernoulliLossFunction(algParams.loss_eps),
-                         algParams, numIters, resNorm, perfInfo, out);
+      gcp_sgd_impl(x, u, BernoulliLossFunction(algParams.loss_eps),
+                   algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Poisson)
-      Impl::gcp_sgd_impl(x, u, PoissonLossFunction(algParams.loss_eps),
-                         algParams, numIters, resNorm, perfInfo, out);
+      gcp_sgd_impl(x, u, PoissonLossFunction(algParams.loss_eps),
+                   algParams, numIters, resNorm, perfInfo, out);
     else
        Genten::error("Genten::gcp_sgd - unknown loss function");
   }

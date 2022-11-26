@@ -161,7 +161,7 @@ namespace Genten {
           // Compute Ktensor value
           ttb_real m_val =
             compute_Ktensor_value<ExecSpace, FacBlockSize, VectorSize>(
-              M, X, i);
+              team, M, X, i);
 
           // Evaluate link function
           d[0] += w[i] * f.value(X.value(i), m_val);
@@ -182,10 +182,10 @@ namespace Genten {
             // Compute Yt value
             const ttb_real mt_val =
               compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(
-                Mt, ind);
+                team, Mt, ind);
             const ttb_real mp_val =
               compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(
-                Mprev, ind);
+                team, Mprev, ind);
             d[1] +=
               window_penalty * window[h] * w[i] * f.value(mp_val, mt_val);
           }
