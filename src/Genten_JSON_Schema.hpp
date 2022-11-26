@@ -734,6 +734,52 @@ static nlohmann::json json_schema = R"(
               }
           }
       },
+      "streaming-gcp": {
+          "type": "object",
+          "description": "Streaming GCP decomposition algorithm",
+          "additionalProperties": false,
+          "properties": {
+              "solver": {
+                  "description": "Streaming solver algorithm",
+                  "enum": ["sgd", "least-squares", "online-cp"],
+                  "default": "sgd"
+              },
+              "history-method": {
+                  "description": "History term formulation",
+                  "enum": ["ktensor-fro", "factor-fro", "gcp-loss"],
+                  "default": "ktensor-fro"
+              },
+              "window-method": {
+                  "description": "Algorithm for choosing samples in the window",
+                  "enum": ["reservoir", "last"],
+                  "default": "reservoir"
+              },
+              "window-size": {
+                  "description": "Number of slices in streaming history window",
+                  "type": "integer",
+                  "minimum": 0,
+                  "default": 0
+              },
+              "window-weight": {
+                  "description": "Multiplier for each streaming window term",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "default": 0.0
+              },
+              "window-penalty": {
+                  "description": "Multiplier for entire streaming window",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "default": 0.0
+              },
+              "factor-penalty": {
+                  "description": "Penalty term on factor matrices",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "default": 0.0
+              }
+          }
+      },
       "ttm": {
           "description": "TTM algorithmic parameters",
           "type": "object",

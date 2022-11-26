@@ -46,6 +46,7 @@
 #include "Genten_GCP_SGD_Step.hpp"
 #include "Genten_KokkosVector.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
+#include "Genten_GCP_StreamingHistory.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_AlgParams.hpp"
 #include "Genten_SystemTimer.hpp"
@@ -61,7 +62,13 @@ namespace Genten {
       typedef KokkosVector<ExecSpace> VectorType;
 
       GCP_SGD_Iter(const KtensorT<ExecSpace>& u0,
+                   const StreamingHistory<ExecSpace>& hist_,
+                   const ttb_real penalty_,
+                   const ttb_indx mode_beg_,
+                   const ttb_indx mode_end_,
                    const AlgParams& algParams_) :
+        hist(hist_), penalty(penalty_),
+        mode_beg(mode_beg_), mode_end(mode_end_),
         algParams(algParams_)
       {
         // Setup timers
@@ -81,9 +88,10 @@ namespace Genten {
         u.copyFromKtensor(u0);
         ut = u.getKtensor();
         ut.setProcessorMap(u0.getProcessorMap());
+        us = u.subview(mode_beg, mode_end);
 
         // Gradient Ktensor
-        g = u.clone();
+        g = u.clone(mode_beg, mode_end);
         gt = g.getKtensor();
         gt.setProcessorMap(u0.getProcessorMap());
       }
@@ -104,39 +112,28 @@ namespace Genten {
           stepper.update();
 
           // sample for gradient
-          if (!algParams.fuse) {
-            timer.start(timer_sample_g);
-            timer.start(timer_sample_g_z_nz);
-            sampler.sampleTensor(true, ut, loss_func,  X_grad, w_grad);
-            timer.stop(timer_sample_g_z_nz);
-            timer.start(timer_sample_g_perm);
-            if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
-                algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated)
-              X_grad.createPermutation();
-            timer.stop(timer_sample_g_perm);
-            timer.stop(timer_sample_g);
-          }
+          timer.start(timer_sample_g);
+          timer.start(timer_sample_g_z_nz);
+          sampler.sampleTensorG(ut, hist, loss_func);
+          timer.stop(timer_sample_g_z_nz);
+          timer.start(timer_sample_g_perm);
+          sampler.prepareGradient();
+          timer.stop(timer_sample_g_perm);
+          timer.stop(timer_sample_g);
 
           for (ttb_indx giter=0; giter<algParams.frozen_iters; ++giter) {
 
             // compute gradient
             timer.start(timer_grad);
-            if (algParams.fuse) {
-              timer.start(timer_grad_init);
-              g.zero(); // algorithm does not use weights
-              timer.stop(timer_grad_init);
-              sampler.fusedGradient(ut, loss_func, gt, timer, timer_grad_nzs,
-                                     timer_grad_zs);
-            }
-            else {
-              gt.weights() = 1.0; // gt is zeroed in mttkrp
-              mttkrp_all(X_grad, ut, gt, algParams);
-            }
+            sampler.gradient(ut, hist, penalty,
+                             loss_func, g, gt, mode_beg, mode_end,
+                             timer, timer_grad_init, timer_grad_nzs,
+                             timer_grad_zs);
             timer.stop(timer_grad);
 
             // take step and clip for bounds
             timer.start(timer_step);
-            stepper.eval(g, u);
+            stepper.eval(g, us);
             timer.stop(timer_step);
           }
         }
@@ -152,20 +149,17 @@ namespace Genten {
               << " seconds\n"
               << "\t\tzs/nzs:   "
               << timer.getTotalTime(timer_sample_g_z_nz)
+              << " seconds\n"
+              << "\t\tperm:     "
+              << timer.getTotalTime(timer_sample_g_perm)
               << " seconds\n";
-          if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
-              algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated) {
-            out << "\t\tperm:     "
-                << timer.getTotalTime(timer_sample_g_perm)
-                << " seconds\n";
-          }
         }
         out << "\tgradient:  " << timer.getTotalTime(timer_grad)
+            << " seconds\n"
+            << "\t\tinit:    " << timer.getTotalTime(timer_grad_init)
             << " seconds\n";
         if (algParams.fuse) {
-          out << "\t\tinit:    " << timer.getTotalTime(timer_grad_init)
-              << " seconds\n"
-              << "\t\tnzs:     " << timer.getTotalTime(timer_grad_nzs)
+          out << "\t\tnzs:     " << timer.getTotalTime(timer_grad_nzs)
               << " seconds\n"
               << "\t\tzs:      " << timer.getTotalTime(timer_grad_zs)
               << " seconds\n";
@@ -175,7 +169,11 @@ namespace Genten {
       }
 
     protected:
-      AlgParams algParams;
+      const StreamingHistory<ExecSpace> hist;
+      const ttb_real penalty;
+      const ttb_indx mode_beg;
+      const ttb_indx mode_end;
+      const AlgParams algParams;
 
       int timer_sample_g;
       int timer_grad;
@@ -191,9 +189,7 @@ namespace Genten {
       VectorType g;
       KtensorT<ExecSpace> ut;
       KtensorT<ExecSpace> gt;
-
-      SptensorT<ExecSpace> X_grad;
-      ArrayT<ExecSpace> w_grad;
+      VectorType us;
     };
 
   }

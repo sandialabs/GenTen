@@ -44,9 +44,13 @@
 #include "Genten_AlgParams.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_GCP_SamplingKernels.hpp"
+#include "Genten_GCP_ValueKernels.hpp"
 #include "Genten_GCP_SS_Grad.hpp"
 #include "Genten_GCP_SS_Grad_SA.hpp"
 #include "Genten_KokkosVector.hpp"
+
+// to do:
+//   * replace modes array with mode_beg, mode_end
 
 namespace Genten {
 
@@ -61,7 +65,7 @@ namespace Genten {
     SemiStratifiedSampler(const SptensorT<ExecSpace>& X_,
                           const AlgParams& algParams_,
                           bool distribute_num_samples) :
-      X(X_), algParams(algParams_)
+      X(X_), algParams(algParams_), uh(algParams_.rank,X.ndims())
     {
       global_num_samples_nonzeros_value = algParams.num_samples_nonzeros_value;
       global_num_samples_zeros_value = algParams.num_samples_zeros_value;
@@ -82,14 +86,25 @@ namespace Genten {
                                      ttb_indx(1000));
       if (global_num_samples_nonzeros_value == 0)
         global_num_samples_nonzeros_value = std::min(ftmp, nnz);
+      else if (global_num_samples_nonzeros_value == INT_MAX)
+        global_num_samples_nonzeros_value = nnz;
+
       if (global_num_samples_zeros_value == 0)
         global_num_samples_zeros_value =
           ttb_indx(std::min(ttb_real(global_num_samples_nonzeros_value), nz));
+      else if (global_num_samples_zeros_value == INT_MAX)
+        global_num_samples_zeros_value = nz;
+
       if (global_num_samples_nonzeros_grad == 0)
         global_num_samples_nonzeros_grad = std::min(gtmp, nnz);
+      else if (global_num_samples_nonzeros_grad == INT_MAX)
+        global_num_samples_nonzeros_grad = nnz;
+
       if (global_num_samples_zeros_grad == 0)
         global_num_samples_zeros_grad =
           ttb_indx(std::min(ttb_real(global_num_samples_nonzeros_grad), nz));
+      else if (global_num_samples_zeros_grad == INT_MAX)
+        global_num_samples_zeros_grad = nz;
 
       // Compute local number of samples by distributing them evenly across
       // processors (might be better to weight according to number of nonzeros)
@@ -151,12 +166,13 @@ namespace Genten {
     virtual ~SemiStratifiedSampler() {}
 
     virtual void initialize(const pool_type& rand_pool_,
+                            const bool printitn,
                             std::ostream& out) override
     {
       rand_pool = rand_pool_;
 
       // Sort/hash tensor if necessary for faster sampling
-      if (algParams.printitn > 0) {
+      if (printitn > 0) {
         if (algParams.hash)
           out << "Hashing tensor for faster sampling...";
         else
@@ -169,7 +185,7 @@ namespace Genten {
       else if (!X.isSorted())
         X.sort();
       timer.stop(0);
-      if (algParams.printitn > 0)
+      if (printitn > 0)
         out << timer.getTotalTime(0) << " seconds" << std::endl;
     }
 
@@ -189,49 +205,161 @@ namespace Genten {
           << std::endl;
     }
 
-    virtual void sampleTensor(const bool gradient,
-                              const KtensorT<ExecSpace>& u,
-                              const LossFunction& loss_func,
-                              SptensorT<ExecSpace>& Xs,
-                              ArrayT<ExecSpace>& w) override
+    virtual void sampleTensorF(const KtensorT<ExecSpace>& u,
+                               const LossFunction& loss_func) override
     {
-      // Only do semi-stratified for gradient
-      if (gradient)
+      if (algParams.hash)
+        Impl::stratified_sample_tensor_hash(
+          X, hash_map,
+          num_samples_nonzeros_value, num_samples_zeros_value,
+          weight_nonzeros_value, weight_zeros_value,
+          u, loss_func, false,
+          Yf, wf, rand_pool, algParams);
+      else
+        Impl::stratified_sample_tensor(
+          X, num_samples_nonzeros_value, num_samples_zeros_value,
+          weight_nonzeros_value, weight_zeros_value,
+          u, loss_func, false,
+          Yf, wf, rand_pool, algParams);
+    }
+
+    virtual void sampleTensorG(const KtensorT<ExecSpace>& u,
+                               const StreamingHistory<ExecSpace>& hist,
+                               const LossFunction& loss_func) override
+    {
+      if (!algParams.fuse) {
         Impl::semi_stratified_sample_tensor(
           X, num_samples_nonzeros_grad, num_samples_zeros_grad,
           weight_nonzeros_grad, weight_zeros_grad,
           u, loss_func, true,
-          Xs, w, rand_pool, algParams);
-      else {
-        if (algParams.hash)
-          Impl::stratified_sample_tensor_hash(
-            this->X, hash_map,
-            this->num_samples_nonzeros_value, this->num_samples_zeros_value,
-            this->weight_nonzeros_value, this->weight_zeros_value,
-            u, loss_func, false,
-            Xs, w, this->rand_pool, this->algParams);
-        else
-          Impl::stratified_sample_tensor(
-            X, num_samples_nonzeros_value, num_samples_zeros_value,
-            weight_nonzeros_value, weight_zeros_value,
-            u, loss_func, false,
-            Xs, w, rand_pool, algParams);
+          Yg, wg, rand_pool, algParams);
+
+        if (hist.do_gcp_loss()) {
+          // Create uh, u with time mode replaced by time mode of up
+          // This should all just be view assignments, so should be fast
+          KtensorT<ExecSpace> uh;
+          uh.weights() = u.weights();
+          const ttb_indx nd = u.ndims();
+          for (ttb_indx i=0; i<nd-1; ++i)
+            uh.set_factor(i, u[i]);
+          uh.set_factor(nd-1, hist.up[nd-1]);
+
+          Impl::stratified_ktensor_grad(
+            Yg, num_samples_nonzeros_grad, num_samples_zeros_grad,
+            weight_nonzeros_grad, weight_zeros_grad,
+            uh, hist.up, hist.window_val, hist.window_penalty, loss_func,
+            Yh, algParams);
+        }
       }
     }
 
-    virtual void fusedGradient(const KtensorT<ExecSpace>& u,
-                               const LossFunction& loss_func,
-                               const KtensorT<ExecSpace>& g,
-                               SystemTimer& timer,
-                               const int timer_nzs,
-                               const int timer_zs) override
+    virtual void prepareGradient() override
     {
-      Impl::gcp_sgd_ss_grad(
-        X, u, loss_func,
-        num_samples_nonzeros_grad, num_samples_zeros_grad,
-        weight_nonzeros_grad, weight_zeros_grad,
-        g, rand_pool, algParams,
-        timer, timer_nzs, timer_zs);
+      if (!algParams.fuse &&
+          algParams.mttkrp_method == MTTKRP_Method::Perm &&
+          algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated) {
+        Yg.createPermutation();
+        if (Yh.nnz() > 0)
+          Yh.createPermutation();
+      }
+    }
+
+    virtual void value(const KtensorT<ExecSpace>& u,
+                       const StreamingHistory<ExecSpace>& hist,
+                       const ttb_real penalty,
+                       const LossFunction& loss_func,
+                       ttb_real& fest, ttb_real& ften) override
+    {
+      if (!hist.do_gcp_loss()) {
+        ften = Impl::gcp_value(Yf, u, wf, loss_func);
+        fest = ften + hist.objective(u);
+      }
+      else {
+        ttb_real fhis = 0.0;
+        Impl::gcp_value(Yf, u, hist.up, hist.window_val, hist.window_penalty,
+                        wf, loss_func, ften, fhis);
+        fest = ften + fhis;
+      }
+      if (penalty != ttb_real(0.0)) {
+        const ttb_indx nd = u.ndims();
+        for (ttb_indx i=0; i<nd; ++i)
+          fest += penalty * u[i].normFsq();
+      }
+    }
+
+    virtual void gradient(const KtensorT<ExecSpace>& ut,
+                          const StreamingHistory<ExecSpace>& hist,
+                          const ttb_real penalty,
+                          const LossFunction& loss_func,
+                          KokkosVector<ExecSpace>& g,
+                          const KtensorT<ExecSpace>& gt,
+                          const ttb_indx mode_beg,
+                          const ttb_indx mode_end,
+                          SystemTimer& timer,
+                          const int timer_init,
+                          const int timer_nzs,
+                          const int timer_zs) override
+    {
+      timer.start(timer_init);
+      gt.weights() = ttb_real(1.0);
+      g.zero();
+      timer.stop(timer_init);
+
+      if (algParams.fuse) {
+        if (!hist.do_gcp_loss()) {
+          Impl::gcp_sgd_ss_grad(
+            X, ut, loss_func,
+            num_samples_nonzeros_grad, num_samples_zeros_grad,
+            weight_nonzeros_grad, weight_zeros_grad,
+            gt, rand_pool, algParams,
+            timer, timer_nzs, timer_zs);
+          hist.gradient(ut, mode_beg, mode_end, gt);
+        }
+        else {
+          // Create modes array
+          IndxArrayT<ExecSpace> modes(mode_end-mode_beg);
+          auto modes_host = create_mirror_view(modes);
+          for (ttb_indx i=mode_beg; i<mode_end; ++i)
+            modes_host[i-mode_beg] = i;
+          deep_copy(modes, modes_host);
+
+          // Create uh, u with time mode replaced by time mode of up
+          // This should all just be view assignments, so should be fast
+          uh.weights() = ut.weights();
+          const ttb_indx nd = ut.ndims();
+          for (ttb_indx i=0; i<nd-1; ++i)
+            uh.set_factor(i, ut[i]);
+          uh.set_factor(nd-1, hist.up[nd-1]);
+
+          Impl::gcp_sgd_ss_grad(
+            X, ut, uh, hist.up, loss_func,
+            num_samples_nonzeros_grad, num_samples_zeros_grad,
+            weight_nonzeros_grad, weight_zeros_grad,
+            hist.window_val, hist.window_penalty, modes,
+            gt, rand_pool, algParams,
+            timer, timer_nzs, timer_zs);
+        }
+      }
+      else {
+        mttkrp_all(Yg, ut, gt, mode_beg, mode_end, algParams, false);
+        if (Yh.nnz() > 0) {
+          // Create uh, u with time mode replaced by time mode of up
+          // This should all just be view assignments, so should be fast
+          uh.weights() = ut.weights();
+          const ttb_indx nd = ut.ndims();
+          for (ttb_indx i=0; i<nd-1; ++i)
+            uh.set_factor(i, ut[i]);
+          uh.set_factor(nd-1, hist.up[nd-1]);
+
+          mttkrp_all(Yh, uh, gt, mode_beg, mode_end, algParams, false);
+        }
+        else
+          hist.gradient(ut, mode_beg, mode_end, gt);
+      }
+
+      if (penalty != 0.0)
+        for (ttb_indx i=mode_beg; i<mode_end; ++i)
+          gt[i-mode_beg].plus(ut[i], ttb_real(2.0)*penalty);
     }
 
     ttb_indx totalNumGradSamples() const {
@@ -240,7 +368,8 @@ namespace Genten {
 
     void fusedGradientAndStep(const KokkosVector<ExecSpace>& u,
                               const LossFunction& loss_func,
-                              const KokkosVector<ExecSpace>& g,
+                              KokkosVector<ExecSpace>& g,
+                              const KtensorT<ExecSpace>& gt,
                               const Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,ExecSpace>& gind,
                               const Kokkos::View<ttb_indx*,ExecSpace>& perm,
                               const bool use_adam,
@@ -254,12 +383,18 @@ namespace Genten {
                               const ttb_real lb,
                               const ttb_real ub,
                               SystemTimer& timer,
+                              const int timer_init,
                               const int timer_nzs,
                               const int timer_zs,
                               const int timer_sort,
                               const int timer_scan,
                               const int timer_step)
     {
+      timer.start(timer_init);
+      gt.weights() = 1.0;
+      g.zero();
+      timer.stop(timer_init);
+
       Impl::gcp_sgd_ss_grad_sa(
         X, u, loss_func,
         num_samples_nonzeros_grad, num_samples_zeros_grad,
@@ -279,6 +414,11 @@ namespace Genten {
   protected:
 
     SptensorT<ExecSpace> X;
+    SptensorT<ExecSpace> Yf;
+    SptensorT<ExecSpace> Yg;
+    SptensorT<ExecSpace> Yh;
+    ArrayT<ExecSpace> wf;
+    ArrayT<ExecSpace> wg;
     pool_type rand_pool;
     AlgParams algParams;
     ttb_indx num_samples_nonzeros_value;
@@ -295,6 +435,7 @@ namespace Genten {
     ttb_real weight_zeros_grad;
     ttb_real nz_percent;
     map_type hash_map;
+    KtensorT<ExecSpace> uh;
   };
 
 }

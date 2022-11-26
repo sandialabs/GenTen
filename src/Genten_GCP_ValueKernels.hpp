@@ -55,6 +55,17 @@ namespace Genten {
                        const ArrayT<ExecSpace>& w,
                        const loss_type& f);
 
+    template <typename ExecSpace, typename loss_type>
+    void gcp_value(const SptensorT<ExecSpace>& X,
+                   const KtensorT<ExecSpace>& M,
+                   const KtensorT<ExecSpace>& Mprev,
+                   const ArrayT<ExecSpace>& window,
+                   const ttb_real window_penalty,
+                   const ArrayT<ExecSpace>& w,
+                   const loss_type& f,
+                   ttb_real& val_ten,
+                   ttb_real& val_his);
+
   }
 
 }

@@ -41,74 +41,70 @@
 #pragma once
 
 #include <ostream>
+#include <vector>
+#include <random>
 
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
+#include "Genten_Array.hpp"
 #include "Genten_AlgParams.hpp"
-#include "Genten_GCP_SGD_Step.hpp"
+#include "Genten_GCP_SGD.hpp"
 #include "Genten_GCP_StreamingHistory.hpp"
-#include "Genten_PerfHistory.hpp"
 
 namespace Genten {
 
   //! Class implementing the generalized CP decomposition using SGD approach
   template <typename TensorT, typename ExecSpace, typename LossFunction>
-  class GCPSGD {
-  protected:
-    const LossFunction loss_func;
-    const ttb_indx mode_beg;
-    const ttb_indx mode_end;
-    const AlgParams algParams;
-    Impl::GCP_SGD_Step<ExecSpace,LossFunction> *stepper;
-
+  class OnlineGCP {
   public:
-    GCPSGD(const KtensorT<ExecSpace>& u,
-           const LossFunction& loss_func,
-           const ttb_indx mode_begin,
-           const ttb_indx mode_end,
-           const AlgParams& algParams);
+    OnlineGCP(TensorT& Xinit,
+              const KtensorT<ExecSpace>& u0,
+              const LossFunction& loss_func,
+              const AlgParams& algParams,
+              const AlgParams& temporalAlgParams,
+              const AlgParams& spatialAlgParams,
+              std::ostream& out);
 
-    GCPSGD(const KtensorT<ExecSpace>& u,
-           const LossFunction& loss_func,
-           const AlgParams& algParams);
+    void processSlice(TensorT& X,
+                      KtensorT<ExecSpace>& u,
+                      ttb_real& fest,
+                      ttb_real& ften,
+                      std::ostream& out,
+                      const bool print);
 
-    ~GCPSGD();
+    void init(const TensorT& X, KtensorT<ExecSpace>& u);
 
-    void reset();
+  protected:
 
-    void solve(TensorT& X,
-               KtensorT<ExecSpace>& u0,
-               const ttb_real penalty,
-               ttb_indx& numEpochs,
-               ttb_real& fest,
-               PerfHistory& perfInfo,
-               std::ostream& out,
-               const bool print_hdr,
-               const bool print_ftr,
-               const bool print_itn) const;
+    void leastSquaresSolve(const bool temporal,
+                           TensorT& X,
+                           KtensorT<ExecSpace>& u,
+                           ttb_real& fest,
+                           ttb_real& ften,
+                           std::ostream& out,
+                           const bool print);
 
-    void solve(TensorT& X,
-               KtensorT<ExecSpace>& u,
-               const StreamingHistory<ExecSpace>& hist,
-               const ttb_real penalty,
-               ttb_indx& numEpochs,
-               ttb_real& fest,
-               ttb_real& ften,
-               PerfHistory& perfInfo,
-               std::ostream& out,
-               const bool print_hdr,
-               const bool print_ftr,
-               const bool print_itn) const;
+    const AlgParams algParams;
+    const AlgParams temporalAlgParams;
+    const AlgParams spatialAlgParams;
+    GCPSGD<TensorT,ExecSpace,LossFunction> temporalSolver;
+    GCPSGD<TensorT,ExecSpace,LossFunction> spatialSolver;
+    std::default_random_engine generator;  // Random number generator
+    FacMatrixT<ExecSpace> A, tmp; // Temp space needed for least-squares
+    std::vector< FacMatrixT<ExecSpace> > P, Q; // Temp space needed for OnlineCP
+    StreamingHistory<ExecSpace> hist; // history data
   };
 
   //! Compute the generalized CP decomposition of a tensor using SGD approach
   template<typename TensorT, typename ExecSpace>
-  void gcp_sgd (TensorT& x,
-                KtensorT<ExecSpace>& u,
-                const AlgParams& algParams,
-                ttb_indx& numIters,
-                ttb_real& resNorm,
-                PerfHistory& perfInfo,
-                std::ostream& out);
+  void online_gcp(std::vector<TensorT>& x,
+                  TensorT& x_init,
+                  KtensorT<ExecSpace>& u,
+                  const AlgParams& algParams,
+                  const AlgParams& temporalAlgParams,
+                  const AlgParams& spatialAlgParams,
+                  std::ostream& out,
+                  Array& fest,
+                  Array& ften);
 
 }

@@ -111,7 +111,14 @@ Genten::AlgParams::AlgParams() :
   async(false),
   anneal(false),
   anneal_min_lr(1e-14),
-  anneal_max_lr(1e-10)
+  anneal_max_lr(1e-10),
+  streaming_solver(Genten::GCP_Streaming_Solver::default_type),
+  history_method(Genten::GCP_Streaming_History_Method::default_type),
+  window_method(Genten::GCP_Streaming_Window_Method::default_type),
+  window_size(0),
+  window_weight(1.0),
+  window_penalty(1.0),
+  factor_penalty(0.0)
 {}
 
 void Genten::AlgParams::parse(std::vector<std::string>& args)
@@ -255,6 +262,30 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   anneal = parse_ttb_bool(args, "--anneal", "--no-anneal", anneal);
   anneal_min_lr = parse_ttb_real(args, "--anneal-min-lr", anneal_min_lr, 0.0, 1.0);
   anneal_max_lr = parse_ttb_real(args, "--anneal-max-lr", anneal_max_lr, 0.0, 1.0);
+
+  // Streaming GCP
+  streaming_solver = parse_ttb_enum(args, "--streaming-solver",
+                                    streaming_solver,
+                                    Genten::GCP_Streaming_Solver::num_types,
+                                    Genten::GCP_Streaming_Solver::types,
+                                    Genten::GCP_Streaming_Solver::names);
+  history_method = parse_ttb_enum(args, "--history-method",
+                                 history_method,
+                                 Genten::GCP_Streaming_History_Method::num_types,
+                                 Genten::GCP_Streaming_History_Method::types,
+                                 Genten::GCP_Streaming_History_Method::names);
+  window_method = parse_ttb_enum(args, "--window-method",
+                                 window_method,
+                                 Genten::GCP_Streaming_Window_Method::num_types,
+                                 Genten::GCP_Streaming_Window_Method::types,
+                                 Genten::GCP_Streaming_Window_Method::names);
+  window_size = parse_ttb_indx(args, "--window-size", window_size, 0, INT_MAX);
+  window_weight = parse_ttb_real(args, "--window-weight", window_weight, 0.0,
+                                 DOUBLE_MAX);
+  window_penalty = parse_ttb_real(args, "--window-penalty", window_penalty, 0.0,
+                                  DOUBLE_MAX);
+  factor_penalty = parse_ttb_real(args, "--factor-penalty", factor_penalty, 0.0,
+                                  DOUBLE_MAX);
 }
 
 void Genten::AlgParams::parse(const ptree& input)
@@ -386,6 +417,19 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_value(gcp_input, "anneal", anneal);
     parse_ptree_value(gcp_input, "anneal-min-lr", anneal_min_lr, 0.0, 1.0);
     parse_ptree_value(gcp_input, "anneal-max-lr", anneal_max_lr, 0.0, 1.0);
+  }
+
+  // Streaming GCP
+  auto sgcp_input_o = input.get_child_optional("streaming-gcp");
+  if (sgcp_input_o) {
+    auto& sgcp_input = *sgcp_input_o;
+    parse_ptree_enum<GCP_Streaming_Solver>(sgcp_input, "solver", streaming_solver);
+    parse_ptree_enum<GCP_Streaming_History_Method>(sgcp_input, "history-method", history_method);
+    parse_ptree_enum<GCP_Streaming_Window_Method>(sgcp_input, "window-method", window_method);
+    parse_ptree_value(sgcp_input, "window-size", window_size, 0, INT_MAX);
+    parse_ptree_value(sgcp_input, "window-weight", window_weight, 0.0, DOUBLE_MAX);
+    parse_ptree_value(sgcp_input, "window-penalty", window_penalty, 0.0, DOUBLE_MAX);
+    parse_ptree_value(sgcp_input, "factor-penalty", factor_penalty, 0.0, DOUBLE_MAX);
   }
 }
 
@@ -545,6 +589,38 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --adam-beta2       Decay rate for 2nd moment avg." << std::endl;
   out << "  --adam-eps         Shift in ADAM step." << std::endl;
   out << "  --async            Asynchronous SGD solver" << std::endl;
+
+  out << std::endl;
+  out << "Streaming GCP options:" << std::endl;
+  out << "  --streaming-solver <type> solver type for streaming GCP: ";
+  for (unsigned i=0; i<Genten::GCP_Streaming_Solver::num_types; ++i) {
+    out << Genten::GCP_Streaming_Solver::names[i];
+    if (i != Genten::GCP_Streaming_Solver::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
+  out << "  --history-method <type> history method for streaming GCP: ";
+  for (unsigned i=0; i<Genten::GCP_Streaming_History_Method::num_types; ++i) {
+    out << Genten::GCP_Streaming_History_Method::names[i];
+    if (i != Genten::GCP_Streaming_History_Method::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
+  out << "  --window-method <type> window method for streaming GCP: ";
+  for (unsigned i=0; i<Genten::GCP_Streaming_Window_Method::num_types; ++i) {
+    out << Genten::GCP_Streaming_Window_Method::names[i];
+    if (i != Genten::GCP_Streaming_Window_Method::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
+  out << "  --window-size       Number of slices in streaming history window."
+      << std::endl;
+  out << "  --window-weight     Multiplier for each streaming window term."
+      << std::endl;
+  out << "  --window-penalty    Multiplier for entire streaming window."
+      << std::endl;
+  out << "  --factor-penalty    Penalty term on factor matrices."
+      << std::endl;
 }
 
 void Genten::AlgParams::print(std::ostream& out)
@@ -606,6 +682,10 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  gcp-tol = " << gcp_tol << std::endl;
 
   out << std::endl;
+  out << "GCP-Opt options:" << std::endl;
+  out << "  rol = " << rolfilename << std::endl;
+
+  out << std::endl;
   out << "GCP-SGD options:" << std::endl;
   out << "  sampling = " << Genten::GCP_Sampling::names[sampling_type]
       << std::endl;
@@ -641,6 +721,22 @@ void Genten::AlgParams::print(std::ostream& out)
     out << "  anneal-min-lr = " << anneal_min_lr << std::endl;
     out << "  anneal-max-lr = " << anneal_max_lr << std::endl;
   }
+
+  out << std::endl;
+  out << "Streaming GCP options:" << std::endl;
+  out << "  streaming-solver = "
+      << Genten::GCP_Streaming_Solver::names[streaming_solver]
+      << std::endl;
+  out << "  history-method = "
+      << Genten::GCP_Streaming_History_Method::names[history_method]
+      << std::endl;
+  out << "  window-method = "
+      << Genten::GCP_Streaming_Window_Method::names[window_method]
+      << std::endl;
+  out << "  window-size = " << window_size << std::endl;
+  out << "  window-weight = " << window_weight << std::endl;
+  out << "  window-penalty = " << window_penalty << std::endl;
+  out << "  factor-penalty = " << factor_penalty << std::endl;
 }
 
 ttb_real
@@ -710,15 +806,19 @@ Genten::parse_ttb_indx(std::vector<std::string>& args,
       return tmp;
     }
     // convert to ttb_indx
-    char *cend = 0;
-    tmp = std::strtol(it->c_str(),&cend,10);
-    // check if cl_arg is actually a ttb_indx
-    if (it->c_str() == cend) {
-      std::ostringstream error_string;
-      error_string << "Unparseable input: " << cl_arg << " " << *it
-                   << ", must be an integer" << std::endl;
-      Genten::error(error_string.str());
-      exit(1);
+    if (*it == "inf" || *it == "Inf")
+      tmp = INT_MAX;
+    else {
+      char *cend = 0;
+      tmp = std::strtol(it->c_str(),&cend,10);
+      // check if cl_arg is actually a ttb_indx
+      if (it->c_str() == cend) {
+        std::ostringstream error_string;
+        error_string << "Unparseable input: " << cl_arg << " " << *it
+                     << ", must be an integer" << std::endl;
+        Genten::error(error_string.str());
+        exit(1);
+      }
     }
     // Remove argument from list
     args.erase(arg_it, ++it);

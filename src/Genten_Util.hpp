@@ -334,14 +334,15 @@ namespace Genten {
     enum type {
       Uniform,
       Stratified,
-      SemiStratified
+      SemiStratified,
+      Dense
     };
-    static constexpr unsigned num_types = 3;
+    static constexpr unsigned num_types = 4;
     static constexpr type types[] = {
-      Uniform, Stratified, SemiStratified
+      Uniform, Stratified, SemiStratified, Dense
     };
     static constexpr const char* names[] = {
-      "uniform", "stratified", "semi-stratified"
+      "uniform", "stratified", "semi-stratified", "dense"
     };
     static constexpr type default_type = Stratified;
   };
@@ -364,6 +365,56 @@ namespace Genten {
       "sgd", "adam", "adagrad", "amsgrad", "sgd-momentum", "demon"
     };
     static constexpr type default_type = ADAM;
+  };
+
+  // Sampling functions supported by GCP
+  struct GCP_Streaming_Solver {
+    enum type {
+      SGD,
+      LeastSquares,
+      OnlineCP
+    };
+    static constexpr unsigned num_types = 3;
+    static constexpr type types[] = {
+      SGD, LeastSquares, OnlineCP
+    };
+    static constexpr const char* names[] = {
+      "sgd", "least-squares", "online-cp"
+    };
+    static constexpr type default_type = SGD;
+  };
+
+  // Sampling functions supported by GCP
+  struct GCP_Streaming_Window_Method {
+    enum type {
+      Reservoir,
+      Last
+    };
+    static constexpr unsigned num_types = 2;
+    static constexpr type types[] = {
+      Reservoir, Last
+    };
+    static constexpr const char* names[] = {
+      "reservoir", "last"
+    };
+    static constexpr type default_type = Reservoir;
+  };
+
+  // Sampling functions supported by GCP
+  struct GCP_Streaming_History_Method {
+    enum type {
+      Ktensor_Fro,
+      Factor_Fro,
+      GCP_Loss
+    };
+    static constexpr unsigned num_types = 3;
+    static constexpr type types[] = {
+      Ktensor_Fro, Factor_Fro, GCP_Loss
+    };
+    static constexpr const char* names[] = {
+      "ktensor-fro", "factor-fro", "gcp-loss"
+    };
+    static constexpr type default_type = Ktensor_Fro;
   };
 }
 

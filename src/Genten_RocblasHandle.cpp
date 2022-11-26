@@ -16,6 +16,7 @@
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
 // met:
+
 //
 // 1. Redistributions of source code must retain the above copyright
 // notice, this list of conditions and the following disclaimer.
@@ -38,32 +39,31 @@
 // ************************************************************************
 //@HEADER
 
-#pragma once
+#include "Genten_RocblasHandle.hpp"
 
-#include "CMakeInclude.h"
-#include "Kokkos_Core.hpp"
+#if defined(KOKKOS_ENABLE_HIP) && (defined(HAVE_ROCBLAS) || defined(HAVE_ROCSOLVER))
 
-#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) &&          \
-    defined(HAVE_CUSOLVER)
-
-#include <cusolverDn.h>
+#include <iostream>
+#include <sstream>
 
 namespace Genten {
 
-class CusolverHandle {
-public:
-  CusolverHandle(const CusolverHandle&) = delete;
-  CusolverHandle(CusolverHandle&&) = delete;
-  CusolverHandle& operator=(const CusolverHandle&) = delete;
-  CusolverHandle& operator=(CusolverHandle&&) = delete;
+RocblasHandle::RocblasHandle() {
+  auto const status = rocblas_create_handle(&handle);
+  if (status != rocblas_status_success) {
+    std::stringstream ss;
+    ss << "Error!  rocblas_create_handle() failed with status " << status;
+    std::cerr << ss.str() << std::endl;
+    throw ss.str();
+  }
+}
 
-  ~CusolverHandle();
-  static cusolverDnHandle_t get();
+RocblasHandle::~RocblasHandle() { rocblas_destroy_handle(handle); }
 
-private:
-  CusolverHandle();
-  cusolverDnHandle_t handle;
-};
+rocblas_handle RocblasHandle::get() {
+  static RocblasHandle h;
+  return h.handle;
+}
 
 } // namespace Genten
 
