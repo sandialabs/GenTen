@@ -86,14 +86,25 @@ namespace Genten {
                                      ttb_indx(1000));
       if (global_num_samples_nonzeros_value == 0)
         global_num_samples_nonzeros_value = std::min(ftmp, nnz);
+      else if (global_num_samples_nonzeros_value == INT_MAX)
+        global_num_samples_nonzeros_value = nnz;
+
       if (global_num_samples_zeros_value == 0)
         global_num_samples_zeros_value =
           ttb_indx(std::min(ttb_real(global_num_samples_nonzeros_value), nz));
+      else if (global_num_samples_zeros_value == INT_MAX)
+        global_num_samples_zeros_value = nz;
+
       if (global_num_samples_nonzeros_grad == 0)
         global_num_samples_nonzeros_grad = std::min(gtmp, nnz);
+      else if (global_num_samples_nonzeros_grad == INT_MAX)
+        global_num_samples_nonzeros_grad = nnz;
+
       if (global_num_samples_zeros_grad == 0)
         global_num_samples_zeros_grad =
           ttb_indx(std::min(ttb_real(global_num_samples_nonzeros_grad), nz));
+      else if (global_num_samples_zeros_grad == INT_MAX)
+        global_num_samples_zeros_grad = nz;
 
       // Compute local number of samples by distributing them evenly across
       // processors (might be better to weight according to number of nonzeros)
