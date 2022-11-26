@@ -171,7 +171,7 @@ namespace Genten {
     const ttb_indx epoch_iters = algParams.epoch_iters;
     const ttb_indx seed = algParams.gcp_seed > 0 ? algParams.gcp_seed : std::random_device{}();
     const ttb_indx maxEpochs = algParams.maxiters;
-    const ttb_indx printIter = algParams.printitn;
+    const ttb_indx printIter = print_itn ? algParams.printitn : 0;
     const bool compute_fit = algParams.compute_fit;
 
     // Create sampler
