@@ -129,7 +129,7 @@ namespace Genten {
       const array_type w;
       const loss_type f;
 
-      typedef ttb_real value_type[];
+      typedef ttb_real value_type;
       static constexpr int value_count = 2;
 
       GCP_ValueHistoryFunctor(const tensor_type& X_,
@@ -145,7 +145,7 @@ namespace Genten {
       {}
 
       KOKKOS_INLINE_FUNCTION
-      void operator() (const TeamMember& team, value_type d) const
+      void operator() (const TeamMember& team, value_type& val_f, value_type& val_h) const
       {
         /*const*/ unsigned nd = M.ndims();
         /*const*/ ttb_indx nnz = X.nnz();
@@ -164,7 +164,7 @@ namespace Genten {
               team, M, X, i);
 
           // Evaluate link function
-          d[0] += w[i] * f.value(X.value(i), m_val);
+          val_f += w[i] * f.value(X.value(i), m_val);
 
           // Add in history term
           for (ttb_indx h=0; h<nh; ++h) {
@@ -186,24 +186,10 @@ namespace Genten {
             const ttb_real mp_val =
               compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(
                 team, Mprev, ind);
-            d[1] +=
+            val_h +=
               window_penalty * window[h] * w[i] * f.value(mp_val, mt_val);
           }
         }
-      }
-
-      KOKKOS_INLINE_FUNCTION
-      void join(volatile value_type dst, const volatile value_type src) const
-      {
-        dst[0] += src[0];
-        dst[1] += src[1];
-      }
-
-      KOKKOS_INLINE_FUNCTION
-      void init(value_type val) const
-      {
-        val[0] = ttb_real(0.0);
-        val[1] = ttb_real(0.0);
       }
     };
 
@@ -257,10 +243,7 @@ namespace Genten {
         static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
         static const unsigned RowBlockSize = 128;
         static const unsigned FacBlockSize = FBS;
-        //static const unsigned VectorSize = is_cuda ? VS : 1;
-        // Use VectorSize = 1 even for Cuda to workaround not-implemented issue
-        // in Kokkos
-        static const unsigned VectorSize = 1;
+        static const unsigned VectorSize = is_cuda ? VS : 1;
         static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
 
         /*const*/ unsigned nd = M.ndims();
@@ -278,14 +261,12 @@ namespace Genten {
 
         GCP_ValueHistoryFunctor<ExecSpace,loss_type,TeamSize,VectorSize,FacBlockSize,RowBlockSize> func(X, M, Mt, Mprev, window, window_penalty, w, f);
         Kokkos::TeamPolicy<ExecSpace> policy(N, TeamSize, VectorSize);
-        ttb_real value[2];
+
         Kokkos::parallel_reduce(
           "GCP_ValueHistory",
           policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
-          func, value);
+          func, val_ten, val_his);
         Kokkos::fence();  // ensure value is updated before using it
-        val_ten = value[0];
-        val_his = value[1];
       }
     };
 
