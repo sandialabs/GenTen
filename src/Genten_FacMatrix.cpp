@@ -1772,7 +1772,7 @@ gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
   const ttb_indx ldb = B.stride(0);
   const ttb_indx ldc = C.stride(0);
 
-  status = rocblas_dgemm(
+  rocblas_status status = rocblas_dgemm(
     RocblasHandle::get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
     &beta, C.data(), ldc);
   if (status != rocblas_status_success) {
@@ -1807,7 +1807,7 @@ gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
   const ttb_indx ldb = B.stride(0);
   const ttb_indx ldc = C.stride(0);
 
-  status = rocblas_sgemm(
+  rocblas_status status = rocblas_sgemm(
     RocblasHandle::get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
     &beta, C.data(), ldc);
   if (status != rocblas_status_success) {
