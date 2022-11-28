@@ -1307,12 +1307,12 @@ rowScale(const Genten::ArrayT<ExecSpace> & v, bool inverse) const
 
   auto d = data;
 
-  const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+  const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
   // t = largest power of 2 <= n at most 256
   const unsigned t = std::min(
     256u, static_cast<unsigned>(std::pow(2,static_cast<unsigned>(std::log2(n)))));
-  const unsigned VectorSize = is_cuda ? t : 1;
-  const unsigned TeamSize = is_cuda ? 256/t : 1;
+  const unsigned VectorSize = is_gpu ? t : 1;
+  const unsigned TeamSize = is_gpu ? 256/t : 1;
   const ttb_indx LeagueSize = (m+TeamSize-1)/TeamSize;
   typedef Kokkos::TeamPolicy<ExecSpace> Policy;
   Policy policy(LeagueSize, TeamSize, VectorSize);

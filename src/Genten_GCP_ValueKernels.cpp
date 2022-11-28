@@ -240,11 +240,11 @@ namespace Genten {
       {
         typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
-        static const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+        static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
         static const unsigned RowBlockSize = 128;
         static const unsigned FacBlockSize = FBS;
-        static const unsigned VectorSize = is_cuda ? VS : 1;
-        static const unsigned TeamSize = is_cuda ? 128/VectorSize : 1;
+        static const unsigned VectorSize = is_gpu ? VS : 1;
+        static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
 
         /*const*/ unsigned nd = M.ndims();
         const ttb_indx nnz = X.nnz();
