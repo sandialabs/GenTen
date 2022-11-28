@@ -274,25 +274,27 @@ template <typename T> bool isValueSame(T x) {
   return p[0] == -p[1];
 }
 
+// This check requires parallel communication so turn it off in optimized builds
+#ifdef NDEBUG
+template <typename ExecSpace>
+bool weightsAreSame(const KtensorT<ExecSpace>&) {
+  return true;
+}
+#else
 template <typename ExecSpace>
 bool weightsAreSame(const KtensorT<ExecSpace> &u) {
-#ifdef NDEBUG
-  return true;
-#else
   const auto wspan = u.weights().values().span();
   if (!isValueSame(wspan)) {
     return false;
   }
-
   for (std::size_t i = 0; i < wspan; ++i) {
     if (!isValueSame(u.weights(i))) {
       return false;
     }
   }
-
   return true;
-#endif
 }
+#endif
 
 } // namespace
 
