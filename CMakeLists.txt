@@ -74,7 +74,7 @@ IF(DEFINED ROL_PATH)
   SET(Trilinos_ROOT ${ROL_PATH})
 ENDIF()
 IF(DEFINED MATLAB_PATH)
-  MESSAGE(DEPRECATION "MATLAB_PATH is deprecated.  Use MATLAB_ROOT instead")
+  MESSAGE(DEPRECATION "MATLAB_PATH is deprecated.  Use Matlab_ROOT instead")
   SET(Matlab_ROOT ${MATLAB_PATH})
 ENDIF()
 
@@ -134,15 +134,15 @@ IF(ENABLE_TRILINOS)
   INCLUDE_DIRECTORIES(SYSTEM ${Trilinos_INCLUDE_DIRS} ${Trilinos_TPL_INCLUDE_DIRS})
   LINK_DIRECTORIES(${Trilinos_LIBRARY_DIRS} ${Trilinos_TPL_LIBRARY_DIRS} )
 
-  # Look for Kokkos (required)
+  # Look for Kokkos (optional)
   LIST(FIND Trilinos_PACKAGE_LIST Kokkos Kokkos_List_ID)
   IF(Kokkos_List_ID GREATER -1)
     MESSAGE(STATUS "  Looking for Kokkos: Found")
     MESSAGE(STATUS "    Enabled Kokkos devices: ${Kokkos_DEVICES}")
     SET(HAVE_KOKKOS ON)
+    SET(HAVE_TRILINOS_KOKKOS ON)
   ELSE()
     MESSAGE(STATUS "  Looking for Kokkos: NOT Found")
-    MESSAGE(FATAL_ERROR "Kokkos must be enabled in Trilinos!")
   ENDIF()
 
   # Look for Teuchos (optional)
@@ -233,12 +233,13 @@ ENDIF()
 #  - Inline build of bundled sources in tpls/kokkos.
 #  - Linking to external library determined by KOKKOS_ROOT.
 #  - Linking to external library through Trilinos.
-# If Trilinos is enabled, it must include Kokkos
-IF(Kokkos_ROOT OR ENABLE_TRILINOS)
+# If Trilinos is enabled and it enables Kokkos, we must use it
+IF(Kokkos_ROOT OR HAVE_TRILINOS_KOKKOS)
   SET(KOKKOS_INLINE_BUILD OFF)
 ELSE()
   SET(KOKKOS_INLINE_BUILD ON)
 ENDIF()
+MESSAGE(STATUS "Inline Kokkos build is ${KOKKOS_INLINE_BUILD}")
 
 #---- Declaring the project name will define ${Genten_SOURCE_DIR} to be
 #---- the path to this source file, and ${Genten_BINARY_DIR} to be the path
@@ -264,7 +265,7 @@ IF(KOKKOS_INLINE_BUILD)
   ADD_SUBDIRECTORY(tpls/kokkos)
   SET(HAVE_KOKKOS ON)
 
-ELSEIF(NOT ENABLE_TRILINOS)
+ELSEIF(NOT HAVE_TRILINOS_KOKKOS)
 
   # Link against installed Kokkos
   FIND_PACKAGE(Kokkos REQUIRED)
@@ -668,7 +669,8 @@ ENDIF()
 ADD_LIBRARY (gentenlib ${Genten_SOURCE_LIST})
 IF(HAVE_TRILINOS)
   TARGET_LINK_LIBRARIES(gentenlib Trilinos::all_libs)
-ELSE()
+ENDIF()
+IF(NOT HAVE_TRILINOS_KOKKOS)
   TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkos)
 ENDIF()
 TARGET_LINK_LIBRARIES(gentenlib nlohmann_json_schema_validator)
@@ -684,7 +686,8 @@ ADD_LIBRARY(DistContextLib
     )
 IF(HAVE_TRILINOS)
   TARGET_LINK_LIBRARIES(DistContextLib Trilinos::all_libs)
-ELSE()
+ENDIF()
+IF(NOT HAVE_TRILINOS_KOKKOS)
   TARGET_LINK_LIBRARIES(DistContextLib Kokkos::kokkos)
 ENDIF()
 TARGET_LINK_LIBRARIES(DistContextLib nlohmann_json_schema_validator)
