@@ -571,7 +571,7 @@ namespace Genten {
       });
     }
 
-    template <typename ExecSpace, typename Searcher, typename LossFunction>
+    template <typename ExecSpace, typename Searcher, typename Gradient>
     void stratified_sample_tensor_tpetra(
       const SptensorT<ExecSpace>& Xd,
       const Searcher& searcher,
@@ -580,7 +580,7 @@ namespace Genten {
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
       const KtensorT<ExecSpace>& u,
-      const LossFunction& loss_func,
+      const Gradient& gradient,
       const bool compute_gradient,
       SptensorT<ExecSpace>& Yd,
       ArrayT<ExecSpace>& w,
@@ -647,8 +647,9 @@ namespace Genten {
             const ttb_indx i = Rand::draw(gen,0,nnz);
             for (ttb_indx m=0; m<nd; ++m)
               Y.globalSubscript(idx,m) = X.globalSubscript(i,m);
-            Y.value(idx) = X.value(i);
-            w[idx] = weight_nonzeros;
+            Y.value(idx) = X.value(i); // We need x_val for both value and grad
+            if (!compute_gradient)
+              w[idx] = weight_nonzeros;
           });
         }
         rand_pool.free_state(gen);
@@ -692,8 +693,10 @@ namespace Genten {
           {
             for (ttb_indx m=0; m<nd; ++m)
               Y.globalSubscript(row,m) = ind[m];
-            Y.value(row) = 0.0;
-            w[row] = weight_zeros;
+            if (!compute_gradient) {
+              Y.value(row) = 0.0; // We don't need the value for grad
+              w[row] = weight_zeros;
+            }
           });
         }
         rand_pool.free_state(gen);
@@ -800,8 +803,13 @@ namespace Genten {
             // Set value in tensor
             Kokkos::single( Kokkos::PerThread( team ), [&] ()
             {
-              const ttb_real x_val = Y.value(idx);
-              Y.value(idx) = w[idx] * loss_func.deriv(x_val, m_val);
+              if (idx < ns_nz) { // This is a nonzero
+                const ttb_real x_val = Y.value(idx);
+                Y.value(idx) = gradient.evalNonZero(x_val, m_val, weight_nonzeros);
+              }
+              else { // This is a zero
+                Y.value(idx) = gradient.evalZero(m_val, weight_zeros);
+              }
             });
           }
         });
@@ -1439,7 +1447,7 @@ namespace Genten {
     const ttb_real weight_nonzeros,                                     \
     const ttb_real weight_zeros,                                        \
     const KtensorT<SPACE>& u,                                           \
-    const LOSS& loss_func,                                              \
+    const Impl::StratifiedGradient<LOSS>& gradient,                     \
     const bool compute_gradient,                                        \
     SptensorT<SPACE>& Y,                                                \
     ArrayT<SPACE>& w,                                                   \
@@ -1455,7 +1463,23 @@ namespace Genten {
     const ttb_real weight_nonzeros,                                     \
     const ttb_real weight_zeros,                                        \
     const KtensorT<SPACE>& u,                                           \
-    const LOSS& loss_func,                                              \
+    const Impl::StratifiedGradient<LOSS>& gradient,                     \
+    const bool compute_gradient,                                        \
+    SptensorT<SPACE>& Y,                                                \
+    ArrayT<SPACE>& w,                                                   \
+    KtensorT<SPACE>& u_overlap,                                         \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template void Impl::stratified_sample_tensor_tpetra(                  \
+    const SptensorT<SPACE>& X,                                          \
+    const Impl::SemiStratifiedSearcher<SPACE>& searcher,                \
+    const ttb_indx num_samples_nonzeros,                                \
+    const ttb_indx num_samples_zeros,                                   \
+    const ttb_real weight_nonzeros,                                     \
+    const ttb_real weight_zeros,                                        \
+    const KtensorT<SPACE>& u,                                           \
+    const Impl::SemiStratifiedGradient<LOSS>& gradient,                 \
     const bool compute_gradient,                                        \
     SptensorT<SPACE>& Y,                                                \
     ArrayT<SPACE>& w,                                                   \

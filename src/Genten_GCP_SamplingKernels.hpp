@@ -109,7 +109,7 @@ namespace Genten {
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams);
 
-    template <typename ExecSpace, typename Searcher, typename LossFunction>
+    template <typename ExecSpace, typename Searcher, typename Gradient>
     void stratified_sample_tensor_tpetra(
       const SptensorT<ExecSpace>& X,
       const Searcher& searcher,
@@ -118,7 +118,7 @@ namespace Genten {
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
       const KtensorT<ExecSpace>& u,
-      const LossFunction& loss_func,
+      const Gradient& gradient,
       const bool compute_gradient,
       SptensorT<ExecSpace>& Y,
       ArrayT<ExecSpace>& w,
@@ -218,6 +218,60 @@ namespace Genten {
       }
     private:
       const TensorHashMap<ExecSpace> hash;
+    };
+
+    template <typename ExecSpace>
+    class SemiStratifiedSearcher {
+    public:
+      SemiStratifiedSearcher() {}
+
+      template <typename IndexType>
+      KOKKOS_INLINE_FUNCTION
+      bool search(const IndexType& ind) const {
+          return false;
+      }
+    };
+
+    template <typename LossType>
+    class StratifiedGradient {
+    public:
+      StratifiedGradient(const LossType& loss_) : loss(loss_) {}
+
+      KOKKOS_INLINE_FUNCTION
+      ttb_real
+      evalNonZero(const ttb_real x, const ttb_real m, const ttb_real w) const {
+        return w * loss.deriv(x, m);
+      }
+
+      KOKKOS_INLINE_FUNCTION
+      ttb_real
+      evalZero(const ttb_real m, const ttb_real w) const {
+        return w * loss.deriv(ttb_real(0.0), m);
+      }
+
+    private:
+      const LossType loss;
+    };
+
+    template <typename LossType>
+    class SemiStratifiedGradient {
+    public:
+      SemiStratifiedGradient(const LossType& loss_) : loss(loss_) {}
+
+      KOKKOS_INLINE_FUNCTION
+      ttb_real
+      evalNonZero(const ttb_real x, const ttb_real m, const ttb_real w) const {
+        return w * ( loss.deriv(x, m) - loss.deriv(ttb_real(0.0), m) );
+      }
+
+      KOKKOS_INLINE_FUNCTION
+      ttb_real
+      evalZero(const ttb_real m, const ttb_real w) const {
+        return w * loss.deriv(ttb_real(0.0), m);
+      }
+
+    private:
+      const LossType loss;
     };
 
   }

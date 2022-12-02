@@ -213,13 +213,13 @@ namespace Genten {
           Impl::stratified_sample_tensor_tpetra(
             this->X, Impl::HashSearcher<ExecSpace>(hash_map),
             num_nz, num_z, w_nz, w_z,
-            u, loss_func, gradient,
+            u, Impl::StratifiedGradient<LossFunction>(loss_func), gradient,
             Xs, w, u_overlap, this->rand_pool, this->algParams);
         else
           Impl::stratified_sample_tensor_tpetra(
             this->X, Impl::SortSearcher<ExecSpace>(this->X.impl()),
             num_nz, num_z, w_nz, w_z,
-            u, loss_func, gradient,
+            u, Impl::StratifiedGradient<LossFunction>(loss_func), gradient,
             Xs, w, u_overlap, this->rand_pool, this->algParams);
         return;
       }

@@ -146,7 +146,9 @@ namespace Genten {
 
       if (M.getProcessorMap() != nullptr) {
         Kokkos::fence();
+        std::cout << "val (before) = " << val << std::endl;
         val = M.getProcessorMap()->gridAllReduce(val);
+        std::cout << "val (after) = " << val << std::endl;
       }
 
       return val;
