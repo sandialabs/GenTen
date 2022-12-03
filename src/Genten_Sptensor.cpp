@@ -402,18 +402,18 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
 // non-member function because lambda capture of *this doesn't work on Cuda.
 template <typename ExecSpace, typename vals_type, typename subs_type>
 void
-sortImpl(vals_type& vals, subs_type& subs)
+sortImpl(vals_type& vals, subs_type& subs, subs_type& subs_gids)
 {
-  const ttb_indx sz = subs.extent(0);
-  const unsigned nd = subs.extent(1);
+  const ttb_indx sz = subs_gids.extent(0);
+  const unsigned nd = subs_gids.extent(1);
 
   // Neither std::sort or the Kokkos sort will work with non-contiguous views,
   // so we need to sort into temporary views
   Kokkos::View<ttb_indx*,typename subs_type::array_layout,ExecSpace>
     tmp(Kokkos::view_alloc(Kokkos::WithoutInitializing,"tmp_perm"),sz);
 
-  // Sort tmp=[1:sz] using subs as a comparator to compute permutation array
-  // to lexicographically sorted order
+  // Sort tmp=[1:sz] using subs_gids as a comparator to compute permutation
+  // array to lexicographically sorted order
 
   // Initialize tmp to unsorted order
   Kokkos::parallel_for("Genten::Sptensor::sortImpl_init_kernel",
@@ -428,8 +428,8 @@ sortImpl(vals_type& vals, subs_type& subs)
     KOKKOS_LAMBDA(const ttb_indx& a, const ttb_indx& b)
     {
       unsigned n = 0;
-      while ((n < nd) && (subs(a,n) == subs(b,n))) ++n;
-      if (n == nd || subs(a,n) >= subs(b,n)) return false;
+      while ((n < nd) && (subs_gids(a,n) == subs_gids(b,n))) ++n;
+      if (n == nd || subs_gids(a,n) >= subs_gids(b,n)) return false;
       return true;
     };
 
@@ -444,8 +444,8 @@ sortImpl(vals_type& vals, subs_type& subs)
 
 #if defined(ENABLE_SYCL_FOR_CUDA)
   if (is_sycl_space<ExecSpace>::value) {
-    auto subs_mir = create_mirror_view(subs);
-    deep_copy(subs_mir, subs);
+    auto subs_gids_mir = create_mirror_view(subs_gids);
+    deep_copy(subs_gids_mir, subs_gids);
 
     auto tmp_mir = create_mirror_view(tmp);
     deep_copy(tmp_mir, tmp);
@@ -454,8 +454,8 @@ sortImpl(vals_type& vals, subs_type& subs)
       std::execution::par, tmp_mir.data(), tmp_mir.data() + sz,
       KOKKOS_LAMBDA(const ttb_indx& a, const ttb_indx& b) {
         unsigned n = 0;
-        while ((n < nd) && (subs_mir(a,n) == subs_mir(b,n))) ++n;
-        if (n == nd || subs_mir(a,n) >= subs_mir(b,n)) return false;
+        while ((n < nd) && (subs_gids_mir(a,n) == subs_gids_mir(b,n))) ++n;
+        if (n == nd || subs_gids_mir(a,n) >= subs_gids_mir(b,n)) return false;
         return true;
       }
     );
@@ -480,17 +480,30 @@ sortImpl(vals_type& vals, subs_type& subs)
   subs_type sorted_subs(
     Kokkos::view_alloc("Genten::Sptensor::subs", Kokkos::WithoutInitializing),
     sz, nd);
+  subs_type sorted_subs_gids;
+  const bool has_gids = subs.data() != subs_gids.data();
+  if (has_gids)
+    sorted_subs_gids = subs_type(
+      Kokkos::view_alloc("Genten::Sptensor::subs_gids",
+                         Kokkos::WithoutInitializing),
+      sz, nd);
+  else
+    sorted_subs_gids = sorted_subs;
   Kokkos::parallel_for("Genten::Sptensor::sortImpl_copy_kernel",
                        Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
     sorted_vals(i) = vals[tmp(i)];
-    for (unsigned n=0; n<nd; ++n)
+    for (unsigned n=0; n<nd; ++n) {
       sorted_subs(i,n) = subs(tmp(i),n);
+      if (has_gids)
+        sorted_subs_gids(i,n) = subs_gids(tmp(i),n);
+    }
   });
 
   vals = vals_type(sorted_vals);
   subs = sorted_subs;
+  subs_gids = sorted_subs_gids;
 }
 }
 }
@@ -523,7 +536,7 @@ sort()
 #endif
 
   if (!is_sorted) {
-    Genten::Impl::sortImpl<ExecSpace>(values, subs);
+    Genten::Impl::sortImpl<ExecSpace>(values, subs, subs_gids);
     is_sorted = true;
   }
 }
