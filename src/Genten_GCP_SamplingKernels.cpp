@@ -767,6 +767,11 @@ namespace Genten {
         sz_host[n] = Yd.tensorMap(n)->getLocalNumElements();
       deep_copy(Y.size(), sz_host);
 
+      // Set correct upper/lower bounds.  Just use the same as X (so these
+      // are therefore not tight)
+      deep_copy(Y.getLowerBounds(), X.getLowerBounds());
+      deep_copy(Y.getUpperBounds(), X.getUpperBounds());
+
       // Import u to overlapped tensor map
       const unsigned nc = u.ncomponents();
       u_overlap = KtensorT<ExecSpace>(nc, nd);
