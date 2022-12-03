@@ -256,8 +256,8 @@ namespace Genten {
               X, num_nz, num_z, w_nz, w_z,
               u, loss_func, false,
               Xs, w, rand_pool, algParams);
+          u_overlap = u;
         }
-        u_overlap = u;
       }
     }
 
