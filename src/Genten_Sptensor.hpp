@@ -206,14 +206,38 @@ public:
   // Return the total number of (zero and nonzero) elements in the tensor.
   ttb_indx numel() const
   {
-    return siz_host.prod();
+    // use upper-lower instead of size to account for empty slices that
+    // may be squashed out (and hence are not considered in size)
+
+    //return siz_host.prod();
+    const unsigned nd = siz.size();
+    ttb_indx res = 1.0;
+    Kokkos::parallel_reduce("Genten::Sptensor::numel",
+                            Kokkos::RangePolicy<ExecSpace>(0,nd),
+                            KOKKOS_LAMBDA(const unsigned n, ttb_indx& l)
+    {
+      l *= (upper_bound[n]-lower_bound[n]);
+    }, Kokkos::Prod<ttb_indx>(res));
+    return res;
   }
 
   // Return the total number of (zero and nonzero) elements in the tensor as
   // a float (to avoid overflow for large tensors)
   ttb_real numel_float() const
   {
-    return siz_host.prod_float();
+    // use upper-lower instead of size to account for empty slices that
+    // may be squashed out (and hence are not considered in size)
+
+    //return siz_host.prod_float();
+    const unsigned nd = siz.size();
+    ttb_real res = 1.0;
+    Kokkos::parallel_reduce("Genten::Sptensor::numel",
+                            Kokkos::RangePolicy<ExecSpace>(0,nd),
+                            KOKKOS_LAMBDA(const unsigned n, ttb_real& l)
+    {
+      l *= ttb_real(upper_bound[n]-lower_bound[n]);
+    }, Kokkos::Prod<ttb_real>(res));
+    return res;
   }
 
   // Return the number of structural nonzeros.
