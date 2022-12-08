@@ -81,7 +81,7 @@ public:
     assert(n < tensorMaps.size());
     return tensorMaps[n];
   }
-  Teuchos::RCP<tpetra_import_type<ExecSpace> >
+  Teuchos::RCP<const tpetra_import_type<ExecSpace> >
   importer(const unsigned n) const {
     assert(n < importers.size());
     return importers[n];
@@ -96,7 +96,7 @@ public:
     assert(n < tensorMaps.size());
     return tensorMaps[n];
   }
-  Teuchos::RCP<tpetra_import_type<ExecSpace> >&
+  Teuchos::RCP<const tpetra_import_type<ExecSpace> >&
   importer(const unsigned n) {
     assert(n < importers.size());
     return importers[n];
@@ -106,13 +106,13 @@ public:
   getFactorMaps() const { return factorMaps; }
   const std::vector< Teuchos::RCP<const tpetra_map_type<ExecSpace> > >&
   getTensorMaps() const { return tensorMaps; }
-  const std::vector< Teuchos::RCP<tpetra_import_type<ExecSpace> > >&
+  const std::vector< Teuchos::RCP<const tpetra_import_type<ExecSpace> > >&
   getImporters() const { return importers; }
   std::vector< Teuchos::RCP<const tpetra_map_type<ExecSpace> > >&
   getFactorMaps() { return factorMaps; }
   std::vector< Teuchos::RCP<const tpetra_map_type<ExecSpace> > >&
   getTensorMaps() { return tensorMaps; }
-  std::vector< Teuchos::RCP<tpetra_import_type<ExecSpace> > >&
+  std::vector< Teuchos::RCP<const tpetra_import_type<ExecSpace> > >&
   getImporters() { return importers; }
 #endif
 
@@ -123,7 +123,7 @@ protected:
 #ifdef HAVE_TPETRA
   std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > > factorMaps;
   std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > > tensorMaps;
-  std::vector< Teuchos::RCP< tpetra_import_type<ExecSpace> > > importers;
+  std::vector< Teuchos::RCP< const tpetra_import_type<ExecSpace> > > importers;
 #endif
 
 };

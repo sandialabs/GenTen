@@ -166,7 +166,7 @@ private:
   std::vector< Teuchos::RCP<const tpetra_map_type<ExecSpace> > > factorMap;
   std::vector< Teuchos::RCP<const tpetra_map_type<ExecSpace> > > overlapFactorMap;
   std::vector< Teuchos::RCP<const tpetra_map_type<ExecSpace> > > rootMap;
-  std::vector< Teuchos::RCP<tpetra_import_type<ExecSpace> > > rootImporter;
+  std::vector< Teuchos::RCP<const tpetra_import_type<ExecSpace> > > rootImporter;
 #endif
 
   MPI_Datatype mpiElemType_ = DistContext::toMpiType<ttb_real>();

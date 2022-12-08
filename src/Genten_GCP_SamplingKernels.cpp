@@ -56,7 +56,7 @@ namespace {
     const subs_type& subs_lids, const subs_type& subs_gids,
     const std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& factorMaps,
     std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& tensorMaps,
-    std::vector< Teuchos::RCP< tpetra_import_type<ExecSpace> > >& importers,
+    std::vector< Teuchos::RCP< const tpetra_import_type<ExecSpace> > >& importers,
     const AlgParams& algParams)
   {
     const ttb_indx total_samples = subs_lids.extent(0);
@@ -136,7 +136,7 @@ namespace {
     const KtensorT<ExecSpace>& u,
     const std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& factorMaps,
     const std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& tensorMaps,
-    const std::vector< Teuchos::RCP< tpetra_import_type<ExecSpace> > >& importers)
+    const std::vector< Teuchos::RCP< const tpetra_import_type<ExecSpace> > >& importers)
   {
     const unsigned nd = u.ndims();
     const unsigned nc = u.ncomponents();
