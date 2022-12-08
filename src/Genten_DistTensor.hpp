@@ -71,12 +71,12 @@ public:
   const ProcessorMap* getProcessorMap() const { return pmap; }
 
 #ifdef HAVE_TPETRA
-  Teuchos::RCP<tpetra_map_type<ExecSpace> >
+  Teuchos::RCP<const tpetra_map_type<ExecSpace> >
   factorMap(const unsigned n) const {
     assert(n < factorMaps.size());
     return factorMaps[n];
   }
-  Teuchos::RCP<tpetra_map_type<ExecSpace> >
+  Teuchos::RCP<const tpetra_map_type<ExecSpace> >
   tensorMap(const unsigned n) const {
     assert(n < tensorMaps.size());
     return tensorMaps[n];
@@ -86,12 +86,12 @@ public:
     assert(n < importers.size());
     return importers[n];
   }
-  Teuchos::RCP<tpetra_map_type<ExecSpace> >&
+  Teuchos::RCP<const tpetra_map_type<ExecSpace> >&
   factorMap(const unsigned n) {
     assert(n < factorMaps.size());
     return factorMaps[n];
   }
-  Teuchos::RCP<tpetra_map_type<ExecSpace> >&
+  Teuchos::RCP<const tpetra_map_type<ExecSpace> >&
   tensorMap(const unsigned n) {
     assert(n < tensorMaps.size());
     return tensorMaps[n];
@@ -102,15 +102,15 @@ public:
     return importers[n];
   }
 
-  const std::vector< Teuchos::RCP<tpetra_map_type<ExecSpace> > >&
+  const std::vector< Teuchos::RCP<const tpetra_map_type<ExecSpace> > >&
   getFactorMaps() const { return factorMaps; }
-  const std::vector< Teuchos::RCP<tpetra_map_type<ExecSpace> > >&
+  const std::vector< Teuchos::RCP<const tpetra_map_type<ExecSpace> > >&
   getTensorMaps() const { return tensorMaps; }
   const std::vector< Teuchos::RCP<tpetra_import_type<ExecSpace> > >&
   getImporters() const { return importers; }
-  std::vector< Teuchos::RCP<tpetra_map_type<ExecSpace> > >&
+  std::vector< Teuchos::RCP<const tpetra_map_type<ExecSpace> > >&
   getFactorMaps() { return factorMaps; }
-  std::vector< Teuchos::RCP<tpetra_map_type<ExecSpace> > >&
+  std::vector< Teuchos::RCP<const tpetra_map_type<ExecSpace> > >&
   getTensorMaps() { return tensorMaps; }
   std::vector< Teuchos::RCP<tpetra_import_type<ExecSpace> > >&
   getImporters() { return importers; }
@@ -121,8 +121,8 @@ protected:
   const ProcessorMap* pmap;
 
 #ifdef HAVE_TPETRA
-  std::vector< Teuchos::RCP< tpetra_map_type<ExecSpace> > > factorMaps;
-  std::vector< Teuchos::RCP< tpetra_map_type<ExecSpace> > > tensorMaps;
+  std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > > factorMaps;
+  std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > > tensorMaps;
   std::vector< Teuchos::RCP< tpetra_import_type<ExecSpace> > > importers;
 #endif
 

@@ -54,8 +54,8 @@ namespace {
   template <typename ExecSpace, typename subs_type>
   void build_tensor_maps(
     const subs_type& subs_lids, const subs_type& subs_gids,
-    const std::vector< Teuchos::RCP< tpetra_map_type<ExecSpace> > >& factorMaps,
-    std::vector< Teuchos::RCP< tpetra_map_type<ExecSpace> > >& tensorMaps,
+    const std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& factorMaps,
+    std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& tensorMaps,
     std::vector< Teuchos::RCP< tpetra_import_type<ExecSpace> > >& importers,
     const AlgParams& algParams)
   {
@@ -119,7 +119,7 @@ namespace {
           std::cerr, err, *factorMaps[n], *tensorMaps[n]);
         if (err)
           Genten::error("Tpetra::Details::makeOptimizedColMap failed!");
-        tensorMaps[n] = Teuchos::rcp_const_cast<tpetra_map_type<ExecSpace> >(p.first);
+        tensorMaps[n] = p.first;
         importers[n] = p.second;
         for (ttb_indx i=0; i<total_samples; ++i)
           subs_lids_host(i,n) = tensorMaps[n]->getLocalElement(subs_gids_host(i,n));
@@ -134,8 +134,8 @@ namespace {
   template <typename ExecSpace>
   KtensorT<ExecSpace> import_ktensor_to_tensor_map(
     const KtensorT<ExecSpace>& u,
-    const std::vector< Teuchos::RCP< tpetra_map_type<ExecSpace> > >& factorMaps,
-    const std::vector< Teuchos::RCP< tpetra_map_type<ExecSpace> > >& tensorMaps,
+    const std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& factorMaps,
+    const std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& tensorMaps,
     const std::vector< Teuchos::RCP< tpetra_import_type<ExecSpace> > >& importers)
   {
     const unsigned nd = u.ndims();

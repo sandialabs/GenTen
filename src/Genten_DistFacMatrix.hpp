@@ -211,7 +211,7 @@ public:
   using map_type = typename dist_object_type::map_type;
 
   DistFacMatrix(const FacMatrixT<ExecSpace>& mat_,
-                const Teuchos::RCP< tpetra_map_type<ExecSpace> >& map) :
+                const Teuchos::RCP< const tpetra_map_type<ExecSpace> >& map) :
     dist_object_type(map), mat(mat_) {}
 
   virtual ~DistFacMatrix() {}

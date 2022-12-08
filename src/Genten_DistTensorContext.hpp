@@ -109,11 +109,11 @@ public:
   std::shared_ptr<const ProcessorMap> pmap_ptr() const { return pmap_; }
 
 #ifdef HAVE_TPETRA
-  Teuchos::RCP<tpetra_map_type<ExecSpace> >
+  Teuchos::RCP<const tpetra_map_type<ExecSpace> >
   getFactorMap(unsigned n) const {
     return factorMap[n];
   }
-  Teuchos::RCP<tpetra_map_type<ExecSpace> >
+  Teuchos::RCP<const tpetra_map_type<ExecSpace> >
   getOverlapFactorMap(unsigned n) const {
     return overlapFactorMap[n];
   }
@@ -163,9 +163,9 @@ private:
 
 #ifdef HAVE_TPETRA
   Teuchos::RCP<const Teuchos::Comm<int> > tpetra_comm;
-  std::vector< Teuchos::RCP< tpetra_map_type<ExecSpace> > > factorMap;
-  std::vector< Teuchos::RCP<tpetra_map_type<ExecSpace> > > overlapFactorMap;
-  std::vector< Teuchos::RCP<tpetra_map_type<ExecSpace> > > rootMap;
+  std::vector< Teuchos::RCP<const tpetra_map_type<ExecSpace> > > factorMap;
+  std::vector< Teuchos::RCP<const tpetra_map_type<ExecSpace> > > overlapFactorMap;
+  std::vector< Teuchos::RCP<const tpetra_map_type<ExecSpace> > > rootMap;
   std::vector< Teuchos::RCP<tpetra_import_type<ExecSpace> > > rootImporter;
 #endif
 
@@ -657,12 +657,10 @@ distributeTensorData(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
 
       if (algParams.optimize_maps) {
         bool err = false;
-        auto p = Tpetra::Details::makeOptimizedColMap(
+        overlapFactorMap[dim] = Tpetra::Details::makeOptimizedColMap(
           std::cerr, err, *factorMap[dim], *overlapFactorMap[dim]);
         if (err)
           Genten::error("Tpetra::Details::makeOptimizedColMap failed!");
-        overlapFactorMap[dim] =
-          Teuchos::rcp_const_cast<tpetra_map_type<ExecSpace> >(p);
         for (auto i=0; i<local_nnz; ++i)
           subs[i][dim] =
             overlapFactorMap[dim]->getLocalElement(subs_gids[i][dim]);
