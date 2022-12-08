@@ -145,7 +145,7 @@ namespace Genten {
     }
 
     KOKKOS_INLINE_FUNCTION
-    ttb_indx value_at(size_type i) const {
+    ttb_real value_at(size_type i) const {
       if (ndim == 3) return map_3.value_at(i);
       else if (ndim == 4) return map_4.value_at(i);
       else if (ndim == 5) return map_5.value_at(i);
