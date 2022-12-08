@@ -101,6 +101,19 @@ public:
     assert(n < importers.size());
     return importers[n];
   }
+
+  const std::vector< Teuchos::RCP<tpetra_map_type<ExecSpace> > >&
+  getFactorMaps() const { return factorMaps; }
+  const std::vector< Teuchos::RCP<tpetra_map_type<ExecSpace> > >&
+  getTensorMaps() const { return tensorMaps; }
+  const std::vector< Teuchos::RCP<tpetra_import_type<ExecSpace> > >&
+  getImporters() const { return importers; }
+  std::vector< Teuchos::RCP<tpetra_map_type<ExecSpace> > >&
+  getFactorMaps() { return factorMaps; }
+  std::vector< Teuchos::RCP<tpetra_map_type<ExecSpace> > >&
+  getTensorMaps() { return tensorMaps; }
+  std::vector< Teuchos::RCP<tpetra_import_type<ExecSpace> > >&
+  getImporters() { return importers; }
 #endif
 
 protected:

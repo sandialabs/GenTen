@@ -211,7 +211,7 @@ namespace Genten {
       if (algParams.dist_update_method == Dist_Update_Method::Tpetra) {
         if (algParams.hash)
           Impl::stratified_sample_tensor_tpetra(
-            this->X, Impl::HashSearcher<ExecSpace>(hash_map),
+            this->X, Impl::HashSearcher<ExecSpace>(this->X.impl(), hash_map),
             num_nz, num_z, w_nz, w_z,
             u, Impl::StratifiedGradient<LossFunction>(loss_func), gradient,
             Xs, w, u_overlap, this->rand_pool, this->algParams);
@@ -221,20 +221,22 @@ namespace Genten {
             num_nz, num_z, w_nz, w_z,
             u, Impl::StratifiedGradient<LossFunction>(loss_func), gradient,
             Xs, w, u_overlap, this->rand_pool, this->algParams);
-        return;
       }
-
-      if (algParams.hash)
-        Impl::stratified_sample_tensor_hash(
-          this->X, hash_map, num_nz, num_z, w_nz, w_z,
-          u, loss_func, gradient,
-          Xs, w, this->rand_pool, this->algParams);
-      else
-        Impl::stratified_sample_tensor(
-          this->X, num_nz, num_z, w_nz, w_z,
-          u, loss_func, gradient,
-          Xs, w, rand_pool, algParams);
-      u_overlap = u;
+      else {
+        if (algParams.hash)
+          Impl::stratified_sample_tensor(
+            this->X, Impl::HashSearcher<ExecSpace>(this->X.impl(), hash_map),
+            num_nz, num_z, w_nz, w_z,
+            u, Impl::StratifiedGradient<LossFunction>(loss_func), gradient,
+            Xs, w, this->rand_pool, this->algParams);
+        else
+          Impl::stratified_sample_tensor(
+            this->X, Impl::SortSearcher<ExecSpace>(this->X.impl()),
+            num_nz, num_z, w_nz, w_z,
+            u, Impl::StratifiedGradient<LossFunction>(loss_func), gradient,
+            Xs, w, this->rand_pool, this->algParams);
+        u_overlap = u;
+      }
     }
 
     virtual void fusedGradient(const KtensorT<ExecSpace>& u,

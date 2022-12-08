@@ -222,10 +222,11 @@ namespace Genten {
             Xs, w, u_overlap, this->rand_pool, this->algParams);
         }
         else {
-          Impl::semi_stratified_sample_tensor(
-            X, num_nz, num_z, w_nz, w_z,
-            u, loss_func, true,
-            Xs, w, rand_pool, algParams);
+          Impl::stratified_sample_tensor(
+            this->X, Impl::SemiStratifiedSearcher<ExecSpace>(),
+            num_nz, num_z, w_nz, w_z,
+            u, Impl::SemiStratifiedGradient<LossFunction>(loss_func), gradient,
+            Xs, w, this->rand_pool, this->algParams);
           u_overlap = u;
         }
       }
@@ -233,7 +234,7 @@ namespace Genten {
         if (algParams.dist_update_method == Dist_Update_Method::Tpetra) {
           if (algParams.hash)
             Impl::stratified_sample_tensor_tpetra(
-              this->X, Impl::HashSearcher<ExecSpace>(hash_map),
+              this->X, Impl::HashSearcher<ExecSpace>(this->X.impl(), hash_map),
               num_nz, num_z, w_nz, w_z,
               u, Impl::StratifiedGradient<LossFunction>(loss_func), gradient,
               Xs, w, u_overlap, this->rand_pool, this->algParams);
@@ -246,16 +247,17 @@ namespace Genten {
         }
         else {
           if (algParams.hash)
-            Impl::stratified_sample_tensor_hash(
-              this->X, hash_map,
+            Impl::stratified_sample_tensor(
+              this->X, Impl::HashSearcher<ExecSpace>(this->X.impl(), hash_map),
               num_nz, num_z, w_nz, w_z,
-              u, loss_func, false,
+              u, Impl::StratifiedGradient<LossFunction>(loss_func), gradient,
               Xs, w, this->rand_pool, this->algParams);
           else
             Impl::stratified_sample_tensor(
-              X, num_nz, num_z, w_nz, w_z,
-              u, loss_func, false,
-              Xs, w, rand_pool, algParams);
+              this->X, Impl::SortSearcher<ExecSpace>(this->X.impl()),
+              num_nz, num_z, w_nz, w_z,
+              u, Impl::StratifiedGradient<LossFunction>(loss_func), gradient,
+              Xs, w, this->rand_pool, this->algParams);
           u_overlap = u;
         }
       }

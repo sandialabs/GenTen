@@ -181,31 +181,67 @@ namespace Genten {
                               KtensorT<ExecSpace>& u_overlap) override
     {
       if (gradient) {
-        if (algParams.hash)
-          Impl::uniform_sample_tensor_hash(
-            X, hash_map, num_samples_grad, weight_grad, u, loss_func, false,
-            Xs, w, this->rand_pool, this->algParams);
-        else
-          Impl::uniform_sample_tensor(
-            X, num_samples_grad, weight_grad, u, loss_func, true,
-            Xs, w, rand_pool, algParams);
+        if (algParams.dist_update_method == Dist_Update_Method::Tpetra) {
+          if (algParams.hash)
+            Impl::uniform_sample_tensor_tpetra(
+              X, Impl::HashSearcher<ExecSpace>(this->X.impl(), hash_map),
+              num_samples_grad, weight_grad, u, loss_func, gradient,
+              Xs, w, u_overlap, this->rand_pool, this->algParams);
+          else
+            Impl::uniform_sample_tensor_tpetra(
+              X, Impl::SortSearcher<ExecSpace>(this->X.impl()),
+              num_samples_grad, weight_grad, u, loss_func, gradient,
+              Xs, w, u_overlap, rand_pool, algParams);
+        }
+        else {
+          if (algParams.hash)
+            Impl::uniform_sample_tensor(
+              X, Impl::HashSearcher<ExecSpace>(this->X.impl(), hash_map),
+              num_samples_grad, weight_grad, u, loss_func, gradient,
+              Xs, w, this->rand_pool, this->algParams);
+          else
+            Impl::uniform_sample_tensor(
+              X, Impl::SortSearcher<ExecSpace>(this->X.impl()),
+              num_samples_grad, weight_grad, u, loss_func, gradient,
+              Xs, w, rand_pool, algParams);
+          u_overlap = u;
+        }
       }
       else {
-        if (algParams.hash)
-          Impl::stratified_sample_tensor_hash(
-            X, hash_map,
-            num_samples_nonzeros_value, num_samples_zeros_value,
-            weight_nonzeros_value, weight_zeros_value,
-            u, loss_func, false,
-            Xs, w, rand_pool, algParams);
-        else
-          Impl::stratified_sample_tensor(
-            X, num_samples_nonzeros_value, num_samples_zeros_value,
-            weight_nonzeros_value, weight_zeros_value,
-            u, loss_func, false,
-            Xs, w, rand_pool, algParams);
+        ttb_indx num_nz = this->num_samples_nonzeros_value;
+        ttb_indx num_z  = this->num_samples_zeros_value;
+        ttb_real w_nz = this->weight_nonzeros_value;
+        ttb_real w_z  = this->weight_zeros_value;
+        if (algParams.dist_update_method == Dist_Update_Method::Tpetra) {
+          if (algParams.hash)
+            Impl::stratified_sample_tensor_tpetra(
+              this->X, Impl::HashSearcher<ExecSpace>(this->X.impl(), hash_map),
+              num_nz, num_z, w_nz, w_z,
+              u, Impl::StratifiedGradient<LossFunction>(loss_func), gradient,
+              Xs, w, u_overlap, this->rand_pool, this->algParams);
+          else
+            Impl::stratified_sample_tensor_tpetra(
+              this->X, Impl::SortSearcher<ExecSpace>(this->X.impl()),
+              num_nz, num_z, w_nz, w_z,
+              u, Impl::StratifiedGradient<LossFunction>(loss_func), gradient,
+              Xs, w, u_overlap, this->rand_pool, this->algParams);
+        }
+        else {
+          if (algParams.hash)
+            Impl::stratified_sample_tensor(
+              this->X, Impl::HashSearcher<ExecSpace>(this->X.impl(), hash_map),
+              num_nz, num_z, w_nz, w_z,
+              u, Impl::StratifiedGradient<LossFunction>(loss_func), gradient,
+              Xs, w, this->rand_pool, this->algParams);
+          else
+            Impl::stratified_sample_tensor(
+              this->X, Impl::SortSearcher<ExecSpace>(this->X.impl()),
+              num_nz, num_z, w_nz, w_z,
+              u, Impl::StratifiedGradient<LossFunction>(loss_func), gradient,
+              Xs, w, this->rand_pool, this->algParams);
+          u_overlap = u;
+        }
       }
-      u_overlap = u;
     }
 
     virtual void fusedGradient(const KtensorT<ExecSpace>& u,
