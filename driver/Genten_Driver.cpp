@@ -169,7 +169,6 @@ int main_driver(Genten::AlgParams& algParams,
                 const std::string& initfilename,
                 const ttb_indx index_base,
                 const ttb_bool gz,
-                const ttb_bool use_tpetra,
                 const Genten::IndxArray& facDims_h,
                 const ttb_indx nnz,
                 const std::string& tensor_outputfilename,
@@ -196,7 +195,7 @@ int main_driver(Genten::AlgParams& algParams,
     Sptensor_type x;
     if (inputfilename != "") {
       timer.start(0);
-      x = dtc.distributeTensor(inputfilename, index_base, gz, use_tpetra);
+      x = dtc.distributeTensor(inputfilename, index_base, gz, algParams);
       timer.stop(0);
       DC::Barrier();
       if (dtc.gridRank() == 0)
@@ -233,7 +232,7 @@ int main_driver(Genten::AlgParams& algParams,
         printf ("  Data generation took %6.3f seconds\n", timer.getTotalTime(0));
         std::cout << "  Actual nnz  = " << x_host.nnz() << "\n";
       }
-      x = dtc.distributeTensor(x_host, use_tpetra);
+      x = dtc.distributeTensor(x_host, algParams);
     }
 
     // Print execution environment
@@ -541,9 +540,6 @@ int main(int argc, char* argv[])
     // Everything else
     algParams.parse(args);
 
-    ttb_bool use_tpetra =
-      (algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra);
-
     // Check for unrecognized arguments
     if (Genten::check_and_print_unused_args(args, std::cout)) {
       usage(argv);
@@ -592,7 +588,6 @@ int main(int argc, char* argv[])
                                                        init,
                                                        index_base,
                                                        gz,
-                                                       use_tpetra,
                                                        facDims_h,
                                                        nnz,
                                                        tensor_outputfilename,
@@ -607,7 +602,6 @@ int main(int argc, char* argv[])
                                       init,
                                       index_base,
                                       gz,
-                                      use_tpetra,
                                       facDims_h,
                                       nnz,
                                       tensor_outputfilename,
@@ -623,7 +617,6 @@ int main(int argc, char* argv[])
                                                    init,
                                                    index_base,
                                                    gz,
-                                                   use_tpetra,
                                                    facDims_h,
                                                    nnz,
                                                    tensor_outputfilename,
@@ -639,7 +632,6 @@ int main(int argc, char* argv[])
                                                     init,
                                                     index_base,
                                                     gz,
-                                                    use_tpetra,
                                                     facDims_h,
                                                     nnz,
                                                     tensor_outputfilename,
@@ -655,7 +647,6 @@ int main(int argc, char* argv[])
                                         init,
                                         index_base,
                                         gz,
-                                        use_tpetra,
                                         facDims_h,
                                         nnz,
                                         tensor_outputfilename,
@@ -671,7 +662,6 @@ int main(int argc, char* argv[])
                                          init,
                                          index_base,
                                          gz,
-                                         use_tpetra,
                                          facDims_h,
                                          nnz,
                                          tensor_outputfilename,
@@ -687,7 +677,6 @@ int main(int argc, char* argv[])
                                         init,
                                         index_base,
                                         gz,
-                                        use_tpetra,
                                         facDims_h,
                                         nnz,
                                         tensor_outputfilename,

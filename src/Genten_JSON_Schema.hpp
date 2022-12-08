@@ -220,6 +220,11 @@ static nlohmann::json json_schema = R"(
                   "description": "Distributed Ktensor update method",
                   "enum": ["all-reduce", "all-gather", "tpetra"],
                   "default": "all-reduce"
+              },
+              "optimize-maps": {
+                  "description": "Optimize distributed maps to reduce communication",
+                  "type": "boolean",
+                  "default": false
               }
           }
       },

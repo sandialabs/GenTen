@@ -46,6 +46,7 @@
 #include "Tpetra_Map.hpp"
 #include "Tpetra_Import.hpp"
 #include "Tpetra_DistObject.hpp"
+#include "Tpetra_Details_makeOptimizedColMap.hpp"
 
 namespace Genten {
 

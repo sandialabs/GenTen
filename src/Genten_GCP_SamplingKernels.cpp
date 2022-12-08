@@ -56,7 +56,8 @@ namespace {
     const subs_type& subs_lids, const subs_type& subs_gids,
     const std::vector< Teuchos::RCP< tpetra_map_type<ExecSpace> > >& factorMaps,
     std::vector< Teuchos::RCP< tpetra_map_type<ExecSpace> > >& tensorMaps,
-    std::vector< Teuchos::RCP< tpetra_import_type<ExecSpace> > >& importers)
+    std::vector< Teuchos::RCP< tpetra_import_type<ExecSpace> > >& importers,
+    const AlgParams& algParams)
   {
     const ttb_indx total_samples = subs_lids.extent(0);
     const unsigned nd = subs_lids.extent(1);
@@ -88,7 +89,6 @@ namespace {
     }
     for (unsigned n=0; n<nd; ++n)
       assert(cnt[n] == map[n].size());
-    deep_copy(subs_lids, subs_lids_host);
 
     // Construct sampled tpetra maps
     const tpetra_go_type indexBase = tpetra_go_type(0);
@@ -113,8 +113,21 @@ namespace {
       deep_copy(gids, gids_host);
       tensorMaps[n] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(
         invalid, gids, indexBase, factorMaps[n]->getComm()));
-      importers[n] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(
-        factorMaps[n], tensorMaps[n]));
+      if (algParams.optimize_maps) {
+        bool err = false;
+        auto p = Tpetra::Details::makeOptimizedColMapAndImport(
+          std::cerr, err, *factorMaps[n], *tensorMaps[n]);
+        if (err)
+          Genten::error("Tpetra::Details::makeOptimizedColMap failed!");
+        tensorMaps[n] = Teuchos::rcp_const_cast<tpetra_map_type<ExecSpace> >(p.first);
+        importers[n] = p.second;
+        for (ttb_indx i=0; i<total_samples; ++i)
+          subs_lids_host(i,n) = tensorMaps[n]->getLocalElement(subs_gids_host(i,n));
+      }
+      else
+        importers[n] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(
+          factorMaps[n], tensorMaps[n]));
+      deep_copy(subs_lids, subs_lids_host);
     }
   }
 
@@ -328,7 +341,8 @@ namespace {
       // Build tensor maps
       Yd.getFactorMaps() = Xd.getFactorMaps();
       build_tensor_maps(Yd.getSubscripts(), Yd.getGlobalSubscripts(),
-                        Xd.getFactorMaps(), Yd.getTensorMaps(), Yd.getImporters());
+                        Xd.getFactorMaps(), Yd.getTensorMaps(),
+                        Yd.getImporters(), algParams);
 
       // Set correct size in tensor
       auto sz_host = Yd.size_host();
@@ -670,7 +684,7 @@ namespace {
       Yd.getFactorMaps() = Xd.getFactorMaps();
       build_tensor_maps(Yd.getSubscripts(), Yd.getGlobalSubscripts(),
                         Xd.getFactorMaps(), Yd.getTensorMaps(),
-                        Yd.getImporters());
+                        Yd.getImporters(), algParams);
 
       // Set correct size in tensor
       auto sz_host = Y.size_host();

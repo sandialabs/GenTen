@@ -58,6 +58,7 @@
 #include "Genten_SpTn_Util.hpp"
 #include "Genten_Tpetra.hpp"
 #include "Genten_DistFacMatrix.hpp"
+#include "Genten_AlgParams.hpp"
 #include "Kokkos_UnorderedMap.hpp"
 #endif
 
@@ -91,10 +92,10 @@ public:
   SptensorT<ExecSpace> distributeTensor(const std::string& file,
                                         const ttb_indx index_base,
                                         const bool compressed,
-                                        const bool use_tpetra = false);
+                                        const AlgParams& algParams);
   template <typename ExecSpaceSrc>
   SptensorT<ExecSpace> distributeTensor(const SptensorT<ExecSpaceSrc>& X,
-                                        const bool use_tpetra = false);
+                                        const AlgParams& algParams);
 
   // Parallel info
   std::int32_t ndims() const { return global_dims_.size(); }
@@ -148,7 +149,7 @@ private:
     const std::vector<std::uint32_t>& TensorDims,
     const std::vector<small_vector<int>>& blocking,
     const ProcessorMap& pmap,
-    const bool use_tpetra);
+    const AlgParams& algParams);
 
   std::pair<G_MPI_IO::SptnFileHeader, MPI_File>
   readBinaryHeader(const std::string& file_name, int indexbase,
@@ -410,7 +411,7 @@ template <typename ExecSpace>
 SptensorT<ExecSpace>
 DistTensorContext<ExecSpace>::
 distributeTensor(const std::string& file, const ttb_indx index_base,
-                 const bool compressed, const bool use_tpetra)
+                 const bool compressed, const AlgParams& algParams)
 {
   const bool is_binary = detail::fileFormatIsBinary(file);
   if (is_binary && index_base != 0)
@@ -468,6 +469,8 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
     std::cout << "  Read file in: " << t3 - t2 << "s" << std::endl;
   }
 
+  const bool use_tpetra =
+    algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
   pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
                                                          use_tpetra));
   detail::printGrids(*pmap_);
@@ -477,20 +480,22 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
   detail::printBlocking(*pmap_, global_blocking_);
 
   return distributeTensorData(Tvec, global_dims_, global_blocking_,
-                              *pmap_, use_tpetra);
+                              *pmap_, algParams);
 }
 
 template <typename ExecSpace>
 template <typename ExecSpaceSrc>
 SptensorT<ExecSpace>
 DistTensorContext<ExecSpace>::
-distributeTensor(const SptensorT<ExecSpaceSrc>& X, const bool use_tpetra)
+distributeTensor(const SptensorT<ExecSpaceSrc>& X, const AlgParams& algParams)
 {
   const int ndims = X.ndims();
   global_dims_.resize(ndims);
   for (int i=0; i<ndims; ++i)
     global_dims_[i] = X.size(i);
 
+  const bool use_tpetra =
+    algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
   pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
                                                          use_tpetra));
   detail::printGrids(*pmap_);
@@ -508,7 +513,7 @@ distributeTensor(const SptensorT<ExecSpaceSrc>& X, const bool use_tpetra)
     pmap_->gridSize());
 
   return distributeTensorData(Tvec, global_dims_, global_blocking_, *pmap_,
-                              use_tpetra);
+                              algParams);
 }
 
 template <typename ExecSpace>
@@ -517,9 +522,11 @@ DistTensorContext<ExecSpace>::
 distributeTensorData(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
                      const std::vector<std::uint32_t>& TensorDims,
                      const std::vector<small_vector<int>>& blocking,
-                     const ProcessorMap& pmap,
-                     const bool use_tpetra)
+                     const ProcessorMap& pmap, const AlgParams& algParams)
 {
+  const bool use_tpetra =
+    algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
+
   DistContext::Barrier();
   auto t4 = MPI_Wtime();
 
@@ -648,9 +655,18 @@ distributeTensorData(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
                                                     tpetra_comm));
       indices[dim] = overlapFactorMap[dim]->getLocalNumElements();
 
-      // ToDo:  add option for calling Tpetra's makeOptimizedColMap
-      // That requires reordering nonzeros by looping through all of the new
-      // maps GIDs and setting the corresponding LIDs in the tensor
+      if (algParams.optimize_maps) {
+        bool err = false;
+        auto p = Tpetra::Details::makeOptimizedColMap(
+          std::cerr, err, *factorMap[dim], *overlapFactorMap[dim]);
+        if (err)
+          Genten::error("Tpetra::Details::makeOptimizedColMap failed!");
+        overlapFactorMap[dim] =
+          Teuchos::rcp_const_cast<tpetra_map_type<ExecSpace> >(p);
+        for (auto i=0; i<local_nnz; ++i)
+          subs[i][dim] =
+            overlapFactorMap[dim]->getLocalElement(subs_gids[i][dim]);
+      }
     }
 
     // Build sparse tensor
@@ -816,7 +832,7 @@ public:
   SptensorT<ExecSpace> distributeTensor(const std::string& file,
                                         const ttb_indx index_base,
                                         const bool compressed,
-                                        const bool use_tpetra = false)
+                                        const AlgParams& algParams)
   {
     Sptensor x_host;
     Genten::import_sptensor(file, x_host, index_base, compressed, true);
@@ -833,7 +849,7 @@ public:
   }
   template <typename ExecSpaceSrc>
   SptensorT<ExecSpace> distributeTensor(const SptensorT<ExecSpaceSrc>& X,
-                                           const bool use_tpetra = false)
+                                        const AlgParams& algParams)
   {
     SptensorT<ExecSpace> X_dst = create_mirror_view(ExecSpace(), X);
     deep_copy(X_dst, X);
@@ -894,7 +910,9 @@ distributeTensor(const ptree& tree)
   const bool tpetra =
     (parse_ptree_enum<Dist_Update_Method>(k_tree, "dist-method") ==
      Dist_Update_Method::Tpetra);
-  return distributeTensor(file_name, index_base, compressed, tpetra);
+  const bool optimize_maps = k_tree.get<bool>("optimize-mps", false);
+  return distributeTensor(file_name, index_base, compressed, tpetra,
+                          optimize_maps);
 }
 
 template <typename ExecSpace>
