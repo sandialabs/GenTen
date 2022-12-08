@@ -122,7 +122,8 @@ namespace {
         tensorMaps[n] = p.first;
         importers[n] = p.second;
         for (ttb_indx i=0; i<total_samples; ++i)
-          subs_lids_host(i,n) = tensorMaps[n]->getLocalElement(subs_gids_host(i,n));
+          subs_lids_host(i,n) =
+            tensorMaps[n]->getLocalElement(subs_gids_host(i,n));
       }
       else
         importers[n] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(
