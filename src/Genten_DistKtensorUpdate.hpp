@@ -157,6 +157,8 @@ public:
   virtual void doExport(const KtensorT<ExecSpace>& u,
                         const KtensorT<ExecSpace>& u_overlapped) const override
   {
+    GENTEN_TIME_MONITOR("k-tensor export");
+
     deep_copy(u, u_overlapped); // no-op if u and u_overlapped are the same
 
     if (pmap != nullptr)
@@ -175,6 +177,8 @@ public:
                         const KtensorT<ExecSpace>& u_overlapped,
                         const ttb_indx n) const override
   {
+    GENTEN_TIME_MONITOR("k-tensor export");
+
     deep_copy(u[n], u_overlapped[n]); // no-op if u and u_overlapped are the same
 
     if (pmap != nullptr)
@@ -366,6 +370,8 @@ public:
   virtual void doExport(const KtensorT<ExecSpace>& u,
                         const KtensorT<ExecSpace>& u_overlapped) const override
   {
+    GENTEN_TIME_MONITOR("k-tensor export");
+
     deep_copy(u, u_overlapped); // no-op if u and u_overlapped are the same
 
     if (pmap != nullptr)
@@ -427,6 +433,8 @@ public:
                         const int timer_comm,
                         const int timer_update) const override
   {
+    GENTEN_TIME_MONITOR("k-tensor export");
+
     deep_copy(u, u_overlapped); // no-op if u and u_overlapped are the same
 
     if (pmap != nullptr)
@@ -490,6 +498,8 @@ public:
                         const KtensorT<ExecSpace>& u_overlapped,
                         const ttb_indx n) const override
   {
+    GENTEN_TIME_MONITOR("k-tensor export");
+
     assert(u[n].nCols() == nc);
 
     deep_copy(u[n], u_overlapped[n]); // no-op if u and u_overlapped are the same
@@ -547,6 +557,8 @@ public:
                         const int timer_comm,
                         const int timer_update) const override
   {
+    GENTEN_TIME_MONITOR("k-tensor export");
+
     assert(u[n].nCols() == nc);
 
     deep_copy(u[n], u_overlapped[n]); // no-op if u and u_overlapped are the same
@@ -691,6 +703,8 @@ public:
   virtual KtensorT<ExecSpace>
   createOverlapKtensor(const KtensorT<ExecSpace>& u) const override
   {
+    GENTEN_TIME_MONITOR("create overlapped k-tensor");
+
     const unsigned nd = u.ndims();
     const unsigned nc = u.ncomponents();
     KtensorT<ExecSpace> u_overlapped = KtensorT<ExecSpace>(nc, nd);
@@ -711,6 +725,8 @@ public:
   virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
                         const KtensorT<ExecSpace>& u) const override
   {
+    GENTEN_TIME_MONITOR("k-tensor import");
+
     deep_copy(u_overlapped.weights(), u.weights());
     const unsigned nd = u.ndims();
     for (unsigned n=0; n<nd; ++n) {
@@ -728,6 +744,8 @@ public:
                         const KtensorT<ExecSpace>& u,
                         const ttb_indx n) const override
   {
+    GENTEN_TIME_MONITOR("k-tensor import");
+
     if (X.importer(n) != Teuchos::null) {
       DistFacMatrix<ExecSpace> src(u[n], X.factorMap(n));
       DistFacMatrix<ExecSpace> dst(u_overlapped[n], X.tensorMap(n));
@@ -742,6 +760,8 @@ public:
   virtual void doExport(const KtensorT<ExecSpace>& u,
                         const KtensorT<ExecSpace>& u_overlapped) const override
   {
+    GENTEN_TIME_MONITOR("k-tensor export");
+
     deep_copy(u.weights(), u_overlapped.weights());
 
     const unsigned nd = u.ndims();
@@ -761,6 +781,8 @@ public:
                         const KtensorT<ExecSpace>& u_overlapped,
                         const ttb_indx n) const override
   {
+    GENTEN_TIME_MONITOR("k-tensor export");
+
     if (X.importer(n) != Teuchos::null) {
       DistFacMatrix<ExecSpace> src(u_overlapped[n], X.tensorMap(n));
       DistFacMatrix<ExecSpace> dst(u[n], X.factorMap(n));

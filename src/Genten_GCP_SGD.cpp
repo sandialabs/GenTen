@@ -199,10 +199,12 @@ namespace Genten {
       // Sample X for f-estimate
       SptensorT<ExecSpace> X_val;
       ArrayT<ExecSpace> w_val;
+      GENTEN_START_TIMER("sample objective");
       timer.start(timer_sample_f);
       KtensorT<ExecSpace> ut_overlap_val;
       sampler->sampleTensor(false, ut, loss_func, X_val, w_val, ut_overlap_val);
       timer.stop(timer_sample_f);
+       GENTEN_STOP_TIMER("sample objective");
 
       // Overlapped Ktensors for distributed gcp_value and fit
       DistKtensorUpdate<ExecSpace> *dku_val =
@@ -218,6 +220,7 @@ namespace Genten {
       auto u_norm = std::sqrt(ut.normFsq());
 
       // Objective estimates
+      GENTEN_START_TIMER("objective function");
       ttb_real fit = 0.0;
       timer.start(timer_fest);
       fest = Impl::gcp_value(X_val, ut_overlap_val, w_val, loss_func);
@@ -237,6 +240,7 @@ namespace Genten {
       timer.stop(timer_fest);
       ttb_real fest_prev = fest;
       ttb_real fit_prev = fit;
+      GENTEN_STOP_TIMER("objective function");
 
       if (printIter > 0) {
         out << "Initial f-est: "
@@ -333,6 +337,7 @@ namespace Genten {
         it.run(X, loss_func, *sampler, *stepper, total_iters);
 
         // compute objective estimate
+        GENTEN_START_TIMER("objective function");
         timer.start(timer_fest);
         dku_val->doImport(ut_overlap_val, ut, timer, timer_comm);
         fest = Impl::gcp_value(X_val, ut_overlap_val, w_val, loss_func);
@@ -340,6 +345,7 @@ namespace Genten {
           fit = fitter();
         }
         timer.stop(timer_fest);
+        GENTEN_STOP_TIMER("objective function");
 
         // check convergence
         bool failed_epoch = fest > fest_prev || std::isnan(fest);
@@ -450,6 +456,7 @@ namespace Genten {
                PerfHistory& perfInfo,
                std::ostream& out)
   {
+    GENTEN_TIME_MONITOR("GCP-SGD");
 #ifdef HAVE_CALIPER
     cali::Function cali_func("Genten::gcp_sgd");
 #endif

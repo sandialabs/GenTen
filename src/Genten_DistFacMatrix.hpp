@@ -238,6 +238,8 @@ protected:
     const Kokkos::DualView<const local_ordinal_type*, buffer_device_type>& permuteFromLIDs,
     const Tpetra::CombineMode CM) override
   {
+    //GENTEN_TIME_MONITOR("copyAndPermute");
+
     const DistFacMatrix& src_dist_fac_mat =
       dynamic_cast<const DistFacMatrix&>(src);
     Impl::copyAndPermute(src_dist_fac_mat.mat, mat, numSameIDs, permuteToLIDs,
@@ -252,6 +254,8 @@ protected:
     Kokkos::DualView<size_t*, buffer_device_type> numPacketsPerLID,
     size_t& constantNumPackets) override
   {
+    //GENTEN_TIME_MONITOR("packAndPrepare");
+
     const DistFacMatrix& src_dist_fac_mat =
       dynamic_cast<const DistFacMatrix&>(src);
     Impl::packAndPrepare(src_dist_fac_mat.mat, mat, exportLIDs, exports,
@@ -266,6 +270,8 @@ protected:
     const size_t constantNumPackets,
     const Tpetra::CombineMode combineMode) override
   {
+    //GENTEN_TIME_MONITOR("unpackAndCombine");
+
     Impl::unpackAndCombine(mat, importLIDs, imports, numPacketsPerLID,
                            constantNumPackets, combineMode);
   }

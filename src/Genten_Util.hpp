@@ -427,3 +427,21 @@ namespace Genten {
   };
   extern oblackholestream bhcout;
 }
+
+#ifdef HAVE_TEUCHOS
+#include "Teuchos_TimeMonitor.hpp"
+#include "Teuchos_StackedTimer.hpp"
+#define GENTEN_TIME_MONITOR(FUNCNAME) \
+  TEUCHOS_FUNC_TIME_MONITOR(FUNCNAME)
+#define GENTEN_TIME_MONITOR_DIFF(FUNCNAME, DIFF) \
+  TEUCHOS_FUNC_TIME_MONITOR_DIFF(FUNCNAME, DIFF)
+#define GENTEN_START_TIMER(FUNCNAME) \
+  Teuchos::TimeMonitor::getStackedTimer()->start(FUNCNAME)
+#define GENTEN_STOP_TIMER(FUNCNAME) \
+  Teuchos::TimeMonitor::getStackedTimer()->stop(FUNCNAME)
+#else
+#define GENTEN_TIME_MONITOR(FUNCNAME)
+#define GENTEN_TIME_MONITOR_DIFF(FUNCNAME, DIFF)
+#define GENTEN_START_TIMER(FUNCNAME)
+#define GENTEN_STOP_TIMER(FUNCNAME)
+#endif

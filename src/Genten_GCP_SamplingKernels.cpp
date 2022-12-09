@@ -59,11 +59,13 @@ namespace {
     std::vector< Teuchos::RCP< const tpetra_import_type<ExecSpace> > >& importers,
     const AlgParams& algParams)
   {
+    GENTEN_TIME_MONITOR_DIFF("build tensor maps",build_tensor_maps);
     const ttb_indx total_samples = subs_lids.extent(0);
     const unsigned nd = subs_lids.extent(1);
 
     // Build new communication maps for sampled tensor.
     // ToDo:  run this on the device
+    GENTEN_START_TIMER("compute LIDs");
     using unordered_map_type = Kokkos::UnorderedMap<tpetra_go_type,tpetra_lo_type,DefaultHostExecutionSpace>;
     std::vector<unordered_map_type> map(nd);
     std::vector<tpetra_lo_type> cnt(nd, 0);
@@ -89,8 +91,10 @@ namespace {
     }
     for (unsigned n=0; n<nd; ++n)
       assert(cnt[n] == map[n].size());
+    GENTEN_STOP_TIMER("compute LIDs");
 
     // Construct sampled tpetra maps
+    GENTEN_START_TIMER("construct maps");
     const tpetra_go_type indexBase = tpetra_go_type(0);
     const Tpetra::global_size_t invalid =
       Teuchos::OrdinalTraits<Tpetra::global_size_t>::invalid();
@@ -130,6 +134,7 @@ namespace {
           factorMaps[n], tensorMaps[n]));
       deep_copy(subs_lids, subs_lids_host);
     }
+    GENTEN_STOP_TIMER("construct maps");
   }
 
   template <typename ExecSpace>
@@ -139,19 +144,25 @@ namespace {
     const std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& tensorMaps,
     const std::vector< Teuchos::RCP< const tpetra_import_type<ExecSpace> > >& importers)
   {
+    GENTEN_START_TIMER("create overlapped k-tensor");
     const unsigned nd = u.ndims();
     const unsigned nc = u.ncomponents();
-    KtensorT<ExecSpace>u_overlap(nc, nd);
+    KtensorT<ExecSpace> u_overlap(nc, nd);
     for (unsigned n=0; n<nd; ++n) {
       FacMatrixT<ExecSpace> mat(tensorMaps[n]->getLocalNumElements(), nc);
       u_overlap.set_factor(n, mat);
     }
+    u_overlap.setProcessorMap(u.getProcessorMap());
+    GENTEN_STOP_TIMER("create overlapped k-tensor");
+
+    GENTEN_START_TIMER("ktensor import");
     for (unsigned n=0; n<nd; ++n) {
       DistFacMatrix<ExecSpace> src(u[n], factorMaps[n]);
       DistFacMatrix<ExecSpace> dst(u_overlap[n], tensorMaps[n]);
       dst.doImport(src, *(importers[n]), Tpetra::INSERT);
     }
-    u_overlap.setProcessorMap(u.getProcessorMap());
+    GENTEN_STOP_TIMER("ktensor import");
+
     return u_overlap;
   }
 }
@@ -605,6 +616,7 @@ namespace {
       auto Y = Yd.impl();
 
       // Generate samples of nonzeros
+      GENTEN_START_TIMER("sample nonzeros");
       Policy policy_nz(N_nz, TeamSize, VectorSize);
       Kokkos::parallel_for(
         "Genten::GCP_SGD::Sample_Nonzeros",
@@ -633,8 +645,10 @@ namespace {
         }
         rand_pool.free_state(gen);
       });
+      GENTEN_STOP_TIMER("sample nonzeros");
 
       // Generate samples of zeros
+      GENTEN_START_TIMER("sample zeros");
       Policy policy_z(N_z, TeamSize, VectorSize);
       Kokkos::parallel_for(
         "Genten::GCP_SGD::Sample_Zeros",
@@ -680,6 +694,7 @@ namespace {
         }
         rand_pool.free_state(gen);
       });
+      GENTEN_STOP_TIMER("sample zeros");
 
       // Build tensor maps
       Yd.getFactorMaps() = Xd.getFactorMaps();
@@ -699,6 +714,7 @@ namespace {
 
       // Set gradient values in sampled tensor
       if (compute_gradient) {
+        GENTEN_TIME_MONITOR_DIFF("compute gradient tensor",compute_grad);
         Policy policy_t(N_t, TeamSize, VectorSize);
         Kokkos::parallel_for(
           "Genten::GCP_SGD::Stratified_Gradient",

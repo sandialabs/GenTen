@@ -65,6 +65,7 @@
 #endif
 #ifdef HAVE_TEUCHOS
 #include "Teuchos_TimeMonitor.hpp"
+#include "Teuchos_StackedTimer.hpp"
 #endif
 
 namespace Genten {
@@ -79,6 +80,8 @@ driver(const DistTensorContext<ExecSpace>& dtc,
        PerfHistory& history,
        std::ostream& out_in)
 {
+  GENTEN_TIME_MONITOR("Genten driver");
+
   typedef Genten::SptensorT<ExecSpace> Sptensor_type;
   typedef Genten::SptensorT<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
   typedef Genten::KtensorT<ExecSpace> Ktensor_type;
@@ -248,7 +251,17 @@ driver(const DistTensorContext<ExecSpace>& dtc,
   }
 
 #if defined(HAVE_TEUCHOS)
-  Teuchos::TimeMonitor::summarize();
+  Teuchos::StackedTimer::OutputOptions options;
+  options.output_fraction = true;
+  options.output_minmax   = true;
+  options.align_columns   = true;
+  options.print_warnings  = false;
+#ifdef HAVE_DIST
+  auto comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap->gridComm()));
+#else
+  auto comm = Teuchos::createSerialComm<int>();
+#endif
+  Teuchos::TimeMonitor::getStackedTimer()->report(out, comm, options);
 #endif
 
   x.setProcessorMap(nullptr);

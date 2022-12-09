@@ -115,6 +115,7 @@ namespace Genten {
                        const ArrayT<ExecSpace>& w,
                        const loss_type& f)
     {
+      GENTEN_START_TIMER("local objective");
       ttb_real val = 0.0;
       const auto X = Xd.impl();
 #if 1
@@ -143,10 +144,13 @@ namespace Genten {
       }, val);
       Kokkos::fence();  // ensure val is updated before using it
 #endif
+      GENTEN_STOP_TIMER("local objective");
 
       if (M.getProcessorMap() != nullptr) {
+        GENTEN_START_TIMER("grid all-reduce");
         Kokkos::fence();
         val = M.getProcessorMap()->gridAllReduce(val);
+        GENTEN_STOP_TIMER("grid all-reduce");
       }
 
       return val;

@@ -761,6 +761,7 @@ void mttkrp(const SptensorT<ExecSpace>& X,
             const AlgParams& algParams,
             const bool zero_v)
 {
+  GENTEN_TIME_MONITOR("MTTKRP");
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::mttkrp");
 #endif
@@ -796,6 +797,7 @@ void mttkrp_all(const SptensorT<ExecSpace>& X,
                 const AlgParams& algParams,
                 const bool zero_v)
 {
+  GENTEN_TIME_MONITOR("MTTKRP-all");
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::mttkrp_all");
 #endif

@@ -114,6 +114,7 @@ namespace Genten {
 
           // sample for gradient
           if (!algParams.fuse) {
+            GENTEN_TIME_MONITOR_DIFF("sample gradient",sample_grad);
             timer.start(timer_sample_g);
             timer.start(timer_sample_g_z_nz);
             sampler.sampleTensor(true, ut, loss_func,  X_grad, w_grad,
@@ -131,6 +132,8 @@ namespace Genten {
           for (ttb_indx giter=0; giter<algParams.frozen_iters; ++giter) {
 
             // compute gradient
+            {
+            GENTEN_TIME_MONITOR_DIFF("gradient",grad);
             timer.start(timer_grad);
             if (algParams.fuse) {
               timer.start(timer_grad_init);
@@ -149,11 +152,15 @@ namespace Genten {
                             timer_grad_update);
             }
             timer.stop(timer_grad);
+            }
 
             // take step and clip for bounds
+            {
+            GENTEN_TIME_MONITOR_DIFF("step/clip",step);
             timer.start(timer_step);
             stepper.eval(g, u);
             timer.stop(timer_step);
+            }
           }
         }
 
