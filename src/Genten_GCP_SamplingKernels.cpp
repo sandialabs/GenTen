@@ -115,9 +115,12 @@ namespace {
         }
       }//);
       deep_copy(gids, gids_host);
+      GENTEN_START_TIMER("tensor map constructor");
       tensorMaps[n] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(
         invalid, gids, indexBase, factorMaps[n]->getComm()));
+      GENTEN_STOP_TIMER("tensor map constructor");
       if (algParams.optimize_maps) {
+        GENTEN_START_TIMER("optimize tensor maps");
         bool err = false;
         auto p = Tpetra::Details::makeOptimizedColMapAndImport(
           std::cerr, err, *factorMaps[n], *tensorMaps[n]);
@@ -128,10 +131,14 @@ namespace {
         for (ttb_indx i=0; i<total_samples; ++i)
           subs_lids_host(i,n) =
             tensorMaps[n]->getLocalElement(subs_gids_host(i,n));
+        GENTEN_STOP_TIMER("optimize tensor maps");
       }
-      else
+      else {
+        GENTEN_START_TIMER("import constructor");
         importers[n] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(
           factorMaps[n], tensorMaps[n]));
+        GENTEN_STOP_TIMER("import constructor");
+      }
       deep_copy(subs_lids, subs_lids_host);
     }
     GENTEN_STOP_TIMER("construct maps");
