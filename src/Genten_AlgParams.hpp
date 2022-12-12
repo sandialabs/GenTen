@@ -79,7 +79,8 @@ namespace Genten {
     unsigned mttkrp_duplicated_factor_matrix_tile_size; // Tile size for MTTKRP
     ttb_real mttkrp_duplicated_threshold;  // Theshold for when dup is used
     Dist_Update_Method::type dist_update_method;
-    bool optimize_maps;  // Optimize Tpetra maps to reduce communication
+    bool optimize_maps;  // Optimize Tpetra maps to reduce communication'
+    bool build_maps_on_device;  //Build Tpetra maps on the device
     bool warmup; // Warmup by calling MTTKRP before decomposition
 
     // TTM options

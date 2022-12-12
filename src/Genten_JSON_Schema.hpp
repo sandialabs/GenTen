@@ -225,6 +225,11 @@ static nlohmann::json json_schema = R"(
                   "description": "Optimize distributed maps to reduce communication",
                   "type": "boolean",
                   "default": false
+              },
+              "build-maps-on-device": {
+                  "description": "Build distributed maps on the device",
+                  "type": "boolean",
+                  "default": true
               }
           }
       },

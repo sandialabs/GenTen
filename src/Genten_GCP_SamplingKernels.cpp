@@ -238,7 +238,7 @@ namespace {
     std::vector< Teuchos::RCP< const tpetra_import_type<ExecSpace> > >& importers,
     const AlgParams& algParams)
   {
-    if constexpr (is_gpu_space<ExecSpace>::value) {
+    if (is_gpu_space<ExecSpace>::value && algParams.build_maps_on_device) {
       build_tensor_maps_on_device(subs_lids, subs_gids, factorMaps, tensorMaps, importers, algParams);
     }
     else

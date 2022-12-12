@@ -68,6 +68,7 @@ Genten::AlgParams::AlgParams() :
   mttkrp_duplicated_threshold(-1.0),
   dist_update_method(Dist_Update_Method::default_type),
   optimize_maps(false),
+  build_maps_on_device(true),
   warmup(false),
   ttm_method(TTM_Method::default_type),
   opt_method(Opt_Method::default_type),
@@ -171,6 +172,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                                  Genten::Dist_Update_Method::types,
                                  Genten::Dist_Update_Method::names);
   optimize_maps = parse_ttb_bool(args, "--optimize-maps", "--no-optimize-maps", optimize_maps);
+  build_maps_on_device = parse_ttb_bool(args, "--build-maps-on-device", "--no-build-maps-on-device", build_maps_on_device);
   warmup = parse_ttb_bool(args, "--warmup", "--no-warmup", warmup);
 
   // TTM options
@@ -316,6 +318,7 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_value(ktensor_input, "scale-guess-by-norm-x", scale_guess_by_norm_x);
     parse_ptree_enum<Dist_Update_Method>(ktensor_input, "dist-method", dist_update_method);
     parse_ptree_value(ktensor_input, "optimize-maps", optimize_maps);
+    parse_ptree_value(ktensor_input, "build-maps-on-device", build_maps_on_device);
   }
 
   // CP-ALS
@@ -462,6 +465,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
   }
   out << std::endl;
   out << "  --optimize-maps    optimize distributed maps to reduce communication" << std::endl;
+  out << "  --build-maps-on-device build distributed maps on the device" << std::endl;
   out << "  --warmup           do an iteration of mttkrp to warmup (useful for generating accurate timing information)" << std::endl;
 
   out << std::endl;
@@ -601,6 +605,7 @@ void Genten::AlgParams::print(std::ostream& out)
   out << "  dist-method = " << Genten::Dist_Update_Method::names[dist_update_method]
       << std::endl;
   out << "  optimize-maps = " << (optimize_maps ? "true" : "false") << std::endl;
+  out << "  build-maps-on-device = " << (build_maps_on_device ? "true" : "false") << std::endl;
   out << "  warmup = " << (warmup ? "true" : "false") << std::endl;
 
   out << std::endl;
