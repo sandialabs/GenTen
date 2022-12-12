@@ -51,22 +51,111 @@ namespace Genten {
 
 #ifdef HAVE_TPETRA
 namespace {
+
   template <typename ExecSpace, typename subs_type>
-  void build_tensor_maps(
+  void build_tensor_maps_on_device(
     const subs_type& subs_lids, const subs_type& subs_gids,
     const std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& factorMaps,
     std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& tensorMaps,
     std::vector< Teuchos::RCP< const tpetra_import_type<ExecSpace> > >& importers,
     const AlgParams& algParams)
   {
-    GENTEN_TIME_MONITOR_DIFF("build tensor maps",build_tensor_maps);
+    using unordered_map_type = Kokkos::UnorderedMap<tpetra_go_type,tpetra_lo_type,ExecSpace>;
+
+    GENTEN_START_TIMER("build tensor maps");
     const ttb_indx total_samples = subs_lids.extent(0);
     const unsigned nd = subs_lids.extent(1);
+    const tpetra_go_type indexBase = tpetra_go_type(0);
+    const Tpetra::global_size_t invalid =
+      Teuchos::OrdinalTraits<Tpetra::global_size_t>::invalid();
 
     // Build new communication maps for sampled tensor.
-    // ToDo:  run this on the device
-    GENTEN_START_TIMER("compute LIDs");
+    for (unsigned n=0; n<nd; ++n) {
+      GENTEN_START_TIMER("compute GID hash");
+      unordered_map_type map(total_samples);  // min(total_samples, X.upperBound(n)-X.lowerBound(n)) might be a more accurate bound, but that requires a device-host transfer
+      Kokkos::parallel_for("Genten::build_tensor_maps::build_hash",
+                           Kokkos::RangePolicy<ExecSpace>(0,total_samples),
+                           KOKKOS_LAMBDA(const ttb_indx i)
+      {
+        const tpetra_go_type gid = subs_gids(i,n);
+        if (!map.exists(gid))
+          if (map.insert(gid,tpetra_lo_type(1)).failed())
+            Kokkos::abort("Insertion of GID failed, something is wrong!");
+      });
+      GENTEN_STOP_TIMER("compute GID hash");
+
+      // Construct sampled tpetra maps
+      GENTEN_START_TIMER("construct maps");
+      const ttb_indx sz = map.capacity();
+      Kokkos::View<tpetra_lo_type,ExecSpace> cnt("cnt");
+      Kokkos::View<tpetra_go_type*,ExecSpace> gids("gids", map.size());
+      Kokkos::parallel_for("Genten::build_tensor_maps::build_maps",
+                           Kokkos::RangePolicy<ExecSpace>(0,sz),
+                           KOKKOS_LAMBDA(const ttb_indx idx)
+      {
+        if (map.valid_at(idx)) {
+          const tpetra_go_type gid = map.key_at(idx);
+          const tpetra_lo_type lid = Kokkos::atomic_fetch_add(&cnt(), 1);
+          gids[lid] = gid;
+        }
+      });
+#ifndef NDEBUG
+      auto cnt_host = create_mirror_view(cnt);
+      deep_copy(cnt_host, cnt);
+      assert(cnt_host == map.size());
+#endif
+
+      GENTEN_START_TIMER("tensor map constructor");
+      tensorMaps[n] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(
+        invalid, gids, indexBase, factorMaps[n]->getComm()));
+      GENTEN_STOP_TIMER("tensor map constructor");
+      if (algParams.optimize_maps) {
+        GENTEN_START_TIMER("optimize tensor maps");
+        bool err = false;
+        auto p = Tpetra::Details::makeOptimizedColMapAndImport(
+          std::cerr, err, *factorMaps[n], *tensorMaps[n]);
+        if (err)
+          Genten::error("Tpetra::Details::makeOptimizedColMap failed!");
+        tensorMaps[n] = p.first;
+        importers[n] = p.second;
+        GENTEN_STOP_TIMER("optimize tensor maps");
+      }
+      else {
+        GENTEN_START_TIMER("import constructor");
+        importers[n] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(
+          factorMaps[n], tensorMaps[n]));
+        GENTEN_STOP_TIMER("import constructor");
+      }
+      auto lcl_map = tensorMaps[n]->getLocalMap();
+      Kokkos::parallel_for("Genten::build_tensor_maps::remap_lids",
+                           Kokkos::RangePolicy<ExecSpace>(0,total_samples),
+                           KOKKOS_LAMBDA(const ttb_indx i)
+      {
+        subs_lids(i,n) = lcl_map.getLocalElement(subs_gids(i,n));
+      });
+      GENTEN_STOP_TIMER("construct maps");
+    }
+    GENTEN_STOP_TIMER("build tensor maps");
+  }
+
+  template <typename ExecSpace, typename subs_type>
+  void build_tensor_maps_on_host(
+    const subs_type& subs_lids, const subs_type& subs_gids,
+    const std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& factorMaps,
+    std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& tensorMaps,
+    std::vector< Teuchos::RCP< const tpetra_import_type<ExecSpace> > >& importers,
+    const AlgParams& algParams)
+  {
     using unordered_map_type = Kokkos::UnorderedMap<tpetra_go_type,tpetra_lo_type,DefaultHostExecutionSpace>;
+
+    GENTEN_START_TIMER("build tensor maps");
+    const ttb_indx total_samples = subs_lids.extent(0);
+    const unsigned nd = subs_lids.extent(1);
+    const tpetra_go_type indexBase = tpetra_go_type(0);
+    const Tpetra::global_size_t invalid =
+      Teuchos::OrdinalTraits<Tpetra::global_size_t>::invalid();
+
+    // Build new communication maps for sampled tensor.
     std::vector<unordered_map_type> map(nd);
     std::vector<tpetra_lo_type> cnt(nd, 0);
     auto subs_lids_host = create_mirror_view(subs_lids);
@@ -74,6 +163,8 @@ namespace {
     deep_copy(subs_gids_host, subs_gids);
     for (unsigned n=0; n<nd; ++n)
       map[n].rehash(total_samples); // min(total_samples, X.upperBound(n)-X.lowerBound(n)) might be a more accurate bound, but that requires a device-host transfer
+
+    GENTEN_START_TIMER("compute GID hash");
     for (ttb_indx i=0; i<total_samples; ++i) {
       for (unsigned n=0; n<nd; ++n) {
         const tpetra_go_type gid = subs_gids_host(i,n);
@@ -91,30 +182,24 @@ namespace {
     }
     for (unsigned n=0; n<nd; ++n)
       assert(cnt[n] == map[n].size());
-    GENTEN_STOP_TIMER("compute LIDs");
+    GENTEN_STOP_TIMER("compute GID hash");
 
     // Construct sampled tpetra maps
     GENTEN_START_TIMER("construct maps");
-    const tpetra_go_type indexBase = tpetra_go_type(0);
-    const Tpetra::global_size_t invalid =
-      Teuchos::OrdinalTraits<Tpetra::global_size_t>::invalid();
     for (unsigned n=0; n<nd; ++n) {
       Kokkos::View<tpetra_go_type*,ExecSpace> gids("gids", cnt[n]);
       const unordered_map_type map_n = map[n];
       const ttb_indx sz = map_n.capacity();
-      // Kokkos::parallel_for("Genten::GCP_SGD::Stratified_Build_Maps",
-      //                      Kokkos::RangePolicy<ExecSpace>(0,sz),
-      //                      KOKKOS_LAMBDA(const ttb_indx idx)
       auto gids_host = create_mirror_view(gids);
-      for (ttb_indx idx=0; idx<sz; ++idx)
-      {
+      for (ttb_indx idx=0; idx<sz; ++idx) {
         if (map_n.valid_at(idx)) {
           const tpetra_go_type gid = map_n.key_at(idx);
           const tpetra_lo_type lid = map_n.value_at(idx);
           gids_host[lid] = gid;
         }
-      }//);
+      }
       deep_copy(gids, gids_host);
+
       GENTEN_START_TIMER("tensor map constructor");
       tensorMaps[n] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(
         invalid, gids, indexBase, factorMaps[n]->getComm()));
@@ -142,6 +227,22 @@ namespace {
       deep_copy(subs_lids, subs_lids_host);
     }
     GENTEN_STOP_TIMER("construct maps");
+    GENTEN_STOP_TIMER("build tensor maps");
+  }
+
+  template <typename ExecSpace, typename subs_type>
+  void build_tensor_maps(
+    const subs_type& subs_lids, const subs_type& subs_gids,
+    const std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& factorMaps,
+    std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& tensorMaps,
+    std::vector< Teuchos::RCP< const tpetra_import_type<ExecSpace> > >& importers,
+    const AlgParams& algParams)
+  {
+    if constexpr (is_gpu_space<ExecSpace>::value) {
+      build_tensor_maps_on_device(subs_lids, subs_gids, factorMaps, tensorMaps, importers, algParams);
+    }
+    else
+       build_tensor_maps_on_host(subs_lids, subs_gids, factorMaps, tensorMaps, importers, algParams);
   }
 
   template <typename ExecSpace>
