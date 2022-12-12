@@ -212,11 +212,13 @@ public:
     //return siz_host.prod();
     const unsigned nd = siz.size();
     ttb_indx res = 1.0;
+    const auto ub = upper_bound;
+    const auto lb = lower_bound;
     Kokkos::parallel_reduce("Genten::Sptensor::numel",
                             Kokkos::RangePolicy<ExecSpace>(0,nd),
                             KOKKOS_LAMBDA(const unsigned n, ttb_indx& l)
     {
-      l *= (upper_bound[n]-lower_bound[n]);
+      l *= (ub[n]-lb[n]);
     }, Kokkos::Prod<ttb_indx>(res));
     return res;
   }
@@ -231,11 +233,13 @@ public:
     //return siz_host.prod_float();
     const unsigned nd = siz.size();
     ttb_real res = 1.0;
+    const auto ub = upper_bound;
+    const auto lb = lower_bound;
     Kokkos::parallel_reduce("Genten::Sptensor::numel",
                             Kokkos::RangePolicy<ExecSpace>(0,nd),
                             KOKKOS_LAMBDA(const unsigned n, ttb_real& l)
     {
-      l *= ttb_real(upper_bound[n]-lower_bound[n]);
+      l *= ttb_real(ub[n]-lb[n]);
     }, Kokkos::Prod<ttb_real>(res));
     return res;
   }
