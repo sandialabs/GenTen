@@ -103,13 +103,7 @@ small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode) {
   const auto FibersPerBlock = ModeLength / ProcsInMode;
   auto Remainder = ModeLength % ProcsInMode;
 
-  // We ended up with more processors than rows in the fiber :O Just return
-  // all fibers in the same block. It seems easier to handle this here than to
-  // try to make the while loop logic do something smart
-  if (FibersPerBlock == 0) {
-    Range.push_back(ModeLength);
-  }
-
+  // Divide ModeLength fibers evenly across ProcsInMode processors
   while (Range.back() < ModeLength) {
     const auto back = Range.back();
     // This branch makes our blocks 1 bigger to eat the Remainder fibers
@@ -120,6 +114,13 @@ small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode) {
       Range.push_back(back + FibersPerBlock);
     }
   }
+
+  // If ProcsInMode > FibersPerBlock, FibersPerBlock == 0 and
+  // Remainder == ModeLength.  In this case, Range will be an array of 1's
+  // of length ModeLength.  Expand it to the needed size of ProcsInMode+1 by
+  // repeating the last entry, which will mean those proc's have 0 entries
+  if (Range.size() < ProcsInMode+1)
+    Range.resize(ProcsInMode+1,Range.back());
 
   // Sanity check that we ended with the correct number of blocks and fibers
   assert(Range.size() == ProcsInMode + 1);

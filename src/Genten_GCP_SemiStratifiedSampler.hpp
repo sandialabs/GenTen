@@ -44,9 +44,15 @@
 #include "Genten_AlgParams.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_GCP_SamplingKernels.hpp"
+#include "Genten_GCP_ValueKernels.hpp"
 #include "Genten_GCP_SS_Grad.hpp"
 #include "Genten_GCP_SS_Grad_SA.hpp"
 #include "Genten_KokkosVector.hpp"
+#include "Genten_MixedFormatOps.hpp"
+#include "Genten_DistKtensorUpdate.hpp"
+
+// to do:
+//   * replace modes array with mode_beg, mode_end
 
 namespace Genten {
 
@@ -59,9 +65,10 @@ namespace Genten {
     typedef typename base_type::map_type map_type;
 
     SemiStratifiedSampler(const SptensorT<ExecSpace>& X_,
+                          const KtensorT<ExecSpace>& u,
                           const AlgParams& algParams_,
                           bool distribute_num_samples) :
-      X(X_), algParams(algParams_)
+      X(X_), algParams(algParams_), uh(u.ncomponents(),u.ndims())
     {
       global_num_samples_nonzeros_value = algParams.num_samples_nonzeros_value;
       global_num_samples_zeros_value = algParams.num_samples_zeros_value;
@@ -82,14 +89,25 @@ namespace Genten {
                                      ttb_indx(1000));
       if (global_num_samples_nonzeros_value == 0)
         global_num_samples_nonzeros_value = std::min(ftmp, nnz);
+      else if (global_num_samples_nonzeros_value == INT_MAX)
+        global_num_samples_nonzeros_value = nnz;
+
       if (global_num_samples_zeros_value == 0)
         global_num_samples_zeros_value =
           ttb_indx(std::min(ttb_real(global_num_samples_nonzeros_value), nz));
+      else if (global_num_samples_zeros_value == INT_MAX)
+        global_num_samples_zeros_value = nz;
+
       if (global_num_samples_nonzeros_grad == 0)
         global_num_samples_nonzeros_grad = std::min(gtmp, nnz);
+      else if (global_num_samples_nonzeros_grad == INT_MAX)
+        global_num_samples_nonzeros_grad = nnz;
+
       if (global_num_samples_zeros_grad == 0)
         global_num_samples_zeros_grad =
           ttb_indx(std::min(ttb_real(global_num_samples_nonzeros_grad), nz));
+      else if (global_num_samples_zeros_grad == INT_MAX)
+        global_num_samples_zeros_grad = nz;
 
       // Compute local number of samples by distributing them evenly across
       // processors (might be better to weight according to number of nonzeros)
@@ -146,17 +164,25 @@ namespace Genten {
       nz_percent =
         ttb_real(global_num_samples_nonzeros_grad * algParams.epoch_iters) /
         ttb_real(nnz) * ttb_real(100.0);
+
+      dku_F = createKtensorUpdate(Yf, u, algParams);
+      dku_G = createKtensorUpdate(Yg, u, algParams);
     }
 
-    virtual ~SemiStratifiedSampler() {}
+    virtual ~SemiStratifiedSampler()
+    {
+      delete dku_F;
+      delete dku_G;
+    }
 
     virtual void initialize(const pool_type& rand_pool_,
+                            const bool printitn,
                             std::ostream& out) override
     {
       rand_pool = rand_pool_;
 
       // Sort/hash tensor if necessary for faster sampling
-      if (algParams.printitn > 0) {
+      if (printitn > 0) {
         if (algParams.hash)
           out << "Hashing tensor for faster sampling...";
         else
@@ -169,7 +195,7 @@ namespace Genten {
       else if (!X.isSorted())
         X.sort();
       timer.stop(0);
-      if (algParams.printitn > 0)
+      if (printitn > 0)
         out << timer.getTotalTime(0) << " seconds" << std::endl;
     }
 
@@ -194,88 +220,214 @@ namespace Genten {
           << std::endl;
     }
 
-    virtual void sampleTensor(const bool gradient,
-                              const KtensorT<ExecSpace>& u,
-                              const LossFunction& loss_func,
-                              SptensorT<ExecSpace>& Xs,
-                              ArrayT<ExecSpace>& w,
-                              KtensorT<ExecSpace>& u_overlap) override
+    virtual void sampleTensorF(const KtensorT<ExecSpace>& u,
+                               const LossFunction& loss_func) override
     {
-      ttb_indx num_nz = this->num_samples_nonzeros_value;
-      ttb_indx num_z  = this->num_samples_zeros_value;
-      ttb_real w_nz = this->weight_nonzeros_value;
-      ttb_real w_z  = this->weight_zeros_value;
-      if (gradient) {
-        num_nz = this->num_samples_nonzeros_grad;
-        num_z  = this->num_samples_zeros_grad;
-        w_nz = this->weight_nonzeros_grad;
-        w_z  = this->weight_zeros_grad;
+      if (algParams.dist_update_method == Dist_Update_Method::Tpetra) {
+        if (algParams.hash)
+          Impl::stratified_sample_tensor_tpetra(
+            X, Impl::HashSearcher<ExecSpace>(this->X.impl(), hash_map),
+            num_samples_nonzeros_value, num_samples_zeros_value,
+            weight_nonzeros_value, weight_zeros_value,
+            u, Impl::StratifiedGradient<LossFunction>(loss_func), false,
+            Yf, wf, u_overlap_F, rand_pool, algParams);
+        else
+          Impl::stratified_sample_tensor_tpetra(
+            X, Impl::SortSearcher<ExecSpace>(this->X.impl()),
+            num_samples_nonzeros_value, num_samples_zeros_value,
+            weight_nonzeros_value, weight_zeros_value,
+            u, Impl::StratifiedGradient<LossFunction>(loss_func), false,
+            Yf, wf, u_overlap_F, rand_pool, algParams);
+      }
+      else {
+        if (algParams.hash)
+          Impl::stratified_sample_tensor(
+            X, Impl::HashSearcher<ExecSpace>(this->X.impl(), hash_map),
+            num_samples_nonzeros_value, num_samples_zeros_value,
+            weight_nonzeros_value, weight_zeros_value,
+            u, Impl::StratifiedGradient<LossFunction>(loss_func), false,
+            Yf, wf, rand_pool, algParams);
+        else
+          Impl::stratified_sample_tensor(
+            X, Impl::SortSearcher<ExecSpace>(this->X.impl()),
+            num_samples_nonzeros_value, num_samples_zeros_value,
+            weight_nonzeros_value, weight_zeros_value,
+            u, Impl::StratifiedGradient<LossFunction>(loss_func), false,
+            Yf, wf, rand_pool, algParams);
+        u_overlap_F = u;
       }
 
-      // Only do semi-stratified for gradient
-      if (gradient) {
+      dku_F->updateTensor(Yf);
+    }
+
+    virtual void sampleTensorG(const KtensorT<ExecSpace>& u,
+                               const StreamingHistory<ExecSpace>& hist,
+                               const LossFunction& loss_func) override
+    {
+      if (!algParams.fuse) {
         if (algParams.dist_update_method == Dist_Update_Method::Tpetra) {
           Impl::stratified_sample_tensor_tpetra(
-            this->X, Impl::SemiStratifiedSearcher<ExecSpace>(),
-            num_nz, num_z, w_nz, w_z,
-            u, Impl::SemiStratifiedGradient<LossFunction>(loss_func), gradient,
-            Xs, w, u_overlap, this->rand_pool, this->algParams);
+            X, Impl::SemiStratifiedSearcher<ExecSpace>(),
+            num_samples_nonzeros_grad, num_samples_zeros_grad,
+            weight_nonzeros_grad, weight_zeros_grad,
+            u, Impl::SemiStratifiedGradient<LossFunction>(loss_func), true,
+            Yg, wg, u_overlap_G, rand_pool, algParams);
         }
         else {
           Impl::stratified_sample_tensor(
-            this->X, Impl::SemiStratifiedSearcher<ExecSpace>(),
-            num_nz, num_z, w_nz, w_z,
-            u, Impl::SemiStratifiedGradient<LossFunction>(loss_func), gradient,
-            Xs, w, this->rand_pool, this->algParams);
-          u_overlap = u;
+            X, Impl::SemiStratifiedSearcher<ExecSpace>(),
+            num_samples_nonzeros_grad, num_samples_zeros_grad,
+            weight_nonzeros_grad, weight_zeros_grad,
+            u, Impl::SemiStratifiedGradient<LossFunction>(loss_func), true,
+            Yg, wg, rand_pool, algParams);
+          u_overlap_G = u;
         }
-      }
-      else {
-        if (algParams.dist_update_method == Dist_Update_Method::Tpetra) {
-          if (algParams.hash)
-            Impl::stratified_sample_tensor_tpetra(
-              this->X, Impl::HashSearcher<ExecSpace>(this->X.impl(), hash_map),
-              num_nz, num_z, w_nz, w_z,
-              u, Impl::StratifiedGradient<LossFunction>(loss_func), gradient,
-              Xs, w, u_overlap, this->rand_pool, this->algParams);
-          else
-            Impl::stratified_sample_tensor_tpetra(
-              this->X, Impl::SortSearcher<ExecSpace>(this->X.impl()),
-              num_nz, num_z, w_nz, w_z,
-              u, Impl::StratifiedGradient<LossFunction>(loss_func), gradient,
-              Xs, w, u_overlap, this->rand_pool, this->algParams);
+
+        if (hist.do_gcp_loss()) {
+          // Create uh, u with time mode replaced by time mode of up
+          // This should all just be view assignments, so should be fast
+          KtensorT<ExecSpace> uh;
+          uh.weights() = u_overlap_G.weights();
+          const ttb_indx nd = u.ndims();
+          for (ttb_indx i=0; i<nd-1; ++i)
+            uh.set_factor(i, u_overlap_G[i]);
+          uh.set_factor(nd-1, hist.up[nd-1]);
+
+          Impl::stratified_ktensor_grad(
+            Yg, num_samples_nonzeros_grad, num_samples_zeros_grad,
+            weight_nonzeros_grad, weight_zeros_grad,
+            uh, hist.up, hist.window_val, hist.window_penalty, loss_func,
+            Yh, algParams);
         }
-        else {
-          if (algParams.hash)
-            Impl::stratified_sample_tensor(
-              this->X, Impl::HashSearcher<ExecSpace>(this->X.impl(), hash_map),
-              num_nz, num_z, w_nz, w_z,
-              u, Impl::StratifiedGradient<LossFunction>(loss_func), gradient,
-              Xs, w, this->rand_pool, this->algParams);
-          else
-            Impl::stratified_sample_tensor(
-              this->X, Impl::SortSearcher<ExecSpace>(this->X.impl()),
-              num_nz, num_z, w_nz, w_z,
-              u, Impl::StratifiedGradient<LossFunction>(loss_func), gradient,
-              Xs, w, this->rand_pool, this->algParams);
-          u_overlap = u;
-        }
+
+        dku_G->updateTensor(Yg);
       }
     }
 
-    virtual void fusedGradient(const KtensorT<ExecSpace>& u,
-                               const LossFunction& loss_func,
-                               const KtensorT<ExecSpace>& g,
-                               SystemTimer& timer,
-                               const int timer_nzs,
-                               const int timer_zs) override
+    virtual void prepareGradient(const KtensorT<ExecSpace>& gt) override
     {
-      Impl::gcp_sgd_ss_grad(
-        X, u, loss_func,
-        num_samples_nonzeros_grad, num_samples_zeros_grad,
-        weight_nonzeros_grad, weight_zeros_grad,
-        g, rand_pool, algParams,
-        timer, timer_nzs, timer_zs);
+      if (!algParams.fuse &&
+          algParams.mttkrp_method == MTTKRP_Method::Perm &&
+          algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated) {
+        Yg.createPermutation();
+        if (Yh.nnz() > 0)
+          Yh.createPermutation();
+      }
+      gt_overlap = dku_G->createOverlapKtensor(gt);
+    }
+
+    virtual void value(const KtensorT<ExecSpace>& u,
+                       const StreamingHistory<ExecSpace>& hist,
+                       const ttb_real penalty,
+                       const LossFunction& loss_func,
+                       ttb_real& fest, ttb_real& ften) override
+    {
+      dku_F->doImport(u_overlap_F, u);
+
+      if (!hist.do_gcp_loss()) {
+        ften = Impl::gcp_value(Yf, u_overlap_F, wf, loss_func);
+        fest = ften + hist.objective(u);
+      }
+      else {
+        ttb_real fhis = 0.0;
+        Impl::gcp_value(Yf, u_overlap_F, hist.up, hist.window_val,
+                        hist.window_penalty, wf, loss_func, ften, fhis);
+        fest = ften + fhis;
+      }
+      if (penalty != ttb_real(0.0)) {
+        const ttb_indx nd = u.ndims();
+        for (ttb_indx i=0; i<nd; ++i)
+          fest += penalty * u[i].normFsq();
+      }
+    }
+
+    virtual void gradient(const KtensorT<ExecSpace>& ut,
+                          const StreamingHistory<ExecSpace>& hist,
+                          const ttb_real penalty,
+                          const LossFunction& loss_func,
+                          KokkosVector<ExecSpace>& g,
+                          const KtensorT<ExecSpace>& gt,
+                          const ttb_indx mode_beg,
+                          const ttb_indx mode_end,
+                          SystemTimer& timer,
+                          const int timer_init,
+                          const int timer_nzs,
+                          const int timer_zs) override
+    {
+      if (algParams.fuse) {
+        timer.start(timer_init);
+        gt.weights() = ttb_real(1.0);
+        gt.setMatrices(0.0);
+        timer.stop(timer_init);
+
+        if (!hist.do_gcp_loss()) {
+          Impl::gcp_sgd_ss_grad(
+            X, ut, loss_func,
+            num_samples_nonzeros_grad, num_samples_zeros_grad,
+            weight_nonzeros_grad, weight_zeros_grad,
+            gt, rand_pool, algParams,
+            timer, timer_nzs, timer_zs);
+          hist.gradient(ut, mode_beg, mode_end, gt);
+        }
+        else {
+          // Create modes array
+          IndxArrayT<ExecSpace> modes(mode_end-mode_beg);
+          auto modes_host = create_mirror_view(modes);
+          for (ttb_indx i=mode_beg; i<mode_end; ++i)
+            modes_host[i-mode_beg] = i;
+          deep_copy(modes, modes_host);
+
+          // Create uh, u with time mode replaced by time mode of up
+          // This should all just be view assignments, so should be fast
+          uh.weights() = ut.weights();
+          const ttb_indx nd = ut.ndims();
+          for (ttb_indx i=0; i<nd-1; ++i)
+            uh.set_factor(i, ut[i]);
+          uh.set_factor(nd-1, hist.up[nd-1]);
+
+          Impl::gcp_sgd_ss_grad(
+            X, u_overlap_G, uh, hist.up, loss_func,
+            num_samples_nonzeros_grad, num_samples_zeros_grad,
+            weight_nonzeros_grad, weight_zeros_grad,
+            hist.window_val, hist.window_penalty, modes,
+            gt_overlap, rand_pool, algParams,
+            timer, timer_nzs, timer_zs);
+          dku_G->doExport(gt, gt_overlap);
+        }
+      }
+      else {
+
+        timer.start(timer_init);
+        gt_overlap.weights() = ttb_real(1.0);
+        gt_overlap.setMatrices(0.0);
+        timer.stop(timer_init);
+
+        // We are cheating here by not importing ut, since we know it happened
+        // when sampling G if it was necessary
+
+        mttkrp_all(Yg, u_overlap_G, gt_overlap, mode_beg, mode_end, algParams,
+                   false);
+
+        if (Yh.nnz() > 0) {
+          // Create uh, u with time mode replaced by time mode of up
+          // This should all just be view assignments, so should be fast
+          uh.weights() = u_overlap_G.weights();
+          const ttb_indx nd = ut.ndims();
+          for (ttb_indx i=0; i<nd-1; ++i)
+            uh.set_factor(i, u_overlap_G[i]);
+          uh.set_factor(nd-1, hist.up[nd-1]);
+
+          mttkrp_all(Yh, uh, gt_overlap, mode_beg, mode_end, algParams, false);
+        }
+        dku_G->doExport(gt, gt_overlap);
+
+        if (Yh.nnz() == 0)
+          hist.gradient(ut, mode_beg, mode_end, gt);
+      }
+
+      if (penalty != 0.0)
+        for (ttb_indx i=mode_beg; i<mode_end; ++i)
+          gt[i-mode_beg].plus(ut[i], ttb_real(2.0)*penalty);
     }
 
     ttb_indx totalNumGradSamples() const {
@@ -284,7 +436,8 @@ namespace Genten {
 
     void fusedGradientAndStep(const KokkosVector<ExecSpace>& u,
                               const LossFunction& loss_func,
-                              const KokkosVector<ExecSpace>& g,
+                              KokkosVector<ExecSpace>& g,
+                              const KtensorT<ExecSpace>& gt,
                               const Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,ExecSpace>& gind,
                               const Kokkos::View<ttb_indx*,ExecSpace>& perm,
                               const bool use_adam,
@@ -298,12 +451,18 @@ namespace Genten {
                               const ttb_real lb,
                               const ttb_real ub,
                               SystemTimer& timer,
+                              const int timer_init,
                               const int timer_nzs,
                               const int timer_zs,
                               const int timer_sort,
                               const int timer_scan,
                               const int timer_step)
     {
+      timer.start(timer_init);
+      gt.weights() = 1.0;
+      g.zero();
+      timer.stop(timer_init);
+
       Impl::gcp_sgd_ss_grad_sa(
         X, u, loss_func,
         num_samples_nonzeros_grad, num_samples_zeros_grad,
@@ -323,6 +482,11 @@ namespace Genten {
   protected:
 
     SptensorT<ExecSpace> X;
+    SptensorT<ExecSpace> Yf;
+    SptensorT<ExecSpace> Yg;
+    SptensorT<ExecSpace> Yh;
+    ArrayT<ExecSpace> wf;
+    ArrayT<ExecSpace> wg;
     pool_type rand_pool;
     AlgParams algParams;
     ttb_indx num_samples_nonzeros_value;
@@ -339,6 +503,12 @@ namespace Genten {
     ttb_real weight_zeros_grad;
     ttb_real nz_percent;
     map_type hash_map;
+    KtensorT<ExecSpace> uh;
+    KtensorT<ExecSpace> u_overlap_F;
+    KtensorT<ExecSpace> u_overlap_G;
+    KtensorT<ExecSpace> gt_overlap;
+    DistKtensorUpdate<ExecSpace> *dku_F;
+    DistKtensorUpdate<ExecSpace> *dku_G;
   };
 
 }

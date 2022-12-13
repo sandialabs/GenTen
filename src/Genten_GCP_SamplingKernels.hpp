@@ -223,6 +223,33 @@ namespace Genten {
       const LossType loss;
     };
 
+    template <typename ExecSpace, typename LossFunction>
+    void stratified_ktensor_grad(
+      const SptensorT<ExecSpace>& X,
+      const ttb_indx num_samples_nonzeros,
+      const ttb_indx num_samples_zeros,
+      const ttb_real weight_nonzeros,
+      const ttb_real weight_zeros,
+      const KtensorT<ExecSpace>& u,
+      const KtensorT<ExecSpace>& up,
+      const ArrayT<ExecSpace>& window,
+      const ttb_real window_penalty,
+      const LossFunction& loss_func,
+      SptensorT<ExecSpace>& Y,
+      const AlgParams& algParams);
+
+    template <typename ExecSpace, typename LossFunction>
+    void uniform_ktensor_grad(
+      const ttb_indx num_samples,
+      const ttb_real weight,
+      const KtensorT<ExecSpace>& u,
+      const KtensorT<ExecSpace>& up,
+      const ArrayT<ExecSpace>& window,
+      const ttb_real window_penalty,
+      const LossFunction& loss_func,
+      SptensorT<ExecSpace>& Y,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams);
   }
 
 }

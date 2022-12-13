@@ -47,6 +47,7 @@
 #include "Genten_GCP_UniformSampler.hpp"
 #include "Genten_GCP_StratifiedSampler.hpp"
 #include "Genten_GCP_SemiStratifiedSampler.hpp"
+#include "Genten_GCP_DenseSampler.hpp"
 #include "Genten_GCP_ValueKernels.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
 #include "Genten_KokkosVector.hpp"
@@ -65,388 +66,462 @@
 
 namespace Genten {
 
-  namespace Impl {
+  template <typename TensorT, typename ExecSpace, typename LossFunction>
+  GCPSGD<TensorT,ExecSpace,LossFunction>::
+  GCPSGD(const KtensorT<ExecSpace>& u,
+         const LossFunction& loss_func_,
+         const ttb_indx mode_beg_,
+         const ttb_indx mode_end_,
+         const AlgParams& algParams_) :
+    loss_func(loss_func_), mode_beg(mode_beg_), mode_end(mode_end_),
+    algParams(algParams_), stepper(nullptr)
+  {
+    // Check for valid option combinations
+    if (algParams.async &&
+        algParams.sampling_type != GCP_Sampling::SemiStratified)
+      Genten::error("Must use semi-stratified sampling with asynchronous solver!");
+    if (algParams.async &&
+        algParams.dist_update_method == Dist_Update_Method::Tpetra)
+      Genten::error("Asynchronous GCP-SGD does not work with Tpetra distributed parallelism");
+    if (algParams.fuse &&
+        algParams.dist_update_method == Dist_Update_Method::Tpetra)
+      Genten::error("Fused sampling does not work with Tpetra distributed parallelism");
 
-    template <typename TensorT, typename ExecSpace, typename LossFunction>
-    void gcp_sgd_impl(TensorT& X, KtensorT<ExecSpace>& u0,
-                      const LossFunction& loss_func,
-                      const AlgParams& algParams,
-                      ttb_indx& numEpochs,
-                      ttb_real& fest,
-                      PerfHistory& perfInfo,
-                      std::ostream& out)
-    {
-      typedef KokkosVector<ExecSpace> VectorType;
-      typedef typename VectorType::view_type view_type;
-      using std::sqrt;
-      using std::pow;
+    // Create stepper
+    // Note:  uv is not a view of u, so this involves an allocation.
+    // The steppers just need u for dimensions, so there should be a more
+    // efficient way to do this
+    KokkosVector<ExecSpace> uv(u);
+    KokkosVector<ExecSpace> us = uv.subview(mode_beg, mode_end);
+    if (algParams.step_type == GCP_Step::ADAM)
+      stepper = new Impl::AdamStep<ExecSpace,LossFunction>(algParams, us);
+    else if (algParams.step_type == GCP_Step::AdaGrad)
+      stepper = new Impl::AdaGradStep<ExecSpace,LossFunction>(algParams, us);
+    else if (algParams.step_type == GCP_Step::AMSGrad)
+      stepper = new Impl::AMSGradStep<ExecSpace,LossFunction>(algParams, us);
+    else
+      stepper = new Impl::SGDStep<ExecSpace,LossFunction>();
+  }
 
-      // Check for valid option combinations
-      if (algParams.async &&
-          algParams.sampling_type != GCP_Sampling::SemiStratified)
-        Genten::error("Must use semi-stratified sampling with asynchronous solver!");
-      if (algParams.async &&
-          algParams.dist_update_method == Dist_Update_Method::Tpetra)
-        Genten::error("Asynchronous GCP-SGD does not work with Tpetra distributed parallelism");
-      if (algParams.fuse &&
-          algParams.dist_update_method == Dist_Update_Method::Tpetra)
-        Genten::error("Fused sampling does not work with Tpetra distributed parallelism");
+  template <typename TensorT, typename ExecSpace, typename LossFunction>
+  GCPSGD<TensorT,ExecSpace,LossFunction>::
+  GCPSGD(const KtensorT<ExecSpace>& u,
+         const LossFunction& loss_func_,
+         const AlgParams& algParams_) :
+    GCPSGD(u,loss_func_,0,u.ndims(),algParams_) {}
 
-      const ttb_indx nd = u0.ndims();
-      const ttb_indx nc = u0.ncomponents();
-      const ProcessorMap* pmap = u0.getProcessorMap();
+  template <typename TensorT, typename ExecSpace, typename LossFunction>
+  GCPSGD<TensorT,ExecSpace,LossFunction>::
+  ~GCPSGD()
+  {
+    delete stepper;
+  }
 
-      // Constants for the algorithm
-      const ttb_real tol = algParams.gcp_tol;
-      const ttb_real decay = algParams.decay;
-      const ttb_real rate = algParams.rate;
-      const ttb_indx max_fails = algParams.max_fails;
-      const ttb_indx epoch_iters = algParams.epoch_iters;
-      const ttb_indx seed = algParams.gcp_seed > 0 ? algParams.gcp_seed : std::random_device{}();
-      const ttb_indx maxEpochs = algParams.maxiters;
-      const ttb_indx printIter = algParams.printitn;
-      const bool compute_fit = algParams.compute_fit;
+  template <typename TensorT, typename ExecSpace, typename LossFunction>
+  void
+  GCPSGD<TensorT,ExecSpace,LossFunction>::
+  reset()
+  {
+    stepper->reset();
+  }
 
-      // Create sampler
-      Sampler<ExecSpace,LossFunction> *sampler = nullptr;
-      if (algParams.sampling_type == GCP_Sampling::Uniform)
-        sampler = new Genten::UniformSampler<ExecSpace,LossFunction>(
-          X, algParams);
-      else if (algParams.sampling_type == GCP_Sampling::Stratified)
-        sampler = new Genten::StratifiedSampler<ExecSpace,LossFunction>(
-          X, algParams);
-      else if (algParams.sampling_type == GCP_Sampling::SemiStratified)
-        sampler = new Genten::SemiStratifiedSampler<ExecSpace,LossFunction>(
-          X, algParams, true);
-      else
-        Genten::error("Genten::gcp_sgd - unknown sampling type");
+  template <typename TensorT, typename ExecSpace, typename LossFunction>
+  void
+  GCPSGD<TensorT,ExecSpace,LossFunction>::
+  solve(TensorT& X,
+        KtensorT<ExecSpace>& u0,
+        const ttb_real penalty,
+        ttb_indx& numEpochs,
+        ttb_real& fest,
+        PerfHistory& perfInfo,
+        std::ostream& out,
+        const bool print_hdr,
+        const bool print_ftr,
+        const bool print_itn) const
+  {
+    ttb_real ften = 0.0;
+    solve(X, u0, StreamingHistory<ExecSpace>(),
+          penalty, numEpochs, fest, ften, perfInfo, out,
+          print_hdr, print_ftr, print_itn);
+  }
 
-      if (printIter > 0) {
-        const ttb_indx nnz = X.global_nnz();
-        const ttb_real tsz = X.global_numel_float();
-        const ttb_real nz = tsz - nnz;
-        out << "\nGCP-SGD (Generalized CP Tensor Decomposition):\n"
-            << "  Generalized function type: " << loss_func.name() << std::endl
-            << "  Optimization method: " << GCP_Step::names[algParams.step_type]
-            << std::endl
-            << "  Max iterations (epochs): " << maxEpochs << std::endl
-            << "  Iterations per epoch: " << epoch_iters << std::endl
-            << "  Learning rate / decay / maxfails: "
-            << std::setprecision(1) << std::scientific
-            << rate << " " << decay << " " << max_fails << std::endl;
-        sampler->print(out);
-        out << "  Gradient method: ";
-        if (algParams.async)
-          out << "Fused asynchronous sampling and atomic MTTKRP\n";
-        else if (algParams.fuse)
-          out << "Fused sampling and "
-              << MTTKRP_All_Method::names[algParams.mttkrp_all_method]
-              << " MTTKRP\n";
-        else {
-          out << MTTKRP_All_Method::names[algParams.mttkrp_all_method];
-          if (algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated)
-            out << " (" << MTTKRP_Method::names[algParams.mttkrp_method] << ")";
-          out << " MTTKRP\n";
-        }
-        out << std::endl;
-      }
+  template <typename TensorT, typename ExecSpace, typename LossFunction>
+  void
+  GCPSGD<TensorT,ExecSpace,LossFunction>::
+  solve(TensorT& X,
+        KtensorT<ExecSpace>& u0,
+        const StreamingHistory<ExecSpace>& hist,
+        const ttb_real penalty,
+        ttb_indx& numEpochs,
+        ttb_real& fest,
+        ttb_real& ften,
+        PerfHistory& perfInfo,
+        std::ostream& out,
+        const bool print_hdr,
+        const bool print_ftr,
+        const bool print_itn) const
+  {
+    typedef KokkosVector<ExecSpace> VectorType;
+    typedef typename VectorType::view_type view_type;
+    using std::sqrt;
+    using std::pow;
 
-      // Timers -- turn on fences when timing info is requested so we get
-      // accurate kernel times
-      int num_timers = 0;
-      const int timer_sgd = num_timers++;
-      const int timer_sort = num_timers++;
-      const int timer_sample_f = num_timers++;
-      const int timer_fest = num_timers++;
-      const int timer_comm = num_timers++;
-      SystemTimer timer(num_timers, algParams.timings, pmap);
+    const ttb_indx nd = u0.ndims();
+    const ttb_indx nc = u0.ncomponents();
+    const ProcessorMap* pmap = u0.getProcessorMap();
 
-      // Start timer for total execution time of the algorithm.
-      timer.start(timer_sgd);
+    // Constants for the algorithm
+    const ttb_real tol = algParams.gcp_tol;
+    const ttb_real decay = algParams.decay;
+    const ttb_real rate = algParams.rate;
+    const ttb_indx max_fails = algParams.max_fails;
+    const ttb_indx epoch_iters = algParams.epoch_iters;
+    const ttb_indx seed = algParams.gcp_seed > 0 ? algParams.gcp_seed : std::random_device{}();
+    const ttb_indx maxEpochs = algParams.maxiters;
+    const ttb_indx printIter = print_itn ? algParams.printitn : 0;
+    const bool compute_fit = algParams.compute_fit;
 
-      // Distribute the initial guess to have weights of one.
-      if (algParams.normalize)
-        u0.normalize(NormTwo);
-      u0.distribute();
+    // Create sampler
+    Sampler<ExecSpace,LossFunction> *sampler = nullptr;
+    if (algParams.sampling_type == GCP_Sampling::Uniform)
+      sampler = new Genten::UniformSampler<ExecSpace,LossFunction>(
+        X, u0, algParams);
+    else if (algParams.sampling_type == GCP_Sampling::Stratified)
+      sampler = new Genten::StratifiedSampler<ExecSpace,LossFunction>(
+        X, u0, algParams);
+    else if (algParams.sampling_type == GCP_Sampling::SemiStratified)
+      sampler = new Genten::SemiStratifiedSampler<ExecSpace,LossFunction>(
+        X, u0, algParams, true);
+    else if (algParams.sampling_type == GCP_Sampling::Dense)
+      sampler = new Genten::DenseSampler<ExecSpace,LossFunction>(
+        X, u0, algParams);
+    else
+      Genten::error("Genten::gcp_sgd - unknown sampling type");
 
-      // Create iterator
-      GCP_SGD_Iter<ExecSpace,LossFunction> *itp = nullptr;
+    if (print_hdr) {
+      const ttb_indx nnz = X.global_nnz();
+      const ttb_real tsz = X.global_numel_float();
+      const ttb_real nz = tsz - nnz;
+      out << "\nGCP-SGD (Generalized CP Tensor Decomposition):\n"
+          << "Generalized function type: " << loss_func.name() << std::endl
+          << "Optimization method: " << GCP_Step::names[algParams.step_type]
+          << std::endl
+          << "Max iterations (epochs): " << maxEpochs << std::endl
+          << "Iterations per epoch: " << epoch_iters << std::endl
+          << "Learning rate / decay / maxfails: "
+          << std::setprecision(1) << std::scientific
+          << rate << " " << decay << " " << max_fails << std::endl;
+      sampler->print(out);
+      out << "Gradient method: ";
       if (algParams.async)
-        itp = new GCP_SGD_Iter_Async<ExecSpace,LossFunction>(u0, algParams);
-      else
-        itp = new GCP_SGD_Iter<ExecSpace,LossFunction>(u0, algParams);
-      GCP_SGD_Iter<ExecSpace,LossFunction>& it = *itp;
+        out << "Fused asynchronous sampling and atomic MTTKRP\n";
+      else if (algParams.fuse)
+        out << "Fused sampling and "
+            << MTTKRP_All_Method::names[algParams.mttkrp_all_method]
+            << " MTTKRP\n";
+      else {
+        out << MTTKRP_All_Method::names[algParams.mttkrp_all_method];
+        if (algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated)
+          out << " (" << MTTKRP_Method::names[algParams.mttkrp_method] << ")";
+        out << " MTTKRP\n";
+      }
+      out << std::endl;
+    }
 
-      // Get vector/Ktensor for current solution (this is a view of the data)
-      VectorType u = it.getSolution();
-      KtensorT<ExecSpace> ut = u.getKtensor();
-      ut.setProcessorMap(pmap);
+    // Timers -- turn on fences when timing info is requested so we get
+    // accurate kernel times
+    int num_timers = 0;
+    const int timer_sgd = num_timers++;
+    const int timer_sort = num_timers++;
+    const int timer_sample_f = num_timers++;
+    const int timer_fest = num_timers++;
+    const int timer_comm = num_timers++;
+    SystemTimer timer(num_timers, algParams.timings, pmap);
 
-      // Copy Ktensor for restoring previous solution
-      VectorType u_prev = u.clone();
-      u_prev.set(u);
+    // Start timer for total execution time of the algorithm.
+    timer.start(timer_sgd);
 
-      // Create stepper
-      GCP_SGD_Step<ExecSpace,LossFunction> *stepper =
-        createStepper<ExecSpace,LossFunction>(algParams, u);
+    // Create iterator
+    Impl::GCP_SGD_Iter<ExecSpace,LossFunction> *itp = nullptr;
+    if (algParams.async)
+      itp = new Impl::GCP_SGD_Iter_Async<ExecSpace,LossFunction>(
+        u0, hist, penalty, mode_beg, mode_end, algParams);
+    else
+      itp = new Impl::GCP_SGD_Iter<ExecSpace,LossFunction>(
+        u0, hist, penalty, mode_beg, mode_end, algParams);
+    Impl::GCP_SGD_Iter<ExecSpace,LossFunction>& it = *itp;
 
-      // Initialize sampler (sorting, hashing, ...)
-      timer.start(timer_sort);
-      Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
-      sampler->initialize(rand_pool, out);
-      timer.stop(timer_sort);
+    // Get vector/Ktensor for current solution (this is a view of the data)
+    VectorType u = it.getSolution();
+    KtensorT<ExecSpace> ut = u.getKtensor();
+    ut.setProcessorMap(pmap);
 
-      // Sample X for f-estimate
-      SptensorT<ExecSpace> X_val;
-      ArrayT<ExecSpace> w_val;
-      GENTEN_START_TIMER("sample objective");
-      timer.start(timer_sample_f);
-      KtensorT<ExecSpace> ut_overlap_val;
-      sampler->sampleTensor(false, ut, loss_func, X_val, w_val, ut_overlap_val);
-      timer.stop(timer_sample_f);
-       GENTEN_STOP_TIMER("sample objective");
+    // Copy Ktensor for restoring previous solution
+    VectorType u_prev = u.clone();
+    u_prev.set(u);
 
-      // Overlapped Ktensors for distributed gcp_value and fit
-      DistKtensorUpdate<ExecSpace> *dku_val =
-        createKtensorUpdate(X_val, ut, algParams);
-      DistKtensorUpdate<ExecSpace> *dku_fit = nullptr;
-      KtensorT<ExecSpace> ut_overlap_fit;
-      if (compute_fit) {
-        dku_fit = createKtensorUpdate(X, ut, algParams);
-        ut_overlap_fit = dku_fit->createOverlapKtensor(ut);
+    // Initialize sampler (sorting, hashing, ...)
+    timer.start(timer_sort);
+    Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
+    sampler->initialize(rand_pool, print_itn, out);
+    timer.stop(timer_sort);
+
+    // Sample X for f-estimate
+    GENTEN_START_TIMER("sample objective");
+    timer.start(timer_sample_f);
+    sampler->sampleTensorF(ut, loss_func);
+    timer.stop(timer_sample_f);
+    GENTEN_STOP_TIMER("sample objective");
+
+    // Objective estimates
+    ttb_real fit = 0.0;
+    ttb_real x_norm = 0.0;
+    DistKtensorUpdate<ExecSpace> *dku_fit = nullptr;
+    KtensorT<ExecSpace> ut_overlap_fit;
+    if (compute_fit) {
+      x_norm = X.global_norm();
+      dku_fit = createKtensorUpdate(X, ut, algParams);
+      ut_overlap_fit = dku_fit->createOverlapKtensor(ut);
+    }
+    GENTEN_START_TIMER("objective function");
+    timer.start(timer_fest);
+    sampler->value(ut, hist, penalty, loss_func, fest, ften);
+    auto fitter = [&]{
+      const auto x_norm2 = x_norm * x_norm;
+      const auto u_norm2 = ut.normFsq();
+      dku_fit->doImport(ut_overlap_fit, ut, timer, timer_comm);
+      const auto dot = innerprod(X, ut_overlap_fit);
+      const auto numerator = sqrt(x_norm2 + u_norm2 - 2.0 * dot);
+      const auto denom = x_norm;
+      return 1.0 - numerator/denom;
+    };
+    if (compute_fit) {
+      fit = fitter();
+    }
+    timer.stop(timer_fest);
+    ttb_real fest_prev = fest;
+    ttb_real fit_prev = fit;
+    GENTEN_STOP_TIMER("objective function");
+
+    if (print_hdr || print_itn) {
+      out << "Initial f-est: "
+          << std::setw(13) << std::setprecision(6) << std::scientific
+          << fest;
+      if (compute_fit)
+        out << ", fit: "
+            << std::setw(10) << std::setprecision(3) << std::scientific
+            << fit;
+      out << ", tensor norm: "
+            << std::setw(10) << std::setprecision(3) << std::scientific
+            << x_norm;
+      out << std::endl;
+    }
+
+    {
+      perfInfo.addEmpty();
+      auto& p = perfInfo.lastEntry();
+      p.iteration = 0;
+      p.residual = fest;
+      if (compute_fit)
+        p.fit = fit;
+      p.cum_time = timer.getTotalTime(timer_sgd);
+    }
+
+    struct Annealer {
+      ttb_real last_returned = 0.0;
+      ttb_real last_good = 0.0;
+      ttb_real min_lr;
+      ttb_real max_lr = 0.0;
+      ttb_real warm_up_min;
+      ttb_real warm_up_max;
+      ttb_real warmup_scale;
+      int epoch_internal = 0;
+      int cycle_size = 100;
+      int warmup_size = 50;
+      bool do_warmup = true;
+
+      Annealer(AlgParams const& algParams):
+        min_lr(algParams.anneal_min_lr),
+        max_lr(algParams.anneal_max_lr),
+        warm_up_max(10 * algParams.anneal_max_lr)
+      {
+        warm_up_min = 0.1 * min_lr;
+        const auto term = std::log(warm_up_max/warm_up_min)/warmup_size;
+        warmup_scale = std::exp(term);
       }
 
-      ttb_real x_norm = X.global_norm();
-      auto u_norm = std::sqrt(ut.normFsq());
+      ttb_real operator()(int epoch){
+        if(do_warmup){
+          last_returned = warm_up_min * std::pow(warmup_scale, epoch_internal);
+        } else {
+          last_returned = min_lr + 0.5 * (max_lr - min_lr) * (1 +
+              std::cos(double(epoch_internal + cycle_size)/cycle_size * M_PI));
+        }
+        ++epoch_internal;
+        if(do_warmup && epoch_internal == warmup_size){
+          epoch_internal = 0; // Start over
+          do_warmup = false;
+        }
+        return last_returned;
+      }
 
-      // Objective estimates
+      void failed(){
+        if(do_warmup){
+          do_warmup = false;
+          max_lr = 0.5 * last_good;
+        } else {
+          min_lr *= 0.1;
+          max_lr *= 0.1;
+        }
+        epoch_internal = 0;
+      }
+
+      void success(){
+        last_good = last_returned;
+      }
+    } annealer(algParams);
+
+    // SGD epoch loop
+    ttb_real nuc = 1.0;
+    ttb_indx nfails = 0;
+    ttb_indx total_iters = 0;
+
+    for (numEpochs=0; numEpochs<maxEpochs; ++numEpochs) {
+
+      // Gradient step size
+      if(algParams.anneal){
+        stepper->setStep(annealer(numEpochs));
+      } else {
+        stepper->setStep(nuc*rate);
+      }
+
+      // Epoch iterations
+      it.run(X, loss_func, *sampler, *stepper, total_iters);
+
+      // compute objective estimate
       GENTEN_START_TIMER("objective function");
-      ttb_real fit = 0.0;
       timer.start(timer_fest);
-      fest = Impl::gcp_value(X_val, ut_overlap_val, w_val, loss_func);
-      auto fitter = [&]{
-        const auto x_norm2 = x_norm * x_norm;
-        const auto u_norm2 = ut.normFsq();
-        dku_fit->doImport(ut_overlap_fit, ut, timer, timer_comm);
-        const auto dot = innerprod(X, ut_overlap_fit);
-        const auto numerator = sqrt(x_norm2 + u_norm2 - 2.0 * dot);
-        const auto denom = x_norm;
-        return 1.0 - numerator/denom;
-      };
-
+      sampler->value(ut, hist, penalty, loss_func, fest, ften);
       if (compute_fit) {
         fit = fitter();
       }
       timer.stop(timer_fest);
-      ttb_real fest_prev = fest;
-      ttb_real fit_prev = fit;
       GENTEN_STOP_TIMER("objective function");
 
-      if (printIter > 0) {
-        out << "Initial f-est: "
+      // check convergence
+      bool failed_epoch = fest > fest_prev || std::isnan(fest);
+
+      if (failed_epoch)
+        ++nfails;
+
+      // Print progress of the current iteration.
+      if ((printIter > 0) && (((numEpochs + 1) % printIter) == 0)) {
+        out << "Epoch " << std::setw(3) << numEpochs + 1 << ": f-est = "
             << std::setw(13) << std::setprecision(6) << std::scientific
             << fest;
         if (compute_fit)
-          out << ", fit: "
+          out << ", fit = "
               << std::setw(10) << std::setprecision(3) << std::scientific
               << fit;
-        out << ", tensor norm: "
-            << std::setw(10) << std::setprecision(3) << std::scientific
-            << x_norm;
+        out << ", step = "
+            << std::setw(8) << std::setprecision(1) << std::scientific
+            << stepper->getStep();
+        out << ", time = "
+            << std::setw(8) << std::setprecision(2) << std::scientific
+            << timer.getTotalTime(timer_sgd) << " sec";
+        if (failed_epoch)
+          out << ", nfails = " << nfails
+              << " (resetting to solution from last epoch)";
         out << std::endl;
       }
 
       {
         perfInfo.addEmpty();
         auto& p = perfInfo.lastEntry();
-        p.iteration = 0;
+        p.iteration = numEpochs+1;
         p.residual = fest;
         if (compute_fit)
           p.fit = fit;
         p.cum_time = timer.getTotalTime(timer_sgd);
       }
 
-      struct Annealer {
-        ttb_real last_returned = 0.0;
-        ttb_real last_good = 0.0;
-        ttb_real min_lr;
-        ttb_real max_lr = 0.0;
-        ttb_real warm_up_min;
-        ttb_real warm_up_max;
-        ttb_real warmup_scale;
-        int epoch_internal = 0;
-        int cycle_size = 100;
-        int warmup_size = 50;
-        bool do_warmup = true;
+      if (failed_epoch) {
+        nuc *= decay;
 
-        Annealer(AlgParams const& algParams):
-          min_lr(algParams.anneal_min_lr),
-          max_lr(algParams.anneal_max_lr),
-          warm_up_max(10 * algParams.anneal_max_lr)
-        {
-            warm_up_min = 0.1 * min_lr;
-            const auto term = std::log(warm_up_max/warm_up_min)/warmup_size;
-            warmup_scale = std::exp(term);
-        }
-
-        ttb_real operator()(int epoch){
-           if(do_warmup){
-             last_returned = warm_up_min * std::pow(warmup_scale, epoch_internal);
-           } else {
-              last_returned = min_lr + 0.5 * (max_lr - min_lr) * (1 +
-                  std::cos(double(epoch_internal + cycle_size)/cycle_size * M_PI)); 
-           }
-           ++epoch_internal;
-           if(do_warmup && epoch_internal == warmup_size){
-             epoch_internal = 0; // Start over
-             do_warmup = false;
-           }
-           return last_returned;
-        }
-
-        void failed(){
-          if(do_warmup){
-            do_warmup = false;
-            max_lr = 0.5 * last_good;
-          } else {
-            min_lr *= 0.1;
-            max_lr *= 0.1;
-          }
-          epoch_internal = 0;
-        }
-
-        void success(){
-          last_good = last_returned;
-        }
-      } annealer(algParams);
-
-      // SGD epoch loop
-      ttb_real nuc = 1.0;
-      ttb_indx nfails = 0;
-      ttb_indx total_iters = 0;
-
-      for (numEpochs=0; numEpochs<maxEpochs; ++numEpochs) {
-        // Gradient step size
-        if(algParams.anneal){
-          stepper->setStep(annealer(numEpochs));
-        } else {
-          stepper->setStep(nuc*rate);
-        }
-
-        // Epoch iterations
-        it.run(X, loss_func, *sampler, *stepper, total_iters);
-
-        // compute objective estimate
-        GENTEN_START_TIMER("objective function");
-        timer.start(timer_fest);
-        dku_val->doImport(ut_overlap_val, ut, timer, timer_comm);
-        fest = Impl::gcp_value(X_val, ut_overlap_val, w_val, loss_func);
-        if (compute_fit) {
-          fit = fitter();
-        }
-        timer.stop(timer_fest);
-        GENTEN_STOP_TIMER("objective function");
-
-        // check convergence
-        bool failed_epoch = fest > fest_prev || std::isnan(fest);
-
-        if (failed_epoch)
-          ++nfails;
-
-        if ((printIter > 0) && (((numEpochs + 1) % printIter) == 0)) {
-          out << "Epoch " << std::setw(3) << numEpochs + 1 << ": f-est = "
-              << std::setw(13) << std::setprecision(6) << std::scientific
-              << fest;
-          if (compute_fit)
-            out << ", fit = "
-                << std::setw(10) << std::setprecision(3) << std::scientific
-                << fit;
-          out << ", step = "
-              << std::setw(8) << std::setprecision(1) << std::scientific
-              << stepper->getStep();
-          out << ", time = "
-              << std::setw(8) << std::setprecision(2) << std::scientific
-              << timer.getTotalTime(timer_sgd) << " sec";
-          if (failed_epoch){
-            out << ", nfails = " << nfails;
-          }
-          out << std::endl;
-        }
-
-        {
-          perfInfo.addEmpty();
-          auto& p = perfInfo.lastEntry();
-          p.iteration = numEpochs+1;
-          p.residual = fest;
-          if (compute_fit)
-            p.fit = fit;
-          p.cum_time = timer.getTotalTime(timer_sgd);
-        }
-
-        if (failed_epoch) {
-          nuc *= decay;
-
-          // restart from last epoch
-          u.set(u_prev);
-          fest = fest_prev;
-          fit = fit_prev;
-          stepper->setFailed();
-          annealer.failed();
-        }
-        else {
-          // update previous data
-          u_prev.set(u);
-          fest_prev = fest;
-          fit_prev = fit;
-          stepper->setPassed();
-          annealer.success();
-        }
-
-        if (nfails > max_fails || fest < tol)
-          break;
+        // restart from last epoch
+        u.set(u_prev);
+        fest = fest_prev;
+        fit = fit_prev;
+        stepper->setFailed();
+        annealer.failed();
       }
-      timer.stop(timer_sgd);
-
-      if (printIter > 0) {
-        out << "Final f-est: "
-            << std::setw(13) << std::setprecision(6) << std::scientific
-            << fest;
-        if (compute_fit)
-          out << ", fit: "
-              << std::setw(10) << std::setprecision(3) << std::scientific
-              << fit;
-        out << std::endl << std::endl
-            << "GCP-SGD completed " << total_iters << " iterations in "
-            << std::setw(8) << std::setprecision(2) << std::scientific
-            << timer.getTotalTime(timer_sgd) << " seconds" << std::endl;
-        if (algParams.timings) {
-          out << "\tsort/hash: " << timer.getTotalTime(timer_sort)
-              << " seconds\n"
-              << "\tsample-f:  " << timer.getTotalTime(timer_sample_f)
-              << " seconds\n"
-              << "\tf-est:     " << timer.getTotalTime(timer_fest)
-              << " seconds\n";
-          it.printTimers(out);
-        }
-        out << std::endl;
+      else {
+        // update previous data
+        u_prev.set(u);
+        fest_prev = fest;
+        fit_prev = fit;
+        stepper->setPassed();
+        annealer.success();
       }
 
-      u.copyToKtensor(u0);
+      if (nfails > max_fails || fest < tol)
+        break;
+    }
+    timer.stop(timer_sgd);
 
-      // Normalize Ktensor u
-      u0.normalize(Genten::NormTwo);
-      u0.arrange();
-
-      delete stepper;
-      delete sampler;
-      delete itp;
-      delete dku_val;
-      if (dku_fit != nullptr)
-        delete dku_fit;
+    if (print_ftr) {
+      out << "Final f-est: "
+          << std::setw(13) << std::setprecision(6) << std::scientific
+          << fest;
+      if (compute_fit)
+        out << ", fit: "
+            << std::setw(10) << std::setprecision(3) << std::scientific
+            << fit;
+      out << std::endl
+          << "GCP-SGD completed " << total_iters << " iterations in "
+          << std::setw(8) << std::setprecision(2) << std::scientific
+          << timer.getTotalTime(timer_sgd) << " seconds" << std::endl;
+      if (algParams.timings) {
+        out << "\tsort/hash: " << timer.getTotalTime(timer_sort)
+            << " seconds\n"
+            << "\tsample-f:  " << timer.getTotalTime(timer_sample_f)
+            << " seconds\n"
+            << "\tf-est:     " << timer.getTotalTime(timer_fest)
+            << " seconds\n";
+        it.printTimers(out);
+      }
     }
 
+    u.copyToKtensor(u0);
+    ften = fest;
+
+    delete sampler;
+    delete itp;
+    if (dku_fit != nullptr)
+      delete dku_fit;
   }
 
+  template <typename TensorT, typename ExecSpace, typename LossFunction>
+  void gcp_sgd_impl(TensorT& X, KtensorT<ExecSpace>& u0,
+                    const LossFunction& loss_func,
+                    const AlgParams& algParams,
+                    ttb_indx& numEpochs,
+                    ttb_real& fest,
+                    PerfHistory& perfInfo,
+                    std::ostream& out)
+  {
+    // Distribute the initial guess to have weights of one.
+    u0.normalize(Genten::NormTwo);
+    u0.distribute();
+
+    GCPSGD<TensorT,ExecSpace,LossFunction> gcpsgd(u0, loss_func, algParams);
+    gcpsgd.solve(X, u0, ttb_real(0.0),numEpochs, fest, perfInfo, out,
+                 true, true, algParams.printitn);
+
+    // Normalize Ktensor u
+    u0.normalize(Genten::NormTwo);
+    u0.arrange();
+  }
 
   template<typename TensorT, typename ExecSpace>
   void gcp_sgd(TensorT& x, KtensorT<ExecSpace>& u,
@@ -469,27 +544,36 @@ namespace Genten {
 
     // Dispatch implementation based on loss function type
     if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
-      Impl::gcp_sgd_impl(x, u, GaussianLossFunction(algParams.loss_eps),
-                         algParams, numIters, resNorm, perfInfo, out);
+      gcp_sgd_impl(x, u, GaussianLossFunction(algParams.loss_eps),
+                   algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Rayleigh)
-      Impl::gcp_sgd_impl(x, u, RayleighLossFunction(algParams.loss_eps),
-                         algParams, numIters, resNorm, perfInfo, out);
+      gcp_sgd_impl(x, u, RayleighLossFunction(algParams.loss_eps),
+                   algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Gamma)
-      Impl::gcp_sgd_impl(x, u, GammaLossFunction(algParams.loss_eps),
-                         algParams, numIters, resNorm, perfInfo, out);
+      gcp_sgd_impl(x, u, GammaLossFunction(algParams.loss_eps),
+                   algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Bernoulli)
-      Impl::gcp_sgd_impl(x, u, BernoulliLossFunction(algParams.loss_eps),
-                         algParams, numIters, resNorm, perfInfo, out);
+      gcp_sgd_impl(x, u, BernoulliLossFunction(algParams.loss_eps),
+                   algParams, numIters, resNorm, perfInfo, out);
     else if (algParams.loss_function_type == GCP_LossFunction::Poisson)
-      Impl::gcp_sgd_impl(x, u, PoissonLossFunction(algParams.loss_eps),
-                         algParams, numIters, resNorm, perfInfo, out);
+      gcp_sgd_impl(x, u, PoissonLossFunction(algParams.loss_eps),
+                   algParams, numIters, resNorm, perfInfo, out);
     else
        Genten::error("Genten::gcp_sgd - unknown loss function");
   }
 
 }
 
+#define LOSS_INST_MACRO(SPACE,LOSS)                                     \
+  template class Genten::GCPSGD<SptensorT<SPACE>,SPACE,LOSS>;
+
 #define INST_MACRO(SPACE)                                               \
+  LOSS_INST_MACRO(SPACE,GaussianLossFunction)                           \
+  LOSS_INST_MACRO(SPACE,RayleighLossFunction)                           \
+  LOSS_INST_MACRO(SPACE,GammaLossFunction)                              \
+  LOSS_INST_MACRO(SPACE,BernoulliLossFunction)                          \
+  LOSS_INST_MACRO(SPACE,PoissonLossFunction)                            \
+                                                                        \
   template void gcp_sgd<SptensorT<SPACE>,SPACE>(                        \
     SptensorT<SPACE>& x,                                                \
     KtensorT<SPACE>& u,                                                 \

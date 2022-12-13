@@ -43,26 +43,25 @@
 #include "CMakeInclude.h"
 #include "Kokkos_Core.hpp"
 
-#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) &&          \
-    defined(HAVE_CUSOLVER)
+#if defined(KOKKOS_ENABLE_HIP) && (defined(HAVE_ROCBLAS) || defined(HAVE_ROCSOLVER))
 
-#include <cusolverDn.h>
+#include <rocblas.h>
 
 namespace Genten {
 
-class CusolverHandle {
+class RocblasHandle {
 public:
-  CusolverHandle(const CusolverHandle&) = delete;
-  CusolverHandle(CusolverHandle&&) = delete;
-  CusolverHandle& operator=(const CusolverHandle&) = delete;
-  CusolverHandle& operator=(CusolverHandle&&) = delete;
+  RocblasHandle(const RocblasHandle&) = delete;
+  RocblasHandle(RocblasHandle&&) = delete;
+  RocblasHandle& operator=(const RocblasHandle&) = delete;
+  RocblasHandle& operator=(RocblasHandle&&) = delete;
 
-  ~CusolverHandle();
-  static cusolverDnHandle_t get();
+  ~RocblasHandle();
+  static rocblas_handle get();
 
 private:
-  CusolverHandle();
-  cusolverDnHandle_t handle;
+  RocblasHandle();
+  rocblas_handle handle;
 };
 
 } // namespace Genten

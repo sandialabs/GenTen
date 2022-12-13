@@ -137,6 +137,15 @@ namespace Genten {
     ttb_real anneal_min_lr;
     ttb_real anneal_max_lr;
 
+    // Streaming GCP options
+    GCP_Streaming_Solver::type streaming_solver;  // Streaming solver
+    GCP_Streaming_History_Method::type history_method; // History method
+    GCP_Streaming_Window_Method::type window_method; // Windowing method
+    ttb_indx window_size;                // Number of terms in window
+    ttb_real window_weight;              // Multiplier for each window term
+    ttb_real window_penalty;             // Multiplier for entire window
+    ttb_real factor_penalty;             // Penalty term on factor matrices
+
     // Constructor initializing values to defaults
     AlgParams();
 

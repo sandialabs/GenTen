@@ -110,11 +110,9 @@ driver(const DistTensorContext<ExecSpace>& dtc,
   }
 
   if (algParams.debug) {
-    Ktensor_type u0 = dtc.importToRoot(u);
-    Ktensor_host_type u0_host = create_mirror_view(
-    Genten::DefaultHostExecutionSpace(), u0 );
-    deep_copy(u0_host, u0);
-    Genten::print_ktensor(u0_host, out, "Initial guess");
+    Ktensor_host_type u0 =
+      dtc.template importToRoot<Genten::DefaultHostExecutionSpace>(u);
+    Genten::print_ktensor(u0, out, "Initial guess");
   }
 
   // Fixup algorithmic choices
@@ -243,11 +241,9 @@ driver(const DistTensorContext<ExecSpace>& dtc,
   }
 
   if (algParams.debug) {
-    Ktensor_type u0 = dtc.importToRoot(u);
-    Ktensor_host_type u0_host = create_mirror_view(
-      Genten::DefaultHostExecutionSpace(), u0 );
-    deep_copy(u0_host, u0);
-    Genten::print_ktensor(u0_host, out, "Solution");
+    Ktensor_host_type u0 =
+      dtc.template importToRoot<Genten::DefaultHostExecutionSpace>(u);
+    Genten::print_ktensor(u0, out, "Solution");
   }
 
 #if defined(HAVE_TEUCHOS)

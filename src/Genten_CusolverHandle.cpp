@@ -60,7 +60,10 @@ CusolverHandle::CusolverHandle() {
 
 CusolverHandle::~CusolverHandle() { cusolverDnDestroy(handle); }
 
-cusolverDnHandle_t CusolverHandle::get() const { return handle; }
+cusolverDnHandle_t CusolverHandle::get() {
+  static CusolverHandle h;
+  return h.handle;
+}
 
 } // namespace Genten
 

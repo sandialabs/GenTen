@@ -449,4 +449,17 @@ ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
   return m_val;
 }
 
+template <typename ExecSpace>
+KtensorT<ExecSpace> clone(const KtensorT<ExecSpace>& u)
+{
+  const ttb_indx nd = u.ndims();
+  const ttb_indx nc = u.ncomponents();
+  KtensorT<ExecSpace> v(nc,nd,u.getProcessorMap());
+  for (ttb_indx i=0; i<nd; ++i) {
+    FacMatrixT<ExecSpace> mat(u[i].nRows(), nc);
+    v.set_factor(i,mat);
+  }
+  return v;
+}
+
 }

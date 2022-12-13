@@ -68,6 +68,27 @@ namespace Genten {
       const int timer_nzs,
       const int timer_zs);
 
+    template <typename ExecSpace, typename loss_type>
+    void gcp_sgd_ss_grad(
+      const SptensorT<ExecSpace>& X,
+      const KtensorT<ExecSpace>& M,
+      const KtensorT<ExecSpace>& Mt,
+      const KtensorT<ExecSpace>& Mprev,
+      const loss_type& f,
+      const ttb_indx num_samples_nonzeros,
+      const ttb_indx num_samples_zeros,
+      const ttb_real weight_nonzeros,
+      const ttb_real weight_zeros,
+      const ArrayT<ExecSpace>& window,
+      const ttb_real window_penalty,
+      const IndxArrayT<ExecSpace>& modes,
+      const KtensorT<ExecSpace>& G,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams,
+      SystemTimer& timer,
+      const int timer_nzs,
+      const int timer_zs);
+
   }
 
 }

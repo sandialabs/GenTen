@@ -45,6 +45,7 @@
 
 // To do:
 //  * Test on Volta.  Do we need warp sync's?
+//  * Add history
 
 namespace Genten {
 
@@ -61,6 +62,8 @@ namespace Genten {
       const ttb_real wnz,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const Stepper& stepper,
+      const ttb_indx mode_beg,
+      const ttb_indx mode_end,
       const AlgParams& algParams,
       const ttb_indx total_iters)
     {
@@ -81,6 +84,8 @@ namespace Genten {
       /*const*/ ttb_indx nnz = X.nnz();
       /*const*/ unsigned nd = u.ndims();
       /*const*/ unsigned nc = u.ncomponents();
+      /*const*/ unsigned mb = mode_beg;
+      /*const*/ unsigned me = mode_end;
 
       static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
       const unsigned RowBlockSize = algParams.mttkrp_nnz_tile_size;
@@ -170,7 +175,7 @@ namespace Genten {
              y_val = wz * f.deriv(ttb_real(0.0), m_val);
 
           // Compute gradient contribution
-          for (unsigned n=0; n<nd; ++n) {
+          for (unsigned n=mb; n<me; ++n) {
             const ttb_indx k = team_ind(team_rank,n);
             Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,nc),
                                  [&] (const unsigned& j)
@@ -196,8 +201,14 @@ namespace Genten {
     public:
 
       GCP_SGD_Iter_Async(const KtensorT<ExecSpace>& u0,
+                         const StreamingHistory<ExecSpace>& hist,
+                         const ttb_real penalty,
+                         const ttb_indx mode_beg,
+                         const ttb_indx mode_end,
                          const AlgParams& algParams) :
-        GCP_SGD_Iter<ExecSpace, LossFunction>(u0, algParams)
+        GCP_SGD_Iter<ExecSpace, LossFunction>(u0, hist,
+                                              penalty, mode_beg, mode_end,
+                                              algParams)
       {
         if (u0.getProcessorMap() != nullptr &&
             u0.getProcessorMap()->gridSize() > 0)
@@ -227,6 +238,7 @@ namespace Genten {
         this->timer.start(this->timer_grad);
 
         // Run kernel
+        // To do:  handle history terms, penalty
         SGDStep<ExecSpace,LossFunction>* sgd_step =
           dynamic_cast<SGDStep<ExecSpace,LossFunction>*>(&stepper);
         AdaGradStep<ExecSpace,LossFunction>* adagrad_step =
@@ -238,19 +250,19 @@ namespace Genten {
         if (sgd_step != nullptr)
           gcp_sgd_iter_async_kernel(
             X.impl(),this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*sgd_step,
-            this->algParams, total_iters);
+            this->mode_beg, this->mode_end, this->algParams, total_iters);
         else if (adagrad_step != nullptr)
           gcp_sgd_iter_async_kernel(
             X.impl(),this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*adagrad_step,
-            this->algParams, total_iters);
+            this->mode_beg, this->mode_end, this->algParams, total_iters);
         else if (adam_step != nullptr)
           gcp_sgd_iter_async_kernel(
             X.impl(),this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*adam_step,
-            this->algParams, total_iters);
+            this->mode_beg, this->mode_end, this->algParams, total_iters);
         else if (amsgrad_step != nullptr)
           gcp_sgd_iter_async_kernel(
             X.impl(),this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*amsgrad_step,
-            this->algParams, total_iters);
+            this->mode_beg, this->mode_end, this->algParams, total_iters);
         else
           Genten::error("Unsupported GCP-SGD stepper!");
 

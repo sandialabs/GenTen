@@ -625,6 +625,7 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
   ${Genten_SOURCE_DIR}/src/Genten_CublasHandle.cpp
   ${Genten_SOURCE_DIR}/src/Genten_CusolverHandle.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_RocblasHandle.cpp
   )
 
 IF (ENABLE_LBFGSB)
@@ -655,6 +656,8 @@ IF (ENABLE_GCP)
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Rayleigh.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Gamma.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Bernoulli.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_StreamingHistory.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_Online_GCP.cpp
     )
 
   # Disable gcp_opt because it doesn't work
@@ -872,22 +875,44 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
     NAME gt_innerprod_driver
     SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Innerprod.cpp
     ${GENTEN_MATLAB_API_VERSION})
+  MATLAB_ADD_MEX(
+    NAME gt_gcp_sample_driver
+    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_GCP_Sample.cpp
+    ${GENTEN_MATLAB_API_VERSION})
+  MATLAB_ADD_MEX(
+    NAME gt_gcp_value_driver
+    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_GCP_Value.cpp
+    ${GENTEN_MATLAB_API_VERSION})
+  MATLAB_ADD_MEX(
+    NAME gt_gcp_gradient_driver
+    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_GCP_Gradient.cpp
+    ${GENTEN_MATLAB_API_VERSION})
+  MATLAB_ADD_MEX(
+    NAME gt_online_gcp
+    SRC ${Genten_SOURCE_DIR}/matlab/Genten_Matlab_Online_GCP.cpp
+    ${GENTEN_MATLAB_API_VERSION})
   TARGET_LINK_LIBRARIES (gt_cp_driver ${GENTEN_MATLAB_LINK_LIBS})
   TARGET_LINK_LIBRARIES (gt_initialize ${GENTEN_MATLAB_LINK_LIBS})
   TARGET_LINK_LIBRARIES (gt_finalize ${GENTEN_MATLAB_LINK_LIBS})
   TARGET_LINK_LIBRARIES (gt_compute_perm_driver ${GENTEN_MATLAB_LINK_LIBS})
   TARGET_LINK_LIBRARIES (gt_mttkrp_driver ${GENTEN_MATLAB_LINK_LIBS})
   TARGET_LINK_LIBRARIES (gt_innerprod_driver ${GENTEN_MATLAB_LINK_LIBS})
+  TARGET_LINK_LIBRARIES (gt_gcp_sample_driver ${GENTEN_MATLAB_LINK_LIBS})
+  TARGET_LINK_LIBRARIES (gt_gcp_value_driver ${GENTEN_MATLAB_LINK_LIBS})
+  TARGET_LINK_LIBRARIES (gt_gcp_gradient_driver ${GENTEN_MATLAB_LINK_LIBS})
+  TARGET_LINK_LIBRARIES (gt_online_gcp ${GENTEN_MATLAB_LINK_LIBS})
   INSTALL(
     TARGETS gt_matlab gt_cp_driver gt_initialize gt_finalize gt_mttkrp_driver
-      gt_innerprod_driver
+      gt_innerprod_driver gt_gcp_sample_driver gt_gcp_value_driver
+      gt_gcp_gradient_driver gt_online_gcp
     DESTINATION ${CMAKE_INSTALL_DATADIR}/genten/matlab)
   INSTALL(
     TARGETS gt_compute_perm_driver
     DESTINATION ${CMAKE_INSTALL_DATADIR}/genten/matlab/@sptensor_gt/private)
   SET_PROPERTY(
     TARGET gt_matlab gt_cp_driver gt_initialize gt_finalize gt_mttkrp_driver
-      gt_innerprod_driver
+      gt_innerprod_driver gt_gcp_sample_driver gt_gcp_value_driver
+      gt_gcp_gradient_driver gt_online_gcp
     PROPERTY LIBRARY_OUTPUT_DIRECTORY ${Genten_BINARY_DIR}/matlab)
   SET_PROPERTY(
     TARGET gt_compute_perm_driver
@@ -898,6 +923,8 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
   SET_PROPERTY(
     TARGET gt_matlab gt_cp_driver gt_initialize gt_finalize
       gt_compute_perm_driver gt_mttkrp_driver gt_innerprod_driver
+      gt_gcp_sample_driver gt_gcp_value_driver
+      gt_gcp_gradient_driver gt_online_gcp
     PROPERTY DEFINE_SYMBOL "")
 
   # Targets to install matlab source files
@@ -960,6 +987,27 @@ function(genten_add_test)
   add_test(NAME ${GENTEN_ADD_TEST_NAME} COMMAND ${test_cmd} WORKING_DIRECTORY ${GENTEN_ADD_TEST_WORKING_DIRECTORY})
 endfunction(genten_add_test)
 
+# Kokkos devices to run tests on.
+set(kokkos_devices "")
+if (HAVE_SERIAL)
+  list(APPEND kokkos_devices "serial")
+endif()
+if (HAVE_OPENMP)
+  list(APPEND kokkos_devices "openmp")
+endif()
+if (HAVE_THREADS)
+  list(APPEND kokkos_devices "threads")
+endif()
+if (HAVE_CUDA)
+  list(APPEND kokkos_devices "cuda")
+endif()
+if (HAVE_HIP)
+  list(APPEND kokkos_devices "hip")
+endif()
+if (HAVE_SYCL)
+  list(APPEND kokkos_devices "sycl")
+endif()
+
 add_subdirectory(tpls/googletest)
 add_subdirectory(test)
 
@@ -983,27 +1031,6 @@ function(add_genten_mpi_tests name cmd args spaces)
     genten_add_test(NAME ${test_name} COMMAND ${cmd} ARGS ${test_args} PARALLEL)
   endforeach()
 endfunction(add_genten_mpi_tests)
-
-# Kokkos devices to run tests on.
-set(kokkos_devices "")
-if (HAVE_SERIAL)
-  list(APPEND kokkos_devices "serial")
-endif()
-if (HAVE_OPENMP)
-  list(APPEND kokkos_devices "openmp")
-endif()
-if (HAVE_THREADS)
-  list(APPEND kokkos_devices "threads")
-endif()
-if (HAVE_CUDA)
-  list(APPEND kokkos_devices "cuda")
-endif()
-if (HAVE_HIP)
-  list(APPEND kokkos_devices "hip")
-endif()
-if (HAVE_SYCL)
-  list(APPEND kokkos_devices "sycl")
-endif()
 
 add_genten_perf_tests(Genten_MTTKRP_random_atomic "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method atomic" "${kokkos_devices}")
 add_genten_perf_tests(Genten_MTTKRP_random_dupl "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [300,400,500] --nnz 1000 --mttkrp-method duplicated" "${kokkos_devices}")

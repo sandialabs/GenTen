@@ -47,6 +47,8 @@
 #include "Genten_SystemTimer.hpp"
 #include "Genten_GCP_SamplingKernels.hpp"
 #include "Genten_GCP_Hash.hpp"
+#include "Genten_KokkosVector.hpp"
+#include "Genten_GCP_StreamingHistory.hpp"
 
 #include "Kokkos_Random.hpp"
 
@@ -64,25 +66,40 @@ namespace Genten {
     virtual ~Sampler() {}
 
     virtual void initialize(const pool_type& rand_pool,
+                            const bool print_itn,
                             std::ostream& out) = 0;
 
     virtual ttb_indx getNumGradSamples() const = 0;
 
     virtual void print(std::ostream& out) = 0;
 
-    virtual void sampleTensor(const bool gradient,
-                              const KtensorT<ExecSpace>& u,
-                              const LossFunction& loss_func,
-                              SptensorT<ExecSpace>& Xs,
-                              ArrayT<ExecSpace>& w,
-                              KtensorT<ExecSpace>& u_overlap) = 0;
+    virtual void sampleTensorF(const KtensorT<ExecSpace>& u,
+                               const LossFunction& loss_func) = 0;
 
-    virtual void fusedGradient(const KtensorT<ExecSpace>& u,
-                               const LossFunction& loss_func,
-                               const KtensorT<ExecSpace>& g,
-                               SystemTimer& timer,
-                               const int timer_nzs,
-                               const int timer_zs) = 0;
+    virtual void sampleTensorG(const KtensorT<ExecSpace>& u,
+                               const StreamingHistory<ExecSpace>& hist,
+                               const LossFunction& loss_func) = 0;
+
+    virtual void prepareGradient(const KtensorT<ExecSpace>& gt) = 0;
+
+    virtual void value(const KtensorT<ExecSpace>& u,
+                       const StreamingHistory<ExecSpace>& hist,
+                       const ttb_real penalty,
+                       const LossFunction& loss_func,
+                       ttb_real& fest, ttb_real& ften) = 0;
+
+    virtual void gradient(const KtensorT<ExecSpace>& ut,
+                          const StreamingHistory<ExecSpace>& hist,
+                          const ttb_real penalty,
+                          const LossFunction& loss_func,
+                          KokkosVector<ExecSpace>& g,
+                          const KtensorT<ExecSpace>& gt,
+                          const ttb_indx mode_beg,
+                          const ttb_indx mode_end,
+                          SystemTimer& timer,
+                          const int timer_init,
+                          const int timer_nzs,
+                          const int timer_zs) = 0;
 
     static map_type buildHashMap(const SptensorT<ExecSpace>& Xd,
                                  std::ostream& out)
