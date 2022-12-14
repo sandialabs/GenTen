@@ -275,11 +275,10 @@ namespace Genten {
 
     // Objective estimates
     ttb_real fit = 0.0;
-    ttb_real x_norm = 0.0;
+    const ttb_real x_norm = X.global_norm();
     DistKtensorUpdate<ExecSpace> *dku_fit = nullptr;
     KtensorT<ExecSpace> ut_overlap_fit;
     if (compute_fit) {
-      x_norm = X.global_norm();
       dku_fit = createKtensorUpdate(X, ut, algParams);
       ut_overlap_fit = dku_fit->createOverlapKtensor(ut);
     }
