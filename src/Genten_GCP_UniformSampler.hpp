@@ -329,7 +329,10 @@ namespace Genten {
                           SystemTimer& timer,
                           const int timer_init,
                           const int timer_nzs,
-                          const int timer_zs) override
+                          const int timer_zs,
+                          const int timer_grad_mttkrp,
+                          const int timer_grad_comm,
+                          const int timer_grad_update) override
     {
       timer.start(timer_init);
       gt_overlap.weights() = ttb_real(1.0);
@@ -338,8 +341,11 @@ namespace Genten {
 
       // We are cheating here by not importing ut, since we know it happened
       // when sampling G if it was necessary
+
+      timer.start(timer_grad_mttkrp);
       mttkrp_all(Yg, u_overlap_G, gt_overlap, mode_beg, mode_end, algParams,
                  false);
+      timer.stop(timer_grad_mttkrp);
 
       if (Yh.nnz() > 0) {
         // Create uh, u with time mode replaced by time mode of up
@@ -352,7 +358,10 @@ namespace Genten {
 
         mttkrp_all(Yh, uh, gt_overlap, mode_beg, mode_end, algParams, false);
       }
+
+      timer.start(timer_grad_comm);
       dku_G->doExport(gt, gt_overlap);
+      timer.stop(timer_grad_comm);
 
       if (Yh.nnz() == 0)
         hist.gradient(ut, mode_beg, mode_end, gt);

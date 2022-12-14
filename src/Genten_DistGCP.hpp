@@ -415,6 +415,9 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
   const int timer_grad_nzs = num_timers++;
   const int timer_grad_zs = num_timers++;
   const int timer_grad_init = num_timers++;
+  const int timer_grad_mttkrp = num_timers++;
+  const int timer_grad_comm = num_timers++;
+  const int timer_grad_update = num_timers++;
   const int timer_step = num_timers++;
   const int timer_meta_step = num_timers++;
   const int timer_allreduce = num_timers++;
@@ -474,7 +477,8 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
       sampler.gradient(ut, hist, penalty,
                        loss, g, GFac, 0, nd,
                        timer, timer_grad_init, timer_grad_nzs,
-                       timer_grad_zs);
+                       timer_grad_zs, timer_grad_mttkrp, timer_grad_comm,
+                       timer_grad_update);
       timer.stop(timer_grad);
       auto ge = MPI_Wtime();
       timer.start(timer_step);
@@ -731,6 +735,9 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
   int tnzs = 0;
   int tzs = 0;
   int tinit = 0;
+  int tgm = 0;
+  int tgc = 0;
+  int tgu = 0;
 
   // Fit stuff
   ttb_real fest, ften;
@@ -777,8 +784,7 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
       auto ze = MPI_Wtime();
       sampler.gradient(ut, hist, penalty,
                        loss, g, GFac, 0, nd,
-                       timer, tinit, tnzs,
-                       tzs);
+                       timer, tinit, tnzs, tzs, tgm, tgc, tgu);
       auto ge = MPI_Wtime();
       dtc_.allReduce(GFac, false /* don't average */);
       auto are = MPI_Wtime();

@@ -147,16 +147,28 @@ namespace Genten {
                           SystemTimer& timer,
                           const int timer_init,
                           const int timer_nzs,
-                          const int timer_zs) override
+                          const int timer_zs,
+                          const int timer_grad_mttkrp,
+                          const int timer_grad_comm,
+                          const int timer_grad_update) override
     {
       timer.start(timer_init);
       g_overlap.weights() = ttb_real(1.0);
       g_overlap.setMatrices(0.0);
       timer.stop(timer_init);
 
+      timer.start(timer_grad_comm);
       dku->doImport(u_overlap, ut);
+      timer.stop(timer_grad_comm);
+
+      timer.start(timer_grad_mttkrp);
       mttkrp_all(X, u_overlap, g_overlap, mode_beg, mode_end, algParams, false);
+      timer.stop(timer_grad_mttkrp);
+
+      timer.start(timer_grad_comm);
       dku->doExport(gt, g_overlap);
+      timer.stop(timer_grad_comm);
+
       const ttb_indx nd = ut.ndims();
       const ttb_indx nc = ut.ncomponents();
       const bool full = true; // Needs to be full for later gemm

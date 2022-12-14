@@ -99,7 +99,10 @@ namespace Genten {
                           SystemTimer& timer,
                           const int timer_init,
                           const int timer_nzs,
-                          const int timer_zs) = 0;
+                          const int timer_zs,
+                          const int timer_grad_mttkrp,
+                          const int timer_grad_comm,
+                          const int timer_grad_update) = 0;
 
     static map_type buildHashMap(const SptensorT<ExecSpace>& Xd,
                                  std::ostream& out)

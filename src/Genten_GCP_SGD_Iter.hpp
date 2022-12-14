@@ -136,7 +136,8 @@ namespace Genten {
             sampler.gradient(ut, hist, penalty,
                              loss_func, g, gt, mode_beg, mode_end,
                              timer, timer_grad_init, timer_grad_nzs,
-                             timer_grad_zs);
+                             timer_grad_zs, timer_grad_mttkrp, timer_grad_comm,
+                             timer_grad_update);
             timer.stop(timer_grad);
             GENTEN_STOP_TIMER("gradient");
 
