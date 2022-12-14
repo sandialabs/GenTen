@@ -67,6 +67,7 @@ namespace Genten {
         Genten::error("Dense sampler only implemented for Gaussian loss!");
 
       dku = createKtensorUpdate(X, u, algParams);
+      u_overlap = dku->createOverlapKtensor(u);
     }
 
     virtual ~DenseSampler()
@@ -119,7 +120,7 @@ namespace Genten {
       const ttb_indx nd = u.ndims();
       const ttb_indx nc = u.ncomponents();
       const ttb_real ip = innerprod(X, u_overlap);
-      const ttb_real nrmx = X.norm();
+      const ttb_real nrmx = X.global_norm();
       const ttb_real nrmusq = u.normFsq();
       ften = nrmx*nrmx + nrmusq - ttb_real(2.0)*ip;
       fest = ften;

@@ -397,7 +397,7 @@ static nlohmann::json json_schema = R"(
               },
               "sampling": {
                   "description": "Sampling method",
-                  "enum": ["uniform", "stratified", "semi-stratified"],
+                  "enum": ["uniform", "stratified", "semi-stratified", "dense"],
                   "default": "stratified"
               },
               "seed": {
