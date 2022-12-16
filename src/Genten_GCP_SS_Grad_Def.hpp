@@ -59,7 +59,7 @@ namespace Genten {
     template <int Dupl, int Cont, unsigned FBS, unsigned VS,
               typename ExecSpace, typename loss_type>
     void gcp_sgd_ss_grad_sv_kernel(
-      const SptensorT<ExecSpace>& X,
+      const SptensorImpl<ExecSpace>& X,
       const KtensorT<ExecSpace>& M,
       const loss_type& f,
       const ttb_indx num_samples_nonzeros,
@@ -111,6 +111,7 @@ namespace Genten {
       timer.start(timer_nzs);
       Policy policy_nz(N_nz, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "gcp_sgd_ss_grad_sv_nonzero_kernel",
         policy_nz.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -173,12 +174,13 @@ namespace Genten {
           } // n
         } // i
         rand_pool.free_state(gen);
-      }, "gcp_sgd_ss_grad_sv_nonzero_kernel");
+      });
       timer.stop(timer_nzs);
 
       timer.start(timer_zs);
       Policy policy_z(N_z, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "gcp_sgd_ss_grad_sv_zero_kernel",
         policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -239,7 +241,7 @@ namespace Genten {
           } // n
         } // i
         rand_pool.free_state(gen);
-      }, "gcp_sgd_ss_grad_sv_zero_kernel");
+      });
       timer.stop(timer_zs);
 
       for (unsigned n=0; n<nd; ++n)
@@ -254,7 +256,7 @@ namespace Genten {
     template <unsigned FBS, unsigned VS,
               typename ExecSpace, typename loss_type>
     void gcp_sgd_ss_grad_atomic_kernel(
-      const SptensorT<ExecSpace>& X,
+      const SptensorImpl<ExecSpace>& X,
       const KtensorT<ExecSpace>& M,
       const loss_type& f,
       const ttb_indx num_samples_nonzeros,
@@ -294,6 +296,7 @@ namespace Genten {
       timer.start(timer_nzs);
       Policy policy_nz(N_nz, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "gcp_sgd_ss_grad_atomic_nonzero_kernel",
         policy_nz.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -353,12 +356,13 @@ namespace Genten {
           } // n
         } // i
         rand_pool.free_state(gen);
-      }, "gcp_sgd_ss_grad_atomic_nonzero_kernel");
+      });
       timer.stop(timer_nzs);
 
       timer.start(timer_zs);
       Policy policy_z(N_z, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "gcp_sgd_ss_grad_atomic_zero_kernel",
         policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -417,14 +421,14 @@ namespace Genten {
           } // n
         } // i
         rand_pool.free_state(gen);
-      }, "gcp_sgd_ss_grad_atomic_zero_kernel");
+      });
       timer.stop(timer_zs);
     }
 
     template <typename ExecSpace, typename loss_type>
     struct GCP_SS_Grad {
       typedef ExecSpace exec_space;
-      typedef SptensorT<exec_space> tensor_type;
+      typedef SptensorImpl<exec_space> tensor_type;
       typedef KtensorT<exec_space> Ktensor_type;
 
       const tensor_type X;
@@ -496,7 +500,7 @@ namespace Genten {
     template <typename loss_type>
     struct GCP_SS_Grad<Kokkos_GPU_Space,loss_type> {
       typedef Kokkos_GPU_Space exec_space;
-      typedef SptensorT<exec_space> tensor_type;
+      typedef SptensorImpl<exec_space> tensor_type;
       typedef KtensorT<exec_space> Ktensor_type;
 
       const tensor_type X;
@@ -563,7 +567,7 @@ namespace Genten {
       const int timer_zs)
     {
       GCP_SS_Grad<ExecSpace,loss_type> kernel(
-        X,M,f,num_samples_nonzeros,num_samples_zeros,
+        X.impl(),M,f,num_samples_nonzeros,num_samples_zeros,
         weight_nonzeros,weight_zeros,G,rand_pool,algParams,
         timer,timer_nzs,timer_zs);
       run_row_simd_kernel(kernel, M.ncomponents());

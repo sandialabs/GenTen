@@ -52,6 +52,7 @@
 #include "Genten_Sptensor.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_MixedFormatOps.hpp"
+#include "Genten_DistKtensorUpdate.hpp"
 
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
@@ -102,7 +103,7 @@ namespace Genten {
 
       // Create sampler
       Genten::SemiStratifiedSampler<ExecSpace,LossFunction> sampler(
-        X, algParams, true);
+        X, u0, algParams, true);
       const ttb_indx tot_num_grad_samples = sampler.totalNumGradSamples();
 
       // bounds
@@ -145,6 +146,7 @@ namespace Genten {
       const int timer_step = num_timers++;
       const int timer_sample_g_z_nz = num_timers++;
       const int timer_sample_g_perm = num_timers++;
+      const int timer_comm = num_timers++;
       SystemTimer timer(num_timers, algParams.timings, pmap);
 
       // Start timer for total execution time of the algorithm.
@@ -204,13 +206,20 @@ namespace Genten {
       // Objective estimates
       ttb_real fit = 0.0;
       ttb_real x_norm = 0.0;
+      DistKtensorUpdate<ExecSpace> *dku_fit = nullptr;
+      KtensorT<ExecSpace> ut_overlap_fit;
+      if (compute_fit) {
+        x_norm = X.global_norm();
+        dku_fit = createKtensorUpdate(X, ut, algParams);
+        ut_overlap_fit = dku_fit->createOverlapKtensor(ut);
+      }
       timer.start(timer_fest);
       ttb_real ften = 0.0;
       sampler.value(ut, hist, factor_penalty, loss_func, fest, ften);
       if (compute_fit) {
-        x_norm = X.global_norm();
         ttb_real u_norm = sqrt(u.normFsq());
-        ttb_real dot = innerprod(X, ut);
+        dku_fit->doImport(ut_overlap_fit, ut, timer, timer_comm);
+        ttb_real dot = innerprod(X, ut_overlap_fit);
         fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
       }
       timer.stop(timer_fest);
@@ -282,7 +291,8 @@ namespace Genten {
         sampler.value(ut, hist, factor_penalty, loss_func, fest, ften);
         if (compute_fit) {
           ttb_real u_norm = sqrt(u.normFsq());
-          ttb_real dot = innerprod(X, ut);
+          dku_fit->doImport(ut_overlap_fit, ut, timer, timer_comm);
+          ttb_real dot = innerprod(X, ut_overlap_fit);
           fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
         }
         timer.stop(timer_fest);
@@ -394,6 +404,8 @@ namespace Genten {
       // Normalize Ktensor u
       u0.normalize(Genten::NormTwo);
       u0.arrange();
+      if (dku_fit != nullptr)
+        delete dku_fit;
     }
 
   }

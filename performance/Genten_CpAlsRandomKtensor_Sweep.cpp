@@ -182,8 +182,8 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
     ttb_real  dResNorm;
     Genten::PerfHistory perfInfo;
     algParams.rank = R;
-    Genten::cpals_core (cData, cResult, algParams, nItersCompleted, dResNorm,
-                        1, perfInfo);
+    Genten::cpals_core (cData, cResult, algParams, nItersCompleted,
+                        dResNorm, 1, perfInfo);
     ttb_real mttkrp_gflops = perfInfo.lastEntry().mttkrp_throughput;
     printf("\t%3d\t    %.3f\n", int(R), mttkrp_gflops);
   }

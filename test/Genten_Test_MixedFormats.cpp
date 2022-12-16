@@ -45,6 +45,7 @@
 #include <Genten_MixedFormatOps.hpp>
 #include <Genten_Sptensor.hpp>
 #include <Genten_Util.hpp>
+#include <Genten_DistKtensorUpdate.hpp>
 
 #include "Genten_Test_Utils.hpp"
 
@@ -65,6 +66,8 @@ TYPED_TEST(TestMixedFormatsT, SptensorTensorKtensorInnerprod) {
 
   using exec_space = typename TestFixture::exec_space;
   using host_exec_space = DefaultHostExecutionSpace;
+
+  Genten::AlgParams algParams;
 
   INFO_MSG("Creating an Sptensor for innerprod test");
   IndxArray dims(3);
@@ -89,8 +92,8 @@ TYPED_TEST(TestMixedFormatsT, SptensorTensorKtensorInnerprod) {
   a.subscript(3, 2) = 2;
   a.value(3) = 4.0;
 
-  Genten::DistTensorContext dtc;
-  SptensorT<exec_space> a_dev = dtc.distributeTensor<exec_space>(a);
+  Genten::DistTensorContext<exec_space> dtc;
+  SptensorT<exec_space> a_dev = dtc.distributeTensor(a);
   const ProcessorMap *pmap = dtc.pmap_ptr().get();
   a_dev.setProcessorMap(pmap);
 
@@ -122,11 +125,17 @@ TYPED_TEST(TestMixedFormatsT, SptensorTensorKtensorInnerprod) {
   oKtens[1].entry(0, 1) = 0.3;
   oKtens[2].entry(2, 1) = 0.3;
 
-  KtensorT<exec_space> oKtens_dev = dtc.exportFromRoot<exec_space>(oKtens);
+  KtensorT<exec_space> oKtens_dev = dtc.exportFromRoot(oKtens);
   oKtens_dev.setProcessorMap(pmap);
 
+  DistKtensorUpdate<exec_space> *dku =
+    createKtensorUpdate(a_dev, oKtens_dev, algParams);
+  KtensorT<exec_space> oKtens_dev_overlap =
+    dku->createOverlapKtensor(oKtens_dev);
+  dku->doImport(oKtens_dev_overlap, oKtens_dev);
+
   ttb_real d;
-  d = innerprod(a_dev, oKtens_dev);
+  d = innerprod(a_dev, oKtens_dev_overlap);
   GENTEN_FLOAT_EQ(d, 1.162, "Inner product between sptensor and ktensor");
   d = innerprod(t_dev, oKtens_dev);
   GENTEN_FLOAT_EQ(d, 1.162, "Inner product between tensor and ktensor");
@@ -137,10 +146,12 @@ TYPED_TEST(TestMixedFormatsT, SptensorTensorKtensorInnerprod) {
   ArrayT<exec_space> altLambda_dev =
       create_mirror_view(exec_space(), altLambda);
   deep_copy(altLambda_dev, altLambda);
-  d = innerprod(a_dev, oKtens_dev, altLambda_dev);
+  d = innerprod(a_dev, oKtens_dev_overlap, altLambda_dev);
   GENTEN_FLOAT_EQ(d, 3.081, "Inner product with alternate lambda is correct");
   d = innerprod(t_dev, oKtens_dev, altLambda_dev);
   GENTEN_FLOAT_EQ(d, 3.081, "Inner product with alternate lambda is correct");
+
+  delete dku;
 }
 
 TYPED_TEST(TestMixedFormatsT, SptensorKtensorTimesDivide) {
@@ -411,28 +422,36 @@ void RunMTTKRPTypeTest(MTTKRP_Method::type mttkrp_method,
   oKtens[2].entry(3, 0) = 18.0;
 
   // Copy a and oKtens to device
-  Genten::DistTensorContext dtc;
-  SptensorT<exec_space> a_dev_dist = dtc.distributeTensor<exec_space>(a);
+  Genten::DistTensorContext<exec_space> dtc;
+  SptensorT<exec_space> a_dev_dist = dtc.distributeTensor(a);
   const ProcessorMap *pmap = dtc.pmap_ptr().get();
   a_dev_dist.setProcessorMap(pmap);
   if (mttkrp_method == MTTKRP_Method::Perm) {
     a_dev_dist.createPermutation();
   }
 
-  KtensorT<exec_space> oKtens_dev_dist = dtc.exportFromRoot<exec_space>(oKtens);
+  KtensorT<exec_space> oKtens_dev_dist = dtc.exportFromRoot(oKtens);
   oKtens_dev_dist.setProcessorMap(pmap);
 
   FacMatrix oFM;
-  FacMatrixT<exec_space> oFM_dev;
+  KtensorT<exec_space> res_dev_dist = Genten::clone(oKtens_dev_dist);
 
   AlgParams algParams;
   algParams.mttkrp_method = mttkrp_method;
   algParams.mttkrp_duplicated_threshold = 1.0e6; // Ensure duplicated is used
 
+  DistKtensorUpdate<exec_space> *dku =
+    createKtensorUpdate(a_dev_dist, oKtens_dev_dist, algParams);
+  KtensorT<exec_space> oKtens_dev_overlap =
+    dku->createOverlapKtensor(oKtens_dev_dist);
+   KtensorT<exec_space> res_dev_overlap =
+    dku->createOverlapKtensor(res_dev_dist);
+  dku->doImport(oKtens_dev_overlap, oKtens_dev_dist);
+
   // Matricizing on index 0 has result 12*15 = 180.
-  oFM_dev = FacMatrixT<exec_space>(a_dev_dist.size(0), nc, pmap->facMap(0));
-  mttkrp(a_dev_dist, oKtens_dev_dist, 0, oFM_dev, algParams);
-  oFM = dtc.importToRoot<DefaultHostExecutionSpace>(0, oFM_dev);
+  mttkrp(a_dev_dist, oKtens_dev_overlap, 0, res_dev_overlap[0], algParams);
+  dku->doExport(res_dev_dist, res_dev_overlap, 0);
+  oFM = dtc.template importToRoot<DefaultHostExecutionSpace>(0, res_dev_dist[0]);
 
   ASSERT_EQ(oFM.nRows(), 2);
   ASSERT_EQ(oFM.nCols(), 1);
@@ -450,9 +469,9 @@ void RunMTTKRPTypeTest(MTTKRP_Method::type mttkrp_method,
   // Genten::print_matrix(oFM, std::cout, "Matrix result from mttkrp");
 
   // Matricizing on index 1 has result 10*15 = 150.
-  oFM_dev = FacMatrixT<exec_space>(a_dev_dist.size(1), nc, pmap->facMap(1));
-  mttkrp(a_dev_dist, oKtens_dev_dist, 1, oFM_dev, algParams);
-  oFM = dtc.importToRoot<DefaultHostExecutionSpace>(1, oFM_dev);
+  mttkrp(a_dev_dist, oKtens_dev_overlap, 1, res_dev_overlap[1], algParams);
+  dku->doExport(res_dev_dist, res_dev_overlap, 1);
+  oFM = dtc.template importToRoot<DefaultHostExecutionSpace>(1, res_dev_dist[1]);
 
   ASSERT_EQ(oFM.nRows(), 3);
   ASSERT_EQ(oFM.nCols(), 1);
@@ -465,9 +484,9 @@ void RunMTTKRPTypeTest(MTTKRP_Method::type mttkrp_method,
   }
 
   // Matricizing on index 2 has result 10*12 = 120.
-  oFM_dev = FacMatrixT<exec_space>(a_dev_dist.size(2), nc, pmap->facMap(2));
-  mttkrp(a_dev_dist, oKtens_dev_dist, 2, oFM_dev, algParams);
-  oFM = dtc.importToRoot<DefaultHostExecutionSpace>(2, oFM_dev);
+  mttkrp(a_dev_dist, oKtens_dev_overlap, 2, res_dev_overlap[2], algParams);
+  dku->doExport(res_dev_dist, res_dev_overlap, 2);
+  oFM = dtc.template importToRoot<DefaultHostExecutionSpace>(2, res_dev_dist[2]);
 
   ASSERT_EQ(oFM.nRows(), 4);
   ASSERT_EQ(oFM.nCols(), 1);
@@ -485,19 +504,24 @@ void RunMTTKRPTypeTest(MTTKRP_Method::type mttkrp_method,
   a.subscript(1, 2) = 3;
   a.value(1) = 1.0;
 
-  a_dev_dist = dtc.distributeTensor<exec_space>(a);
+  a_dev_dist = dtc.distributeTensor(a);
   pmap = dtc.pmap_ptr().get();
   a_dev_dist.setProcessorMap(pmap);
   if (mttkrp_method == MTTKRP_Method::Perm) {
     a_dev_dist.createPermutation();
   }
 
-  oKtens_dev_dist = dtc.exportFromRoot<exec_space>(oKtens);
+  oKtens_dev_dist = dtc.exportFromRoot(oKtens);
   oKtens_dev_dist.setProcessorMap(pmap);
 
-  oFM_dev = FacMatrixT<exec_space>(a_dev_dist.size(0), nc, pmap->facMap(0));
-  mttkrp(a_dev_dist, oKtens_dev_dist, 0, oFM_dev, algParams);
-  oFM = dtc.importToRoot<DefaultHostExecutionSpace>(0, oFM_dev);
+  dku->updateTensor(a_dev_dist);
+  oKtens_dev_overlap = dku->createOverlapKtensor(oKtens_dev_dist);
+  res_dev_overlap = dku->createOverlapKtensor(res_dev_dist);
+  dku->doImport(oKtens_dev_overlap, oKtens_dev_dist);
+
+  mttkrp(a_dev_dist, oKtens_dev_overlap, 0, res_dev_overlap[0], algParams);
+  dku->doExport(res_dev_dist, res_dev_overlap, 0);
+  oFM = dtc.template importToRoot<DefaultHostExecutionSpace>(0, res_dev_dist[0]);
 
   if (dtc.gridRank() == 0) {
     ASSERT_FLOAT_EQ(oFM.entry(0, 0), 180.0);
@@ -505,9 +529,9 @@ void RunMTTKRPTypeTest(MTTKRP_Method::type mttkrp_method,
     INFO_MSG("mttkrp result values correct for index [0], 2 sparse nnz");
   }
 
-  oFM_dev = FacMatrixT<exec_space>(a_dev_dist.size(1), nc, pmap->facMap(1));
-  mttkrp(a_dev_dist, oKtens_dev_dist, 1, oFM_dev, algParams);
-  oFM = dtc.importToRoot<DefaultHostExecutionSpace>(1, oFM_dev);
+  mttkrp(a_dev_dist, oKtens_dev_overlap, 1, res_dev_overlap[1], algParams);
+  dku->doExport(res_dev_dist, res_dev_overlap, 1);
+  oFM = dtc.template importToRoot<DefaultHostExecutionSpace>(1, res_dev_dist[1]);
 
   if (dtc.gridRank() == 0) {
     ASSERT_FLOAT_EQ(oFM.entry(0, 0), 150.0);
@@ -515,15 +539,17 @@ void RunMTTKRPTypeTest(MTTKRP_Method::type mttkrp_method,
     INFO_MSG("mttkrp result values correct for index [0], 2 sparse nnz");
   }
 
-  oFM_dev = FacMatrixT<exec_space>(a_dev_dist.size(2), nc, pmap->facMap(2));
-  mttkrp(a_dev_dist, oKtens_dev_dist, 2, oFM_dev, algParams);
-  oFM = dtc.importToRoot<DefaultHostExecutionSpace>(2, oFM_dev);
+  mttkrp(a_dev_dist, oKtens_dev_overlap, 2, res_dev_overlap[2], algParams);
+  dku->doExport(res_dev_dist, res_dev_overlap, 2);
+  oFM = dtc.template importToRoot<DefaultHostExecutionSpace>(2, res_dev_dist[2]);
 
   if (dtc.gridRank() == 0) {
     ASSERT_FLOAT_EQ(oFM.entry(0, 0), 120.0);
     ASSERT_FLOAT_EQ(oFM.entry(3, 0), 154.0);
     INFO_MSG("mttkrp result values correct for index [0], 2 sparse nnz");
   }
+
+  delete dku;
 }
 
 TYPED_TEST(TestMixedFormatsT, MTTKRP_Type) {
@@ -612,28 +638,37 @@ void RunMTTKRAllTypeTest(MTTKRP_All_Method::type mttkrp_method,
   oKtens[2].entry(3, 0) = 18.0;
 
   // Copy a and oKtens to device
-  Genten::DistTensorContext dtc;
-  SptensorT<exec_space> a_dev_dist = dtc.distributeTensor<exec_space>(a);
+  Genten::DistTensorContext<exec_space> dtc;
+  SptensorT<exec_space> a_dev_dist = dtc.distributeTensor(a);
   const ProcessorMap *pmap = dtc.pmap_ptr().get();
   a_dev_dist.setProcessorMap(pmap);
 
-  KtensorT<exec_space> oKtens_dev_dist = dtc.exportFromRoot<exec_space>(oKtens);
+  KtensorT<exec_space> oKtens_dev_dist = dtc.exportFromRoot(oKtens);
   oKtens_dev_dist.setProcessorMap(pmap);
 
   Ktensor v(nc, nd, dims);
   v.setWeights(1.0);
-  KtensorT<exec_space> v_dev_dist = dtc.exportFromRoot<exec_space>(v);
+  KtensorT<exec_space> v_dev_dist = dtc.exportFromRoot(v);
   v_dev_dist.setProcessorMap(pmap);
 
   AlgParams algParams;
   algParams.mttkrp_all_method = mttkrp_method;
   algParams.mttkrp_method = Genten::MTTKRP_Method::Atomic;
 
+  DistKtensorUpdate<exec_space> *dku =
+    createKtensorUpdate(a_dev_dist, oKtens_dev_dist, algParams);
+  KtensorT<exec_space> oKtens_dev_overlap =
+    dku->createOverlapKtensor(oKtens_dev_dist);
+   KtensorT<exec_space> v_dev_overlap =
+    dku->createOverlapKtensor(v_dev_dist);
+  dku->doImport(oKtens_dev_overlap, oKtens_dev_dist);
+
   // Matricizing on index 0 has result 12*15 = 180.
   // Matricizing on index 1 has result 10*15 = 150.
   // Matricizing on index 2 has result 10*12 = 120.
-  mttkrp_all(a_dev_dist, oKtens_dev_dist, v_dev_dist, algParams);
-  v = dtc.importToRoot<DefaultHostExecutionSpace>(v_dev_dist);
+  mttkrp_all(a_dev_dist, oKtens_dev_overlap, v_dev_overlap, algParams);
+  dku->doExport(v_dev_dist, v_dev_overlap);
+  v = dtc.template importToRoot<DefaultHostExecutionSpace>(v_dev_dist);
 
   if (DistContext::rank() == 0) {
     ASSERT_EQ(v[0].nRows(), 2);
@@ -671,10 +706,17 @@ void RunMTTKRAllTypeTest(MTTKRP_All_Method::type mttkrp_method,
   a.subscript(1, 1) = 2;
   a.subscript(1, 2) = 3;
   a.value(1) = 1.0;
-  a_dev_dist = dtc.distributeTensor<exec_space>(a);
+  a_dev_dist = dtc.distributeTensor(a);
   a_dev_dist.setProcessorMap(pmap);
-  mttkrp_all(a_dev_dist, oKtens_dev_dist, v_dev_dist, algParams);
-  v = dtc.importToRoot<DefaultHostExecutionSpace>(v_dev_dist);
+
+  dku->updateTensor(a_dev_dist);
+  oKtens_dev_overlap = dku->createOverlapKtensor(oKtens_dev_dist);
+  v_dev_overlap = dku->createOverlapKtensor(v_dev_dist);
+  dku->doImport(oKtens_dev_overlap, oKtens_dev_dist);
+
+  mttkrp_all(a_dev_dist, oKtens_dev_overlap, v_dev_overlap, algParams);
+  dku->doExport(v_dev_dist, v_dev_overlap);
+  v = dtc.template importToRoot<DefaultHostExecutionSpace>(v_dev_dist);
 
   if (DistContext::rank() == 0) {
     ASSERT_FLOAT_EQ(v[0].entry(0, 0), 180.0);
@@ -689,6 +731,8 @@ void RunMTTKRAllTypeTest(MTTKRP_All_Method::type mttkrp_method,
     ASSERT_FLOAT_EQ(v[2].entry(3, 0), 154.0);
     INFO_MSG("mttkrp result values correct for index [0], 2 sparse nnz");
   }
+
+  delete dku;
 }
 
 TYPED_TEST(TestMixedFormatsT, MTTKRP_All_Type) {

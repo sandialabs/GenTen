@@ -210,6 +210,26 @@ static nlohmann::json json_schema = R"(
                   "description": "Use parallel random number generator",
                   "type": "boolean",
                   "default": false
+              },
+              "scale-guess-by-norm-x": {
+                  "description": "Scale initial guess by norm of the tensor",
+                  "type": "boolean",
+                  "default": true
+              },
+              "dist-method": {
+                  "description": "Distributed Ktensor update method",
+                  "enum": ["all-reduce", "all-gather", "tpetra"],
+                  "default": "all-reduce"
+              },
+              "optimize-maps": {
+                  "description": "Optimize distributed maps to reduce communication",
+                  "type": "boolean",
+                  "default": false
+              },
+              "build-maps-on-device": {
+                  "description": "Build distributed maps on the device",
+                  "type": "boolean",
+                  "default": true
               }
           }
       },
@@ -377,7 +397,7 @@ static nlohmann::json json_schema = R"(
               },
               "sampling": {
                   "description": "Sampling method",
-                  "enum": ["uniform", "stratified", "semi-stratified"],
+                  "enum": ["uniform", "stratified", "semi-stratified", "dense"],
                   "default": "stratified"
               },
               "seed": {

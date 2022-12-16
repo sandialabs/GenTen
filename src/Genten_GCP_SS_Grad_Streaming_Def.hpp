@@ -59,7 +59,7 @@ namespace Genten {
     template <int Dupl, int Cont, unsigned FBS, unsigned VS,
               typename ExecSpace, typename loss_type>
     void gcp_sgd_ss_grad_sv_kernel(
-      const SptensorT<ExecSpace>& X,
+      const SptensorT<ExecSpace>& Xd,
       const KtensorT<ExecSpace>& M,
       const KtensorT<ExecSpace>& Mt,
       const KtensorT<ExecSpace>& Mprev,
@@ -78,6 +78,8 @@ namespace Genten {
       const int timer_nzs,
       const int timer_zs)
     {
+      const auto X = Xd.impl();
+
       using Kokkos::Experimental::create_scatter_view;
       using Kokkos::Experimental::ScatterView;
       using Kokkos::Experimental::ScatterSum;
@@ -127,6 +129,7 @@ namespace Genten {
       timer.start(timer_nzs);
       Policy policy_nz(N_nz, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "gcp_sgd_ss_grad_sv_nonzero_kernel",
         policy_nz.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -241,12 +244,13 @@ namespace Genten {
 
         } // i
         rand_pool.free_state(gen);
-      }, "gcp_sgd_ss_grad_sv_nonzero_kernel");
+      });
       timer.stop(timer_nzs);
 
       timer.start(timer_zs);
       Policy policy_z(N_z, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "gcp_sgd_ss_grad_sv_zero_kernel",
         policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -359,7 +363,7 @@ namespace Genten {
 
         } // i
         rand_pool.free_state(gen);
-      }, "gcp_sgd_ss_grad_sv_zero_kernel");
+      });
       timer.stop(timer_zs);
 
       for (unsigned n=0; n<d; ++n)
@@ -374,7 +378,7 @@ namespace Genten {
     template <unsigned FBS, unsigned VS,
               typename ExecSpace, typename loss_type>
     void gcp_sgd_ss_grad_atomic_kernel(
-      const SptensorT<ExecSpace>& X,
+      const SptensorT<ExecSpace>& Xd,
       const KtensorT<ExecSpace>& M,
       const KtensorT<ExecSpace>& Mt,
       const KtensorT<ExecSpace>& Mprev,
@@ -393,6 +397,8 @@ namespace Genten {
       const int timer_nzs,
       const int timer_zs)
     {
+      const auto X = Xd.impl();
+
       typedef Kokkos::TeamPolicy<ExecSpace> Policy;
       typedef typename Policy::member_type TeamMember;
       typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
@@ -430,6 +436,7 @@ namespace Genten {
       timer.start(timer_nzs);
       Policy policy_nz(N_nz, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "gcp_sgd_ss_grad_atomic_nonzero_kernel",
         policy_nz.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -537,12 +544,13 @@ namespace Genten {
 
         } // i
         rand_pool.free_state(gen);
-      }, "gcp_sgd_ss_grad_atomic_nonzero_kernel");
+      });
       timer.stop(timer_nzs);
 
       timer.start(timer_zs);
       Policy policy_z(N_z, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "gcp_sgd_ss_grad_atomic_zero_kernel",
         policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -647,7 +655,7 @@ namespace Genten {
           } // h
         } // i
         rand_pool.free_state(gen);
-      }, "gcp_sgd_ss_grad_atomic_zero_kernel");
+      });
       timer.stop(timer_zs);
     }
 

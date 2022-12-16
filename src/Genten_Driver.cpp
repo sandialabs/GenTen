@@ -46,6 +46,8 @@
 #include "Genten_CpAls.hpp"
 #ifdef HAVE_ROL
 #include "Genten_CP_Opt_Rol.hpp"
+#include "Teuchos_RCP.hpp"
+#include "Teuchos_XMLParameterListHelpers.hpp"
 #endif
 #ifdef HAVE_LBFGSB
 #include "Genten_CP_Opt_Lbfgsb.hpp"
@@ -59,17 +61,18 @@
 #endif
 #ifdef HAVE_ROL
 #include "Genten_GCP_Opt.hpp"
-#include "Teuchos_RCP.hpp"
-#include "Teuchos_XMLParameterListHelpers.hpp"
-#include "Teuchos_TimeMonitor.hpp"
 #endif
+#endif
+#ifdef HAVE_TEUCHOS
+#include "Teuchos_TimeMonitor.hpp"
+#include "Teuchos_StackedTimer.hpp"
 #endif
 
 namespace Genten {
 
 template<typename ExecSpace>
 KtensorT<ExecSpace>
-driver(const DistTensorContext& dtc,
+driver(const DistTensorContext<ExecSpace>& dtc,
        SptensorT<ExecSpace>& x,
        KtensorT<ExecSpace>& u,
        AlgParams& algParams,
@@ -77,6 +80,8 @@ driver(const DistTensorContext& dtc,
        PerfHistory& history,
        std::ostream& out_in)
 {
+  GENTEN_TIME_MONITOR("Genten driver");
+
   typedef Genten::SptensorT<ExecSpace> Sptensor_type;
   typedef Genten::SptensorT<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
   typedef Genten::KtensorT<ExecSpace> Ktensor_type;
@@ -94,9 +99,10 @@ driver(const DistTensorContext& dtc,
   // Generate a random starting point if initial guess is empty
   if (u.ncomponents() == 0 && u.ndims() == 0) {
     timer.start(0);
-    u = dtc.randomInitialGuess<ExecSpace>(x, algParams.rank, algParams.seed,
-                                          algParams.prng,
-                                          algParams.dist_guess_method);
+    u = dtc.randomInitialGuess(x, algParams.rank, algParams.seed,
+                               algParams.prng,
+                               algParams.scale_guess_by_norm_x,
+                               algParams.dist_guess_method);
     timer.stop(0);
     if (algParams.timings)
       out << "Creating random initial guess took " << timer.getTotalTime(0)
@@ -105,7 +111,7 @@ driver(const DistTensorContext& dtc,
 
   if (algParams.debug) {
     Ktensor_host_type u0 =
-      dtc.importToRoot<Genten::DefaultHostExecutionSpace>(u);
+      dtc.template importToRoot<Genten::DefaultHostExecutionSpace>(u);
     Genten::print_ktensor(u0, out, "Initial guess");
   }
 
@@ -194,6 +200,8 @@ driver(const DistTensorContext& dtc,
   }
   else if (algParams.method == Genten::Solver_Method::GCP_SGD &&
            algParams.fuse_sa) {
+    if (algParams.dist_update_method == Dist_Update_Method::Tpetra)
+      Genten::error("Fused-SA GCP-SGD method does not work with Tpetra distributed parallelism");
     // Run GCP-SGD
     ttb_indx iter;
     ttb_real resNorm;
@@ -234,13 +242,22 @@ driver(const DistTensorContext& dtc,
 
   if (algParams.debug) {
     Ktensor_host_type u0 =
-      dtc.importToRoot<Genten::DefaultHostExecutionSpace>(u);
+      dtc.template importToRoot<Genten::DefaultHostExecutionSpace>(u);
     Genten::print_ktensor(u0, out, "Solution");
   }
 
-#if defined(HAVE_GCP) && defined(HAVE_ROL)
-  if (algParams.method == Genten::Solver_Method::GCP_OPT)
-    Teuchos::TimeMonitor::summarize();
+#if defined(HAVE_TEUCHOS)
+  Teuchos::StackedTimer::OutputOptions options;
+  options.output_fraction = true;
+  options.output_minmax   = true;
+  options.align_columns   = true;
+  options.print_warnings  = false;
+#ifdef HAVE_DIST
+  auto comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap->gridComm()));
+#else
+  auto comm = Teuchos::createSerialComm<int>();
+#endif
+  Teuchos::TimeMonitor::getStackedTimer()->report(out, comm, options);
 #endif
 
   x.setProcessorMap(nullptr);
@@ -368,7 +385,7 @@ driver(TensorT<ExecSpace>& x,
 #define INST_MACRO(SPACE)                                               \
   template KtensorT<SPACE>                                              \
   driver<SPACE>(                                                        \
-    const DistTensorContext& dtc,                                       \
+    const DistTensorContext<SPACE>& dtc,                                \
     SptensorT<SPACE>& x,                                                \
     KtensorT<SPACE>& u_init,                                            \
     AlgParams& algParams,                                               \

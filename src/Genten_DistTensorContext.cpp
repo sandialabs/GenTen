@@ -342,26 +342,6 @@ redistributeTensor(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
 
 } // namespace detail
 
-std::pair<G_MPI_IO::SptnFileHeader, MPI_File>
-DistTensorContext::
-readBinaryHeader(const std::string& file_name, int indexbase,
-           std::vector<std::uint32_t>& dims,
-           std::uint64_t& nnz)
-{
-  bool is_binary = detail::fileFormatIsBinary(file_name);
-  if (!is_binary)
-    Genten::error("readBinaryHeader called on non-binary file!\n");
-  if (indexbase != 0)
-    Genten::error("The binary format only supports zero based indexing\n");
-
-  auto *mpi_fh = G_MPI_IO::openFile(DistContext::commWorld(), file_name);
-  auto binary_header = G_MPI_IO::readHeader(DistContext::commWorld(), mpi_fh);
-  TensorInfo ti = binary_header.toTensorInfo();
-  dims = ti.dim_sizes;
-  nnz = ti.nnz;
-  return std::make_pair(std::move(binary_header), mpi_fh);
-}
-
 } // namespace Genten
 
 #endif

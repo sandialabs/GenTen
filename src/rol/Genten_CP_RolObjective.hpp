@@ -103,7 +103,7 @@ namespace Genten {
 
     ROL::Ptr<vector_type> createDesignVector() const
     {
-      return ROL::makePtr<vector_type>(M, false);
+      return ROL::makePtr<vector_type>(M, false, cp_model.getDistKtensorUpdate());
     }
 
   protected:

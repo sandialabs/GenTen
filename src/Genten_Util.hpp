@@ -236,6 +236,25 @@ namespace Genten {
     static constexpr type default_type = Default;
   };
 
+  // Distributed Ktensor update algorithm
+  struct Dist_Update_Method {
+    enum type {
+      AllReduce,
+      AllGather,
+      Tpetra
+    };
+    static constexpr unsigned num_types = 3;
+    static constexpr type types[] = {
+      AllReduce,
+      AllGather,
+      Tpetra
+    };
+    static constexpr const char* names[] = {
+      "all-reduce", "all-gather", "tpetra"
+    };
+    static constexpr type default_type = AllReduce;
+  };
+
   // Hessian-vector product method for CP-OPT w/ROL
   struct Hess_Vec_Method {
     enum type {
@@ -459,3 +478,21 @@ namespace Genten {
   };
   extern oblackholestream bhcout;
 }
+
+#ifdef HAVE_TEUCHOS
+#include "Teuchos_TimeMonitor.hpp"
+#include "Teuchos_StackedTimer.hpp"
+#define GENTEN_TIME_MONITOR(FUNCNAME) \
+  TEUCHOS_FUNC_TIME_MONITOR(FUNCNAME)
+#define GENTEN_TIME_MONITOR_DIFF(FUNCNAME, DIFF) \
+  TEUCHOS_FUNC_TIME_MONITOR_DIFF(FUNCNAME, DIFF)
+#define GENTEN_START_TIMER(FUNCNAME) \
+  Teuchos::TimeMonitor::getStackedTimer()->start(FUNCNAME)
+#define GENTEN_STOP_TIMER(FUNCNAME) \
+  Teuchos::TimeMonitor::getStackedTimer()->stop(FUNCNAME)
+#else
+#define GENTEN_TIME_MONITOR(FUNCNAME)
+#define GENTEN_TIME_MONITOR_DIFF(FUNCNAME, DIFF)
+#define GENTEN_START_TIMER(FUNCNAME)
+#define GENTEN_STOP_TIMER(FUNCNAME)
+#endif

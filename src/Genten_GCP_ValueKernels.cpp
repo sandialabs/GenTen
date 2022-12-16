@@ -40,6 +40,7 @@
 
 #include "Genten_GCP_ValueKernels.hpp"
 #include "Genten_SimdKernel.hpp"
+#include "Genten_DistFacMatrix.hpp"
 
 namespace Genten {
 
@@ -47,7 +48,7 @@ namespace Genten {
 
     template <typename ExecSpace, typename loss_type>
     struct GCP_Value {
-      typedef SptensorT<ExecSpace> tensor_type;
+      typedef SptensorImpl<ExecSpace> tensor_type;
       typedef KtensorT<ExecSpace> Ktensor_type;
       typedef ArrayT<ExecSpace> weights_type;
 
@@ -271,12 +272,14 @@ namespace Genten {
     };
 
     template <typename ExecSpace, typename loss_type>
-    ttb_real gcp_value(const SptensorT<ExecSpace>& X,
+    ttb_real gcp_value(const SptensorT<ExecSpace>& Xd,
                        const KtensorT<ExecSpace>& M,
                        const ArrayT<ExecSpace>& w,
                        const loss_type& f)
     {
+      GENTEN_START_TIMER("local objective");
       ttb_real val = 0.0;
+      const auto X = Xd.impl();
 #if 1
       GCP_Value<ExecSpace,loss_type> kernel(X,M,w,f);
       run_row_simd_kernel(kernel, M.ncomponents());
@@ -303,10 +306,13 @@ namespace Genten {
       }, val);
       Kokkos::fence();  // ensure val is updated before using it
 #endif
+      GENTEN_STOP_TIMER("local objective");
 
       if (M.getProcessorMap() != nullptr) {
+        GENTEN_START_TIMER("grid all-reduce");
         Kokkos::fence();
         val = M.getProcessorMap()->gridAllReduce(val);
+        GENTEN_STOP_TIMER("grid all-reduce");
       }
 
       return val;

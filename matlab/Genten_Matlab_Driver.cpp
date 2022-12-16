@@ -91,7 +91,7 @@ void matlab_driver(int nlhs, mxArray *plhs[],
     throw std::string("Invalid type for initial guess specification.");
 
   // To do:  initialize this
-  Genten::DistTensorContext dtc;
+  Genten::DistTensorContext<ExecSpace> dtc;
 
   // Call driver
   Genten::PerfHistory history;

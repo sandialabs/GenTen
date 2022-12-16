@@ -63,10 +63,12 @@ void assign_factor_matrix_view(const ttb_indx i, const ViewType& v,
                                const MatrixType& mat)
 {
   Kokkos::RangePolicy<typename ViewType::execution_space> policy(0,1);
-  Kokkos::parallel_for( policy, KOKKOS_LAMBDA(const ttb_indx j)
+  Kokkos::parallel_for(
+    "Genten::Impl::assign_factor_matrix_view",
+    policy, KOKKOS_LAMBDA(const ttb_indx j)
   {
     v[i].assign_view(mat);
-  }, "Genten::Impl::assign_factor_matrix_view");
+  });
 }
 
 }

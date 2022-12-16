@@ -51,9 +51,10 @@ namespace Genten {
 
   namespace Impl {
 
-    template <typename ExecSpace, typename LossFunction>
+    template <typename ExecSpace, typename Searcher, typename LossFunction>
     void uniform_sample_tensor(
       const SptensorT<ExecSpace>& X,
+      const Searcher& searcher,
       const ttb_indx num_samples,
       const ttb_real weight,
       const KtensorT<ExecSpace>& u,
@@ -64,10 +65,10 @@ namespace Genten {
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams);
 
-    template <typename ExecSpace, typename LossFunction>
-    void uniform_sample_tensor_hash(
+    template <typename ExecSpace, typename Searcher, typename LossFunction>
+    void uniform_sample_tensor_tpetra(
       const SptensorT<ExecSpace>& X,
-      const TensorHashMap<ExecSpace>& hash,
+      const Searcher& searcher,
       const ttb_indx num_samples,
       const ttb_real weight,
       const KtensorT<ExecSpace>& u,
@@ -75,104 +76,152 @@ namespace Genten {
       const bool compute_gradient,
       SptensorT<ExecSpace>& Y,
       ArrayT<ExecSpace>& w,
+      KtensorT<ExecSpace>& u_overlap,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams);
 
-    template <typename ExecSpace, typename LossFunction>
+    template <typename ExecSpace, typename Searcher, typename Gradient>
     void stratified_sample_tensor(
       const SptensorT<ExecSpace>& X,
+      const Searcher& searcher,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
       const KtensorT<ExecSpace>& u,
-      const LossFunction& loss_func,
+      const Gradient& gradient,
       const bool compute_gradient,
       SptensorT<ExecSpace>& Y,
       ArrayT<ExecSpace>& w,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams);
 
-    template <typename ExecSpace, typename LossFunction>
-    void stratified_sample_tensor_hash(
+    template <typename ExecSpace, typename Searcher, typename Gradient>
+    void stratified_sample_tensor_tpetra(
       const SptensorT<ExecSpace>& X,
-      const TensorHashMap<ExecSpace>& hash,
+      const Searcher& searcher,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
       const KtensorT<ExecSpace>& u,
-      const LossFunction& loss_func,
+      const Gradient& gradient,
       const bool compute_gradient,
       SptensorT<ExecSpace>& Y,
       ArrayT<ExecSpace>& w,
-      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
-      const AlgParams& algParams);
-
-    template <typename ExecSpace, typename LossFunction>
-    void semi_stratified_sample_tensor(
-      const SptensorT<ExecSpace>& X,
-      const ttb_indx num_samples_nonzeros,
-      const ttb_indx num_samples_zeros,
-      const ttb_real weight_nonzeros,
-      const ttb_real weight_zeros,
-      const KtensorT<ExecSpace>& u,
-      const LossFunction& loss_func,
-      const bool compute_gradient,
-      SptensorT<ExecSpace>& Y,
-      ArrayT<ExecSpace>& w,
-      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
-      const AlgParams& algParams);
-
-    template <typename ExecSpace, typename LossFunction>
-    void sample_tensor_nonzeros(
-      const SptensorT<ExecSpace>& X,
-      const ttb_indx offset,
-      const ttb_indx num_samples,
-      const ttb_real weight,
-      const KtensorT<ExecSpace>& u,
-      const LossFunction& loss_func,
-      const bool compute_gradient,
-      SptensorT<ExecSpace>& Y,
-      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
-      const AlgParams& algParams);
-
-    template <typename ExecSpace, typename LossFunction>
-    void sample_tensor_nonzeros(
-      const SptensorT<ExecSpace>& X,
-      const ArrayT<ExecSpace>& w,
-      const ttb_indx num_samples,
-      const KtensorT<ExecSpace>& u,
-      const LossFunction& loss_func,
-      SptensorT<ExecSpace>& Y,
+      KtensorT<ExecSpace>& u_overlap,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams);
 
     template <typename ExecSpace>
-    void sample_tensor_nonzeros(
-      const SptensorT<ExecSpace>& X,
-      const ArrayT<ExecSpace>& w,
-      const ttb_indx num_samples,
-      SptensorT<ExecSpace>& Y,
-      ArrayT<ExecSpace>& z,
-      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
-      const AlgParams& algParams);
+    class SortSearcher {
+    public:
+      SortSearcher(const SptensorImpl<ExecSpace>& X_) : X(X_), nnz(X.nnz()) {}
+
+      template <typename IndexType>
+      KOKKOS_INLINE_FUNCTION
+      bool search(const IndexType& ind) const {
+        return (X.index(ind) < nnz);
+      }
+
+      template <typename IndexType>
+      KOKKOS_INLINE_FUNCTION
+      ttb_real value(const IndexType& ind) const {
+        const ttb_indx i = X.index(ind);
+        if (i < nnz)
+          return X.value(i);
+        return ttb_real(0.0);
+      }
+    private:
+      const SptensorImpl<ExecSpace> X;
+      const ttb_real nnz;
+    };
 
     template <typename ExecSpace>
-    void sample_tensor_zeros(
-      const SptensorT<ExecSpace>& X,
-      const ttb_indx offset,
-      const ttb_indx num_samples,
-      SptensorT<ExecSpace>& Y,
-      SptensorT<ExecSpace>& Z,
-      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
-      const AlgParams& algParams);
+    class HashSearcher {
+    public:
+      HashSearcher(const SptensorImpl<ExecSpace>& X_,
+                   const TensorHashMap<ExecSpace>& hash_) : X(X_), nnz(X.nnz()), hash(hash_) {}
+
+      template <typename IndexType>
+      KOKKOS_INLINE_FUNCTION
+      bool search(const IndexType& ind) const {
+        return hash.exists(ind);
+      }
+
+      template <typename IndexType>
+      KOKKOS_INLINE_FUNCTION
+      ttb_real value(const IndexType& ind) const {
+        const auto hash_index = hash.find(ind);
+        if (hash.valid_at(hash_index))
+          return hash.value_at(hash_index);
+        return ttb_real(0.0);
+      }
+    private:
+      const SptensorImpl<ExecSpace> X;
+      const ttb_real nnz;
+      const TensorHashMap<ExecSpace> hash;
+    };
 
     template <typename ExecSpace>
-    void merge_sampled_tensors(const SptensorT<ExecSpace>& X_nz,
-                               const SptensorT<ExecSpace>& X_z,
-                               SptensorT<ExecSpace>& X,
-                               const AlgParams& algParams);
+    class SemiStratifiedSearcher {
+    public:
+      SemiStratifiedSearcher() {}
+
+      template <typename IndexType>
+      KOKKOS_INLINE_FUNCTION
+      bool search(const IndexType& ind) const {
+          return false;
+      }
+
+      template <typename IndexType>
+      KOKKOS_INLINE_FUNCTION
+      bool search(const IndexType& ind, ttb_real& x) const {
+          return false;
+      }
+    };
+
+    template <typename LossType>
+    class StratifiedGradient {
+    public:
+      StratifiedGradient(const LossType& loss_) : loss(loss_) {}
+
+      KOKKOS_INLINE_FUNCTION
+      ttb_real
+      evalNonZero(const ttb_real x, const ttb_real m, const ttb_real w) const {
+        return w * loss.deriv(x, m);
+      }
+
+      KOKKOS_INLINE_FUNCTION
+      ttb_real
+      evalZero(const ttb_real m, const ttb_real w) const {
+        return w * loss.deriv(ttb_real(0.0), m);
+      }
+
+    private:
+      const LossType loss;
+    };
+
+    template <typename LossType>
+    class SemiStratifiedGradient {
+    public:
+      SemiStratifiedGradient(const LossType& loss_) : loss(loss_) {}
+
+      KOKKOS_INLINE_FUNCTION
+      ttb_real
+      evalNonZero(const ttb_real x, const ttb_real m, const ttb_real w) const {
+        return w * ( loss.deriv(x, m) - loss.deriv(ttb_real(0.0), m) );
+      }
+
+      KOKKOS_INLINE_FUNCTION
+      ttb_real
+      evalZero(const ttb_real m, const ttb_real w) const {
+        return w * loss.deriv(ttb_real(0.0), m);
+      }
+
+    private:
+      const LossType loss;
+    };
 
     template <typename ExecSpace, typename LossFunction>
     void stratified_ktensor_grad(

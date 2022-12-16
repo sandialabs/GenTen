@@ -101,7 +101,7 @@ void usage(char **argv)
 
 template <typename ExecSpace>
 void print_environment(const Genten::SptensorT<ExecSpace>& x,
-                       const Genten::DistTensorContext& dtc,
+                       const Genten::DistTensorContext<ExecSpace>& dtc,
                        std::ostream& out)
 {
   const ttb_indx nd = x.ndims();
@@ -185,7 +185,7 @@ int main_driver(Genten::AlgParams& algParams,
   typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
   typedef Genten::DistContext DC;
 
-  Genten::DistTensorContext dtc;
+  Genten::DistTensorContext<Space> dtc;
 
   Ktensor_type u;
   Genten::PerfHistory history;
@@ -195,7 +195,7 @@ int main_driver(Genten::AlgParams& algParams,
     Sptensor_type x;
     if (inputfilename != "") {
       timer.start(0);
-      x = dtc.distributeTensor<Space>(inputfilename, index_base, gz);
+      x = dtc.distributeTensor(inputfilename, index_base, gz, algParams);
       timer.stop(0);
       DC::Barrier();
       if (dtc.gridRank() == 0)
@@ -232,7 +232,7 @@ int main_driver(Genten::AlgParams& algParams,
         printf ("  Data generation took %6.3f seconds\n", timer.getTotalTime(0));
         std::cout << "  Actual nnz  = " << x_host.nnz() << "\n";
       }
-      x = dtc.distributeTensor<Space>(x_host);
+      x = dtc.distributeTensor(x_host, algParams);
     }
 
     // Print execution environment
@@ -243,7 +243,7 @@ int main_driver(Genten::AlgParams& algParams,
     // Read in initial guess if provided
     Ktensor_type u_init;
     if (initfilename != "") {
-      u_init = dtc.readInitialGuess<Space>(initfilename);
+      u_init = dtc.readInitialGuess(initfilename);
     }
 
     // Compute decomposition
@@ -298,7 +298,7 @@ int main_driver(Genten::AlgParams& algParams,
     // Read in initial guess if provided
     Ktensor_type u_init;
     if (initfilename != "") {
-      u_init = dtc.readInitialGuess<Space>(initfilename);
+      u_init = dtc.readInitialGuess(initfilename);
     }
 
     // Compute decomposition

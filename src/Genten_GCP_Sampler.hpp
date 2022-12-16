@@ -69,6 +69,8 @@ namespace Genten {
                             const bool print_itn,
                             std::ostream& out) = 0;
 
+    virtual ttb_indx getNumGradSamples() const = 0;
+
     virtual void print(std::ostream& out) = 0;
 
     virtual void sampleTensorF(const KtensorT<ExecSpace>& u,
@@ -78,7 +80,7 @@ namespace Genten {
                                const StreamingHistory<ExecSpace>& hist,
                                const LossFunction& loss_func) = 0;
 
-    virtual void prepareGradient() = 0;
+    virtual void prepareGradient(const KtensorT<ExecSpace>& gt) = 0;
 
     virtual void value(const KtensorT<ExecSpace>& u,
                        const StreamingHistory<ExecSpace>& hist,
@@ -97,20 +99,25 @@ namespace Genten {
                           SystemTimer& timer,
                           const int timer_init,
                           const int timer_nzs,
-                          const int timer_zs) = 0;
+                          const int timer_zs,
+                          const int timer_grad_mttkrp,
+                          const int timer_grad_comm,
+                          const int timer_grad_update) = 0;
 
-    static map_type buildHashMap(const SptensorT<ExecSpace>& X,
+    static map_type buildHashMap(const SptensorT<ExecSpace>& Xd,
                                  std::ostream& out)
     {
+      const auto X = Xd.impl();
       const ttb_indx nnz = X.nnz();
       const ttb_indx nd = X.ndims();
       map_type hash_map(nd, ttb_indx(1.1*nnz));
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nnz),
+      Kokkos::parallel_for("Genten::GCP_SGD::hash_kernel",
+                           Kokkos::RangePolicy<ExecSpace>(0,nnz),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
-        auto key = X.getSubscripts(i);
+        auto key = X.getGlobalSubscripts(i);
         hash_map.insert(key, X.value(i));
-      }, "Genten::GCP_SGD::hash_kernel");
+      });
 
       const bool print_histogram = false;
       if (print_histogram) {

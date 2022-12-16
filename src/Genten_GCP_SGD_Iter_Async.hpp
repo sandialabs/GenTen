@@ -53,7 +53,7 @@ namespace Genten {
 
     template <typename ExecSpace, typename LossFunction, typename Stepper>
     void gcp_sgd_iter_async_kernel(
-      const SptensorT<ExecSpace>& X,
+      const SptensorImpl<ExecSpace>& X,
       const KtensorT<ExecSpace>& u,
       const LossFunction& f,
       const ttb_indx nsz,
@@ -100,6 +100,7 @@ namespace Genten {
 
       Policy policy(N, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "gcp_sgd_iter_asyn_kernel",
         policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -189,7 +190,7 @@ namespace Genten {
         }
         stepper.update_async(RowBlockSize, team);
         rand_pool.free_state(gen);
-      }, "gcp_sgd_iter_asyn_kernel");
+      });
 
       // Fence to make sure kernel is finished before updates to stepper
       Kokkos::fence();
@@ -248,19 +249,19 @@ namespace Genten {
           dynamic_cast<AMSGradStep<ExecSpace,LossFunction>*>(&stepper);
         if (sgd_step != nullptr)
           gcp_sgd_iter_async_kernel(
-            X,this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*sgd_step,
+            X.impl(),this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*sgd_step,
             this->mode_beg, this->mode_end, this->algParams, total_iters);
         else if (adagrad_step != nullptr)
           gcp_sgd_iter_async_kernel(
-            X,this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*adagrad_step,
+            X.impl(),this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*adagrad_step,
             this->mode_beg, this->mode_end, this->algParams, total_iters);
         else if (adam_step != nullptr)
           gcp_sgd_iter_async_kernel(
-            X,this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*adam_step,
+            X.impl(),this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*adam_step,
             this->mode_beg, this->mode_end, this->algParams, total_iters);
         else if (amsgrad_step != nullptr)
           gcp_sgd_iter_async_kernel(
-            X,this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*amsgrad_step,
+            X.impl(),this->ut,loss_func,nsz,nsnz,wz,wnz,rand_pool,*amsgrad_step,
             this->mode_beg, this->mode_end, this->algParams, total_iters);
         else
           Genten::error("Unsupported GCP-SGD stepper!");

@@ -43,6 +43,7 @@
 #include "Genten_Sptensor.hpp"
 #include "Genten_Tensor.hpp"
 #include "Genten_Ktensor.hpp"
+#include "Genten_DistKtensorUpdate.hpp"
 #include "Genten_AlgParams.hpp"
 
 namespace Genten
@@ -52,6 +53,10 @@ namespace Genten
                 const KtensorT<ExecSpace>& a,
                 const KtensorT<ExecSpace>& v,
                 const KtensorT<ExecSpace>& u,
+                const KtensorT<ExecSpace>& a_overlap,
+                const KtensorT<ExecSpace>& v_overlap,
+                const KtensorT<ExecSpace>& u_overlap,
+                const DistKtensorUpdate<ExecSpace>& dku,
                 const AlgParams& algParams);
 
   template <typename ExecSpace>
@@ -59,6 +64,10 @@ namespace Genten
                 const KtensorT<ExecSpace>& a,
                 const KtensorT<ExecSpace>& v,
                 const KtensorT<ExecSpace>& u,
+                const KtensorT<ExecSpace>& a_overlap,
+                const KtensorT<ExecSpace>& v_overlap,
+                const KtensorT<ExecSpace>& u_overlap,
+                const DistKtensorUpdate<ExecSpace>& dku,
                 const AlgParams& algParams);
 
   template <typename TensorType>

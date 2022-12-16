@@ -99,16 +99,18 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
       if (!X.isSorted())
         X.sort();
       Genten::Impl::stratified_sample_tensor(
-        X, num_samples_nonzeros, num_samples_zeros,
+        X, Genten::Impl::SortSearcher<ExecSpace>(X.impl()),
+        num_samples_nonzeros, num_samples_zeros,
         weight_nonzeros, weight_zeros,
-        u, loss_func, false,
+        u, Genten::Impl::StratifiedGradient<Genten::GaussianLossFunction>(loss_func), false,
         Xs, w, rand_pool, algParams);
     }
     else if (method == "semi-stratified")
-      Genten::Impl::semi_stratified_sample_tensor(
-        X, num_samples_nonzeros, num_samples_zeros,
+      Genten::Impl::stratified_sample_tensor(
+        X, Genten::Impl::SemiStratifiedSearcher<ExecSpace>(),
+        num_samples_nonzeros, num_samples_zeros,
         weight_nonzeros, weight_zeros,
-        u, loss_func, false,
+        u, Genten::Impl::SemiStratifiedGradient<Genten::GaussianLossFunction>(loss_func), false,
         Xs, w, rand_pool, algParams);
     else {
       std::string err = "Unknown method " + method;

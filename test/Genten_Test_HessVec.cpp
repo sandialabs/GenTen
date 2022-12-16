@@ -168,7 +168,7 @@ template <typename exec_space>
 void RunHessVecTest(Genten::Hess_Vec_Tensor_Method::type hess_vec_method,
                     const std::string &label) {
   DistContext::Barrier();
-  Genten::DistTensorContext dtc;
+  Genten::DistTensorContext<exec_space> dtc;
 
   const ttb_indx nd = 4;
   const ttb_indx nc = 3;
@@ -181,7 +181,7 @@ void RunHessVecTest(Genten::Hess_Vec_Tensor_Method::type hess_vec_method,
   ASSERT_TRUE(
       testGen.genSpFromRndKtensor(dims, nc, nnz, rng, x_host, sol_host));
 
-  SptensorT<exec_space> x_dist = dtc.distributeTensor<exec_space>(x_host);
+  SptensorT<exec_space> x_dist = dtc.distributeTensor(x_host);
   const ProcessorMap *pmap = dtc.pmap_ptr().get();
   x_dist.setProcessorMap(pmap);
 
@@ -197,9 +197,9 @@ void RunHessVecTest(Genten::Hess_Vec_Tensor_Method::type hess_vec_method,
   deep_copy(a_dev, a_host);
   deep_copy(v_dev, v_host);
 
-  KtensorT<exec_space> a_dev_dist = dtc.exportFromRoot<exec_space>(a_dev);
+  KtensorT<exec_space> a_dev_dist = dtc.exportFromRoot(a_dev);
   a_dev_dist.setProcessorMap(pmap);
-  KtensorT<exec_space> v_dev_dist = dtc.exportFromRoot<exec_space>(v_dev);
+  KtensorT<exec_space> v_dev_dist = dtc.exportFromRoot(v_dev);
   v_dev_dist.setProcessorMap(pmap);
 
   AlgParams algParams;
@@ -211,7 +211,7 @@ void RunHessVecTest(Genten::Hess_Vec_Tensor_Method::type hess_vec_method,
   algParams.hess_vec_method = Hess_Vec_Method::Full;
   CP_Model<SptensorT<exec_space>> cp_model_full(x_dist, a_dev_dist, algParams);
   KtensorT<exec_space> u(nc, nd, x_dist.size());
-  KtensorT<exec_space> u_dist = dtc.exportFromRoot<exec_space>(u);
+  KtensorT<exec_space> u_dist = dtc.exportFromRoot(u);
   u_dist.setProcessorMap(pmap);
   cp_model_full.update(a_dev_dist);
   cp_model_full.hess_vec(u_dist, a_dev_dist, v_dev_dist);
@@ -220,14 +220,14 @@ void RunHessVecTest(Genten::Hess_Vec_Tensor_Method::type hess_vec_method,
   algParams.hess_vec_method = Hess_Vec_Method::FiniteDifference;
   CP_Model<SptensorT<exec_space>> cp_model_fd(x_dist, a_dev_dist, algParams);
   KtensorT<exec_space> u_fd(nc, nd, x_dist.size());
-  KtensorT<exec_space> u_fd_dist = dtc.exportFromRoot<exec_space>(u_fd);
+  KtensorT<exec_space> u_fd_dist = dtc.exportFromRoot(u_fd);
   u_fd_dist.setProcessorMap(pmap);
   cp_model_fd.update(a_dev_dist);
   cp_model_fd.hess_vec(u_fd_dist, a_dev_dist, v_dev_dist);
 
   // Check values
-  u = dtc.importToRoot<exec_space>(u_dist);
-  u_fd = dtc.importToRoot<exec_space>(u_fd_dist);
+  u = dtc.template importToRoot<exec_space>(u_dist);
+  u_fd = dtc.template importToRoot<exec_space>(u_fd_dist);
 
   if (DistContext::rank() == 0) {
     const ttb_real tol = 1e-6;

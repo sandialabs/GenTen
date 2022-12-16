@@ -244,8 +244,8 @@ void RunCpOptRolTest(MTTKRP_All_Method::type mttkrp_method,
 
   GENTEN_EQ(X.nnz(), 11, "Data tensor has 11 nonzeroes");
 
-  Genten::DistTensorContext dtc;
-  SptensorT<exec_space> X_dev = dtc.distributeTensor<exec_space>(X);
+  Genten::DistTensorContext<exec_space> dtc;
+  SptensorT<exec_space> X_dev = dtc.distributeTensor(X);
 
   INFO_MSG("Creating a ktensor with initial guess of lin indep basis vectors");
 
@@ -277,23 +277,25 @@ void RunCpOptRolTest(MTTKRP_All_Method::type mttkrp_method,
   const ProcessorMap *pmap = dtc.pmap_ptr().get();
   X_dev.setProcessorMap(pmap);
 
+  std::ostream& out = pmap->gridRank() == 0 ? std::cout : Genten::bhcout;
+
   // Factorize.
   AlgParams algParams;
   algParams.rank = nNumComponents;
   algParams.tol = 1.0e-6;
   algParams.maxiters = 100;
-  algParams.printitn = 0;
+  algParams.printitn = 1;
   algParams.mttkrp_all_method = mttkrp_method;
   Ktensor result(nNumComponents, dims.size(), dims);
   deep_copy(result, initialBasis);
-  KtensorT<exec_space> result_dev = dtc.exportFromRoot<exec_space>(result);
+  KtensorT<exec_space> result_dev = dtc.exportFromRoot(result);
   result_dev.setProcessorMap(pmap);
   EXPECT_NO_THROW({
     PerfHistory history;
-    cp_opt_rol(X_dev, result_dev, algParams, history);
+    cp_opt_rol(X_dev, result_dev, algParams, history, out);
   });
 
-  result = dtc.importToRoot<typename Ktensor::exec_space>(result_dev);
+  result = dtc.template importToRoot<typename Ktensor::exec_space>(result_dev);
 
   if (dtc.gridRank() == 0) {
     evaluateResult(algParams.tol, result);
@@ -311,7 +313,7 @@ void RunCpOptRolTest(MTTKRP_All_Method::type mttkrp_method,
         create_mirror_view(exec_space(), result);
       deep_copy(result_dev, initialBasis);
       PerfHistory history;
-      cp_opt_rol(Xd_dev, result_dev, algParams, history);
+      cp_opt_rol(Xd_dev, result_dev, algParams, history, out);
     });
 
     deep_copy(result, result_dev);

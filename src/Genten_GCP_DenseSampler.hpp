@@ -45,6 +45,8 @@
 #include "Genten_SystemTimer.hpp"
 #include "Genten_GCP_SamplingKernels.hpp"
 #include "Genten_GCP_ValueKernels.hpp"
+#include "Genten_MixedFormatOps.hpp"
+#include "Genten_DistKtensorUpdate.hpp"
 
 namespace Genten {
 
@@ -57,19 +59,31 @@ namespace Genten {
     typedef typename base_type::map_type map_type;
 
     DenseSampler(const SptensorT<ExecSpace>& X_,
-                      const AlgParams& algParams_) :
-      X(X_), algParams(algParams_), uh(algParams_.rank,X.ndims())
+                 const KtensorT<ExecSpace>& u,
+                 const AlgParams& algParams_) :
+      X(X_), algParams(algParams_), uh(u.ncomponents(),u.ndims())
     {
       if (!std::is_same<LossFunction, GaussianLossFunction>::value)
         Genten::error("Dense sampler only implemented for Gaussian loss!");
+
+      dku = createKtensorUpdate(X, u, algParams);
+      u_overlap = dku->createOverlapKtensor(u);
     }
 
-    virtual ~DenseSampler() {}
+    virtual ~DenseSampler()
+    {
+      delete dku;
+    }
 
     virtual void initialize(const pool_type& rand_pool_,
                             const bool printitn,
                             std::ostream& out) override
     {
+    }
+
+    virtual ttb_indx getNumGradSamples() const override
+    {
+      return 0;
     }
 
     virtual void print(std::ostream& out) override
@@ -90,8 +104,9 @@ namespace Genten {
     {
     }
 
-    virtual void prepareGradient() override
+    virtual void prepareGradient(const KtensorT<ExecSpace>& g) override
     {
+      g_overlap = dku->createOverlapKtensor(g);
     }
 
     virtual void value(const KtensorT<ExecSpace>& u,
@@ -100,10 +115,12 @@ namespace Genten {
                        const LossFunction& loss_func,
                        ttb_real& fest, ttb_real& ften) override
     {
+      dku->doImport(u_overlap, u);
+
       const ttb_indx nd = u.ndims();
       const ttb_indx nc = u.ncomponents();
-      const ttb_real ip = innerprod(X, u);
-      const ttb_real nrmx = X.norm();
+      const ttb_real ip = innerprod(X, u_overlap);
+      const ttb_real nrmx = X.global_norm();
       const ttb_real nrmusq = u.normFsq();
       ften = nrmx*nrmx + nrmusq - ttb_real(2.0)*ip;
       fest = ften;
@@ -130,14 +147,28 @@ namespace Genten {
                           SystemTimer& timer,
                           const int timer_init,
                           const int timer_nzs,
-                          const int timer_zs) override
+                          const int timer_zs,
+                          const int timer_grad_mttkrp,
+                          const int timer_grad_comm,
+                          const int timer_grad_update) override
     {
       timer.start(timer_init);
-      gt.weights() = ttb_real(1.0);
-      g.zero();
+      g_overlap.weights() = ttb_real(1.0);
+      g_overlap.setMatrices(0.0);
       timer.stop(timer_init);
 
-      mttkrp_all(X, ut, gt, mode_beg, mode_end, algParams, false);
+      timer.start(timer_grad_comm);
+      dku->doImport(u_overlap, ut);
+      timer.stop(timer_grad_comm);
+
+      timer.start(timer_grad_mttkrp);
+      mttkrp_all(X, u_overlap, g_overlap, mode_beg, mode_end, algParams, false);
+      timer.stop(timer_grad_mttkrp);
+
+      timer.start(timer_grad_comm);
+      dku->doExport(gt, g_overlap);
+      timer.stop(timer_grad_comm);
+
       const ttb_indx nd = ut.ndims();
       const ttb_indx nc = ut.ncomponents();
       const bool full = true; // Needs to be full for later gemm
@@ -172,6 +203,9 @@ namespace Genten {
     KtensorT<ExecSpace> uh;
     std::vector< FacMatrixT<ExecSpace> > Z1, Z2;
     FacMatrixT<ExecSpace> tmp, ZZ1, ZZ2;
+    KtensorT<ExecSpace> u_overlap;
+    KtensorT<ExecSpace> g_overlap;
+    DistKtensorUpdate<ExecSpace> *dku;
   };
 
 }

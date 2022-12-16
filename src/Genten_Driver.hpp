@@ -61,7 +61,7 @@ namespace Genten {
 
   template<typename ExecSpace>
   KtensorT<ExecSpace>
-  driver(const DistTensorContext& dtc,
+  driver(const DistTensorContext<ExecSpace>& dtc,
          SptensorT<ExecSpace>& x,
          KtensorT<ExecSpace>& u_init,
          AlgParams& algParams,

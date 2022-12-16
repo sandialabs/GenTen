@@ -71,7 +71,7 @@ namespace Impl {
 // MTTKRP kernel for Sptensor
 template <int Dupl, int Cont, unsigned FBS, unsigned VS, typename ExecSpace>
 void
-mttkrp_kernel(const SptensorT<ExecSpace>& X,
+mttkrp_kernel(const SptensorImpl<ExecSpace>& X,
               const KtensorT<ExecSpace>& u,
               const unsigned n,
               const FacMatrixT<ExecSpace>& v,
@@ -112,7 +112,8 @@ mttkrp_kernel(const SptensorT<ExecSpace>& X,
     auto vv = Kokkos::subview(v.view(),Kokkos::ALL,
                               std::make_pair(nc_beg,nc_end));
     auto sv = create_scatter_view<ScatterSum,Dupl,Cont>(vv);
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+    Kokkos::parallel_for("mttkrp_kernel",
+                         policy, KOKKOS_LAMBDA(const TeamMember& team)
     {
       auto va = sv.access();
 
@@ -164,7 +165,7 @@ mttkrp_kernel(const SptensorT<ExecSpace>& X,
           row_func(j, nj, std::integral_constant<unsigned,0>());
         }
       }
-    }, "mttkrp_kernel");
+    });
 
     sv.contribute_into(vv);
   }
@@ -173,7 +174,7 @@ mttkrp_kernel(const SptensorT<ExecSpace>& X,
 // MTTKRP kernel for Sptensor_perm
 template <unsigned FBS, unsigned VS, typename ExecSpace>
 void
-mttkrp_kernel_perm(const SptensorT<ExecSpace>& X,
+mttkrp_kernel_perm(const SptensorImpl<ExecSpace>& X,
                    const KtensorT<ExecSpace>& u,
                    const unsigned n,
                    const FacMatrixT<ExecSpace>& v,
@@ -198,7 +199,8 @@ mttkrp_kernel_perm(const SptensorT<ExecSpace>& X,
   typedef Kokkos::TeamPolicy<ExecSpace> Policy;
   typedef typename Policy::member_type TeamMember;
   Policy policy(N, TeamSize, VectorSize);
-  Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+  Kokkos::parallel_for("mttkrp_kernel",
+                       policy, KOKKOS_LAMBDA(const TeamMember& team)
   {
     /*const*/ ttb_indx invalid_row = ttb_indx(-1);
     /*const*/ ttb_indx i_block =
@@ -270,19 +272,19 @@ mttkrp_kernel_perm(const SptensorT<ExecSpace>& X,
         row_func(j, nj, std::integral_constant<unsigned,0>());
       }
     }
-  }, "mttkrp_kernel");
+  });
 }
 
 template <typename ExecSpace>
 struct MTTKRP_Kernel {
-  const SptensorT<ExecSpace> X;
+  const SptensorImpl<ExecSpace> X;
   const KtensorT<ExecSpace> u;
   const ttb_indx n;
   const FacMatrixT<ExecSpace> v;
   const AlgParams algParams;
   const bool zero_v;
 
-  MTTKRP_Kernel(const SptensorT<ExecSpace>& X_,
+  MTTKRP_Kernel(const SptensorImpl<ExecSpace>& X_,
                 const KtensorT<ExecSpace>& u_,
                 const ttb_indx n_,
                 const FacMatrixT<ExecSpace>& v_,
@@ -344,7 +346,7 @@ struct MTTKRP_Kernel {
 // Because of problems with ScatterView, doesn't work on the GPU
 template <int Dupl, int Cont, typename ExecSpace>
 struct MTTKRP_All_Kernel {
-  const SptensorT<ExecSpace> XX;
+  const SptensorImpl<ExecSpace> XX;
   const KtensorT<ExecSpace> uu;
   const KtensorT<ExecSpace> vv;
   const ttb_indx mode_beg;
@@ -352,7 +354,7 @@ struct MTTKRP_All_Kernel {
   const AlgParams algParams;
   const bool zero_v;
 
-  MTTKRP_All_Kernel(const SptensorT<ExecSpace>& X_,
+  MTTKRP_All_Kernel(const SptensorImpl<ExecSpace>& X_,
                     const KtensorT<ExecSpace>& u_,
                     const KtensorT<ExecSpace>& v_,
                     const ttb_indx mode_beg_,
@@ -364,7 +366,7 @@ struct MTTKRP_All_Kernel {
 
   template <unsigned FBS, unsigned VS>
   void run() const {
-    const SptensorT<ExecSpace> X = XX;
+    const SptensorImpl<ExecSpace> X = XX;
     const KtensorT<ExecSpace> u = uu;
     const KtensorT<ExecSpace> v = vv;
     /*const*/ unsigned mb = mode_beg;
@@ -412,7 +414,8 @@ struct MTTKRP_All_Kernel {
                                   std::make_pair(nc_beg,nc_end));
         sa[n] = ScatterViewType(vv);
       }
-      Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+      Kokkos::parallel_for("mttkrp_all_kernel",
+                           policy, KOKKOS_LAMBDA(const TeamMember& team)
       {
         // Loop over tensor non-zeros with a large stride on the GPU to
         // reduce atomic contention when the non-zeros are in a nearly sorted
@@ -465,7 +468,7 @@ struct MTTKRP_All_Kernel {
           row_func(j, nj, std::integral_constant<unsigned,0>());
         }
         }
-      }, "mttkrp_all_kernel");
+      });
 
       for (unsigned n=0; n<nm; ++n) {
         auto vv = Kokkos::subview(v[n].view(),Kokkos::ALL,
@@ -484,7 +487,7 @@ template <int Dupl, int Cont>
 struct MTTKRP_All_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
   typedef Kokkos_GPU_Space ExecSpace;
 
-  const SptensorT<ExecSpace> XX;
+  const SptensorImpl<ExecSpace> XX;
   const KtensorT<ExecSpace> uu;
   const KtensorT<ExecSpace> vv;
   const ttb_indx mode_beg;
@@ -492,7 +495,7 @@ struct MTTKRP_All_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
   const AlgParams algParams;
   const bool zero_v;
 
-  MTTKRP_All_Kernel(const SptensorT<ExecSpace>& X_,
+  MTTKRP_All_Kernel(const SptensorImpl<ExecSpace>& X_,
                     const KtensorT<ExecSpace>& u_,
                     const KtensorT<ExecSpace>& v_,
                     const ttb_indx mode_beg_,
@@ -504,7 +507,7 @@ struct MTTKRP_All_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
 
   template <unsigned FBS, unsigned VS>
   void run() const {
-    const SptensorT<ExecSpace> X = XX;
+    const SptensorImpl<ExecSpace> X = XX;
     const KtensorT<ExecSpace> u = uu;
     const KtensorT<ExecSpace> v = vv;
     /*const*/ unsigned mb = mode_beg;
@@ -532,7 +535,8 @@ struct MTTKRP_All_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
     typedef typename Policy::member_type TeamMember;
     Policy policy(N, TeamSize, VectorSize);
 
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+    Kokkos::parallel_for("mttkrp_all_kernel",
+                         policy, KOKKOS_LAMBDA(const TeamMember& team)
     {
       // Loop over tensor non-zeros with a large stride on the GPU to
       // reduce atomic contention when the non-zeros are in a nearly sorted
@@ -575,7 +579,7 @@ struct MTTKRP_All_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
           row_func(j, nj, std::integral_constant<unsigned,0>());
         }
       }
-    }, "mttkrp_all_kernel");
+    });
   }
 };
 #endif
@@ -587,7 +591,7 @@ struct MTTKRP_OrigKokkosKernelBlock {
   typedef typename Policy::member_type TeamMember;
   typedef Kokkos::View< ttb_real**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
-  const SptensorT<ExecSpace>& X;
+  const SptensorImpl<ExecSpace>& X;
   const KtensorT<ExecSpace>& u;
   const unsigned n;
   const unsigned nd;
@@ -610,7 +614,7 @@ struct MTTKRP_OrigKokkosKernelBlock {
   }
 
   KOKKOS_INLINE_FUNCTION
-  MTTKRP_OrigKokkosKernelBlock(const SptensorT<ExecSpace>& X_,
+  MTTKRP_OrigKokkosKernelBlock(const SptensorImpl<ExecSpace>& X_,
                                const KtensorT<ExecSpace>& u_,
                                const unsigned n_,
                                const FacMatrixT<ExecSpace>& v_,
@@ -663,7 +667,7 @@ struct MTTKRP_OrigKokkosKernelBlock {
 };
 
 template <typename ExecSpace, unsigned FacBlockSize>
-void orig_kokkos_mttkrp_kernel(const SptensorT<ExecSpace>& X,
+void orig_kokkos_mttkrp_kernel(const SptensorImpl<ExecSpace>& X,
                                const KtensorT<ExecSpace>& u,
                                const ttb_indx n,
                                const FacMatrixT<ExecSpace>& v)
@@ -679,7 +683,8 @@ void orig_kokkos_mttkrp_kernel(const SptensorT<ExecSpace>& X,
   typedef MTTKRP_OrigKokkosKernelBlock<ExecSpace, FacBlockSize, TeamSize, VectorSize> Kernel;
   typedef typename Kernel::TeamMember TeamMember;
 
-  Kokkos::parallel_for(Kernel::policy(nnz),
+  Kokkos::parallel_for("Genten::mttkrp_kernel",
+                       Kernel::policy(nnz),
                        KOKKOS_LAMBDA(TeamMember team)
   {
     const ttb_indx i = team.league_rank()*team.team_size()+team.team_rank();
@@ -695,13 +700,13 @@ void orig_kokkos_mttkrp_kernel(const SptensorT<ExecSpace>& X,
         kernel.template run<0>(j, nc-j);
     }
 
-  }, "Genten::mttkrp_kernel");
+  });
 
   return;
 }
 
 template <typename ExecSpace>
-void orig_kokkos_mttkrp(const SptensorT<ExecSpace>& X,
+void orig_kokkos_mttkrp(const SptensorImpl<ExecSpace>& X,
                         const KtensorT<ExecSpace>& u,
                         const ttb_indx n,
                         const FacMatrixT<ExecSpace>& v,
@@ -756,6 +761,7 @@ void mttkrp(const SptensorT<ExecSpace>& X,
             const AlgParams& algParams,
             const bool zero_v)
 {
+  GENTEN_TIME_MONITOR("MTTKRP");
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::mttkrp");
 #endif
@@ -774,16 +780,11 @@ void mttkrp(const SptensorT<ExecSpace>& X,
   assert( v.nCols() == nc );
 
   if (algParams.mttkrp_method == MTTKRP_Method::OrigKokkos) {
-    Impl::orig_kokkos_mttkrp(X,u,n,v,zero_v);
+    Impl::orig_kokkos_mttkrp(X.impl(),u,n,v,zero_v);
   }
   else {
-    Impl::MTTKRP_Kernel<ExecSpace> kernel(X,u,n,v,algParams,zero_v);
+    Impl::MTTKRP_Kernel<ExecSpace> kernel(X.impl(),u,n,v,algParams,zero_v);
     Impl::run_row_simd_kernel(kernel, nc);
-  }
-
-  if (u.getProcessorMap() != nullptr) {
-    Kokkos::fence();
-    u.getProcessorMap()->subGridAllReduce(n,v.view().data(), v.view().span());
   }
 }
 
@@ -796,6 +797,7 @@ void mttkrp_all(const SptensorT<ExecSpace>& X,
                 const AlgParams& algParams,
                 const bool zero_v)
 {
+  GENTEN_TIME_MONITOR("MTTKRP-all");
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::mttkrp_all");
 #endif
@@ -834,30 +836,20 @@ void mttkrp_all(const SptensorT<ExecSpace>& X,
       mttkrp(X, u, n, v[n-mode_beg], algParams, zero_v);
   }
   else if (method == MTTKRP_All_Method::Single) {
-    Impl::MTTKRP_All_Kernel<ScatterNonDuplicated,ScatterNonAtomic,ExecSpace> kernel(X,u,v,mode_beg,mode_end,algParams, zero_v);
+    Impl::MTTKRP_All_Kernel<ScatterNonDuplicated,ScatterNonAtomic,ExecSpace> kernel(X.impl(),u,v,mode_beg,mode_end,algParams, zero_v);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else if (method == MTTKRP_All_Method::Atomic) {
-    Impl::MTTKRP_All_Kernel<ScatterNonDuplicated,ScatterAtomic,ExecSpace> kernel(X,u,v,mode_beg,mode_end,algParams, zero_v);
+    Impl::MTTKRP_All_Kernel<ScatterNonDuplicated,ScatterAtomic,ExecSpace> kernel(X.impl(),u,v,mode_beg,mode_end,algParams, zero_v);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else if (method == MTTKRP_All_Method::Duplicated) {
-    Impl::MTTKRP_All_Kernel<ScatterDuplicated,ScatterNonAtomic,ExecSpace> kernel(X,u,v,mode_beg,mode_end,algParams, zero_v);
+    Impl::MTTKRP_All_Kernel<ScatterDuplicated,ScatterNonAtomic,ExecSpace> kernel(X.impl(),u,v,mode_beg,mode_end,algParams, zero_v);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else
     Genten::error(std::string("Unknown MTTKRP-all method:  ") +
                   std::string(MTTKRP_All_Method::names[method]));
-
-  // We don't need to do the inter-process reduction for iterated, because it
-  // does it itself
-  if (u.getProcessorMap() != nullptr &&
-      algParams.mttkrp_all_method != MTTKRP_All_Method::Iterated) {
-    Kokkos::fence();
-    for (ttb_indx n=0; n<nd; ++n)
-      u.getProcessorMap()->subGridAllReduce(n, v[n].view().data(),
-                                            v[n].view().span());
-  }
 }
 
 }

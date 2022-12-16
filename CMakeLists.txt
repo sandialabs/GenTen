@@ -42,11 +42,6 @@
 #---- Specify the CMake version required.  Kokkos requires 3.16
 CMAKE_MINIMUM_REQUIRED (VERSION 3.16)
 
-#---- Declaring the project name will define ${Genten_SOURCE_DIR} to be
-#---- the path to this source file, and ${Genten_BINARY_DIR} to be the path
-#---- to the directory where cmake has been invoked.
-project(Genten VERSION "0.0.0")
-
 #---- Require C++17 without GNU extensions
 SET(CMAKE_CXX_STANDARD 17)
 SET(CMAKE_CXX_EXTENSIONS OFF)
@@ -63,6 +58,25 @@ OPTION(ENABLE_MATLAB "Enable MATLAB linkage to Tensor Toolbox" OFF)
 OPTION(FLOAT_TYPE "C++ data type used for floating-point values" OFF)
 OPTION(INDEX_TYPE "C++ data type used for tensor indices" OFF)
 OPTION(ENABLE_GCP "Enable experimental GCP code" ON)
+OPTION(ENABLE_LAPACK "Enable BLAS/LAPACK.  Only required for CPU (cuBLAS/cuSolver are used on Cuda and rocBLAS/rocSolver on HIP)." ON)
+OPTION(ENABLE_TRILINOS "Enable use of Trilinos packages" OFF)
+OPTION(ENABLE_TEUCHOS "Enable Teuchos utilities" ON)
+OPTION(ENABLE_TPETRA "Enable Tpetra distributed parallelism" ON)
+OPTION(ENABLE_ROL "Enable ROL optimization package" ON)
+
+# Warn about some deprecated variables
+IF(DEFINED KOKKOS_PATH)
+  MESSAGE(DEPRECATION "KOKKOS_PATH is deprecated.  Use KOKKOS_ROOT instead")
+  SET(Kokkos_ROOT ${KOKKOS_PATH})
+ENDIF()
+IF(DEFINED ROL_PATH)
+  MESSAGE(DEPRECATION "ROL_PATH is deprecated.  Use Trilinos_ROOT instead")
+  SET(Trilinos_ROOT ${ROL_PATH})
+ENDIF()
+IF(DEFINED MATLAB_PATH)
+  MESSAGE(DEPRECATION "MATLAB_PATH is deprecated.  Use Matlab_ROOT instead")
+  SET(Matlab_ROOT ${MATLAB_PATH})
+ENDIF()
 
 IF(FLOAT_TYPE)
   SET(GENTEN_FLOAT_TYPE ${FLOAT_TYPE})
@@ -76,16 +90,168 @@ ELSE()
   SET(GENTEN_INDEX_TYPE "size_t")
 ENDIF()
 
-# if the kokkos path is provided use the installation
-IF(KOKKOS_PATH)
+# Advertise that we support shared libs
+SET_PROPERTY(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
+
+# Parse Trilinos support.  Do this before any compiler checks as we may
+# set the compilers to match Trilinos
+SET(Trilinos_LIBRARIES "")
+SET(Trilinos_TPL_LIBRARIES "")
+IF(ENABLE_TRILINOS)
+  SET(Kokkos_FIND_QUIETLY ON)
+  FIND_PACKAGE(Trilinos REQUIRED)
+  MESSAGE(STATUS "GenTen:  Found Trilinos: ")
+  MESSAGE(STATUS "  Location: ${Trilinos_DIR}")
+  MESSAGE(STATUS "  Version: ${Trilinos_VERSION}")
+  MESSAGE(STATUS "  Git Commit ID: ${Trilinos_GIT_COMMIT_ID}")
+  MESSAGE(STATUS "  Enabled Packages: ${Trilinos_PACKAGE_LIST}")
+  MESSAGE(STATUS "  Enabled  TPLs: ${Trilinos_TPL_LIST}")
+  MESSAGE(STATUS "  Build shared libs: ${Trilinos_BUILD_SHARED_LIBS}")
+  MESSAGE(STATUS "  CXX compiler flags: ${Trilinos_CXX_COMPILER_FLAGS}")
+
+  # Setup GenTen configuration to match Trilinos, unless user is providing
+  # their own settings
+  IF(NOT DEFINED CMAKE_CXX_COMPILER)
+    SET(CMAKE_CXX_COMPILER ${Trilinos_CXX_COMPILER})
+  ELSEIF(NOT ${Trilinos_CXX_COMPILER} STREQUAL ${CMAKE_CXX_COMPILER})
+    MESSAGE(WARNING "Provided CMAKE_CXX_COMPILER (${CMAKE_CXX_COMPILER}) does not match Trilinos_CXX_COMPILER (${Trilinos_CXX_COMPILER}).  Using provided CMAKE_CXX_COMPILER.")
+  ENDIF()
+  IF(NOT DEFINED CMAKE_C_COMPILER)
+    SET(CMAKE_C_COMPILER ${Trilinos_C_COMPILER})
+  ELSEIF(NOT ${Trilinos_C_COMPILER} STREQUAL ${CMAKE_C_COMPILER})
+    MESSAGE(WARNING "Provided CMAKE_C_COMPILER (${CMAKE_C_COMPILER}) does not match Trilinos_C_COMPILER (${Trilinos_C_COMPILER}).  Using provided CMAKE_C_COMPILER.")
+  ENDIF()
+  IF(NOT DEFINED BUILD_SHARED_LIBS)
+    SET(BUILD_SHARED_LIBS ${Trilinos_BUILD_SHARED_LIBS})
+  ELSEIF((Trilinos_BUILD_SHARED_LIBS AND NOT BUILD_SHARED_LIBS) OR
+         (NOT Trilinos_BUILD_SHARED_LIBS AND BUILD_SHARED_LIBS))
+    MESSAGE(WARNING "Provided BUILD_SHARED_LIBS=${BUILD_SHARED_LIBS} but Trilinos_BUILD_SHARED_LIBS=${Trilinos_BUILD_SHARED_LIBS}.  Using provided BUILD_SHARED_LIBS.")
+  ENDIF()
+  SET(CMAKE_CXX_FLAGS "${Trilinos_CXX_COMPILER_FLAGS} ${CMAKE_CXX_FLAGS}")
+  SET(CMAKE_C_FLAGS "${Trilinos_C_COMPILER_FLAGS} ${CMAKE_C_FLAGS}")
+
+  # Use SYSTEM keyword so that output is not littered with ROL warnings
+  INCLUDE_DIRECTORIES(SYSTEM ${Trilinos_INCLUDE_DIRS} ${Trilinos_TPL_INCLUDE_DIRS})
+  LINK_DIRECTORIES(${Trilinos_LIBRARY_DIRS} ${Trilinos_TPL_LIBRARY_DIRS} )
+
+  # Look for Kokkos (optional)
+  LIST(FIND Trilinos_PACKAGE_LIST Kokkos Kokkos_List_ID)
+  IF(Kokkos_List_ID GREATER -1)
+    MESSAGE(STATUS "  Looking for Kokkos: Found")
+    MESSAGE(STATUS "    Enabled Kokkos devices: ${Kokkos_DEVICES}")
+    SET(HAVE_KOKKOS ON)
+    SET(HAVE_TRILINOS_KOKKOS ON)
+  ELSE()
+    MESSAGE(STATUS "  Looking for Kokkos: NOT Found")
+  ENDIF()
+
+  # Look for Teuchos (optional)
+  IF(ENABLE_TEUCHOS)
+    LIST(FIND Trilinos_PACKAGE_LIST TeuchosComm Teuchos_List_ID)
+    IF(Teuchos_List_ID GREATER -1)
+      MESSAGE(STATUS "  Looking for Teuchos: Found")
+      SET(HAVE_TEUCHOS ON)
+    ELSE()
+      MESSAGE(STATUS "  Looking for Teuchos: NOT Found")
+    ENDIF()
+  ENDIF()
+
+  # Look for Tpetra (optional)
+  IF(ENABLE_TPETRA)
+    LIST(FIND Trilinos_PACKAGE_LIST Tpetra Tpetra_List_ID)
+    IF(Tpetra_List_ID GREATER -1)
+      MESSAGE(STATUS "  Looking for Tpetra: Found")
+      SET(HAVE_TPETRA ON)
+    ELSE()
+      MESSAGE(STATUS "  Looking for Tpetra: NOT Found")
+    ENDIF()
+  ENDIF()
+
+  # Look for ROL (optional)
+  IF(ENABLE_ROL)
+    LIST(FIND Trilinos_PACKAGE_LIST ROL ROL_List_ID)
+    IF(ROL_List_ID GREATER -1)
+      MESSAGE(STATUS "  Looking for ROL: Found")
+      SET(HAVE_ROL ON)
+    ELSE()
+      MESSAGE(STATUS "  Looking for ROL: NOT Found")
+    ENDIF()
+  ENDIF()
+
+  # Look for BLAS/LAPACK TPL
+  LIST(FIND Trilinos_TPL_LIST LAPACK LAPACK_List_ID)
+  LIST(FIND Trilinos_TPL_LIST BLAS BLAS_List_ID)
+  IF(LAPACK_List_ID GREATER -1 AND BLAS_List_ID GREATER -1)
+    MESSAGE(STATUS "  Looking for BLAS/LAPACK: Found")
+    SET(ENABLE_LAPACK ON)
+    SET(LAPACK_FOUND ON)
+  ELSE()
+    MESSAGE(STATUS "  Looking for BLAS/LAPACK:  NOT Found")
+  ENDIF()
+
+  # Look for MPI TPL
+  IF(ENABLE_MPI)
+    LIST(FIND Trilinos_TPL_LIST MPI MPI_List_ID)
+    IF(MPI_List_ID GREATER -1)
+      MESSAGE(STATUS "  Looking for MPI: Found")
+      SET(MPI_FOUND ON)
+      SET(HAVE_MPI ON)
+      SET(MPI_TARGET MPI::all_libs)
+      IF(NOT DEFINED MPI_LIBRARIES)
+        set(MPI_LIBRARIES ${Trilinos_MPI_LIBRARIES})
+      ENDIF()
+      IF(NOT DEFINED MPI_LIBRARY_DIRS)
+        set(MPI_LIBRARY_DIRS ${Trilinos_MPI_LIBRARY_DIRS})
+      ENDIF()
+      IF(NOT DEFINED MPI_INCLUDE_DIRS)
+        set(MPI_INCLUDE_DIRS ${Trilinos_MPI_INCLUDE_DIRS})
+      ENDIF()
+      IF(NOT DEFINED MPIEXEC_EXECUTABLE)
+        SET(MPIEXEC_EXECUTABLE ${Trilinos_MPI_EXEC})
+      ENDIF()
+      IF(NOT DEFINED MPIEXEC_PREFLAGS)
+        SET(MPIEXEC_PREFLAGS ${Trilinos_MPI_EXEC_PRE_NUMPROCS_FLAGS})
+      ENDIF()
+      IF(NOT DEFINED MPIEXEC_MAX_NUMPROCS)
+        SET(MPIEXEC_MAX_NUMPROCS ${Trilinos_MPI_EXEC_MAX_NUMPROCS})
+      ENDIF()
+      IF(NOT DEFINED MPIEXEC_POSTFLAGS)
+        SET(MPIEXEC_POSTFLAGS ${Trilinos_MPI_EXEC_POST_NUMPROCS_FLAGS})
+      ENDIF()
+      IF(NOT DEFINED MPIEXEC_NUMPROC_FLAG)
+        SET(MPIEXEC_NUMPROC_FLAG ${Trilinos_MPI_EXEC_NUMPROCS_FLAG})
+      ENDIF()
+    ELSE()
+      MESSAGE(STATUS "  Looking for MPI:  NOT Found")
+    ENDIF()
+  ENDIF()
+
+  SET(HAVE_TRILINOS ON)
+ELSE()
+  SET(ENABLE_TEUCHOS OFF)
+  SET(ENABLE_TPETRA OFF)
+  SET(ENABLE_ROL OFF)
+ENDIF()
+
+# We support 3 options for Kokkos:
+#  - Inline build of bundled sources in tpls/kokkos.
+#  - Linking to external library determined by KOKKOS_ROOT.
+#  - Linking to external library through Trilinos.
+# If Trilinos is enabled and it enables Kokkos, we must use it
+IF(Kokkos_ROOT OR HAVE_TRILINOS_KOKKOS)
   SET(KOKKOS_INLINE_BUILD OFF)
 ELSE()
   SET(KOKKOS_INLINE_BUILD ON)
 ENDIF()
+MESSAGE(STATUS "Inline Kokkos build is ${KOKKOS_INLINE_BUILD}")
+
+#---- Declaring the project name will define ${Genten_SOURCE_DIR} to be
+#---- the path to this source file, and ${Genten_BINARY_DIR} to be the path
+#---- to the directory where cmake has been invoked.
+project(Genten VERSION "0.0.0")
 
 # Check minimum compiler version
 INCLUDE (cmake/CheckCompilerVersion.cmake)
-
 
 # If we are doing an inline build of Kokkos
 IF(KOKKOS_INLINE_BUILD)
@@ -101,15 +267,39 @@ IF(KOKKOS_INLINE_BUILD)
 
   # Configure kokkos
   ADD_SUBDIRECTORY(tpls/kokkos)
+  SET(HAVE_KOKKOS ON)
 
-ELSE()
+ELSEIF(NOT HAVE_TRILINOS_KOKKOS)
 
   # Link against installed Kokkos
-  FIND_PACKAGE(Kokkos REQUIRED PATHS ${KOKKOS_PATH} NO_DEFAULT_PATH)
+  FIND_PACKAGE(Kokkos REQUIRED)
   MESSAGE("-- Genten:  Using Kokkos:  ${Kokkos_CONFIG}")
+  SET(HAVE_KOKKOS ON)
 
 ENDIF()
-SET(HAVE_KOKKOS ON)
+
+# Check for compatible enabled execution spaces in Trilinos/Tpetra and Kokkos
+# (Trilinos won't let you enable an execution space in Tpetra but not Kokkos).
+IF(HAVE_TPETRA)
+  IF(Kokkos_ENABLE_SERIAL AND NOT Tpetra_INST_SERIAL)
+    MESSAGE(FATAL_ERROR "Kokkos_ENABLE_SERIAL=${Kokkos_ENABLE_SERIAL} must match Tpetra_INST_SERIAL=${Tpetra_INST_SERIAL} to avoid linking errors")
+  ENDIF()
+  IF(Kokkos_ENABLE_THREADS AND NOT Tpetra_INST_PTHREAD)
+    MESSAGE(FATAL_ERROR "Kokkos_ENABLE_THREADS=${Kokkos_ENABLE_THREADS} must match Tpetra_INST_PTHREAD=${Tpetra_INST_PTHREAD} to avoid linking errors")
+  ENDIF()
+  IF(Kokkos_ENABLE_OPENMP AND NOT Tpetra_INST_OPENMP)
+    MESSAGE(FATAL_ERROR "Kokkos_ENABLE_OPENMP=${Kokkos_ENABLE_OPENMP} must match Tpetra_INST_OPENMP=${Tpetra_INST_OPENMP} to avoid linking errors")
+  ENDIF()
+  IF(Kokkos_ENABLE_CUDA AND NOT Tpetra_INST_CUDA)
+    MESSAGE(FATAL_ERROR "Kokkos_ENABLE_CUDA=${Kokkos_ENABLE_CUDA} must match Tpetra_INST_OPENMP=${Tpetra_INST_CUDA} to avoid linking errors")
+  ENDIF()
+  IF(Kokkos_ENABLE_HIP AND NOT Tpetra_INST_HIP)
+    MESSAGE(FATAL_ERROR "Kokkos_ENABLE_HIP=${Kokkos_ENABLE_HIP} must match Tpetra_INST_HIP=${Tpetra_INST_HIP} to avoid linking errors")
+  ENDIF()
+  IF(Kokkos_ENABLE_SYCL AND NOT Tpetra_INST_SYCL)
+    MESSAGE(FATAL_ERROR "Kokkos_ENABLE_SYCL=${Kokkos_ENABLE_SYCL} must match Tpetra_INST_SYCL=${Tpetra_INST_SYCL} to avoid linking errors")
+  ENDIF()
+ENDIF()
 
 # Embedded "JSON for Modern C++" library
 set(JSON_BuildTests OFF CACHE INTERNAL "")
@@ -122,11 +312,12 @@ add_subdirectory(tpls/json-validator)
 
 SET(GENTEN_LIBS "")
 
-if(ENABLE_MPI)
+if(ENABLE_MPI AND NOT MPI_FOUND)
   find_package(MPI REQUIRED)
-endif()
-if (MPI_FOUND)
-  set(HAVE_MPI ON)
+  if (MPI_FOUND)
+    set(HAVE_MPI ON)
+    set(MPI_TARGET MPI::MPI_C)
+  endif()
 endif()
 
 if(ENABLE_BOOST)
@@ -141,8 +332,9 @@ if(MPI_FOUND)
   set(HAVE_DIST ON)
 endif()
 
-OPTION(ENABLE_LAPACK "Enable BLAS/LAPACK.  Only required for CPU (cuBLAS/cuSolver are used on Cuda and rocBLAS/rocSolver on HIP)." ON)
-INCLUDE (cmake/ConfigureLapack.cmake)
+IF(NOT LAPACK_FOUND)
+  INCLUDE (cmake/ConfigureLapack.cmake)
+ENDIF()
 
 IF (ENABLE_CALIPER)
   OPTION(CALIPER_PATH "Path to Caliper installation")
@@ -165,39 +357,14 @@ IF (GENTEN_FLOAT_TYPE STREQUAL "double")
   SET(HAVE_LBFGSB ON)
 ENDIF()
 
-SET(ROL_LIBRARIES "")
-SET(ROL_TPL_LIBRARIES "")
-IF (ENABLE_GCP)
-  SET(HAVE_GCP ${ENABLE_GCP})
-  OPTION(ENABLE_ROL "Enable ROL for GCP optimization" OFF)
-  IF (ENABLE_ROL)
-    OPTION(ROL_PATH "Path to ROL installation")
-    FIND_PACKAGE(ROL PATHS "${ROL_PATH}" NO_DEFAULT_PATH)
-
-    MESSAGE("\nGenten:  Found ROL: ")
-    MESSAGE("   ROL_DIR = ${ROL_DIR}")
-    MESSAGE("   ROL_PACKAGE_LIST = ${ROL_PACKAGE_LIST}")
-    MESSAGE("   ROL_LIBRARIES = ${ROL_LIBRARIES}")
-    MESSAGE("   ROL_INCLUDE_DIRS = ${ROL_INCLUDE_DIRS}")
-    MESSAGE("   ROL_LIBRARY_DIRS = ${ROL_LIBRARY_DIRS}")
-    MESSAGE("   ROL_TPL_LIST = ${ROL_TPL_LIST}")
-    MESSAGE("   ROL_TPL_INCLUDE_DIRS = ${ROL_TPL_INCLUDE_DIRS}")
-    MESSAGE("   ROL_TPL_LIBRARIES = ${ROL_TPL_LIBRARIES}")
-    MESSAGE("   ROL_TPL_LIBRARY_DIRS = ${ROL_TPL_LIBRARY_DIRS}")
-
-    # Use SYSTEM keyword so that output is not littered with ROL warnings
-    INCLUDE_DIRECTORIES(SYSTEM ${ROL_INCLUDE_DIRS} ${ROL_TPL_INCLUDE_DIRS})
-    LINK_DIRECTORIES(${ROL_LIBRARY_DIRS} ${ROL_TPL_LIBRARY_DIRS} )
-    SET(HAVE_ROL ${ENABLE_ROL})
-  ENDIF()
-ENDIF()
-
 IF(ENABLE_MATLAB)
   IF(NOT BUILD_SHARED_LIBS)
     MESSAGE(FATAL_ERROR "Must build shared libraries when enabling Matlab!")
   ENDIF()
-  OPTION(MATLAB_PATH "Path to MATLAB installation")
-  SET(Matlab_ROOT_DIR "${MATLAB_PATH}")
+  OPTION(Matlab_ROOT "Path to MATLAB installation")
+  IF(NOT DEFINED Matlab_ROOT_DIR AND DEFINED Matlab_ROOT)
+    SET(Matlab_ROOT_DIR "${Matlab_ROOT}")
+  ENDIF()
   FIND_PACKAGE(Matlab COMPONENTS MX_LIBRARY)
   IF(Matlab_FOUND)
     SET(HAVE_MATLAB ON)
@@ -275,6 +442,10 @@ endif()
 if(Kokkos_ENABLE_SYCL)
   set(HAVE_SYCL ON)
 endif()
+
+IF(ENABLE_GCP)
+  SET(HAVE_GCP ON)
+ENDIF()
 
 # Strip leading/trailing whitespace from GENTEN_LIBS
 STRING(STRIP "${GENTEN_LIBS}" GENTEN_LIBS)
@@ -503,7 +674,12 @@ ENDIF()
 
 #---- Tell CMake to build the library.
 ADD_LIBRARY (gentenlib ${Genten_SOURCE_LIST})
-TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkos)
+IF(HAVE_TRILINOS)
+  TARGET_LINK_LIBRARIES(gentenlib Trilinos::all_libs)
+ENDIF()
+IF(NOT HAVE_TRILINOS_KOKKOS)
+  TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkos)
+ENDIF()
 TARGET_LINK_LIBRARIES(gentenlib nlohmann_json_schema_validator)
 TARGET_LINK_LIBRARIES(gentenlib nlohmann_json::nlohmann_json)
 IF(HAVE_BOOST)
@@ -515,12 +691,17 @@ ADD_LIBRARY(DistContextLib
     ${Genten_SOURCE_DIR}/src/Genten_Pmap.cpp
     ${Genten_SOURCE_DIR}/src/Genten_DistTensorContext.cpp
     )
-TARGET_LINK_LIBRARIES(DistContextLib Kokkos::kokkos)
+IF(HAVE_TRILINOS)
+  TARGET_LINK_LIBRARIES(DistContextLib Trilinos::all_libs)
+ENDIF()
+IF(NOT HAVE_TRILINOS_KOKKOS)
+  TARGET_LINK_LIBRARIES(DistContextLib Kokkos::kokkos)
+ENDIF()
 TARGET_LINK_LIBRARIES(DistContextLib nlohmann_json_schema_validator)
 TARGET_LINK_LIBRARIES(DistContextLib nlohmann_json::nlohmann_json)
 TARGET_LINK_LIBRARIES(gentenlib DistContextLib )
 IF(HAVE_MPI)
-  TARGET_LINK_LIBRARIES(DistContextLib MPI::MPI_C)
+  TARGET_LINK_LIBRARIES(DistContextLib ${MPI_TARGET})
   IF(HAVE_BOOST)
     TARGET_LINK_LIBRARIES(DistContextLib Boost::boost)
   ENDIF()
@@ -528,7 +709,7 @@ IF(HAVE_MPI)
     ${Genten_SOURCE_DIR}/src/Genten_SpTn_Util.cpp
     ${Genten_SOURCE_DIR}/src/Genten_MPI_IO.cpp
     )
-  TARGET_LINK_LIBRARIES(GentenMpiIoLib MPI::MPI_C)
+  TARGET_LINK_LIBRARIES(GentenMpiIoLib ${MPI_TARGET})
   IF(HAVE_BOOST)
     TARGET_LINK_LIBRARIES(GentenMpiIoLib Boost::boost)
   ENDIF()
@@ -569,7 +750,8 @@ IF(GENTEN_ENABLE_SYCL_FOR_CUDA)
   TARGET_COMPILE_DEFINITIONS(gentenlib PUBLIC ENABLE_SYCL_FOR_CUDA)
 ENDIF()
 
-SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${ROL_LIBRARIES} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
+#SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${Trilinos_LIBRARIES} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
+SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
 TARGET_LINK_LIBRARIES(${GENTEN_LINK_LIBS})
 INSTALL (
   TARGETS gentenlib DistContextLib nlohmann_json_schema_validator nlohmann_json

@@ -120,27 +120,30 @@ gcp_gradient_driver(
     if (method == "stratified") {
       if (algParams.hash) {
         auto hash = Genten::Sampler<ExecSpace,LossFunction>::buildHashMap(X, std::cout);
-        Genten::Impl::stratified_sample_tensor_hash(
-          X, hash, num_samples_nonzeros, num_samples_zeros,
+        Genten::Impl::stratified_sample_tensor(
+          X, Genten::Impl::HashSearcher<ExecSpace>(X.impl(), hash),
+          num_samples_nonzeros, num_samples_zeros,
           weight_nonzeros, weight_zeros,
-          u, loss_func, true,
+          u, Genten::Impl::StratifiedGradient<LossFunction>(loss_func), true,
           Y, w, rand_pool, algParams);
       }
       else {
         if (!X.isSorted())
           X.sort();
         Genten::Impl::stratified_sample_tensor(
-          X, num_samples_nonzeros, num_samples_zeros,
+          X, Genten::Impl::SortSearcher<ExecSpace>(X.impl()),
+          num_samples_nonzeros, num_samples_zeros,
           weight_nonzeros, weight_zeros,
-          u, loss_func, true,
+          u, Genten::Impl::StratifiedGradient<LossFunction>(loss_func), true,
           Y, w, rand_pool, algParams);
       }
     }
     else if (method == "semi-stratified")
-      Genten::Impl::semi_stratified_sample_tensor(
-        X, num_samples_nonzeros, num_samples_zeros,
+      Genten::Impl::stratified_sample_tensor(
+        X, Genten::Impl::SemiStratifiedSearcher<ExecSpace>(),
+        num_samples_nonzeros, num_samples_zeros,
         weight_nonzeros, weight_zeros,
-        u, loss_func, true,
+        u, Genten::Impl::SemiStratifiedGradient<LossFunction>(loss_func), true,
         Y, w, rand_pool, algParams);
     else {
       std::string err = "Unknown method " + method;

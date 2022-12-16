@@ -131,8 +131,8 @@ void RunGcpSgdTest(const std::string &label, GCP_Sampling::type sampling_type,
 
   GENTEN_EQ(X.nnz(), 11, "Data tensor has 11 nonzeroes");
 
-  Genten::DistTensorContext dtc;
-  SptensorT<exec_space> X_dev = dtc.distributeTensor<exec_space>(X);
+  Genten::DistTensorContext<exec_space> dtc;
+  SptensorT<exec_space> X_dev = dtc.distributeTensor(X);
   if (mttkrp_method == MTTKRP_Method::Perm) {
     X_dev.createPermutation();
   }
@@ -148,6 +148,8 @@ void RunGcpSgdTest(const std::string &label, GCP_Sampling::type sampling_type,
   // Set parallel maps
   const ProcessorMap *pmap = dtc.pmap_ptr().get();
   X_dev.setProcessorMap(pmap);
+
+  std::ostream& out = pmap->gridRank() == 0 ? std::cout : Genten::bhcout;
 
   // Factorize.
   AlgParams algParams;
@@ -168,20 +170,20 @@ void RunGcpSgdTest(const std::string &label, GCP_Sampling::type sampling_type,
   ttb_real resNorm;
   Ktensor result(nNumComponents, dims.size(), dims);
   deep_copy(result, initialBasis);
-  KtensorT<exec_space> result_dev = dtc.exportFromRoot<exec_space>(result);
+  KtensorT<exec_space> result_dev = dtc.exportFromRoot(result);
   result_dev.setProcessorMap(pmap);
   PerfHistory history;
   EXPECT_NO_THROW({
     if (!fuse_sa) {
       gcp_sgd(X_dev, result_dev, algParams, numIters, resNorm, history,
-              std::cout);
+              out);
     } else {
       gcp_sgd_sa(X_dev, result_dev, algParams, numIters, resNorm, history,
-                 std::cout);
+                 out);
     }
   });
 
-  result = dtc.importToRoot<typename Ktensor::exec_space>(result_dev);
+  result = dtc.template importToRoot<typename Ktensor::exec_space>(result_dev);
   if (dtc.gridRank() == 0) {
     // Multiply Ktensor entries and compare to tensor
     const ttb_real tol = 1.0e-3;

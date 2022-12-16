@@ -253,8 +253,8 @@ void RunCpAlsTest(MTTKRP_Method::type mttkrp_method, const std::string &label) {
 
   GENTEN_EQ(X.nnz(), 11, "Data tensor has 11 nonzeroes");
 
-  Genten::DistTensorContext dtc;
-  SptensorT<exec_space> X_dev = dtc.distributeTensor<exec_space>(X);
+  Genten::DistTensorContext<exec_space> dtc;
+  SptensorT<exec_space> X_dev = dtc.distributeTensor(X);
   const ProcessorMap *pmap = dtc.pmap_ptr().get();
   X_dev.setProcessorMap(pmap);
   if (mttkrp_method == MTTKRP_Method::Perm) {
@@ -286,8 +286,7 @@ void RunCpAlsTest(MTTKRP_Method::type mttkrp_method, const std::string &label) {
   initialBasis[2].entry(3, 1) = 0.7;
   initialBasis.weights(0) = 2.0; // Test with weights different from one.
 
-  KtensorT<exec_space> initialBasis_dev =
-    dtc.exportFromRoot<exec_space>(initialBasis);
+  KtensorT<exec_space> initialBasis_dev = dtc.exportFromRoot(initialBasis);
 
   // Factorize.
   AlgParams algParams;
@@ -295,10 +294,12 @@ void RunCpAlsTest(MTTKRP_Method::type mttkrp_method, const std::string &label) {
   algParams.tol = 1.0e-6;
   algParams.maxiters = 100;
   algParams.maxsecs = -1.0;
-  algParams.printitn = 0;
+  algParams.printitn = 1;
   algParams.mttkrp_method = mttkrp_method;
   ttb_indx itersCompleted;
   ttb_real resNorm;
+
+  std::ostream& out = pmap->gridRank() == 0 ? std::cout : Genten::bhcout;
 
   {
     KtensorT<exec_space> result_dev =
@@ -313,7 +314,7 @@ void RunCpAlsTest(MTTKRP_Method::type mttkrp_method, const std::string &label) {
       result_dev.setProcessorMap(pmap);
 
       cpals_core(X_dev, result_dev, algParams, itersCompleted, resNorm, 3,
-                 perfInfo);
+                 perfInfo, out);
       // Check performance information.
       for (ttb_indx i = 0; i < perfInfo.size(); i++) {
         if ((perfInfo[i].iteration > 0)) {
@@ -327,7 +328,7 @@ void RunCpAlsTest(MTTKRP_Method::type mttkrp_method, const std::string &label) {
       INFO_MSG("Performance info from cpals_core is reasonable.");
     });
 
-    Ktensor result = dtc.importToRoot<host_exec_space>(result_dev);
+    Ktensor result = dtc.template importToRoot<host_exec_space>(result_dev);
     if (dtc.gridRank() == 0) {
       evaluateResult(itersCompleted, algParams.tol, result);
     }
@@ -342,7 +343,7 @@ void RunCpAlsTest(MTTKRP_Method::type mttkrp_method, const std::string &label) {
     initialZero.setMatrices(0.0);
 
     KtensorT<exec_space> initialZero_dev =
-      dtc.exportFromRoot<exec_space>(initialZero);
+      dtc.exportFromRoot(initialZero);
     KtensorT<exec_space> result_dev =
         create_mirror_view(exec_space(), initialZero_dev);
     deep_copy(result_dev, initialZero_dev);
@@ -366,10 +367,10 @@ void RunCpAlsTest(MTTKRP_Method::type mttkrp_method, const std::string &label) {
         deep_copy(result_dev, initialBasis_dev);
         PerfHistory history;
         cpals_core(Xd_dev, result_dev, algParams, itersCompleted, resNorm, 0,
-                   history);
+                   history, out);
       });
 
-      Ktensor result = dtc.importToRoot<host_exec_space>(result_dev);
+      Ktensor result = dtc.template importToRoot<host_exec_space>(result_dev);
       if (dtc.gridRank() == 0) {
         evaluateResult(itersCompleted, algParams.tol, result);
       }

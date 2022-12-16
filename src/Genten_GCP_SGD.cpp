@@ -58,6 +58,7 @@
 #include "Genten_Sptensor.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_MixedFormatOps.hpp"
+#include "Genten_DistKtensorUpdate.hpp"
 
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
@@ -79,6 +80,12 @@ namespace Genten {
     if (algParams.async &&
         algParams.sampling_type != GCP_Sampling::SemiStratified)
       Genten::error("Must use semi-stratified sampling with asynchronous solver!");
+    if (algParams.async &&
+        algParams.dist_update_method == Dist_Update_Method::Tpetra)
+      Genten::error("Asynchronous GCP-SGD does not work with Tpetra distributed parallelism");
+    if (algParams.fuse &&
+        algParams.dist_update_method == Dist_Update_Method::Tpetra)
+      Genten::error("Fused sampling does not work with Tpetra distributed parallelism");
 
     // Create stepper
     // Note:  uv is not a view of u, so this involves an allocation.
@@ -178,16 +185,16 @@ namespace Genten {
     Sampler<ExecSpace,LossFunction> *sampler = nullptr;
     if (algParams.sampling_type == GCP_Sampling::Uniform)
       sampler = new Genten::UniformSampler<ExecSpace,LossFunction>(
-        X, algParams);
+        X, u0, algParams);
     else if (algParams.sampling_type == GCP_Sampling::Stratified)
       sampler = new Genten::StratifiedSampler<ExecSpace,LossFunction>(
-        X, algParams);
+        X, u0, algParams);
     else if (algParams.sampling_type == GCP_Sampling::SemiStratified)
       sampler = new Genten::SemiStratifiedSampler<ExecSpace,LossFunction>(
-        X, algParams, true);
+        X, u0, algParams, true);
     else if (algParams.sampling_type == GCP_Sampling::Dense)
       sampler = new Genten::DenseSampler<ExecSpace,LossFunction>(
-        X, algParams);
+        X, u0, algParams);
     else
       Genten::error("Genten::gcp_sgd - unknown sampling type");
 
@@ -228,6 +235,7 @@ namespace Genten {
     const int timer_sort = num_timers++;
     const int timer_sample_f = num_timers++;
     const int timer_fest = num_timers++;
+    const int timer_comm = num_timers++;
     SystemTimer timer(num_timers, algParams.timings, pmap);
 
     // Start timer for total execution time of the algorithm.
@@ -259,22 +267,29 @@ namespace Genten {
     timer.stop(timer_sort);
 
     // Sample X for f-estimate
+    GENTEN_START_TIMER("sample objective");
     timer.start(timer_sample_f);
     sampler->sampleTensorF(ut, loss_func);
     timer.stop(timer_sample_f);
+    GENTEN_STOP_TIMER("sample objective");
 
     // Objective estimates
     ttb_real fit = 0.0;
-    ttb_real x_norm = 0.0;
+    const ttb_real x_norm = X.global_norm();
+    DistKtensorUpdate<ExecSpace> *dku_fit = nullptr;
+    KtensorT<ExecSpace> ut_overlap_fit;
     if (compute_fit) {
-      x_norm = X.global_norm();
+      dku_fit = createKtensorUpdate(X, ut, algParams);
+      ut_overlap_fit = dku_fit->createOverlapKtensor(ut);
     }
+    GENTEN_START_TIMER("objective function");
     timer.start(timer_fest);
     sampler->value(ut, hist, penalty, loss_func, fest, ften);
     auto fitter = [&]{
       const auto x_norm2 = x_norm * x_norm;
       const auto u_norm2 = ut.normFsq();
-      const auto dot = innerprod(X, ut);
+      dku_fit->doImport(ut_overlap_fit, ut, timer, timer_comm);
+      const auto dot = innerprod(X, ut_overlap_fit);
       const auto numerator = sqrt(x_norm2 + u_norm2 - 2.0 * dot);
       const auto denom = x_norm;
       return 1.0 - numerator/denom;
@@ -285,6 +300,7 @@ namespace Genten {
     timer.stop(timer_fest);
     ttb_real fest_prev = fest;
     ttb_real fit_prev = fit;
+    GENTEN_STOP_TIMER("objective function");
 
     if (print_hdr || print_itn) {
       out << "Initial f-est: "
@@ -370,6 +386,7 @@ namespace Genten {
     ttb_indx total_iters = 0;
 
     for (numEpochs=0; numEpochs<maxEpochs; ++numEpochs) {
+
       // Gradient step size
       if(algParams.anneal){
         stepper->setStep(annealer(numEpochs));
@@ -381,15 +398,17 @@ namespace Genten {
       it.run(X, loss_func, *sampler, *stepper, total_iters);
 
       // compute objective estimate
+      GENTEN_START_TIMER("objective function");
       timer.start(timer_fest);
       sampler->value(ut, hist, penalty, loss_func, fest, ften);
       if (compute_fit) {
         fit = fitter();
       }
       timer.stop(timer_fest);
+      GENTEN_STOP_TIMER("objective function");
 
       // check convergence
-      const bool failed_epoch = fest > fest_prev || std::isnan(fest);
+      bool failed_epoch = fest > fest_prev || std::isnan(fest);
 
       if (failed_epoch)
         ++nfails;
@@ -477,6 +496,8 @@ namespace Genten {
 
     delete sampler;
     delete itp;
+    if (dku_fit != nullptr)
+      delete dku_fit;
   }
 
   template <typename TensorT, typename ExecSpace, typename LossFunction>
@@ -509,6 +530,7 @@ namespace Genten {
                PerfHistory& perfInfo,
                std::ostream& out)
   {
+    GENTEN_TIME_MONITOR("GCP-SGD");
 #ifdef HAVE_CALIPER
     cali::Function cali_func("Genten::gcp_sgd");
 #endif
@@ -518,11 +540,6 @@ namespace Genten {
       Genten::error("Genten::gcp_sgd - ktensor u is not consistent");
     if (x.ndims() != u.ndims())
       Genten::error("Genten::gcp_sgd - u and x have different num dims");
-    for (ttb_indx  i = 0; i < x.ndims(); i++)
-    {
-      if (x.size(i) != u[i].nRows())
-        Genten::error("Genten::gcp_sgd - u and x have different size");
-    }
 
     // Dispatch implementation based on loss function type
     if (algParams.loss_function_type == GCP_LossFunction::Gaussian)

@@ -56,6 +56,10 @@
 #include <memory>
 #include "Genten_MPI_IO.hpp"
 #include "Genten_SpTn_Util.hpp"
+#include "Genten_Tpetra.hpp"
+#include "Genten_DistFacMatrix.hpp"
+#include "Genten_AlgParams.hpp"
+#include "Kokkos_UnorderedMap.hpp"
 #endif
 
 namespace Genten {
@@ -73,6 +77,7 @@ generateUniformBlocking(const std::vector<std::uint32_t>& ModeLengths,
 } // namespace detail
 
 // Class to describe and manipulate tensor data in a distributed context
+template <typename ExecSpace>
 class DistTensorContext {
 public:
   DistTensorContext() = default;
@@ -83,14 +88,14 @@ public:
   DistTensorContext& operator=(DistTensorContext&&) = default;
   DistTensorContext& operator=(const DistTensorContext&) = default;
 
-  template <typename ExecSpace>
   SptensorT<ExecSpace> distributeTensor(const ptree& tree);
-  template <typename ExecSpace>
   SptensorT<ExecSpace> distributeTensor(const std::string& file,
                                         const ttb_indx index_base,
-                                        const bool compressed);
-  template <typename ExecSpaceDst, typename ExecSpaceSrc>
-  SptensorT<ExecSpaceDst> distributeTensor(const SptensorT<ExecSpaceSrc>& X);
+                                        const bool compressed,
+                                        const AlgParams& algParams);
+  template <typename ExecSpaceSrc>
+  SptensorT<ExecSpace> distributeTensor(const SptensorT<ExecSpaceSrc>& X,
+                                        const AlgParams& algParams = AlgParams());
 
   // Parallel info
   std::int32_t ndims() const { return global_dims_.size(); }
@@ -103,54 +108,57 @@ public:
   const ProcessorMap& pmap() const { return *pmap_; }
   std::shared_ptr<const ProcessorMap> pmap_ptr() const { return pmap_; }
 
+#ifdef HAVE_TPETRA
+  Teuchos::RCP<const tpetra_map_type<ExecSpace> >
+  getFactorMap(unsigned n) const {
+    return factorMap[n];
+  }
+  Teuchos::RCP<const tpetra_map_type<ExecSpace> >
+  getOverlapFactorMap(unsigned n) const {
+    return overlapFactorMap[n];
+  }
+#endif
+
   // Sptensor operations
-  template <typename ExecSpace>
   ttb_real globalNorm(const SptensorT<ExecSpace>& X) const;
-  template <typename ExecSpace>
   std::uint64_t globalNNZ(const SptensorT<ExecSpace>& X) const;
-  template <typename ExecSpace>
   ttb_real globalNumelFloat(const SptensorT<ExecSpace>& X) const;
 
   // Ktensor operations
-  template <typename ExecSpace>
   ttb_real globalNorm(const KtensorT<ExecSpace>& X) const;
-  template <typename ExecSpaceDst, typename ExecSpaceSrc>
-  KtensorT<ExecSpaceDst> exportFromRoot(const KtensorT<ExecSpaceSrc>& u) const;
-  template <typename ExecSpaceDst, typename ExecSpaceSrc>
-  KtensorT<ExecSpaceDst> importToRoot(const KtensorT<ExecSpaceSrc>& u) const;
-  template <typename ExecSpace>
+  template <typename ExecSpaceSrc>
+  KtensorT<ExecSpace> exportFromRoot(const KtensorT<ExecSpaceSrc>& u) const;
+  template <typename ExecSpaceDst>
+  KtensorT<ExecSpaceDst> importToRoot(const KtensorT<ExecSpace>& u) const;
   void allReduce(KtensorT<ExecSpace>& u,
                  const bool divide_by_grid_size = false) const;
-  template <typename ExecSpace>
   void exportToFile(const KtensorT<ExecSpace>& u,
                     const std::string& file_name) const;
 
   // Factor matrix operations
-  template <typename ExecSpaceDst, typename ExecSpaceSrc>
-  FacMatrixT<ExecSpaceDst> exportFromRoot(const int dim, const FacMatrixT<ExecSpaceSrc>& u) const;
-  template <typename ExecSpaceDst, typename ExecSpaceSrc>
-  FacMatrixT<ExecSpaceDst> importToRoot(const int dim, const FacMatrixT<ExecSpaceSrc>& u) const;
+  template <typename ExecSpaceSrc>
+  FacMatrixT<ExecSpace> exportFromRoot(const int dim, const FacMatrixT<ExecSpaceSrc>& u) const;
+  template <typename ExecSpaceDst>
+  FacMatrixT<ExecSpaceDst> importToRoot(const int dim, const FacMatrixT<ExecSpace>& u) const;
 
   // Initial guess computations
-  template <typename ExecSpace>
   KtensorT<ExecSpace> readInitialGuess(const std::string& file_name) const;
-  template <typename ExecSpace>
   KtensorT<ExecSpace> randomInitialGuess(const SptensorT<ExecSpace>& X,
                                          const int rank,
                                          const int seed,
                                          const bool prng,
+                                         const bool scale_guess_by_norm_x,
                                          const std::string& dist_method) const;
-  template <typename ExecSpace>
   KtensorT<ExecSpace> computeInitialGuess(const SptensorT<ExecSpace>& X,
                                           const ptree& input) const;
 
 private:
-  template <typename ExecSpace>
   SptensorT<ExecSpace> distributeTensorData(
     const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
     const std::vector<std::uint32_t>& TensorDims,
     const std::vector<small_vector<int>>& blocking,
-    const ProcessorMap& pmap);
+    const ProcessorMap& pmap,
+    const AlgParams& algParams);
 
   std::pair<G_MPI_IO::SptnFileHeader, MPI_File>
   readBinaryHeader(const std::string& file_name, int indexbase,
@@ -158,8 +166,17 @@ private:
 
   std::vector<std::uint32_t> local_dims_;
   std::vector<std::uint32_t> global_dims_;
+  std::vector<std::uint32_t> ktensor_local_dims_;
   std::shared_ptr<ProcessorMap> pmap_;
   std::vector<small_vector<int>> global_blocking_;
+
+#ifdef HAVE_TPETRA
+  Teuchos::RCP<const Teuchos::Comm<int> > tpetra_comm;
+  std::vector< Teuchos::RCP<const tpetra_map_type<ExecSpace> > > factorMap;
+  std::vector< Teuchos::RCP<const tpetra_map_type<ExecSpace> > > overlapFactorMap;
+  std::vector< Teuchos::RCP<const tpetra_map_type<ExecSpace> > > rootMap;
+  std::vector< Teuchos::RCP<const tpetra_import_type<ExecSpace> > > rootImporter;
+#endif
 
   MPI_Datatype mpiElemType_ = DistContext::toMpiType<ttb_real>();
 };
@@ -198,7 +215,7 @@ void printRandomElements(const SptensorT<ExecSpace>& tensor,
 
 template <typename ExecSpace>
 ttb_real
-DistTensorContext::
+DistTensorContext<ExecSpace>::
 globalNorm(const SptensorT<ExecSpace>& X) const
 {
   const auto& values = X.getValArray();
@@ -209,7 +226,7 @@ globalNorm(const SptensorT<ExecSpace>& X) const
 
 template <typename ExecSpace>
 std::uint64_t
-DistTensorContext::
+DistTensorContext<ExecSpace>::
 globalNNZ(const SptensorT<ExecSpace>& X) const
 {
   return pmap_->gridAllReduce(X.nnz());
@@ -217,7 +234,7 @@ globalNNZ(const SptensorT<ExecSpace>& X) const
 
 template <typename ExecSpace>
 ttb_real
-DistTensorContext::
+DistTensorContext<ExecSpace>::
 globalNumelFloat(const SptensorT<ExecSpace>& X) const
 {
   return pmap_->gridAllReduce(X.numel_float());
@@ -225,43 +242,73 @@ globalNumelFloat(const SptensorT<ExecSpace>& X) const
 
 template <typename ExecSpace>
 ttb_real
-DistTensorContext::
+DistTensorContext<ExecSpace>::
 globalNorm(const KtensorT<ExecSpace>& u) const
 {
   return std::sqrt(u.normFsq());
 }
 
-template <typename ExecSpaceDst, typename ExecSpaceSrc>
-KtensorT<ExecSpaceDst>
-DistTensorContext::
+template <typename ExecSpace>
+template <typename ExecSpaceSrc>
+KtensorT<ExecSpace>
+DistTensorContext<ExecSpace>::
 exportFromRoot(const KtensorT<ExecSpaceSrc>& u) const
 {
-  // Broadcast ktensor values from 0 to all procs
   const int nd = u.ndims();
   const int nc = u.ncomponents();
   assert(global_dims_.size() == nd);
 
-  for (int i=0; i<nd; ++i)
-    pmap_->gridBcast(u[i].view().data(), u[i].view().span(), 0);
-  pmap_->gridBcast(u.weights().values().data(), u.weights().values().span(), 0);
-  pmap_->gridBarrier();
-
-  // Copy our portion from u into ktensor_
-  IndxArrayT<ExecSpaceDst> sz(nd);
+  Genten::KtensorT<ExecSpace> exp;
+  IndxArrayT<ExecSpace> sz(nd);
   auto hsz = create_mirror_view(sz);
-  for (int i=0; i<nd; ++i)
-    hsz[i] = local_dims_[i];
-  deep_copy(sz,hsz);
-  Genten::KtensorT<ExecSpaceDst> exp(nc, nd, sz);
-  exp.setMatrices(0.0);
-  deep_copy(exp.weights(), u.weights());
-  for (int i=0; i<nd; ++i) {
-    auto coord = pmap_->gridCoord(i);
-    auto rng = std::make_pair(global_blocking_[i][coord],
-                              global_blocking_[i][coord + 1]);
-    auto sub = Kokkos::subview(u[i].view(), rng, Kokkos::ALL);
-    deep_copy(exp[i].view(), sub);
+
+#ifdef HAVE_TPETRA
+  if (tpetra_comm != Teuchos::null) {
+    for (int i=0; i<nd; ++i)
+      hsz[i] = factorMap[i]->getLocalNumElements();
+    deep_copy(sz,hsz);
+    exp = Genten::KtensorT<ExecSpace>(nc, nd, sz);
+    exp.setMatrices(0.0);
+    deep_copy(exp.weights(), u.weights());
+    for (int i=0; i<nd; ++i) {
+      if (rootImporter[i] != Teuchos::null) {
+        FacMatrixT<ExecSpace> ui = create_mirror_view(ExecSpace(), u[i]);
+        deep_copy(ui, u[i]);
+        DistFacMatrix<ExecSpace> dist_u(ui, rootMap[i]);
+        DistFacMatrix<ExecSpace> dist_exp(exp[i], factorMap[i]);
+        dist_exp.doExport(dist_u, *(rootImporter[i]), Tpetra::INSERT);
+      }
+      else
+        deep_copy(exp[i], u[i]);
+    }
   }
+  else
+#endif
+  {
+    // Broadcast ktensor values from 0 to all procs
+    for (int i=0; i<nd; ++i)
+      pmap_->gridBcast(u[i].view().data(), u[i].view().span(), 0);
+    pmap_->gridBcast(
+      u.weights().values().data(), u.weights().values().span(),0);
+    pmap_->gridBarrier();
+
+    // Copy our portion from u into ktensor_
+    for (int i=0; i<nd; ++i)
+      hsz[i] = local_dims_[i];
+    deep_copy(sz,hsz);
+    exp = Genten::KtensorT<ExecSpace>(nc, nd, sz);
+    exp.setMatrices(0.0);
+    deep_copy(exp.weights(), u.weights());
+    for (int i=0; i<nd; ++i) {
+      auto coord = pmap_->gridCoord(i);
+      auto rng = std::make_pair(global_blocking_[i][coord],
+                                global_blocking_[i][coord + 1]);
+      auto sub = Kokkos::subview(u[i].view(), rng, Kokkos::ALL);
+      deep_copy(exp[i].view(), sub);
+    }
+  }
+
+  exp.setProcessorMap(&pmap());
   return exp;
 }
 
@@ -298,10 +345,11 @@ bool weightsAreSame(const KtensorT<ExecSpace> &u) {
 
 } // namespace
 
-template <typename ExecSpaceDst, typename ExecSpaceSrc>
+template <typename ExecSpace>
+template <typename ExecSpaceDst>
 KtensorT<ExecSpaceDst>
-DistTensorContext::
-importToRoot(const KtensorT<ExecSpaceSrc>& u) const
+DistTensorContext<ExecSpace>::
+importToRoot(const KtensorT<ExecSpace>& u) const
 {
   const bool print =
     DistContext::isDebug() && (pmap_->gridRank() == 0);
@@ -310,65 +358,83 @@ importToRoot(const KtensorT<ExecSpaceSrc>& u) const
   const int nc = u.ncomponents();
   assert(global_dims_.size() == nd);
 
-  KtensorT<ExecSpaceDst> out;
   IndxArrayT<ExecSpaceDst> sizes_idx(nd);
   auto sizes_idx_host = create_mirror_view(sizes_idx);
   for (int i=0; i<nd; ++i) {
     sizes_idx_host[i] = global_dims_[i];
   }
   deep_copy(sizes_idx, sizes_idx_host);
-  out = KtensorT<ExecSpaceDst>(nc, nd, sizes_idx);
+
+  KtensorT<ExecSpaceDst> out(nc, nd, sizes_idx);
+  out.setMatrices(0.0);
 
   if (!weightsAreSame(u)) {
     throw std::string(
         "Ktensor weights are expected to be the same on all ranks");
   }
-
   deep_copy(out.weights(), u.weights());
 
-  if (print)
-    std::cout << "Blocking:\n";
-
-  small_vector<int> grid_pos(nd, 0);
-  for (int d=0; d<nd; ++d) {
-    std::vector<int> recvcounts(pmap_->gridSize(), 0);
-    std::vector<int> displs(pmap_->gridSize(), 0);
-    const auto nblocks = global_blocking_[d].size() - 1;
-    if (print)
-      std::cout << "\tDim(" << d << ")\n";
-    for (auto b = 0; b < nblocks; ++b) {
-      if (print)
-        std::cout << "\t\t{" << global_blocking_[d][b]
-                  << ", " << global_blocking_[d][b + 1]
-                  << "} owned by ";
-      grid_pos[d] = b;
-      int owner = 0;
-      MPI_Cart_rank(pmap_->gridComm(), grid_pos.data(), &owner);
-      if (print)
-        std::cout << owner << "\n";
-      recvcounts[owner] =
-        u[d].view().stride(0)*(global_blocking_[d][b+1]-global_blocking_[d][b]);
-      displs[owner] = out[d].view().stride(0)*global_blocking_[d][b];
-      grid_pos[d] = 0;
+#ifdef HAVE_TPETRA
+  if (tpetra_comm != Teuchos::null) {
+    for (int i=0; i<nd; ++i) {
+      if (rootImporter[i] != Teuchos::null) {
+        FacMatrixT<ExecSpace> oi = create_mirror_view(ExecSpace(), out[i]);
+        DistFacMatrix<ExecSpace> dist_u(u[i], factorMap[i]);
+        DistFacMatrix<ExecSpace> dist_out(oi, rootMap[i]);
+        dist_out.doImport(dist_u, *(rootImporter[i]), Tpetra::INSERT);
+        deep_copy(out[i], oi);
+      }
+      else
+        deep_copy(out[i], u[i]);
     }
-
-    const bool is_sub_root = pmap_->subCommRank(d) == 0;
-    std::size_t send_size = is_sub_root ? u[d].view().span() : 0;
-    MPI_Gatherv(u[d].view().data(), send_size,
-                DistContext::toMpiType<ttb_real>(),
-                out[d].view().data(), recvcounts.data(), displs.data(),
-                DistContext::toMpiType<ttb_real>(), 0,
-                pmap_->gridComm());
-    pmap_->gridBarrier();
   }
+  else
+#endif
+  {
+    if (print)
+      std::cout << "Blocking:\n";
 
-  if (print) {
-    std::cout << std::endl;
-    std::cout << "Subcomm sizes: ";
-    for (auto s : pmap_->subCommSizes()) {
-      std::cout << s << " ";
+    small_vector<int> grid_pos(nd, 0);
+    for (int d=0; d<nd; ++d) {
+      std::vector<int> recvcounts(pmap_->gridSize(), 0);
+      std::vector<int> displs(pmap_->gridSize(), 0);
+      const auto nblocks = global_blocking_[d].size() - 1;
+      if (print)
+        std::cout << "\tDim(" << d << ")\n";
+      for (auto b = 0; b < nblocks; ++b) {
+        if (print)
+          std::cout << "\t\t{" << global_blocking_[d][b]
+                    << ", " << global_blocking_[d][b + 1]
+                    << "} owned by ";
+        grid_pos[d] = b;
+        int owner = 0;
+        MPI_Cart_rank(pmap_->gridComm(), grid_pos.data(), &owner);
+        if (print)
+          std::cout << owner << "\n";
+        recvcounts[owner] =
+          u[d].view().stride(0)*(global_blocking_[d][b+1]-global_blocking_[d][b]);
+        displs[owner] = out[d].view().stride(0)*global_blocking_[d][b];
+        grid_pos[d] = 0;
+      }
+
+      const bool is_sub_root = pmap_->subCommRank(d) == 0;
+      std::size_t send_size = is_sub_root ? u[d].view().span() : 0;
+      MPI_Gatherv(u[d].view().data(), send_size,
+                  DistContext::toMpiType<ttb_real>(),
+                  out[d].view().data(), recvcounts.data(), displs.data(),
+                  DistContext::toMpiType<ttb_real>(), 0,
+                  pmap_->gridComm());
+      pmap_->gridBarrier();
     }
-    std::cout << std::endl;
+
+    if (print) {
+      std::cout << std::endl;
+      std::cout << "Subcomm sizes: ";
+      for (auto s : pmap_->subCommSizes()) {
+        std::cout << s << " ";
+      }
+      std::cout << std::endl;
+    }
   }
 
   return out;
@@ -376,7 +442,7 @@ importToRoot(const KtensorT<ExecSpaceSrc>& u) const
 
 template <typename ExecSpace>
 void
-DistTensorContext::
+DistTensorContext<ExecSpace>::
 allReduce(KtensorT<ExecSpace>& u, const bool divide_by_grid_size) const
 {
   const int nd = u.ndims();
@@ -396,145 +462,100 @@ allReduce(KtensorT<ExecSpace>& u, const bool divide_by_grid_size) const
 }
 
 template <typename ExecSpace>
-void
-DistTensorContext::
-exportToFile(const KtensorT<ExecSpace>& u, const std::string& file_name) const
-{
-  Ktensor out = importToRoot<Genten::DefaultHostExecutionSpace>(u);
-  if (pmap_->gridRank() == 0) {
-    // Normalize Ktensor u before writing out
-    out.normalize(Genten::NormTwo);
-    out.arrange();
-
-    std::cout << "Saving final Ktensor to " << file_name << std::endl;
-    Genten::export_ktensor(file_name, out);
-  }
-}
-
-template <typename ExecSpaceDst, typename ExecSpaceSrc>
-FacMatrixT<ExecSpaceDst>
-DistTensorContext::
+template <typename ExecSpaceSrc>
+FacMatrixT<ExecSpace>
+DistTensorContext<ExecSpace>::
 exportFromRoot(const int dim, const FacMatrixT<ExecSpaceSrc>& u) const
 {
-  // Broadcast factor matrix values from 0 to all procs
-  pmap_->gridBcast(u.view().data(), u.view().span(), 0);
-  pmap_->gridBarrier();
+  FacMatrixT<ExecSpace> exp;
 
-  // Copy our portion
-  FacMatrixT<ExecSpaceDst> exp(u.nRows(), u.nCols());
-  auto coord = pmap_->gridCoord(dim);
-  auto rng = std::make_pair(global_blocking_[dim][coord],
-                            global_blocking_[dim][coord + 1]);
-  auto sub = Kokkos::subview(u.view(), rng, Kokkos::ALL);
-  deep_copy(exp.view(), sub);
+#ifdef HAVE_TPETRA
+  if (tpetra_comm != Teuchos::null) {
+     exp = FacMatrixT<ExecSpace>(factorMap[dim]->getLocalNumElements(),
+                                 u.nCols());
+     if (rootImporter[dim] != Teuchos::null) {
+       FacMatrixT<ExecSpace> v = create_mirror_view(ExecSpace(), u);
+       deep_copy(v, u);
+       DistFacMatrix<ExecSpace> dist_u(v, rootMap[dim]);
+       DistFacMatrix<ExecSpace> dist_exp(exp, factorMap[dim]);
+       dist_exp.doExport(dist_u, *(rootImporter[dim]), Tpetra::INSERT);
+     }
+     else
+       deep_copy(exp, u);
+  }
+  else
+#endif
+  {
+    // Broadcast factor matrix values from 0 to all procs
+    pmap_->gridBcast(u.view().data(), u.view().span(), 0);
+    pmap_->gridBarrier();
+
+    // Copy our portion
+    exp = FacMatrixT<ExecSpace>(local_dims_[dim], u.nCols());
+    auto coord = pmap_->gridCoord(dim);
+    auto rng = std::make_pair(global_blocking_[dim][coord],
+                              global_blocking_[dim][coord + 1]);
+    auto sub = Kokkos::subview(u.view(), rng, Kokkos::ALL);
+    deep_copy(exp.view(), sub);
+  }
+
   return exp;
 }
 
-template <typename ExecSpaceDst, typename ExecSpaceSrc>
+template <typename ExecSpace>
+template <typename ExecSpaceDst>
 FacMatrixT<ExecSpaceDst>
-DistTensorContext::
-importToRoot(const int dim, const FacMatrixT<ExecSpaceSrc>& u) const
+DistTensorContext<ExecSpace>::
+importToRoot(const int dim, const FacMatrixT<ExecSpace>& u) const
 {
   FacMatrixT<ExecSpaceDst> out(global_dims_[dim], u.nCols());
 
-  small_vector<int> grid_pos(global_dims_.size(), 0);
-  std::vector<int> recvcounts(pmap_->gridSize(), 0);
-  std::vector<int> displs(pmap_->gridSize(), 0);
-  const auto nblocks = global_blocking_[dim].size() - 1;
-  for (auto b = 0; b < nblocks; ++b) {
-    grid_pos[dim] = b;
-    int owner = 0;
-    MPI_Cart_rank(pmap_->gridComm(), grid_pos.data(), &owner);
-    recvcounts[owner] =
-      u.view().stride(0)*(global_blocking_[dim][b+1]-global_blocking_[dim][b]);
-    displs[owner] = out.view().stride(0)*global_blocking_[dim][b];
+#ifdef HAVE_TPETRA
+  if (tpetra_comm != Teuchos::null) {
+    if (rootImporter[dim] != Teuchos::null) {
+      FacMatrixT<ExecSpace> o = create_mirror_view(ExecSpace(), out);
+      DistFacMatrix<ExecSpace> dist_u(u, factorMap[dim]);
+      DistFacMatrix<ExecSpace> dist_o(o, rootMap[dim]);
+      dist_o.doImport(dist_u, *(rootImporter[dim]), Tpetra::INSERT);
+      deep_copy(out, o);
+    }
+    else
+      deep_copy(out, u);
   }
+  else
+#endif
+  {
+    small_vector<int> grid_pos(global_dims_.size(), 0);
+    std::vector<int> recvcounts(pmap_->gridSize(), 0);
+    std::vector<int> displs(pmap_->gridSize(), 0);
+    const auto nblocks = global_blocking_[dim].size() - 1;
+    for (auto b = 0; b < nblocks; ++b) {
+      grid_pos[dim] = b;
+      int owner = 0;
+      MPI_Cart_rank(pmap_->gridComm(), grid_pos.data(), &owner);
+      recvcounts[owner] =
+        u.view().stride(0)*(global_blocking_[dim][b+1]-global_blocking_[dim][b]);
+      displs[owner] = out.view().stride(0)*global_blocking_[dim][b];
+    }
 
-  const bool is_sub_root = pmap_->subCommRank(dim) == 0;
-  std::size_t send_size = is_sub_root ? u.view().span() : 0;
-  MPI_Gatherv(u.view().data(), send_size,
-              DistContext::toMpiType<ttb_real>(),
-              out.view().data(), recvcounts.data(), displs.data(),
-              DistContext::toMpiType<ttb_real>(), 0,
-              pmap_->gridComm());
-  pmap_->gridBarrier();
+    const bool is_sub_root = pmap_->subCommRank(dim) == 0;
+    std::size_t send_size = is_sub_root ? u.view().span() : 0;
+    MPI_Gatherv(u.view().data(), send_size,
+                DistContext::toMpiType<ttb_real>(),
+                out.view().data(), recvcounts.data(), displs.data(),
+                DistContext::toMpiType<ttb_real>(), 0,
+                pmap_->gridComm());
+    pmap_->gridBarrier();
+  }
 
   return out;
 }
 
 template <typename ExecSpace>
-KtensorT<ExecSpace>
-DistTensorContext::
-readInitialGuess(const std::string& file_name) const
-{
-  KtensorT<DefaultHostExecutionSpace> u_host;
-  import_ktensor(file_name, u_host);
-  KtensorT<ExecSpace> u = create_mirror_view(ExecSpace(), u_host);
-  deep_copy(u, u_host);
-  return exportFromRoot<ExecSpace>(u);
-}
-
-template <typename ExecSpace>
-KtensorT<ExecSpace>
-DistTensorContext::
-randomInitialGuess(const SptensorT<ExecSpace>& X,
-                   const int rank,
-                   const int seed,
-                   const bool prng,
-                   const std::string& dist_method) const
-{
-  const ttb_indx nd = X.ndims();
-  const ttb_real norm_x = globalNorm(X);
-  RandomMT cRMT(seed);
-
-  if (dist_method == "serial") {
-    // Compute random ktensor on rank 0 and broadcast to all proc's
-    IndxArrayT<ExecSpace> sz(nd);
-    auto hsz = create_mirror_view(sz);
-    for (int i=0; i<nd; ++i)
-      hsz[i] = global_dims_[i];
-    deep_copy(sz,hsz);
-    Genten::KtensorT<ExecSpace> u(rank, nd, sz);
-    if (pmap_->gridRank() == 0) {
-      u.setWeights(1.0);
-      u.setMatricesScatter(false, prng, cRMT);
-      const auto norm_k = std::sqrt(u.normFsq());
-      u.weights().times(norm_x / norm_k);
-      u.distribute();
-    }
-    return exportFromRoot<ExecSpace>(u);
-  }
-  else if (dist_method == "parallel") {
-    // Compute random ktensor on each node
-    KtensorT<ExecSpace> u(rank, nd, X.size());
-    u.setWeights(1.0);
-    u.setMatricesScatter(false, prng, cRMT);
-    const ttb_real norm_k = globalNorm(u);
-    u.weights().times(norm_x / norm_k);
-    u.distribute();
-    return u;
-  }
-  else if (dist_method == "parallel-drew") {
-    // Drew's funky random ktensor that I don't understand
-    KtensorT<ExecSpace> u(rank, nd, X.size());
-    u.setWeights(1.0);
-    u.setMatricesScatter(false, prng, cRMT);
-    u.weights().times(1.0 / norm_x);
-    u.distribute();
-    allReduce(u, true);
-    return u;
-  }
-  else
-    Genten::error("Unknown distributed-guess method: " + dist_method);
-
-  return Genten::KtensorT<ExecSpace>();
-}
-
-template <typename ExecSpace>
 SptensorT<ExecSpace>
-DistTensorContext::
+DistTensorContext<ExecSpace>::
 distributeTensor(const std::string& file, const ttb_indx index_base,
-                 const bool compressed)
+                 const bool compressed, const AlgParams& algParams)
 {
   const bool is_binary = detail::fileFormatIsBinary(file);
   if (is_binary && index_base != 0)
@@ -606,7 +627,11 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
   else {
     global_dims_ = global_dims;
 
-    pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_));
+    const bool use_tpetra =
+      algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
+
+    pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
+                                                           use_tpetra));
     detail::printGrids(*pmap_);
 
     global_blocking_ =
@@ -614,14 +639,15 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
     detail::printBlocking(*pmap_, global_blocking_);
   }
 
-  return distributeTensorData<ExecSpace>(Tvec, global_dims_, global_blocking_,
-                                         *pmap_);
+  return distributeTensorData(Tvec, global_dims_, global_blocking_,
+                              *pmap_, algParams);
 }
 
-template <typename ExecSpaceDst, typename ExecSpaceSrc>
-SptensorT<ExecSpaceDst>
-DistTensorContext::
-distributeTensor(const SptensorT<ExecSpaceSrc>& X)
+template <typename ExecSpace>
+template <typename ExecSpaceSrc>
+SptensorT<ExecSpace>
+DistTensorContext<ExecSpace>::
+distributeTensor(const SptensorT<ExecSpaceSrc>& X, const AlgParams& algParams)
 {
   // Check if we have already distributed a tensor, in which case this one
   // needs to be of the same size
@@ -638,7 +664,10 @@ distributeTensor(const SptensorT<ExecSpaceSrc>& X)
     for (int i=0; i<ndims; ++i)
       global_dims_[i] = X.size(i);
 
-    pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_));
+    const bool use_tpetra =
+      algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
+    pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
+                                                           use_tpetra));
     detail::printGrids(*pmap_);
 
     global_blocking_ =
@@ -654,18 +683,21 @@ distributeTensor(const SptensorT<ExecSpaceSrc>& X)
     X_host, X.nnz(), pmap_->gridComm(), pmap_->gridRank(),
     pmap_->gridSize());
 
-  return distributeTensorData<ExecSpaceDst>(
-    Tvec, global_dims_, global_blocking_, *pmap_);
+  return distributeTensorData(Tvec, global_dims_, global_blocking_, *pmap_,
+                              algParams);
 }
 
 template <typename ExecSpace>
 SptensorT<ExecSpace>
-DistTensorContext::
+DistTensorContext<ExecSpace>::
 distributeTensorData(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
                      const std::vector<std::uint32_t>& TensorDims,
                      const std::vector<small_vector<int>>& blocking,
-                     const ProcessorMap& pmap)
+                     const ProcessorMap& pmap, const AlgParams& algParams)
 {
+  const bool use_tpetra =
+    algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
+
   DistContext::Barrier();
   auto t4 = MPI_Wtime();
 
@@ -706,14 +738,139 @@ distributeTensorData(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
     auto data = distributedData[i];
     values[i] = data.val;
     subs[i] = std::vector<ttb_indx>(data.coo, data.coo + ndims);
-    for (auto j = 0; j < ndims; ++j) {
-      subs[i][j] -= range[j].lower;
-    }
+
+    // Do not subtract off the lower bound of the bounding box for Tpetra
+    // since it will map GIDs to LIDs below
+    if (!use_tpetra)
+      for (auto j = 0; j < ndims; ++j)
+        subs[i][j] -= range[j].lower;
   }
 
-  Sptensor sptensor_host(indices, values, subs);
-  SptensorT<ExecSpace> sptensor = create_mirror_view(ExecSpace(), sptensor_host);
-  deep_copy(sptensor, sptensor_host);
+  SptensorT<ExecSpace> sptensor;
+  if (!use_tpetra) {
+    Sptensor sptensor_host(indices, values, subs);
+    sptensor = create_mirror_view(ExecSpace(), sptensor_host);
+    deep_copy(sptensor, sptensor_host);
+  }
+
+#ifdef HAVE_TPETRA
+  // Setup Tpetra parallel maps
+  if (use_tpetra) {
+    const tpetra_go_type indexBase = tpetra_go_type(0);
+    const Tpetra::global_size_t invalid =
+      Teuchos::OrdinalTraits<Tpetra::global_size_t>::invalid();
+    tpetra_comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap_->gridComm()));
+
+    // Distribute each factor matrix uniformly across all processors
+    // ToDo:  consider possibly not doing this when the number of rows is
+    // small.  It might be better to replicate rows instead
+    factorMap.resize(ndims);
+    for (auto dim=0; dim<ndims; ++dim) {
+      const tpetra_go_type numGlobalElements = global_dims_[dim];
+      factorMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(numGlobalElements, indexBase, tpetra_comm));
+    }
+
+    // Build hash maps of tensor nonzeros in each dimension for:
+    //   1.  Mapping tensor GIDs to LIDS
+    //   2.  Constructing overlapping Tpetra map for MTTKRP
+    using unordered_map_type = Kokkos::UnorderedMap<tpetra_go_type,tpetra_lo_type,DefaultHostExecutionSpace>;
+    std::vector<unordered_map_type> map(ndims);
+    std::vector<tpetra_lo_type> cnt(ndims, 0);
+    for (auto dim=0; dim<ndims; ++dim)
+      map[dim].rehash(local_dims_[dim]);
+    for (auto i=0; i<local_nnz; ++i) {
+      for (auto dim=0; dim<ndims; ++dim) {
+        auto gid = subs[i][dim];
+        auto idx = map[dim].find(gid);
+        if (!map[dim].valid_at(idx)) {
+          tpetra_lo_type lid = cnt[dim]++;
+          if (map[dim].insert(gid,lid).failed())
+            Genten::error("Insertion of GID failed, something is wrong!");
+        }
+      }
+    }
+    for (auto dim=0; dim<ndims; ++dim)
+      assert(cnt[dim] == map[dim].size());
+
+    // Map tensor GIDs to LIDs.  We use the hash-map for this instead of just
+    // subtracting off the lower bound because there may be empty slices
+    // in our block (and LIDs must be contiguous)
+    std::vector<std::vector<ttb_indx>> subs_gids(local_nnz);
+    for (auto i=0; i<local_nnz; ++i) {
+      subs_gids[i].resize(ndims);
+      for (auto dim=0; dim<ndims; ++dim) {
+        const auto gid = subs[i][dim];
+        const auto idx = map[dim].find(gid);
+        const auto lid = map[dim].value_at(idx);
+        subs[i][dim] = lid;
+        subs_gids[i][dim] = gid;
+      }
+    }
+
+    // Construct overlap maps for each dimension
+    overlapFactorMap.resize(ndims);
+    for (auto dim=0; dim<ndims; ++dim) {
+      Kokkos::View<tpetra_go_type*,ExecSpace> gids("gids", cnt[dim]);
+      auto gids_host = create_mirror_view(gids);
+      const auto sz = map[dim].capacity();
+      for (auto idx=0; idx<sz; ++idx) {
+        if (map[dim].valid_at(idx)) {
+          const auto gid = map[dim].key_at(idx);
+          const auto lid = map[dim].value_at(idx);
+          gids_host[lid] = gid;
+        }
+      }
+      deep_copy(gids, gids_host);
+      overlapFactorMap[dim] =
+        Teuchos::rcp(new tpetra_map_type<ExecSpace>(invalid, gids, indexBase,
+                                                    tpetra_comm));
+      indices[dim] = overlapFactorMap[dim]->getLocalNumElements();
+
+      if (algParams.optimize_maps) {
+        bool err = false;
+        overlapFactorMap[dim] = Tpetra::Details::makeOptimizedColMap(
+          std::cerr, err, *factorMap[dim], *overlapFactorMap[dim]);
+        if (err)
+          Genten::error("Tpetra::Details::makeOptimizedColMap failed!");
+        for (auto i=0; i<local_nnz; ++i)
+          subs[i][dim] =
+            overlapFactorMap[dim]->getLocalElement(subs_gids[i][dim]);
+      }
+    }
+
+    // Build sparse tensor
+    std::vector<ttb_indx> lower(ndims), upper(ndims);
+    for (auto dim=0; dim<ndims; ++dim) {
+      lower[dim] = range[dim].lower;
+      upper[dim] = range[dim].upper;
+    }
+    Sptensor sptensor_host(indices, values, subs, subs_gids, lower, upper);
+    sptensor = create_mirror_view(ExecSpace(), sptensor_host);
+    deep_copy(sptensor, sptensor_host);
+    for (auto dim=0; dim<ndims; ++dim) {
+      sptensor.factorMap(dim) = factorMap[dim];
+      sptensor.tensorMap(dim) = overlapFactorMap[dim];
+      if (!overlapFactorMap[dim]->isSameAs(*factorMap[dim]))
+        sptensor.importer(dim) =
+          Teuchos::rcp(new tpetra_import_type<ExecSpace>(
+                         factorMap[dim], overlapFactorMap[dim]));
+    }
+
+    // Build maps and importers for importing factor matrices to/from root
+    rootMap.resize(ndims);
+    rootImporter.resize(ndims);
+    for (auto dim=0; dim<ndims; ++dim) {
+      const Tpetra::global_size_t numGlobalElements = global_dims_[dim];
+      const size_t numLocalElements =
+        (gridRank() == 0) ? global_dims_[dim] : 0;
+      rootMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(numGlobalElements, numLocalElements, indexBase, tpetra_comm));
+      rootImporter[dim] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(factorMap[dim], rootMap[dim]));
+    }
+  }
+#else
+  if (use_tpetra)
+    Genten::error("Cannot use tpetra distribution approach without enabling Tpetra!");
+#endif
 
   if (DistContext::isDebug()) {
     if (gridRank() == 0) {
@@ -729,11 +886,29 @@ distributeTensorData(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
   DistContext::Barrier();
   auto t7 = MPI_Wtime();
 
-  // if (gridRank() == 0) {
-  //   std::cout << "Copied to data struct in: " << t7 - t6 << "s" << std::endl;
-  // }
-
+  sptensor.setProcessorMap(&pmap);
   return sptensor;
+}
+
+template <typename ExecSpace>
+std::pair<G_MPI_IO::SptnFileHeader, MPI_File>
+DistTensorContext<ExecSpace>::
+readBinaryHeader(const std::string& file_name, int indexbase,
+           std::vector<std::uint32_t>& dims,
+           std::uint64_t& nnz)
+{
+  bool is_binary = detail::fileFormatIsBinary(file_name);
+  if (!is_binary)
+    Genten::error("readBinaryHeader called on non-binary file!\n");
+  if (indexbase != 0)
+    Genten::error("The binary format only supports zero based indexing\n");
+
+  auto *mpi_fh = G_MPI_IO::openFile(DistContext::commWorld(), file_name);
+  auto binary_header = G_MPI_IO::readHeader(DistContext::commWorld(), mpi_fh);
+  TensorInfo ti = binary_header.toTensorInfo();
+  dims = ti.dim_sizes;
+  nnz = ti.nnz;
+  return std::make_pair(std::move(binary_header), mpi_fh);
 }
 
 namespace detail {
@@ -811,6 +986,7 @@ rangesToIndexArray(const small_vector<RangePair>& ranges)
 
 #else
 
+template <typename ExecSpace>
 class DistTensorContext {
 public:
   DistTensorContext() = default;
@@ -821,12 +997,11 @@ public:
   DistTensorContext& operator=(DistTensorContext&&) = default;
   DistTensorContext& operator=(const DistTensorContext&) = default;
 
-  template <typename ExecSpace>
   SptensorT<ExecSpace> distributeTensor(const ptree& tree);
-  template <typename ExecSpace>
   SptensorT<ExecSpace> distributeTensor(const std::string& file,
                                         const ttb_indx index_base,
-                                        const bool compressed)
+                                        const bool compressed,
+                                        const AlgParams& algParams)
   {
     Sptensor x_host;
     Genten::import_sptensor(file, x_host, index_base, compressed, true);
@@ -841,10 +1016,11 @@ public:
 
     return x;
   }
-  template <typename ExecSpaceDst, typename ExecSpaceSrc>
-  SptensorT<ExecSpaceDst> distributeTensor(const SptensorT<ExecSpaceSrc>& X)
+  template <typename ExecSpaceSrc>
+  SptensorT<ExecSpace> distributeTensor(const SptensorT<ExecSpaceSrc>& X,
+                                        const AlgParams& algParams = AlgParams())
   {
-    SptensorT<ExecSpaceDst> X_dst = create_mirror_view(ExecSpaceDst(), X);
+    SptensorT<ExecSpace> X_dst = create_mirror_view(ExecSpace(), X);
     deep_copy(X_dst, X);
     return X_dst;
   }
@@ -860,115 +1036,50 @@ public:
   std::shared_ptr<const ProcessorMap> pmap_ptr() const { return pmap_; }
 
   // Sptensor operations
-  template <typename ExecSpace>
   ttb_real globalNorm(const SptensorT<ExecSpace>& X) const { return X.norm(); }
-  template <typename ExecSpace>
   std::uint64_t globalNNZ(const SptensorT<ExecSpace>& X) const { return X.nnz(); }
-  template <typename ExecSpace>
   ttb_real globalNumelFloat(const SptensorT<ExecSpace>& X) const { return X.numel_float(); }
 
   // Ktensor operations
-  template <typename ExecSpace>
   ttb_real globalNorm(const KtensorT<ExecSpace>& u) const { return std::sqrt(u.normFsq()); }
-  template <typename ExecSpaceDst, typename ExecSpaceSrc>
-  KtensorT<ExecSpaceDst> exportFromRoot(const KtensorT<ExecSpaceSrc>& u) const {
-    KtensorT<ExecSpaceDst> v = create_mirror_view(ExecSpaceDst(), u);
-    deep_copy(v,u);
+  template <typename ExecSpaceSrc>
+  KtensorT<ExecSpace> exportFromRoot(const KtensorT<ExecSpaceSrc>& u) const {
+    KtensorT<ExecSpace> v = create_mirror_view(ExecSpace(), u);
+    deep_copy(v, u);
     return v;
   }
-  template <typename ExecSpaceDst, typename ExecSpaceSrc>
-  KtensorT<ExecSpaceDst> importToRoot(const KtensorT<ExecSpaceSrc>& u) const {
+  template <typename ExecSpaceDst>
+  KtensorT<ExecSpaceDst> importToRoot(const KtensorT<ExecSpace>& u) const {
     KtensorT<ExecSpaceDst> v = create_mirror_view(ExecSpaceDst(), u);
-    deep_copy(v,u);
+    deep_copy(v, u);
     return v;
   }
-  template <typename ExecSpace>
   void allReduce(KtensorT<ExecSpace>& u,
                  const bool divide_by_grid_size = false) const {}
-  template <typename ExecSpace>
   void exportToFile(const KtensorT<ExecSpace>& out,
-                    const std::string& file_name) const {
-    out.normalize(Genten::NormTwo);
-    out.arrange();
-
-    std::cout << "Saving final Ktensor to " << file_name << std::endl;
-    auto out_h = create_mirror_view(out);
-    deep_copy(out_h, out);
-    Genten::export_ktensor(file_name, out_h);
-  }
-  template <typename ExecSpaceDst, typename ExecSpaceSrc>
-  FacMatrixT<ExecSpaceDst> exportFromRoot(const int dim, const FacMatrixT<ExecSpaceSrc>& u) const {
-    FacMatrixT<ExecSpaceDst> v = create_mirror_view(ExecSpaceDst(), u);
-    deep_copy(v,u);
+                    const std::string& file_name) const;
+  template <typename ExecSpaceSrc>
+  FacMatrixT<ExecSpace> exportFromRoot(const int dim, const FacMatrixT<ExecSpaceSrc>& u) const {
+    FacMatrixT<ExecSpace> v = create_mirror_view(ExecSpace(), u);
+    deep_copy(v, u);
     return v;
   }
-  template <typename ExecSpaceDst, typename ExecSpaceSrc>
-  FacMatrixT<ExecSpaceDst> importToRoot(const int dim, const FacMatrixT<ExecSpaceSrc>& u) const {
+  template <typename ExecSpaceDst>
+  FacMatrixT<ExecSpaceDst> importToRoot(const int dim, const FacMatrixT<ExecSpace>& u) const {
     FacMatrixT<ExecSpaceDst> v = create_mirror_view(ExecSpaceDst(), u);
-    deep_copy(v,u);
+    deep_copy(v, u);
     return v;
   }
 
   template <typename ExecSpace>
-  KtensorT<ExecSpace> readInitialGuess(const std::string& file_name) const {
-    KtensorT<DefaultHostExecutionSpace> u_host;
-    import_ktensor(file_name, u_host);
-    KtensorT<ExecSpace> u = create_mirror_view(ExecSpace(), u_host);
-    deep_copy(u, u_host);
-    return u;
-  }
+  KtensorT<ExecSpace> readInitialGuess(const std::string& file_name) const;
   template <typename ExecSpace>
   KtensorT<ExecSpace> randomInitialGuess(const SptensorT<ExecSpace>& X,
                                          const int rank,
                                          const int seed,
                                          const bool prng,
-                                         const std::string& dist_method) const {
-    const ttb_indx nd = X.ndims();
-    const ttb_real norm_x = globalNorm(X);
-    RandomMT cRMT(seed);
-
-    if (dist_method == "serial") {
-      // Compute random ktensor on rank 0 and broadcast to all proc's
-      IndxArrayT<ExecSpace> sz(nd);
-      auto hsz = create_mirror_view(sz);
-      for (int i=0; i<nd; ++i)
-        hsz[i] = global_dims_[i];
-      deep_copy(sz,hsz);
-      Genten::KtensorT<ExecSpace> u(rank, nd, sz);
-      if (pmap_->gridRank() == 0) {
-        u.setWeights(1.0);
-        u.setMatricesScatter(false, prng, cRMT);
-        const auto norm_k = std::sqrt(u.normFsq());
-        u.weights().times(norm_x / norm_k);
-        u.distribute();
-      }
-      return u;
-    }
-    else if (dist_method == "parallel") {
-      // Compute random ktensor on each node
-      KtensorT<ExecSpace> u(rank, nd, X.size());
-      u.setWeights(1.0);
-      u.setMatricesScatter(false, prng, cRMT);
-      const ttb_real norm_k = globalNorm(u);
-      u.weights().times(norm_x / norm_k);
-      u.distribute();
-      return u;
-    }
-    else if (dist_method == "parallel-drew") {
-      // Drew's funky random ktensor that I don't understand
-      KtensorT<ExecSpace> u(rank, nd, X.size());
-      u.setWeights(1.0);
-      u.setMatricesScatter(false, prng, cRMT);
-      u.weights().times(1.0 / norm_x);
-      u.distribute();
-      allReduce(u, true);
-      return u;
-    }
-    else
-      Genten::error("Unknown distributed-guess method: " + dist_method);
-    return Genten::KtensorT<ExecSpace>();
-  }
-  template <typename ExecSpace>
+                                         const bool scale_guess_by_norm_x,
+                                         const std::string& dist_method) const;
   KtensorT<ExecSpace> computeInitialGuess(const SptensorT<ExecSpace>& X,
                                           const ptree& input) const;
 
@@ -981,19 +1092,123 @@ private:
 
 template <typename ExecSpace>
 SptensorT<ExecSpace>
-DistTensorContext::
+DistTensorContext<ExecSpace>::
 distributeTensor(const ptree& tree)
 {
   auto t_tree = tree.get_child("tensor");
   const std::string file_name = t_tree.get<std::string>("input-file");
   const ttb_indx index_base = t_tree.get<int>("index-base", 0);
   const bool compressed = t_tree.get<bool>("compressed", false);
-  return distributeTensor<ExecSpace>(file_name, index_base, compressed);
+
+  auto k_tree = tree.get_child("k-tensor");
+  const bool tpetra =
+    (parse_ptree_enum<Dist_Update_Method>(k_tree, "dist-method") ==
+     Dist_Update_Method::Tpetra);
+  const bool optimize_maps = k_tree.get<bool>("optimize-mps", false);
+  return distributeTensor(file_name, index_base, compressed, tpetra,
+                          optimize_maps);
+}
+
+template <typename ExecSpace>
+void
+DistTensorContext<ExecSpace>::
+exportToFile(const KtensorT<ExecSpace>& u, const std::string& file_name) const
+{
+  auto out = importToRoot<Genten::DefaultHostExecutionSpace>(u);
+  if (pmap_->gridRank() == 0) {
+    // Normalize Ktensor u before writing out
+    out.normalize(Genten::NormTwo);
+    out.arrange();
+
+    std::cout << "Saving final Ktensor to " << file_name << std::endl;
+    Genten::export_ktensor(file_name, out);
+  }
 }
 
 template <typename ExecSpace>
 KtensorT<ExecSpace>
-DistTensorContext::
+DistTensorContext<ExecSpace>::
+readInitialGuess(const std::string& file_name) const
+{
+  KtensorT<DefaultHostExecutionSpace> u_host;
+  import_ktensor(file_name, u_host);
+  KtensorT<ExecSpace> u = create_mirror_view(ExecSpace(), u_host);
+  deep_copy(u, u_host);
+  return exportFromRoot(u);
+}
+
+template <typename ExecSpace>
+KtensorT<ExecSpace>
+DistTensorContext<ExecSpace>::
+randomInitialGuess(const SptensorT<ExecSpace>& X,
+                   const int rank,
+                   const int seed,
+                   const bool prng,
+                   const bool scale_guess_by_norm_x,
+                   const std::string& dist_method) const
+{
+  const ttb_indx nd = X.ndims();
+  const ttb_real norm_x = globalNorm(X);
+  RandomMT cRMT(seed);
+
+  Genten::KtensorT<ExecSpace> u;
+
+  if (dist_method == "serial") {
+    // Compute random ktensor on rank 0 and broadcast to all proc's
+    IndxArrayT<ExecSpace> sz(nd);
+    auto hsz = create_mirror_view(sz);
+    for (int i=0; i<nd; ++i)
+      hsz[i] = global_dims_[i];
+    deep_copy(sz,hsz);
+    Genten::KtensorT<ExecSpace> u0(rank, nd, sz);
+    if (pmap_->gridRank() == 0) {
+      u0.setWeights(1.0);
+      u0.setMatricesScatter(false, prng, cRMT);
+    }
+    u = exportFromRoot(u0);
+  }
+  else if (dist_method == "parallel" || dist_method == "parallel-drew") {
+#ifdef HAVE_TPETRA
+    if (tpetra_comm != Teuchos::null) {
+      const int nd = X.ndims();
+      IndxArrayT<ExecSpace> sz(nd);
+      auto hsz = create_mirror_view(sz);
+      for (int i=0; i<nd; ++i)
+        hsz[i] = factorMap[i]->getLocalNumElements();
+      deep_copy(sz,hsz);
+      u = KtensorT<ExecSpace>(rank, nd, sz);
+      u.setWeights(1.0);
+      u.setMatricesScatter(false, prng, cRMT);
+      u.setProcessorMap(&pmap());
+    }
+    else
+#endif
+    {
+      u = KtensorT<ExecSpace>(rank, nd, X.size());
+      u.setWeights(1.0);
+      u.setMatricesScatter(false, prng, cRMT);
+      u.setProcessorMap(&pmap());
+      allReduce(u, true); // make replicated proc's consistent
+    }
+  }
+  else
+    Genten::error("Unknown distributed-guess method: " + dist_method);
+
+  if (dist_method == "parallel-drew")
+    u.weights().times(1.0 / norm_x); // don't understand this
+  else {
+    const ttb_real norm_u = globalNorm(u);
+    const ttb_real scale =
+      scale_guess_by_norm_x ? norm_x / norm_u : ttb_real(1.0) / norm_u;
+    u.weights().times(scale);
+  }
+  u.distribute(); // distribute weights across factor matrices
+  return u;
+}
+
+template <typename ExecSpace>
+KtensorT<ExecSpace>
+DistTensorContext<ExecSpace>::
 computeInitialGuess(const SptensorT<ExecSpace>& X, const ptree& input) const
 {
   KtensorT<ExecSpace> u;
@@ -1002,15 +1217,16 @@ computeInitialGuess(const SptensorT<ExecSpace>& X, const ptree& input) const
   std::string init_method = kt_input.get<std::string>("initial-guess", "rand");
   if (init_method == "file") {
     std::string file_name = kt_input.get<std::string>("initial-file");
-    u = readInitialGuess<ExecSpace>(file_name);
+    u = readInitialGuess(file_name);
   }
   else if (init_method == "rand") {
     const int seed = kt_input.get<int>("seed",std::random_device{}());
     const bool prng = kt_input.get<bool>("prng",true);
+    const bool scale_by_x = kt_input.get<bool>("scale-guess-by-norm-x", false);
     const int nc = kt_input.get<int>("rank");
     const std::string dist_method =
       kt_input.get<std::string>("distributed-guess", "serial");
-    u = randomInitialGuess(X, nc, seed, prng, dist_method);
+    u = randomInitialGuess(X, nc, seed, prng, scale_by_x, dist_method);
   }
   else
     Genten::error("Unknown initial-guess method: " + init_method);

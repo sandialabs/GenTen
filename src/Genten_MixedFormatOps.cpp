@@ -76,7 +76,7 @@ struct InnerProductKernel {
   typedef typename Policy::member_type TeamMember;
   typedef Kokkos::View< ttb_real**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
-  const Genten::SptensorT<ExecSpace>& s;
+  const Genten::SptensorImpl<ExecSpace>& s;
   const Genten::KtensorT<ExecSpace>& u;
   const Genten::ArrayT<ExecSpace>& lambda;
   const ttb_indx nnz;
@@ -96,7 +96,7 @@ struct InnerProductKernel {
   }
 
   KOKKOS_INLINE_FUNCTION
-  InnerProductKernel(const Genten::SptensorT<ExecSpace>& s_,
+  InnerProductKernel(const Genten::SptensorImpl<ExecSpace>& s_,
                      const Genten::KtensorT<ExecSpace>& u_,
                      const Genten::ArrayT<ExecSpace>& lambda_,
                      const TeamMember& team_) :
@@ -176,7 +176,7 @@ struct InnerProductKernel<ExecSpace,RowBlockSize,FacBlockSize,1,1> {
   typedef Kokkos::TeamPolicy<ExecSpace> Policy;
   typedef typename Policy::member_type TeamMember;
 
-  const Genten::SptensorT<ExecSpace>& s;
+  const Genten::SptensorImpl<ExecSpace>& s;
   const Genten::KtensorT<ExecSpace>& u;
   const Genten::ArrayT<ExecSpace>& lambda;
   const ttb_indx nnz;
@@ -193,7 +193,7 @@ struct InnerProductKernel<ExecSpace,RowBlockSize,FacBlockSize,1,1> {
   }
 
   KOKKOS_INLINE_FUNCTION
-  InnerProductKernel(const Genten::SptensorT<ExecSpace>& s_,
+  InnerProductKernel(const Genten::SptensorImpl<ExecSpace>& s_,
                      const Genten::KtensorT<ExecSpace>& u_,
                      const Genten::ArrayT<ExecSpace>& lambda_,
                      const TeamMember& team_) :
@@ -238,7 +238,7 @@ struct InnerProductKernel<ExecSpace,RowBlockSize,FacBlockSize,1,1> {
 };
 
 template <typename ExecSpace, unsigned FacBlockSize>
-ttb_real innerprod_kernel(const Genten::SptensorT<ExecSpace>& s,
+ttb_real innerprod_kernel(const Genten::SptensorImpl<ExecSpace>& s,
                           const Genten::KtensorT<ExecSpace>& u,
                           const Genten::ArrayT<ExecSpace>& lambda)
 {
@@ -304,19 +304,19 @@ ttb_real Genten::innerprod(const Genten::SptensorT<ExecSpace>& s,
   // Call kernel with factor block size determined from nc
   ttb_real d = 0.0;
   if (nc == 1)
-    d = Impl::innerprod_kernel<ExecSpace,1>(s,u,lambda);
+    d = Impl::innerprod_kernel<ExecSpace,1>(s.impl(),u,lambda);
   else if (nc == 2)
-    d = Impl::innerprod_kernel<ExecSpace,2>(s,u,lambda);
+    d = Impl::innerprod_kernel<ExecSpace,2>(s.impl(),u,lambda);
   else if (nc <= 4)
-    d = Impl::innerprod_kernel<ExecSpace,4>(s,u,lambda);
+    d = Impl::innerprod_kernel<ExecSpace,4>(s.impl(),u,lambda);
   else if (nc <= 8)
-    d = Impl::innerprod_kernel<ExecSpace,8>(s,u,lambda);
+    d = Impl::innerprod_kernel<ExecSpace,8>(s.impl(),u,lambda);
   else if (nc <= 16)
-    d = Impl::innerprod_kernel<ExecSpace,16>(s,u,lambda);
+    d = Impl::innerprod_kernel<ExecSpace,16>(s.impl(),u,lambda);
   else if (nc < 64 || !is_gpu)
-    d = Impl::innerprod_kernel<ExecSpace,32>(s,u,lambda);
+    d = Impl::innerprod_kernel<ExecSpace,32>(s.impl(),u,lambda);
   else
-    d = Impl::innerprod_kernel<ExecSpace,64>(s,u,lambda);
+    d = Impl::innerprod_kernel<ExecSpace,64>(s.impl(),u,lambda);
 
   if (u.getProcessorMap() != nullptr) {
     Kokkos::fence();
@@ -452,7 +452,8 @@ struct MTTKRP_Dense_Kernel {
 
     const size_t bytes = TmpScratchSpace::shmem_size(TeamSize, nd);
     Policy policy(N, TeamSize, VectorSize);
-    Kokkos::parallel_for(policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+    Kokkos::parallel_for("mttkrp_kernel",
+                         policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
                          KOKKOS_LAMBDA(const TeamMember& team)
     {
       // Row of v we write to
@@ -515,7 +516,7 @@ struct MTTKRP_Dense_Kernel {
           row_func(j, nj, std::integral_constant<unsigned,0>());
         }
       }
-    }, "mttkrp_kernel");
+    });
   }
 
 };

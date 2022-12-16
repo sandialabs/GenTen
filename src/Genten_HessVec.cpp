@@ -47,6 +47,7 @@
 #include "Genten_FacMatrix.hpp"
 #include "Genten_TinyVec.hpp"
 #include "Genten_SimdKernel.hpp"
+#include "Genten_DistKtensorUpdate.hpp"
 
 // This is a locally-modified version of Kokkos_ScatterView.hpp which we
 // need until the changes are moved into Kokkos
@@ -67,13 +68,13 @@ namespace Impl {
 // Because of problems with ScatterView, doesn't work on the GPU
 template <int Dupl, int Cont, typename ExecSpace>
 struct HessVec_Kernel {
-  const SptensorT<ExecSpace> XX;
+  const SptensorImpl<ExecSpace> XX;
   const KtensorT<ExecSpace> aa;
   const KtensorT<ExecSpace> vv;
   const KtensorT<ExecSpace> uu;
   const AlgParams algParams;
 
-  HessVec_Kernel(const SptensorT<ExecSpace>& X_,
+  HessVec_Kernel(const SptensorImpl<ExecSpace>& X_,
                  const KtensorT<ExecSpace>& a_,
                  const KtensorT<ExecSpace>& v_,
                  const KtensorT<ExecSpace>& u_,
@@ -82,7 +83,7 @@ struct HessVec_Kernel {
 
   template <unsigned FBS, unsigned VS>
   void run() const {
-    const SptensorT<ExecSpace> X = XX;
+    const SptensorImpl<ExecSpace> X = XX;
     const KtensorT<ExecSpace> a = aa;
     const KtensorT<ExecSpace> v = vv;
     const KtensorT<ExecSpace> u = uu;
@@ -127,7 +128,8 @@ struct HessVec_Kernel {
                                   std::make_pair(nc_beg,nc_end));
         su[n] = ScatterViewType(uu);
       }
-      Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+      Kokkos::parallel_for("hessvec_kernel",
+                           policy, KOKKOS_LAMBDA(const TeamMember& team)
       {
         // Loop over tensor non-zeros with a large stride on the GPU to
         // reduce atomic contention when the non-zeros are in a nearly sorted
@@ -186,7 +188,7 @@ struct HessVec_Kernel {
           row_func(j, nj, std::integral_constant<unsigned,0>());
         }
         }
-      }, "hessvec_kernel");
+      });
 
       for (unsigned n=0; n<nd; ++n) {
         auto uu = Kokkos::subview(u[n].view(),Kokkos::ALL,
@@ -205,13 +207,13 @@ template <int Dupl, int Cont>
 struct HessVec_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
   typedef Kokkos_GPU_Space ExecSpace;
 
-  const SptensorT<ExecSpace> XX;
+  const SptensorImpl<ExecSpace> XX;
   const KtensorT<ExecSpace> aa;
   const KtensorT<ExecSpace> vv;
   const KtensorT<ExecSpace> uu;
   const AlgParams algParams;
 
-  HessVec_Kernel(const SptensorT<ExecSpace>& X_,
+  HessVec_Kernel(const SptensorImpl<ExecSpace>& X_,
                  const KtensorT<ExecSpace>& a_,
                  const KtensorT<ExecSpace>& v_,
                  const KtensorT<ExecSpace>& u_,
@@ -220,7 +222,7 @@ struct HessVec_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
 
   template <unsigned FBS, unsigned VS>
   void run() const {
-    const SptensorT<ExecSpace> X = XX;
+    const SptensorImpl<ExecSpace> X = XX;
     const KtensorT<ExecSpace> a = aa;
     const KtensorT<ExecSpace> v = vv;
     const KtensorT<ExecSpace> u = uu;
@@ -245,7 +247,8 @@ struct HessVec_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
     typedef typename Policy::member_type TeamMember;
     Policy policy(N, TeamSize, VectorSize);
 
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+    Kokkos::parallel_for("hessvec_kernel",
+                         policy, KOKKOS_LAMBDA(const TeamMember& team)
     {
       // Loop over tensor non-zeros with a large stride on the GPU to
       // reduce atomic contention when the non-zeros are in a nearly sorted
@@ -294,7 +297,7 @@ struct HessVec_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
           row_func(j, nj, std::integral_constant<unsigned,0>());
         }
       }
-    }, "hessvec_kernel");
+    });
   }
 };
 #endif
@@ -302,13 +305,13 @@ struct HessVec_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
 // HessVec permutation-based kernel for Sptensor for all modes simultaneously
 template <typename ExecSpace>
 struct HessVec_PermKernel {
-  const SptensorT<ExecSpace> XX;
+  const SptensorImpl<ExecSpace> XX;
   const KtensorT<ExecSpace> aa;
   const KtensorT<ExecSpace> vv;
   const KtensorT<ExecSpace> uu;
   const AlgParams algParams;
 
-  HessVec_PermKernel(const SptensorT<ExecSpace>& X_,
+  HessVec_PermKernel(const SptensorImpl<ExecSpace>& X_,
                      const KtensorT<ExecSpace>& a_,
                      const KtensorT<ExecSpace>& v_,
                      const KtensorT<ExecSpace>& u_,
@@ -317,7 +320,7 @@ struct HessVec_PermKernel {
 
   template <unsigned FBS, unsigned VS>
   void run() const {
-    const SptensorT<ExecSpace> X = XX;
+    const SptensorImpl<ExecSpace> X = XX;
     const KtensorT<ExecSpace> a = aa;
     const KtensorT<ExecSpace> v = vv;
     const KtensorT<ExecSpace> u = uu;
@@ -343,7 +346,8 @@ struct HessVec_PermKernel {
     // Perm only works for a single dimension at a time, so loop over them
     // outside the kernel
     for (unsigned k=0; k<nd; ++k) {
-      Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+      Kokkos::parallel_for("hessvec_perm_kernel",
+                           policy, KOKKOS_LAMBDA(const TeamMember& team)
       {
         /*const*/ ttb_indx invalid_row = ttb_indx(-1);
         /*const*/ ttb_indx i_block =
@@ -418,7 +422,7 @@ struct HessVec_PermKernel {
           row_func(j, nj, std::integral_constant<unsigned,0>());
         }
         }
-      }, "hessvec_perm_kernel");
+      });
     }
   }
 };
@@ -466,7 +470,8 @@ struct HessVec_Dense_Kernel {
       /*const*/ ttb_indx ns = X.size(k);
       const ttb_indx N = (ns+TeamSize-1)/TeamSize;
       Policy policy(N, TeamSize, VectorSize);
-      Kokkos::parallel_for(policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+      Kokkos::parallel_for("hessvec_kernel",
+                           policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
                            KOKKOS_LAMBDA(const TeamMember& team)
       {
         // Row of u we write to
@@ -534,7 +539,7 @@ struct HessVec_Dense_Kernel {
             row_func(j, nj, std::integral_constant<unsigned,0>());
           }
         }
-      }, "hessvec_kernel");
+      });
     }
   }
 };
@@ -569,11 +574,11 @@ void hess_vec_ktensor_term(const KtensorT<ExecSpace>& a,
   for (unsigned k=0; k<nd; ++k) {
     const ttb_indx I_k = a[k].nRows();
     Kokkos::RangePolicy<ExecSpace> policy(0,I_k);
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ttb_indx i)
+    Kokkos::parallel_for("hessvec_ktensor_kernel",
+                         policy, KOKKOS_LAMBDA(const ttb_indx i)
     {
       for (unsigned j=0; j<nc; ++j) {
         for (unsigned s=0; s<nd; ++s) {
-          const ttb_indx I_s = a[s].nRows();
           if (s == k) {
             for (unsigned p=0; p<nc; ++p) {
               ttb_real tmp = 1.0;
@@ -615,7 +620,7 @@ void hess_vec_ktensor_term(const KtensorT<ExecSpace>& a,
         // Add in regularization term
         u[k].entry(i,j) += lambda*v[k].entry(i,j);
       } // j
-    }, "hessvec_ktensor_kernel");
+    });
   }
 }
 
@@ -626,11 +631,19 @@ void hess_vec(const SptensorT<ExecSpace>& X,
               const KtensorT<ExecSpace>& a,
               const KtensorT<ExecSpace>& v,
               const KtensorT<ExecSpace>& u,
+              const KtensorT<ExecSpace>& a_overlap,
+              const KtensorT<ExecSpace>& v_overlap,
+              const KtensorT<ExecSpace>& u_overlap,
+              const DistKtensorUpdate<ExecSpace>& dku,
               const AlgParams& algParams)
 {
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::hess_vec");
 #endif
+
+  // Import needed off-procesor factor matrix rows
+  dku.doImport(a_overlap, a);
+  dku.doImport(v_overlap, v);
 
   const ttb_indx nc = a.ncomponents();     // Number of components
   const ttb_indx nd = a.ndims();           // Number of dimensions
@@ -643,9 +656,9 @@ void hess_vec(const SptensorT<ExecSpace>& X,
   assert(v.isConsistent());
   assert(u.isConsistent());
   for (ttb_indx i=0; i<nd; ++i) {
-    assert(a[i].nRows() == X.size(i));
-    assert(v[i].nRows() == X.size(i));
-    assert(u[i].nRows() == X.size(i));
+    assert(a_overlap[i].nRows() == X.size(i));
+    assert(v_overlap[i].nRows() == X.size(i));
+    assert(u_overlap[i].nRows() == X.size(i));
   }
 
   using Kokkos::Experimental::ScatterDuplicated;
@@ -662,33 +675,29 @@ void hess_vec(const SptensorT<ExecSpace>& X,
     Genten::error("Single and duplicated hess-vec tensor methods are invalid on Cuda and HIP!");
 
   if (method == Hess_Vec_Tensor_Method::Single) {
-    Impl::HessVec_Kernel<ScatterNonDuplicated,ScatterNonAtomic,ExecSpace> kernel(X,a,v,u,algParams);
+    Impl::HessVec_Kernel<ScatterNonDuplicated,ScatterNonAtomic,ExecSpace> kernel(X.impl(),a_overlap,v_overlap,u_overlap,algParams);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else if (method == Hess_Vec_Tensor_Method::Atomic) {
-    Impl::HessVec_Kernel<ScatterNonDuplicated,ScatterAtomic,ExecSpace> kernel(X,a,v,u,algParams);
+    Impl::HessVec_Kernel<ScatterNonDuplicated,ScatterAtomic,ExecSpace> kernel(X.impl(),a_overlap,v_overlap,u_overlap,algParams);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else if (method == Hess_Vec_Tensor_Method::Duplicated) {
-    Impl::HessVec_Kernel<ScatterDuplicated,ScatterNonAtomic,ExecSpace> kernel(X,a,v,u,algParams);
+    Impl::HessVec_Kernel<ScatterDuplicated,ScatterNonAtomic,ExecSpace> kernel(X.impl(),a_overlap,v_overlap,u_overlap,algParams);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else if (method == Hess_Vec_Tensor_Method::Perm) {
     if (!X.havePerm())
       Genten::error("Perm hess-vec tensor method selected, but permutation array not computed!");
-    Impl::HessVec_PermKernel<ExecSpace> kernel(X,a,v,u,algParams);
+    Impl::HessVec_PermKernel<ExecSpace> kernel(X.impl(),a_overlap,v_overlap,u_overlap,algParams);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else
     Genten::error(std::string("Invalid mttkrp-all-method for hess-vec:  ") +
                   MTTKRP_All_Method::names[algParams.mttkrp_all_method]);
 
-  const ProcessorMap *pmap = u.getProcessorMap();
-  if (pmap != nullptr) {
-    Kokkos::fence();
-    for (ttb_indx n=0; n<nd; ++n)
-      pmap->subGridAllReduce(n, u[n].view().data(), u[n].view().span());
-  }
+  // Combine local contributions across processors
+  dku.doExport(u, u_overlap);
 
   // Scale first term by -1
   for (unsigned n=0; n<nd; ++n)
@@ -703,6 +712,10 @@ void hess_vec(const TensorT<ExecSpace>& X,
               const KtensorT<ExecSpace>& a,
               const KtensorT<ExecSpace>& v,
               const KtensorT<ExecSpace>& u,
+              const KtensorT<ExecSpace>& a_overlap,
+              const KtensorT<ExecSpace>& v_overlap,
+              const KtensorT<ExecSpace>& u_overlap,
+              const DistKtensorUpdate<ExecSpace>& dku,
               const AlgParams& algParams)
 {
   #ifdef HAVE_CALIPER
@@ -712,6 +725,11 @@ void hess_vec(const TensorT<ExecSpace>& X,
   const ttb_indx nc = a.ncomponents();     // Number of components
   const ttb_indx nd = a.ndims();           // Number of dimensions
 
+  // Communication disabled because TensorT doesn't yet support MPI parallelism
+  // Import needed off-procesor factor matrix rows
+  //dku.doImport(a_overlap, a);
+  //dku.doImport(v_overlap, v);
+
   assert(X.ndims() == nd);
   assert(v.ndims() == nd);
   assert(v.ncomponents() == nc);
@@ -719,23 +737,19 @@ void hess_vec(const TensorT<ExecSpace>& X,
   assert(u.ncomponents() == nc);
   assert(v.isConsistent());
   assert(u.isConsistent());
-  for (ttb_indx i=0; i<nd; ++i) {
-    assert(a[i].nRows() == X.size(i));
-    assert(v[i].nRows() == X.size(i));
-    assert(u[i].nRows() == X.size(i));
-  }
+  // for (ttb_indx i=0; i<nd; ++i) {
+  //   assert(a[i].nRows() == X.size(i));
+  //   assert(v[i].nRows() == X.size(i));
+  //   assert(u[i].nRows() == X.size(i));
+  // }
 
   // Compute first (tensor) term
   Impl::HessVec_Dense_Kernel<ExecSpace> kernel(X,a,v,u,algParams);
   Impl::run_row_simd_kernel(kernel, nc);
 
-  // allReduce disabled because TensorT doesn't yet support MPI parallelism
-  // if (u.getProcessorMap() != nullptr) {
-  //   Kokkos::fence();
-  //   for (ttb_indx n=0; n<nd; ++n)
-  //     u.getProcessorMap()->subGridAllReduce(n, u[n].view().data(),
-  //                                           u[n].view().span());
-  // }
+  // Communication disabled because TensorT doesn't yet support MPI parallelism
+  // Combine local contributions across processors
+  //dku.doExport(u, u_overlap);
 
   // Scale first term by -1
   for (unsigned n=0; n<nd; ++n)
@@ -765,11 +779,6 @@ void gauss_newton_hess_vec(const TensorType& X,
   assert(u.ncomponents() == nc);
   assert(v.isConsistent());
   assert(u.isConsistent());
-  for (ttb_indx i=0; i<nd; ++i) {
-    assert(a[i].nRows() == X.size(i));
-    assert(v[i].nRows() == X.size(i));
-    assert(u[i].nRows() == X.size(i));
-  }
 
   u.setMatrices(0.0);
 
@@ -786,13 +795,13 @@ void gauss_newton_hess_vec(const TensorType& X,
   const ttb_real lambda = algParams.penalty;
 
   for (unsigned k=0; k<nd; ++k) {
-    const ttb_indx I_k = X.size(k);
+    const ttb_indx I_k = a[k].nRows();
     Kokkos::RangePolicy<ExecSpace> policy(0,I_k);
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ttb_indx i)
+    Kokkos::parallel_for("hessvec_ktensor_kernel",
+                         policy, KOKKOS_LAMBDA(const ttb_indx i)
     {
       for (unsigned j=0; j<nc; ++j) {
         for (unsigned s=0; s<nd; ++s) {
-          const ttb_indx I_s = X.size(s);
           if (s == k) {
             for (unsigned p=0; p<nc; ++p) {
               ttb_real tmp = 1.0;
@@ -818,7 +827,7 @@ void gauss_newton_hess_vec(const TensorType& X,
         // Add in regularization term
         u[k].entry(i,j) += lambda*v[k].entry(i,j);
       } // j
-    }, "hessvec_ktensor_kernel");
+    });
   }
 }
 
@@ -841,11 +850,6 @@ void blk_diag_prec_vec(const TensorType& X,
   assert(u.ncomponents() == nc);
   assert(v.isConsistent());
   assert(u.isConsistent());
-  for (ttb_indx i=0; i<nd; ++i) {
-    assert(a[i].nRows() == X.size(i));
-    assert(v[i].nRows() == X.size(i));
-    assert(u[i].nRows() == X.size(i));
-  }
 
   IndxArrayT<ExecSpace> nrow(nd, nc);
   FacMatArrayT<ExecSpace> Z(nd, nrow, nc);
@@ -877,6 +881,10 @@ void blk_diag_prec_vec(const TensorType& X,
     const KtensorT<SPACE>& a,                                           \
     const KtensorT<SPACE>& v,                                           \
     const KtensorT<SPACE>& u,                                           \
+    const KtensorT<SPACE>& a_overlap,                                   \
+    const KtensorT<SPACE>& v_overlap,                                   \
+    const KtensorT<SPACE>& u_overlap,                                   \
+    const DistKtensorUpdate<SPACE>& dku,                                \
     const AlgParams& algParams);                                        \
                                                                         \
   template                                                              \
@@ -884,6 +892,10 @@ void blk_diag_prec_vec(const TensorType& X,
     const KtensorT<SPACE>& a,                                           \
     const KtensorT<SPACE>& v,                                           \
     const KtensorT<SPACE>& u,                                           \
+    const KtensorT<SPACE>& a_overlap,                                   \
+    const KtensorT<SPACE>& v_overlap,                                   \
+    const KtensorT<SPACE>& u_overlap,                                   \
+    const DistKtensorUpdate<SPACE>& dku,                                \
     const AlgParams& algParams);                                        \
                                                                         \
   template                                                              \

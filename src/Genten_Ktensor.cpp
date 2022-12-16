@@ -444,12 +444,13 @@ normalize(Genten::NormType norm_type, ttb_indx i) const
   //     norms[k] = 1;
   //   }
   // }
-  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,n),
+  Kokkos::parallel_for("Genten::Ktensor::normalize_init_kernel",
+                       Kokkos::RangePolicy<ExecSpace>(0,n),
                        KOKKOS_LAMBDA(const ttb_indx k)
   {
     if (norms[k] == ttb_real(0))
       norms[k] = ttb_real(1);
-  }, "Genten::Ktensor::normalize_init_kernel");
+  });
 
 #if CKFINITE
   if (data[i].hasNonFinite(bad)) {

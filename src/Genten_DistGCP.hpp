@@ -60,7 +60,7 @@ namespace Genten {
 template <typename ExecSpace>
 class DistGCP {
 public:
-  DistGCP(const DistTensorContext& dtc,
+  DistGCP(const DistTensorContext<ExecSpace>& dtc,
           const SptensorT<ExecSpace>& spTensor,
           const KtensorT<ExecSpace>& kTensor,
           const ptree& tree,
@@ -86,7 +86,7 @@ private:
   template <typename Loss> ttb_real pickMethod(Loss const &loss);
   AlgParams setAlgParams();
 
-  DistTensorContext dtc_;
+  DistTensorContext<ExecSpace> dtc_;
   SptensorT<ExecSpace> spTensor_;
   KtensorT<ExecSpace> Kfac_;
   ptree input_;
@@ -104,7 +104,7 @@ private:
 };
 
 template <typename ExecSpace>
-DistGCP<ExecSpace>::DistGCP(const DistTensorContext& dtc,
+DistGCP<ExecSpace>::DistGCP(const DistTensorContext<ExecSpace>& dtc,
                             const SptensorT<ExecSpace>& spTensor,
                             const KtensorT<ExecSpace>& kTensor,
                             const ptree& tree,
@@ -348,7 +348,7 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
   KtensorT<ExecSpace> Dfac = diff.getKtensor();
 
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(
-    spTensor_, algParams, false);
+    spTensor_, ut, algParams, false);
 
   // Create steppers
   const std::string meta_step = input_.get<std::string>("meta-step","adam");
@@ -415,6 +415,9 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
   const int timer_grad_nzs = num_timers++;
   const int timer_grad_zs = num_timers++;
   const int timer_grad_init = num_timers++;
+  const int timer_grad_mttkrp = num_timers++;
+  const int timer_grad_comm = num_timers++;
+  const int timer_grad_update = num_timers++;
   const int timer_step = num_timers++;
   const int timer_meta_step = num_timers++;
   const int timer_allreduce = num_timers++;
@@ -474,7 +477,8 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
       sampler.gradient(ut, hist, penalty,
                        loss, g, GFac, 0, nd,
                        timer, timer_grad_init, timer_grad_nzs,
-                       timer_grad_zs);
+                       timer_grad_zs, timer_grad_mttkrp, timer_grad_comm,
+                       timer_grad_update);
       timer.stop(timer_grad);
       auto ge = MPI_Wtime();
       timer.start(timer_step);
@@ -708,7 +712,7 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
   decltype(Kfac_) GFac = g.getKtensor();
 
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(
-    spTensor_, algParams, false);
+    spTensor_, ut, algParams, false);
 
   // Create stepper
   Impl::GCP_SGD_Step<ExecSpace,Loss> *stepper =
@@ -721,6 +725,7 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
     std::cout << ss.str();
   }
 
+
   ttb_indx nd = ut.ndims();
 
   sampler.sampleTensorF(ut, loss);
@@ -730,6 +735,9 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
   int tnzs = 0;
   int tzs = 0;
   int tinit = 0;
+  int tgm = 0;
+  int tgc = 0;
+  int tgu = 0;
 
   // Fit stuff
   ttb_real fest, ften;
@@ -772,12 +780,11 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
     double eval_time = 0;
     for (auto i = 0; i < epochIters; ++i) {
       stepper->update();
-      g.zero();
+      //g.zero();
       auto ze = MPI_Wtime();
       sampler.gradient(ut, hist, penalty,
                        loss, g, GFac, 0, nd,
-                       timer, tinit, tnzs,
-                       tzs);
+                       timer, tinit, tnzs, tzs, tgm, tgc, tgu);
       auto ge = MPI_Wtime();
       dtc_.allReduce(GFac, false /* don't average */);
       auto are = MPI_Wtime();

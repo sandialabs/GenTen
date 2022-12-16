@@ -81,11 +81,6 @@ namespace Genten {
       Genten::error("Genten::cp_opt - ktensor u is not consistent");
     if (x.ndims() != u.ndims())
       Genten::error("Genten::cp_opt - u and x have different num dims");
-    for (ttb_indx  i = 0; i < x.ndims(); i++)
-    {
-      if (x.size(i) != u[i].nRows())
-        Genten::error("Genten::cp_opt - u and x have different size");
-    }
 
     const ProcessorMap* pmap = u.getProcessorMap();
 

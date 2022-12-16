@@ -48,6 +48,7 @@
 
 #include <ostream>
 
+#include "Genten_DistTensorContext.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_AlgParams.hpp"
 #include "Genten_PerfHistory.hpp"

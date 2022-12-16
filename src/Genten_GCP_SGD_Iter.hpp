@@ -52,6 +52,8 @@
 #include "Genten_SystemTimer.hpp"
 #include "Genten_MixedFormatOps.hpp"
 
+#include "Genten_DistMttkrp.hpp"
+
 namespace Genten {
 
   namespace Impl {
@@ -78,6 +80,9 @@ namespace Genten {
         timer_grad_nzs = num_timers++;
         timer_grad_zs = num_timers++;
         timer_grad_init = num_timers++;
+        timer_grad_mttkrp = num_timers++;
+        timer_grad_comm = num_timers++;
+        timer_grad_update = num_timers++;
         timer_step = num_timers++;
         timer_sample_g_z_nz = num_timers++;
         timer_sample_g_perm = num_timers++;
@@ -106,35 +111,42 @@ namespace Genten {
                        GCP_SGD_Step<ExecSpace,LossFunction>& stepper,
                        ttb_indx& total_iters)
       {
+
         for (ttb_indx iter=0; iter<algParams.epoch_iters; ++iter) {
 
           // Update stepper for next iteration
           stepper.update();
 
           // sample for gradient
+          GENTEN_START_TIMER("sample gradient");
           timer.start(timer_sample_g);
           timer.start(timer_sample_g_z_nz);
           sampler.sampleTensorG(ut, hist, loss_func);
           timer.stop(timer_sample_g_z_nz);
           timer.start(timer_sample_g_perm);
-          sampler.prepareGradient();
+          sampler.prepareGradient(gt);
           timer.stop(timer_sample_g_perm);
           timer.stop(timer_sample_g);
+          GENTEN_STOP_TIMER("sample gradient");
 
           for (ttb_indx giter=0; giter<algParams.frozen_iters; ++giter) {
-
             // compute gradient
+            GENTEN_START_TIMER("gradient");
             timer.start(timer_grad);
             sampler.gradient(ut, hist, penalty,
                              loss_func, g, gt, mode_beg, mode_end,
                              timer, timer_grad_init, timer_grad_nzs,
-                             timer_grad_zs);
+                             timer_grad_zs, timer_grad_mttkrp, timer_grad_comm,
+                             timer_grad_update);
             timer.stop(timer_grad);
+            GENTEN_STOP_TIMER("gradient");
 
             // take step and clip for bounds
+            GENTEN_START_TIMER("step/clip");
             timer.start(timer_step);
             stepper.eval(g, us);
             timer.stop(timer_step);
+            GENTEN_STOP_TIMER("step/clip");
           }
         }
 
@@ -158,6 +170,14 @@ namespace Genten {
             << " seconds\n"
             << "\t\tinit:    " << timer.getTotalTime(timer_grad_init)
             << " seconds\n";
+        if (!algParams.fuse) {
+          out << "\t\tmttkrp:  " << timer.getTotalTime(timer_grad_mttkrp)
+              << " seconds\n"
+              << "\t\tcomm.:   " << timer.getTotalTime(timer_grad_comm)
+              << " seconds\n"
+              << "\t\tupdate:  " << timer.getTotalTime(timer_grad_update)
+              << " seconds\n";
+        }
         if (algParams.fuse) {
           out << "\t\tnzs:     " << timer.getTotalTime(timer_grad_nzs)
               << " seconds\n"
@@ -180,6 +200,9 @@ namespace Genten {
       int timer_grad_nzs;
       int timer_grad_zs;
       int timer_grad_init;
+      int timer_grad_mttkrp;
+      int timer_grad_comm;
+      int timer_grad_update;
       int timer_step;
       int timer_sample_g_z_nz;
       int timer_sample_g_perm;
