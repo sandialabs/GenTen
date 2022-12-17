@@ -1071,9 +1071,7 @@ public:
     return v;
   }
 
-  template <typename ExecSpace>
   KtensorT<ExecSpace> readInitialGuess(const std::string& file_name) const;
-  template <typename ExecSpace>
   KtensorT<ExecSpace> randomInitialGuess(const SptensorT<ExecSpace>& X,
                                          const int rank,
                                          const int seed,
