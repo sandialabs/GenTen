@@ -40,79 +40,53 @@
 
 #pragma once
 
-#include <ostream>
-
-#include "Genten_DistTensorContext.hpp"
+#include "Genten_GCP_SGD_Iter.hpp"
+#include "Genten_GCP_SGD_Iter_Async.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_AlgParams.hpp"
-#include "Genten_GCP_SGD_Step.hpp"
-#include "Genten_GCP_StreamingHistory.hpp"
-#include "Genten_PerfHistory.hpp"
 
 namespace Genten {
+  namespace Impl {
 
-  //! Class implementing the generalized CP decomposition using SGD approach
-  template <typename TensorType, typename LossFunction>
-  class GCPSGD {
-  public:
-    using exec_space = typename TensorType::exec_space;
-
-  protected:
-    const LossFunction loss_func;
-    const ttb_indx mode_beg;
-    const ttb_indx mode_end;
-    const AlgParams algParams;
-    Impl::GCP_SGD_Step<exec_space,LossFunction> *stepper;
-
-  public:
-    GCPSGD(const KtensorT<exec_space>& u,
-           const LossFunction& loss_func,
-           const ttb_indx mode_begin,
-           const ttb_indx mode_end,
-           const AlgParams& algParams);
-
-    GCPSGD(const KtensorT<exec_space>& u,
-           const LossFunction& loss_func,
-           const AlgParams& algParams);
-
-    ~GCPSGD();
-
-    void reset();
-
-    void solve(TensorType& X,
-               KtensorT<exec_space>& u0,
+    template <typename LossFunction, typename ExecSpace>
+    GCP_SGD_Iter<SptensorT<ExecSpace>,LossFunction>*
+    createIter(const SptensorT<ExecSpace>& X,
+               const KtensorT<ExecSpace>& u0,
+               const StreamingHistory<ExecSpace>& hist,
                const ttb_real penalty,
-               ttb_indx& numEpochs,
-               ttb_real& fest,
-               PerfHistory& perfInfo,
-               std::ostream& out,
-               const bool print_hdr,
-               const bool print_ftr,
-               const bool print_itn) const;
+               const ttb_indx mode_beg,
+               const ttb_indx mode_end,
+               const AlgParams& algParams)
+    {
+      using tensor_type = SptensorT<ExecSpace>;
+      GCP_SGD_Iter<tensor_type,LossFunction> *itp = nullptr;
+      if (algParams.async)
+        itp = new GCP_SGD_Iter_Async<ExecSpace,LossFunction>(
+          u0, hist, penalty, mode_beg, mode_end, algParams);
+      else
+        itp = new GCP_SGD_Iter<tensor_type,LossFunction>(
+          u0, hist, penalty, mode_beg, mode_end, algParams);
+      return itp;
+    }
 
-    void solve(TensorType& X,
-               KtensorT<exec_space>& u,
-               const StreamingHistory<exec_space>& hist,
+    template <typename LossFunction, typename ExecSpace>
+    GCP_SGD_Iter<TensorT<ExecSpace>,LossFunction>*
+    createIter(const TensorT<ExecSpace>& X,
+               const KtensorT<ExecSpace>& u0,
+               const StreamingHistory<ExecSpace>& hist,
                const ttb_real penalty,
-               ttb_indx& numEpochs,
-               ttb_real& fest,
-               ttb_real& ften,
-               PerfHistory& perfInfo,
-               std::ostream& out,
-               const bool print_hdr,
-               const bool print_ftr,
-               const bool print_itn) const;
-  };
-
-  //! Compute the generalized CP decomposition of a tensor using SGD approach
-  template<typename TensorType>
-  void gcp_sgd (TensorType& x,
-                KtensorT<typename TensorType::exec_space>& u,
-                const AlgParams& algParams,
-                ttb_indx& numIters,
-                ttb_real& resNorm,
-                PerfHistory& perfInfo,
-                std::ostream& out);
-
+               const ttb_indx mode_beg,
+               const ttb_indx mode_end,
+               const AlgParams& algParams)
+    {
+      using tensor_type = TensorT<ExecSpace>;
+      if (algParams.async)
+        Genten::error("Genten::gcp_sgd - cannot use asynchronous iterator with dense tensor!");
+      GCP_SGD_Iter<tensor_type,LossFunction> *itp =
+        new Impl::GCP_SGD_Iter<tensor_type,LossFunction>(
+          u0, hist, penalty, mode_beg, mode_end, algParams);
+      return itp;
+    }
+  }
 }

@@ -44,18 +44,15 @@
 #include <random>
 
 #include "Genten_GCP_SGD.hpp"
-#include "Genten_GCP_UniformSampler.hpp"
-#include "Genten_GCP_StratifiedSampler.hpp"
-#include "Genten_GCP_SemiStratifiedSampler.hpp"
-#include "Genten_GCP_DenseSampler.hpp"
+#include "Genten_GCP_SamplerFactory.hpp"
 #include "Genten_GCP_ValueKernels.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
 #include "Genten_KokkosVector.hpp"
 #include "Genten_GCP_SGD_Step.hpp"
-#include "Genten_GCP_SGD_Iter.hpp"
-#include "Genten_GCP_SGD_Iter_Async.hpp"
+#include "Genten_GCP_SGD_IterFactory.hpp"
 
 #include "Genten_Sptensor.hpp"
+#include "Genten_Tensor.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_DistKtensorUpdate.hpp"
@@ -66,9 +63,9 @@
 
 namespace Genten {
 
-  template <typename TensorT, typename ExecSpace, typename LossFunction>
-  GCPSGD<TensorT,ExecSpace,LossFunction>::
-  GCPSGD(const KtensorT<ExecSpace>& u,
+  template <typename TensorType, typename LossFunction>
+  GCPSGD<TensorType,LossFunction>::
+  GCPSGD(const KtensorT<exec_space>& u,
          const LossFunction& loss_func_,
          const ttb_indx mode_beg_,
          const ttb_indx mode_end_,
@@ -91,45 +88,45 @@ namespace Genten {
     // Note:  uv is not a view of u, so this involves an allocation.
     // The steppers just need u for dimensions, so there should be a more
     // efficient way to do this
-    KokkosVector<ExecSpace> uv(u);
-    KokkosVector<ExecSpace> us = uv.subview(mode_beg, mode_end);
+    KokkosVector<exec_space> uv(u);
+    KokkosVector<exec_space> us = uv.subview(mode_beg, mode_end);
     if (algParams.step_type == GCP_Step::ADAM)
-      stepper = new Impl::AdamStep<ExecSpace,LossFunction>(algParams, us);
+      stepper = new Impl::AdamStep<exec_space,LossFunction>(algParams, us);
     else if (algParams.step_type == GCP_Step::AdaGrad)
-      stepper = new Impl::AdaGradStep<ExecSpace,LossFunction>(algParams, us);
+      stepper = new Impl::AdaGradStep<exec_space,LossFunction>(algParams, us);
     else if (algParams.step_type == GCP_Step::AMSGrad)
-      stepper = new Impl::AMSGradStep<ExecSpace,LossFunction>(algParams, us);
+      stepper = new Impl::AMSGradStep<exec_space,LossFunction>(algParams, us);
     else
-      stepper = new Impl::SGDStep<ExecSpace,LossFunction>();
+      stepper = new Impl::SGDStep<exec_space,LossFunction>();
   }
 
-  template <typename TensorT, typename ExecSpace, typename LossFunction>
-  GCPSGD<TensorT,ExecSpace,LossFunction>::
-  GCPSGD(const KtensorT<ExecSpace>& u,
+  template <typename TensorType, typename LossFunction>
+  GCPSGD<TensorType,LossFunction>::
+  GCPSGD(const KtensorT<exec_space>& u,
          const LossFunction& loss_func_,
          const AlgParams& algParams_) :
     GCPSGD(u,loss_func_,0,u.ndims(),algParams_) {}
 
-  template <typename TensorT, typename ExecSpace, typename LossFunction>
-  GCPSGD<TensorT,ExecSpace,LossFunction>::
+  template <typename TensorType, typename LossFunction>
+  GCPSGD<TensorType,LossFunction>::
   ~GCPSGD()
   {
     delete stepper;
   }
 
-  template <typename TensorT, typename ExecSpace, typename LossFunction>
+  template <typename TensorType, typename LossFunction>
   void
-  GCPSGD<TensorT,ExecSpace,LossFunction>::
+  GCPSGD<TensorType,LossFunction>::
   reset()
   {
     stepper->reset();
   }
 
-  template <typename TensorT, typename ExecSpace, typename LossFunction>
+  template <typename TensorType, typename LossFunction>
   void
-  GCPSGD<TensorT,ExecSpace,LossFunction>::
-  solve(TensorT& X,
-        KtensorT<ExecSpace>& u0,
+  GCPSGD<TensorType,LossFunction>::
+  solve(TensorType& X,
+        KtensorT<exec_space>& u0,
         const ttb_real penalty,
         ttb_indx& numEpochs,
         ttb_real& fest,
@@ -140,17 +137,17 @@ namespace Genten {
         const bool print_itn) const
   {
     ttb_real ften = 0.0;
-    solve(X, u0, StreamingHistory<ExecSpace>(),
+    solve(X, u0, StreamingHistory<exec_space>(),
           penalty, numEpochs, fest, ften, perfInfo, out,
           print_hdr, print_ftr, print_itn);
   }
 
-  template <typename TensorT, typename ExecSpace, typename LossFunction>
+  template <typename TensorType, typename LossFunction>
   void
-  GCPSGD<TensorT,ExecSpace,LossFunction>::
-  solve(TensorT& X,
-        KtensorT<ExecSpace>& u0,
-        const StreamingHistory<ExecSpace>& hist,
+  GCPSGD<TensorType,LossFunction>::
+  solve(TensorType& X,
+        KtensorT<exec_space>& u0,
+        const StreamingHistory<exec_space>& hist,
         const ttb_real penalty,
         ttb_indx& numEpochs,
         ttb_real& fest,
@@ -161,7 +158,7 @@ namespace Genten {
         const bool print_ftr,
         const bool print_itn) const
   {
-    typedef KokkosVector<ExecSpace> VectorType;
+    typedef KokkosVector<exec_space> VectorType;
     typedef typename VectorType::view_type view_type;
     using std::sqrt;
     using std::pow;
@@ -182,21 +179,8 @@ namespace Genten {
     const bool compute_fit = algParams.compute_fit;
 
     // Create sampler
-    Sampler<ExecSpace,LossFunction> *sampler = nullptr;
-    if (algParams.sampling_type == GCP_Sampling::Uniform)
-      sampler = new Genten::UniformSampler<ExecSpace,LossFunction>(
-        X, u0, algParams);
-    else if (algParams.sampling_type == GCP_Sampling::Stratified)
-      sampler = new Genten::StratifiedSampler<ExecSpace,LossFunction>(
-        X, u0, algParams);
-    else if (algParams.sampling_type == GCP_Sampling::SemiStratified)
-      sampler = new Genten::SemiStratifiedSampler<ExecSpace,LossFunction>(
-        X, u0, algParams, true);
-    else if (algParams.sampling_type == GCP_Sampling::Dense)
-      sampler = new Genten::DenseSampler<ExecSpace,LossFunction>(
-        X, u0, algParams);
-    else
-      Genten::error("Genten::gcp_sgd - unknown sampling type");
+    Sampler<TensorType,LossFunction> *sampler =
+      createSampler<LossFunction>(X, u0, algParams);
 
     if (print_hdr) {
       const ttb_indx nnz = X.global_nnz();
@@ -242,18 +226,14 @@ namespace Genten {
     timer.start(timer_sgd);
 
     // Create iterator
-    Impl::GCP_SGD_Iter<ExecSpace,LossFunction> *itp = nullptr;
-    if (algParams.async)
-      itp = new Impl::GCP_SGD_Iter_Async<ExecSpace,LossFunction>(
-        u0, hist, penalty, mode_beg, mode_end, algParams);
-    else
-      itp = new Impl::GCP_SGD_Iter<ExecSpace,LossFunction>(
-        u0, hist, penalty, mode_beg, mode_end, algParams);
-    Impl::GCP_SGD_Iter<ExecSpace,LossFunction>& it = *itp;
+    Impl::GCP_SGD_Iter<TensorType,LossFunction> *itp =
+      Impl::createIter<LossFunction>(
+        X, u0, hist, penalty, mode_beg, mode_end, algParams);
+    Impl::GCP_SGD_Iter<TensorType,LossFunction>& it = *itp;
 
     // Get vector/Ktensor for current solution (this is a view of the data)
     VectorType u = it.getSolution();
-    KtensorT<ExecSpace> ut = u.getKtensor();
+    KtensorT<exec_space> ut = u.getKtensor();
     ut.setProcessorMap(pmap);
 
     // Copy Ktensor for restoring previous solution
@@ -262,7 +242,7 @@ namespace Genten {
 
     // Initialize sampler (sorting, hashing, ...)
     timer.start(timer_sort);
-    Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
+    Kokkos::Random_XorShift64_Pool<exec_space> rand_pool(seed);
     sampler->initialize(rand_pool, print_itn, out);
     timer.stop(timer_sort);
 
@@ -276,8 +256,8 @@ namespace Genten {
     // Objective estimates
     ttb_real fit = 0.0;
     const ttb_real x_norm = X.global_norm();
-    DistKtensorUpdate<ExecSpace> *dku_fit = nullptr;
-    KtensorT<ExecSpace> ut_overlap_fit;
+    DistKtensorUpdate<exec_space> *dku_fit = nullptr;
+    KtensorT<exec_space> ut_overlap_fit;
     if (compute_fit) {
       dku_fit = createKtensorUpdate(X, ut, algParams);
       ut_overlap_fit = dku_fit->createOverlapKtensor(ut);
@@ -500,8 +480,9 @@ namespace Genten {
       delete dku_fit;
   }
 
-  template <typename TensorT, typename ExecSpace, typename LossFunction>
-  void gcp_sgd_impl(TensorT& X, KtensorT<ExecSpace>& u0,
+  template <typename TensorType, typename LossFunction>
+  void gcp_sgd_impl(TensorType& X,
+                    KtensorT<typename TensorType::exec_space>& u0,
                     const LossFunction& loss_func,
                     const AlgParams& algParams,
                     ttb_indx& numEpochs,
@@ -513,7 +494,7 @@ namespace Genten {
     u0.normalize(Genten::NormTwo);
     u0.distribute();
 
-    GCPSGD<TensorT,ExecSpace,LossFunction> gcpsgd(u0, loss_func, algParams);
+    GCPSGD<TensorType,LossFunction> gcpsgd(u0, loss_func, algParams);
     gcpsgd.solve(X, u0, ttb_real(0.0),numEpochs, fest, perfInfo, out,
                  true, true, algParams.printitn);
 
@@ -522,8 +503,9 @@ namespace Genten {
     u0.arrange();
   }
 
-  template<typename TensorT, typename ExecSpace>
-  void gcp_sgd(TensorT& x, KtensorT<ExecSpace>& u,
+  template<typename TensorType>
+  void gcp_sgd(TensorType& x,
+               KtensorT<typename TensorType::exec_space>& u,
                const AlgParams& algParams,
                ttb_indx& numIters,
                ttb_real& resNorm,
@@ -564,7 +546,8 @@ namespace Genten {
 }
 
 #define LOSS_INST_MACRO(SPACE,LOSS)                                     \
-  template class Genten::GCPSGD<SptensorT<SPACE>,SPACE,LOSS>;
+  template class Genten::GCPSGD<SptensorT<SPACE>,LOSS>;                 \
+  template class Genten::GCPSGD<TensorT<SPACE>,LOSS>;
 
 #define INST_MACRO(SPACE)                                               \
   LOSS_INST_MACRO(SPACE,GaussianLossFunction)                           \
@@ -573,8 +556,17 @@ namespace Genten {
   LOSS_INST_MACRO(SPACE,BernoulliLossFunction)                          \
   LOSS_INST_MACRO(SPACE,PoissonLossFunction)                            \
                                                                         \
-  template void gcp_sgd<SptensorT<SPACE>,SPACE>(                        \
+  template void gcp_sgd<SptensorT<SPACE> >(                             \
     SptensorT<SPACE>& x,                                                \
+    KtensorT<SPACE>& u,                                                 \
+    const AlgParams& algParams,                                         \
+    ttb_indx& numIters,                                                 \
+    ttb_real& resNorm,                                                  \
+    PerfHistory& perfInfo,                                              \
+    std::ostream& out);                                                 \
+                                                                        \
+  template void gcp_sgd<TensorT<SPACE> >(                               \
+    TensorT<SPACE>& x,                                                  \
     KtensorT<SPACE>& u,                                                 \
     const AlgParams& algParams,                                         \
     ttb_indx& numIters,                                                 \

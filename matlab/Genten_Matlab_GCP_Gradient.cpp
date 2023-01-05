@@ -119,7 +119,7 @@ gcp_gradient_driver(
     Genten::ArrayT<ExecSpace> w;
     if (method == "stratified") {
       if (algParams.hash) {
-        auto hash = Genten::Sampler<ExecSpace,LossFunction>::buildHashMap(X, std::cout);
+        auto hash = Genten::Sampler<Genten::SptensorT<ExecSpace>,LossFunction>::buildHashMap(X, std::cout);
         Genten::Impl::stratified_sample_tensor(
           X, Genten::Impl::HashSearcher<ExecSpace>(X.impl(), hash),
           num_samples_nonzeros, num_samples_zeros,

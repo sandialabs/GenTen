@@ -51,16 +51,13 @@
 #include "Genten_MixedFormatOps.hpp"
 #include "Genten_DistKtensorUpdate.hpp"
 
-// to do:
-//   * replace modes array with mode_beg, mode_end
-
 namespace Genten {
 
   template <typename ExecSpace, typename LossFunction>
-  class SemiStratifiedSampler : public Sampler<ExecSpace,LossFunction> {
+  class SemiStratifiedSampler : public Sampler<SptensorT<ExecSpace>,LossFunction> {
   public:
 
-    typedef Sampler<ExecSpace,LossFunction> base_type;
+    typedef Sampler<SptensorT<ExecSpace>,LossFunction> base_type;
     typedef typename base_type::pool_type pool_type;
     typedef typename base_type::map_type map_type;
 

@@ -370,12 +370,39 @@ driver(TensorT<ExecSpace>& x,
     if (algParams.timings)
       out << "CP-OPT took " << timer.getTotalTime(2) << " seconds\n";
   }
+#ifdef HAVE_GCP
+  else if (algParams.method == Genten::Solver_Method::GCP_SGD &&
+           !algParams.fuse_sa) {
+    // Run GCP-SGD
+    ttb_indx iter;
+    ttb_real resNorm;
+    gcp_sgd(x, u, algParams, iter, resNorm, history, out);
+  }
+  else if (algParams.method == Genten::Solver_Method::GCP_SGD &&
+           algParams.fuse_sa) {
+    Genten::error("Fused-SA GCP-SGD method does not work with dense tensors");
+  }
+#endif
   else {
     Genten::error(std::string("Unknown decomposition method:  ") +
                   Genten::Solver_Method::names[algParams.method]);
   }
 
   if (algParams.debug) Genten::print_ktensor(u_host, out, "Solution");
+
+#if defined(HAVE_TEUCHOS)
+  Teuchos::StackedTimer::OutputOptions options;
+  options.output_fraction = true;
+  options.output_minmax   = true;
+  options.align_columns   = true;
+  options.print_warnings  = false;
+// #ifdef HAVE_DIST
+//   auto comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap->gridComm()));
+// #else
+  auto comm = Teuchos::createSerialComm<int>();
+// #endif
+  Teuchos::TimeMonitor::getStackedTimer()->report(out, comm, options);
+#endif
 
   return u;
 }

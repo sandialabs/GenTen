@@ -50,16 +50,16 @@
 
 namespace Genten {
 
-  template <typename ExecSpace, typename LossFunction>
-  class DenseSampler : public Sampler<ExecSpace,LossFunction> {
+  template <typename TensorType, typename LossFunction>
+  class DenseSampler : public Sampler<TensorType,LossFunction> {
   public:
 
-    typedef Sampler<ExecSpace,LossFunction> base_type;
+    typedef Sampler<TensorType,LossFunction> base_type;
+    typedef typename TensorType::exec_space exec_space;
     typedef typename base_type::pool_type pool_type;
-    typedef typename base_type::map_type map_type;
 
-    DenseSampler(const SptensorT<ExecSpace>& X_,
-                 const KtensorT<ExecSpace>& u,
+    DenseSampler(const TensorType& X_,
+                 const KtensorT<exec_space>& u,
                  const AlgParams& algParams_) :
       X(X_), algParams(algParams_), uh(u.ncomponents(),u.ndims())
     {
@@ -93,24 +93,24 @@ namespace Genten {
           << std::endl;
     }
 
-    virtual void sampleTensorF(const KtensorT<ExecSpace>& u,
+    virtual void sampleTensorF(const KtensorT<exec_space>& u,
                                const LossFunction& loss_func) override
     {
     }
 
-    virtual void sampleTensorG(const KtensorT<ExecSpace>& u,
-                               const StreamingHistory<ExecSpace>& hist,
+    virtual void sampleTensorG(const KtensorT<exec_space>& u,
+                               const StreamingHistory<exec_space>& hist,
                                const LossFunction& loss_func) override
     {
     }
 
-    virtual void prepareGradient(const KtensorT<ExecSpace>& g) override
+    virtual void prepareGradient(const KtensorT<exec_space>& g) override
     {
       g_overlap = dku->createOverlapKtensor(g);
     }
 
-    virtual void value(const KtensorT<ExecSpace>& u,
-                       const StreamingHistory<ExecSpace>& hist,
+    virtual void value(const KtensorT<exec_space>& u,
+                       const StreamingHistory<exec_space>& hist,
                        const ttb_real penalty,
                        const LossFunction& loss_func,
                        ttb_real& fest, ttb_real& ften) override
@@ -136,12 +136,12 @@ namespace Genten {
       }
     }
 
-    virtual void gradient(const KtensorT<ExecSpace>& ut,
-                          const StreamingHistory<ExecSpace>& hist,
+    virtual void gradient(const KtensorT<exec_space>& ut,
+                          const StreamingHistory<exec_space>& hist,
                           const ttb_real penalty,
                           const LossFunction& loss_func,
-                          KokkosVector<ExecSpace>& g,
-                          const KtensorT<ExecSpace>& gt,
+                          KokkosVector<exec_space>& g,
+                          const KtensorT<exec_space>& gt,
                           const ttb_indx mode_beg,
                           const ttb_indx mode_end,
                           SystemTimer& timer,
@@ -172,8 +172,8 @@ namespace Genten {
       const ttb_indx nd = ut.ndims();
       const ttb_indx nc = ut.ncomponents();
       const bool full = true; // Needs to be full for later gemm
-      FacMatrixT<ExecSpace> A(nc,nc);  // To do:  reuse (needs ut in cons.)
-      FacMatrixT<ExecSpace> tmp(nc,nc);
+      FacMatrixT<exec_space> A(nc,nc);  // To do:  reuse (needs ut in cons.)
+      FacMatrixT<exec_space> tmp(nc,nc);
       for (ttb_indx m=mode_beg; m<mode_end; ++m) {
         A.oprod(ut.weights());
         for (ttb_indx n=0; n<nd; ++n) {
@@ -198,14 +198,14 @@ namespace Genten {
 
   protected:
 
-    SptensorT<ExecSpace> X;
+    TensorType X;
     AlgParams algParams;
-    KtensorT<ExecSpace> uh;
-    std::vector< FacMatrixT<ExecSpace> > Z1, Z2;
-    FacMatrixT<ExecSpace> tmp, ZZ1, ZZ2;
-    KtensorT<ExecSpace> u_overlap;
-    KtensorT<ExecSpace> g_overlap;
-    DistKtensorUpdate<ExecSpace> *dku;
+    KtensorT<exec_space> uh;
+    std::vector< FacMatrixT<exec_space> > Z1, Z2;
+    FacMatrixT<exec_space> tmp, ZZ1, ZZ2;
+    KtensorT<exec_space> u_overlap;
+    KtensorT<exec_space> g_overlap;
+    DistKtensorUpdate<exec_space> *dku;
   };
 
 }

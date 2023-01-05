@@ -13,6 +13,7 @@
 //@HEADER
 
 #include "Genten_Tensor.hpp"
+#include "Genten_Sptensor.hpp"
 
 namespace Genten {
 

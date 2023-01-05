@@ -197,7 +197,8 @@ namespace Genten {
     }
 
     template <typename ExecSpace, typename LossFunction>
-    class GCP_SGD_Iter_Async : public GCP_SGD_Iter<ExecSpace, LossFunction> {
+    class GCP_SGD_Iter_Async :
+      public GCP_SGD_Iter<SptensorT<ExecSpace>, LossFunction> {
     public:
 
       GCP_SGD_Iter_Async(const KtensorT<ExecSpace>& u0,
@@ -206,9 +207,8 @@ namespace Genten {
                          const ttb_indx mode_beg,
                          const ttb_indx mode_end,
                          const AlgParams& algParams) :
-        GCP_SGD_Iter<ExecSpace, LossFunction>(u0, hist,
-                                              penalty, mode_beg, mode_end,
-                                              algParams)
+        GCP_SGD_Iter<SptensorT<ExecSpace>, LossFunction>(
+          u0, hist, penalty, mode_beg, mode_end, algParams)
       {
         if (u0.getProcessorMap() != nullptr &&
             u0.getProcessorMap()->gridSize() > 0)
@@ -219,7 +219,7 @@ namespace Genten {
 
       virtual void run(SptensorT<ExecSpace>& X,
                        const LossFunction& loss_func,
-                       Sampler<ExecSpace,LossFunction>& sampler,
+                       Sampler<SptensorT<ExecSpace>,LossFunction>& sampler,
                        GCP_SGD_Step<ExecSpace,LossFunction>& stepper,
                        ttb_indx& total_iters)
       {

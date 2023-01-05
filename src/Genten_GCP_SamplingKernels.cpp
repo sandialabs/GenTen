@@ -278,9 +278,9 @@ namespace {
 
   namespace Impl {
 
-    template <typename ExecSpace, typename Searcher, typename LossFunction>
+    template <typename TensorType, typename ExecSpace, typename Searcher, typename LossFunction>
     void uniform_sample_tensor(
-      const SptensorT<ExecSpace>& Xd,
+      const TensorType& Xd,
       const Searcher& searcher,
       const ttb_indx num_samples,
       const ttb_real weight,
@@ -1080,6 +1080,19 @@ namespace {
 #include "Genten_GCP_LossFunctions.hpp"
 
 #define LOSS_INST_MACRO(SPACE,LOSS)                                     \
+  template void Impl::uniform_sample_tensor(                            \
+    const TensorT<SPACE>& X,                                            \
+    const Impl::DenseSearcher<SPACE>& searcher,                         \
+    const ttb_indx num_samples,                                         \
+    const ttb_real weight,                                              \
+    const KtensorT<SPACE>& u,                                           \
+    const LOSS& loss_func,                                              \
+    const bool compute_gradient,                                        \
+    SptensorT<SPACE>& Y,                                                \
+    ArrayT<SPACE>& w,                                                   \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
+    const AlgParams& algParams);                                        \
+                                                                        \
   template void Impl::uniform_sample_tensor(                            \
     const SptensorT<SPACE>& X,                                          \
     const Impl::SortSearcher<SPACE>& searcher,                          \

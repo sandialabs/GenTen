@@ -58,13 +58,14 @@ namespace Genten {
 
   namespace Impl {
 
-    template <typename ExecSpace, typename LossFunction>
+    template <typename TensorType, typename LossFunction>
     class GCP_SGD_Iter {
     public:
-      typedef KokkosVector<ExecSpace> VectorType;
+      typedef typename TensorType::exec_space exec_space;
+      typedef KokkosVector<exec_space> VectorType;
 
-      GCP_SGD_Iter(const KtensorT<ExecSpace>& u0,
-                   const StreamingHistory<ExecSpace>& hist_,
+      GCP_SGD_Iter(const KtensorT<exec_space>& u0,
+                   const StreamingHistory<exec_space>& hist_,
                    const ttb_real penalty_,
                    const ttb_indx mode_beg_,
                    const ttb_indx mode_end_,
@@ -105,10 +106,10 @@ namespace Genten {
 
       virtual VectorType getSolution() const { return u; }
 
-      virtual void run(SptensorT<ExecSpace>& X,
+      virtual void run(TensorType& X,
                        const LossFunction& loss_func,
-                       Sampler<ExecSpace,LossFunction>& sampler,
-                       GCP_SGD_Step<ExecSpace,LossFunction>& stepper,
+                       Sampler<TensorType,LossFunction>& sampler,
+                       GCP_SGD_Step<exec_space,LossFunction>& stepper,
                        ttb_indx& total_iters)
       {
 
@@ -189,7 +190,7 @@ namespace Genten {
       }
 
     protected:
-      const StreamingHistory<ExecSpace> hist;
+      const StreamingHistory<exec_space> hist;
       const ttb_real penalty;
       const ttb_indx mode_beg;
       const ttb_indx mode_end;
@@ -210,8 +211,8 @@ namespace Genten {
 
       VectorType u;
       VectorType g;
-      KtensorT<ExecSpace> ut;
-      KtensorT<ExecSpace> gt;
+      KtensorT<exec_space> ut;
+      KtensorT<exec_space> gt;
       VectorType us;
     };
 

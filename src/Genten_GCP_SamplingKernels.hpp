@@ -40,6 +40,7 @@
 
 #pragma once
 
+#include "Genten_Tensor.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_AlgParams.hpp"
@@ -51,9 +52,9 @@ namespace Genten {
 
   namespace Impl {
 
-    template <typename ExecSpace, typename Searcher, typename LossFunction>
+    template <typename TensorType, typename ExecSpace, typename Searcher, typename LossFunction>
     void uniform_sample_tensor(
-      const SptensorT<ExecSpace>& X,
+      const TensorType& X,
       const Searcher& searcher,
       const ttb_indx num_samples,
       const ttb_real weight,
@@ -112,6 +113,27 @@ namespace Genten {
       KtensorT<ExecSpace>& u_overlap,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams);
+
+    template <typename ExecSpace>
+    class DenseSearcher {
+    public:
+      DenseSearcher(const TensorT<ExecSpace>& X_) : X(X_) {}
+
+      template <typename IndexType>
+      KOKKOS_INLINE_FUNCTION
+      bool search(const IndexType& ind) const {
+        return true;
+      }
+
+      template <typename IndexType>
+      KOKKOS_INLINE_FUNCTION
+      ttb_real value(const IndexType& ind) const {
+        const ttb_indx i = X.sub2ind(ind);
+        return X[i];
+      }
+    private:
+      const TensorT<ExecSpace> X;
+    };
 
     template <typename ExecSpace>
     class SortSearcher {

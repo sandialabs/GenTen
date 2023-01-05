@@ -42,7 +42,6 @@
 
 #include "Genten_Array.hpp"
 #include "Genten_IndxArray.hpp"
-#include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
 
 #include <cassert>
@@ -89,6 +88,8 @@ void ind2sub(SubType& sub, const IndxArrayT<ExecSpace>& siz,
 }
 
 }
+
+template <typename ExecSpace> class SptensorT;
 
 /* The Genten::Tensor class stores dense tensors. These are stored as
  * flat arrays using the Genten::Array class.
@@ -165,6 +166,9 @@ public:
   KOKKOS_INLINE_FUNCTION
   ttb_indx numel() const { return values.size(); }
 
+   KOKKOS_INLINE_FUNCTION
+   ttb_real numel_float() const { return ttb_real(numel()); }
+
   // Convert subscript to linear index
   template <typename SubType>
   KOKKOS_INLINE_FUNCTION
@@ -235,9 +239,15 @@ public:
   ttb_real norm() const { return values.norm(NormTwo); }
   ttb_real global_norm() const { return values.norm(NormTwo); }
 
+  ttb_indx global_numel() const { return numel(); }
+  ttb_real global_numel_float() const { return numel_float(); }
+
   // Return const reference to values array
   KOKKOS_INLINE_FUNCTION
   const ArrayT<ExecSpace>& getValues() const { return values; }
+
+  TensorT& impl() { return *this; }
+  const TensorT& impl() const { return *this; }
 
 private:
 

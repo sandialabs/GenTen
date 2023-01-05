@@ -1045,6 +1045,7 @@ add_genten_perf_tests(Genten_MTTKRP_aminoacid_perm "${Genten_BINARY_DIR}/bin/per
 add_genten_perf_tests(Genten_MTTKRP_random_dense "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [30,40,50] --dense" "${kokkos_devices}")
 
 add_genten_mpi_tests(Genten_driver_aminoacid_cpals "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpals.json" "${kokkos_devices}")
+add_genten_perf_tests(Genten_driver_aminoacid_cpals_dense "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpals-dense.json" "${kokkos_devices}")
 if (HAVE_LBFGSB)
   # L-BFGS-B does not work with MPI (implements its own vector operations)
   add_genten_perf_tests(Genten_driver_aminoacid_cpopt-lbfgsb "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpopt-lbfgsb.json" "${kokkos_devices}")
@@ -1058,6 +1059,7 @@ if (HAVE_GCP)
   if (HAVE_MPI)
     add_genten_mpi_tests(Genten_driver_aminoacid_sgd_dist "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-sgd-dist.json" "${kokkos_devices}")
   endif()
+  add_genten_perf_tests(Genten_driver_aminoacid_sgd_dense "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-sgd-dense.json" "${kokkos_devices}")
 endif()
 
 #------------------------------------------------------------
