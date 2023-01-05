@@ -43,6 +43,29 @@
 #include "Genten_IOtext.hpp"
 
 template <typename TensorType>
+void print_tensor_stats(const TensorType& x)
+{
+  std::cout << "  Stats:  ";
+  const ttb_indx nd = x.ndims();
+  for (ttb_indx i=0; i<nd; ++i) {
+    std::cout << x.size(i);
+    if (i != nd-1)
+      std::cout << " x ";
+  }
+  const ttb_indx nnz = x.nnz();
+  const ttb_real ne = x.numel_float();
+  const ttb_real nz = ne - nnz;
+  std::cout << ", " << std::setprecision(0) << std::fixed << ne
+            << " entries, " << nnz << " ("
+            << std::setprecision(1) << std::fixed
+            << 100.0*(nnz/ne)
+            << "%) nonzeros and "
+            << std::setprecision(0) << std::fixed << nz << " ("
+            << std::setprecision(1) << std::fixed << 100.0*(nz/ne)
+            << "%) zeros" << std::endl;
+}
+
+template <typename TensorType>
 void save_tensor(const TensorType& x_in, const std::string& filename,
                  const std::string format, const std::string type)
 {
@@ -58,6 +81,7 @@ void save_tensor(const TensorType& x_in, const std::string& filename,
   }
   else if (format == "dense") {
     Genten::Tensor x_out(x_in);
+    print_tensor_stats(x_out);
     if (type == "text") {
       Genten::export_tensor(filename, x_out);
     }
@@ -124,6 +148,7 @@ int main(int argc, char* argv[])
       if (input_type == "text") {
         Genten::import_sptensor(input_filename, x_in);
       }
+      print_tensor_stats(x_in);
       save_tensor(x_in, output_filename, output_format, output_type);
     }
     else if (input_format == "dense") {
@@ -131,6 +156,7 @@ int main(int argc, char* argv[])
       if (input_type == "text") {
         Genten::import_tensor(input_filename, x_in);
       }
+      print_tensor_stats(x_in);
       save_tensor(x_in, output_filename, output_format, output_type);
     }
 
