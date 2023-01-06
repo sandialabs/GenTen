@@ -361,6 +361,55 @@ void save_tensor(const TensorType& x_in, const std::string& filename,
   }
 }
 
+void read_tensor_file(const std::string& filename,
+                      std::string& format, std::string& type,
+                      Genten::Sptensor& x_sparse, Genten::Tensor& x_dense)
+{
+  // First try reading the tensor as a binary file
+  try {
+    std::ifstream file(filename, std::ios::binary);
+    if (!file)
+      Genten::error("Cannot open input file: " + filename);
+    std::string header = "xxxx";
+    file.read(&header[0], 4);
+    if (header == "sptn") {
+      x_sparse = read_binary_sparse_tensor(filename);
+      format = "sparse";
+      type = "binary";
+      return;
+    }
+    if (header == "dntn") {
+      x_dense = read_binary_dense_tensor(filename);
+      format = "dense";
+      type = "binary";
+      return;
+    }
+  } catch (...) {}
+
+  // If that failed, try reading it as text
+  try {
+    std::ifstream file(filename);
+    if (!file)
+      Genten::error("Cannot open input file: " + filename);
+    std::string line;
+    std::getline(file, line);
+    if (line == "tensor") {
+      format = "dense";
+      type = "text";
+      Genten::import_tensor(filename, x_dense);
+      return;
+    }
+    // We support sparse tensor files without a header, so just try reading
+    // it as a sparse tensor if we have gotten this far.  It will throw
+    // if that read fails.
+    Genten::import_sptensor(filename, x_sparse);
+    format = "sparse";
+    type = "text";
+  } catch (...) {
+    Genten::error("File " + filename + " cannot be read as a text or binary, sparse or dense tensor!");
+  }
+}
+
 int main(int argc, char* argv[])
 {
   int ret = 0;
@@ -368,18 +417,10 @@ int main(int argc, char* argv[])
   auto args = Genten::build_arg_list(argc,argv);
   const bool help =
     Genten::parse_ttb_bool(args, "--help", "--no-help", false);
-  if (argc < 3 || argc > 13 || help) {
+  if (argc != 9 || help) {
     std::cout << "\nconvert-tensor: a helper utility for converting tensor data between\n"
               << "tensor formats (sparse or dense), and file types (text or binary).\n\n"
-              << "Usage: " << argv[0] << " --input-file <string> --output-file <string> [options]\n"
-              << "\nRequired arguments: \n"
-              << "  --input-file <string>          path to input tensor data\n"
-              << "  --output-file <string>         path to output tensor data\n"
-              << "\nOptions: \n"
-              << "  --input-format <sparse|dense>  format of input tensor (default: \"sparse\")\n"
-              << "  --input-type <text|binary>     type of input tensor data (default: \"text\")\n"
-              << "  --output-format <sparse|dense> format of output tensor (default: \"dense\")\n"
-              << "  --output-type <text|binary>    type of output tensor data  (default: \"text\")\n";
+              << "Usage: " << argv[0] << " --input-file <string> --output-file <string> --output-format <sparse|dense> --output-type <text|binary>\n";
     return 0;
   }
 
@@ -388,52 +429,44 @@ int main(int argc, char* argv[])
 
     const std::string input_filename =
       Genten::parse_string(args, "--input-file", "");
-    const std::string input_format =
-      Genten::parse_string(args, "--input-format", "sparse");
-    const std::string input_type =
-      Genten::parse_string(args, "--input-type", "text");
     const std::string output_filename =
       Genten::parse_string(args, "--output-file", "");
     const std::string output_format =
-      Genten::parse_string(args, "--output-format", "dense");
+      Genten::parse_string(args, "--output-format", "");
     const std::string output_type =
-      Genten::parse_string(args, "--output-type", "text");
+      Genten::parse_string(args, "--output-type", "");
 
     if (input_filename == "")
       Genten::error("input filename must be specified");
     if (output_filename == "")
       Genten::error("output filename must be specified");
-    if (input_format != "sparse" && input_format != "dense")
-      Genten::error("input format must be one of \"sparse\" or \"dense\"");
     if (output_format != "sparse" && output_format != "dense")
       Genten::error("output format must be one of \"sparse\" or \"dense\"");
-    if (input_type != "text" && input_type != "binary")
-      Genten::error("input type must be one of \"text\" or \"binary\"");
     if (output_type != "text" && output_type != "binary")
       Genten::error("output type must be one of \"text\" or \"binary\"");
 
     std::cout << "\nInput:\n"
-              << "  File:   " << input_filename << std::endl
-              << "  Format: " << input_format << std::endl
+              << "  File:   " << input_filename << std::endl;
+
+    std::string input_format = "unknown";
+    std::string input_type = "unknown";
+    Genten::Sptensor x_sparse;
+    Genten::Tensor x_dense;
+    read_tensor_file(input_filename, input_format, input_type,
+                     x_sparse, x_dense);
+
+    std::cout << "  Format: " << input_format << std::endl
               << "  Type:   " << input_type << std::endl;
     if (input_format == "sparse") {
-      Genten::Sptensor x_in;
-      if (input_type == "text")
-        Genten::import_sptensor(input_filename, x_in);
-      else if (input_type == "binary")
-        x_in = read_binary_sparse_tensor(input_filename);
-      print_tensor_stats(x_in);
-      save_tensor(x_in, output_filename, output_format, output_type);
+      print_tensor_stats(x_sparse);
+      save_tensor(x_sparse, output_filename, output_format, output_type);
     }
     else if (input_format == "dense") {
-      Genten::Tensor x_in;
-      if (input_type == "text")
-        Genten::import_tensor(input_filename, x_in);
-      else if (input_type == "binary")
-        x_in = read_binary_dense_tensor(input_filename);
-      print_tensor_stats(x_in);
-      save_tensor(x_in, output_filename, output_format, output_type);
+      print_tensor_stats(x_dense);
+      save_tensor(x_dense, output_filename, output_format, output_type);
     }
+    else
+      Genten::error("Invalid input tensor format!");
 
   }
   catch(const std::exception& e)
