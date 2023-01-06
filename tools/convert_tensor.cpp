@@ -237,6 +237,81 @@ Genten::Sptensor read_binary_sparse_tensor(const std::string filename)
   return x;
 }
 
+void write_binary_dense_tensor(const std::string filename,
+                               const Genten::Tensor& x,
+                               float_size_type float_data_size = 64)
+{
+  /*
+   * The output file will have the following form:
+   * 73 70 74 6e                   -> 4 char 'dntn'
+   * ndims                         -> uint32_t
+   * bits_for_float_type           -> uint32_t
+   * size0 size1 size2 size3 size4 -> ndims uint64_t
+   * number_non_zero               -> uint64_t
+   * 1.000000                      -> float_type
+   */
+  nd_type nd = x.ndims();
+  nnz_type ne = x.numel();
+
+  std::ofstream outfile(filename, std::ios::binary);
+  if (!outfile)
+    Genten::error("Could not open output file " + filename);
+  outfile.write("dntn", 4);
+  outfile.write(reinterpret_cast<char*>(&nd), sizeof(nd_type));
+  outfile.write(reinterpret_cast<char*>(&float_data_size),
+                sizeof(float_size_type));
+  for (auto n=0; n<nd; ++n) {
+    dim_type value = x.size(n);
+    outfile.write(reinterpret_cast<char*>(&value), sizeof(dim_type));
+  }
+  outfile.write(reinterpret_cast<char*>(&(ne)), sizeof(nnz_type));
+  for (auto i=0; i<ne; ++i) {
+    writeDataValue(outfile, x[i], float_data_size);
+  }
+}
+
+Genten::Sptensor read_binary_dense_tensor(const std::string filename)
+{
+  std::ifstream infile(filename, std::ios::binary);
+  if (!infile)
+    Genten::error("Could not open input file " + filename);
+
+  std::string hi = "xxxx";
+  infile.read(&hi[0], 4 * sizeof(char));
+  if (hi != "dntn")
+    Genten::error("First 4 bytes are not dntn");
+
+  // Number of dimensions
+  nd_type nd;
+  infile.read(reinterpret_cast<char*>(&nd), sizeof(nd_type));
+
+  // Floating point size
+  float_size_type float_data_size;
+  infile.read(reinterpret_cast<char*>(&float_data_size),
+              sizeof(float_size_type));
+
+  // Size of each dimension
+  Genten::IndxArray sz(nd);
+  for (auto n=0; n<nd; ++n) {
+    dim_type value;
+    infile.read(reinterpret_cast<char*>(&value), sizeof(dim_type));
+    sz[n] = value;
+  }
+
+  // Number of elements
+  nnz_type ne;
+  infile.read(reinterpret_cast<char*>(&ne), sizeof(nnz_type));
+
+  // Allocate tensor
+  Genten::Tensor x(sz);
+
+  // Nonzeros
+  for (auto i=0; i<ne; ++i)
+    x[i] = readDataValue(infile, float_data_size);
+
+  return x;
+}
+
 template <typename TensorType>
 void print_tensor_stats(const TensorType& x)
 {
@@ -279,9 +354,10 @@ void save_tensor(const TensorType& x_in, const std::string& filename,
   else if (format == "dense") {
     Genten::Tensor x_out(x_in);
     print_tensor_stats(x_out);
-    if (type == "text") {
+    if (type == "text")
       Genten::export_tensor(filename, x_out);
-    }
+    else if (type == "binary")
+      write_binary_dense_tensor(filename, x_out);
   }
 }
 
@@ -353,6 +429,8 @@ int main(int argc, char* argv[])
       Genten::Tensor x_in;
       if (input_type == "text")
         Genten::import_tensor(input_filename, x_in);
+      else if (input_type == "binary")
+        x_in = read_binary_dense_tensor(input_filename);
       print_tensor_stats(x_in);
       save_tensor(x_in, output_filename, output_format, output_type);
     }
