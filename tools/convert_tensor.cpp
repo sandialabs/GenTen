@@ -42,6 +42,201 @@
 #include "Genten_Tensor.hpp"
 #include "Genten_IOtext.hpp"
 
+uint64_t smallestBuiltinThatHolds(uint64_t val) {
+  if (val <= uint64_t(std::numeric_limits<uint16_t>::max())) {
+    return 16;
+  }
+  if (val <= uint64_t(std::numeric_limits<uint32_t>::max())) {
+    return 32;
+  }
+  return 64; // We didn't have a better option
+}
+
+void writeSubValue(std::ostream& outFile, const uint64_t value,
+                   const uint64_t size) {
+  uint16_t i16;
+  uint32_t i32;
+  uint64_t i64;
+  switch (size) {
+  case 16:
+    i16 = value;
+    outFile.write(reinterpret_cast<char *>(&i16), sizeof(uint16_t));
+    break;
+  case 32:
+    i32 = value;
+    outFile.write(reinterpret_cast<char *>(&i32), sizeof(uint32_t));
+    break;
+  default:
+    i64 = value;
+    outFile.write(reinterpret_cast<char *>(&i64), sizeof(uint64_t));
+  }
+}
+
+uint64_t readSubValue(std::istream& inFile, const uint64_t size) {
+  uint16_t i16;
+  uint32_t i32;
+  uint64_t i64;
+  switch (size) {
+  case 16:
+    inFile.read(reinterpret_cast<char *>(&i16), sizeof(uint16_t));
+    i64 = i16;
+    break;
+  case 32:
+    inFile.read(reinterpret_cast<char *>(&i32), sizeof(uint32_t));
+    i64 = i32;
+    break;
+  default:
+    inFile.read(reinterpret_cast<char *>(&i64), sizeof(uint64_t));
+  }
+  return i64;
+}
+
+void writeDataValue(std::ostream& outFile, const double value,
+                    const uint64_t size) {
+  float fp32;
+  double fp64;
+  switch (size) {
+  case 16:
+    Genten::error("fp16 support not yet implemented");
+    // fp16 = value;
+    // outFile.write(reinterpret_cast<char*>(&fp16), sizeof(_Float16));
+  case 32:
+    fp32 = value;
+    outFile.write(reinterpret_cast<char*>(&fp32), sizeof(float));
+    break;
+  default:
+    fp64 = value;
+    outFile.write(reinterpret_cast<char*>(&fp64), sizeof(double));
+  }
+}
+
+double readDataValue(std::istream& inFile, const uint64_t size) {
+  float fp32;
+  double fp64;
+  switch (size) {
+  case 16:
+    Genten::error("fp16 support not yet implemented");
+    // inFile.read(reinterpret_cast<char *>(&fp16), sizeof(_Float16));
+    // fp64 = fp16;
+    break;
+  case 32:
+    inFile.read(reinterpret_cast<char*>(&fp32), sizeof(float));
+    fp64 = fp32;
+    break;
+  default:
+    inFile.read(reinterpret_cast<char*>(&fp64), sizeof(double));
+  }
+  return fp64;
+}
+
+using nd_type = uint32_t;
+using nnz_type = uint64_t;
+using dim_type = uint64_t;
+using sub_size_type = uint64_t;
+using float_size_type = uint32_t;
+
+void write_binary_sparse_tensor(const std::string filename,
+                                const Genten::Sptensor& x,
+                                float_size_type float_data_size = 64)
+{
+  /*
+   * The output file will have the following form:
+   * 73 70 74 6e                   -> 4 char 'sptn'
+   * ndims                         -> uint32_t
+   * bits_for_float_type           -> uint32_t
+   * size0 size1 size2 size3 size4 -> ndims uint64_t
+   * bits0 bits1 bits2 bits3 bits4 -> number of bits used for each index
+   * number_non_zero               -> uint64_t
+   * the elements depend on the size of each mode to make the file size smaller
+   * we will use the smallest of 8-64 bit unsigned integer that holds all
+   * the elements from the size field above, for now all floats are stored as
+   * described above.  unlike the textual format we will always use zero based
+   * indexing
+   * 1 1 1 1049 156 1.000000 -> uint16_t uint16_t uint16_t uint16_t uint32_t
+   * float_type
+   */
+  nd_type nd = x.ndims();
+  nnz_type nnz = x.nnz();
+  std::vector<sub_size_type> sub_sizes(nd);
+  for (auto i=0; i<nd; ++i)
+    sub_sizes[i] = smallestBuiltinThatHolds(x.size(i));
+
+  std::ofstream outfile(filename, std::ios::binary);
+  if (!outfile)
+    Genten::error("Could not open output file " + filename);
+  outfile.write("sptn", 4);
+  outfile.write(reinterpret_cast<char*>(&nd), sizeof(nd_type));
+  outfile.write(reinterpret_cast<char*>(&float_data_size),
+                sizeof(float_size_type));
+  for (auto n=0; n<nd; ++n) {
+    dim_type value = x.size(n);
+    outfile.write(reinterpret_cast<char*>(&value), sizeof(dim_type));
+  }
+  for (auto n=0; n<nd; ++n) {
+    auto value = sub_sizes[n];
+    outfile.write(reinterpret_cast<char*>(&value), sizeof(sub_size_type));
+  }
+  outfile.write(reinterpret_cast<char*>(&(nnz)), sizeof(nnz_type));
+  for (auto i=0; i<nnz; ++i) {
+    for (auto n=0; n<nd; ++n)
+      writeSubValue(outfile, x.subscript(i,n), sub_sizes[n]);
+    writeDataValue(outfile, x.value(i), float_data_size);
+  }
+}
+
+Genten::Sptensor read_binary_sparse_tensor(const std::string filename)
+{
+  std::ifstream infile(filename, std::ios::binary);
+  if (!infile)
+    Genten::error("Could not open input file " + filename);
+
+  std::string hi = "xxxx";
+  infile.read(&hi[0], 4 * sizeof(char));
+  if (hi != "sptn")
+    Genten::error("First 4 bytes are not sptn");
+
+  // Number of dimensions
+  nd_type nd;
+  infile.read(reinterpret_cast<char*>(&nd), sizeof(nd_type));
+
+  // Floating point size
+  float_size_type float_data_size;
+  infile.read(reinterpret_cast<char*>(&float_data_size),
+              sizeof(float_size_type));
+
+  // Size of each dimension
+  Genten::IndxArray sz(nd);
+  for (auto n=0; n<nd; ++n) {
+    dim_type value;
+    infile.read(reinterpret_cast<char*>(&value), sizeof(dim_type));
+    sz[n] = value;
+  }
+
+  // Subscript size
+  std::vector<sub_size_type> sub_sizes(nd);
+  for (auto n=0; n<nd; ++n) {
+    sub_size_type value;
+    infile.read(reinterpret_cast<char*>(&value), sizeof(sub_size_type));
+    sub_sizes[n] = value;
+  }
+
+  // Number of nonzeros
+  nnz_type nnz;
+  infile.read(reinterpret_cast<char*>(&nnz), sizeof(nnz_type));
+
+  // Allocate tensor
+  Genten::Sptensor x(sz, nnz);
+
+  // Nonzeros
+  for (auto i=0; i<nnz; ++i) {
+    for (auto n=0; n<nd; ++n)
+      x.subscript(i,n) = readSubValue(infile, sub_sizes[n]);
+    x.value(i) = readDataValue(infile, float_data_size);
+  }
+
+  return x;
+}
+
 template <typename TensorType>
 void print_tensor_stats(const TensorType& x)
 {
@@ -75,9 +270,11 @@ void save_tensor(const TensorType& x_in, const std::string& filename,
               << "  Type:   " << type << std::endl;
   if (format == "sparse") {
     Genten::Sptensor x_out(x_in);
-    if (type == "text") {
+    print_tensor_stats(x_out);
+    if (type == "text")
       Genten::export_sptensor(filename, x_out);
-    }
+    else if (type == "binary")
+      write_binary_sparse_tensor(filename, x_out);
   }
   else if (format == "dense") {
     Genten::Tensor x_out(x_in);
@@ -134,9 +331,9 @@ int main(int argc, char* argv[])
       Genten::error("input format must be one of \"sparse\" or \"dense\"");
     if (output_format != "sparse" && output_format != "dense")
       Genten::error("output format must be one of \"sparse\" or \"dense\"");
-    if (input_type != "text" && input_format != "binary")
+    if (input_type != "text" && input_type != "binary")
       Genten::error("input type must be one of \"text\" or \"binary\"");
-    if (output_type != "text" && output_format != "binary")
+    if (output_type != "text" && output_type != "binary")
       Genten::error("output type must be one of \"text\" or \"binary\"");
 
     std::cout << "\nInput:\n"
@@ -145,17 +342,17 @@ int main(int argc, char* argv[])
               << "  Type:   " << input_type << std::endl;
     if (input_format == "sparse") {
       Genten::Sptensor x_in;
-      if (input_type == "text") {
+      if (input_type == "text")
         Genten::import_sptensor(input_filename, x_in);
-      }
+      else if (input_type == "binary")
+        x_in = read_binary_sparse_tensor(input_filename);
       print_tensor_stats(x_in);
       save_tensor(x_in, output_filename, output_format, output_type);
     }
     else if (input_format == "dense") {
       Genten::Tensor x_in;
-      if (input_type == "text") {
+      if (input_type == "text")
         Genten::import_tensor(input_filename, x_in);
-      }
       print_tensor_stats(x_in);
       save_tensor(x_in, output_filename, output_format, output_type);
     }
