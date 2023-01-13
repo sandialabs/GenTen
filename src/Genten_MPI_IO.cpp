@@ -219,7 +219,6 @@ TDatatype<double> readSparseElement(SptnFileHeader const &h,
 double readDenseElement(DntnFileHeader const &h,
                                     unsigned char const *const data_ptr) {
   double data;
-  const auto ndims = h.ndims;
 
   if (h.float_bits == 32) {
     data = *reinterpret_cast<float const *>(data_ptr);

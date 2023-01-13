@@ -282,7 +282,8 @@ int blockInThatDim(int element, const small_vector<int>& range) {
 }
 
 // The MPI_Comm must be the one that represents the grid for this to work
-int rankInGridThatOwns(std::uint32_t const *COO, MPI_Comm grid_comm,
+template <typename IntType>
+int rankInGridThatOwns(IntType const *COO, MPI_Comm grid_comm,
                        const std::vector<small_vector<int>>& ElementRanges) {
   const auto ndims = ElementRanges.size();
   small_vector<int> GridPos(ndims);
@@ -411,13 +412,14 @@ redistributeTensor(const std::vector<ttb_real>& Tvec,
   std::vector<std::vector<ttb_real>> elems_to_write(nprocs);
   const ttb_indx local_nnz = Tvec.size();
   const ttb_indx ndims = TDims.size();
-  std::vector<std::uint32_t> sub(ndims);
+  IndxArray sub(ndims);
   IndxArray siz(ndims);
   for (auto dim=0; dim<ndims; ++dim)
     siz[dim] = TDims[dim];
   for (auto i=0; i<local_nnz; ++i) {
     Impl::ind2sub(sub, siz, global_nnz, i+global_offset);
-    auto elem_owner_rank = rankInGridThatOwns(sub.data(), grid_comm, blocking);
+    auto elem_owner_rank =
+      rankInGridThatOwns(sub.values().data(), grid_comm, blocking);
     elems_to_write[elem_owner_rank].push_back(Tvec[i]);
   }
 

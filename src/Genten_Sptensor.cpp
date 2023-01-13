@@ -80,7 +80,7 @@ void init_subs(const SubsViewType& subs, const T* sbs, const ttb_indx shift)
 }
 
 template <typename ExecSpace>
-ttb_indx countNonzeros(const TensorT<ExecSpace>& x)
+ttb_indx countNonzeros(const TensorImpl<ExecSpace>& x)
 {
   const ttb_indx ne = x.numel();
   ttb_indx nz = 0;
@@ -94,7 +94,7 @@ ttb_indx countNonzeros(const TensorT<ExecSpace>& x)
 }
 
 template <typename ExecSpace, typename SubsViewType, typename ValsViewType>
-void copyFromTensor(const TensorT<ExecSpace>& x, const SubsViewType& subs,
+void copyFromTensor(const TensorImpl<ExecSpace>& x, const SubsViewType& subs,
                     const ValsViewType& vals)
 {
   Kokkos::View<ttb_indx,ExecSpace> nonzero_index("nonzero_index");
@@ -231,12 +231,12 @@ SptensorImpl(const TensorT<ExecSpace>& x) :
   deep_copy(siz_host, siz);
 
   // Compute number of nonzeros
-  const ttb_indx nz = Impl::countNonzeros(x);
+  const ttb_indx nz = Impl::countNonzeros(x.impl());
 
   // Compute nonzero subscripts and copy values
   subs = subs_view_type("Genten::Sptensor::subs",nz,siz.size());
   values = ArrayT<ExecSpace>(nz);
-  Impl::copyFromTensor(x, subs, values.values());
+  Impl::copyFromTensor(x.impl(), subs, values.values());
   subs_gids = subs;
 }
 
