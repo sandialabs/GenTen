@@ -72,7 +72,26 @@ struct SptnFileHeader {
   TensorInfo toTensorInfo() const;
 };
 
+struct DntnFileHeader {
+  std::uint32_t ndims = 0;
+  std::uint32_t float_bits = 0;
+  small_vector<std::uint64_t> dim_lengths;
+  std::uint64_t nnz = 0;
+  std::uint64_t data_starting_byte = 0;
+
+  std::uint64_t bytesInDataLine() const { return float_bits / 8; }
+  std::uint64_t totalBytesToRead() const { return bytesInDataLine() * nnz; }
+
+  small_vector<std::uint64_t> getOffsetRanges(int nranks) const;
+
+  std::pair<std::uint64_t, std::uint64_t> getLocalOffsetRange(int rank,
+                                                              int nranks) const;
+
+  TensorInfo toTensorInfo() const;
+};
+
 std::ostream &operator<<(std::ostream &os, SptnFileHeader const &h);
+std::ostream &operator<<(std::ostream &os, DntnFileHeader const &h);
 
 // Type to temporarily  hold coo data for the initial MPI distribution
 template <typename T> struct TDatatype {

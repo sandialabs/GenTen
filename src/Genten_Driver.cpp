@@ -268,58 +268,54 @@ driver(const DistTensorContext<ExecSpace>& dtc,
 
 template<typename ExecSpace>
 KtensorT<ExecSpace>
-driver(TensorT<ExecSpace>& x,
-       KtensorT<ExecSpace>& u_init,
+driver(const DistTensorContext<ExecSpace>& dtc,
+       TensorT<ExecSpace>& x,
+       KtensorT<ExecSpace>& u,
        AlgParams& algParams,
+       const ptree& ptree,
        PerfHistory& history,
-       std::ostream& out)
+       std::ostream& out_in)
 {
+  GENTEN_TIME_MONITOR("Genten driver");
+
   typedef Genten::TensorT<ExecSpace> Tensor_type;
   typedef Genten::TensorT<Genten::DefaultHostExecutionSpace> Tensor_host_type;
   typedef Genten::KtensorT<ExecSpace> Ktensor_type;
   typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
 
+  // Set parallel output stream
+  const ProcessorMap* pmap = dtc.pmap_ptr().get();
+  std::ostream& out = pmap->gridRank() == 0 ? out_in : Genten::bhcout;
+
   Genten::SystemTimer timer(3);
 
-  out.setf(std::ios_base::scientific);
+  // out.setf(std::ios_base::scientific);
   out.precision(2);
 
-  Ktensor_type u(algParams.rank, x.ndims(), x.size());
-  Ktensor_host_type u_host =
-    create_mirror_view( Genten::DefaultHostExecutionSpace(), u );
-
   // Generate a random starting point if initial guess is empty
-  if (u_init.ncomponents() == 0 && u_init.ndims() == 0) {
-    u_init = Ktensor_type(algParams.rank, x.ndims(), x.size());
-
-    Genten::RandomMT cRMT(algParams.seed);
-    timer.start(0);
-    if (algParams.prng) {
-      u_init.setWeights(1.0); // Matlab cp_als always sets the weights to one.
-      u_init.setMatricesScatter(false, true, cRMT);
-      if (algParams.debug) deep_copy( u_host, u_init );
-    }
-    else {
-      u_host.setWeights(1.0); // Matlab cp_als always sets the weights to one.
-      u_host.setMatricesScatter(false, false, cRMT);
-      deep_copy( u_init, u_host );
-    }
-    // Normalize
-    const ttb_real norm_x = x.norm();
-    const ttb_real norm_u = std::sqrt(u_init.normFsq());
-    u_init.weights().times(norm_x/norm_u);
+  if (u.ncomponents() == 0 && u.ndims() == 0) {
+    u = dtc.randomInitialGuess(x, algParams.rank, algParams.seed,
+                               algParams.prng,
+                               algParams.scale_guess_by_norm_x,
+                               algParams.dist_guess_method);
     timer.stop(0);
-    out << "Creating random initial guess took " << timer.getTotalTime(0)
-        << " seconds\n";
+    if (algParams.timings)
+      out << "Creating random initial guess took " << timer.getTotalTime(0)
+          << " seconds\n";
   }
 
-  // Copy initial guess into u
-  deep_copy(u, u_init);
-
-  if (algParams.debug) Genten::print_ktensor(u_host, out, "Initial guess");
+  if (algParams.debug) {
+     Ktensor_host_type u0 =
+      dtc.template importToRoot<Genten::DefaultHostExecutionSpace>(u);
+     Genten::print_ktensor(u0, out, "Initial guess");
+  }
 
   // Fixup algorithmic choices
   algParams.fixup<ExecSpace>(out);
+
+  // Set parallel maps
+  x.setProcessorMap(pmap);
+  u.setProcessorMap(pmap);
 
   if (algParams.warmup)
   {
@@ -388,7 +384,11 @@ driver(TensorT<ExecSpace>& x,
                   Genten::Solver_Method::names[algParams.method]);
   }
 
-  if (algParams.debug) Genten::print_ktensor(u_host, out, "Solution");
+  if (algParams.debug) {
+    Ktensor_host_type u0 =
+      dtc.template importToRoot<Genten::DefaultHostExecutionSpace>(u);
+    Genten::print_ktensor(u0, out, "Solution");
+  }
 
 #if defined(HAVE_TEUCHOS)
   Teuchos::StackedTimer::OutputOptions options;
@@ -403,6 +403,9 @@ driver(TensorT<ExecSpace>& x,
 // #endif
   Teuchos::TimeMonitor::getStackedTimer()->report(out, comm, options);
 #endif
+
+  x.setProcessorMap(nullptr);
+  u.setProcessorMap(nullptr);
 
   return u;
 }
@@ -422,9 +425,11 @@ driver(TensorT<ExecSpace>& x,
                                                                         \
   template KtensorT<SPACE>                                              \
   driver<SPACE>(                                                        \
+    const DistTensorContext<SPACE>& dtc,                                \
     TensorT<SPACE>& x,                                                  \
     KtensorT<SPACE>& u_init,                                            \
     AlgParams& algParams,                                               \
+    const ptree& ptree,                                                 \
     PerfHistory& history,                                               \
     std::ostream& os);
 

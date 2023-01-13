@@ -66,9 +66,9 @@ namespace Genten {
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams);
 
-    template <typename ExecSpace, typename Searcher, typename LossFunction>
+    template <typename TensorType, typename ExecSpace, typename Searcher, typename LossFunction>
     void uniform_sample_tensor_tpetra(
-      const SptensorT<ExecSpace>& X,
+      const TensorType& X,
       const Searcher& searcher,
       const ttb_indx num_samples,
       const ttb_real weight,
@@ -117,7 +117,7 @@ namespace Genten {
     template <typename ExecSpace>
     class DenseSearcher {
     public:
-      DenseSearcher(const TensorT<ExecSpace>& X_) : X(X_) {}
+      DenseSearcher(const TensorImpl<ExecSpace>& X_) : X(X_) {}
 
       template <typename IndexType>
       KOKKOS_INLINE_FUNCTION
@@ -128,11 +128,11 @@ namespace Genten {
       template <typename IndexType>
       KOKKOS_INLINE_FUNCTION
       ttb_real value(const IndexType& ind) const {
-        const ttb_indx i = X.sub2ind(ind);
+        const ttb_indx i = X.global_sub2ind(ind);
         return X[i];
       }
     private:
-      const TensorT<ExecSpace> X;
+      const TensorImpl<ExecSpace> X;
     };
 
     template <typename ExecSpace>

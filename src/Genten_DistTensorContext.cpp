@@ -80,7 +80,11 @@ void printBlocking(const ProcessorMap& pmap,
   }
 }
 
-bool fileFormatIsBinary(const std::string& file_name) {
+void fileFormatIsBinary(const std::string& file_name,
+                        bool& is_binary_sparse,
+                        bool& is_binary_dense) {
+  is_binary_sparse = false;
+  is_binary_dense = false;
   std::ifstream tensor_file(file_name, std::ios::binary);
   std::string header;
   header.resize(4);
@@ -88,14 +92,15 @@ bool fileFormatIsBinary(const std::string& file_name) {
   try {
     tensor_file.read(&header[0], 4);
   } catch (...) {
-    return false;
+    return;
   }
 
   if (header == "sptn") {
-    return true;
+    is_binary_sparse = true;
   }
-
-  return false;
+  if (header == "dntn") {
+    is_binary_dense = true;
+  }
 }
 
 small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode) {
@@ -169,6 +174,58 @@ distributeTensorToVectors(const Sptensor& sp_tensor_host, uint64_t nnz,
         dt.val = sp_tensor_host.value(i);
       }
     }
+
+    std::vector<MPI_Request> requests(nprocs - 1);
+    std::vector<MPI_Status> statuses(nprocs - 1);
+    auto total_sent = 0;
+    for (auto i = 1; i < nprocs; ++i) {
+      // Size to sent to rank i
+      const auto nelements = who_gets_what[i + 1] - who_gets_what[i];
+      const auto nbytes = nelements * dt_size;
+      total_sent += nelements;
+
+      const auto index_of_first_element = who_gets_what[i];
+      MPI_Isend(Tvec.data() + index_of_first_element, nbytes, MPI_BYTE, i, i,
+                comm, &requests[i - 1]);
+    }
+    MPI_Waitall(requests.size(), requests.data(), statuses.data());
+    auto total_before = Tvec.size();
+    auto begin = Tvec.begin();
+    std::advance(begin, who_gets_what[1]); // wgw[0] == 0 always
+    Tvec.erase(begin, Tvec.end());
+    Tvec.shrink_to_fit(); // Yay now I only have rank 0 data
+
+    auto total_after = Tvec.size() + total_sent;
+    if (total_after != total_before) {
+      throw std::logic_error(
+          "The number of elements after sending and shrinking did not match "
+          "the input number of elements.");
+    }
+  } else {
+    const auto nelements = who_gets_what[rank + 1] - who_gets_what[rank];
+    Tvec.resize(nelements);
+    const auto nbytes = nelements * dt_size;
+    MPI_Recv(Tvec.data(), nbytes, MPI_BYTE, 0, rank, comm, MPI_STATUS_IGNORE);
+  }
+
+  return Tvec;
+}
+
+std::vector<ttb_real>
+distributeTensorToVectors(const Tensor& dn_tensor_host, uint64_t nnz,
+                          MPI_Comm comm, int rank, int nprocs,
+                          ttb_indx& offset) {
+  constexpr auto dt_size = sizeof(ttb_real);
+  std::vector<ttb_real> Tvec;
+  small_vector<int> who_gets_what =
+      detail::singleDimUniformBlocking(nnz, nprocs);
+  offset = who_gets_what[rank];
+
+  if (rank == 0) {
+    // Write tensor to form we can MPI_Send more easily.
+    Tvec.resize(dn_tensor_host.numel());
+    for (auto i = 0ull; i < dn_tensor_host.numel(); ++i)
+      Tvec[i] = dn_tensor_host[i];
 
     std::vector<MPI_Request> requests(nprocs - 1);
     std::vector<MPI_Status> statuses(nprocs - 1);
@@ -332,6 +389,114 @@ redistributeTensor(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
 
   // Copy data to the output vector
   std::vector<G_MPI_IO::TDatatype<ttb_real>> redistributedData(
+      data, data + amount_to_allocate_for_window);
+
+  // Free the MPI window and the buffer that it was allocated in
+  MPI_Win_free(&window);
+  MPI_Type_free(&element_type);
+  return redistributedData;
+}
+
+std::vector<ttb_real>
+redistributeTensor(const std::vector<ttb_real>& Tvec,
+                   const ttb_indx global_nnz, const ttb_indx global_offset,
+                   const std::vector<std::uint32_t>& TDims,
+                   const std::vector<small_vector<int>>& blocking,
+                   const ProcessorMap& pmap) {
+
+  const auto nprocs = pmap.gridSize();
+  const auto rank = pmap.gridRank();
+  MPI_Comm grid_comm = pmap.gridComm();
+
+  std::vector<std::vector<ttb_real>> elems_to_write(nprocs);
+  const ttb_indx local_nnz = Tvec.size();
+  const ttb_indx ndims = TDims.size();
+  std::vector<std::uint32_t> sub(ndims);
+  IndxArray siz(ndims);
+  for (auto dim=0; dim<ndims; ++dim)
+    siz[dim] = TDims[dim];
+  for (auto i=0; i<local_nnz; ++i) {
+    Impl::ind2sub(sub, siz, global_nnz, i+global_offset);
+    auto elem_owner_rank = rankInGridThatOwns(sub.data(), grid_comm, blocking);
+    elems_to_write[elem_owner_rank].push_back(Tvec[i]);
+  }
+
+  small_vector<int> amount_to_write(nprocs);
+  for (auto i = 0; i < nprocs; ++i) {
+    amount_to_write[i] = elems_to_write[i].size();
+  }
+
+  small_vector<int> offset_to_write_at(nprocs);
+  MPI_Exscan(amount_to_write.data(), offset_to_write_at.data(), nprocs, MPI_INT,
+             MPI_SUM, grid_comm);
+
+  int amount_to_allocate_for_window = 0;
+  MPI_Reduce_scatter_block(amount_to_write.data(),
+                           &amount_to_allocate_for_window, 1, MPI_INT, MPI_SUM,
+                           grid_comm);
+
+  if (amount_to_allocate_for_window == 0) {
+    const auto my_rank = pmap.gridRank();
+    const auto ndims = blocking.size();
+    std::stringstream ss;
+    ss << "WARNING MPI rank(" << my_rank
+       << "), received zero nnz in the current blocking.\n\tTensor block: [ ";
+    for (auto i=0; i<ndims; i++)
+      ss << pmap.gridCoord(i) << " ";
+    ss << "],  range: [ ";
+    for (auto i=0; i<ndims; i++)
+      ss << blocking[i][pmap.gridCoord(i)] << " ";
+    ss << "] to [ ";
+    for (auto i=0; i<ndims; i++)
+      ss << blocking[i][pmap.gridCoord(i)+1] << " ";
+    ss << "]\n";
+    std::cout << ss.str() << std::flush;
+    // TODO Handle this better than just aborting, but I don't have another
+    // good solution for now.
+    // NOTE (ETP, 9/19/22):  Having an empty proc does not appear to hurt
+    // anything so commenting this out for now.
+    /*
+    if (pmap.gridSize() > 1) {
+      MPI_Abort(pmap.gridComm(), MPI_ERR_UNKNOWN);
+    } else {
+      std::cout << "Zero tensor on a single node? Something probably went "
+                   "really wrong."
+                << std::endl;
+      std::abort();
+    }
+    */
+  }
+
+  // Let's leave this onesided because IMO it makes life easier. This is self
+  // contained so won't impact TBS
+  ttb_real *data;
+  MPI_Win window;
+  constexpr auto DataElemSize = sizeof(ttb_real);
+  MPI_Win_allocate(amount_to_allocate_for_window * DataElemSize,
+                   /*displacement = */ DataElemSize, MPI_INFO_NULL, grid_comm,
+                   &data, &window);
+
+  MPI_Datatype element_type;
+  MPI_Type_contiguous(DataElemSize, MPI_BYTE, &element_type);
+  MPI_Type_commit(&element_type);
+
+  // Jonathan L. told me for AllToAll Fences are probably better than locking
+  // if communications don't conflict
+  MPI_Win_fence(0, window);
+  for (auto i = 0; i < nprocs; ++i) {
+    MPI_Put(
+        /* Origin ptr */ elems_to_write[i].data(),
+        /* Origin num elements */ amount_to_write[i],
+        /* Datatype for put */ element_type,
+        /* Target */ i,
+        /* Displacement at target (not in bytes) */ offset_to_write_at[i],
+        /* Target num elements */ amount_to_write[i],
+        /* Origin data type */ element_type, window);
+  }
+  MPI_Win_fence(0, window);
+
+  // Copy data to the output vector
+  std::vector<ttb_real> redistributedData(
       data, data + amount_to_allocate_for_window);
 
   // Free the MPI window and the buffer that it was allocated in

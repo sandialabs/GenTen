@@ -510,12 +510,21 @@ namespace Genten {
     virtual void sampleTensorF(const KtensorT<ExecSpace>& u,
                                const LossFunction& loss_func) override
     {
-      Impl::uniform_sample_tensor(
-        X, Impl::DenseSearcher<ExecSpace>(X.impl()),
-        num_samples_value, weight_value,
-        u, loss_func, false,
-        Yf, wf, rand_pool, algParams);
+      if (algParams.dist_update_method == Dist_Update_Method::Tpetra) {
+        Impl::uniform_sample_tensor_tpetra(
+          X, Impl::DenseSearcher<ExecSpace>(X.impl()),
+          num_samples_value, weight_value,
+          u, loss_func, false,
+          Yf, wf, u_overlap_F, rand_pool, algParams);
+      }
+      else {
+        Impl::uniform_sample_tensor(
+          X, Impl::DenseSearcher<ExecSpace>(X.impl()),
+          num_samples_value, weight_value,
+          u, loss_func, false,
+          Yf, wf, rand_pool, algParams);
         u_overlap_F = u;
+      }
 
       dku_F->updateTensor(Yf);
     }
@@ -524,11 +533,19 @@ namespace Genten {
                                const StreamingHistory<ExecSpace>& hist,
                                const LossFunction& loss_func) override
     {
-      Impl::uniform_sample_tensor(
-        X, Impl::DenseSearcher<ExecSpace>(X.impl()),
-        num_samples_grad, weight_grad, u, loss_func, true,
-        Yg, wg, rand_pool, algParams);
+      if (algParams.dist_update_method == Dist_Update_Method::Tpetra) {
+        Impl::uniform_sample_tensor_tpetra(
+          X, Impl::DenseSearcher<ExecSpace>(X.impl()),
+          num_samples_grad, weight_grad, u, loss_func, true,
+          Yg, wg, u_overlap_G, rand_pool, algParams);
+      }
+      else {
+        Impl::uniform_sample_tensor(
+          X, Impl::DenseSearcher<ExecSpace>(X.impl()),
+          num_samples_grad, weight_grad, u, loss_func, true,
+          Yg, wg, rand_pool, algParams);
         u_overlap_G = u;
+      }
 
       if (hist.do_gcp_loss()) {
         // Create uh, u with time mode replaced by time mode of up

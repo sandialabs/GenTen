@@ -327,13 +327,15 @@ ttb_real Genten::innerprod(const Genten::SptensorT<ExecSpace>& s,
 }
 
 template <typename ExecSpace>
-ttb_real Genten::innerprod(const Genten::TensorT<ExecSpace>& x,
+ttb_real Genten::innerprod(const Genten::TensorT<ExecSpace>& xd,
                            const Genten::KtensorT<ExecSpace>& u,
                            const Genten::ArrayT<ExecSpace>& lambda)
 {
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::innerprod");
 #endif
+
+  const auto x = xd.impl();
 
   typedef Kokkos::TeamPolicy<ExecSpace> Policy;
   typedef typename Policy::member_type TeamMember;
@@ -415,13 +417,13 @@ namespace Impl {
 
 template <typename ExecSpace>
 struct MTTKRP_Dense_Kernel {
-  const TensorT<ExecSpace> XX;
+  const TensorImpl<ExecSpace> XX;
   const KtensorT<ExecSpace> uu;
   const ttb_indx nn;
   const FacMatrixT<ExecSpace> vv;
   const AlgParams algParams;
 
-  MTTKRP_Dense_Kernel(const TensorT<ExecSpace>& X_,
+  MTTKRP_Dense_Kernel(const TensorImpl<ExecSpace>& X_,
                       const KtensorT<ExecSpace>& u_,
                       const ttb_indx n_,
                       const FacMatrixT<ExecSpace>& v_,
@@ -431,7 +433,7 @@ struct MTTKRP_Dense_Kernel {
   template <unsigned FBS, unsigned VS>
   void run() const
   {
-    const TensorT<ExecSpace> X = XX;
+    const TensorImpl<ExecSpace> X = XX;
     const KtensorT<ExecSpace> u = uu;
     const ttb_indx n = nn;
     const FacMatrixT<ExecSpace> v = vv;
@@ -474,7 +476,7 @@ struct MTTKRP_Dense_Kernel {
         // Work around internal-compiler errors in recent Intel compilers
         unsigned nd_ = nd;
         unsigned n_ = n;
-        TensorT<ExecSpace> X_ = X;
+        TensorImpl<ExecSpace> X_ = X;
 
         // Initialize our subscript array for row i of mode n
         Kokkos::single(Kokkos::PerThread(team), [&]()
@@ -552,7 +554,7 @@ void Genten::mttkrp(const Genten::TensorT<ExecSpace>& X,
   if (zero_v)
     v = ttb_real(0.0);
 
-  Genten::Impl::MTTKRP_Dense_Kernel<ExecSpace> kernel(X,u,n,v,algParams);
+  Genten::Impl::MTTKRP_Dense_Kernel<ExecSpace> kernel(X.impl(),u,n,v,algParams);
   Genten::Impl::run_row_simd_kernel(kernel, nc);
 }
 

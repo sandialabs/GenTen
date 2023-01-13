@@ -48,6 +48,7 @@
 #include "Genten_IOtext.hpp"
 #include "Genten_Pmap.hpp"
 #include "Genten_Sptensor.hpp"
+#include "Genten_Tensor.hpp"
 
 #include "CMakeInclude.h"
 #if defined(HAVE_DIST)
@@ -88,14 +89,18 @@ public:
   DistTensorContext& operator=(DistTensorContext&&) = default;
   DistTensorContext& operator=(const DistTensorContext&) = default;
 
-  SptensorT<ExecSpace> distributeTensor(const ptree& tree);
-  SptensorT<ExecSpace> distributeTensor(const std::string& file,
-                                        const ttb_indx index_base,
-                                        const bool compressed,
-                                        const AlgParams& algParams);
+  void distributeTensor(const std::string& file,
+                        const ttb_indx index_base,
+                        const bool compressed,
+                        const AlgParams& algParams,
+                        SptensorT<ExecSpace>& X_sparse,
+                        TensorT<ExecSpace>& X_dense);
   template <typename ExecSpaceSrc>
   SptensorT<ExecSpace> distributeTensor(const SptensorT<ExecSpaceSrc>& X,
                                         const AlgParams& algParams = AlgParams());
+  template <typename ExecSpaceSrc>
+  TensorT<ExecSpace> distributeTensor(const TensorT<ExecSpaceSrc>& X,
+                                      const AlgParams& algParams = AlgParams());
 
   // Parallel info
   std::int32_t ndims() const { return global_dims_.size(); }
@@ -124,6 +129,11 @@ public:
   std::uint64_t globalNNZ(const SptensorT<ExecSpace>& X) const;
   ttb_real globalNumelFloat(const SptensorT<ExecSpace>& X) const;
 
+  // Tensor operations
+  ttb_real globalNorm(const TensorT<ExecSpace>& X) const;
+  std::uint64_t globalNNZ(const TensorT<ExecSpace>& X) const;
+  ttb_real globalNumelFloat(const TensorT<ExecSpace>& X) const;
+
   // Ktensor operations
   ttb_real globalNorm(const KtensorT<ExecSpace>& X) const;
   template <typename ExecSpaceSrc>
@@ -149,6 +159,12 @@ public:
                                          const bool prng,
                                          const bool scale_guess_by_norm_x,
                                          const std::string& dist_method) const;
+  KtensorT<ExecSpace> randomInitialGuess(const TensorT<ExecSpace>& X,
+                                         const int rank,
+                                         const int seed,
+                                         const bool prng,
+                                         const bool scale_guess_by_norm_x,
+                                         const std::string& dist_method) const;
   KtensorT<ExecSpace> computeInitialGuess(const SptensorT<ExecSpace>& X,
                                           const ptree& input) const;
 
@@ -159,10 +175,13 @@ private:
     const std::vector<small_vector<int>>& blocking,
     const ProcessorMap& pmap,
     const AlgParams& algParams);
-
-  std::pair<G_MPI_IO::SptnFileHeader, MPI_File>
-  readBinaryHeader(const std::string& file_name, int indexbase,
-                   std::vector<std::uint32_t>& dims, std::uint64_t& nnz);
+  TensorT<ExecSpace> distributeTensorData(
+    const std::vector<double>& Tvec,
+    const ttb_indx global_nnz, const ttb_indx global_offset,
+    const std::vector<std::uint32_t>& TensorDims,
+    const std::vector<small_vector<int>>& blocking,
+    const ProcessorMap& pmap,
+    const AlgParams& algParams);
 
   std::vector<std::uint32_t> local_dims_;
   std::vector<std::uint32_t> global_dims_;
@@ -189,7 +208,9 @@ struct RangePair {
   int64_t upper;
 };
 
-bool fileFormatIsBinary(const std::string& file_name);
+void fileFormatIsBinary(const std::string& file_name,
+                        bool& is_binary_sparse,
+                        bool& is_binary_dense);
 
 template <typename ExecSpace>
 auto rangesToIndexArray(const small_vector<RangePair>& ranges);
@@ -199,8 +220,20 @@ std::vector<G_MPI_IO::TDatatype<ttb_real>>
 distributeTensorToVectors(const Sptensor& sp_tensor_host, uint64_t nnz,
                           MPI_Comm comm, int rank, int nprocs);
 
+std::vector<ttb_real>
+distributeTensorToVectors(const Tensor& dn_tensor_host, uint64_t nnz,
+                          MPI_Comm comm, int rank, int nprocs,
+                          ttb_indx& offset);
+
 std::vector<G_MPI_IO::TDatatype<ttb_real>>
 redistributeTensor(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
+                   const std::vector<std::uint32_t>& TensorDims,
+                   const std::vector<small_vector<int>>& blocking,
+                   const ProcessorMap& pmap);
+
+std::vector<ttb_real>
+redistributeTensor(const std::vector<ttb_real>& Tvec,
+                   const ttb_indx global_nnz, const ttb_indx global_offset,
                    const std::vector<std::uint32_t>& TensorDims,
                    const std::vector<small_vector<int>>& blocking,
                    const ProcessorMap& pmap);
@@ -236,6 +269,33 @@ template <typename ExecSpace>
 ttb_real
 DistTensorContext<ExecSpace>::
 globalNumelFloat(const SptensorT<ExecSpace>& X) const
+{
+  return pmap_->gridAllReduce(X.numel_float());
+}
+
+template <typename ExecSpace>
+ttb_real
+DistTensorContext<ExecSpace>::
+globalNorm(const TensorT<ExecSpace>& X) const
+{
+  const auto& values = X.getValues();
+  ttb_real norm2 = values.dot(values);
+  norm2 = pmap_->gridAllReduce(norm2);
+  return std::sqrt(norm2);
+}
+
+template <typename ExecSpace>
+std::uint64_t
+DistTensorContext<ExecSpace>::
+globalNNZ(const TensorT<ExecSpace>& X) const
+{
+  return pmap_->gridAllReduce(X.nnz());
+}
+
+template <typename ExecSpace>
+ttb_real
+DistTensorContext<ExecSpace>::
+globalNumelFloat(const TensorT<ExecSpace>& X) const
 {
   return pmap_->gridAllReduce(X.numel_float());
 }
@@ -552,18 +612,26 @@ importToRoot(const int dim, const FacMatrixT<ExecSpace>& u) const
 }
 
 template <typename ExecSpace>
-SptensorT<ExecSpace>
+void
 DistTensorContext<ExecSpace>::
 distributeTensor(const std::string& file, const ttb_indx index_base,
-                 const bool compressed, const AlgParams& algParams)
+                 const bool compressed, const AlgParams& algParams,
+                 SptensorT<ExecSpace>& X_sparse,
+                 TensorT<ExecSpace>& X_dense)
 {
-  const bool is_binary = detail::fileFormatIsBinary(file);
-  if (is_binary && index_base != 0)
-    Genten::error("The binary format only supports zero based indexing\n");
-  if (is_binary && compressed)
-    Genten::error("The binary format does not support compression\n");
+  bool dense = false;
+  bool is_binary_sparse = false;
+  bool is_binary_dense = false;
+  detail::fileFormatIsBinary(file, is_binary_sparse, is_binary_dense);
+  if (is_binary_dense)
+    dense = true;
+  if (is_binary_sparse && index_base != 0)
+    Genten::error("The binary sparse format only supports zero based indexing\n");
+  if (is_binary_sparse && compressed)
+    Genten::error("The binary sparse format does not support compression\n");
 
-  std::vector<G_MPI_IO::TDatatype<ttb_real>> Tvec;
+  std::vector<G_MPI_IO::TDatatype<ttb_real>> Tvec_sparse;
+  std::vector<double> Tvec_dense;
 
   if (DistContext::rank() == 0)
     std::cout << "Reading tensor from file " << file << std::endl;
@@ -571,42 +639,87 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
   DistContext::Barrier();
   auto t2 = MPI_Wtime();
   std::vector<std::uint32_t> global_dims;
-  if (is_binary) {
-    // For binary file, do a parallel read
-    std::uint64_t nnz = 0;
-    auto binary_header = readBinaryHeader(file, index_base, global_dims, nnz);
-    Tvec = G_MPI_IO::parallelReadElements(DistContext::commWorld(),
-                                          binary_header.second,
-                                          binary_header.first);
+  ttb_indx nnz, offset;
+  if (is_binary_sparse) {
+    // For binary sparse file, do a parallel read
+    auto mpi_file = G_MPI_IO::openFile(DistContext::commWorld(), file);
+    auto header = G_MPI_IO::readSparseHeader(DistContext::commWorld(),
+                                             mpi_file);
+    TensorInfo ti = header.toTensorInfo();
+    global_dims = ti.dim_sizes;
+    nnz = ti.nnz;
+    Tvec_sparse = G_MPI_IO::parallelReadElements(DistContext::commWorld(),
+                                                 mpi_file, header);
+  }
+  else if (is_binary_dense) {
+    auto mpi_file = G_MPI_IO::openFile(DistContext::commWorld(), file);
+    auto header = G_MPI_IO::readDenseHeader(DistContext::commWorld(),
+                                            mpi_file);
+    TensorInfo ti = header.toTensorInfo();
+    global_dims = ti.dim_sizes;
+    nnz = ti.nnz;
+    offset = header.getLocalOffsetRange(DistContext::rank(),
+                                        DistContext::nranks()).first;
+    Tvec_dense = G_MPI_IO::parallelReadElements(DistContext::commWorld(),
+                                                mpi_file, header);
   }
   else {
     // For non-binary, read on rank 0 and broadcast dimensions.
     // We do this instead of reading the header because we want to support
     // headerless files
-    Sptensor X_host;
-    if (gridRank() == 0)
-      import_sptensor(file, X_host, index_base, compressed);
 
-    std::size_t nnz = X_host.nnz();
-    DistContext::Bcast(nnz, 0);
+    // Determine if the file is a sparse or dense tensor.  Dense tensors
+    // must have a header with the first line being "tensor".  Sparse
+    // tensors might not have a header
+    std::ifstream f(file);
+    if (!f)
+      Genten::error("Cannot open input file: " + file);
+    std::string line;
+    std::getline(f, line);
+    if (line == "tensor")
+      dense = true;
 
-    std::size_t ndims = X_host.ndims();
-    DistContext::Bcast(ndims, 0);
+    Tensor X_dense_host;
+    Sptensor X_sparse_host;
+    std::size_t ndims;
+    small_vector<int> dims;
 
-    small_vector<int> dims(ndims);
     if (gridRank() == 0) {
-      for (std::size_t i=0; i<ndims; ++i)
-        dims[i] = X_host.size(i);
+      if (dense) {
+        import_tensor(file, X_dense_host);
+        nnz = X_dense_host.nnz();
+        ndims = X_dense_host.ndims();
+        dims = small_vector<int>(ndims);
+        for (std::size_t i=0; i<ndims; ++i)
+          dims[i] = X_dense_host.size(i);
+      }
+      else {
+        import_sptensor(file, X_sparse_host, index_base, compressed);
+        nnz = X_sparse_host.nnz();
+        ndims = X_sparse_host.ndims();
+        dims = small_vector<int>(ndims);
+        for (std::size_t i=0; i<ndims; ++i)
+          dims[i] = X_sparse_host.size(i);
+      }
     }
+    DistContext::Bcast(nnz, 0);
+    DistContext::Bcast(ndims, 0);
+    if (gridRank() != 0)
+      dims = small_vector<int>(ndims);
     DistContext::Bcast(dims, 0);
 
     global_dims = std::vector<std::uint32_t>(ndims);
     for (std::size_t i=0; i<ndims; ++i)
       global_dims[i] = dims[i];
 
-    Tvec = detail::distributeTensorToVectors(
-      X_host, nnz, DistContext::commWorld(), DistContext::rank(),
-      DistContext::nranks());
+    if (dense)
+      Tvec_dense = detail::distributeTensorToVectors(
+        X_dense_host, nnz, DistContext::commWorld(), DistContext::rank(),
+        DistContext::nranks(), offset);
+    else
+      Tvec_sparse = detail::distributeTensorToVectors(
+        X_sparse_host, nnz, DistContext::commWorld(), DistContext::rank(),
+        DistContext::nranks());
   }
   DistContext::Barrier();
   auto t3 = MPI_Wtime();
@@ -639,8 +752,13 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
     detail::printBlocking(*pmap_, global_blocking_);
   }
 
-  return distributeTensorData(Tvec, global_dims_, global_blocking_,
-                              *pmap_, algParams);
+  if (dense)
+    X_dense = distributeTensorData(Tvec_dense, nnz, offset,
+                                   global_dims_, global_blocking_,
+                                   *pmap_, algParams);
+  else
+    X_sparse = distributeTensorData(Tvec_sparse, global_dims_, global_blocking_,
+                                    *pmap_, algParams);
 }
 
 template <typename ExecSpace>
@@ -648,6 +766,50 @@ template <typename ExecSpaceSrc>
 SptensorT<ExecSpace>
 DistTensorContext<ExecSpace>::
 distributeTensor(const SptensorT<ExecSpaceSrc>& X, const AlgParams& algParams)
+{
+  // Check if we have already distributed a tensor, in which case this one
+  // needs to be of the same size
+  const int ndims = X.ndims();
+  if (global_dims_.size() > 0) {
+    if (global_dims_.size() != ndims)
+      Genten::error("distributeTensor() called twice with different number of dimensions!");
+    for (int i=0; i<ndims; ++i)
+      if (global_dims_[i] != X.size(i))
+          Genten::error("distributeTensor() called twice with different sized tensors!");
+  }
+  else {
+    global_dims_.resize(ndims);
+    for (int i=0; i<ndims; ++i)
+      global_dims_[i] = X.size(i);
+
+    const bool use_tpetra =
+      algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
+    pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
+                                                           use_tpetra));
+    detail::printGrids(*pmap_);
+
+    global_blocking_ =
+      detail::generateUniformBlocking(global_dims_, pmap_->gridDims());
+
+    detail::printBlocking(*pmap_, global_blocking_);
+    DistContext::Barrier();
+  }
+
+  auto X_host = create_mirror_view(X);
+  deep_copy(X_host, X);
+  auto Tvec = detail::distributeTensorToVectors(
+    X_host, X.nnz(), pmap_->gridComm(), pmap_->gridRank(),
+    pmap_->gridSize());
+
+  return distributeTensorData(Tvec, global_dims_, global_blocking_, *pmap_,
+                              algParams);
+}
+
+template <typename ExecSpace>
+template <typename ExecSpaceSrc>
+TensorT<ExecSpace>
+DistTensorContext<ExecSpace>::
+distributeTensor(const TensorT<ExecSpaceSrc>& X, const AlgParams& algParams)
 {
   // Check if we have already distributed a tensor, in which case this one
   // needs to be of the same size
@@ -891,24 +1053,145 @@ distributeTensorData(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
 }
 
 template <typename ExecSpace>
-std::pair<G_MPI_IO::SptnFileHeader, MPI_File>
+TensorT<ExecSpace>
 DistTensorContext<ExecSpace>::
-readBinaryHeader(const std::string& file_name, int indexbase,
-           std::vector<std::uint32_t>& dims,
-           std::uint64_t& nnz)
+distributeTensorData(const std::vector<ttb_real>& Tvec,
+                     const ttb_indx global_nnz, const ttb_indx global_offset,
+                     const std::vector<std::uint32_t>& TensorDims,
+                     const std::vector<small_vector<int>>& blocking,
+                     const ProcessorMap& pmap, const AlgParams& algParams)
 {
-  bool is_binary = detail::fileFormatIsBinary(file_name);
-  if (!is_binary)
-    Genten::error("readBinaryHeader called on non-binary file!\n");
-  if (indexbase != 0)
-    Genten::error("The binary format only supports zero based indexing\n");
+  const bool use_tpetra =
+    algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
 
-  auto *mpi_fh = G_MPI_IO::openFile(DistContext::commWorld(), file_name);
-  auto binary_header = G_MPI_IO::readHeader(DistContext::commWorld(), mpi_fh);
-  TensorInfo ti = binary_header.toTensorInfo();
-  dims = ti.dim_sizes;
-  nnz = ti.nnz;
-  return std::make_pair(std::move(binary_header), mpi_fh);
+  DistContext::Barrier();
+  auto t4 = MPI_Wtime();
+
+  // Now redistribute to final format
+  auto values =
+    detail::redistributeTensor(Tvec, global_nnz, global_offset,
+                               global_dims_, global_blocking_, *pmap_);
+
+  DistContext::Barrier();
+  auto t5 = MPI_Wtime();
+
+  if (gridRank() == 0) {
+    std::cout << "  Redistributied file in: " << t5 - t4 << "s" << std::endl;
+  }
+
+  DistContext::Barrier();
+  auto t6 = MPI_Wtime();
+
+  std::vector<detail::RangePair> range;
+  auto ndims = TensorDims.size();
+  for (auto i = 0; i < ndims; ++i) {
+    auto coord = pmap_->gridCoord(i);
+    range.push_back({global_blocking_[i][coord],
+                      global_blocking_[i][coord + 1]});
+  }
+
+  std::vector<ttb_indx> indices(ndims);
+  local_dims_.resize(ndims);
+  for (auto i = 0; i < ndims; ++i) {
+    auto const &rpair = range[i];
+    indices[i] = rpair.upper - rpair.lower;
+    local_dims_[i] = indices[i];
+  }
+
+  const auto local_nnz = values.size();
+
+  TensorT<ExecSpace> tensor;
+  if (!use_tpetra) {
+    Tensor tensor_host(IndxArray(ndims, indices.data()),
+                       Array(local_nnz, values.data(), false));
+    tensor = create_mirror_view(ExecSpace(), tensor_host);
+    deep_copy(tensor, tensor_host);
+  }
+
+#ifdef HAVE_TPETRA
+  // Setup Tpetra parallel maps
+  if (use_tpetra) {
+    const tpetra_go_type indexBase = tpetra_go_type(0);
+    const Tpetra::global_size_t invalid =
+      Teuchos::OrdinalTraits<Tpetra::global_size_t>::invalid();
+    tpetra_comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap_->gridComm()));
+
+    // Distribute each factor matrix uniformly across all processors
+    // ToDo:  consider possibly not doing this when the number of rows is
+    // small.  It might be better to replicate rows instead
+    factorMap.resize(ndims);
+    for (auto dim=0; dim<ndims; ++dim) {
+      const tpetra_go_type numGlobalElements = global_dims_[dim];
+      factorMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(numGlobalElements, indexBase, tpetra_comm));
+    }
+
+    // Build tensor maps based on slices owned by each processor
+    overlapFactorMap.resize(ndims);
+    for (auto dim=0; dim<ndims; ++dim) {
+      const auto sz = local_dims_[dim];
+      Kokkos::View<tpetra_go_type*,ExecSpace> gids("gids", sz);
+      auto gids_host = create_mirror_view(gids);
+      const auto l = range[dim].lower;
+      for (auto idx=0; idx<sz; ++idx)
+        gids_host[idx] = l + idx;
+      deep_copy(gids, gids_host);
+      overlapFactorMap[dim] =
+        Teuchos::rcp(new tpetra_map_type<ExecSpace>(invalid, gids, indexBase,
+                                                    tpetra_comm));
+    }
+
+    // Build dense tensor
+    Tensor tensor_host(IndxArray(ndims, indices.data()),
+                       Array(local_nnz, values.data(), false));
+    IndxArray lower = tensor_host.getLowerBounds();
+    IndxArray upper = tensor_host.getUpperBounds();
+    for (auto dim=0; dim<ndims; ++dim) {
+      lower[dim] = range[dim].lower;
+      upper[dim] = range[dim].upper;
+    }
+    tensor = create_mirror_view(ExecSpace(), tensor_host);
+    deep_copy(tensor, tensor_host);
+    for (auto dim=0; dim<ndims; ++dim) {
+      tensor.factorMap(dim) = factorMap[dim];
+      tensor.tensorMap(dim) = overlapFactorMap[dim];
+      if (!overlapFactorMap[dim]->isSameAs(*factorMap[dim]))
+        tensor.importer(dim) =
+          Teuchos::rcp(new tpetra_import_type<ExecSpace>(
+                         factorMap[dim], overlapFactorMap[dim]));
+    }
+
+    // Build maps and importers for importing factor matrices to/from root
+    rootMap.resize(ndims);
+    rootImporter.resize(ndims);
+    for (auto dim=0; dim<ndims; ++dim) {
+      const Tpetra::global_size_t numGlobalElements = global_dims_[dim];
+      const size_t numLocalElements =
+        (gridRank() == 0) ? global_dims_[dim] : 0;
+      rootMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(numGlobalElements, numLocalElements, indexBase, tpetra_comm));
+      rootImporter[dim] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(factorMap[dim], rootMap[dim]));
+    }
+  }
+#else
+  if (use_tpetra)
+    Genten::error("Cannot use tpetra distribution approach without enabling Tpetra!");
+#endif
+
+  if (DistContext::isDebug()) {
+    if (gridRank() == 0) {
+      std::cout << "MPI Ranks in each dimension: ";
+      for (auto p : pmap_->subCommSizes()) {
+        std::cout << p << " ";
+      }
+      std::cout << std::endl;
+    }
+    DistContext::Barrier();
+  }
+
+  DistContext::Barrier();
+  auto t7 = MPI_Wtime();
+
+  tensor.setProcessorMap(&pmap);
+  return tensor;
 }
 
 namespace detail {
@@ -997,7 +1280,6 @@ public:
   DistTensorContext& operator=(DistTensorContext&&) = default;
   DistTensorContext& operator=(const DistTensorContext&) = default;
 
-  SptensorT<ExecSpace> distributeTensor(const ptree& tree);
   SptensorT<ExecSpace> distributeTensor(const std::string& file,
                                         const ttb_indx index_base,
                                         const bool compressed,
@@ -1089,25 +1371,6 @@ private:
 #endif
 
 template <typename ExecSpace>
-SptensorT<ExecSpace>
-DistTensorContext<ExecSpace>::
-distributeTensor(const ptree& tree)
-{
-  auto t_tree = tree.get_child("tensor");
-  const std::string file_name = t_tree.get<std::string>("input-file");
-  const ttb_indx index_base = t_tree.get<int>("index-base", 0);
-  const bool compressed = t_tree.get<bool>("compressed", false);
-
-  auto k_tree = tree.get_child("k-tensor");
-  const bool tpetra =
-    (parse_ptree_enum<Dist_Update_Method>(k_tree, "dist-method") ==
-     Dist_Update_Method::Tpetra);
-  const bool optimize_maps = k_tree.get<bool>("optimize-mps", false);
-  return distributeTensor(file_name, index_base, compressed, tpetra,
-                          optimize_maps);
-}
-
-template <typename ExecSpace>
 void
 DistTensorContext<ExecSpace>::
 exportToFile(const KtensorT<ExecSpace>& u, const std::string& file_name) const
@@ -1139,6 +1402,75 @@ template <typename ExecSpace>
 KtensorT<ExecSpace>
 DistTensorContext<ExecSpace>::
 randomInitialGuess(const SptensorT<ExecSpace>& X,
+                   const int rank,
+                   const int seed,
+                   const bool prng,
+                   const bool scale_guess_by_norm_x,
+                   const std::string& dist_method) const
+{
+  const ttb_indx nd = X.ndims();
+  const ttb_real norm_x = globalNorm(X);
+  RandomMT cRMT(seed);
+
+  Genten::KtensorT<ExecSpace> u;
+
+  if (dist_method == "serial") {
+    // Compute random ktensor on rank 0 and broadcast to all proc's
+    IndxArrayT<ExecSpace> sz(nd);
+    auto hsz = create_mirror_view(sz);
+    for (int i=0; i<nd; ++i)
+      hsz[i] = global_dims_[i];
+    deep_copy(sz,hsz);
+    Genten::KtensorT<ExecSpace> u0(rank, nd, sz);
+    if (pmap_->gridRank() == 0) {
+      u0.setWeights(1.0);
+      u0.setMatricesScatter(false, prng, cRMT);
+    }
+    u = exportFromRoot(u0);
+  }
+  else if (dist_method == "parallel" || dist_method == "parallel-drew") {
+#ifdef HAVE_TPETRA
+    if (tpetra_comm != Teuchos::null) {
+      const int nd = X.ndims();
+      IndxArrayT<ExecSpace> sz(nd);
+      auto hsz = create_mirror_view(sz);
+      for (int i=0; i<nd; ++i)
+        hsz[i] = factorMap[i]->getLocalNumElements();
+      deep_copy(sz,hsz);
+      u = KtensorT<ExecSpace>(rank, nd, sz);
+      u.setWeights(1.0);
+      u.setMatricesScatter(false, prng, cRMT);
+      u.setProcessorMap(&pmap());
+    }
+    else
+#endif
+    {
+      u = KtensorT<ExecSpace>(rank, nd, X.size());
+      u.setWeights(1.0);
+      u.setMatricesScatter(false, prng, cRMT);
+      u.setProcessorMap(&pmap());
+      allReduce(u, true); // make replicated proc's consistent
+    }
+  }
+  else
+    Genten::error("Unknown distributed-guess method: " + dist_method);
+
+  if (dist_method == "parallel-drew")
+    u.weights().times(1.0 / norm_x); // don't understand this
+  else {
+    const ttb_real norm_u = globalNorm(u);
+    const ttb_real scale =
+      scale_guess_by_norm_x ? norm_x / norm_u : ttb_real(1.0) / norm_u;
+    u.weights().times(scale);
+  }
+  u.distribute(); // distribute weights across factor matrices
+  return u;
+}
+
+template <typename ExecSpace>
+KtensorT<ExecSpace>
+DistTensorContext<ExecSpace>::
+randomInitialGuess(const TensorT<ExecSpace>& X,
                    const int rank,
                    const int seed,
                    const bool prng,
