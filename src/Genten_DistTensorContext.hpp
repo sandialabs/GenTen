@@ -1280,29 +1280,67 @@ public:
   DistTensorContext& operator=(DistTensorContext&&) = default;
   DistTensorContext& operator=(const DistTensorContext&) = default;
 
-  SptensorT<ExecSpace> distributeTensor(const std::string& file,
-                                        const ttb_indx index_base,
-                                        const bool compressed,
-                                        const AlgParams& algParams)
+  void distributeTensor(const std::string& file,
+                        const ttb_indx index_base,
+                        const bool compressed,
+                        const AlgParams& algParams,
+                        SptensorT<ExecSpace>& X_sparse,
+                        TensorT<ExecSpace>& X_dense)
   {
-    Sptensor x_host;
-    Genten::import_sptensor(file, x_host, index_base, compressed, true);
-    SptensorT<ExecSpace> x = create_mirror_view( ExecSpace(), x_host );
-    deep_copy( x, x_host );
+    // To do:  support binary format.
+    // Should have one function to read in binary or text, sparse or dense
+    // tensors.
 
-    auto sz = x_host.size();
-    const int nd = x_host.ndims();
-    global_dims_.resize(nd);
-    for (int i=0; i<nd; ++i)
-      global_dims_[i] = sz[i];
+    // Determine if the file is a sparse or dense tensor.  Dense tensors
+    // must have a header with the first line being "tensor".  Sparse
+    // tensors might not have a header
+    bool dense = false;
+    std::ifstream f(file);
+    if (!f)
+      Genten::error("Cannot open input file: " + file);
+    std::string line;
+    std::getline(f, line);
+    if (line == "tensor")
+      dense = true;
 
-    return x;
+    if (dense) {
+      Tensor X_dense_host;
+      import_tensor(file, X_dense_host);
+      X_dense = create_mirror_view( ExecSpace(), X_dense_host );
+      deep_copy(X_dense, X_dense_host);
+
+      auto sz = X_dense_host.size();
+      const int nd = X_dense_host.ndims();
+      global_dims_.resize(nd);
+      for (int i=0; i<nd; ++i)
+        global_dims_[i] = sz[i];
+    }
+    else {
+      Sptensor X_sparse_host;
+      import_sptensor(file, X_sparse_host, index_base, compressed, true);
+      X_sparse = create_mirror_view( ExecSpace(), X_sparse_host );
+      deep_copy(X_sparse, X_sparse_host);
+
+      auto sz = X_sparse_host.size();
+      const int nd = X_sparse_host.ndims();
+      global_dims_.resize(nd);
+      for (int i=0; i<nd; ++i)
+        global_dims_[i] = sz[i];
+    }
   }
   template <typename ExecSpaceSrc>
   SptensorT<ExecSpace> distributeTensor(const SptensorT<ExecSpaceSrc>& X,
                                         const AlgParams& algParams = AlgParams())
   {
     SptensorT<ExecSpace> X_dst = create_mirror_view(ExecSpace(), X);
+    deep_copy(X_dst, X);
+    return X_dst;
+  }
+  template <typename ExecSpaceSrc>
+  TensorT<ExecSpace> distributeTensor(const TensorT<ExecSpaceSrc>& X,
+                                      const AlgParams& algParams = AlgParams())
+  {
+    TensorT<ExecSpace> X_dst = create_mirror_view(ExecSpace(), X);
     deep_copy(X_dst, X);
     return X_dst;
   }
@@ -1322,6 +1360,11 @@ public:
   std::uint64_t globalNNZ(const SptensorT<ExecSpace>& X) const { return X.nnz(); }
   ttb_real globalNumelFloat(const SptensorT<ExecSpace>& X) const { return X.numel_float(); }
 
+  // Tensor operations
+  ttb_real globalNorm(const TensorT<ExecSpace>& X) const { return X.norm(); }
+  std::uint64_t globalNNZ(const TensorT<ExecSpace>& X) const { return X.nnz(); }
+  ttb_real globalNumelFloat(const TensorT<ExecSpace>& X) const { return X.numel_float(); }
+
   // Ktensor operations
   ttb_real globalNorm(const KtensorT<ExecSpace>& u) const { return std::sqrt(u.normFsq()); }
   template <typename ExecSpaceSrc>
@@ -1340,6 +1383,8 @@ public:
                  const bool divide_by_grid_size = false) const {}
   void exportToFile(const KtensorT<ExecSpace>& out,
                     const std::string& file_name) const;
+
+  // Factor matrix operations
   template <typename ExecSpaceSrc>
   FacMatrixT<ExecSpace> exportFromRoot(const int dim, const FacMatrixT<ExecSpaceSrc>& u) const {
     FacMatrixT<ExecSpace> v = create_mirror_view(ExecSpace(), u);
@@ -1355,6 +1400,12 @@ public:
 
   KtensorT<ExecSpace> readInitialGuess(const std::string& file_name) const;
   KtensorT<ExecSpace> randomInitialGuess(const SptensorT<ExecSpace>& X,
+                                         const int rank,
+                                         const int seed,
+                                         const bool prng,
+                                         const bool scale_guess_by_norm_x,
+                                         const std::string& dist_method) const;
+  KtensorT<ExecSpace> randomInitialGuess(const TensorT<ExecSpace>& X,
                                          const int rank,
                                          const int seed,
                                          const bool prng,
