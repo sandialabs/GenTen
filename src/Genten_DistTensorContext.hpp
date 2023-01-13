@@ -45,6 +45,7 @@
 #include "Genten_Ptree.hpp"
 #include "Genten_SmallVector.hpp"
 #include "Genten_DistContext.hpp"
+#include "Genten_TensorIO.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_Pmap.hpp"
 #include "Genten_Sptensor.hpp"
@@ -1287,45 +1288,20 @@ public:
                         SptensorT<ExecSpace>& X_sparse,
                         TensorT<ExecSpace>& X_dense)
   {
-    // To do:  support binary format.
-    // Should have one function to read in binary or text, sparse or dense
-    // tensors.
-
-    // Determine if the file is a sparse or dense tensor.  Dense tensors
-    // must have a header with the first line being "tensor".  Sparse
-    // tensors might not have a header
-    bool dense = false;
-    std::ifstream f(file);
-    if (!f)
-      Genten::error("Cannot open input file: " + file);
-    std::string line;
-    std::getline(f, line);
-    if (line == "tensor")
-      dense = true;
-
-    if (dense) {
-      Tensor X_dense_host;
-      import_tensor(file, X_dense_host);
-      X_dense = create_mirror_view( ExecSpace(), X_dense_host );
-      deep_copy(X_dense, X_dense_host);
-
-      auto sz = X_dense_host.size();
-      const int nd = X_dense_host.ndims();
+    Genten::TensorReader<ExecSpace> reader(file, index_base, compressed);
+    if (reader.isSparse()) {
+      X_sparse = reader.getSparseTensor();
+      const int nd = X_dense.ndims();
       global_dims_.resize(nd);
       for (int i=0; i<nd; ++i)
-        global_dims_[i] = sz[i];
+        global_dims_[i] = X_sparse.size(i);
     }
-    else {
-      Sptensor X_sparse_host;
-      import_sptensor(file, X_sparse_host, index_base, compressed, true);
-      X_sparse = create_mirror_view( ExecSpace(), X_sparse_host );
-      deep_copy(X_sparse, X_sparse_host);
-
-      auto sz = X_sparse_host.size();
-      const int nd = X_sparse_host.ndims();
+    else if (reader.isDense()) {
+      X_dense = reader.getDenseTensor();
+      const int nd = X_dense.ndims();
       global_dims_.resize(nd);
       for (int i=0; i<nd; ++i)
-        global_dims_[i] = sz[i];
+        global_dims_[i] = X_dense.size(i);
     }
   }
   template <typename ExecSpaceSrc>

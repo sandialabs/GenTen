@@ -618,6 +618,7 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_FacMatrix.cpp
   ${Genten_SOURCE_DIR}/src/Genten_IndxArray.cpp
   ${Genten_SOURCE_DIR}/src/Genten_IOtext.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_TensorIO.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Ktensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_MixedFormatOps.cpp
   ${Genten_SOURCE_DIR}/src/Genten_TTM.cpp
