@@ -48,6 +48,7 @@
 #include <string>
 #include <vector>
 #include <ostream>
+#include <memory>
 
 #include "Genten_FacMatrix.hpp"
 #include "Genten_Ktensor.hpp"
@@ -501,6 +502,8 @@ namespace Genten
     print_matrix(X, os);
     return os;
   }
+
+  std::pair<std::shared_ptr<std::istream>,std::shared_ptr<std::istream>> createCompressedInputFileStream(const std::string& filename);
 
    /** @} */
 

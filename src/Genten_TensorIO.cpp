@@ -38,14 +38,6 @@
 // ************************************************************************
 //@HEADER
 
-#include "CMakeInclude.h"
-#ifdef HAVE_BOOST
-#define BOOST_BIND_GLOBAL_PLACEHOLDERS
-#include <boost/iostreams/filtering_stream.hpp>
-#include <boost/iostreams/copy.hpp>
-#include <boost/iostreams/filter/gzip.hpp>
-#endif
-
 #include "Genten_TensorIO.hpp"
 #include "Genten_IOtext.hpp"
 
@@ -369,20 +361,10 @@ TensorReader(const std::string& filename,
   {
     bool dense = false;
     if (compressed) {
-#ifdef HAVE_BOOST
-      std::ifstream file(filename, std::ios_base::in | std::ios_base::binary);
-      if (!file)
-        Genten::error("Cannot open input file: " + filename);
-      boost::iostreams::filtering_stream<boost::iostreams::input> in;
-      in.push(boost::iostreams::gzip_decompressor());
-      in.push(file);
+      auto in = Genten::createCompressedInputFileStream(filename);
       std::string line;
-      std::getline(in, line);
+      std::getline(*(in.first), line);
       dense = (line == "tensor");
-      file.close();
-#else
-      Genten::error("Genten::TensorReader - compression option requires Boost enabled.");
-#endif
     }
     else {
       std::ifstream file(filename);

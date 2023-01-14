@@ -250,20 +250,8 @@ void Genten::import_tensor (const std::string& fName,
 {
   if (bCompressed)
   {
-#ifdef HAVE_BOOST
-    std::ifstream fIn(fName.c_str(), std::ios_base::in | std::ios_base::binary);
-    if (!fIn.is_open())
-    {
-      Genten::error("Genten::import_tensor - cannot open input file.");
-    }
-    boost::iostreams::filtering_stream<boost::iostreams::input> in;
-    in.push(boost::iostreams::gzip_decompressor());
-    in.push(fIn);
-    import_tensor(in, X);
-    fIn.close();
-#else
-    Genten::error("Genten::import_tensor - compression option requires Boost enabled.");
-#endif
+    auto in = Genten::createCompressedInputFileStream(fName);
+    import_tensor(*(in.first), X);
   }
   else
   {
@@ -556,20 +544,8 @@ void Genten::import_sptensor (const std::string& fName,
 {
   if (bCompressed)
   {
-#ifdef HAVE_BOOST
-    std::ifstream fIn(fName.c_str(), std::ios_base::in | std::ios_base::binary);
-    if (!fIn.is_open())
-    {
-      Genten::error("Genten::import_sptensor - cannot open input file.");
-    }
-    boost::iostreams::filtering_stream<boost::iostreams::input> in;
-    in.push(boost::iostreams::gzip_decompressor());
-    in.push(fIn);
-    import_sptensor(in, X, index_base, verbose);
-    fIn.close();
-#else
-    Genten::error("Genten::import_sptensor - compression option requires Boost enabled.");
-#endif
+    auto in = Genten::createCompressedInputFileStream(fName);
+    import_sptensor(*(in.first), X, index_base, verbose);
   }
   else
   {
@@ -1175,6 +1151,23 @@ void Genten::splitStr (const std::string         &  str,
   }
 
   return;
+}
+
+std::pair<std::shared_ptr<std::istream>,std::shared_ptr<std::istream>>
+Genten::createCompressedInputFileStream(const std::string& filename)
+{
+#ifdef HAVE_BOOST
+  auto file = std::make_shared<std::ifstream>(filename, std::ios_base::in | std::ios_base::binary);
+  if (!*file)
+    Genten::error("Cannot open input file: " + filename);
+  auto in = std::make_shared<boost::iostreams::filtering_stream<boost::iostreams::input> >();
+  in->push(boost::iostreams::gzip_decompressor());
+  in->push(*file);
+  return std::make_pair<std::shared_ptr<std::istream>,std::shared_ptr<std::istream> >(in,file);
+#else
+  Genten::error("Compression option requires Boost enabled.");
+  return std::make_pair<std::shared_ptr<std::istream>,std::shared_ptr<std::istream> >(nullptr,nullptr);
+#endif
 }
 
 #define INST_MACRO(SPACE)                                               \
