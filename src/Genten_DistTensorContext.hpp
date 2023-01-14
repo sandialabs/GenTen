@@ -1291,7 +1291,7 @@ public:
     Genten::TensorReader<ExecSpace> reader(file, index_base, compressed);
     if (reader.isSparse()) {
       X_sparse = reader.getSparseTensor();
-      const int nd = X_dense.ndims();
+      const int nd = X_sparse.ndims();
       global_dims_.resize(nd);
       for (int i=0; i<nd; ++i)
         global_dims_[i] = X_sparse.size(i);
@@ -1303,6 +1303,8 @@ public:
       for (int i=0; i<nd; ++i)
         global_dims_[i] = X_dense.size(i);
     }
+    else
+      Genten::error("Tensor is neither sparse nor dense, something is wrong!");
   }
   template <typename ExecSpaceSrc>
   SptensorT<ExecSpace> distributeTensor(const SptensorT<ExecSpaceSrc>& X,

@@ -38,6 +38,14 @@
 // ************************************************************************
 //@HEADER
 
+#include "CMakeInclude.h"
+#ifdef HAVE_BOOST
+#define BOOST_BIND_GLOBAL_PLACEHOLDERS
+#include <boost/iostreams/filtering_stream.hpp>
+#include <boost/iostreams/copy.hpp>
+#include <boost/iostreams/filter/gzip.hpp>
+#endif
+
 #include "Genten_TensorIO.hpp"
 #include "Genten_IOtext.hpp"
 
@@ -359,15 +367,36 @@ TensorReader(const std::string& filename,
 
   // If that failed, try reading it as text
   {
-    std::ifstream file(filename);
-    if (!file)
-      Genten::error("Cannot open input file: " + filename);
-    try {
+    bool dense = false;
+    if (compressed) {
+#ifdef HAVE_BOOST
+      std::ifstream file(filename, std::ios_base::in | std::ios_base::binary);
+      if (!file)
+        Genten::error("Cannot open input file: " + filename);
+      boost::iostreams::filtering_stream<boost::iostreams::input> in;
+      in.push(boost::iostreams::gzip_decompressor());
+      in.push(file);
+      std::string line;
+      std::getline(in, line);
+      dense = (line == "tensor");
+      file.close();
+#else
+      Genten::error("Genten::TensorReader - compression option requires Boost enabled.");
+#endif
+    }
+    else {
+      std::ifstream file(filename);
+      if (!file)
+        Genten::error("Cannot open input file: " + filename);
       std::string line;
       std::getline(file, line);
-      if (line == "tensor") {
+      dense = (line == "tensor");
+      file.close();
+    }
+    try {
+      if (dense) {
         Tensor X;
-        Genten::import_tensor(filename, X);
+        Genten::import_tensor(filename, X, compressed);
         X_dense = create_mirror_view(ExecSpace(), X);
         deep_copy(X_dense, X);
         is_dense = true;
@@ -386,6 +415,11 @@ TensorReader(const std::string& filename,
     } catch (...) {
       Genten::error("File " + filename + " cannot be read as a text or binary, sparse or dense tensor!");
     }
+
+    if (!is_sparse && !is_dense)
+      Genten::error("Tensor is neither sparse nor dense, something is wrong!");
+    if (!is_text && !is_binary)
+      Genten::error("File is neither text nor binary, something is wrong!");
   }
 }
 

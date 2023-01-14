@@ -80,8 +80,11 @@ namespace Genten
    *  @param[in,out] X  Tensor resized and filled with data.
    *  @throws string    for any error.
    */
-  void import_tensor (const std::string& fName,
+  void import_tensor (std::istream& fIn,
                       Genten::Tensor& X);
+  void import_tensor (const std::string& fName,
+                      Genten::Tensor& X,
+                      const bool bCompressed = false);
 
   //! Write a Tensor to a text file, matching import_tensor().
   /*!

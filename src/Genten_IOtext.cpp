@@ -195,15 +195,9 @@ static void  verifyEOF (      std::istream &     fIn,
 //  METHODS FOR Tensor (type "tensor")
 //----------------------------------------------------------------------
 
-void Genten::import_tensor (const std::string& fName,
+void Genten::import_tensor (std::istream& fIn,
                             Genten::Tensor& X)
 {
-  std::ifstream fIn(fName.c_str());
-  if (!fIn.is_open())
-  {
-    Genten::error("Genten::import_tensor - cannot open input file.");
-  }
-
   std::string  sType;
   bool    bStartAtZero;
   get_import_type(fIn, sType, bStartAtZero);
@@ -247,7 +241,40 @@ void Genten::import_tensor (const std::string& fName,
   }
 
   verifyEOF(fIn, "Genten::import_tensor");
-  fIn.close();
+  return;
+}
+
+void Genten::import_tensor (const std::string& fName,
+                            Genten::Tensor& X,
+                            const bool bCompressed)
+{
+  if (bCompressed)
+  {
+#ifdef HAVE_BOOST
+    std::ifstream fIn(fName.c_str(), std::ios_base::in | std::ios_base::binary);
+    if (!fIn.is_open())
+    {
+      Genten::error("Genten::import_tensor - cannot open input file.");
+    }
+    boost::iostreams::filtering_stream<boost::iostreams::input> in;
+    in.push(boost::iostreams::gzip_decompressor());
+    in.push(fIn);
+    import_tensor(in, X);
+    fIn.close();
+#else
+    Genten::error("Genten::import_tensor - compression option requires Boost enabled.");
+#endif
+  }
+  else
+  {
+    std::ifstream fIn(fName.c_str());
+    if (!fIn.is_open())
+    {
+      Genten::error("Genten::import_tensor - cannot open input file.");
+    }
+    import_tensor(fIn, X);
+    fIn.close();
+  }
   return;
 }
 
