@@ -407,7 +407,8 @@ TensorReader(const std::string& filename,
 
 template <typename ExecSpace>
 TensorWriter<ExecSpace>::
-TensorWriter(const std::string& fname) : filename(fname) {}
+TensorWriter(const std::string& fname,
+             const bool comp) : filename(fname), compressed(comp) {}
 
 template <typename ExecSpace>
 void
@@ -436,7 +437,7 @@ writeText(const SptensorT<ExecSpace>& X) const
 {
   Sptensor X_host = create_mirror_view(X);
   deep_copy(X_host, X);
-  export_sptensor(filename, X_host);
+  export_sptensor(filename, X_host, true, 15, true, compressed);
 }
 
 template <typename ExecSpace>
@@ -446,7 +447,7 @@ writeText(const TensorT<ExecSpace>& X) const
 {
   Tensor X_host = create_mirror_view(X);
   deep_copy(X_host, X);
-  export_tensor(filename, X_host);
+  export_tensor(filename, X_host, true, 15, compressed);
 }
 
 }

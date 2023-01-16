@@ -73,7 +73,8 @@ private:
 template <typename ExecSpace>
 class TensorWriter {
 public:
-  TensorWriter(const std::string& filename);
+  TensorWriter(const std::string& filename,
+               const bool compressed = false);
 
   void writeBinary(const SptensorT<ExecSpace>& X) const;
   void writeBinary(const TensorT<ExecSpace>& X) const;
@@ -82,6 +83,7 @@ public:
   void writeText(const TensorT<ExecSpace>& X) const;
 private:
   std::string filename;
+  bool compressed;
 };
 
 }

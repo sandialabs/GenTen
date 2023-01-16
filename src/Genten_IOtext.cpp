@@ -63,7 +63,6 @@
 #include <boost/iostreams/filter/gzip.hpp>
 #endif
 
-
 //----------------------------------------------------------------------
 //  INTERNAL METHODS WITH FILE SCOPE
 //----------------------------------------------------------------------
@@ -191,6 +190,29 @@ static void  verifyEOF (      std::istream &     fIn,
   return;
 }
 
+#ifdef HAVE_BOOST
+static std::pair<std::shared_ptr<boost::iostreams::filtering_stream<boost::iostreams::output>>,
+                 std::shared_ptr<std::ofstream>>
+createCompressedOutputFileStream(const std::string& filename)
+{
+  auto file = std::make_shared<std::ofstream>(filename, std::ios_base::out | std::ios_base::binary);
+  if (!*file)
+    Genten::error("Cannot open output file: " + filename);
+  auto out = std::make_shared<boost::iostreams::filtering_stream<boost::iostreams::output> >();
+  out->push(boost::iostreams::gzip_compressor());
+  out->push(*file);
+  return std::make_pair(out,file);
+}
+#else
+static std::pair<std::shared_ptr<std::ostream>,
+                 std::shared_ptr<std::ofstream>>
+createCompressedOutputFileStream(const std::string& filename)
+{
+  Genten::error("Compression option requires Boost enabled.");
+  return std::make_pair<std::shared_ptr<std::ostream>,std::shared_ptr<std::ofstream> >(nullptr,nullptr);
+}
+#endif
+
 //----------------------------------------------------------------------
 //  METHODS FOR Tensor (type "tensor")
 //----------------------------------------------------------------------
@@ -250,7 +272,7 @@ void Genten::import_tensor (const std::string& fName,
 {
   if (bCompressed)
   {
-    auto in = Genten::createCompressedInputFileStream(fName);
+    auto in = createCompressedInputFileStream(fName);
     import_tensor(*(in.first), X);
   }
   else
@@ -267,38 +289,39 @@ void Genten::import_tensor (const std::string& fName,
 }
 
 void Genten::export_tensor (const std::string& fName,
-                            const Genten::Tensor& X)
+                            const Genten::Tensor& X,
+                            const bool bUseScientific,
+                            const int nDecimalDigits,
+                            const bool bCompressed)
 {
-  export_tensor (fName, X, true, 15);
+  if (bCompressed)
+  {
+    auto out = createCompressedOutputFileStream(fName);
+    export_tensor(*(out.first), X, bUseScientific, nDecimalDigits);
+#ifdef HAVE_BOOST
+    boost::iostreams::close(*(out.first));
+    out.second->close();
+#endif
+  }
+  else
+  {
+    std::ofstream fOut(fName.c_str());
+    if (fOut.is_open() == false)
+    {
+      Genten::error("Genten::export_tensor - cannot create output file.");
+    }
+
+    export_tensor(fOut, X, bUseScientific, nDecimalDigits);
+    fOut.close();
+  }
   return;
 }
 
-void Genten::export_tensor (const std::string& fName,
+void Genten::export_tensor (std::ostream & fOut,
                             const Genten::Tensor& X,
                             const bool bUseScientific,
                             const int nDecimalDigits)
 {
-  std::ofstream fOut(fName.c_str());
-  if (fOut.is_open() == false)
-  {
-    Genten::error("Genten::export_tensor - cannot create output file.");
-  }
-
-  export_tensor(fOut, X, bUseScientific, nDecimalDigits);
-  fOut.close();
-  return;
-}
-
-void Genten::export_tensor (std::ofstream & fOut,
-                            const Genten::Tensor& X,
-                            const bool bUseScientific,
-                            const int nDecimalDigits)
-{
-  if (fOut.is_open() == false)
-  {
-    Genten::error("Genten::export_tensor - cannot create output file.");
-  }
-
   // Write the data type header.
   fOut << "tensor" << std::endl;
 
@@ -544,7 +567,7 @@ void Genten::import_sptensor (const std::string& fName,
 {
   if (bCompressed)
   {
-    auto in = Genten::createCompressedInputFileStream(fName);
+    auto in = createCompressedInputFileStream(fName);
     import_sptensor(*(in.first), X, index_base, verbose);
   }
   else
@@ -559,42 +582,43 @@ void Genten::import_sptensor (const std::string& fName,
   }
 }
 
-void Genten::export_sptensor (const std::string   & fName,
-                              const Genten::Sptensor & X,
-                              const bool            bStartAtZero)
+void Genten::export_sptensor (const std::string& fName,
+                              const Genten::Sptensor& X,
+                              const bool bUseScientific,
+                              const int nDecimalDigits,
+                              const bool bStartAtZero,
+                              const bool bCompressed)
 {
-  export_sptensor (fName, X, true, 15, bStartAtZero);
+  if (bCompressed)
+  {
+    auto out = createCompressedOutputFileStream(fName);
+    export_sptensor(*(out.first), X, bUseScientific, nDecimalDigits,
+                    bStartAtZero);
+#ifdef HAVE_BOOST
+    boost::iostreams::close(*(out.first));
+    out.second->close();
+#endif
+  }
+  else
+  {
+    std::ofstream fOut(fName.c_str());
+    if (fOut.is_open() == false)
+    {
+      Genten::error("Genten::export_sptensor - cannot create output file.");
+    }
+
+    export_sptensor(fOut, X, bUseScientific, nDecimalDigits, bStartAtZero);
+    fOut.close();
+  }
   return;
 }
 
-void Genten::export_sptensor (const std::string   & fName,
-                              const Genten::Sptensor & X,
-                              const bool          & bUseScientific,
-                              const int           & nDecimalDigits,
-                              const bool            bStartAtZero)
+void Genten::export_sptensor (std::ostream& fOut,
+                              const Genten::Sptensor& X,
+                              const bool bUseScientific,
+                              const int nDecimalDigits,
+                              const bool bStartAtZero)
 {
-  std::ofstream fOut(fName.c_str());
-  if (fOut.is_open() == false)
-  {
-    Genten::error("Genten::export_sptensor - cannot create output file.");
-  }
-
-  export_sptensor(fOut, X, bUseScientific, nDecimalDigits, bStartAtZero);
-  fOut.close();
-  return;
-}
-
-void Genten::export_sptensor (      std::ofstream & fOut,
-                                    const Genten::Sptensor & X,
-                                    const bool          & bUseScientific,
-                                    const int           & nDecimalDigits,
-                                    const bool            bStartAtZero)
-{
-  if (fOut.is_open() == false)
-  {
-    Genten::error("Genten::export_sptensor - cannot create output file.");
-  }
-
   // Write the data type header.
   if (bStartAtZero)
     fOut << "sptensor" << std::endl;
