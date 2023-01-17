@@ -169,7 +169,7 @@ public:
 
 private:
   SptensorT<ExecSpace> distributeTensorData(
-    const std::vector<G_MPI_IO::SpDataType>& Tvec,
+    const std::vector<SpDataType>& Tvec,
     const std::vector<ttb_indx>& TensorDims,
     const std::vector<small_vector<int>>& blocking,
     const ProcessorMap& pmap,
@@ -211,7 +211,7 @@ template <typename ExecSpace>
 auto rangesToIndexArray(const small_vector<RangePair>& ranges);
 small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode);
 
-std::vector<G_MPI_IO::SpDataType>
+std::vector<SpDataType>
 distributeTensorToVectors(const Sptensor& sp_tensor_host, uint64_t nnz,
                           MPI_Comm comm, int rank, int nprocs);
 
@@ -220,8 +220,8 @@ distributeTensorToVectors(const Tensor& dn_tensor_host, uint64_t nnz,
                           MPI_Comm comm, int rank, int nprocs,
                           ttb_indx& offset);
 
-std::vector<G_MPI_IO::SpDataType>
-redistributeTensor(const std::vector<G_MPI_IO::SpDataType>& Tvec,
+std::vector<SpDataType>
+redistributeTensor(const std::vector<SpDataType>& Tvec,
                    const std::vector<ttb_indx>& TensorDims,
                    const std::vector<small_vector<int>>& blocking,
                    const ProcessorMap& pmap);
@@ -617,7 +617,7 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
   Genten::TensorReader<Genten::DefaultHostExecutionSpace> reader(
     file, index_base, compressed);
 
-  std::vector<G_MPI_IO::SpDataType> Tvec_sparse;
+  std::vector<SpDataType> Tvec_sparse;
   std::vector<double> Tvec_dense;
   std::vector<ttb_indx> global_dims;
   ttb_indx nnz, offset;
@@ -811,7 +811,7 @@ distributeTensor(const TensorT<ExecSpaceSrc>& X, const AlgParams& algParams)
 template <typename ExecSpace>
 SptensorT<ExecSpace>
 DistTensorContext<ExecSpace>::
-distributeTensorData(const std::vector<G_MPI_IO::SpDataType>& Tvec,
+distributeTensorData(const std::vector<SpDataType>& Tvec,
                      const std::vector<ttb_indx>& TensorDims,
                      const std::vector<small_vector<int>>& blocking,
                      const ProcessorMap& pmap, const AlgParams& algParams)

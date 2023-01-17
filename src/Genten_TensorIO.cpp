@@ -375,7 +375,7 @@ read()
 
 #ifdef HAVE_DIST
 template <typename ExecSpace>
-std::vector<G_MPI_IO::SpDataType>
+std::vector<SpDataType>
 TensorReader<ExecSpace>::
 parallelReadBinarySparse(std::vector<ttb_indx>& global_dims,
                          ttb_indx& nnz) const

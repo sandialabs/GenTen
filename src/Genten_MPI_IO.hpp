@@ -50,13 +50,10 @@
 #include "Genten_SmallVector.hpp"
 
 namespace Genten {
-namespace G_MPI_IO {
 
-// Type to temporarily  hold coo data for the initial MPI distribution
-struct SpDataType {
-  ttb_indx coo[6] = {-1u, -1u, -1u, -1u, -1u, -1u};
-  ttb_real val;
-};
+struct SpDataType;
+
+namespace G_MPI_IO {
 
 struct SptnFileHeader {
   std::uint32_t ndims = 0;
@@ -113,4 +110,5 @@ std::vector<ttb_real>
 parallelReadElements(MPI_Comm comm, MPI_File fh, DntnFileHeader const &h);
 
 } // namespace G_MPI_IO
+
 } // namespace Genten

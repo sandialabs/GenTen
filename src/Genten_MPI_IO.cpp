@@ -47,6 +47,7 @@
 #include <stdexcept>
 
 #include "Genten_MPI_IO.hpp"
+#include "Genten_TensorIO.hpp"
 
 namespace Genten {
 namespace G_MPI_IO {

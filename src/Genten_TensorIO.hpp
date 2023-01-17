@@ -45,12 +45,13 @@
 #include "Genten_Sptensor.hpp"
 #include "Genten_Tensor.hpp"
 
-#include "CMakeInclude.h"
-#ifdef HAVE_DIST
-#include "Genten_MPI_IO.hpp"
-#endif
-
 namespace Genten {
+
+// Type to temporarily hold coo data for MPI distribution
+struct SpDataType {
+  ttb_indx coo[6] = {-1u, -1u, -1u, -1u, -1u, -1u};
+  ttb_real val;
+};
 
 template <typename ExecSpace>
 class TensorReader {
@@ -62,7 +63,7 @@ public:
   void read();
 
 #ifdef HAVE_DIST
-  std::vector<G_MPI_IO::SpDataType>
+  std::vector<SpDataType>
   parallelReadBinarySparse(std::vector<ttb_indx>& global_dims,
                            ttb_indx& nnz) const;
 
