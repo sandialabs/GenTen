@@ -606,6 +606,9 @@ ENDIF()
 
 #---- List the source files to be built.
 SET (Genten_SOURCE_LIST
+  ${Genten_SOURCE_DIR}/src/Genten_DistContext.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_Pmap.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_DistTensorContext.cpp
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_RandomMT.cpp
@@ -632,6 +635,12 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_CusolverHandle.cpp
   ${Genten_SOURCE_DIR}/src/Genten_RocblasHandle.cpp
   )
+
+IF (HAVE_MPI)
+SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+  ${Genten_SOURCE_DIR}/src/Genten_MPI_IO.cpp
+  )
+ENDIF()
 
 IF (ENABLE_LBFGSB)
   SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
@@ -686,34 +695,11 @@ TARGET_LINK_LIBRARIES(gentenlib nlohmann_json::nlohmann_json)
 IF(HAVE_BOOST)
   TARGET_LINK_LIBRARIES(gentenlib Boost::iostreams ZLIB::ZLIB)
 ENDIF()
-
-ADD_LIBRARY(DistContextLib
-    ${Genten_SOURCE_DIR}/src/Genten_DistContext.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_Pmap.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_DistTensorContext.cpp
-    )
-IF(HAVE_TRILINOS)
-  TARGET_LINK_LIBRARIES(DistContextLib Trilinos::all_libs)
-ENDIF()
-IF(NOT HAVE_TRILINOS_KOKKOS)
-  TARGET_LINK_LIBRARIES(DistContextLib Kokkos::kokkos)
-ENDIF()
-TARGET_LINK_LIBRARIES(DistContextLib nlohmann_json_schema_validator)
-TARGET_LINK_LIBRARIES(DistContextLib nlohmann_json::nlohmann_json)
-TARGET_LINK_LIBRARIES(gentenlib DistContextLib )
 IF(HAVE_MPI)
-  TARGET_LINK_LIBRARIES(DistContextLib ${MPI_TARGET})
+  TARGET_LINK_LIBRARIES(gentenlib ${MPI_TARGET})
   IF(HAVE_BOOST)
-    TARGET_LINK_LIBRARIES(DistContextLib Boost::boost)
+    TARGET_LINK_LIBRARIES(gentenlib Boost::boost)
   ENDIF()
-  ADD_LIBRARY(GentenMpiIoLib
-    ${Genten_SOURCE_DIR}/src/Genten_MPI_IO.cpp
-    )
-  TARGET_LINK_LIBRARIES(GentenMpiIoLib ${MPI_TARGET})
-  IF(HAVE_BOOST)
-    TARGET_LINK_LIBRARIES(GentenMpiIoLib Boost::boost)
-  ENDIF()
-  TARGET_LINK_LIBRARIES(gentenlib GentenMpiIoLib)
 ENDIF()
 
 IF(Kokkos_ENABLE_HIP)
@@ -754,17 +740,10 @@ ENDIF()
 SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
 TARGET_LINK_LIBRARIES(${GENTEN_LINK_LIBS})
 INSTALL (
-  TARGETS gentenlib DistContextLib nlohmann_json_schema_validator nlohmann_json
+  TARGETS gentenlib nlohmann_json_schema_validator nlohmann_json
   EXPORT genten
   DESTINATION ${CMAKE_INSTALL_LIBDIR}
   )
-IF(HAVE_DIST)
-  INSTALL (
-    TARGETS GentenMpiIoLib
-    EXPORT genten
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  )
-ENDIF()
 
 #---- Adding the higher moment interface to the Library sources
 #---- Must be a better way to do this. Inside an IF??
