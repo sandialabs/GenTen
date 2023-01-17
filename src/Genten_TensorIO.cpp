@@ -325,31 +325,73 @@ namespace Genten {
 
 template <typename ExecSpace>
 TensorReader<ExecSpace>::
-TensorReader(const std::string& filename,
-             const ttb_indx index_base,
-             const bool compressed) :
+TensorReader(const std::string& fn,
+             const ttb_indx ib,
+             const bool comp) :
+  filename (fn), index_base(ib), compressed(comp),
   is_sparse(false), is_dense(false), is_binary(false), is_text(false)
 {
-  // First try reading the tensor as a binary file
+  queryFile();
+
+  if (is_binary && is_sparse && index_base != 0)
+    Genten::error("The binary sparse format only supports zero based indexing\n");
+  if (is_binary && compressed)
+    Genten::error("The binary format does not support compression\n");
+}
+
+template <typename ExecSpace>
+void
+TensorReader<ExecSpace>::
+read()
+{
+  if (is_binary && is_sparse) {
+    Sptensor X = read_binary_sparse_tensor(filename);
+    X_sparse = create_mirror_view(ExecSpace(), X);
+    deep_copy(X_sparse, X);
+  }
+  else if (is_binary && is_dense) {
+    Tensor X = read_binary_dense_tensor(filename);
+    X_dense = create_mirror_view(ExecSpace(), X);
+    deep_copy(X_dense, X);
+  }
+  else if (is_text && is_sparse) {
+    Sptensor X;
+    Genten::import_sptensor(filename, X, index_base, compressed);
+    X_sparse = create_mirror_view(ExecSpace(), X);
+    deep_copy(X_sparse, X);
+  }
+  else if (is_text && is_dense) {
+    Tensor X;
+    Genten::import_tensor(filename, X, compressed);
+    X_dense = create_mirror_view(ExecSpace(), X);
+    deep_copy(X_dense, X);
+  }
+  else if (!is_sparse && !is_dense)
+    Genten::error("Tensor is neither sparse nor dense, something is wrong!");
+  else
+    Genten::error("File is neither text nor binary, something is wrong!");
+}
+
+template <typename ExecSpace>
+void
+TensorReader<ExecSpace>::
+queryFile()
+{
   {
     std::ifstream file(filename, std::ios::binary);
     if (!file)
       Genten::error("Cannot open input file: " + filename);
+
+    // First try reading the tensor as a binary file
     try {
       std::string header = "xxxx";
       file.read(&header[0], 4);
       if (header == "sptn") {
-        Sptensor X = read_binary_sparse_tensor(filename);
-        X_sparse = create_mirror_view(ExecSpace(), X);
-        deep_copy(X_sparse, X);
         is_sparse = true;
         is_binary = true;
         return;
       }
-      if (header == "dntn") {
-        Tensor X = read_binary_dense_tensor(filename);
-        X_dense = create_mirror_view(ExecSpace(), X);
-        deep_copy(X_dense, X);
+      else if (header == "dntn") {
         is_dense = true;
         is_binary = true;
         return;
@@ -358,51 +400,48 @@ TensorReader(const std::string& filename,
   }
 
   // If that failed, try reading it as text
-  {
-    bool dense = false;
+  try {
+    std::string header;
     if (compressed) {
       auto in = Genten::createCompressedInputFileStream(filename);
-      std::string line;
-      std::getline(*(in.first), line);
-      dense = (line == "tensor");
+      std::getline(*(in.first), header);
     }
     else {
       std::ifstream file(filename);
-      if (!file)
-        Genten::error("Cannot open input file: " + filename);
-      std::string line;
-      std::getline(file, line);
-      dense = (line == "tensor");
-      file.close();
+      std::getline(file, header);
     }
-    try {
-      if (dense) {
-        Tensor X;
-        Genten::import_tensor(filename, X, compressed);
-        X_dense = create_mirror_view(ExecSpace(), X);
-        deep_copy(X_dense, X);
-        is_dense = true;
-        is_text = true;
-        return;
-      }
-      // We support sparse tensor files without a header, so just try reading
-      // it as a sparse tensor if we have gotten this far.  It will throw
-      // if that read fails.
-      Sptensor X;
-      Genten::import_sptensor(filename, X, index_base, compressed);
-      X_sparse = create_mirror_view(ExecSpace(), X);
-      deep_copy(X_sparse, X);
+    if (header == "sptensor") {
+      is_sparse = true;
+      is_binary = true;
+      return;
+    }
+    else if (header == "tensor") {
+      is_dense = true;
+      is_text = true;
+      return;
+    }
+    else {
+      // We support sparse tensors without a header, so try parsing the line
+      // into a tuple of coordinates and a value.  stol/stod throw if the
+      // conversion is invalid, so if they all succeed, we assume it is a
+      // valid sparse entry.
+      std::vector<std::string> tokens;
+      std::stringstream ss(header);
+      std::string t;
+      while (std::getline(ss,t,' '))
+        tokens.push_back(t);
+      for (auto i=0; i<tokens.size()-1; ++i)
+        std::stol(tokens[i]);
+      std::stod(tokens[tokens.size()-1]);
       is_sparse = true;
       is_text = true;
-    } catch (...) {
-      Genten::error("File " + filename + " cannot be read as a text or binary, sparse or dense tensor!");
+      return;
     }
-
-    if (!is_sparse && !is_dense)
-      Genten::error("Tensor is neither sparse nor dense, something is wrong!");
-    if (!is_text && !is_binary)
-      Genten::error("File is neither text nor binary, something is wrong!");
   }
+  catch (...) {}
+
+  // If we got to here, it can't be read using known formats
+  Genten::error("File " + filename + " cannot be read as a text or binary, sparse or dense tensor!");
 }
 
 template <typename ExecSpace>

@@ -45,8 +45,8 @@
 #include "Genten_Ptree.hpp"
 #include "Genten_SmallVector.hpp"
 #include "Genten_DistContext.hpp"
-#include "Genten_TensorIO.hpp"
 #include "Genten_IOtext.hpp"
+#include "Genten_TensorIO.hpp"
 #include "Genten_Pmap.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_Tensor.hpp"
@@ -208,10 +208,6 @@ struct RangePair {
   int64_t lower;
   int64_t upper;
 };
-
-void fileFormatIsBinary(const std::string& file_name,
-                        bool& is_binary_sparse,
-                        bool& is_binary_dense);
 
 template <typename ExecSpace>
 auto rangesToIndexArray(const small_vector<RangePair>& ranges);
@@ -620,87 +616,70 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
                  SptensorT<ExecSpace>& X_sparse,
                  TensorT<ExecSpace>& X_dense)
 {
-  bool dense = false;
-  bool is_binary_sparse = false;
-  bool is_binary_dense = false;
-  detail::fileFormatIsBinary(file, is_binary_sparse, is_binary_dense);
-  if (is_binary_dense)
-    dense = true;
-  if (is_binary_sparse && index_base != 0)
-    Genten::error("The binary sparse format only supports zero based indexing\n");
-  if (is_binary_sparse && compressed)
-    Genten::error("The binary sparse format does not support compression\n");
+  Genten::TensorReader<Genten::DefaultHostExecutionSpace> reader(
+    file, index_base, compressed);
 
   std::vector<G_MPI_IO::TDatatype<ttb_real>> Tvec_sparse;
   std::vector<double> Tvec_dense;
+  std::vector<std::uint32_t> global_dims;
+  ttb_indx nnz, offset;
 
   if (DistContext::rank() == 0)
     std::cout << "Reading tensor from file " << file << std::endl;
 
   DistContext::Barrier();
   auto t2 = MPI_Wtime();
-  std::vector<std::uint32_t> global_dims;
-  ttb_indx nnz, offset;
-  if (is_binary_sparse) {
-    // For binary sparse file, do a parallel read
-    auto mpi_file = G_MPI_IO::openFile(DistContext::commWorld(), file);
-    auto header = G_MPI_IO::readSparseHeader(DistContext::commWorld(),
+  if (reader.isBinary()) {
+    // For binary files, do parallel read instead of the readers serial read
+    if (reader.isSparse()) {
+      auto mpi_file = G_MPI_IO::openFile(DistContext::commWorld(), file);
+      auto header = G_MPI_IO::readSparseHeader(DistContext::commWorld(),
                                              mpi_file);
-    TensorInfo ti = header.toTensorInfo();
-    global_dims = ti.dim_sizes;
-    nnz = ti.nnz;
-    Tvec_sparse = G_MPI_IO::parallelReadElements(DistContext::commWorld(),
-                                                 mpi_file, header);
-  }
-  else if (is_binary_dense) {
-    auto mpi_file = G_MPI_IO::openFile(DistContext::commWorld(), file);
-    auto header = G_MPI_IO::readDenseHeader(DistContext::commWorld(),
-                                            mpi_file);
-    TensorInfo ti = header.toTensorInfo();
-    global_dims = ti.dim_sizes;
-    nnz = ti.nnz;
-    offset = header.getLocalOffsetRange(DistContext::rank(),
-                                        DistContext::nranks()).first;
-    Tvec_dense = G_MPI_IO::parallelReadElements(DistContext::commWorld(),
-                                                mpi_file, header);
+      TensorInfo ti = header.toTensorInfo();
+      global_dims = ti.dim_sizes;
+      nnz = ti.nnz;
+      Tvec_sparse = G_MPI_IO::parallelReadElements(DistContext::commWorld(),
+                                                   mpi_file, header);
+    }
+    else {
+      auto mpi_file = G_MPI_IO::openFile(DistContext::commWorld(), file);
+      auto header = G_MPI_IO::readDenseHeader(DistContext::commWorld(),
+                                              mpi_file);
+      TensorInfo ti = header.toTensorInfo();
+      global_dims = ti.dim_sizes;
+      nnz = ti.nnz;
+      offset = header.getLocalOffsetRange(DistContext::rank(),
+                                          DistContext::nranks()).first;
+      Tvec_dense = G_MPI_IO::parallelReadElements(DistContext::commWorld(),
+                                                  mpi_file, header);
+    }
   }
   else {
     // For non-binary, read on rank 0 and broadcast dimensions.
     // We do this instead of reading the header because we want to support
     // headerless files
-
-    // Determine if the file is a sparse or dense tensor.  Dense tensors
-    // must have a header with the first line being "tensor".  Sparse
-    // tensors might not have a header
-    std::ifstream f(file);
-    if (!f)
-      Genten::error("Cannot open input file: " + file);
-    std::string line;
-    std::getline(f, line);
-    if (line == "tensor")
-      dense = true;
-
     Tensor X_dense_host;
     Sptensor X_sparse_host;
     std::size_t ndims;
     small_vector<int> dims;
 
     if (gridRank() == 0) {
-      if (dense) {
-        import_tensor(file, X_dense_host);
-        nnz = X_dense_host.nnz();
-        ndims = X_dense_host.ndims();
-        dims = small_vector<int>(ndims);
-        for (std::size_t i=0; i<ndims; ++i)
-          dims[i] = X_dense_host.size(i);
-      }
-      else {
-        import_sptensor(file, X_sparse_host, index_base, compressed);
+      reader.read();
+      if (reader.isSparse()) {
+        X_sparse_host = reader.getSparseTensor();
         nnz = X_sparse_host.nnz();
         ndims = X_sparse_host.ndims();
         dims = small_vector<int>(ndims);
         for (std::size_t i=0; i<ndims; ++i)
           dims[i] = X_sparse_host.size(i);
+      }
+      else {
+        X_dense_host = reader.getDenseTensor();
+        nnz = X_dense_host.nnz();
+        ndims = X_dense_host.ndims();
+        dims = small_vector<int>(ndims);
+        for (std::size_t i=0; i<ndims; ++i)
+          dims[i] = X_dense_host.size(i);
       }
     }
     DistContext::Bcast(nnz, 0);
@@ -713,7 +692,7 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
     for (std::size_t i=0; i<ndims; ++i)
       global_dims[i] = dims[i];
 
-    if (dense)
+    if (reader.isDense())
       Tvec_dense = detail::distributeTensorToVectors(
         X_dense_host, nnz, DistContext::commWorld(), DistContext::rank(),
         DistContext::nranks(), offset);
@@ -753,7 +732,7 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
     detail::printBlocking(*pmap_, global_blocking_);
   }
 
-  if (dense)
+  if (reader.isDense())
     X_dense = distributeTensorData(Tvec_dense, nnz, offset,
                                    global_dims_, global_blocking_,
                                    *pmap_, algParams);
@@ -1289,6 +1268,7 @@ public:
                         TensorT<ExecSpace>& X_dense)
   {
     Genten::TensorReader<ExecSpace> reader(file, index_base, compressed);
+    reader.read();
     if (reader.isSparse()) {
       X_sparse = reader.getSparseTensor();
       const int nd = X_sparse.ndims();

@@ -80,29 +80,6 @@ void printBlocking(const ProcessorMap& pmap,
   }
 }
 
-void fileFormatIsBinary(const std::string& file_name,
-                        bool& is_binary_sparse,
-                        bool& is_binary_dense) {
-  is_binary_sparse = false;
-  is_binary_dense = false;
-  std::ifstream tensor_file(file_name, std::ios::binary);
-  std::string header;
-  header.resize(4);
-
-  try {
-    tensor_file.read(&header[0], 4);
-  } catch (...) {
-    return;
-  }
-
-  if (header == "sptn") {
-    is_binary_sparse = true;
-  }
-  if (header == "dntn") {
-    is_binary_dense = true;
-  }
-}
-
 small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode) {
   small_vector<int> Range{0};
   const auto FibersPerBlock = ModeLength / ProcsInMode;

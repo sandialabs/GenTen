@@ -54,6 +54,8 @@ public:
                const ttb_indx index_base = 0,
                const bool compressed = false);
 
+  void read();
+
   bool isSparse() const { return is_sparse; }
   bool isDense() const { return is_dense; }
   bool isBinary() const { return is_binary; }
@@ -62,12 +64,19 @@ public:
   TensorT<ExecSpace> getDenseTensor() { return X_dense; }
 
 private:
+  std::string filename;
+  ttb_indx index_base;
+  bool compressed;
+
   bool is_sparse;
   bool is_dense;
   bool is_binary;
   bool is_text;
+
   SptensorT<ExecSpace> X_sparse;
   TensorT<ExecSpace> X_dense;
+
+  void queryFile();
 };
 
 template <typename ExecSpace>

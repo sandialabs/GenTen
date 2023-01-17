@@ -98,6 +98,7 @@ void read_tensor_file(const std::string& filename,
                       Genten::Sptensor& x_sparse, Genten::Tensor& x_dense)
 {
   Genten::TensorReader<Genten::DefaultHostExecutionSpace> reader(filename,0,gz);
+  reader.read();
 
   if (reader.isSparse()) {
     format = "sparse";
