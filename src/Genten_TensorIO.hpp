@@ -45,6 +45,11 @@
 #include "Genten_Sptensor.hpp"
 #include "Genten_Tensor.hpp"
 
+#include "CMakeInclude.h"
+#ifdef HAVE_DIST
+#include "Genten_MPI_IO.hpp"
+#endif
+
 namespace Genten {
 
 template <typename ExecSpace>
@@ -55,6 +60,17 @@ public:
                const bool compressed = false);
 
   void read();
+
+#ifdef HAVE_DIST
+  std::vector<G_MPI_IO::SpDataType>
+  parallelReadBinarySparse(std::vector<ttb_indx>& global_dims,
+                           ttb_indx& nnz) const;
+
+  std::vector<ttb_real>
+  parallelReadBinaryDense(std::vector<ttb_indx>& global_dims,
+                          ttb_indx& nnz,
+                          ttb_indx& offset) const;
+#endif
 
   bool isSparse() const { return is_sparse; }
   bool isDense() const { return is_dense; }

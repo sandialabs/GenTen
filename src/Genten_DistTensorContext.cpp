@@ -126,11 +126,11 @@ generateUniformBlocking(const std::vector<ttb_indx>& ModeLengths,
   return blocking;
 }
 
-std::vector<G_MPI_IO::TDatatype<ttb_real>>
+std::vector<G_MPI_IO::SpDataType>
 distributeTensorToVectors(const Sptensor& sp_tensor_host, uint64_t nnz,
                           MPI_Comm comm, int rank, int nprocs) {
-  constexpr auto dt_size = sizeof(G_MPI_IO::TDatatype<ttb_real>);
-  std::vector<G_MPI_IO::TDatatype<ttb_real>> Tvec;
+  constexpr auto dt_size = sizeof(G_MPI_IO::SpDataType);
+  std::vector<G_MPI_IO::SpDataType> Tvec;
   small_vector<int> who_gets_what =
       detail::singleDimUniformBlocking(nnz, nprocs);
 
@@ -275,8 +275,8 @@ int rankInGridThatOwns(IntType const *COO, MPI_Comm grid_comm,
 }
 } // namespace
 
-std::vector<G_MPI_IO::TDatatype<ttb_real>>
-redistributeTensor(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
+std::vector<G_MPI_IO::SpDataType>
+redistributeTensor(const std::vector<G_MPI_IO::SpDataType>& Tvec,
                    const std::vector<ttb_indx>& TDims,
                    const std::vector<small_vector<int>>& blocking,
                    const ProcessorMap& pmap) {
@@ -285,7 +285,7 @@ redistributeTensor(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
   const auto rank = pmap.gridRank();
   MPI_Comm grid_comm = pmap.gridComm();
 
-  std::vector<std::vector<G_MPI_IO::TDatatype<ttb_real>>> elems_to_write(nprocs);
+  std::vector<std::vector<G_MPI_IO::SpDataType>> elems_to_write(nprocs);
   for (auto const &elem : Tvec) {
     auto elem_owner_rank = rankInGridThatOwns(elem.coo, grid_comm, blocking);
     elems_to_write[elem_owner_rank].push_back(elem);
@@ -339,9 +339,9 @@ redistributeTensor(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
 
   // Let's leave this onesided because IMO it makes life easier. This is self
   // contained so won't impact TBS
-  G_MPI_IO::TDatatype<ttb_real> *data;
+  G_MPI_IO::SpDataType *data;
   MPI_Win window;
-  constexpr auto DataElemSize = sizeof(G_MPI_IO::TDatatype<ttb_real>);
+  constexpr auto DataElemSize = sizeof(G_MPI_IO::SpDataType);
   MPI_Win_allocate(amount_to_allocate_for_window * DataElemSize,
                    /*displacement = */ DataElemSize, MPI_INFO_NULL, grid_comm,
                    &data, &window);
@@ -366,7 +366,7 @@ redistributeTensor(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
   MPI_Win_fence(0, window);
 
   // Copy data to the output vector
-  std::vector<G_MPI_IO::TDatatype<ttb_real>> redistributedData(
+  std::vector<G_MPI_IO::SpDataType> redistributedData(
       data, data + amount_to_allocate_for_window);
 
   // Free the MPI window and the buffer that it was allocated in

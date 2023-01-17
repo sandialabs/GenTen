@@ -40,6 +40,7 @@
 
 #include "Genten_TensorIO.hpp"
 #include "Genten_IOtext.hpp"
+#include "Genten_MPI_IO.hpp"
 
 namespace {
 
@@ -371,6 +372,41 @@ read()
   else
     Genten::error("File is neither text nor binary, something is wrong!");
 }
+
+#ifdef HAVE_DIST
+template <typename ExecSpace>
+std::vector<G_MPI_IO::SpDataType>
+TensorReader<ExecSpace>::
+parallelReadBinarySparse(std::vector<ttb_indx>& global_dims,
+                         ttb_indx& nnz) const
+{
+  auto mpi_file = G_MPI_IO::openFile(DistContext::commWorld(), filename);
+  auto header = G_MPI_IO::readSparseHeader(DistContext::commWorld(),
+                                             mpi_file);
+  global_dims = header.getGlobalDims();
+  nnz = header.getGlobalNnz();
+  return G_MPI_IO::parallelReadElements(DistContext::commWorld(),
+                                        mpi_file, header);
+}
+
+template <typename ExecSpace>
+std::vector<ttb_real>
+TensorReader<ExecSpace>::
+parallelReadBinaryDense(std::vector<ttb_indx>& global_dims,
+                        ttb_indx& nnz,
+                        ttb_indx& offset) const
+{
+  auto mpi_file = G_MPI_IO::openFile(DistContext::commWorld(), filename);
+  auto header = G_MPI_IO::readDenseHeader(DistContext::commWorld(),
+                                          mpi_file);
+  global_dims = header.getGlobalDims();
+  nnz = header.getGlobalNnz();
+  offset = header.getLocalOffsetRange(DistContext::rank(),
+                                      DistContext::nranks()).first;
+  return G_MPI_IO::parallelReadElements(DistContext::commWorld(),
+                                        mpi_file, header);
+}
+#endif
 
 template <typename ExecSpace>
 void

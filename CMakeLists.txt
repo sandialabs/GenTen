@@ -707,7 +707,6 @@ IF(HAVE_MPI)
     TARGET_LINK_LIBRARIES(DistContextLib Boost::boost)
   ENDIF()
   ADD_LIBRARY(GentenMpiIoLib
-    ${Genten_SOURCE_DIR}/src/Genten_SpTn_Util.cpp
     ${Genten_SOURCE_DIR}/src/Genten_MPI_IO.cpp
     )
   TARGET_LINK_LIBRARIES(GentenMpiIoLib ${MPI_TARGET})

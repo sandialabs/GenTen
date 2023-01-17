@@ -56,8 +56,6 @@
 #include <cmath>
 #include <fstream>
 #include <memory>
-#include "Genten_MPI_IO.hpp"
-#include "Genten_SpTn_Util.hpp"
 #include "Genten_Tpetra.hpp"
 #include "Genten_DistFacMatrix.hpp"
 #include "Genten_AlgParams.hpp"
@@ -171,7 +169,7 @@ public:
 
 private:
   SptensorT<ExecSpace> distributeTensorData(
-    const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
+    const std::vector<G_MPI_IO::SpDataType>& Tvec,
     const std::vector<ttb_indx>& TensorDims,
     const std::vector<small_vector<int>>& blocking,
     const ProcessorMap& pmap,
@@ -213,7 +211,7 @@ template <typename ExecSpace>
 auto rangesToIndexArray(const small_vector<RangePair>& ranges);
 small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode);
 
-std::vector<G_MPI_IO::TDatatype<ttb_real>>
+std::vector<G_MPI_IO::SpDataType>
 distributeTensorToVectors(const Sptensor& sp_tensor_host, uint64_t nnz,
                           MPI_Comm comm, int rank, int nprocs);
 
@@ -222,8 +220,8 @@ distributeTensorToVectors(const Tensor& dn_tensor_host, uint64_t nnz,
                           MPI_Comm comm, int rank, int nprocs,
                           ttb_indx& offset);
 
-std::vector<G_MPI_IO::TDatatype<ttb_real>>
-redistributeTensor(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
+std::vector<G_MPI_IO::SpDataType>
+redistributeTensor(const std::vector<G_MPI_IO::SpDataType>& Tvec,
                    const std::vector<ttb_indx>& TensorDims,
                    const std::vector<small_vector<int>>& blocking,
                    const ProcessorMap& pmap);
@@ -619,7 +617,7 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
   Genten::TensorReader<Genten::DefaultHostExecutionSpace> reader(
     file, index_base, compressed);
 
-  std::vector<G_MPI_IO::TDatatype<ttb_real>> Tvec_sparse;
+  std::vector<G_MPI_IO::SpDataType> Tvec_sparse;
   std::vector<double> Tvec_dense;
   std::vector<ttb_indx> global_dims;
   ttb_indx nnz, offset;
@@ -630,27 +628,10 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
   DistContext::Barrier();
   auto t2 = MPI_Wtime();
   if (reader.isBinary()) {
-    // For binary files, do parallel read instead of the readers serial read
-    if (reader.isSparse()) {
-      auto mpi_file = G_MPI_IO::openFile(DistContext::commWorld(), file);
-      auto header = G_MPI_IO::readSparseHeader(DistContext::commWorld(),
-                                             mpi_file);
-      global_dims = header.getGlobalDims();
-      nnz = header.getGlobalNnz();
-      Tvec_sparse = G_MPI_IO::parallelReadElements(DistContext::commWorld(),
-                                                   mpi_file, header);
-    }
-    else {
-      auto mpi_file = G_MPI_IO::openFile(DistContext::commWorld(), file);
-      auto header = G_MPI_IO::readDenseHeader(DistContext::commWorld(),
-                                              mpi_file);
-      global_dims = header.getGlobalDims();
-      nnz = header.getGlobalNnz();
-      offset = header.getLocalOffsetRange(DistContext::rank(),
-                                          DistContext::nranks()).first;
-      Tvec_dense = G_MPI_IO::parallelReadElements(DistContext::commWorld(),
-                                                  mpi_file, header);
-    }
+    if (reader.isSparse())
+      Tvec_sparse = reader.parallelReadBinarySparse(global_dims, nnz);
+    else
+      Tvec_dense = reader.parallelReadBinaryDense(global_dims, nnz, offset);
   }
   else {
     // For non-binary, read on rank 0 and broadcast dimensions.
@@ -830,7 +811,7 @@ distributeTensor(const TensorT<ExecSpaceSrc>& X, const AlgParams& algParams)
 template <typename ExecSpace>
 SptensorT<ExecSpace>
 DistTensorContext<ExecSpace>::
-distributeTensorData(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
+distributeTensorData(const std::vector<G_MPI_IO::SpDataType>& Tvec,
                      const std::vector<ttb_indx>& TensorDims,
                      const std::vector<small_vector<int>>& blocking,
                      const ProcessorMap& pmap, const AlgParams& algParams)
