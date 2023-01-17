@@ -74,7 +74,7 @@ void printBlocking(const ProcessorMap& pmap,
                    const std::vector<small_vector<int>>& blocking);
 
 std::vector<small_vector<int>>
-generateUniformBlocking(const std::vector<std::uint32_t>& ModeLengths,
+generateUniformBlocking(const std::vector<ttb_indx>& ModeLengths,
                         const small_vector<int>& ProcGridSizes);
 } // namespace detail
 
@@ -105,7 +105,7 @@ public:
 
   // Parallel info
   std::int32_t ndims() const { return global_dims_.size(); }
-  const std::vector<std::uint32_t>& dims() const { return global_dims_; }
+  const std::vector<ttb_indx>& dims() const { return global_dims_; }
   static std::int64_t nprocs() { return DistContext::nranks(); }
   static std::int64_t gridRank() { return DistContext::rank(); }
   const std::vector<small_vector<int>>& blocking() const { return global_blocking_; }
@@ -172,21 +172,21 @@ public:
 private:
   SptensorT<ExecSpace> distributeTensorData(
     const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
-    const std::vector<std::uint32_t>& TensorDims,
+    const std::vector<ttb_indx>& TensorDims,
     const std::vector<small_vector<int>>& blocking,
     const ProcessorMap& pmap,
     const AlgParams& algParams);
   TensorT<ExecSpace> distributeTensorData(
     const std::vector<double>& Tvec,
     const ttb_indx global_nnz, const ttb_indx global_offset,
-    const std::vector<std::uint32_t>& TensorDims,
+    const std::vector<ttb_indx>& TensorDims,
     const std::vector<small_vector<int>>& blocking,
     const ProcessorMap& pmap,
     const AlgParams& algParams);
 
-  std::vector<std::uint32_t> local_dims_;
-  std::vector<std::uint32_t> global_dims_;
-  std::vector<std::uint32_t> ktensor_local_dims_;
+  std::vector<ttb_indx> local_dims_;
+  std::vector<ttb_indx> global_dims_;
+  std::vector<ttb_indx> ktensor_local_dims_;
   std::shared_ptr<ProcessorMap> pmap_;
   std::vector<small_vector<int>> global_blocking_;
 
@@ -224,14 +224,14 @@ distributeTensorToVectors(const Tensor& dn_tensor_host, uint64_t nnz,
 
 std::vector<G_MPI_IO::TDatatype<ttb_real>>
 redistributeTensor(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
-                   const std::vector<std::uint32_t>& TensorDims,
+                   const std::vector<ttb_indx>& TensorDims,
                    const std::vector<small_vector<int>>& blocking,
                    const ProcessorMap& pmap);
 
 std::vector<ttb_real>
 redistributeTensor(const std::vector<ttb_real>& Tvec,
                    const ttb_indx global_nnz, const ttb_indx global_offset,
-                   const std::vector<std::uint32_t>& TensorDims,
+                   const std::vector<ttb_indx>& TensorDims,
                    const std::vector<small_vector<int>>& blocking,
                    const ProcessorMap& pmap);
 
@@ -621,7 +621,7 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
 
   std::vector<G_MPI_IO::TDatatype<ttb_real>> Tvec_sparse;
   std::vector<double> Tvec_dense;
-  std::vector<std::uint32_t> global_dims;
+  std::vector<ttb_indx> global_dims;
   ttb_indx nnz, offset;
 
   if (DistContext::rank() == 0)
@@ -635,9 +635,8 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
       auto mpi_file = G_MPI_IO::openFile(DistContext::commWorld(), file);
       auto header = G_MPI_IO::readSparseHeader(DistContext::commWorld(),
                                              mpi_file);
-      TensorInfo ti = header.toTensorInfo();
-      global_dims = ti.dim_sizes;
-      nnz = ti.nnz;
+      global_dims = header.getGlobalDims();
+      nnz = header.getGlobalNnz();
       Tvec_sparse = G_MPI_IO::parallelReadElements(DistContext::commWorld(),
                                                    mpi_file, header);
     }
@@ -645,9 +644,8 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
       auto mpi_file = G_MPI_IO::openFile(DistContext::commWorld(), file);
       auto header = G_MPI_IO::readDenseHeader(DistContext::commWorld(),
                                               mpi_file);
-      TensorInfo ti = header.toTensorInfo();
-      global_dims = ti.dim_sizes;
-      nnz = ti.nnz;
+      global_dims = header.getGlobalDims();
+      nnz = header.getGlobalNnz();
       offset = header.getLocalOffsetRange(DistContext::rank(),
                                           DistContext::nranks()).first;
       Tvec_dense = G_MPI_IO::parallelReadElements(DistContext::commWorld(),
@@ -688,7 +686,7 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
       dims = small_vector<int>(ndims);
     DistContext::Bcast(dims, 0);
 
-    global_dims = std::vector<std::uint32_t>(ndims);
+    global_dims = std::vector<ttb_indx>(ndims);
     for (std::size_t i=0; i<ndims; ++i)
       global_dims[i] = dims[i];
 
@@ -833,7 +831,7 @@ template <typename ExecSpace>
 SptensorT<ExecSpace>
 DistTensorContext<ExecSpace>::
 distributeTensorData(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
-                     const std::vector<std::uint32_t>& TensorDims,
+                     const std::vector<ttb_indx>& TensorDims,
                      const std::vector<small_vector<int>>& blocking,
                      const ProcessorMap& pmap, const AlgParams& algParams)
 {
@@ -1037,7 +1035,7 @@ TensorT<ExecSpace>
 DistTensorContext<ExecSpace>::
 distributeTensorData(const std::vector<ttb_real>& Tvec,
                      const ttb_indx global_nnz, const ttb_indx global_offset,
-                     const std::vector<std::uint32_t>& TensorDims,
+                     const std::vector<ttb_indx>& TensorDims,
                      const std::vector<small_vector<int>>& blocking,
                      const ProcessorMap& pmap, const AlgParams& algParams)
 {
@@ -1305,7 +1303,7 @@ public:
 
   // Parallel info
   std::int32_t ndims() const { return global_dims_.size(); }
-  const std::vector<std::uint32_t>& dims() const { return global_dims_; }
+  const std::vector<ttb_indx>& dims() const { return global_dims_; }
   std::int64_t nprocs() const { return 1; }
   std::int64_t gridRank() const { return 0; }
 
@@ -1373,7 +1371,7 @@ public:
                                           const ptree& input) const;
 
 private:
-  std::vector<std::uint32_t> global_dims_;
+  std::vector<ttb_indx> global_dims_;
   std::shared_ptr<ProcessorMap> pmap_;
 };
 

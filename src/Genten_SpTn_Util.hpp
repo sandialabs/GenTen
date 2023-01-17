@@ -46,7 +46,6 @@
 #include <iosfwd>
 
 #include "Genten_SmallVector.hpp"
-#include "Genten_TensorInfo.hpp"
 
 namespace Genten {
 namespace G_MPI_IO {
@@ -68,8 +67,8 @@ struct SptnFileHeader {
 
   std::pair<std::uint64_t, std::uint64_t> getLocalOffsetRange(int rank,
                                                               int nranks) const;
-
-  TensorInfo toTensorInfo() const;
+  std::vector<ttb_indx> getGlobalDims() const;
+  ttb_indx getGlobalNnz() const;
 };
 
 struct DntnFileHeader {
@@ -86,8 +85,8 @@ struct DntnFileHeader {
 
   std::pair<std::uint64_t, std::uint64_t> getLocalOffsetRange(int rank,
                                                               int nranks) const;
-
-  TensorInfo toTensorInfo() const;
+  std::vector<ttb_indx> getGlobalDims() const;
+  ttb_indx getGlobalNnz() const;
 };
 
 std::ostream &operator<<(std::ostream &os, SptnFileHeader const &h);

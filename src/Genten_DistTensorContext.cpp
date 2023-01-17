@@ -112,7 +112,7 @@ small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode) {
 }
 
 std::vector<small_vector<int>>
-generateUniformBlocking(const std::vector<std::uint32_t>& ModeLengths,
+generateUniformBlocking(const std::vector<ttb_indx>& ModeLengths,
                         const small_vector<int>& ProcGridSizes) {
   const auto Ndims = ModeLengths.size();
   std::vector<small_vector<int>> blocking;
@@ -277,7 +277,7 @@ int rankInGridThatOwns(IntType const *COO, MPI_Comm grid_comm,
 
 std::vector<G_MPI_IO::TDatatype<ttb_real>>
 redistributeTensor(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
-                   const std::vector<std::uint32_t>& TDims,
+                   const std::vector<ttb_indx>& TDims,
                    const std::vector<small_vector<int>>& blocking,
                    const ProcessorMap& pmap) {
 
@@ -378,7 +378,7 @@ redistributeTensor(const std::vector<G_MPI_IO::TDatatype<ttb_real>>& Tvec,
 std::vector<ttb_real>
 redistributeTensor(const std::vector<ttb_real>& Tvec,
                    const ttb_indx global_nnz, const ttb_indx global_offset,
-                   const std::vector<std::uint32_t>& TDims,
+                   const std::vector<ttb_indx>& TDims,
                    const std::vector<small_vector<int>>& blocking,
                    const ProcessorMap& pmap) {
 

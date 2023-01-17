@@ -101,16 +101,16 @@ SptnFileHeader::getLocalOffsetRange(int rank, int nranks) const {
   return {range[rank], range[rank + 1]};
 };
 
-TensorInfo
-SptnFileHeader::toTensorInfo() const {
-  TensorInfo Ti;
-
-  Ti.nnz = nnz;
-  Ti.dim_sizes.resize(ndims);
-  std::copy(dim_lengths.begin(), dim_lengths.end(), Ti.dim_sizes.begin());
-
-  return Ti;
+std::vector<ttb_indx>
+SptnFileHeader::getGlobalDims() const
+{
+  std::vector<ttb_indx> dims(ndims);
+  std::copy(dim_lengths.begin(), dim_lengths.end(), dims.begin());
+  return dims;
 }
+
+ttb_indx
+SptnFileHeader::getGlobalNnz() const { return nnz; }
 
 small_vector<std::uint64_t>
 DntnFileHeader::getOffsetRanges(int nranks) const {
@@ -138,16 +138,16 @@ DntnFileHeader::getLocalOffsetRange(int rank, int nranks) const {
   return {range[rank], range[rank + 1]};
 };
 
-TensorInfo
-DntnFileHeader::toTensorInfo() const {
-  TensorInfo Ti;
-
-  Ti.nnz = nnz;
-  Ti.dim_sizes.resize(ndims);
-  std::copy(dim_lengths.begin(), dim_lengths.end(), Ti.dim_sizes.begin());
-
-  return Ti;
+std::vector<ttb_indx>
+DntnFileHeader::getGlobalDims() const
+{
+  std::vector<ttb_indx> dims(ndims);
+  std::copy(dim_lengths.begin(), dim_lengths.end(), dims.begin());
+  return dims;
 }
+
+ttb_indx
+DntnFileHeader::getGlobalNnz() const { return nnz; }
 
 std::ostream
 &operator<<(std::ostream &os, SptnFileHeader const &h) {
