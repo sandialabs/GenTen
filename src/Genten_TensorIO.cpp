@@ -44,12 +44,6 @@
 
 namespace {
 
-using nd_type = uint32_t;
-using nnz_type = uint64_t;
-using dim_type = uint64_t;
-using sub_size_type = uint64_t;
-using float_size_type = uint32_t;
-
 uint64_t smallestBuiltinThatHolds(uint64_t val) {
   if (val <= uint64_t(std::numeric_limits<uint16_t>::max())) {
     return 16;
@@ -59,6 +53,246 @@ uint64_t smallestBuiltinThatHolds(uint64_t val) {
   }
   return 64; // We didn't have a better option
 }
+
+}
+
+namespace Genten {
+
+SptnFileHeader::SptnFileHeader(const Sptensor& X,
+                               const float_size_type float_size) :
+  ndims(X.ndims()), float_bits(float_size), dim_lengths(ndims), dim_bits(ndims),
+  nnz(X.nnz())
+{
+  for (auto n=0; n<ndims; ++n) {
+    dim_lengths[n] = X.size(n);
+    dim_bits[n] = smallestBuiltinThatHolds(X.size(n));
+  }
+}
+
+std::uint64_t
+SptnFileHeader::bytesInDataLine() const {
+  return std::accumulate(dim_bits.begin(), dim_bits.end(), float_bits) / 8;
+}
+
+std::uint64_t
+SptnFileHeader::dataByteOffset() const {
+  return std::accumulate(dim_bits.begin(), dim_bits.end(), 0) / 8;
+}
+
+std::uint64_t
+SptnFileHeader::indByteOffset(int ind) const {
+  if (ind >= ndims) {
+    throw std::out_of_range(
+        "Called indByteOffset with index that was out of range\n");
+  }
+  auto it = dim_bits.begin();
+  std::advance(it, ind);
+  return std::accumulate(dim_bits.begin(), it, 0) / 8;
+}
+
+std::uint64_t
+SptnFileHeader::totalBytesToRead() const {
+  return bytesInDataLine() * nnz;
+}
+
+small_vector<std::uint64_t>
+SptnFileHeader::getOffsetRanges(int nranks) const {
+  const auto nper_rank = nnz / nranks;
+  assert(nper_rank != 0);
+
+  small_vector<std::uint64_t> out;
+  out.reserve(nranks + 1);
+
+  const auto line_bytes = bytesInDataLine();
+  std::uint64_t starting_elem = 0;
+  for (auto i = 0; i < nranks; ++i) {
+    out.push_back(starting_elem * line_bytes + data_starting_byte);
+    starting_elem += nper_rank;
+  }
+  out.push_back(nnz * line_bytes + data_starting_byte);
+
+  return out;
+}
+
+std::pair<std::uint64_t, std::uint64_t>
+SptnFileHeader::getLocalOffsetRange(int rank, int nranks) const {
+  // This is overkill and I don't care
+  const auto range = getOffsetRanges(nranks);
+  return {range[rank], range[rank + 1]};
+};
+
+std::vector<ttb_indx>
+SptnFileHeader::getGlobalDims() const
+{
+  std::vector<ttb_indx> dims(ndims);
+  std::copy(dim_lengths.begin(), dim_lengths.end(), dims.begin());
+  return dims;
+}
+
+ttb_indx
+SptnFileHeader::getGlobalNnz() const { return nnz; }
+
+void
+SptnFileHeader::readBinary(std::istream& in)
+{
+  std::string hi = "xxxx";
+  in.read(&hi[0], 4 * sizeof(char));
+  if (hi != "sptn")
+    Genten::error("First 4 bytes are not sptn");
+
+  // Number of dimensions
+  in.read(reinterpret_cast<char*>(&ndims), sizeof(nd_type));
+
+  // Floating point size
+  in.read(reinterpret_cast<char*>(&float_bits), sizeof(float_size_type));
+
+  // Size of each dimension
+  dim_lengths.resize(ndims);
+  for (auto n=0; n<ndims; ++n)
+    in.read(reinterpret_cast<char*>(&dim_lengths[n]), sizeof(dim_type));
+
+  // Subscript size
+  dim_bits.resize(ndims);
+  for (auto n=0; n<ndims; ++n)
+    in.read(reinterpret_cast<char*>(&dim_bits[n]), sizeof(sub_size_type));
+
+  // Number of nonzeros
+  in.read(reinterpret_cast<char*>(&nnz), sizeof(nnz_type));
+}
+
+void
+SptnFileHeader::writeBinary(std::ostream& out)
+{
+  out.write("sptn", 4);
+  out.write(reinterpret_cast<char*>(&ndims), sizeof(nd_type));
+  out.write(reinterpret_cast<char*>(&float_bits), sizeof(float_size_type));
+  for (auto n=0; n<ndims; ++n)
+    out.write(reinterpret_cast<char*>(&dim_lengths[n]), sizeof(dim_type));
+  for (auto n=0; n<ndims; ++n)
+    out.write(reinterpret_cast<char*>(&dim_bits[n]), sizeof(sub_size_type));
+  out.write(reinterpret_cast<char*>(&(nnz)), sizeof(nnz_type));
+}
+
+DntnFileHeader::DntnFileHeader(const Tensor& X,
+                               const float_size_type float_size) :
+  ndims(X.ndims()), float_bits(float_size), dim_lengths(ndims), nnz(X.nnz())
+{
+  for (auto n=0; n<ndims; ++n)
+    dim_lengths[n] = X.size(n);
+}
+
+small_vector<std::uint64_t>
+DntnFileHeader::getOffsetRanges(int nranks) const {
+  const auto nper_rank = nnz / nranks;
+  assert(nper_rank != 0);
+
+  small_vector<std::uint64_t> out;
+  out.reserve(nranks + 1);
+
+  const auto line_bytes = bytesInDataLine();
+  std::uint64_t starting_elem = 0;
+  for (auto i = 0; i < nranks; ++i) {
+    out.push_back(starting_elem * line_bytes + data_starting_byte);
+    starting_elem += nper_rank;
+  }
+  out.push_back(nnz * line_bytes + data_starting_byte);
+
+  return out;
+}
+
+std::pair<std::uint64_t, std::uint64_t>
+DntnFileHeader::getLocalOffsetRange(int rank, int nranks) const {
+  // This is overkill and I don't care
+  const auto range = getOffsetRanges(nranks);
+  return {range[rank], range[rank + 1]};
+};
+
+std::vector<ttb_indx>
+DntnFileHeader::getGlobalDims() const
+{
+  std::vector<ttb_indx> dims(ndims);
+  std::copy(dim_lengths.begin(), dim_lengths.end(), dims.begin());
+  return dims;
+}
+
+ttb_indx
+DntnFileHeader::getGlobalNnz() const { return nnz; }
+
+void
+DntnFileHeader::readBinary(std::istream& in)
+{
+  std::string hi = "xxxx";
+  in.read(&hi[0], 4 * sizeof(char));
+  if (hi != "dntn")
+    Genten::error("First 4 bytes are not dntn");
+
+  // Number of dimensions
+  in.read(reinterpret_cast<char*>(&ndims), sizeof(nd_type));
+
+  // Floating point size
+  float_size_type float_data_size;
+  in.read(reinterpret_cast<char*>(&float_bits), sizeof(float_size_type));
+
+  // Size of each dimension
+  dim_lengths.resize(ndims);
+  for (auto n=0; n<ndims; ++n)
+    in.read(reinterpret_cast<char*>(&dim_lengths[n]), sizeof(dim_type));
+
+  // Number of nonzeros
+  in.read(reinterpret_cast<char*>(&nnz), sizeof(nnz_type));
+}
+
+void
+DntnFileHeader::writeBinary(std::ostream& out)
+{
+  out.write("dntn", 4);
+  out.write(reinterpret_cast<char*>(&ndims), sizeof(nd_type));
+  out.write(reinterpret_cast<char*>(&float_bits), sizeof(float_size_type));
+  for (auto n=0; n<ndims; ++n)
+    out.write(reinterpret_cast<char*>(&dim_lengths[n]), sizeof(dim_type));
+  out.write(reinterpret_cast<char*>(&(nnz)), sizeof(nnz_type));
+}
+
+// std::ostream
+// &operator<<(std::ostream &os, SptnFileHeader const &h) {
+//   os << "Sparse Tensor Info :\n";
+//   os << "\tDimensions : " << h.ndims << "\n";
+//   os << "\tFloat bits : " << h.float_bits << "\n";
+//   os << "\tSizes      : ";
+//   for (auto s : h.dim_lengths) {
+//     os << s << " ";
+//   }
+//   os << "\n";
+//   os << "\tIndex bits : ";
+//   for (auto s : h.dim_bits) {
+//     os << s << " ";
+//   }
+//   os << "\n";
+//   os << "\tNNZ        : " << h.nnz << "\n";
+//   os << "\tData Byte  : " << h.data_starting_byte;
+
+//   return os;
+// }
+
+// std::ostream
+// &operator<<(std::ostream &os, DntnFileHeader const &h) {
+//   os << "Dense Tensor Info :\n";
+//   os << "\tDimensions : " << h.ndims << "\n";
+//   os << "\tFloat bits : " << h.float_bits << "\n";
+//   os << "\tSizes      : ";
+//   for (auto s : h.dim_lengths) {
+//     os << s << " ";
+//   }
+//   os << "\n";
+//   os << "\tNNZ        : " << h.nnz << "\n";
+//   os << "\tData Byte  : " << h.data_starting_byte;
+
+//   return os;
+// }
+
+}
+
+namespace {
 
 void writeSubValue(std::ostream& outFile, const uint64_t value,
                    const uint64_t size) {
@@ -137,15 +371,58 @@ double readDataValue(std::istream& inFile, const uint64_t size) {
   return fp64;
 }
 
-using nd_type = uint32_t;
-using nnz_type = uint64_t;
-using dim_type = uint64_t;
-using sub_size_type = uint64_t;
-using float_size_type = uint32_t;
+
+
+Genten::Sptensor read_binary_sparse_tensor(const std::string& filename)
+{
+  std::ifstream infile(filename, std::ios::binary);
+  if (!infile)
+    Genten::error("Could not open input file " + filename);
+
+  Genten::SptnFileHeader h;
+  h.readBinary(infile);
+
+  // Allocate tensor
+  Genten::IndxArray sz(h.ndims);
+  for (auto n=0; n<h.ndims; ++n)
+    sz[n] = h.dim_lengths[n];
+  Genten::Sptensor x(sz, h.nnz);
+
+  // Read nonzeros
+  for (auto i=0; i<h.nnz; ++i) {
+    for (auto n=0; n<h.ndims; ++n)
+      x.subscript(i,n) = readSubValue(infile, h.dim_bits[n]);
+    x.value(i) = readDataValue(infile, h.float_bits);
+  }
+
+  return x;
+}
+
+Genten::Sptensor read_binary_dense_tensor(const std::string filename)
+{
+  std::ifstream infile(filename, std::ios::binary);
+  if (!infile)
+    Genten::error("Could not open input file " + filename);
+
+  Genten::DntnFileHeader h;
+  h.readBinary(infile);
+
+  // Allocate tensor
+  Genten::IndxArray sz(h.ndims);
+  for (auto n=0; n<h.ndims; ++n)
+    sz[n] = h.dim_lengths[n];
+  Genten::Tensor x(sz);
+
+  // Read onzeros
+  for (auto i=0; i<h.nnz; ++i)
+    x[i] = readDataValue(infile, h.float_bits);
+
+  return x;
+}
 
 void write_binary_sparse_tensor(const std::string filename,
                                 const Genten::Sptensor& x,
-                                float_size_type float_data_size = 64)
+                                Genten::SptnFileHeader::float_size_type float_data_size = 64)
 {
   /*
    * The output file will have the following form:
@@ -163,91 +440,23 @@ void write_binary_sparse_tensor(const std::string filename,
    * 1 1 1 1049 156 1.000000 -> uint16_t uint16_t uint16_t uint16_t uint32_t
    * float_type
    */
-  nd_type nd = x.ndims();
-  nnz_type nnz = x.nnz();
-  std::vector<sub_size_type> sub_sizes(nd);
-  for (auto i=0; i<nd; ++i)
-    sub_sizes[i] = smallestBuiltinThatHolds(x.size(i));
-
   std::ofstream outfile(filename, std::ios::binary);
   if (!outfile)
     Genten::error("Could not open output file " + filename);
-  outfile.write("sptn", 4);
-  outfile.write(reinterpret_cast<char*>(&nd), sizeof(nd_type));
-  outfile.write(reinterpret_cast<char*>(&float_data_size),
-                sizeof(float_size_type));
-  for (auto n=0; n<nd; ++n) {
-    dim_type value = x.size(n);
-    outfile.write(reinterpret_cast<char*>(&value), sizeof(dim_type));
-  }
-  for (auto n=0; n<nd; ++n) {
-    auto value = sub_sizes[n];
-    outfile.write(reinterpret_cast<char*>(&value), sizeof(sub_size_type));
-  }
-  outfile.write(reinterpret_cast<char*>(&(nnz)), sizeof(nnz_type));
-  for (auto i=0; i<nnz; ++i) {
-    for (auto n=0; n<nd; ++n)
-      writeSubValue(outfile, x.subscript(i,n), sub_sizes[n]);
+
+  Genten::SptnFileHeader h(x, float_data_size);
+  h.writeBinary(outfile);
+
+  for (auto i=0; i<h.nnz; ++i) {
+    for (auto n=0; n<h.ndims; ++n)
+      writeSubValue(outfile, x.subscript(i,n), h.dim_bits[n]);
     writeDataValue(outfile, x.value(i), float_data_size);
   }
 }
 
-Genten::Sptensor read_binary_sparse_tensor(const std::string filename)
-{
-  std::ifstream infile(filename, std::ios::binary);
-  if (!infile)
-    Genten::error("Could not open input file " + filename);
-
-  std::string hi = "xxxx";
-  infile.read(&hi[0], 4 * sizeof(char));
-  if (hi != "sptn")
-    Genten::error("First 4 bytes are not sptn");
-
-  // Number of dimensions
-  nd_type nd;
-  infile.read(reinterpret_cast<char*>(&nd), sizeof(nd_type));
-
-  // Floating point size
-  float_size_type float_data_size;
-  infile.read(reinterpret_cast<char*>(&float_data_size),
-              sizeof(float_size_type));
-
-  // Size of each dimension
-  Genten::IndxArray sz(nd);
-  for (auto n=0; n<nd; ++n) {
-    dim_type value;
-    infile.read(reinterpret_cast<char*>(&value), sizeof(dim_type));
-    sz[n] = value;
-  }
-
-  // Subscript size
-  std::vector<sub_size_type> sub_sizes(nd);
-  for (auto n=0; n<nd; ++n) {
-    sub_size_type value;
-    infile.read(reinterpret_cast<char*>(&value), sizeof(sub_size_type));
-    sub_sizes[n] = value;
-  }
-
-  // Number of nonzeros
-  nnz_type nnz;
-  infile.read(reinterpret_cast<char*>(&nnz), sizeof(nnz_type));
-
-  // Allocate tensor
-  Genten::Sptensor x(sz, nnz);
-
-  // Nonzeros
-  for (auto i=0; i<nnz; ++i) {
-    for (auto n=0; n<nd; ++n)
-      x.subscript(i,n) = readSubValue(infile, sub_sizes[n]);
-    x.value(i) = readDataValue(infile, float_data_size);
-  }
-
-  return x;
-}
-
 void write_binary_dense_tensor(const std::string filename,
                                const Genten::Tensor& x,
-                               float_size_type float_data_size = 64)
+                               Genten::DntnFileHeader::float_size_type float_data_size = 64)
 {
   /*
    * The output file will have the following form:
@@ -258,66 +467,14 @@ void write_binary_dense_tensor(const std::string filename,
    * number_non_zero               -> uint64_t
    * 1.000000                      -> float_type
    */
-  nd_type nd = x.ndims();
-  nnz_type ne = x.numel();
-
   std::ofstream outfile(filename, std::ios::binary);
   if (!outfile)
     Genten::error("Could not open output file " + filename);
-  outfile.write("dntn", 4);
-  outfile.write(reinterpret_cast<char*>(&nd), sizeof(nd_type));
-  outfile.write(reinterpret_cast<char*>(&float_data_size),
-                sizeof(float_size_type));
-  for (auto n=0; n<nd; ++n) {
-    dim_type value = x.size(n);
-    outfile.write(reinterpret_cast<char*>(&value), sizeof(dim_type));
-  }
-  outfile.write(reinterpret_cast<char*>(&(ne)), sizeof(nnz_type));
-  for (auto i=0; i<ne; ++i) {
+
+  Genten::DntnFileHeader h(x, float_data_size);
+  h.writeBinary(outfile);
+  for (auto i=0; i<h.nnz; ++i)
     writeDataValue(outfile, x[i], float_data_size);
-  }
-}
-
-Genten::Sptensor read_binary_dense_tensor(const std::string filename)
-{
-  std::ifstream infile(filename, std::ios::binary);
-  if (!infile)
-    Genten::error("Could not open input file " + filename);
-
-  std::string hi = "xxxx";
-  infile.read(&hi[0], 4 * sizeof(char));
-  if (hi != "dntn")
-    Genten::error("First 4 bytes are not dntn");
-
-  // Number of dimensions
-  nd_type nd;
-  infile.read(reinterpret_cast<char*>(&nd), sizeof(nd_type));
-
-  // Floating point size
-  float_size_type float_data_size;
-  infile.read(reinterpret_cast<char*>(&float_data_size),
-              sizeof(float_size_type));
-
-  // Size of each dimension
-  Genten::IndxArray sz(nd);
-  for (auto n=0; n<nd; ++n) {
-    dim_type value;
-    infile.read(reinterpret_cast<char*>(&value), sizeof(dim_type));
-    sz[n] = value;
-  }
-
-  // Number of elements
-  nnz_type ne;
-  infile.read(reinterpret_cast<char*>(&ne), sizeof(nnz_type));
-
-  // Allocate tensor
-  Genten::Tensor x(sz);
-
-  // Nonzeros
-  for (auto i=0; i<ne; ++i)
-    x[i] = readDataValue(infile, float_data_size);
-
-  return x;
 }
 
 }

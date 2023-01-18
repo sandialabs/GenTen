@@ -52,50 +52,13 @@
 namespace Genten {
 
 struct SpDataType;
+struct SptnFileHeader;
+struct DntnFileHeader;
 
 namespace G_MPI_IO {
 
-struct SptnFileHeader {
-  std::uint32_t ndims = 0;
-  std::uint32_t float_bits = 0;
-  small_vector<std::uint64_t> dim_lengths;
-  small_vector<std::uint64_t> dim_bits;
-  std::uint64_t nnz = 0;
-  std::uint64_t data_starting_byte = 0;
-
-  std::uint64_t bytesInDataLine() const;
-  std::uint64_t indByteOffset(int ind) const;
-  std::uint64_t dataByteOffset() const;
-  std::uint64_t totalBytesToRead() const;
-
-  small_vector<std::uint64_t> getOffsetRanges(int nranks) const;
-
-  std::pair<std::uint64_t, std::uint64_t> getLocalOffsetRange(int rank,
-                                                              int nranks) const;
-  std::vector<ttb_indx> getGlobalDims() const;
-  ttb_indx getGlobalNnz() const;
-};
-
-struct DntnFileHeader {
-  std::uint32_t ndims = 0;
-  std::uint32_t float_bits = 0;
-  small_vector<std::uint64_t> dim_lengths;
-  std::uint64_t nnz = 0;
-  std::uint64_t data_starting_byte = 0;
-
-  std::uint64_t bytesInDataLine() const { return float_bits / 8; }
-  std::uint64_t totalBytesToRead() const { return bytesInDataLine() * nnz; }
-
-  small_vector<std::uint64_t> getOffsetRanges(int nranks) const;
-
-  std::pair<std::uint64_t, std::uint64_t> getLocalOffsetRange(int rank,
-                                                              int nranks) const;
-  std::vector<ttb_indx> getGlobalDims() const;
-  ttb_indx getGlobalNnz() const;
-};
-
-std::ostream &operator<<(std::ostream &os, SptnFileHeader const &h);
-std::ostream &operator<<(std::ostream &os, DntnFileHeader const &h);
+// std::ostream &operator<<(std::ostream &os, SptnFileHeader const &h);
+// std::ostream &operator<<(std::ostream &os, DntnFileHeader const &h);
 
 MPI_File openFile(MPI_Comm comm, std::string const &file_name,
                   int access_mode = MPI_MODE_RDONLY,
