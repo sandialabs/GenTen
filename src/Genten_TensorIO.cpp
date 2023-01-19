@@ -301,7 +301,6 @@ DntnFileHeader::readBinary(std::istream& in)
   in.read(reinterpret_cast<char*>(&ndims), sizeof(nd_type));
 
   // Floating point size
-  float_size_type float_data_size;
   in.read(reinterpret_cast<char*>(&float_bits), sizeof(float_size_type));
 
   // Size of each dimension
@@ -735,6 +734,36 @@ parallelReadBinaryDense(std::vector<ttb_indx>& global_dims,
                                         mpi_file, header);
 }
 #endif
+
+template <typename ExecSpace>
+SptnFileHeader
+TensorReader<ExecSpace>::
+readBinarySparseHeader() const
+{
+  std::ifstream infile(filename, std::ios::binary);
+  if (!infile)
+    Genten::error("Could not open input file " + filename);
+
+  SptnFileHeader h;
+  h.readBinary(infile);
+
+  return h;
+}
+
+template <typename ExecSpace>
+DntnFileHeader
+TensorReader<ExecSpace>::
+readBinaryDenseHeader() const
+{
+  std::ifstream infile(filename, std::ios::binary);
+  if (!infile)
+    Genten::error("Could not open input file " + filename);
+
+  DntnFileHeader h;
+  h.readBinary(infile);
+
+  return h;
+}
 
 template <typename ExecSpace>
 void

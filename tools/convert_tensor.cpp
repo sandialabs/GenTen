@@ -128,7 +128,7 @@ int main(int argc, char* argv[])
   if (argc < 9 || argc > 11 || help) {
     std::cout << "\nconvert-tensor: a helper utility for converting tensor data between\n"
               << "tensor formats (sparse or dense), and file types (text or binary).\n\n"
-              << "Usage: " << argv[0] << " --input-file <string> --output-file <string> --output-format <sparse|dense> --output-type <text|binary>\n [options] \n"
+              << "Usage: " << argv[0] << " --input-file <string> --output-file <string> --output-format <sparse|dense> --output-type <text|binary> [options] \n"
               << "Options:\n"
               << "  --input-gz      Input tensor is Gzip compressed (text-only, default: off)\n"
               << "  --output-gz     Output tensor is Gzip compressed (text-only, default: off)\n"

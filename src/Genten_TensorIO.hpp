@@ -155,6 +155,9 @@ public:
   SptensorT<ExecSpace> getSparseTensor() { return X_sparse; }
   TensorT<ExecSpace> getDenseTensor() { return X_dense; }
 
+  SptnFileHeader readBinarySparseHeader() const;
+  DntnFileHeader readBinaryDenseHeader() const;
+
 private:
   std::string filename;
   ttb_indx index_base;
