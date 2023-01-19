@@ -42,9 +42,12 @@
 
 #include "Genten_TensorIO.hpp"
 #include "Genten_IOtext.hpp"
-#include "Genten_MPI_IO.hpp"
 #include "Genten_AlgParams.hpp"
 #include "Genten_DistContext.hpp"
+
+#ifdef HAVE_DIST
+#include "Genten_MPI_IO.hpp"
+#endif
 
 namespace {
 
