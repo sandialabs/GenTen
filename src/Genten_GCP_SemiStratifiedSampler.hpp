@@ -118,6 +118,19 @@ namespace Genten {
       num_samples_nonzeros_grad = global_num_samples_nonzeros_grad / np;
       num_samples_zeros_grad = global_num_samples_zeros_grad / np;
 
+      // Adjust number of samples uniformly across procs to handle remainder.
+      // This is not perfect as the number of samples is locally limited by the
+      // the number of local nonzeros/zeros.
+      ttb_indx rank = pmap != nullptr ? pmap->gridRank() : 0;
+      if (rank < global_num_samples_nonzeros_value-num_samples_nonzeros_value*np)
+        ++num_samples_nonzeros_value;
+      if (rank < global_num_samples_zeros_value-num_samples_zeros_value*np)
+        ++num_samples_zeros_value;
+      if (rank < global_num_samples_nonzeros_grad-num_samples_nonzeros_grad*np)
+        ++num_samples_nonzeros_grad;
+      if (rank < global_num_samples_zeros_grad-num_samples_zeros_grad*np)
+        ++num_samples_zeros_grad;
+
       // Don't sample more zeros/nonzeros than we actually have locally
       num_samples_nonzeros_value = std::min(num_samples_nonzeros_value, lnnz);
       num_samples_zeros_value = std::min(ttb_real(num_samples_zeros_value),
