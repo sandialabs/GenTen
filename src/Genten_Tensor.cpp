@@ -126,5 +126,5 @@ TensorImpl(const KtensorT<ExecSpace>& src) :
 
 }
 
-#define INST_MACRO(SPACE) template class Genten::TensorT<SPACE>;
+#define INST_MACRO(SPACE) template class Genten::TensorImpl<SPACE>;
 GENTEN_INST(INST_MACRO)
