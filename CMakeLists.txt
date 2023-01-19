@@ -979,7 +979,16 @@ function(genten_add_test)
     set(test_cmd ${MPIEXEC_EXECUTABLE})
     list(APPEND test_cmd ${MPIEXEC_NUMPROC_FLAG})
     if (GENTEN_ADD_TEST_PARALLEL)
-      list(APPEND test_cmd ${MPIEXEC_MAX_NUMPROCS})
+      # Some of the unit tests fail if MPIEXEC_MAX_NUMPROCS is too large
+      # due to corner cases when the number of processors is greater than the
+      # number of nonzeros in the tensor.  Futhermore, MPIEXEC_MAX_NUMPROCS
+      # defaults to the number of cores on the machine.  So restrict the 
+      # number of processors these tests run on to something more reasonable.
+      set(TEST_NUMPROCS ${MPIEXEC_MAX_NUMPROCS})
+      if (TEST_NUMPROCS GREATER 8)
+        set(TEST_NUMPROCS 8)
+      endif()
+      list(APPEND test_cmd ${TEST_NUMPROCS})
     else()
       list(APPEND test_cmd 1)
     endif()
