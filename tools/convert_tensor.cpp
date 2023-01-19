@@ -65,7 +65,8 @@ void print_tensor_stats(const TensorType& x)
 
 template <typename TensorType>
 void save_tensor(const TensorType& x_in, const std::string& filename,
-                 const std::string format, const std::string type, bool gz)
+                 const std::string format, const std::string type, bool gz,
+                 bool header)
 {
   std::cout << "\nOutput:\n"
             << "  File:   " << filename << std::endl
@@ -73,6 +74,8 @@ void save_tensor(const TensorType& x_in, const std::string& filename,
             << "  Type:   " << type;
   if (type == "text" && gz)
     std::cout << " (compressed)";
+  if (type == "binary" && !header)
+    std::cout << " (no header)";
   std::cout << std::endl;
   Genten::TensorWriter<Genten::DefaultHostExecutionSpace> writer(filename,gz);
   if (format == "sparse") {
@@ -81,7 +84,7 @@ void save_tensor(const TensorType& x_in, const std::string& filename,
     if (type == "text")
       writer.writeText(x_out);
     else if (type == "binary")
-      writer.writeBinary(x_out);
+      writer.writeBinary(x_out, header);
   }
   else if (format == "dense") {
     Genten::Tensor x_out(x_in);
@@ -89,7 +92,7 @@ void save_tensor(const TensorType& x_in, const std::string& filename,
     if (type == "text")
       writer.writeText(x_out);
     else if (type == "binary")
-      writer.writeBinary(x_out);
+      writer.writeBinary(x_out, header);
   }
 }
 
@@ -127,8 +130,9 @@ int main(int argc, char* argv[])
               << "tensor formats (sparse or dense), and file types (text or binary).\n\n"
               << "Usage: " << argv[0] << " --input-file <string> --output-file <string> --output-format <sparse|dense> --output-type <text|binary>\n [options] \n"
               << "Options:\n"
-              << "  --input-gz  Input tensor is Gzip compressed (text-only)\n"
-              << "  --output-gz Output tensor is Gzip compressed (text-only)\n";
+              << "  --input-gz      Input tensor is Gzip compressed (text-only, default: off)\n"
+              << "  --output-gz     Output tensor is Gzip compressed (text-only, default: off)\n"
+              << "  --output-header Write header to output file (binary-only, default: on)\n";
     return 0;
   }
 
@@ -147,6 +151,8 @@ int main(int argc, char* argv[])
       Genten::parse_ttb_bool(args, "--input-gz", "--no-input-gz", false);
     const bool output_gz =
       Genten::parse_ttb_bool(args, "--output-gz", "--no-output-gz", false);
+    const bool output_header =
+      Genten::parse_ttb_bool(args, "--output-header", "--no-output-header", true);
 
     if (input_filename == "")
       Genten::error("input filename must be specified");
@@ -158,6 +164,8 @@ int main(int argc, char* argv[])
       Genten::error("output type must be one of \"text\" or \"binary\"");
     if (output_gz && output_type != "text")
       Genten::error("gzip only supported for text-based output files");
+    if (!output_header && output_type != "binary")
+      Genten::error("No header option only supported for binary output files");
 
     std::cout << "\nInput:\n"
               << "  File:   " << input_filename << std::endl;
@@ -177,12 +185,12 @@ int main(int argc, char* argv[])
     if (input_format == "sparse") {
       print_tensor_stats(x_sparse);
       save_tensor(x_sparse, output_filename, output_format, output_type,
-                  output_gz);
+                  output_gz, output_header);
     }
     else if (input_format == "dense") {
       print_tensor_stats(x_dense);
       save_tensor(x_dense, output_filename, output_format, output_type,
-                  output_gz);
+                  output_gz, output_header);
     }
     else
       Genten::error("Invalid input tensor format!");

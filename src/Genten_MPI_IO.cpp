@@ -39,7 +39,6 @@
 //@HEADER
 //
 
-#include <iostream>
 #include <cassert>
 #include <numeric>
 #include <memory>
@@ -148,7 +147,7 @@ DntnFileHeader readDenseHeader(MPI_Comm comm, MPI_File fh) {
 
     std::string tag = "xxxx";
     check_read(&tag[0], 4);
-    if (tag != "Dntn") {
+    if (tag != "dntn") {
       std::cout << "Not a binary dense tensor file" << std::endl;
       MPI_Abort(comm, MPI_ERR_UNKNOWN);
     }

@@ -62,6 +62,7 @@ namespace Genten {
 
 #if defined(HAVE_DIST)
 
+// Forward declarations
 struct SpDataType;
 
 // Class to describe and manipulate tensor data in a distributed context
@@ -79,6 +80,7 @@ public:
   void distributeTensor(const std::string& file,
                         const ttb_indx index_base,
                         const bool compressed,
+                        const ptree& tree,
                         const AlgParams& algParams,
                         SptensorT<ExecSpace>& X_sparse,
                         TensorT<ExecSpace>& X_dense);
@@ -512,6 +514,7 @@ public:
   void distributeTensor(const std::string& file,
                         const ttb_indx index_base,
                         const bool compressed,
+                        const ptree& tree,
                         const AlgParams& algParams,
                         SptensorT<ExecSpace>& X_sparse,
                         TensorT<ExecSpace>& X_dense);

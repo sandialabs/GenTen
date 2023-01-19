@@ -5,7 +5,7 @@
     {
         "input-file": "data/aminoacid_data_dense.txt",
         "index-base": 0,
-        "sparse": false
+        "format": "dense"
     },
     "k-tensor":
     {

@@ -202,7 +202,9 @@ int main_driver(Genten::AlgParams& algParams,
     // Read in tensor data
     if (inputfilename != "") {
       timer.start(0);
-      dtc.distributeTensor(inputfilename, index_base, gz, algParams, x, xd);
+      auto tensor_input = json_input.get_child_optional("tensor");
+      dtc.distributeTensor(inputfilename, index_base, gz, tensor_input,
+                           algParams, x, xd);
       timer.stop(0);
       DC::Barrier();
       if (dtc.gridRank() == 0)
@@ -276,9 +278,12 @@ int main_driver(Genten::AlgParams& algParams,
     // Read in tensor data
     if (inputfilename != "") {
       timer.start(0);
-      dtc.distributeTensor(inputfilename, index_base, gz, algParams, xs, x);
+      auto tensor_input = json_input.get_child_optional("tensor");
+      dtc.distributeTensor(inputfilename, index_base, gz, tensor_input,
+                           algParams, xs, x);
       timer.stop(0);
-      printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
+      if (dtc.gridRank() == 0)
+        printf("  Data import took %6.3f seconds\n", timer.getTotalTime(0));
     }
     else {
       timer.start(0);
@@ -500,7 +505,11 @@ int main(int argc, char* argv[])
         Genten::parse_ptree_value(tensor_input, "input-file", inputfilename);
         Genten::parse_ptree_value(tensor_input, "index-base", index_base, 0, INT_MAX);
         Genten::parse_ptree_value(tensor_input, "compressed", gz);
-        Genten::parse_ptree_value(tensor_input, "sparse", sparse);
+        std::string format = "sparse";
+        Genten::parse_ptree_value(tensor_input, "format", format);
+        if (format != "sparse" && format != "dense")
+          Genten::error("Invalid tensor format \"" + format + "\".  Must be \"sparse\" or \"dense\"");
+        sparse = (format == "sparse");
         Genten::parse_ptree_value(tensor_input, "tensor-output-file", tensor_outputfilename);
         Genten::parse_ptree_value(tensor_input, "rand-nnz", nnz, 1, INT_MAX);
         if (tensor_input.get_child_optional("rand-dims")) {

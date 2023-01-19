@@ -411,8 +411,8 @@ redistributeTensor(const std::vector<ttb_real>& Tvec,
                    const ttb_indx global_nnz, const ttb_indx global_offset,
                    const std::vector<ttb_indx>& TDims,
                    const std::vector<small_vector<int>>& blocking,
-                   const ProcessorMap& pmap) {
-
+                   const ProcessorMap& pmap)
+{
   const auto nprocs = pmap.gridSize();
   const auto rank = pmap.gridRank();
   MPI_Comm grid_comm = pmap.gridComm();
@@ -686,12 +686,13 @@ template <typename ExecSpace>
 void
 DistTensorContext<ExecSpace>::
 distributeTensor(const std::string& file, const ttb_indx index_base,
-                 const bool compressed, const AlgParams& algParams,
+                 const bool compressed, const ptree& tree,
+                 const AlgParams& algParams,
                  SptensorT<ExecSpace>& X_sparse,
                  TensorT<ExecSpace>& X_dense)
 {
-  Genten::TensorReader<Genten::DefaultHostExecutionSpace> reader(
-    file, index_base, compressed);
+  TensorReader<Genten::DefaultHostExecutionSpace> reader(
+    file, index_base, compressed, tree);
 
   std::vector<SpDataType> Tvec_sparse;
   std::vector<double> Tvec_dense;
@@ -703,7 +704,8 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
 
   DistContext::Barrier();
   auto t2 = MPI_Wtime();
-  if (reader.isBinary()) {
+  bool parallel_read = tree.get<bool>("parallel-read", true);
+  if (parallel_read && reader.isBinary()) {
     if (reader.isSparse())
       Tvec_sparse = reader.parallelReadBinarySparse(global_dims, nnz);
     else
@@ -1147,13 +1149,14 @@ template <typename ExecSpace>
 void
 DistTensorContext<ExecSpace>::
 distributeTensor(const std::string& file,
-                        const ttb_indx index_base,
-                        const bool compressed,
-                        const AlgParams& algParams,
-                        SptensorT<ExecSpace>& X_sparse,
-                        TensorT<ExecSpace>& X_dense)
+                 const ttb_indx index_base,
+                 const bool compressed,
+                 const ptree& tree,
+                 const AlgParams& algParams,
+                 SptensorT<ExecSpace>& X_sparse,
+                 TensorT<ExecSpace>& X_dense)
 {
-  Genten::TensorReader<ExecSpace> reader(file, index_base, compressed);
+  Genten::TensorReader<ExecSpace> reader(file, index_base, compressed, tree);
   reader.read();
   if (reader.isSparse()) {
     X_sparse = reader.getSparseTensor();

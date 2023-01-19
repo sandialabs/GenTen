@@ -44,10 +44,9 @@
 #include <cstdint>
 #include <vector>
 #include <string>
-#include <iosfwd>
 #include <mpi.h>
 
-#include "Genten_SmallVector.hpp"
+#include "Genten_Util.hpp"
 
 namespace Genten {
 
@@ -56,9 +55,6 @@ struct SptnFileHeader;
 struct DntnFileHeader;
 
 namespace G_MPI_IO {
-
-// std::ostream &operator<<(std::ostream &os, SptnFileHeader const &h);
-// std::ostream &operator<<(std::ostream &os, DntnFileHeader const &h);
 
 MPI_File openFile(MPI_Comm comm, std::string const &file_name,
                   int access_mode = MPI_MODE_RDONLY,

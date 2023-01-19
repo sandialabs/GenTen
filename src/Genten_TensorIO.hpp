@@ -41,9 +41,13 @@
 #pragma once
 
 #include <string>
+#include <vector>
+#include <iosfwd>
 
 #include "Genten_Sptensor.hpp"
 #include "Genten_Tensor.hpp"
+#include "Genten_Ptree.hpp"
+#include "Genten_SmallVector.hpp"
 
 namespace Genten {
 
@@ -63,6 +67,7 @@ struct SptnFileHeader {
 
   SptnFileHeader() = default;
   SptnFileHeader(const Sptensor& X, const float_size_type float_size);
+  SptnFileHeader(const ptree& tree);
 
   nd_type ndims = 0;
   float_size_type float_bits = 0;
@@ -96,6 +101,7 @@ struct DntnFileHeader {
 
   DntnFileHeader() = default;
   DntnFileHeader(const Tensor& X, const float_size_type float_size);
+  DntnFileHeader(const ptree& tree);
 
   nd_type ndims = 0;
   float_size_type float_bits = 0;
@@ -112,17 +118,22 @@ struct DntnFileHeader {
                                                               int nranks) const;
   std::vector<ttb_indx> getGlobalDims() const;
   ttb_indx getGlobalNnz() const;
+  ttb_indx getGlobalElementOffset(int rank, int nranks) const;
 
   void readBinary(std::istream& in);
   void writeBinary(std::ostream& out);
 };
+
+std::ostream& operator<<(std::ostream& os, const SptnFileHeader& h);
+std::ostream& operator<<(std::ostream& os, const DntnFileHeader& h);
 
 template <typename ExecSpace>
 class TensorReader {
 public:
   TensorReader(const std::string& filename,
                const ttb_indx index_base = 0,
-               const bool compressed = false);
+               const bool compressed = false,
+               const ptree& tree = ptree());
 
   void read();
 
@@ -157,6 +168,10 @@ private:
   SptensorT<ExecSpace> X_sparse;
   TensorT<ExecSpace> X_dense;
 
+  bool user_header;
+  SptnFileHeader sparseHeader;
+  DntnFileHeader denseHeader;
+
   void queryFile();
 };
 
@@ -166,8 +181,10 @@ public:
   TensorWriter(const std::string& filename,
                const bool compressed = false);
 
-  void writeBinary(const SptensorT<ExecSpace>& X) const;
-  void writeBinary(const TensorT<ExecSpace>& X) const;
+  void writeBinary(const SptensorT<ExecSpace>& X,
+                   const bool write_header = true) const;
+  void writeBinary(const TensorT<ExecSpace>& X,
+                   const bool write_header = true) const;
 
   void writeText(const SptensorT<ExecSpace>& X) const;
   void writeText(const TensorT<ExecSpace>& X) const;

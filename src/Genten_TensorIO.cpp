@@ -38,9 +38,13 @@
 // ************************************************************************
 //@HEADER
 
+#include <iostream>
+
 #include "Genten_TensorIO.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_MPI_IO.hpp"
+#include "Genten_AlgParams.hpp"
+#include "Genten_DistContext.hpp"
 
 namespace {
 
@@ -66,6 +70,42 @@ SptnFileHeader::SptnFileHeader(const Sptensor& X,
   for (auto n=0; n<ndims; ++n) {
     dim_lengths[n] = X.size(n);
     dim_bits[n] = smallestBuiltinThatHolds(X.size(n));
+  }
+}
+
+// Initialize with user-provided values for cases when we don't have a header
+SptnFileHeader::SptnFileHeader(const ptree& tree)
+{
+  // Parse dimensions (required)
+  std::vector<int> dims;
+  parse_ptree_value(tree, "dims", dims, 1, INT_MAX);
+  ndims = dims.size();
+  dim_lengths.resize(ndims);
+  std::copy(dims.begin(), dims.end(), dim_lengths.begin());
+
+  // Parse number of nonzeros (required)
+  parse_ptree_value(tree, "nnz", nnz, 1, INT_MAX);
+
+  // Parse bits to hold each value (optional, defaults to 64)
+  float_bits = 64;
+  if (tree.get_child_optional("value-bits")) {
+    parse_ptree_value(tree, "value-bits", float_bits, 1, 64);
+    if (float_bits != 16 && float_bits != 32 && float_bits != 64)
+      Genten::error("value-bits must be one of 16, 32, or 64!");
+  }
+
+  // Parse bits to hold each subscript (optional, defaults to 32)
+  std::vector<int> sub_bits(ndims, 32);
+  if (tree.get_child_optional("sub-bits")) {
+    parse_ptree_value(tree, "sub-bits", sub_bits, 1, 64);
+    if (sub_bits.size() != ndims)
+      Genten::error("sub-bits must be an array of the same length as dims!");
+  }
+  dim_bits.resize(ndims);
+  for (auto n=0; n<ndims; ++n) {
+    if (sub_bits[n] != 16 && sub_bits[n] != 32 && sub_bits[n] != 64)
+      Genten::error("Each entry of sub-bits must be one of 16, 32, or 64!");
+    dim_bits[n] = sub_bits[n];
   }
 }
 
@@ -181,6 +221,29 @@ DntnFileHeader::DntnFileHeader(const Tensor& X,
     dim_lengths[n] = X.size(n);
 }
 
+// Initialize with user-provided values for cases when we don't have a header
+DntnFileHeader::DntnFileHeader(const ptree& tree)
+{
+  // Parse dimensions (required)
+  std::vector<ttb_indx> dims;
+  parse_ptree_value(tree, "dims", dims, 1, INT_MAX);
+  ndims = dims.size();
+  dim_lengths.resize(ndims);
+  std::copy(dims.begin(), dims.end(), dim_lengths.begin());
+
+  // Compute number of tensor entries
+  nnz = std::accumulate(dims.begin(), dims.end(), 1,
+                        std::multiplies<ttb_indx>());
+
+  // Parse bits to hold each value (optional, defaults to 64)
+  float_bits = 64;
+  if (tree.get_child_optional("value-bits")) {
+    parse_ptree_value(tree, "value-bits", float_bits, 1, 64);
+    if (float_bits != 16 && float_bits != 32 && float_bits != 64)
+      Genten::error("value-bits must be one of 16, 32, or 64!");
+  }
+}
+
 small_vector<std::uint64_t>
 DntnFileHeader::getOffsetRanges(int nranks) const {
   const auto nper_rank = nnz / nranks;
@@ -218,6 +281,14 @@ DntnFileHeader::getGlobalDims() const
 ttb_indx
 DntnFileHeader::getGlobalNnz() const { return nnz; }
 
+ttb_indx
+DntnFileHeader::getGlobalElementOffset(int rank, int nranks) const
+{
+  const auto nper_rank = nnz / nranks;
+  assert(nper_rank != 0);
+  return nper_rank*rank;
+}
+
 void
 DntnFileHeader::readBinary(std::istream& in)
 {
@@ -253,42 +324,38 @@ DntnFileHeader::writeBinary(std::ostream& out)
   out.write(reinterpret_cast<char*>(&(nnz)), sizeof(nnz_type));
 }
 
-// std::ostream
-// &operator<<(std::ostream &os, SptnFileHeader const &h) {
-//   os << "Sparse Tensor Info :\n";
-//   os << "\tDimensions : " << h.ndims << "\n";
-//   os << "\tFloat bits : " << h.float_bits << "\n";
-//   os << "\tSizes      : ";
-//   for (auto s : h.dim_lengths) {
-//     os << s << " ";
-//   }
-//   os << "\n";
-//   os << "\tIndex bits : ";
-//   for (auto s : h.dim_bits) {
-//     os << s << " ";
-//   }
-//   os << "\n";
-//   os << "\tNNZ        : " << h.nnz << "\n";
-//   os << "\tData Byte  : " << h.data_starting_byte;
+std::ostream&
+operator<<(std::ostream& os, const SptnFileHeader& h) {
+  os << "\tDimensions : " << h.ndims << "\n";
+  os << "\tValue bits : " << h.float_bits << "\n";
+  os << "\tMode sizes : ";
+  for (auto s : h.dim_lengths) {
+    os << s << " ";
+  }
+  os << "\n";
+  os << "\tIndex bits : ";
+  for (auto s : h.dim_bits) {
+    os << s << " ";
+  }
+  os << "\n";
+  os << "\tNNZ        : " << h.nnz << "\n";
 
-//   return os;
-// }
+  return os;
+}
 
-// std::ostream
-// &operator<<(std::ostream &os, DntnFileHeader const &h) {
-//   os << "Dense Tensor Info :\n";
-//   os << "\tDimensions : " << h.ndims << "\n";
-//   os << "\tFloat bits : " << h.float_bits << "\n";
-//   os << "\tSizes      : ";
-//   for (auto s : h.dim_lengths) {
-//     os << s << " ";
-//   }
-//   os << "\n";
-//   os << "\tNNZ        : " << h.nnz << "\n";
-//   os << "\tData Byte  : " << h.data_starting_byte;
+std::ostream&
+operator<<(std::ostream& os, const DntnFileHeader& h) {
+  os << "\tDimensions : " << h.ndims << "\n";
+  os << "\tValue bits : " << h.float_bits << "\n";
+  os << "\tMode sizes : ";
+  for (auto s : h.dim_lengths) {
+    os << s << " ";
+  }
+  os << "\n";
+  os << "\tNNZ        : " << h.nnz << "\n";
 
-//   return os;
-// }
+  return os;
+}
 
 }
 
@@ -398,7 +465,30 @@ Genten::Sptensor read_binary_sparse_tensor(const std::string& filename)
   return x;
 }
 
-Genten::Sptensor read_binary_dense_tensor(const std::string filename)
+Genten::Sptensor read_binary_sparse_tensor(const std::string& filename,
+                                           const Genten::SptnFileHeader& h)
+{
+  std::ifstream infile(filename, std::ios::binary);
+  if (!infile)
+    Genten::error("Could not open input file " + filename);
+
+  // Allocate tensor
+  Genten::IndxArray sz(h.ndims);
+  for (auto n=0; n<h.ndims; ++n)
+    sz[n] = h.dim_lengths[n];
+  Genten::Sptensor x(sz, h.nnz);
+
+  // Read nonzeros
+  for (auto i=0; i<h.nnz; ++i) {
+    for (auto n=0; n<h.ndims; ++n)
+      x.subscript(i,n) = readSubValue(infile, h.dim_bits[n]);
+    x.value(i) = readDataValue(infile, h.float_bits);
+  }
+
+  return x;
+}
+
+Genten::Sptensor read_binary_dense_tensor(const std::string& filename)
 {
   std::ifstream infile(filename, std::ios::binary);
   if (!infile)
@@ -420,8 +510,29 @@ Genten::Sptensor read_binary_dense_tensor(const std::string filename)
   return x;
 }
 
+Genten::Sptensor read_binary_dense_tensor(const std::string& filename,
+                                          const Genten::DntnFileHeader& h)
+{
+  std::ifstream infile(filename, std::ios::binary);
+  if (!infile)
+    Genten::error("Could not open input file " + filename);
+
+  // Allocate tensor
+  Genten::IndxArray sz(h.ndims);
+  for (auto n=0; n<h.ndims; ++n)
+    sz[n] = h.dim_lengths[n];
+  Genten::Tensor x(sz);
+
+  // Read onzeros
+  for (auto i=0; i<h.nnz; ++i)
+    x[i] = readDataValue(infile, h.float_bits);
+
+  return x;
+}
+
 void write_binary_sparse_tensor(const std::string filename,
                                 const Genten::Sptensor& x,
+                                const bool write_header = true,
                                 Genten::SptnFileHeader::float_size_type float_data_size = 64)
 {
   /*
@@ -445,7 +556,8 @@ void write_binary_sparse_tensor(const std::string filename,
     Genten::error("Could not open output file " + filename);
 
   Genten::SptnFileHeader h(x, float_data_size);
-  h.writeBinary(outfile);
+  if (write_header)
+    h.writeBinary(outfile);
 
   for (auto i=0; i<h.nnz; ++i) {
     for (auto n=0; n<h.ndims; ++n)
@@ -456,6 +568,7 @@ void write_binary_sparse_tensor(const std::string filename,
 
 void write_binary_dense_tensor(const std::string filename,
                                const Genten::Tensor& x,
+                               const bool write_header = true,
                                Genten::DntnFileHeader::float_size_type float_data_size = 64)
 {
   /*
@@ -472,7 +585,9 @@ void write_binary_dense_tensor(const std::string filename,
     Genten::error("Could not open output file " + filename);
 
   Genten::DntnFileHeader h(x, float_data_size);
-  h.writeBinary(outfile);
+  if (write_header)
+    h.writeBinary(outfile);
+
   for (auto i=0; i<h.nnz; ++i)
     writeDataValue(outfile, x[i], float_data_size);
 }
@@ -485,11 +600,54 @@ template <typename ExecSpace>
 TensorReader<ExecSpace>::
 TensorReader(const std::string& fn,
              const ttb_indx ib,
-             const bool comp) :
-  filename (fn), index_base(ib), compressed(comp),
-  is_sparse(false), is_dense(false), is_binary(false), is_text(false)
+             const bool comp,
+             const ptree& tree) :
+  filename(fn), index_base(ib), compressed(comp),
+  is_sparse(false), is_dense(false), is_binary(false), is_text(false),
+  user_header(false)
 {
-  queryFile();
+  std::string format = "sparse";
+  if (tree.contains("format")) {
+    std::string format = tree.get<std::string>("format");
+    if (format == "sparse")
+      is_sparse = true;
+    else if (format == "dense")
+      is_dense = true;
+    else
+      Genten::error("Invalid tensor format \"" + format + "\".  Must be \"sparse\" or \"dense\"");
+  }
+
+  std::string type = "text";
+  if (tree.contains("file-type")) {
+    type = tree.get<std::string>("file-type");
+    if (type == "binary")
+      is_binary = true;
+    else if (type == "text")
+      is_text = true;
+    else
+      Genten::error("Invalid tensor file type \"" + type + "\".  Must be \"binary\" or \"text\"");
+  }
+
+  if (is_binary && tree.contains("dims") &&
+      (is_dense || (is_sparse && tree.contains("nnz"))))
+    user_header = true;
+
+  if (user_header) {
+    if (is_sparse) {
+      sparseHeader = SptnFileHeader(tree);
+      if (DistContext::rank() == 0)
+        std::cout << "Reading sparse tensor with user-supplied header:\n"
+                  << sparseHeader;
+    }
+    if (is_dense) {
+      denseHeader = DntnFileHeader(tree);
+      if (DistContext::rank() == 0)
+        std::cout << "Reading dense tensor with user-supplied header:\n"
+                  << denseHeader;
+    }
+  }
+  else
+    queryFile();
 
   if (is_binary && is_sparse && index_base != 0)
     Genten::error("The binary sparse format only supports zero based indexing\n");
@@ -503,12 +661,20 @@ TensorReader<ExecSpace>::
 read()
 {
   if (is_binary && is_sparse) {
-    Sptensor X = read_binary_sparse_tensor(filename);
+    Sptensor X;
+    if (user_header)
+      X = read_binary_sparse_tensor(filename, sparseHeader);
+    else
+      X = read_binary_sparse_tensor(filename);
     X_sparse = create_mirror_view(ExecSpace(), X);
     deep_copy(X_sparse, X);
   }
   else if (is_binary && is_dense) {
-    Tensor X = read_binary_dense_tensor(filename);
+    Tensor X;
+    if (user_header)
+      X = read_binary_dense_tensor(filename, denseHeader);
+    else
+      X = read_binary_dense_tensor(filename);
     X_dense = create_mirror_view(ExecSpace(), X);
     deep_copy(X_dense, X);
   }
@@ -538,8 +704,11 @@ parallelReadBinarySparse(std::vector<ttb_indx>& global_dims,
                          ttb_indx& nnz) const
 {
   auto mpi_file = G_MPI_IO::openFile(DistContext::commWorld(), filename);
-  auto header = G_MPI_IO::readSparseHeader(DistContext::commWorld(),
-                                             mpi_file);
+  SptnFileHeader header;
+  if (user_header)
+    header = sparseHeader;
+  else
+    header = G_MPI_IO::readSparseHeader(DistContext::commWorld(), mpi_file);
   global_dims = header.getGlobalDims();
   nnz = header.getGlobalNnz();
   return G_MPI_IO::parallelReadElements(DistContext::commWorld(),
@@ -554,12 +723,14 @@ parallelReadBinaryDense(std::vector<ttb_indx>& global_dims,
                         ttb_indx& offset) const
 {
   auto mpi_file = G_MPI_IO::openFile(DistContext::commWorld(), filename);
-  auto header = G_MPI_IO::readDenseHeader(DistContext::commWorld(),
-                                          mpi_file);
+  DntnFileHeader header;
+  if (user_header)
+    header = denseHeader;
+  else
+    header = G_MPI_IO::readDenseHeader(DistContext::commWorld(), mpi_file);
   global_dims = header.getGlobalDims();
   nnz = header.getGlobalNnz();
-  offset = header.getLocalOffsetRange(DistContext::rank(),
-                                      DistContext::nranks()).first;
+  offset = header.getGlobalElementOffset(DistContext::rank(), DistContext::nranks());
   return G_MPI_IO::parallelReadElements(DistContext::commWorld(),
                                         mpi_file, header);
 }
@@ -581,12 +752,16 @@ queryFile()
       file.read(&header[0], 4);
       if (header == "sptn") {
         is_sparse = true;
+        is_dense  = false;
         is_binary = true;
+        is_text   = false;
         return;
       }
       else if (header == "dntn") {
-        is_dense = true;
+        is_sparse = false;
+        is_dense  = true;
         is_binary = true;
+        is_text   = false;
         return;
       }
     } catch (...) {}
@@ -605,12 +780,16 @@ queryFile()
     }
     if (header == "sptensor") {
       is_sparse = true;
-      is_binary = true;
+      is_dense  = false;
+      is_binary = false;
+      is_text   = true;
       return;
     }
     else if (header == "tensor") {
-      is_dense = true;
-      is_text = true;
+      is_sparse = false;
+      is_dense  = true;
+      is_binary = false;
+      is_text   = true;
       return;
     }
     else {
@@ -627,6 +806,8 @@ queryFile()
         std::stol(tokens[i]);
       std::stod(tokens[tokens.size()-1]);
       is_sparse = true;
+      is_dense  = false;
+      is_binary = false;
       is_text = true;
       return;
     }
@@ -645,21 +826,23 @@ TensorWriter(const std::string& fname,
 template <typename ExecSpace>
 void
 TensorWriter<ExecSpace>::
-writeBinary(const SptensorT<ExecSpace>& X) const
+writeBinary(const SptensorT<ExecSpace>& X,
+            const bool write_header) const
 {
   Sptensor X_host = create_mirror_view(X);
   deep_copy(X_host, X);
-  write_binary_sparse_tensor(filename, X_host);
+  write_binary_sparse_tensor(filename, X_host, write_header);
 }
 
 template <typename ExecSpace>
 void
 TensorWriter<ExecSpace>::
-writeBinary(const TensorT<ExecSpace>& X) const
+writeBinary(const TensorT<ExecSpace>& X,
+            const bool write_header) const
 {
   Tensor X_host = create_mirror_view(X);
   deep_copy(X_host, X);
-  write_binary_dense_tensor(filename, X_host);
+  write_binary_dense_tensor(filename, X_host, write_header);
 }
 
 template <typename ExecSpace>
