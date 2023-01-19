@@ -39,6 +39,7 @@
 //@HEADER
 
 #include <Genten_Tensor.hpp>
+#include <Genten_Sptensor.hpp>
 #include <Genten_Util.hpp>
 
 #include "Genten_Test_Utils.hpp"

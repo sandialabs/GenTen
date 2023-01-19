@@ -40,12 +40,53 @@
 
 #pragma once
 
-#include <cstdint>
-#include <vector>
+#include "Genten_GCP_SGD_Iter.hpp"
+#include "Genten_GCP_SGD_Iter_Async.hpp"
+#include "Genten_Sptensor.hpp"
+#include "Genten_Ktensor.hpp"
+#include "Genten_AlgParams.hpp"
 
 namespace Genten {
-struct TensorInfo {
-  std::uint64_t nnz = 0;
-  std::vector<std::uint32_t> dim_sizes;
-};
-} // namespace Genten
+  namespace Impl {
+
+    template <typename LossFunction, typename ExecSpace>
+    GCP_SGD_Iter<SptensorT<ExecSpace>,LossFunction>*
+    createIter(const SptensorT<ExecSpace>& X,
+               const KtensorT<ExecSpace>& u0,
+               const StreamingHistory<ExecSpace>& hist,
+               const ttb_real penalty,
+               const ttb_indx mode_beg,
+               const ttb_indx mode_end,
+               const AlgParams& algParams)
+    {
+      using tensor_type = SptensorT<ExecSpace>;
+      GCP_SGD_Iter<tensor_type,LossFunction> *itp = nullptr;
+      if (algParams.async)
+        itp = new GCP_SGD_Iter_Async<ExecSpace,LossFunction>(
+          u0, hist, penalty, mode_beg, mode_end, algParams);
+      else
+        itp = new GCP_SGD_Iter<tensor_type,LossFunction>(
+          u0, hist, penalty, mode_beg, mode_end, algParams);
+      return itp;
+    }
+
+    template <typename LossFunction, typename ExecSpace>
+    GCP_SGD_Iter<TensorT<ExecSpace>,LossFunction>*
+    createIter(const TensorT<ExecSpace>& X,
+               const KtensorT<ExecSpace>& u0,
+               const StreamingHistory<ExecSpace>& hist,
+               const ttb_real penalty,
+               const ttb_indx mode_beg,
+               const ttb_indx mode_end,
+               const AlgParams& algParams)
+    {
+      using tensor_type = TensorT<ExecSpace>;
+      if (algParams.async)
+        Genten::error("Genten::gcp_sgd - cannot use asynchronous iterator with dense tensor!");
+      GCP_SGD_Iter<tensor_type,LossFunction> *itp =
+        new Impl::GCP_SGD_Iter<tensor_type,LossFunction>(
+          u0, hist, penalty, mode_beg, mode_end, algParams);
+      return itp;
+    }
+  }
+}

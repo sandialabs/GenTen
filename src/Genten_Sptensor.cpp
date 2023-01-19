@@ -39,6 +39,7 @@
 //@HEADER
 
 #include "Genten_Sptensor.hpp"
+#include "Genten_Tensor.hpp"
 
 #include "Kokkos_Sort.hpp"
 
@@ -74,6 +75,40 @@ void init_subs(const SubsViewType& subs, const T* sbs, const ttb_indx shift)
     for (ttb_indx j=0; j<nd; ++j)
     {
       subs(i,j) = (ttb_indx) sbs[i+j*nz] - shift;
+    }
+  });
+}
+
+template <typename ExecSpace>
+ttb_indx countNonzeros(const TensorImpl<ExecSpace>& x)
+{
+  const ttb_indx ne = x.numel();
+  ttb_indx nz = 0;
+  Kokkos::parallel_reduce("countNonzeros",
+                         Kokkos::RangePolicy<ExecSpace>(0,ne),
+                         KOKKOS_LAMBDA(const ttb_indx i, ttb_indx& n)
+  {
+    if (x[i] != ttb_real(0.0)) ++n;
+  }, nz);
+  return nz;
+}
+
+template <typename ExecSpace, typename SubsViewType, typename ValsViewType>
+void copyFromTensor(const TensorImpl<ExecSpace>& x, const SubsViewType& subs,
+                    const ValsViewType& vals)
+{
+  Kokkos::View<ttb_indx,ExecSpace> nonzero_index("nonzero_index");
+  const ttb_indx ne = x.numel();
+  Kokkos::parallel_for("copyFromTensor",
+                       Kokkos::RangePolicy<ExecSpace>(0,ne),
+                       KOKKOS_LAMBDA(const ttb_indx i)
+  {
+    const ttb_real xv = x[i];
+    if (xv != ttb_real(0.0)) {
+      const ttb_indx ind = Kokkos::atomic_fetch_add(&(nonzero_index()), 1);
+      vals[ind] = xv;
+      auto sub = Kokkos::subview(subs, ind, Kokkos::ALL);
+      x.ind2sub(sub, i);
     }
   });
 }
@@ -182,6 +217,27 @@ SptensorImpl(const std::vector<ttb_indx>& dims,
   }
   deep_copy(subs, subs_host);
   deep_copy(subs_gids, subs_gids_host);
+}
+
+template <typename ExecSpace>
+Genten::SptensorImpl<ExecSpace>::
+SptensorImpl(const TensorT<ExecSpace>& x) :
+  siz(x.size().clone()), nNumDims(x.ndims()), values(),
+  subs(), subs_gids(), perm(),
+  is_sorted(false),
+  lower_bound(nNumDims,ttb_indx(0)), upper_bound(siz.clone())
+{
+  siz_host = create_mirror_view(siz);
+  deep_copy(siz_host, siz);
+
+  // Compute number of nonzeros
+  const ttb_indx nz = Impl::countNonzeros(x.impl());
+
+  // Compute nonzero subscripts and copy values
+  subs = subs_view_type("Genten::Sptensor::subs",nz,siz.size());
+  values = ArrayT<ExecSpace>(nz);
+  Impl::copyFromTensor(x.impl(), subs, values.values());
+  subs_gids = subs;
 }
 
 template <typename ExecSpace>

@@ -87,8 +87,8 @@ namespace Genten {
     const AlgParams algParams;
     const AlgParams temporalAlgParams;
     const AlgParams spatialAlgParams;
-    GCPSGD<TensorT,ExecSpace,LossFunction> temporalSolver;
-    GCPSGD<TensorT,ExecSpace,LossFunction> spatialSolver;
+    GCPSGD<TensorT,LossFunction> temporalSolver;
+    GCPSGD<TensorT,LossFunction> spatialSolver;
     std::default_random_engine generator;  // Random number generator
     FacMatrixT<ExecSpace> A, tmp; // Temp space needed for least-squares
     std::vector< FacMatrixT<ExecSpace> > P, Q; // Temp space needed for OnlineCP

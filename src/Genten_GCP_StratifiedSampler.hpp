@@ -59,10 +59,10 @@
 namespace Genten {
 
   template <typename ExecSpace, typename LossFunction>
-  class StratifiedSampler : public Sampler<ExecSpace,LossFunction> {
+  class StratifiedSampler : public Sampler<SptensorT<ExecSpace>,LossFunction> {
   public:
 
-    typedef Sampler<ExecSpace,LossFunction> base_type;
+    typedef Sampler<SptensorT<ExecSpace>,LossFunction> base_type;
     typedef typename base_type::pool_type pool_type;
     typedef typename base_type::map_type map_type;
 

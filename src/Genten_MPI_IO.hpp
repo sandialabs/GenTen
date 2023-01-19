@@ -42,21 +42,32 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 #include <string>
 #include <mpi.h>
 
-#include "Genten_SpTn_Util.hpp"
+#include "Genten_Util.hpp"
 
 namespace Genten {
+
+struct SpDataType;
+struct SptnFileHeader;
+struct DntnFileHeader;
+
 namespace G_MPI_IO {
+
 MPI_File openFile(MPI_Comm comm, std::string const &file_name,
                   int access_mode = MPI_MODE_RDONLY,
                   MPI_Info info = MPI_INFO_NULL);
 
-SptnFileHeader readHeader(MPI_Comm comm, MPI_File fh);
+SptnFileHeader readSparseHeader(MPI_Comm comm, MPI_File fh);
+DntnFileHeader readDenseHeader(MPI_Comm comm, MPI_File fh);
 
-std::vector<TDatatype<double>> parallelReadElements(MPI_Comm comm, MPI_File fh,
-                                                    SptnFileHeader const &h);
+std::vector<SpDataType>
+parallelReadElements(MPI_Comm comm, MPI_File fh, SptnFileHeader const &h);
+std::vector<ttb_real>
+parallelReadElements(MPI_Comm comm, MPI_File fh, DntnFileHeader const &h);
 
 } // namespace G_MPI_IO
+
 } // namespace Genten

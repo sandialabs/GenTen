@@ -606,6 +606,9 @@ ENDIF()
 
 #---- List the source files to be built.
 SET (Genten_SOURCE_LIST
+  ${Genten_SOURCE_DIR}/src/Genten_DistContext.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_Pmap.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_DistTensorContext.cpp
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   ${Genten_SOURCE_DIR}/src/mathlib/Genten_RandomMT.cpp
@@ -618,6 +621,7 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_FacMatrix.cpp
   ${Genten_SOURCE_DIR}/src/Genten_IndxArray.cpp
   ${Genten_SOURCE_DIR}/src/Genten_IOtext.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_TensorIO.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Ktensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_MixedFormatOps.cpp
   ${Genten_SOURCE_DIR}/src/Genten_TTM.cpp
@@ -631,6 +635,12 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_CusolverHandle.cpp
   ${Genten_SOURCE_DIR}/src/Genten_RocblasHandle.cpp
   )
+
+IF (HAVE_MPI)
+SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+  ${Genten_SOURCE_DIR}/src/Genten_MPI_IO.cpp
+  )
+ENDIF()
 
 IF (ENABLE_LBFGSB)
   SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
@@ -685,35 +695,11 @@ TARGET_LINK_LIBRARIES(gentenlib nlohmann_json::nlohmann_json)
 IF(HAVE_BOOST)
   TARGET_LINK_LIBRARIES(gentenlib Boost::iostreams ZLIB::ZLIB)
 ENDIF()
-
-ADD_LIBRARY(DistContextLib
-    ${Genten_SOURCE_DIR}/src/Genten_DistContext.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_Pmap.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_DistTensorContext.cpp
-    )
-IF(HAVE_TRILINOS)
-  TARGET_LINK_LIBRARIES(DistContextLib Trilinos::all_libs)
-ENDIF()
-IF(NOT HAVE_TRILINOS_KOKKOS)
-  TARGET_LINK_LIBRARIES(DistContextLib Kokkos::kokkos)
-ENDIF()
-TARGET_LINK_LIBRARIES(DistContextLib nlohmann_json_schema_validator)
-TARGET_LINK_LIBRARIES(DistContextLib nlohmann_json::nlohmann_json)
-TARGET_LINK_LIBRARIES(gentenlib DistContextLib )
 IF(HAVE_MPI)
-  TARGET_LINK_LIBRARIES(DistContextLib ${MPI_TARGET})
+  TARGET_LINK_LIBRARIES(gentenlib ${MPI_TARGET})
   IF(HAVE_BOOST)
-    TARGET_LINK_LIBRARIES(DistContextLib Boost::boost)
+    TARGET_LINK_LIBRARIES(gentenlib Boost::boost)
   ENDIF()
-  ADD_LIBRARY(GentenMpiIoLib
-    ${Genten_SOURCE_DIR}/src/Genten_SpTn_Util.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_MPI_IO.cpp
-    )
-  TARGET_LINK_LIBRARIES(GentenMpiIoLib ${MPI_TARGET})
-  IF(HAVE_BOOST)
-    TARGET_LINK_LIBRARIES(GentenMpiIoLib Boost::boost)
-  ENDIF()
-  TARGET_LINK_LIBRARIES(gentenlib GentenMpiIoLib)
 ENDIF()
 
 IF(Kokkos_ENABLE_HIP)
@@ -754,17 +740,10 @@ ENDIF()
 SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
 TARGET_LINK_LIBRARIES(${GENTEN_LINK_LIBS})
 INSTALL (
-  TARGETS gentenlib DistContextLib nlohmann_json_schema_validator nlohmann_json
+  TARGETS gentenlib nlohmann_json_schema_validator nlohmann_json
   EXPORT genten
   DESTINATION ${CMAKE_INSTALL_LIBDIR}
   )
-IF(HAVE_DIST)
-  INSTALL (
-    TARGETS GentenMpiIoLib
-    EXPORT genten
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  )
-ENDIF()
 
 #---- Adding the higher moment interface to the Library sources
 #---- Must be a better way to do this. Inside an IF??
@@ -1054,6 +1033,7 @@ add_genten_perf_tests(Genten_MTTKRP_aminoacid_perm "${Genten_BINARY_DIR}/bin/per
 add_genten_perf_tests(Genten_MTTKRP_random_dense "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [30,40,50] --dense" "${kokkos_devices}")
 
 add_genten_mpi_tests(Genten_driver_aminoacid_cpals "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpals.json" "${kokkos_devices}")
+add_genten_mpi_tests(Genten_driver_aminoacid_cpals_dense "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpals-dense.json" "${kokkos_devices}")
 if (HAVE_LBFGSB)
   # L-BFGS-B does not work with MPI (implements its own vector operations)
   add_genten_perf_tests(Genten_driver_aminoacid_cpopt-lbfgsb "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpopt-lbfgsb.json" "${kokkos_devices}")
@@ -1067,6 +1047,7 @@ if (HAVE_GCP)
   if (HAVE_MPI)
     add_genten_mpi_tests(Genten_driver_aminoacid_sgd_dist "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-sgd-dist.json" "${kokkos_devices}")
   endif()
+  add_genten_mpi_tests(Genten_driver_aminoacid_sgd_dense "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-sgd-dense.json" "${kokkos_devices}")
 endif()
 
 #------------------------------------------------------------

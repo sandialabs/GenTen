@@ -142,22 +142,28 @@ void print_environment(const Genten::SptensorT<ExecSpace>& x,
 
 template <typename ExecSpace>
 void print_environment(const Genten::TensorT<ExecSpace>& x,
+                       const Genten::DistTensorContext<ExecSpace>& dtc,
                        std::ostream& out)
 {
   const ttb_indx nd = x.ndims();
   const ttb_indx tsz = x.numel();
-  out << std::endl
-      << "Dense tensor: " << std::endl << "  ";
-  for (ttb_indx i=0; i<nd; ++i) {
-    out << x.size(i) << " ";
-    if (i<nd-1)
-      out << "x ";
+  const ttb_real nrm = dtc.globalNorm(x);
+  if (Genten::DistContext::rank() == 0) {
+    out << std::endl
+        << "Dense tensor: " << std::endl << "  ";
+    for (ttb_indx i=0; i<nd; ++i) {
+      out << x.size(i) << " ";
+      if (i<nd-1)
+        out << "x ";
+    }
+    out << "(" << tsz << " total entries)" << std::endl
+        << "  " << std::setprecision(1) << std::scientific << nrm
+        << " Frobenius norm" << std::endl << std::endl
+        << "Execution environment:" << std::endl;
+    out << "  Execution space: "
+        << Genten::SpaceProperties<ExecSpace>::verbose_name()
+        << std::endl << std::endl;
   }
-  out << "(" << tsz << " total entries)" << std::endl << std::endl
-      << "Execution environment:" << std::endl;
-  out << "  Execution space: "
-      << Genten::SpaceProperties<ExecSpace>::verbose_name()
-      << std::endl << std::endl;
 }
 
 template <typename Space>
@@ -190,12 +196,15 @@ int main_driver(Genten::AlgParams& algParams,
   Ktensor_type u;
   Genten::PerfHistory history;
   if (sparse) {
-    // Read in tensor data
     Sptensor_host_type x_host;
     Sptensor_type x;
+    Tensor_type xd;
+    // Read in tensor data
     if (inputfilename != "") {
       timer.start(0);
-      x = dtc.distributeTensor(inputfilename, index_base, gz, algParams);
+      auto tensor_input = json_input.get_child_optional("tensor");
+      dtc.distributeTensor(inputfilename, index_base, gz, tensor_input,
+                           algParams, x, xd);
       timer.stop(0);
       DC::Barrier();
       if (dtc.gridRank() == 0)
@@ -263,19 +272,18 @@ int main_driver(Genten::AlgParams& algParams,
     }
   }
   else {
-    if (dtc.nprocs() > 1)
-        Genten::error("Dense tensor not implemented for > 1 MPI procs");
-
     Tensor_host_type x_host;
     Tensor_type x;
+    Sptensor_type xs;
     // Read in tensor data
     if (inputfilename != "") {
       timer.start(0);
-      Genten::import_tensor(inputfilename, x_host);
-      x = create_mirror_view( Space(), x_host );
-      deep_copy( x, x_host );
+      auto tensor_input = json_input.get_child_optional("tensor");
+      dtc.distributeTensor(inputfilename, index_base, gz, tensor_input,
+                           algParams, xs, x);
       timer.stop(0);
-      printf("Data import took %6.3f seconds\n", timer.getTotalTime(0));
+      if (dtc.gridRank() == 0)
+        printf("  Data import took %6.3f seconds\n", timer.getTotalTime(0));
     }
     else {
       timer.start(0);
@@ -284,14 +292,15 @@ int main_driver(Genten::AlgParams& algParams,
       Genten::FacTestSetGenerator testGen;
       testGen.genDnFromRndKtensor(facDims_h, algParams.rank,
                                   rng, x_host, sol_host);
-      x = create_mirror_view( Space(), x_host );
-      deep_copy( x, x_host );
       timer.stop(0);
-      printf ("Data generation took %6.3f seconds\n", timer.getTotalTime(0));
+      DC::Barrier();
+      if (dtc.gridRank() == 0)
+        printf ("Data generation took %6.3f seconds\n", timer.getTotalTime(0));
+      x = dtc.distributeTensor(x_host, algParams);
     }
 
     // Print execution environment
-    print_environment(x, std::cout);
+    print_environment(x, dtc, std::cout);
 
     if (algParams.debug) Genten::print_tensor(x_host, std::cout, "tensor");
 
@@ -302,13 +311,16 @@ int main_driver(Genten::AlgParams& algParams,
     }
 
     // Compute decomposition
-    u = Genten::driver(x, u_init, algParams, history, std::cout);
+    u = Genten::driver(dtc, x, u_init, algParams, json_input, history,
+                       std::cout);
 
     if (tensor_outputfilename != "") {
       timer.start(1);
       Genten::export_tensor(tensor_outputfilename, x_host);
       timer.stop(1);
-      printf("Tensor export took %6.3f seconds\n", timer.getTotalTime(1));
+      DC::Barrier();
+      if (dtc.gridRank() == 0)
+        printf("Tensor export took %6.3f seconds\n", timer.getTotalTime(1));
     }
   }
 
@@ -493,7 +505,11 @@ int main(int argc, char* argv[])
         Genten::parse_ptree_value(tensor_input, "input-file", inputfilename);
         Genten::parse_ptree_value(tensor_input, "index-base", index_base, 0, INT_MAX);
         Genten::parse_ptree_value(tensor_input, "compressed", gz);
-        Genten::parse_ptree_value(tensor_input, "sparse", sparse);
+        std::string format = "sparse";
+        Genten::parse_ptree_value(tensor_input, "format", format);
+        if (format != "sparse" && format != "dense")
+          Genten::error("Invalid tensor format \"" + format + "\".  Must be \"sparse\" or \"dense\"");
+        sparse = (format == "sparse");
         Genten::parse_ptree_value(tensor_input, "tensor-output-file", tensor_outputfilename);
         Genten::parse_ptree_value(tensor_input, "rand-nnz", nnz, 1, INT_MAX);
         if (tensor_input.get_child_optional("rand-dims")) {

@@ -143,10 +143,46 @@ static nlohmann::json json_schema = R"(
                   "type": "boolean",
                   "default": false
               },
-              "sparse": {
+              "format": {
                   "description": "Whether tensor is sparse or dense",
+                  "type": "string",
+                  "default": "sparse"
+              },
+              "file-type": {
+                  "description": "File type of tensor file, text or binary",
+                  "type": "string",
+                  "default": "auto"
+              },
+              "parallel-read": {
+                  "description": "Use MPI-IO to read tensor file",
                   "type": "boolean",
                   "default": true
+              },
+              "dims": {
+                  "description": "Tensor dimensions for binary files without a header",
+                  "type": "array",
+                  "items": {
+                      "type": "integer",
+                      "minimum": 1
+                  }
+              },
+              "nnz": {
+                  "description": "Number of tensor nonzeros for binary files without a header",
+                  "type": "integer",
+                  "minimum": 1
+              },
+              "value-bits": {
+                  "description": "Number of bits used to represent tensor entries in sparse or dense binary files without a header",
+                  "type": "integer",
+                  "minimum": 16
+              },
+              "sub-bits": {
+                  "description": "Number of bits used to represent subscripts in sparse binary files without a header",
+                  "type": "array",
+                  "items": {
+                      "type": "integer",
+                      "minimum": 16
+                  }
               },
               "output-file": {
                   "description": "Path to output tensor file when generating tensor randomly",

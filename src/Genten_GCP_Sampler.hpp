@@ -45,7 +45,6 @@
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_SystemTimer.hpp"
-#include "Genten_GCP_SamplingKernels.hpp"
 #include "Genten_GCP_Hash.hpp"
 #include "Genten_KokkosVector.hpp"
 #include "Genten_GCP_StreamingHistory.hpp"
@@ -54,12 +53,12 @@
 
 namespace Genten {
 
-  template <typename ExecSpace, typename LossFunction>
+  template <typename TensorType, typename LossFunction>
   class Sampler {
   public:
 
-    typedef Kokkos::Random_XorShift64_Pool<ExecSpace> pool_type;
-    typedef TensorHashMap<ExecSpace> map_type;
+    typedef typename TensorType::exec_space exec_space;
+    typedef Kokkos::Random_XorShift64_Pool<exec_space> pool_type;
 
     Sampler() {}
 
@@ -73,27 +72,79 @@ namespace Genten {
 
     virtual void print(std::ostream& out) = 0;
 
-    virtual void sampleTensorF(const KtensorT<ExecSpace>& u,
+    virtual void sampleTensorF(const KtensorT<exec_space>& u,
                                const LossFunction& loss_func) = 0;
 
-    virtual void sampleTensorG(const KtensorT<ExecSpace>& u,
-                               const StreamingHistory<ExecSpace>& hist,
+    virtual void sampleTensorG(const KtensorT<exec_space>& u,
+                               const StreamingHistory<exec_space>& hist,
                                const LossFunction& loss_func) = 0;
 
-    virtual void prepareGradient(const KtensorT<ExecSpace>& gt) = 0;
+    virtual void prepareGradient(const KtensorT<exec_space>& gt) = 0;
 
-    virtual void value(const KtensorT<ExecSpace>& u,
-                       const StreamingHistory<ExecSpace>& hist,
+    virtual void value(const KtensorT<exec_space>& u,
+                       const StreamingHistory<exec_space>& hist,
                        const ttb_real penalty,
                        const LossFunction& loss_func,
                        ttb_real& fest, ttb_real& ften) = 0;
 
-    virtual void gradient(const KtensorT<ExecSpace>& ut,
-                          const StreamingHistory<ExecSpace>& hist,
+    virtual void gradient(const KtensorT<exec_space>& ut,
+                          const StreamingHistory<exec_space>& hist,
                           const ttb_real penalty,
                           const LossFunction& loss_func,
-                          KokkosVector<ExecSpace>& g,
-                          const KtensorT<ExecSpace>& gt,
+                          KokkosVector<exec_space>& g,
+                          const KtensorT<exec_space>& gt,
+                          const ttb_indx mode_beg,
+                          const ttb_indx mode_end,
+                          SystemTimer& timer,
+                          const int timer_init,
+                          const int timer_nzs,
+                          const int timer_zs,
+                          const int timer_grad_mttkrp,
+                          const int timer_grad_comm,
+                          const int timer_grad_update) = 0;
+  };
+
+  template <typename ExecSpace, typename LossFunction>
+  class Sampler<SptensorT<ExecSpace>,LossFunction> {
+  public:
+
+    typedef ExecSpace exec_space;
+    typedef Kokkos::Random_XorShift64_Pool<exec_space> pool_type;
+    typedef TensorHashMap<exec_space> map_type;
+
+    Sampler() {}
+
+    virtual ~Sampler() {}
+
+    virtual void initialize(const pool_type& rand_pool,
+                            const bool print_itn,
+                            std::ostream& out) = 0;
+
+    virtual ttb_indx getNumGradSamples() const = 0;
+
+    virtual void print(std::ostream& out) = 0;
+
+    virtual void sampleTensorF(const KtensorT<exec_space>& u,
+                               const LossFunction& loss_func) = 0;
+
+    virtual void sampleTensorG(const KtensorT<exec_space>& u,
+                               const StreamingHistory<exec_space>& hist,
+                               const LossFunction& loss_func) = 0;
+
+    virtual void prepareGradient(const KtensorT<exec_space>& gt) = 0;
+
+    virtual void value(const KtensorT<exec_space>& u,
+                       const StreamingHistory<exec_space>& hist,
+                       const ttb_real penalty,
+                       const LossFunction& loss_func,
+                       ttb_real& fest, ttb_real& ften) = 0;
+
+    virtual void gradient(const KtensorT<exec_space>& ut,
+                          const StreamingHistory<exec_space>& hist,
+                          const ttb_real penalty,
+                          const LossFunction& loss_func,
+                          KokkosVector<exec_space>& g,
+                          const KtensorT<exec_space>& gt,
                           const ttb_indx mode_beg,
                           const ttb_indx mode_end,
                           SystemTimer& timer,
@@ -104,7 +155,7 @@ namespace Genten {
                           const int timer_grad_comm,
                           const int timer_grad_update) = 0;
 
-    static map_type buildHashMap(const SptensorT<ExecSpace>& Xd,
+    static map_type buildHashMap(const SptensorT<exec_space>& Xd,
                                  std::ostream& out)
     {
       const auto X = Xd.impl();
@@ -112,7 +163,7 @@ namespace Genten {
       const ttb_indx nd = X.ndims();
       map_type hash_map(nd, ttb_indx(1.1*nnz));
       Kokkos::parallel_for("Genten::GCP_SGD::hash_kernel",
-                           Kokkos::RangePolicy<ExecSpace>(0,nnz),
+                           Kokkos::RangePolicy<exec_space>(0,nnz),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         auto key = X.getGlobalSubscripts(i);

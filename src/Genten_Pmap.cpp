@@ -91,7 +91,7 @@ auto divisors(int input) {
 // return the result for rank 1 factors. The calling code can simply scale this
 // result by the rank to figure out the total number of elements
 auto nelementsForRank1Factors(small_vector<int> const &grid,
-                              std::vector<std::uint32_t> const &tensor_dims) {
+                              std::vector<ttb_indx> const &tensor_dims) {
   auto nprocs =
       std::accumulate(grid.begin(), grid.end(), 1ll, std::multiplies<>{});
 
@@ -108,7 +108,7 @@ auto nelementsForRank1Factors(small_vector<int> const &grid,
 // This function writes the grid with that leads to the minimal storage
 // required for the factor matrices
 auto recurseMinSpaceGrid(int nprocs, small_vector<int> &grid,
-                         std::vector<std::uint32_t> const &tensor_dims,
+                         std::vector<ttb_indx> const &tensor_dims,
                          int dims_remaining) {
   assert(dims_remaining >= 1);
 
@@ -140,7 +140,7 @@ auto recurseMinSpaceGrid(int nprocs, small_vector<int> &grid,
 }
 
 auto minFactorSpaceGrid(int nprocs,
-                        std::vector<std::uint32_t> const &tensor_dims) {
+                        std::vector<ttb_indx> const &tensor_dims) {
   const auto ndims = tensor_dims.size();
   auto grid = small_vector<int>(ndims);
   if (DistContext::rank() == 0) {
@@ -150,58 +150,13 @@ auto minFactorSpaceGrid(int nprocs,
   return grid;
 }
 
-// small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode) {
-//   small_vector<int> Range{0};
-//   const auto FibersPerBlock = ModeLength / ProcsInMode;
-//   auto Remainder = ModeLength % ProcsInMode;
-
-//   // We ended up with more processors than rows in the fiber :O Just return all
-//   // fibers in the same block. It seems easier to handle this here than to try
-//   // to make the while loop logic do something smart
-//   if (FibersPerBlock == 0) {
-//     Range.push_back(ModeLength);
-//   }
-
-//   while (Range.back() < ModeLength) {
-//     const auto back = Range.back();
-//     // This branch makes our blocks 1 bigger to eat the Remainder fibers
-//     if (Remainder > 0) {
-//       Range.push_back(back + FibersPerBlock + 1);
-//       --Remainder;
-//     } else {
-//       Range.push_back(back + FibersPerBlock);
-//     }
-//   }
-
-//   // Sanity check that we ended with the correct number of blocks and fibers
-//   assert(Range.size() == ProcsInMode + 1);
-//   assert(Range.back() == ModeLength);
-
-//   return Range;
-// }
-
-// std::vector<small_vector<int>>
-// generateUniformBlocking(std::vector<std::uint32_t> const &ModeLengths,
-//                         small_vector<int> const &ProcGridSizes) {
-//   const auto Ndims = ModeLengths.size();
-//   std::vector<small_vector<int>> blocking;
-//   blocking.reserve(Ndims);
-
-//   for (auto i = 0; i < Ndims; ++i) {
-//     blocking.emplace_back(
-//         singleDimUniformBlocking(ModeLengths[i], ProcGridSizes[i]));
-//   }
-
-//   return blocking;
-// }
-
 small_vector<int> CartGrid(int nprocs,
-                           std::vector<std::uint32_t> const &tensor_dims) {
+                           std::vector<ttb_indx> const &tensor_dims) {
   return minFactorSpaceGrid(nprocs, tensor_dims);
 }
 } // namespace
 
-ProcessorMap::ProcessorMap(std::vector<std::uint32_t> const &tensor_dims,
+ProcessorMap::ProcessorMap(std::vector<ttb_indx> const &tensor_dims,
                            small_vector<int> const &predetermined_grid,
                            const bool use_tpetra)
     : dimension_sizes_(predetermined_grid) {
@@ -253,7 +208,7 @@ ProcessorMap::ProcessorMap(std::vector<std::uint32_t> const &tensor_dims,
   }
 }
 
-ProcessorMap::ProcessorMap(std::vector<std::uint32_t> const &tensor_dims,
+ProcessorMap::ProcessorMap(std::vector<ttb_indx> const &tensor_dims,
                            const bool use_tpetra)
     : ProcessorMap(tensor_dims,
                    CartGrid(DistContext::nranks(), tensor_dims),

@@ -37,48 +37,82 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // ************************************************************************
 //@HEADER
-//
 
-#pragma once
+#include "Genten_TensorIO.hpp"
 
-#include <cstdint>
-#include <vector>
-#include <iosfwd>
 
-#include "Genten_SmallVector.hpp"
-#include "Genten_TensorInfo.hpp"
 
-namespace Genten {
-namespace G_MPI_IO {
+void read_tensor_file(const std::string& filename,
+                      std::string& format, std::string& type, bool gz,
+                      Genten::Sptensor& x_sparse, Genten::Tensor& x_dense)
+{
+  Genten::TensorReader<Genten::DefaultHostExecutionSpace> reader(filename,0,gz);
+  reader.read();
 
-struct SptnFileHeader {
-  std::uint32_t ndims = 0;
-  std::uint32_t float_bits = 0;
-  small_vector<std::uint64_t> dim_lengths;
-  small_vector<std::uint64_t> dim_bits;
-  std::uint64_t nnz = 0;
-  std::uint64_t data_starting_byte = 0;
+  if (reader.isSparse()) {
+    format = "sparse";
+    x_sparse = reader.getSparseTensor();
+  }
+  else if (reader.isDense()) {
+    format = "dense";
+    x_dense = reader.getDenseTensor();
+  }
 
-  std::uint64_t bytesInDataLine() const;
-  std::uint64_t indByteOffset(int ind) const;
-  std::uint64_t dataByteOffset() const;
-  std::uint64_t totalBytesToRead() const;
+  if (reader.isBinary())
+    type = "binary";
+  else if (reader.isText())
+    type = "text";
+}
 
-  small_vector<std::uint64_t> getOffsetRanges(int nranks) const;
+int main(int argc, char* argv[])
+{
+  int ret = 0;
 
-  std::pair<std::uint64_t, std::uint64_t> getLocalOffsetRange(int rank,
-                                                              int nranks) const;
+  auto args = Genten::build_arg_list(argc,argv);
+  const bool help =
+    Genten::parse_ttb_bool(args, "--help", "--no-help", false);
+  if (argc != 3 || help) {
+    std::cout << "\ntensor-header: a helper utility for reading headers of binary tensor files.\n\n"
+              << "Usage: " << argv[0] << " --input-file <string>\n";
+    return 0;
+  }
 
-  TensorInfo toTensorInfo() const;
-};
+  try {
+    Kokkos::initialize(argc, argv);
 
-std::ostream &operator<<(std::ostream &os, SptnFileHeader const &h);
+    const std::string filename =
+      Genten::parse_string(args, "--input-file", "");
 
-// Type to temporarily  hold coo data for the initial MPI distribution
-template <typename T> struct TDatatype {
-  std::uint32_t coo[6] = {-1u, -1u, -1u, -1u, -1u, -1u};
-  double val;
-};
+    Genten::TensorReader<Genten::DefaultHostExecutionSpace> reader(filename);
+    if (!reader.isBinary())
+      Genten::error("Can only read headers of binary files!");
 
-} // namespace G_MPI_IO
-} // namespace Genten
+    std::cout << "\nTensor file:  " << filename << std::endl;
+    if (reader.isSparse())
+      std::cout << reader.readBinarySparseHeader() << std::endl;
+    if (reader.isDense())
+      std::cout << reader.readBinaryDenseHeader() << std::endl;
+
+  }
+  catch(const std::exception& e)
+  {
+    std::cout << "*** Call to genten threw an exception:" << std::endl
+              << "  " << e.what() << std::endl;
+    ret = -1;
+  }
+  catch(const std::string& s)
+  {
+    std::cout << "*** Call to genten threw an exception:" << std::endl
+              << "  " << s << std::endl;
+    ret = -1;
+  }
+  catch(...)
+  {
+    std::cout << "*** Call to genten threw an unknown exception"
+              << std::endl;
+    ret = -1;
+  }
+
+  Kokkos::finalize();
+  return ret;
+}

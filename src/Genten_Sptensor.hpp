@@ -51,6 +51,8 @@
 namespace Genten
 {
 
+template <typename ExecSpace> class TensorT;
+
   /* The Genten::Sptensor class stores sparse tensors.
    * This is a refactored version to make better use of Kokkos, in particular
    * it uses view semantics instead of value semantics.
@@ -165,6 +167,9 @@ public:
     siz_host = create_mirror_view(siz);
     deep_copy(siz_host, siz);
   }
+
+  // Create tensor from dense tensor
+  SptensorImpl(const TensorT<ExecSpace>& x);
 
   // Copy constructor.
   KOKKOS_DEFAULTED_FUNCTION
@@ -534,6 +539,8 @@ public:
     impl_type(d,vals,s,p,sorted,s_g,l,u), dist_type(d.size()) {}
   SptensorT(const IndxArrayT<ExecSpace>& d, const subs_view_type& s) :
     impl_type(d,s), dist_type(d.size()) {}
+  SptensorT(const TensorT<ExecSpace>& x) :
+    impl_type(x), dist_type(x.ndims()) {}
 
   SptensorT(SptensorT&&) = default;
   SptensorT(const SptensorT&) = default;

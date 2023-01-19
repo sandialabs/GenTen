@@ -199,11 +199,23 @@ namespace Genten
   void mttkrp_all(const Genten::TensorT<ExecSpace>& X,
                   const Genten::KtensorT<ExecSpace>& u,
                   const Genten::KtensorT<ExecSpace>& v,
-                  const AlgParams& algParams)
+                  const ttb_indx mode_beg,
+                  const ttb_indx mode_end,
+                  const AlgParams& algParams,
+                  const bool zero_v = true)
   {
-    const ttb_indx nd = X.ndims();
-    for (ttb_indx n=0; n<nd; ++n)
-      mttkrp(X, u, n, v[n], algParams);
+    for (ttb_indx n=mode_beg; n<mode_end; ++n)
+      mttkrp(X, u, n, v[n], algParams, zero_v);
+  }
+
+  template <typename ExecSpace>
+  void mttkrp_all(const Genten::TensorT<ExecSpace>& X,
+                  const Genten::KtensorT<ExecSpace>& u,
+                  const Genten::KtensorT<ExecSpace>& v,
+                  const AlgParams& algParams,
+                  const bool zero_v = true)
+  {
+    mttkrp_all(X, u, v, 0, u.ndims(), algParams, zero_v);
   }
 
 }     //-- namespace Genten

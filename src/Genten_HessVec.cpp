@@ -431,13 +431,13 @@ struct HessVec_PermKernel {
 // the same (bad) parallelism strategy as for dense MTTKRP
 template <typename ExecSpace>
 struct HessVec_Dense_Kernel {
-  const TensorT<ExecSpace> XX;
+  const TensorImpl<ExecSpace> XX;
   const KtensorT<ExecSpace> aa;
   const KtensorT<ExecSpace> vv;
   const KtensorT<ExecSpace> uu;
   const AlgParams algParams;
 
-  HessVec_Dense_Kernel(const TensorT<ExecSpace>& X_,
+  HessVec_Dense_Kernel(const TensorImpl<ExecSpace>& X_,
                        const KtensorT<ExecSpace>& a_,
                        const KtensorT<ExecSpace>& v_,
                        const KtensorT<ExecSpace>& u_,
@@ -446,7 +446,7 @@ struct HessVec_Dense_Kernel {
 
   template <unsigned FBS, unsigned VS>
   void run() const {
-    const TensorT<ExecSpace> X = XX;
+    const TensorImpl<ExecSpace> X = XX;
     const KtensorT<ExecSpace> a = aa;
     const KtensorT<ExecSpace> v = vv;
     const KtensorT<ExecSpace> u = uu;
@@ -491,7 +491,7 @@ struct HessVec_Dense_Kernel {
           // Work around internal-compiler errors in recent Intel compilers
           unsigned nd_ = nd;
           unsigned k_ = k;
-          TensorT<ExecSpace> X_ = X;
+          TensorImpl<ExecSpace> X_ = X;
 
           // Initialize our subscript array for row i of mode n
           Kokkos::single(Kokkos::PerThread(team), [&]()
@@ -725,10 +725,9 @@ void hess_vec(const TensorT<ExecSpace>& X,
   const ttb_indx nc = a.ncomponents();     // Number of components
   const ttb_indx nd = a.ndims();           // Number of dimensions
 
-  // Communication disabled because TensorT doesn't yet support MPI parallelism
   // Import needed off-procesor factor matrix rows
-  //dku.doImport(a_overlap, a);
-  //dku.doImport(v_overlap, v);
+  dku.doImport(a_overlap, a);
+  dku.doImport(v_overlap, v);
 
   assert(X.ndims() == nd);
   assert(v.ndims() == nd);
@@ -737,19 +736,18 @@ void hess_vec(const TensorT<ExecSpace>& X,
   assert(u.ncomponents() == nc);
   assert(v.isConsistent());
   assert(u.isConsistent());
-  // for (ttb_indx i=0; i<nd; ++i) {
-  //   assert(a[i].nRows() == X.size(i));
-  //   assert(v[i].nRows() == X.size(i));
-  //   assert(u[i].nRows() == X.size(i));
-  // }
+  for (ttb_indx i=0; i<nd; ++i) {
+    assert(a_overlap[i].nRows() == X.size(i));
+    assert(v_overlap[i].nRows() == X.size(i));
+    assert(u_overlap[i].nRows() == X.size(i));
+  }
 
   // Compute first (tensor) term
-  Impl::HessVec_Dense_Kernel<ExecSpace> kernel(X,a,v,u,algParams);
+  Impl::HessVec_Dense_Kernel<ExecSpace> kernel(X.impl(),a,v,u,algParams);
   Impl::run_row_simd_kernel(kernel, nc);
 
-  // Communication disabled because TensorT doesn't yet support MPI parallelism
   // Combine local contributions across processors
-  //dku.doExport(u, u_overlap);
+  dku.doExport(u, u_overlap);
 
   // Scale first term by -1
   for (unsigned n=0; n<nd; ++n)

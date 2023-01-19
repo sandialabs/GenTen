@@ -41,6 +41,7 @@
 #pragma once
 
 #include "CMakeInclude.h"
+#include "Genten_DistTensor.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_IndxArray.hpp"
 #include "Genten_Pmap.hpp"
@@ -52,6 +53,7 @@ namespace Genten {
 template <typename ExecSpace>
 class DistKtensorUpdate {
 public:
+
   DistKtensorUpdate() = default;
   virtual ~DistKtensorUpdate() {}
 
@@ -60,7 +62,7 @@ public:
   DistKtensorUpdate& operator=(DistKtensorUpdate&&) = default;
   DistKtensorUpdate& operator=(const DistKtensorUpdate&) = default;
 
-  virtual void updateTensor(SptensorT<ExecSpace>& X) {}
+  virtual void updateTensor(DistTensor<ExecSpace>& X) {}
 
   virtual KtensorT<ExecSpace>
   createOverlapKtensor(const KtensorT<ExecSpace>& u) const
@@ -619,73 +621,13 @@ public:
 
 #ifdef HAVE_TPETRA
 
-template <typename TensorType>
-class KtensorTpetraUpdate :
-    public DistKtensorUpdate<typename TensorType::exec_space> {
-public:
-  using exec_space = typename TensorType::exec_space;
-
-  KtensorTpetraUpdate(const TensorType& X,
-                      const KtensorT<exec_space>& u) {}
-
-  virtual ~KtensorTpetraUpdate() {}
-
-  KtensorTpetraUpdate(KtensorTpetraUpdate&&) = default;
-  KtensorTpetraUpdate(const KtensorTpetraUpdate&) = default;
-  KtensorTpetraUpdate& operator=(KtensorTpetraUpdate&&) = default;
-  KtensorTpetraUpdate& operator=(const KtensorTpetraUpdate&) = default;
-
-  virtual void updateTensor(SptensorT<exec_space>& X_) override {}
-
-  virtual KtensorT<exec_space>
-  createOverlapKtensor(const KtensorT<exec_space>& u) const override
-  {
-    return u;
-  }
-
-  virtual bool overlapAliasesArg() const override { return true; }
-  virtual bool isReplicated() const override { return true; }
-
-  using DistKtensorUpdate<exec_space>::doImport;
-
-  virtual void doImport(const KtensorT<exec_space>& u_overlapped,
-                        const KtensorT<exec_space>& u) const override
-  {
-    deep_copy(u_overlapped, u);
-  }
-
-  virtual void doImport(const KtensorT<exec_space>& u_overlapped,
-                        const KtensorT<exec_space>& u,
-                        const ttb_indx n) const override
-  {
-    deep_copy(u_overlapped[n], u[n]);
-  }
-
-  using DistKtensorUpdate<exec_space>::doExport;
-
-  virtual void doExport(const KtensorT<exec_space>& u,
-                        const KtensorT<exec_space>& u_overlapped) const override
-  {
-    deep_copy(u, u_overlapped);
-  }
-
-  virtual void doExport(const KtensorT<exec_space>& u,
-                        const KtensorT<exec_space>& u_overlapped,
-                        const ttb_indx n) const override
-  {
-    deep_copy(u[n], u_overlapped[n]);
-  }
-
-};
-
 template <typename ExecSpace>
-class KtensorTpetraUpdate< SptensorT<ExecSpace> > :
-    public DistKtensorUpdate<ExecSpace> {
+class KtensorTpetraUpdate : public DistKtensorUpdate<ExecSpace> {
 private:
-  SptensorT<ExecSpace> X;
+  DistTensor<ExecSpace> X;
 
 public:
-  KtensorTpetraUpdate(const SptensorT<ExecSpace>& X_,
+  KtensorTpetraUpdate(const DistTensor<ExecSpace>& X_,
                       const KtensorT<ExecSpace>& u) : X(X_) {}
 
   virtual ~KtensorTpetraUpdate() {}
@@ -695,7 +637,7 @@ public:
   KtensorTpetraUpdate& operator=(KtensorTpetraUpdate&&) = default;
   KtensorTpetraUpdate& operator=(const KtensorTpetraUpdate&) = default;
 
-  virtual void updateTensor(SptensorT<ExecSpace>& X_) override
+  virtual void updateTensor(DistTensor<ExecSpace>& X_) override
   {
     X = X_;
   }
@@ -811,7 +753,7 @@ createKtensorUpdate(const TensorType& X,
     dku = new KtensorAllGatherUpdate<exec_space>(u, X.nnz());
 #ifdef HAVE_TPETRA
   else if (algParams.dist_update_method == Dist_Update_Method::Tpetra)
-    dku = new KtensorTpetraUpdate<TensorType>(X, u);
+    dku = new KtensorTpetraUpdate<exec_space>(X, u);
 #endif
   else
     Genten::error("Unknown distributed Ktensor update method");
@@ -833,7 +775,7 @@ createKtensorUpdate(const TensorType& X,
     dku = new KtensorAllGatherUpdate<exec_space>(u, nnz);
 #ifdef HAVE_TPETRA
   else if (algParams.dist_update_method == Dist_Update_Method::Tpetra)
-    dku = new KtensorTpetraUpdate<TensorType>(X, u);
+    dku = new KtensorTpetraUpdate<exec_space>(X, u);
 #endif
   else
     Genten::error("Unknown distributed Ktensor update method");

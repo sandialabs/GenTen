@@ -42,8 +42,8 @@
 
 #include "Genten_Array.hpp"
 #include "Genten_IndxArray.hpp"
-#include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
+#include "Genten_DistTensor.hpp"
 
 #include <cassert>
 
@@ -70,6 +70,29 @@ ttb_indx sub2ind(const SubType& sub,
   return idx;
 }
 
+// Convert global_subscript to linear index
+template <typename SubType, typename ExecSpace>
+KOKKOS_INLINE_FUNCTION
+ttb_indx global_sub2ind(const SubType& sub,
+                        const IndxArrayT<ExecSpace>& siz,
+                        const IndxArrayT<ExecSpace>& lower)
+{
+  const ttb_indx nd = siz.size();
+  assert(lower.size() == nd);
+  for (ttb_indx i=0; i<nd; ++i) {
+    assert(sub[i] >= lower[i]);
+    assert(sub[i]-lower[i] < siz[i]);
+  }
+
+  ttb_indx idx = 0;
+  ttb_indx cumprod = 1;
+  for (ttb_indx i=0; i<nd; ++i) {
+    idx += (sub[i]-lower[i]) * cumprod;
+    cumprod *= siz[i];
+  }
+  return idx;
+}
+
 // Convert linear index to subscript
 template <typename SubType, typename ExecSpace>
 KOKKOS_INLINE_FUNCTION
@@ -90,6 +113,8 @@ void ind2sub(SubType& sub, const IndxArrayT<ExecSpace>& siz,
 
 }
 
+template <typename ExecSpace> class SptensorT;
+
 /* The Genten::Tensor class stores dense tensors. These are stored as
  * flat arrays using the Genten::Array class.
  */
@@ -98,50 +123,67 @@ template <typename ExecSpace> class TensorT;
 typedef TensorT<DefaultHostExecutionSpace> Tensor;
 
 template <typename ExecSpace>
-class TensorT
+class TensorImpl
 {
 
 public:
 
   typedef ExecSpace exec_space;
   typedef typename ArrayT<ExecSpace>::host_mirror_space host_mirror_space;
-  typedef TensorT<host_mirror_space> HostMirror;
+  typedef TensorImpl<host_mirror_space> HostMirror;
 
   // Empty construtor.
   KOKKOS_DEFAULTED_FUNCTION
-  TensorT() = default;
+  TensorImpl() = default;
 
   // Copy constructor
   KOKKOS_DEFAULTED_FUNCTION
-  TensorT(const TensorT& src) = default;
+  TensorImpl(const TensorImpl& src) = default;
 
   // Construct tensor of given size initialized to val.
-  TensorT(const IndxArrayT<ExecSpace>& sz, ttb_real val = 0.0) :
-    siz(sz.clone()) {
+  TensorImpl(const IndxArrayT<ExecSpace>& sz, ttb_real val = 0.0) :
+    siz(sz.clone()),
+    lower_bound(sz.size(),ttb_indx(0)),
+    upper_bound(siz.clone()) {
     siz_host = create_mirror_view(siz);
     deep_copy(siz_host, siz);
     values = ArrayT<ExecSpace>(siz_host.prod(), val);
   }
 
   // Construct tensor with given size and values
-  TensorT(const IndxArrayT<ExecSpace>& sz,
-          const ArrayT<ExecSpace>& vals) : siz(sz), values(vals) {
+  TensorImpl(const IndxArrayT<ExecSpace>& sz,
+             const ArrayT<ExecSpace>& vals) :
+    siz(sz), values(vals),
+    lower_bound(sz.size(),ttb_indx(0)),
+    upper_bound(siz.clone()) {
+    siz_host = create_mirror_view(siz);
+    deep_copy(siz_host, siz);
+  }
+
+  // Construct tensor with given size and values
+  TensorImpl(const IndxArrayT<ExecSpace>& sz,
+             const ArrayT<ExecSpace>& vals,
+             const IndxArrayT<ExecSpace>& l,
+             const IndxArrayT<ExecSpace>& u) :
+    siz(sz), values(vals),
+    lower_bound(l),
+    upper_bound(u) {
     siz_host = create_mirror_view(siz);
     deep_copy(siz_host, siz);
   }
 
   // Construct tensor for Sptensor
-  TensorT(const SptensorT<ExecSpace>& src);
+  TensorImpl(const SptensorT<ExecSpace>& src);
 
   // Construct tensor for Ktensor
-  TensorT(const KtensorT<ExecSpace>& src);
+  TensorImpl(const KtensorT<ExecSpace>& src);
 
   // Destructor.
   KOKKOS_DEFAULTED_FUNCTION
-  ~TensorT() = default;
+  ~TensorImpl() = default;
 
   // Copy another tensor (shallow copy)
-  TensorT& operator=(const TensorT& src) = default;
+  TensorImpl& operator=(const TensorImpl& src) = default;
 
   // Return the number of dimensions (i.e., the order).
   KOKKOS_INLINE_FUNCTION
@@ -165,11 +207,21 @@ public:
   KOKKOS_INLINE_FUNCTION
   ttb_indx numel() const { return values.size(); }
 
+   KOKKOS_INLINE_FUNCTION
+   ttb_real numel_float() const { return ttb_real(numel()); }
+
   // Convert subscript to linear index
   template <typename SubType>
   KOKKOS_INLINE_FUNCTION
   ttb_indx sub2ind(const SubType& sub) const {
     return Impl::sub2ind(sub, siz);
+  }
+
+  // Convert global subscript to linear index
+  template <typename SubType>
+  KOKKOS_INLINE_FUNCTION
+  ttb_indx global_sub2ind(const SubType& sub) const {
+    return Impl::global_sub2ind(sub, siz, lower_bound);
   }
 
    // Convert linear index to subscript
@@ -229,17 +281,30 @@ public:
   // We don't actually look at the values, and assume all are nonzero.
   KOKKOS_INLINE_FUNCTION
   ttb_indx nnz() const { return values.size(); }
-  ttb_indx global_nnz() const { return values.size(); }
 
   // Return the norm (sqrt of the sum of the squares of all entries).
   ttb_real norm() const { return values.norm(NormTwo); }
-  ttb_real global_norm() const { return values.norm(NormTwo); }
 
   // Return const reference to values array
   KOKKOS_INLINE_FUNCTION
   const ArrayT<ExecSpace>& getValues() const { return values; }
 
-private:
+  KOKKOS_INLINE_FUNCTION
+  ttb_indx lowerBound(const unsigned n) const {
+    assert(n < lower_bound.size());
+    return lower_bound[n];
+  }
+  KOKKOS_INLINE_FUNCTION
+  ttb_indx upperBound(const unsigned n) const {
+    assert(n < upper_bound.size());
+    return upper_bound[n];
+  }
+  KOKKOS_INLINE_FUNCTION
+  IndxArrayT<ExecSpace> getLowerBounds() const { return lower_bound; }
+  KOKKOS_INLINE_FUNCTION
+  IndxArrayT<ExecSpace> getUpperBounds() const { return upper_bound; }
+
+protected:
 
   // Size of the tensor
   IndxArrayT<ExecSpace> siz;
@@ -248,6 +313,76 @@ private:
   // Entries of the tensor
   // TBD describe storage order via ind2sub and sub2ind
   ArrayT<ExecSpace> values;
+
+  // Lower and upper bounds of tensor global indices
+  IndxArrayT<ExecSpace> lower_bound;
+  IndxArrayT<ExecSpace> upper_bound;
+};
+
+template <typename ExecSpace>
+class TensorT : public TensorImpl<ExecSpace>, public DistTensor<ExecSpace>
+{
+public:
+
+  using impl_type = TensorImpl<ExecSpace>;
+  using dist_type = DistTensor<ExecSpace>;
+  using exec_space = typename impl_type::exec_space;
+  using host_mirror_space = typename impl_type::host_mirror_space;
+  using HostMirror = TensorT<host_mirror_space>;
+
+  TensorT(const IndxArrayT<ExecSpace>& sz, ttb_real val = 0.0) :
+    impl_type(sz,val), dist_type(sz.size()) {}
+  TensorT(const IndxArrayT<ExecSpace>& sz, const ArrayT<ExecSpace>& vals) :
+    impl_type(sz,vals), dist_type(sz.size()) {}
+  TensorT(const IndxArrayT<ExecSpace>& sz, const ArrayT<ExecSpace>& vals,
+          const IndxArrayT<ExecSpace>& l, const IndxArrayT<ExecSpace>& u) :
+    impl_type(sz,vals,l,u), dist_type(sz.size()) {}
+  TensorT(const SptensorT<ExecSpace>& src) :
+    impl_type(src), dist_type(src.ndims()) {}
+  TensorT(const KtensorT<ExecSpace>& src) :
+    impl_type(src), dist_type(src.ndims()) {}
+
+  TensorT() = default;
+  TensorT(TensorT&&) = default;
+  TensorT(const TensorT&) = default;
+  TensorT& operator=(TensorT&&) = default;
+  TensorT& operator=(const TensorT&) = default;
+  ~TensorT() = default;
+
+  impl_type& impl() { return *this; }
+  const impl_type& impl() const { return *this; }
+
+  ttb_indx global_numel() const
+  {
+    ttb_indx numel = impl_type::numel();
+    if (this->pmap != nullptr)
+      numel = this->pmap->gridAllReduce(numel);
+    return numel;
+  }
+
+  ttb_real global_numel_float() const
+  {
+    ttb_real numel = impl_type::numel_float();
+    if (this->pmap != nullptr)
+      numel = this->pmap->gridAllReduce(numel);
+    return numel;
+  }
+
+  ttb_indx global_nnz() const
+  {
+    ttb_indx nnz = impl_type::nnz();
+    if (this->pmap != nullptr)
+      nnz = this->pmap->gridAllReduce(nnz);
+    return nnz;
+  }
+
+  ttb_real global_norm() const
+  {
+    ttb_real nrm_sqrd = this->values.dot(this->values);
+    if (this->pmap != nullptr)
+      nrm_sqrd = this->pmap->gridAllReduce(nrm_sqrd);
+    return std::sqrt(nrm_sqrd);
+  }
 
 };
 
@@ -265,7 +400,9 @@ TensorT<Space>
 create_mirror_view(const Space& s, const TensorT<ExecSpace>& a)
 {
   return TensorT<Space>( create_mirror_view(s, a.size()),
-                         create_mirror_view(s, a.getValues()) );
+                         create_mirror_view(s, a.getValues()),
+                         create_mirror_view(s, a.getLowerBounds()),
+                         create_mirror_view(s, a.getUpperBounds()) );
 }
 
 template <typename E1, typename E2>
@@ -274,6 +411,8 @@ void deep_copy(TensorT<E1>& dst, const TensorT<E2>& src)
   deep_copy( dst.size(), src.size() );
   deep_copy( dst.size_host(), src.size_host() );
   deep_copy( dst.getValues(), src.getValues() );
+  deep_copy( dst.getLowerBounds(), src.getLowerBounds() );
+  deep_copy( dst.getUpperBounds(), src.getUpperBounds() );
 }
 
 }

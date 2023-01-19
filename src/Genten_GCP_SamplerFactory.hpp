@@ -40,79 +40,60 @@
 
 #pragma once
 
-#include <ostream>
-
-#include "Genten_DistTensorContext.hpp"
+#include "Genten_GCP_Sampler.hpp"
+#include "Genten_GCP_UniformSampler.hpp"
+#include "Genten_GCP_StratifiedSampler.hpp"
+#include "Genten_GCP_SemiStratifiedSampler.hpp"
+#include "Genten_GCP_DenseSampler.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_AlgParams.hpp"
-#include "Genten_GCP_SGD_Step.hpp"
-#include "Genten_GCP_StreamingHistory.hpp"
-#include "Genten_PerfHistory.hpp"
 
 namespace Genten {
 
-  //! Class implementing the generalized CP decomposition using SGD approach
-  template <typename TensorType, typename LossFunction>
-  class GCPSGD {
-  public:
-    using exec_space = typename TensorType::exec_space;
+  template <typename LossFunction, typename ExecSpace>
+  Sampler<SptensorT<ExecSpace>,LossFunction>*
+  createSampler(const SptensorT<ExecSpace>& X, const KtensorT<ExecSpace>& u0,
+                const AlgParams& algParams)
+  {
+    using tensor_type = SptensorT<ExecSpace>;
+    Sampler<tensor_type,LossFunction> *sampler = nullptr;
+    if (algParams.sampling_type == GCP_Sampling::Uniform)
+      sampler = new Genten::UniformSampler<tensor_type,LossFunction>(
+        X, u0, algParams);
+    else if (algParams.sampling_type == GCP_Sampling::Stratified)
+      sampler = new Genten::StratifiedSampler<ExecSpace,LossFunction>(
+        X, u0, algParams);
+    else if (algParams.sampling_type == GCP_Sampling::SemiStratified)
+      sampler = new Genten::SemiStratifiedSampler<ExecSpace,LossFunction>(
+        X, u0, algParams, true);
+    else if (algParams.sampling_type == GCP_Sampling::Dense)
+      sampler = new Genten::DenseSampler<tensor_type,LossFunction>(
+        X, u0, algParams);
+    else
+      Genten::error("Genten::gcp_sgd - unknown sampling type");
 
-  protected:
-    const LossFunction loss_func;
-    const ttb_indx mode_beg;
-    const ttb_indx mode_end;
-    const AlgParams algParams;
-    Impl::GCP_SGD_Step<exec_space,LossFunction> *stepper;
+    return sampler;
+  }
 
-  public:
-    GCPSGD(const KtensorT<exec_space>& u,
-           const LossFunction& loss_func,
-           const ttb_indx mode_begin,
-           const ttb_indx mode_end,
-           const AlgParams& algParams);
+  template <typename LossFunction, typename ExecSpace>
+  Sampler<TensorT<ExecSpace>,LossFunction>*
+  createSampler(const TensorT<ExecSpace>& X, const KtensorT<ExecSpace>& u0,
+                const AlgParams& algParams)
+  {
+    using tensor_type = TensorT<ExecSpace>;
+    Sampler<tensor_type,LossFunction> *sampler = nullptr;
+    if (algParams.sampling_type == GCP_Sampling::Uniform ||
+        algParams.sampling_type == GCP_Sampling::Stratified ||
+        algParams.sampling_type == GCP_Sampling::SemiStratified)
+      sampler = new Genten::UniformSampler<tensor_type,LossFunction>(
+        X, u0, algParams);
+    else if (algParams.sampling_type == GCP_Sampling::Dense)
+      sampler = new Genten::DenseSampler<tensor_type,LossFunction>(
+        X, u0, algParams);
+    else
+      Genten::error("Genten::gcp_sgd - unknown sampling type");
 
-    GCPSGD(const KtensorT<exec_space>& u,
-           const LossFunction& loss_func,
-           const AlgParams& algParams);
-
-    ~GCPSGD();
-
-    void reset();
-
-    void solve(TensorType& X,
-               KtensorT<exec_space>& u0,
-               const ttb_real penalty,
-               ttb_indx& numEpochs,
-               ttb_real& fest,
-               PerfHistory& perfInfo,
-               std::ostream& out,
-               const bool print_hdr,
-               const bool print_ftr,
-               const bool print_itn) const;
-
-    void solve(TensorType& X,
-               KtensorT<exec_space>& u,
-               const StreamingHistory<exec_space>& hist,
-               const ttb_real penalty,
-               ttb_indx& numEpochs,
-               ttb_real& fest,
-               ttb_real& ften,
-               PerfHistory& perfInfo,
-               std::ostream& out,
-               const bool print_hdr,
-               const bool print_ftr,
-               const bool print_itn) const;
-  };
-
-  //! Compute the generalized CP decomposition of a tensor using SGD approach
-  template<typename TensorType>
-  void gcp_sgd (TensorType& x,
-                KtensorT<typename TensorType::exec_space>& u,
-                const AlgParams& algParams,
-                ttb_indx& numIters,
-                ttb_real& resNorm,
-                PerfHistory& perfInfo,
-                std::ostream& out);
-
+    return sampler;
+  }
 }
