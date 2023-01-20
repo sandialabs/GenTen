@@ -48,9 +48,11 @@
 
 #include <ostream>
 
+#include "Genten_Tensor.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
 #include "Genten_AlgParams.hpp"
+#include "Genten_PerfHistory.hpp"
 
 #include "Teuchos_ParameterList.hpp"
 
@@ -58,9 +60,9 @@ namespace Genten {
 
   //! Compute the CP decomposition of a tensor based on a general objective.
   /*!
-   *  Compute an estimate of the best rank-R CP model of a tensor X
-   *  for a given loss function.  The input X currently must be a (sparse)
-   *  Sptensor.  The result is a Ktensor.
+   *  Compute an estimate of the best rank-R GCP model of a tensor X
+   *  for a given loss function.  The input X currently must be a dense
+   *  tensor.  The result is a Ktensor.
    *
    *  An initial guess of factor matrices must be provided, which must be
    *  nonzero.
@@ -71,23 +73,22 @@ namespace Genten {
    *                        mode of x, and the number of components determines
    *                        how many will be in the result.
    *                        Output contains resulting factorization Ktensor.
-   *  @param[in] loss_type  Type of loss function defining GCP optimization
-   *                        param
-   *  @param[in] params     ROL solver parameters
+   *  @param[in] algParams  Genten algorithm/solver parameters
+   *  @param[out] history   Performance history for each step of the algorithm
+   *  @param[in] rol_params ROL solver parameters
    *  @param[out] stream    ROL output stream (set to null for no output)
-   *  @param[in] loss_eps   Perturbation size for loss function evaluation
    */
-  template<typename TensorT, typename ExecSpace>
-  void gcp_opt(const TensorT& x, KtensorT<ExecSpace>& u,
-               const AlgParams& algParams,
-               Teuchos::ParameterList& rol_params,
-               std::ostream* stream = nullptr);
+  template<typename ExecSpace>
+  void gcp_opt_rol(const TensorT<ExecSpace>& x, KtensorT<ExecSpace>& u,
+                   const AlgParams& algParams,
+                   PerfHistory& history,
+                   Teuchos::ParameterList& rol_params,
+                   std::ostream& stream = std::cout);
 
   //! Compute the CP decomposition of a tensor based on a general objective.
   /*!
-   *  Compute an estimate of the best rank-R CP model of a tensor X
-   *  for a given loss function.  The input X currently must be a (sparse)
-   *  Sptensor.  The result is a Ktensor.
+   *  Compute an estimate of the best rank-R GCP model of a tensor X
+   *  for a given loss function.  v
    *
    *  An initial guess of factor matrices must be provided, which must be
    *  nonzero.
@@ -101,20 +102,19 @@ namespace Genten {
    *                        mode of x, and the number of components determines
    *                        how many will be in the result.
    *                        Output contains resulting factorization Ktensor.
-   *  @param[in] loss_type  Type of loss function defining GCP optimization
-   *                        param
-   *  @param[in] tol        Stop tolerance for convergence of "fit function".
-   *  @param[in] maxIters   Maximum number of iterations allowed.
+   *  @param[in] algParams  Genten algorithm/solver parameters
+   *  @param[out] history   Performance history for each step of the algorithm
    *  @param[out] stream    ROL output stream (set to null for no output)
-   *  @param[in] loss_eps   Perturbation size for loss function evaluation
    */
   template<typename TensorT, typename ExecSpace>
-  void gcp_opt(const TensorT& x, KtensorT<ExecSpace>& u,
-               const AlgParams& algParams,
-               std::ostream* stream = nullptr)
+  void gcp_opt_rol(const TensorT& x, KtensorT<ExecSpace>& u,
+                   const AlgParams& algParams,
+                   PerfHistory& history,
+                   std::ostream& stream = std::cout)
   {
     // Setup ROL to do optimization algorithm similar to L-BFGS-B
-    Teuchos::ParameterList rol_params;
+    Teuchos::ParameterList params;
+    Teuchos::ParameterList& rol_params = params.sublist("ROL");
     Teuchos::ParameterList& step_params = rol_params.sublist("Step");
     step_params.set<std::string>("Type", "Line Search");
 
@@ -124,7 +124,13 @@ namespace Genten {
     status_params.set<double>("Step Tolerance", algParams.tol);
     status_params.set<int>("Iteration Limit", algParams.maxiters);
 
-    gcp_opt(x, u, algParams, rol_params, stream);
+    // Print iterations
+    if (algParams.printitn > 0) {
+      Teuchos::ParameterList& general_params = rol_params.sublist("General");
+      general_params.set("Output Level", 1);
+    }
+
+    gcp_opt_rol(x, u, algParams, history, rol_params, stream);
   }
 
 }

@@ -164,7 +164,7 @@ namespace Genten {
 
     // Run CP
     {
-      TEUCHOS_FUNC_TIME_MONITOR("CP_Optimization");
+      GENTEN_TIME_MONITOR("CP_Optimization");
       solver.solve(stream);
       z->copyToKtensor(u);
     }
@@ -186,12 +186,6 @@ namespace Genten {
       stream << "Final fit = " << fit << std::endl;
       stream << "Total time = " << timer.getTotalTime(0) << std::endl
              << std::endl;
-    }
-
-    // Print Teuchos timing info
-    if (algParams.timings) {
-      Teuchos::TimeMonitor::summarize(stream);
-      stream << std::endl;
     }
   }
 

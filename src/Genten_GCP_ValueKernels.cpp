@@ -86,7 +86,7 @@ namespace Genten {
 
         Policy policy(N, TeamSize, VectorSize);
         ttb_real v = 0.0;
-        Kokkos::parallel_reduce("GCP_RolObjective::value",
+        Kokkos::parallel_reduce("GCP_Value",
                                 policy, KOKKOS_LAMBDA(const TeamMember& team,
                                                       ttb_real& d)
         {
@@ -102,6 +102,79 @@ namespace Genten {
 
             // Evaluate link function
             d += w[i] * f.value(X.value(i), m_val);
+          }
+        }, v);
+        Kokkos::fence();  // ensure v is updated before using it
+        value = v;
+      }
+    };
+
+    template <typename ExecSpace, typename loss_type>
+    struct GCP_Value_Dense {
+      typedef TensorT<ExecSpace> tensor_type;
+      typedef KtensorT<ExecSpace> Ktensor_type;
+
+      const tensor_type XX;
+      const Ktensor_type MM;
+      const ttb_real ww;
+      const loss_type ff;
+
+      ttb_real value;
+
+      GCP_Value_Dense(const tensor_type& X_, const Ktensor_type& M_,
+                      const ttb_real& w_, const loss_type& f_) :
+        XX(X_), MM(M_), ww(w_), ff(f_) {}
+
+      template <unsigned FBS, unsigned VS>
+      void run()
+      {
+        typedef typename tensor_type::exec_space exec_space;
+        typedef Kokkos::TeamPolicy<exec_space> Policy;
+        typedef typename Policy::member_type TeamMember;
+        typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+        const auto X = XX.impl();
+        const Ktensor_type M = MM;
+        const ttb_real w = ww;
+        const loss_type f = ff;
+
+        static const bool is_gpu = Genten::is_gpu_space<exec_space>::value;
+        static const unsigned RowBlockSize = 128;
+        static const unsigned FacBlockSize = FBS;
+        static const unsigned VectorSize = is_gpu ? VS : 1;
+        static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
+
+        /*const*/ ttb_indx nnz = X.numel();
+        /*const*/ unsigned nd = M.ndims();
+        const ttb_indx N = (nnz+RowBlockSize-1)/RowBlockSize;
+
+        Policy policy(N, TeamSize, VectorSize);
+        ttb_real v = 0.0;
+        Kokkos::parallel_reduce("GCP_Value_Dense",
+                                policy, KOKKOS_LAMBDA(const TeamMember& team,
+                                                      ttb_real& d)
+        {
+          TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
+          ttb_indx *ind = &(team_ind(team.team_rank(),0));
+
+          for (ttb_indx ii=team.team_rank(); ii<RowBlockSize; ii+=TeamSize) {
+            const ttb_indx i = team.league_rank()*RowBlockSize + ii;
+            if (i >= nnz)
+              continue;
+
+            // Compute subscripts for this entry
+            Kokkos::single( Kokkos::PerThread( team ), [&] ()
+            {
+              X.ind2sub(ind,i);
+            });
+
+            // Compute Ktensor value
+            ttb_real m_val =
+              compute_Ktensor_value<exec_space, FacBlockSize, VectorSize>(
+                team, M, ind);
+
+            // Evaluate link function
+            d += w * f.value(X[i], m_val);
           }
         }, v);
         Kokkos::fence();  // ensure v is updated before using it
@@ -344,6 +417,29 @@ namespace Genten {
       }
     }
 
+    template <typename ExecSpace, typename loss_type>
+    ttb_real gcp_value(const TensorT<ExecSpace>& X,
+                       const KtensorT<ExecSpace>& M,
+                       const ttb_real w,
+                       const loss_type& f)
+    {
+      GENTEN_START_TIMER("local objective");
+      ttb_real val = 0.0;
+      GCP_Value_Dense<ExecSpace,loss_type> kernel(X,M,w,f);
+      run_row_simd_kernel(kernel, M.ncomponents());
+      val = kernel.value;
+      GENTEN_STOP_TIMER("local objective");
+
+      if (M.getProcessorMap() != nullptr) {
+        GENTEN_START_TIMER("grid all-reduce");
+        Kokkos::fence();
+        val = M.getProcessorMap()->gridAllReduce(val);
+        GENTEN_STOP_TIMER("grid all-reduce");
+      }
+
+      return val;
+    }
+
   }
 
 }
@@ -366,7 +462,13 @@ namespace Genten {
                               const ArrayT<SPACE>& w,                   \
                               const LOSS& f,                            \
                               ttb_real& val_ten,                        \
-                              ttb_real& val_his);
+                              ttb_real& val_his);                       \
+                                                                        \
+  template ttb_real                                                     \
+  Impl::gcp_value<SPACE,LOSS>(const TensorT<SPACE>& X,                  \
+                              const KtensorT<SPACE>& M,                 \
+                              const ttb_real w,                         \
+                              const LOSS& f);                           \
 
 #define INST_MACRO(SPACE)                                               \
   LOSS_INST_MACRO(SPACE,GaussianLossFunction)                           \

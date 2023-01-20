@@ -674,12 +674,17 @@ IF (ENABLE_GCP)
     ${Genten_SOURCE_DIR}/src/Genten_Online_GCP.cpp
     )
 
-  # Disable gcp_opt because it doesn't work
-  # IF (ENABLE_ROL)
-  #   SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
-  #     ${Genten_SOURCE_DIR}/src/rol/Genten_GCP_Opt.cpp
-  #     )
-  # ENDIF()
+  IF (ENABLE_LBFGSB)
+    SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+      ${Genten_SOURCE_DIR}/src/lbfgsb/Genten_GCP_Opt_Lbfgsb.cpp
+      )
+  ENDIF()
+
+  IF (ENABLE_ROL)
+    SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+      ${Genten_SOURCE_DIR}/src/rol/Genten_GCP_Opt_Rol.cpp
+      )
+  ENDIF()
 ENDIF()
 
 #---- Tell CMake to build the library.

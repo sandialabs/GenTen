@@ -59,8 +59,13 @@
 #ifdef HAVE_DIST
 #include "Genten_DistGCP.hpp"
 #endif
+#ifdef HAVE_LBFGSB
+//#include "Genten_GCP_Opt_Lbfgsb.hpp"
+#endif
 #ifdef HAVE_ROL
-#include "Genten_GCP_Opt.hpp"
+#include "Genten_GCP_Opt_Rol.hpp"
+#include "Teuchos_RCP.hpp"
+#include "Teuchos_XMLParameterListHelpers.hpp"
 #endif
 #endif
 #ifdef HAVE_TEUCHOS
@@ -218,9 +223,8 @@ driver(const DistTensorContext<ExecSpace>& dtc,
     Genten::error("gcp-sgd-dist requires MPI support!");
 #endif
   }
-#ifdef HAVE_ROL
   else if (algParams.method == Genten::Solver_Method::GCP_OPT) {
-    Genten::error("gcp-opt is disabled because it doesn't work!");
+    Genten::error("gcp-opt is not implemented for sparse tensors since the gradient evaluation involves a dense MTTKRP.  Try \"gcp-sgd\" instead or convert your tensor to dense using the \"convert_tensor\" utility.");
     // // Run GCP
     // Teuchos::RCP<Teuchos::ParameterList> rol_params;
     // if (algParams.rolfilename != "")
@@ -233,7 +237,6 @@ driver(const DistTensorContext<ExecSpace>& dtc,
     // timer.stop(2);
     // out << "GCP took " << timer.getTotalTime(2) << " seconds\n";
   }
-#endif
 #endif
   else {
     Genten::error(std::string("Unknown decomposition method:  ") +
@@ -377,6 +380,37 @@ driver(const DistTensorContext<ExecSpace>& dtc,
   else if (algParams.method == Genten::Solver_Method::GCP_SGD &&
            algParams.fuse_sa) {
     Genten::error("Fused-SA GCP-SGD method does not work with dense tensors");
+  }
+  else if (algParams.method == Genten::Solver_Method::GCP_OPT) {
+    if (algParams.opt_method == Genten::Opt_Method::LBFGSB) {
+#ifdef HAVE_LBFGSB
+      // // Run GCP-OPT using L-BFGS-B.  It does not support MPI parallelism
+      // if (dtc.nprocs() > 1)
+      //   Genten::error("GCP-OPT using L-BFGS-B does not support MPI parallelism with > 1 processor.  Try ROL instead.");
+      // gcp_opt_lbfgsb(x, u, algParams, history);
+#else
+      Genten::error("L-BFGS-B requested but not available!");
+#endif
+    }
+    else if (algParams.opt_method == Genten::Opt_Method::ROL) {
+#ifdef HAVE_ROL
+      // Run GCP-OPT using ROL
+      Teuchos::RCP<Teuchos::ParameterList> rol_params;
+      if (algParams.rolfilename != "")
+        rol_params = Teuchos::getParametersFromXmlFile(algParams.rolfilename);
+      if (rol_params != Teuchos::null)
+        gcp_opt_rol(x, u, algParams, history, *rol_params, out);
+      else
+        gcp_opt_rol(x, u, algParams, history, out);
+#else
+      Genten::error("ROL requested but not available!");
+#endif
+    }
+    else
+      Genten::error("Invalid opt method!");
+    timer.stop(2);
+    if (algParams.timings)
+      out << "GCP-OPT took " << timer.getTotalTime(2) << " seconds\n";
   }
 #endif
   else {
