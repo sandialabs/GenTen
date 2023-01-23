@@ -82,6 +82,8 @@ namespace Genten {
       return dku;
     }
 
+    loss_function_type lossFunction() const { return f; }
+
   protected:
 
     tensor_type X;

@@ -683,6 +683,7 @@ IF (ENABLE_GCP)
   IF (ENABLE_ROL)
     SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
       ${Genten_SOURCE_DIR}/src/rol/Genten_GCP_Opt_Rol.cpp
+      ${Genten_SOURCE_DIR}/src/rol/Genten_GCP_RolObjective.cpp
       )
   ENDIF()
 ENDIF()

@@ -41,13 +41,12 @@
 #pragma once
 
 #include "ROL_Objective.hpp"
+#include "Genten_Tensor.hpp"
+#include "Genten_Ktensor.hpp"
+#include "Genten_AlgParams.hpp"
+#include "Genten_PerfHistory.hpp"
 #include "Genten_RolKokkosVector.hpp"
 #include "Genten_RolKtensorVector.hpp"
-#include "Genten_GCP_Model.hpp"
-#include "Genten_PerfHistory.hpp"
-#include "Genten_SystemTimer.hpp"
-
-#include "Teuchos_TimeMonitor.hpp"
 
 // Choose implementation of ROL::Vector (KtensorVector or KokkosVector)
 #define USE_KTENSOR_VECTOR 0
@@ -57,152 +56,39 @@
 // when using RolKokkosVector.
 #define COPY_KTENSOR 0
 
-
-
 namespace Genten {
 
-  //! Implementation of ROL::Objective for GCP problem
-  template <typename ExecSpace, typename LossFunction>
-  class GCP_RolObjective : public ROL::Objective<ttb_real> {
-
+  template <typename ExecSpace>
+  class GCP_RolObjectiveBase : public ROL::Objective<ttb_real> {
   public:
-
-    typedef TensorT<ExecSpace> tensor_type;
-    typedef LossFunction loss_function_type;
-    typedef typename tensor_type::exec_space exec_space;
-    typedef KtensorT<exec_space> ktensor_type;
+    typedef ExecSpace exec_space;
 #if USE_KTENSOR_VECTOR
     typedef RolKtensorVector<exec_space> vector_type;
 #else
     typedef RolKokkosVector<exec_space> vector_type;
 #endif
 
-    GCP_RolObjective(const tensor_type& x,
-                     const ktensor_type& m,
-                     const loss_function_type& func,
-                     const AlgParams& algParams,
-                     PerfHistory& h);
+    GCP_RolObjectiveBase() = default;
+    virtual ~GCP_RolObjectiveBase() {}
 
-    virtual ~GCP_RolObjective() {}
+    virtual ROL::Ptr<vector_type> createDesignVector() const = 0;
 
-    virtual void update(const ROL::Vector<ttb_real>& xx, ROL::UpdateType type,
-                          int iter) override;
+    virtual std::string lossFunctionName() const = 0;
 
-    virtual void update(const ROL::Vector<ttb_real> &xx, bool flag, int iter) override;
+    virtual bool lossFunctionHasLowerBound() const = 0;
 
-    virtual ttb_real value(const ROL::Vector<ttb_real>& x, ttb_real& tol) override;
+    virtual bool lossFunctionHasUpperBound() const = 0;
 
-    virtual void gradient(ROL::Vector<ttb_real>& g,
-                          const ROL::Vector<ttb_real>& x, ttb_real &tol) override;
+    virtual ttb_real lossFunctionLowerBound() const = 0;
 
-    ROL::Ptr<vector_type> createDesignVector() const
-    {
-      return ROL::makePtr<vector_type>(M, false, gcp_model.getDistKtensorUpdate());
-    }
-
-  protected:
-
-    ktensor_type M, G;
-    GCP_Model<exec_space, loss_function_type> gcp_model;
-    PerfHistory& history;
-    SystemTimer timer;
-
+    virtual ttb_real lossFunctionUpperBound() const = 0;
   };
 
-  template <typename ExecSpace, typename LossFunction>
-  GCP_RolObjective<ExecSpace,LossFunction>::
-  GCP_RolObjective(const tensor_type& x,
-                   const ktensor_type& m,
-                   const loss_function_type& func,
-                   const AlgParams& algParams,
-                   PerfHistory& h) :
-    M(m), gcp_model(x, m, func, algParams), history(h), timer(1)
-  {
-#if COPY_KTENSOR
-    const ttb_indx nc = M.ncomponents();
-    const ttb_indx nd = M.ndims();
-    G = ktensor_type(nc, nd, x.size(), M.getProcessorMap());
-#endif
-    timer.start(0);
-    history.addEmpty();
-    history.lastEntry().iteration = 0;
-  }
-
-  // Compute information that is common to both value() and gradient()
-  // when a new design vector is computed
-  template <typename ExecSpace, typename LossFunction>
-  void
-  GCP_RolObjective<ExecSpace,LossFunction>::
-  update(const ROL::Vector<ttb_real>& xx, ROL::UpdateType type, int iter)
-  {
-    GENTEN_TIME_MONITOR("GCP_RolObjective::update");
-
-    gcp_model.update(M);
-
-    // If the step was accepted, record the time and add a new working entry
-    if (type == ROL::UpdateType::Accept) {
-      const ttb_indx iter = history.lastEntry().iteration;
-      history.lastEntry().cum_time = timer.getTotalTime(0);
-      history.addEmpty();
-      history.lastEntry().iteration = iter+1;
-    }
-  }
-
-  template <typename ExecSpace, typename LossFunction>
-  void
-  GCP_RolObjective<ExecSpace,LossFunction>::
-  update(const ROL::Vector<ttb_real>& xx, bool flag, int iter)
-  {
-    update(xx, ROL::UpdateType::Accept, iter);
-  }
-
-  template <typename ExecSpace, typename LossFunction>
-  ttb_real
-  GCP_RolObjective<ExecSpace,LossFunction>::
-  value(const ROL::Vector<ttb_real>& xx, ttb_real& tol)
-  {
-    GENTEN_TIME_MONITOR("GCP_RolObjective::value");
-
-    const vector_type& x = dynamic_cast<const vector_type&>(xx);
-
-    // Convert input vector to a Ktensor
-    M = x.getKtensor();
-#if COPY_KTENSOR
-    x.copyToKtensor(M);
-#endif
-
-    ttb_real res = gcp_model.value(M);
-    history.lastEntry().residual = res;
-
-    return res;
-  }
-
-  template <typename ExecSpace, typename LossFunction>
-  void
-  GCP_RolObjective<ExecSpace,LossFunction>::
-  gradient(ROL::Vector<ttb_real>& gg, const ROL::Vector<ttb_real>& xx,
-           ttb_real &tol)
-  {
-    GENTEN_TIME_MONITOR("GCP_RolObjective::gradient");
-
-    const vector_type& x = dynamic_cast<const vector_type&>(xx);
-    vector_type& g = dynamic_cast<vector_type&>(gg);
-
-    // Convert input vector to a Ktensor
-    M = x.getKtensor();
-    G = g.getKtensor();
-#if COPY_KTENSOR
-    x.copyToKtensor(M);
-#endif
-
-    gcp_model.gradient(G, M);
-
-    // Convert Ktensor to vector
-#if COPY_KTENSOR
-    g.copyFromKtensor(G);
-#endif
-
-    history.lastEntry().grad_norm = g.normInf();
-  }
+  template <typename ExecSpace>
+  Teuchos::RCP< GCP_RolObjectiveBase<ExecSpace> >
+  GCP_createRolObjective(const TensorT<ExecSpace>& x,
+                         const KtensorT<ExecSpace>& m,
+                         const AlgParams& algParams,
+                         PerfHistory& h);
 
 }

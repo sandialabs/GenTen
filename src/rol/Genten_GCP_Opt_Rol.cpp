@@ -65,16 +65,23 @@
 
 namespace Genten {
 
-namespace Impl {
-
-template<typename TensorT, typename ExecSpace, typename LossFunction>
-void gcp_opt_rol_impl(const TensorT& x, KtensorT<ExecSpace>& u,
-                      const LossFunction& loss_func,
-                      const AlgParams& algParams,
-                      PerfHistory& history,
-                      Teuchos::ParameterList& params,
-                      std::ostream& stream)
+template<typename ExecSpace>
+void gcp_opt_rol(const TensorT<ExecSpace>& x, KtensorT<ExecSpace>& u,
+                 const AlgParams& algParams,
+                 PerfHistory& history,
+                 Teuchos::ParameterList& params,
+                 std::ostream& stream)
 {
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::gcp_opt_rol");
+#endif
+
+  // Check size compatibility of the arguments.
+  if (u.isConsistent() == false)
+    Genten::error("Genten::gcp_opt - ktensor u is not consistent");
+  if (x.ndims() != u.ndims())
+    Genten::error("Genten::gcp_opt - u and x have different num dims");
+
   const ProcessorMap* pmap = u.getProcessorMap();
 
   Genten::SystemTimer timer(1, pmap);
@@ -84,32 +91,11 @@ void gcp_opt_rol_impl(const TensorT& x, KtensorT<ExecSpace>& u,
   // does not include gradients w.r.t. weights
   u.distribute(0);
 
-  if (algParams.printitn > 0) {
-    const ttb_indx nc = u.ncomponents();
-    stream << std::endl
-           << "GCP-OPT (ROL):" << std::endl;
-    stream << "  CP Rank: " << nc << std::endl
-           << "  function type: " << loss_func.name() << std::endl;
-    if (loss_func.has_lower_bound())
-      stream << "  Lower bound: "
-             << std::setprecision(2) << std::scientific
-             << loss_func.lower_bound() << std::endl;
-    if (loss_func.has_upper_bound())
-      stream << "  Upper bound: "
-             << std::setprecision(2) << std::scientific
-             << loss_func.upper_bound() << std::endl;
-    stream << "  Gradient method: "
-           << MTTKRP_All_Method::names[algParams.mttkrp_all_method];
-    if (algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated)
-      stream << " (" << MTTKRP_Method::names[algParams.mttkrp_method] << ")";
-    stream << " MTTKRP" << std::endl;
-  }
-
   // Create ROL interface
-  typedef Genten::GCP_RolObjective<ExecSpace, LossFunction> objective_type;
+  typedef Genten::GCP_RolObjectiveBase<ExecSpace> objective_type;
   typedef typename objective_type::vector_type vector_type;
-  ROL::Ptr<objective_type> objective =
-    ROL::makePtr<objective_type>(x, u, loss_func, algParams, history);
+  ROL::Ptr<objective_type> objective = GCP_createRolObjective(
+    x, u, algParams, history);
   ROL::Ptr<vector_type> z = objective->createDesignVector();
   z->copyFromKtensor(u);
   auto g = z->dual().clone();
@@ -120,14 +106,36 @@ void gcp_opt_rol_impl(const TensorT& x, KtensorT<ExecSpace>& u,
     ROL::makePtr< ROL::Problem<ttb_real> >(objective, z, g);
 
   // Create constraints
-  if (loss_func.has_lower_bound() || loss_func.has_upper_bound()) {
+  if (objective->lossFunctionHasLowerBound() ||
+      objective->lossFunctionHasUpperBound()) {
     ROL::Ptr<vector_type> lower = objective->createDesignVector();
     ROL::Ptr<vector_type> upper = objective->createDesignVector();
-    lower->setScalar(loss_func.lower_bound());
-    upper->setScalar(loss_func.upper_bound());
+    lower->setScalar(objective->lossFunctionLowerBound());
+    upper->setScalar(objective->lossFunctionUpperBound());
     ROL::Ptr<ROL::BoundConstraint<ttb_real> > bounds =
       ROL::makePtr<RolBoundConstraint<vector_type> >(lower, upper);
     problem->addBoundConstraint(bounds);
+  }
+
+  if (algParams.printitn > 0) {
+    const ttb_indx nc = u.ncomponents();
+    stream << std::endl
+           << "GCP-OPT (ROL):" << std::endl;
+    stream << "  CP Rank: " << nc << std::endl
+           << "  function type: " << objective->lossFunctionName() << std::endl;
+    if (objective->lossFunctionHasLowerBound())
+      stream << "  Lower bound: "
+             << std::setprecision(2) << std::scientific
+             << objective->lossFunctionLowerBound() << std::endl;
+    if (objective->lossFunctionHasUpperBound())
+      stream << "  Upper bound: "
+             << std::setprecision(2) << std::scientific
+             << objective->lossFunctionUpperBound() << std::endl;
+    stream << "  Gradient method: "
+           << MTTKRP_All_Method::names[algParams.mttkrp_all_method];
+    if (algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated)
+      stream << " (" << MTTKRP_Method::names[algParams.mttkrp_method] << ")";
+    stream << " MTTKRP" << std::endl;
   }
 
   // Finalize problem
@@ -164,46 +172,6 @@ void gcp_opt_rol_impl(const TensorT& x, KtensorT<ExecSpace>& u,
            << std::endl;
   }
 
-}
-
-}
-
-
-template<typename ExecSpace>
-void gcp_opt_rol(const TensorT<ExecSpace>& x, KtensorT<ExecSpace>& u,
-                 const AlgParams& algParams,
-                 PerfHistory& history,
-                 Teuchos::ParameterList& params,
-                 std::ostream& stream)
-{
-#ifdef HAVE_CALIPER
-  cali::Function cali_func("Genten::gcp_opt_rol");
-#endif
-
-  // Check size compatibility of the arguments.
-  if (u.isConsistent() == false)
-    Genten::error("Genten::gcp_opt - ktensor u is not consistent");
-  if (x.ndims() != u.ndims())
-    Genten::error("Genten::gcp_opt - u and x have different num dims");
-
-  // Dispatch implementation based on loss function type
-  if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
-    Impl::gcp_opt_rol_impl(x, u, GaussianLossFunction(algParams.loss_eps),
-                           algParams, history, params, stream);
-  else if (algParams.loss_function_type == GCP_LossFunction::Rayleigh)
-    Impl::gcp_opt_rol_impl(x, u, RayleighLossFunction(algParams.loss_eps),
-                           algParams, history, params, stream);
-  else if (algParams.loss_function_type == GCP_LossFunction::Gamma)
-    Impl::gcp_opt_rol_impl(x, u, GammaLossFunction(algParams.loss_eps),
-                           algParams, history, params, stream);
-  else if (algParams.loss_function_type == GCP_LossFunction::Bernoulli)
-    Impl::gcp_opt_rol_impl(x, u, BernoulliLossFunction(algParams.loss_eps),
-                           algParams, history, params, stream);
-  else if (algParams.loss_function_type == GCP_LossFunction::Poisson)
-    Impl::gcp_opt_rol_impl(x, u, PoissonLossFunction(algParams.loss_eps),
-                           algParams, history, params, stream);
-  else
-    Genten::error("Genten::gcp_opt - unknown loss function");
 }
 
 }
