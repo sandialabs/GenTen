@@ -147,12 +147,14 @@ namespace Genten {
         /*const*/ ttb_indx nnz = X.numel();
         /*const*/ unsigned nd = M.ndims();
         const ttb_indx N = (nnz+RowBlockSize-1)/RowBlockSize;
+        const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
 
         Policy policy(N, TeamSize, VectorSize);
         ttb_real v = 0.0;
-        Kokkos::parallel_reduce("GCP_Value_Dense",
-                                policy, KOKKOS_LAMBDA(const TeamMember& team,
-                                                      ttb_real& d)
+        Kokkos::parallel_reduce(
+          "GCP_Value_Dense",
+          policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+          KOKKOS_LAMBDA(const TeamMember& team, ttb_real& d)
         {
           TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
           ttb_indx *ind = &(team_ind(team.team_rank(),0));

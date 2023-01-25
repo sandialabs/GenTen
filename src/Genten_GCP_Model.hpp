@@ -84,6 +84,8 @@ namespace Genten {
 
     loss_function_type lossFunction() const { return f; }
 
+    ttb_real computeFit(const ktensor_type& M) const;
+
   protected:
 
     tensor_type X;
@@ -95,6 +97,8 @@ namespace Genten {
     DistKtensorUpdate<exec_space> *dku;
     mutable ktensor_type M_overlap, G_overlap;
 
+    ttb_real nrm_X_sq;
+
   };
 
   template <typename ExecSpace, typename LossFunction>
@@ -103,7 +107,7 @@ namespace Genten {
             const ktensor_type& M,
             const loss_function_type& func,
             const AlgParams& algParms) :
-    X(x), f(func), algParams(algParms), w(1.0/X.numel_float())
+    X(x), f(func), algParams(algParms)
   {
     dku = createKtensorUpdate(x, M, algParams);
     M_overlap = dku->createOverlapKtensor(M);
@@ -113,6 +117,10 @@ namespace Genten {
       if (x.size(i) != M_overlap[i].nRows())
         Genten::error("Genten::CP_Model - M and x have different size");
     }
+
+    nrm_X_sq = x.global_norm();
+    nrm_X_sq = nrm_X_sq*nrm_X_sq;
+    w = ttb_real(1.0)/nrm_X_sq;
   }
 
   template <typename ExecSpace, typename LossFunction>
@@ -150,6 +158,16 @@ namespace Genten {
 
     Impl::gcp_gradient(X, Y, M_overlap, w, f, G_overlap, algParams);
     dku->doExport(G, G_overlap);
+  }
+
+  template <typename ExecSpace, typename LossFunction>
+  ttb_real
+  GCP_Model<ExecSpace,LossFunction>::
+  computeFit(const ktensor_type& M) const
+  {
+    const ttb_real nrm_M_sq = M.normFsq();
+    const ttb_real dot = innerprod(X, M_overlap);
+    return ttb_real(1.0) - (nrm_X_sq + nrm_M_sq - ttb_real(2.0)*dot)/nrm_X_sq;
   }
 
 }

@@ -60,7 +60,7 @@
 #include "Genten_DistGCP.hpp"
 #endif
 #ifdef HAVE_LBFGSB
-//#include "Genten_GCP_Opt_Lbfgsb.hpp"
+#include "Genten_GCP_Opt_Lbfgsb.hpp"
 #endif
 #ifdef HAVE_ROL
 #include "Genten_GCP_Opt_Rol.hpp"
@@ -382,12 +382,13 @@ driver(const DistTensorContext<ExecSpace>& dtc,
     Genten::error("Fused-SA GCP-SGD method does not work with dense tensors");
   }
   else if (algParams.method == Genten::Solver_Method::GCP_OPT) {
+    timer.start(2);
     if (algParams.opt_method == Genten::Opt_Method::LBFGSB) {
 #ifdef HAVE_LBFGSB
-      // // Run GCP-OPT using L-BFGS-B.  It does not support MPI parallelism
-      // if (dtc.nprocs() > 1)
-      //   Genten::error("GCP-OPT using L-BFGS-B does not support MPI parallelism with > 1 processor.  Try ROL instead.");
-      // gcp_opt_lbfgsb(x, u, algParams, history);
+      // Run GCP-OPT using L-BFGS-B.  It does not support MPI parallelism
+      if (dtc.nprocs() > 1)
+        Genten::error("GCP-OPT using L-BFGS-B does not support MPI parallelism with > 1 processor.  Try ROL instead.");
+      gcp_opt_lbfgsb(x, u, algParams, history);
 #else
       Genten::error("L-BFGS-B requested but not available!");
 #endif

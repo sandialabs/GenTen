@@ -399,6 +399,79 @@ static nlohmann::json json_schema = R"(
               }
           }
       },
+      "gcp-opt": {
+          "type": "object",
+          "description": "GCP-OPT decomposition algorithm",
+          "additionalProperties": false,
+          "properties": {
+              "type": {
+                  "description": "Loss function type for GCP",
+                  "enum": ["gaussian", "rayleigh", "gamma", "bernoulli", "poisson"],
+                  "default": "gaussian"
+              },
+              "eps": {
+                  "description": "Perturbation of loss functions for entries near 0",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "maximum": 1.0,
+                  "default": 1e-10
+              },
+              "maxiters": {
+                  "description": "maximum iterations to perform",
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 100
+              },
+              "tol": {
+                  "description": "Stopping tolerance",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "default": 0.004
+              },
+              "mttkrp": {
+                  "$ref": "#/definitions/mttkrp"
+              },
+              "method": {
+                  "description": "Optimization method",
+                  "enum": ["lbfgsb", "rol"],
+                  "default": "lbfgsb"
+              },
+              "rol-file": {
+                  "description": "Path to ROL optimization settings",
+                  "type": "string",
+                  "default": ""
+              },
+              "factr": {
+                  "description": "factr parameter for L-BFGS-B",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "default": 1e7
+              },
+              "pgtol": {
+                  "description": "pgtol parameter for L-BFGS-B",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "default": 1e-5
+              },
+              "memory": {
+                  "description": "memory parameter for L-BFGS-B",
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 5
+              },
+              "total-iters": {
+                  "description": "Max total iterations for L-BFGS-B",
+                  "type": "integer",
+                  "minimum": 0,
+                  "default": 5000
+             },
+             "fit": {
+                  "description": "Compute fit metric",
+                  "type": "boolean",
+                  "default": false
+              }
+          }
+      },
       "gcp-sgd": {
           "type": "object",
           "description": "GCP-SGD decomposition algorithm",

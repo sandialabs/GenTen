@@ -106,8 +106,8 @@ namespace Genten {
    *  @param[out] history   Performance history for each step of the algorithm
    *  @param[out] stream    ROL output stream (set to null for no output)
    */
-  template<typename TensorT, typename ExecSpace>
-  void gcp_opt_rol(const TensorT& x, KtensorT<ExecSpace>& u,
+  template<typename ExecSpace>
+  void gcp_opt_rol(const TensorT<ExecSpace>& x, KtensorT<ExecSpace>& u,
                    const AlgParams& algParams,
                    PerfHistory& history,
                    std::ostream& stream = std::cout)
@@ -130,7 +130,7 @@ namespace Genten {
       general_params.set("Output Level", 1);
     }
 
-    gcp_opt_rol(x, u, algParams, history, rol_params, stream);
+    gcp_opt_rol(x, u, algParams, history, params, stream);
   }
 
 }

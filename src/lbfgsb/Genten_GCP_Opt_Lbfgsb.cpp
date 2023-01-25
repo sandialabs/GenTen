@@ -117,14 +117,14 @@ void gcp_opt_lbfgsb_impl(const TensorT<ExecSpace>& X,
 
   // Bounds
   std::vector<double> lower(n, loss_func.lower_bound());
-  std::vector<double> upper(n, loss_func.has_upper_bound());
+  std::vector<double> upper(n, loss_func.upper_bound());
   std::vector<integer> nbd(n);
   for (integer i=0; i<n; ++i) {
-    if (loss_func.has_lower_bound() && loss_func.has_upper_bound())
+    if (!loss_func.has_lower_bound() && !loss_func.has_upper_bound())
       nbd[i] = 0;
-    else if (loss_func.has_upper_bound())
+    else if (!loss_func.has_upper_bound())
       nbd[i] = 1;
-    else if (loss_func.has_lower_bound())
+    else if (!loss_func.has_lower_bound())
       nbd[i] = 3;
     else
       nbd[i] = 2;
@@ -152,6 +152,13 @@ void gcp_opt_lbfgsb_impl(const TensorT<ExecSpace>& X,
   logical lsave[LENGTH_LSAVE];
   integer isave[LENGTH_ISAVE];
   double  dsave[LENGTH_DSAVE];
+
+  const bool compute_fit = algParams.compute_fit;
+  ttb_real nrm_X_sq;
+  if (compute_fit) {
+    const ttb_real nrm_X = X.norm();
+    nrm_X_sq = nrm_X*nrm_X;
+  }
 
   history.addEmpty();
   GCP_Model<ExecSpace,LossFunction> gcp_model(X, u, loss_func, algParams);
@@ -183,6 +190,8 @@ void gcp_opt_lbfgsb_impl(const TensorT<ExecSpace>& X,
         history.resize(iters+1);
       history[iters].iteration = iters;
       history[iters].residual = f;
+      if (compute_fit)
+        history[iters].fit = gcp_model.computeFit(M);
       history[iters].grad_norm = nrmg;
       history[iters].cum_time = time;
 
@@ -193,8 +202,11 @@ void gcp_opt_lbfgsb_impl(const TensorT<ExecSpace>& X,
           const auto& h = history[print_iter];
           std::cout << "Iter " << std::setw(5) << print_iter+1
                     << ", f(x) = "
-                    << std::setprecision(6) << std::scientific << h.residual
-                    << ", ||grad||_infty = "
+                    << std::setprecision(6) << std::scientific << h.residual;
+          if (compute_fit)
+            std::cout << ", fit = "
+                      << std::setprecision(3) << std::scientific << h.fit;
+          std::cout << ", ||grad||_infty = "
                     << std::setprecision(2) << std::scientific << h.grad_norm
                     << ", t = "
                     << std::setprecision(2) << std::scientific << h.cum_time
@@ -218,8 +230,11 @@ void gcp_opt_lbfgsb_impl(const TensorT<ExecSpace>& X,
     const auto& h = history.lastEntry();
     std::cout << "Iter " << std::setw(5) << print_iter+1
               << ", f(x) = "
-              << std::setprecision(6) << std::scientific << h.residual
-              << ", ||grad||_infty = "
+              << std::setprecision(6) << std::scientific << h.residual;
+    if (compute_fit)
+      std::cout << ", fit = "
+                << std::setprecision(3) << std::scientific << h.fit;
+    std::cout << ", ||grad||_infty = "
               << std::setprecision(2) << std::scientific << h.grad_norm
               << ", t = "
               << std::setprecision(2) << std::scientific << h.cum_time
@@ -241,7 +256,14 @@ void gcp_opt_lbfgsb_impl(const TensorT<ExecSpace>& X,
       std::cout << "Reached maximum number of total iterations." << std::endl;
     else
       std::cout << Impl::findTaskString(task) << std::endl;
-    std::cout << "Total time = " << timer.getTotalTime(0) << std::endl
+    if (compute_fit) {
+      gcp_model.update(u);
+      const ttb_real fit = gcp_model.computeFit(u);
+      std::cout << "Final fit = " << std::setprecision(3) << std::scientific
+                << fit << std::endl;
+    }
+    std::cout << "Total time = " << std::setprecision(2) << std::scientific
+              << timer.getTotalTime(0) << std::endl
               << std::endl;
   }
 }

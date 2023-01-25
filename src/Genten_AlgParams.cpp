@@ -338,6 +338,17 @@ void Genten::AlgParams::parse(const ptree& input)
     }
   };
 
+  auto parse_cpopt = [&](const ptree& cpopt_input) {
+    parse_ptree_enum<Opt_Method>(cpopt_input, "method", opt_method);
+    parse_generic_solver_params(cpopt_input);
+    parse_ptree_value(cpopt_input, "rol-file", rolfilename);
+    parse_ptree_value(cpopt_input, "factr", factr, 0.0, DOUBLE_MAX);
+    parse_ptree_value(cpopt_input, "pgtol", pgtol, 0.0, DOUBLE_MAX);
+    parse_ptree_value(cpopt_input, "memory", memory, 0, INT_MAX);
+    parse_ptree_value(cpopt_input, "total-iters", max_total_iters, 0, INT_MAX);
+    parse_mttkrp(cpopt_input);
+  };
+
   // ktensor
   auto ktensor_input_o = input.get_child_optional("k-tensor");
   if (ktensor_input_o) {
@@ -375,23 +386,26 @@ void Genten::AlgParams::parse(const ptree& input)
   auto cpopt_input_o = input.get_child_optional("cp-opt");
   if (cpopt_input_o) {
     auto& cpopt_input = *cpopt_input_o;
-    parse_ptree_enum<Opt_Method>(cpopt_input, "method", opt_method);
-    parse_generic_solver_params(cpopt_input);
+    parse_cpopt(cpopt_input);
     parse_ptree_value(cpopt_input, "lower", lower, -DOUBLE_MAX, DOUBLE_MAX);
     parse_ptree_value(cpopt_input, "upper", upper, -DOUBLE_MAX, DOUBLE_MAX);
-    parse_ptree_value(cpopt_input, "rol-file", rolfilename);
-    parse_ptree_value(cpopt_input, "factr", factr, 0.0, DOUBLE_MAX);
-    parse_ptree_value(cpopt_input, "pgtol", pgtol, 0.0, DOUBLE_MAX);
-    parse_ptree_value(cpopt_input, "memory", memory, 0, INT_MAX);
-    parse_ptree_value(cpopt_input, "total-iters", max_total_iters, 0, INT_MAX);
     parse_ptree_enum<Hess_Vec_Method>(cpopt_input, "hess-vec", hess_vec_method);
     parse_ptree_enum<Hess_Vec_Tensor_Method>(cpopt_input, "hess-vec-tensor", hess_vec_tensor_method);
     parse_ptree_enum<Hess_Vec_Prec_Method>(cpopt_input, "hess-vec-prec", hess_vec_prec_method);
     parse_ptree_value(cpopt_input, "penalty", penalty, 0.0, DOUBLE_MAX);
-    parse_mttkrp(cpopt_input);
   }
 
-  // GCP
+  // GCP-OPT
+  auto gcpopt_input_o = input.get_child_optional("gcp-opt");
+  if (gcpopt_input_o) {
+    auto& gcpopt_input = *gcpopt_input_o;
+    parse_cpopt(gcpopt_input);
+    parse_ptree_enum<GCP_LossFunction>(gcpopt_input, "type", loss_function_type);
+    parse_ptree_value(gcpopt_input, "eps", loss_eps, 0.0, 1.0);
+    parse_ptree_value(gcpopt_input, "fit", compute_fit);
+  }
+
+  // GCP-SGD
   auto gcp_input_o = input.get_child_optional("gcp-sgd");
   if (gcp_input_o) {
     auto& gcp_input = *gcp_input_o;

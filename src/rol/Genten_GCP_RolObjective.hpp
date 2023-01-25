@@ -82,6 +82,8 @@ namespace Genten {
     virtual ttb_real lossFunctionLowerBound() const = 0;
 
     virtual ttb_real lossFunctionUpperBound() const = 0;
+
+    virtual ttb_real computeFit(const KtensorT<ExecSpace>& u) = 0;
   };
 
   template <typename ExecSpace>

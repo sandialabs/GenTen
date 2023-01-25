@@ -295,6 +295,8 @@ namespace Genten {
             std::cout << "Iter " << std::setw(5) << print_iter+1
                       << ", f(x) = "
                       << std::setprecision(6) << std::scientific << h.residual
+                      << ", fit = "
+                      << std::setprecision(3) << std::scientific << h.fit
                       << ", ||grad||_infty = "
                       << std::setprecision(2) << std::scientific << h.grad_norm
                       << ", t = "
@@ -320,6 +322,8 @@ namespace Genten {
       std::cout << "Iter " << std::setw(5) << print_iter+1
                 << ", f(x) = "
                 << std::setprecision(6) << std::scientific << h.residual
+                << ", fit = "
+                << std::setprecision(3) << std::scientific << h.fit
                 << ", ||grad||_infty = "
                 << std::setprecision(2) << std::scientific << h.grad_norm
                 << ", t = "
@@ -343,8 +347,10 @@ namespace Genten {
       else
         std::cout << Impl::findTaskString(task) << std::endl;
       const ttb_real fit = ttb_real(1.0) - f / (ttb_real(0.5)*nrm_X_sq);
-      std::cout << "Final fit = " << fit << std::endl;
-      std::cout << "Total time = " << timer.getTotalTime(0) << std::endl
+      std::cout << "Final fit = " << std::setprecision(3) << std::scientific
+                << fit << std::endl;
+      std::cout << "Total time = " << std::setprecision(2) << std::scientific
+                << timer.getTotalTime(0) << std::endl
                 << std::endl;
     }
   }
