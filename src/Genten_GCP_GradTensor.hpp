@@ -60,18 +60,19 @@ public:
     Tensor(X_), M(M_), w(w_), f(f_) {}
 
   // Default constructor
+  KOKKOS_DEFAULTED_FUNCTION
   GCP_GradTensor() = default;
 
   // Copy constructor.
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   GCP_GradTensor(const GCP_GradTensor& arg) = default;
 
   // Assignment operator.
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   GCP_GradTensor& operator=(const GCP_GradTensor& arg) = default;
 
   // Destructor.
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   ~GCP_GradTensor() = default;
 
   // Return reference to i-th nonzero

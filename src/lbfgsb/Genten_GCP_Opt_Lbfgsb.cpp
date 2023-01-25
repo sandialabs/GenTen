@@ -154,11 +154,6 @@ void gcp_opt_lbfgsb_impl(const TensorT<ExecSpace>& X,
   double  dsave[LENGTH_DSAVE];
 
   const bool compute_fit = algParams.compute_fit;
-  ttb_real nrm_X_sq;
-  if (compute_fit) {
-    const ttb_real nrm_X = X.norm();
-    nrm_X_sq = nrm_X*nrm_X;
-  }
 
   history.addEmpty();
   GCP_Model<ExecSpace,LossFunction> gcp_model(X, u, loss_func, algParams);
