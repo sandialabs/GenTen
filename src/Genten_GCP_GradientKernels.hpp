@@ -40,14 +40,11 @@
 
 #pragma once
 
-#include "Genten_Sptensor.hpp"
+#include "Genten_Tensor.hpp"
 #include "Genten_Ktensor.hpp"
-#include "Genten_MTTKRP.hpp"
-#include "Genten_GCP_GradTensor.hpp"
-
-#ifdef HAVE_ROL
-#include "Teuchos_TimeMonitor.hpp"
-#endif
+#include "Genten_MixedFormatOps.hpp"
+#include "Genten_SimdKernel.hpp"
+#include "Genten_AlgParams.hpp"
 
 namespace Genten {
 
