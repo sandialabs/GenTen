@@ -40,56 +40,36 @@
 
 #pragma once
 
-#include "Genten_Sptensor.hpp"
+#include <ostream>
+
+#include "Genten_Tensor.hpp"
 #include "Genten_Ktensor.hpp"
-#include "Genten_Array.hpp"
+#include "Genten_AlgParams.hpp"
+#include "Genten_PerfHistory.hpp"
 
 namespace Genten {
 
-template <typename Tensor, typename LossFunction,
-          unsigned FacBlockSize, unsigned VectorSize>
-class GCP_GradTensor : public Tensor
-{
-public:
-
-  typedef typename Tensor::exec_space exec_space;
-
-  // Create tensor from given data tensor
-  GCP_GradTensor(const Tensor& X_, const KtensorT<exec_space>& M_,
-                 const ArrayT<exec_space>& w_, const LossFunction& f_) :
-    Tensor(X_), M(M_), w(w_), f(f_) {}
-
-  // Default constructor
-  GCP_GradTensor() = default;
-
-  // Copy constructor.
-  KOKKOS_INLINE_FUNCTION
-  GCP_GradTensor(const GCP_GradTensor& arg) = default;
-
-  // Assignment operator.
-  KOKKOS_INLINE_FUNCTION
-  GCP_GradTensor& operator=(const GCP_GradTensor& arg) = default;
-
-  // Destructor.
-  KOKKOS_INLINE_FUNCTION
-  ~GCP_GradTensor() = default;
-
-  // Return reference to i-th nonzero
-  KOKKOS_INLINE_FUNCTION
-  ttb_real value(ttb_indx i) const
-  {
-    static const bool is_gpu = Genten::is_gpu_space<exec_space>::value;
-    static const unsigned WarpSize = is_gpu ? VectorSize : 1;
-    const ttb_real m_val =
-      compute_Ktensor_value<exec_space, FacBlockSize, WarpSize>(M, *this, i);
-    return w[i] * f.deriv(Tensor::value(i), m_val);
-  }
-
-protected:
-
-  KtensorT<exec_space> M;
-  ArrayT<exec_space> w;
-  LossFunction f;
-};
+  //! Compute the CP decomposition of a tensor based on a general objective.
+  /*!
+   *  Compute an estimate of the best rank-R GCP model of a tensor X
+   *  for a given lost function.  The input X currently must be a dense
+   *  tensor.  The result is a Ktensor.
+   *
+   *  An initial guess of factor matrices must be provided, which must be
+   *  nonzero.
+   *
+   *  @param[in] x          Data tensor to be fit by the model.
+   *  @param[in,out] u      Input contains an initial guess for the factors.
+   *                        The size of each mode must match the corresponding
+   *                        mode of x, and the number of components determines
+   *                        how many will be in the result.
+   *                        Output contains resulting factorization Ktensor.
+   *  @param[in] algParams  Genten algorithm/solver parameters
+   *  @param[out] history   Performance history for each step of the algorithm
+   */
+  template<typename ExecSpace>
+  void gcp_opt_lbfgsb(const TensorT<ExecSpace>& x, KtensorT<ExecSpace>& u,
+                     const AlgParams& algParams,
+                     PerfHistory& history);
 
 }

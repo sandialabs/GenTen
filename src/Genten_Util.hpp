@@ -162,7 +162,7 @@ namespace Genten {
       GCP_SGD_DIST,
       GCP_OPT
     };
-    static constexpr unsigned num_types = 4;
+    static constexpr unsigned num_types = 5;
     static constexpr type types[] = {
       CP_ALS, CP_OPT, GCP_SGD, GCP_SGD_DIST, GCP_OPT
     };

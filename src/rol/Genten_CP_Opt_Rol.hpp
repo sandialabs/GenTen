@@ -53,8 +53,8 @@ namespace Genten {
   //! Compute the CP decomposition of a tensor using ROL.
   /*!
    *  Compute an estimate of the best rank-R CP model of a tensor X
-   *  for Gaussian loss.  The input X currently must be a (sparse)
-   *  Sptensor.  The result is a Ktensor.
+   *  for Gaussian loss.  The input X may be a sparse or dense tensor.
+   *  The result is a Ktensor.
    *
    *  An initial guess of factor matrices must be provided, which must be
    *  nonzero.
@@ -65,7 +65,9 @@ namespace Genten {
    *                        mode of x, and the number of components determines
    *                        how many will be in the result.
    *                        Output contains resulting factorization Ktensor.
-   *  @param[in] params     ROL solver parameters
+   *  @param[in] algParams  Genten algorithm/solver parameters
+   *  @param[out] history   Performance history for each step of the algorithm
+   *  @param[in] rol_params ROL solver parameters
    *  @param[out] stream    ROL output stream (set to null for no output)
    */
   template<typename TensorT, typename ExecSpace>
@@ -93,8 +95,8 @@ namespace Genten {
    *                        mode of x, and the number of components determines
    *                        how many will be in the result.
    *                        Output contains resulting factorization Ktensor.
-   *  @param[in] tol        Stop tolerance for convergence of "fit function".
-   *  @param[in] maxIters   Maximum number of iterations allowed.
+   *  @param[in] algParams  Genten algorithm/solver parameters
+   *  @param[out] history   Performance history for each step of the algorithm
    *  @param[out] stream    ROL output stream (set to null for no output)
    */
   template<typename TensorT, typename ExecSpace>

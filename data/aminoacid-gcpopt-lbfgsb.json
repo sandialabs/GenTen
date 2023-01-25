@@ -1,0 +1,39 @@
+{
+    "solver-method": "gcp-opt",
+    "timings": true,
+    "tensor":
+    {
+        "input-file": "data/aminoacid_data_dense.txt",
+        "format": "dense"
+    },
+    "k-tensor":
+    {
+        "rank": 16,
+        "output-file": "aminoacid.ktn",
+        "initial-guess": "rand",
+        "distributed-guess": "serial",
+        "seed": 12345,
+        "prng": false
+    },
+    "gcp-opt":
+    {
+        "method": "lbfgsb",
+        "maxiters": 20,
+        "tol": 1e-4,
+        "type": "gaussian",
+        "fit": true
+    },
+    "testing":
+    {
+        "final-fit":
+        {
+            "value": 0.98,
+            "absolute-tolerance": 0.1
+        },
+        "iterations":
+        {
+            "value": 19,
+            "absolute-tolerance": 2
+        }
+    }
+}

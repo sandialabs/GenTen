@@ -52,8 +52,6 @@
 #include "Genten_SystemTimer.hpp"
 #include "Genten_MixedFormatOps.hpp"
 
-#include "Genten_DistMttkrp.hpp"
-
 namespace Genten {
 
   namespace Impl {

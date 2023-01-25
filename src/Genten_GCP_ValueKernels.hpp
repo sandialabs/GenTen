@@ -41,6 +41,7 @@
 #pragma once
 
 #include "Genten_Sptensor.hpp"
+#include "Genten_Tensor.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_Array.hpp"
 
@@ -65,6 +66,13 @@ namespace Genten {
                    const loss_type& f,
                    ttb_real& val_ten,
                    ttb_real& val_his);
+
+    // Compute objective value for given Tensor, Ktensor, and loss function
+    template <typename ExecSpace, typename loss_type>
+    ttb_real gcp_value(const TensorT<ExecSpace>& X,
+                       const KtensorT<ExecSpace>& M,
+                       const ttb_real w,
+                       const loss_type& f);
 
   }
 

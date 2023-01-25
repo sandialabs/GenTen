@@ -146,7 +146,7 @@ namespace Genten {
   CP_RolObjective<Tensor>::
   update(const ROL::Vector<ttb_real>& xx, ROL::UpdateType type, int iter)
   {
-    TEUCHOS_FUNC_TIME_MONITOR("CP_RolObjective::update");
+    GENTEN_TIME_MONITOR("CP_RolObjective::update");
 
     const vector_type& x = dynamic_cast<const vector_type&>(xx);
 
@@ -195,7 +195,7 @@ namespace Genten {
   CP_RolObjective<Tensor>::
   value(const ROL::Vector<ttb_real>& xx, ttb_real& tol)
   {
-    TEUCHOS_FUNC_TIME_MONITOR("CP_RolObjective::value");
+    GENTEN_TIME_MONITOR("CP_RolObjective::value");
 
     const vector_type& x = dynamic_cast<const vector_type&>(xx);
 
@@ -221,7 +221,7 @@ namespace Genten {
   gradient(ROL::Vector<ttb_real>& gg, const ROL::Vector<ttb_real>& xx,
            ttb_real &tol)
   {
-    TEUCHOS_FUNC_TIME_MONITOR("CP_RolObjective::gradient");
+    GENTEN_TIME_MONITOR("CP_RolObjective::gradient");
 
     const vector_type& x = dynamic_cast<const vector_type&>(xx);
     vector_type& g = dynamic_cast<vector_type&>(gg);
@@ -249,7 +249,7 @@ namespace Genten {
   hessVec(ROL::Vector<ttb_real>& hhv, const ROL::Vector<ttb_real>& vv,
           const ROL::Vector<ttb_real>& xx, ttb_real &tol)
   {
-    TEUCHOS_FUNC_TIME_MONITOR("CP_RolObjective::hessVec");
+    GENTEN_TIME_MONITOR("CP_RolObjective::hessVec");
 
     const vector_type& x = dynamic_cast<const vector_type&>(xx);
     const vector_type& v = dynamic_cast<const vector_type&>(vv);
@@ -278,7 +278,7 @@ namespace Genten {
   precond(ROL::Vector<ttb_real>& ppv, const ROL::Vector<ttb_real>& vv,
           const ROL::Vector<ttb_real>& xx, ttb_real &tol)
   {
-    TEUCHOS_FUNC_TIME_MONITOR("CP_RolObjective::precond");
+    GENTEN_TIME_MONITOR("CP_RolObjective::precond");
 
     const vector_type& x = dynamic_cast<const vector_type&>(xx);
     const vector_type& v = dynamic_cast<const vector_type&>(vv);
