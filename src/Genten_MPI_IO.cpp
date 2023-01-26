@@ -93,34 +93,32 @@ SptnFileHeader readSparseHeader(MPI_Comm comm, MPI_File fh) {
     }
 
     check_read(&header.ndims, sizeof header.ndims);
-    const auto ndims = header.ndims;
 
     check_read(&header.float_bits, sizeof header.float_bits);
 
     header.dim_lengths.resize(header.ndims);
-    check_read(&header.dim_lengths[0], ndims * sizeof(std::uint64_t));
+    check_read(&header.dim_lengths[0], header.ndims * sizeof(std::uint64_t));
 
     header.dim_bits.resize(header.ndims);
-    check_read(&header.dim_bits[0], ndims * sizeof(std::uint64_t));
+    check_read(&header.dim_bits[0], header.ndims * sizeof(std::uint64_t));
 
     check_read(&header.nnz, sizeof header.nnz);
 
     MPI_Bcast(&header.ndims, 1, MPI_UNSIGNED, 0, comm);
     MPI_Bcast(&header.float_bits, 1, MPI_UNSIGNED, 0, comm);
-    MPI_Bcast(&header.dim_lengths[0], ndims, MPI_UNSIGNED_LONG_LONG, 0, comm);
-    MPI_Bcast(&header.dim_bits[0], ndims, MPI_UNSIGNED_LONG_LONG, 0, comm);
+    MPI_Bcast(&header.dim_lengths[0], header.ndims, MPI_UNSIGNED_LONG_LONG, 0, comm);
+    MPI_Bcast(&header.dim_bits[0], header.ndims, MPI_UNSIGNED_LONG_LONG, 0, comm);
     MPI_Bcast(&header.nnz, 1, MPI_UNSIGNED_LONG_LONG, 0, comm);
     MPI_Bcast(&header.data_starting_byte, 1, MPI_UNSIGNED_LONG_LONG, 0, comm);
   } else {
     MPI_Bcast(&header.ndims, 1, MPI_UNSIGNED, 0, comm);
 
-    const auto ndims = header.ndims;
-    header.dim_lengths.resize(ndims);
-    header.dim_bits.resize(ndims);
+    header.dim_lengths.resize(header.ndims);
+    header.dim_bits.resize(header.ndims);
 
     MPI_Bcast(&header.float_bits, 1, MPI_UNSIGNED, 0, comm);
-    MPI_Bcast(&header.dim_lengths[0], ndims, MPI_UNSIGNED_LONG_LONG, 0, comm);
-    MPI_Bcast(&header.dim_bits[0], ndims, MPI_UNSIGNED_LONG_LONG, 0, comm);
+    MPI_Bcast(&header.dim_lengths[0], header.ndims, MPI_UNSIGNED_LONG_LONG, 0, comm);
+    MPI_Bcast(&header.dim_bits[0], header.ndims, MPI_UNSIGNED_LONG_LONG, 0, comm);
     MPI_Bcast(&header.nnz, 1, MPI_UNSIGNED_LONG_LONG, 0, comm);
     MPI_Bcast(&header.data_starting_byte, 1, MPI_UNSIGNED_LONG_LONG, 0, comm);
   }
@@ -153,28 +151,26 @@ DntnFileHeader readDenseHeader(MPI_Comm comm, MPI_File fh) {
     }
 
     check_read(&header.ndims, sizeof header.ndims);
-    const auto ndims = header.ndims;
 
     check_read(&header.float_bits, sizeof header.float_bits);
 
     header.dim_lengths.resize(header.ndims);
-    check_read(&header.dim_lengths[0], ndims * sizeof(std::uint64_t));
+    check_read(&header.dim_lengths[0], header.ndims * sizeof(std::uint64_t));
 
     check_read(&header.nnz, sizeof header.nnz);
 
     MPI_Bcast(&header.ndims, 1, MPI_UNSIGNED, 0, comm);
     MPI_Bcast(&header.float_bits, 1, MPI_UNSIGNED, 0, comm);
-    MPI_Bcast(&header.dim_lengths[0], ndims, MPI_UNSIGNED_LONG_LONG, 0, comm);
+    MPI_Bcast(&header.dim_lengths[0], header.ndims, MPI_UNSIGNED_LONG_LONG, 0, comm);
     MPI_Bcast(&header.nnz, 1, MPI_UNSIGNED_LONG_LONG, 0, comm);
     MPI_Bcast(&header.data_starting_byte, 1, MPI_UNSIGNED_LONG_LONG, 0, comm);
   } else {
     MPI_Bcast(&header.ndims, 1, MPI_UNSIGNED, 0, comm);
 
-    const auto ndims = header.ndims;
-    header.dim_lengths.resize(ndims);
+    header.dim_lengths.resize(header.ndims);
 
     MPI_Bcast(&header.float_bits, 1, MPI_UNSIGNED, 0, comm);
-    MPI_Bcast(&header.dim_lengths[0], ndims, MPI_UNSIGNED_LONG_LONG, 0, comm);
+    MPI_Bcast(&header.dim_lengths[0], header.ndims, MPI_UNSIGNED_LONG_LONG, 0, comm);
     MPI_Bcast(&header.nnz, 1, MPI_UNSIGNED_LONG_LONG, 0, comm);
     MPI_Bcast(&header.data_starting_byte, 1, MPI_UNSIGNED_LONG_LONG, 0, comm);
   }
@@ -186,8 +182,6 @@ namespace {
 SpDataType readSparseElement(SptnFileHeader const &h,
                              unsigned char const *const data_ptr) {
   SpDataType data;
-  const auto ndims = h.ndims;
-  auto const &bits = h.dim_bits;
 
   auto read_index = [](auto byte_ptr, int bits_for_index) -> std::uint64_t {
     switch (bits_for_index) {
@@ -200,8 +194,8 @@ SpDataType readSparseElement(SptnFileHeader const &h,
     }
   };
 
-  for (auto i = 0u; i < ndims; ++i) {
-    data.coo[i] = read_index(data_ptr + h.indByteOffset(i), bits[i]);
+  for (SptnFileHeader::nd_type i = 0; i < h.ndims; ++i) {
+    data.coo[i] = read_index(data_ptr + h.indByteOffset(i), h.dim_bits[i]);
   }
 
   if (h.float_bits == 32) {
@@ -241,11 +235,10 @@ parallelReadElements(MPI_Comm comm, MPI_File fh, SptnFileHeader const &h) {
   MPI_Comm_rank(comm, &rank);
   MPI_Comm_size(comm, &nprocs);
 
-  //const auto ndims = h.ndims;
-  const auto bytes_per_element = h.bytesInDataLine();
+  const std::uint64_t bytes_per_element = h.bytesInDataLine();
   const auto local_range = h.getLocalOffsetRange(rank, nprocs);
-  const auto nlocal_bytes = local_range.second - local_range.first;
-  const auto nlocal_elements = nlocal_bytes / bytes_per_element;
+  const std::uint64_t nlocal_bytes = local_range.second - local_range.first;
+  const std::uint64_t nlocal_elements = nlocal_bytes / bytes_per_element;
 
   if (nlocal_elements > std::numeric_limits<int>::max()) {
     std::cout << "Rank: " << rank << " trying to read: " << nlocal_elements
@@ -282,7 +275,7 @@ parallelReadElements(MPI_Comm comm, MPI_File fh, SptnFileHeader const &h) {
   MPI_Type_free(&element_type);
 
   // Fill the vector
-  for (auto i = 0u; i < nlocal_elements; ++i) {
+  for (std::uint64_t i = 0; i < nlocal_elements; ++i) {
     auto curr = byte_array.get() + i * bytes_per_element;
     out.push_back(readSparseElement(h, curr));
   }
@@ -296,11 +289,10 @@ parallelReadElements(MPI_Comm comm, MPI_File fh, DntnFileHeader const &h) {
   MPI_Comm_rank(comm, &rank);
   MPI_Comm_size(comm, &nprocs);
 
-  //const auto ndims = h.ndims;
-  const auto bytes_per_element = h.bytesInDataLine();
+  const std::uint64_t bytes_per_element = h.bytesInDataLine();
   const auto local_range = h.getLocalOffsetRange(rank, nprocs);
-  const auto nlocal_bytes = local_range.second - local_range.first;
-  const auto nlocal_elements = nlocal_bytes / bytes_per_element;
+  const std::uint64_t nlocal_bytes = local_range.second - local_range.first;
+  const std::uint64_t nlocal_elements = nlocal_bytes / bytes_per_element;
 
   if (nlocal_elements > std::numeric_limits<int>::max()) {
     std::cout << "Rank: " << rank << " trying to read: " << nlocal_elements
@@ -337,7 +329,7 @@ parallelReadElements(MPI_Comm comm, MPI_File fh, DntnFileHeader const &h) {
   MPI_Type_free(&element_type);
 
   // Fill the vector
-  for (auto i = 0u; i < nlocal_elements; ++i) {
+  for (std::uint64_t i = 0; i < nlocal_elements; ++i) {
     auto curr = byte_array.get() + i * bytes_per_element;
     out.push_back(readDenseElement(h, curr));
   }

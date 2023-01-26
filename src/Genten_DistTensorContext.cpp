@@ -56,8 +56,8 @@ namespace Genten {
 namespace detail {
 
 struct RangePair {
-  int64_t lower;
-  int64_t upper;
+  ttb_indx lower;
+  ttb_indx upper;
 };
 
 void printGrids(const ProcessorMap& pmap) {
@@ -74,11 +74,11 @@ void printGrids(const ProcessorMap& pmap) {
 }
 
 void printBlocking(const ProcessorMap& pmap,
-                   const std::vector<small_vector<int>>& blocking) {
+                   const std::vector<small_vector<ttb_indx>>& blocking) {
   if (DistContext::isDebug()) {
     if (pmap.gridRank() == 0) {
       std::cout << "With blocking:\n";
-      auto dim = 0;
+      ttb_indx dim = 0;
       for (auto const &inner : blocking) {
         std::cout << "\tdim(" << dim << "): ";
         ++dim;
@@ -93,14 +93,14 @@ void printBlocking(const ProcessorMap& pmap,
   }
 }
 
-small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode) {
-  small_vector<int> Range{0};
-  const auto FibersPerBlock = ModeLength / ProcsInMode;
-  auto Remainder = ModeLength % ProcsInMode;
+small_vector<ttb_indx> singleDimUniformBlocking(ttb_indx ModeLength, ttb_indx ProcsInMode) {
+  small_vector<ttb_indx> Range{0};
+  const ttb_indx FibersPerBlock = ModeLength / ProcsInMode;
+  ttb_indx Remainder = ModeLength % ProcsInMode;
 
   // Divide ModeLength fibers evenly across ProcsInMode processors
   while (Range.back() < ModeLength) {
-    const auto back = Range.back();
+    const ttb_indx back = Range.back();
     // This branch makes our blocks 1 bigger to eat the Remainder fibers
     if (Remainder > 0) {
       Range.push_back(back + FibersPerBlock + 1);
@@ -114,24 +114,24 @@ small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode) {
   // Remainder == ModeLength.  In this case, Range will be an array of 1's
   // of length ModeLength.  Expand it to the needed size of ProcsInMode+1 by
   // repeating the last entry, which will mean those proc's have 0 entries
-  if (int(Range.size()) < ProcsInMode+1)
+  if (ttb_indx(Range.size()) < ProcsInMode+1)
     Range.resize(ProcsInMode+1,Range.back());
 
   // Sanity check that we ended with the correct number of blocks and fibers
-  assert(int(Range.size()) == ProcsInMode + 1);
+  assert(ttb_indx(Range.size()) == ProcsInMode + 1);
   assert(Range.back() == ModeLength);
 
   return Range;
 }
 
-std::vector<small_vector<int>>
+std::vector<small_vector<ttb_indx>>
 generateUniformBlocking(const std::vector<ttb_indx>& ModeLengths,
-                        const small_vector<int>& ProcGridSizes) {
-  const auto Ndims = ModeLengths.size();
-  std::vector<small_vector<int>> blocking;
+                        const small_vector<ttb_indx>& ProcGridSizes) {
+  const ttb_indx Ndims = ModeLengths.size();
+  std::vector<small_vector<ttb_indx>> blocking;
   blocking.reserve(Ndims);
 
-  for (auto i = 0u; i < Ndims; ++i) {
+  for (ttb_indx i = 0; i < Ndims; ++i) {
     blocking.emplace_back(
         singleDimUniformBlocking(ModeLengths[i], ProcGridSizes[i]));
   }
@@ -146,9 +146,9 @@ rangesToIndexArray(const small_vector<RangePair>& ranges)
   IndxArrayT<ExecSpace> outArray(ranges.size());
   auto mirrorArray = create_mirror_view(outArray);
 
-  auto i = 0;
+  ttb_indx i = 0;
   for (auto const &rp : ranges) {
-    const auto size = rp.upper - rp.lower;
+    const ttb_indx size = rp.upper - rp.lower;
     mirrorArray[i] = size;
     ++i;
   }
@@ -158,11 +158,11 @@ rangesToIndexArray(const small_vector<RangePair>& ranges)
 }
 
 std::vector<SpDataType>
-distributeTensorToVectors(const Sptensor& sp_tensor_host, uint64_t nnz,
-                          MPI_Comm comm, int rank, int nprocs) {
-  constexpr auto dt_size = sizeof(SpDataType);
+distributeTensorToVectors(const Sptensor& sp_tensor_host, ttb_indx nnz,
+                          MPI_Comm comm, ttb_indx rank, ttb_indx nprocs) {
+  constexpr ttb_indx dt_size = sizeof(SpDataType);
   std::vector<SpDataType> Tvec;
-  small_vector<int> who_gets_what =
+  small_vector<ttb_indx> who_gets_what =
       detail::singleDimUniformBlocking(nnz, nprocs);
 
   if (rank == 0) {
@@ -174,9 +174,9 @@ distributeTensorToVectors(const Sptensor& sp_tensor_host, uint64_t nnz,
       }
 
       Tvec.resize(sp_tensor_host.nnz());
-      for (auto i = 0ull; i < sp_tensor_host.nnz(); ++i) {
+      for (ttb_indx i = 0; i < sp_tensor_host.nnz(); ++i) {
         auto &dt = Tvec[i];
-        for (auto j = 0u; j < sp_tensor_host.ndims(); ++j) {
+        for (ttb_indx j = 0; j < sp_tensor_host.ndims(); ++j) {
           dt.coo[j] = sp_tensor_host.subscript(i, j);
         }
         dt.val = sp_tensor_host.value(i);
@@ -185,34 +185,34 @@ distributeTensorToVectors(const Sptensor& sp_tensor_host, uint64_t nnz,
 
     std::vector<MPI_Request> requests(nprocs - 1);
     std::vector<MPI_Status> statuses(nprocs - 1);
-    auto total_sent = 0;
-    for (auto i = 1; i < nprocs; ++i) {
+    ttb_indx total_sent = 0;
+    for (ttb_indx i = 1; i < nprocs; ++i) {
       // Size to sent to rank i
-      const auto nelements = who_gets_what[i + 1] - who_gets_what[i];
-      const auto nbytes = nelements * dt_size;
+      const ttb_indx nelements = who_gets_what[i + 1] - who_gets_what[i];
+      const ttb_indx nbytes = nelements * dt_size;
       total_sent += nelements;
 
-      const auto index_of_first_element = who_gets_what[i];
+      const ttb_indx index_of_first_element = who_gets_what[i];
       MPI_Isend(Tvec.data() + index_of_first_element, nbytes, MPI_BYTE, i, i,
                 comm, &requests[i - 1]);
     }
     MPI_Waitall(requests.size(), requests.data(), statuses.data());
-    auto total_before = Tvec.size();
+    ttb_indx total_before = Tvec.size();
     auto begin = Tvec.begin();
     std::advance(begin, who_gets_what[1]); // wgw[0] == 0 always
     Tvec.erase(begin, Tvec.end());
     Tvec.shrink_to_fit(); // Yay now I only have rank 0 data
 
-    auto total_after = Tvec.size() + total_sent;
+    ttb_indx total_after = Tvec.size() + total_sent;
     if (total_after != total_before) {
       throw std::logic_error(
           "The number of elements after sending and shrinking did not match "
           "the input number of elements.");
     }
   } else {
-    const auto nelements = who_gets_what[rank + 1] - who_gets_what[rank];
+    const ttb_indx nelements = who_gets_what[rank + 1] - who_gets_what[rank];
     Tvec.resize(nelements);
-    const auto nbytes = nelements * dt_size;
+    const ttb_indx nbytes = nelements * dt_size;
     MPI_Recv(Tvec.data(), nbytes, MPI_BYTE, 0, rank, comm, MPI_STATUS_IGNORE);
   }
 
@@ -220,51 +220,51 @@ distributeTensorToVectors(const Sptensor& sp_tensor_host, uint64_t nnz,
 }
 
 std::vector<ttb_real>
-distributeTensorToVectors(const Tensor& dn_tensor_host, uint64_t nnz,
-                          MPI_Comm comm, int rank, int nprocs,
+distributeTensorToVectors(const Tensor& dn_tensor_host, ttb_indx nnz,
+                          MPI_Comm comm, ttb_indx rank, ttb_indx nprocs,
                           ttb_indx& offset) {
-  constexpr auto dt_size = sizeof(ttb_real);
+  constexpr ttb_indx dt_size = sizeof(ttb_real);
   std::vector<ttb_real> Tvec;
-  small_vector<int> who_gets_what =
+  small_vector<ttb_indx> who_gets_what =
       detail::singleDimUniformBlocking(nnz, nprocs);
   offset = who_gets_what[rank];
 
   if (rank == 0) {
     // Write tensor to form we can MPI_Send more easily.
     Tvec.resize(dn_tensor_host.numel());
-    for (auto i = 0ull; i < dn_tensor_host.numel(); ++i)
+    for (ttb_indx i = 0; i < dn_tensor_host.numel(); ++i)
       Tvec[i] = dn_tensor_host[i];
 
     std::vector<MPI_Request> requests(nprocs - 1);
     std::vector<MPI_Status> statuses(nprocs - 1);
-    auto total_sent = 0;
-    for (auto i = 1; i < nprocs; ++i) {
+    ttb_indx total_sent = 0;
+    for (ttb_indx i = 1; i < nprocs; ++i) {
       // Size to sent to rank i
-      const auto nelements = who_gets_what[i + 1] - who_gets_what[i];
-      const auto nbytes = nelements * dt_size;
+      const ttb_indx nelements = who_gets_what[i + 1] - who_gets_what[i];
+      const ttb_indx nbytes = nelements * dt_size;
       total_sent += nelements;
 
-      const auto index_of_first_element = who_gets_what[i];
+      const ttb_indx index_of_first_element = who_gets_what[i];
       MPI_Isend(Tvec.data() + index_of_first_element, nbytes, MPI_BYTE, i, i,
                 comm, &requests[i - 1]);
     }
     MPI_Waitall(requests.size(), requests.data(), statuses.data());
-    auto total_before = Tvec.size();
+    ttb_indx total_before = Tvec.size();
     auto begin = Tvec.begin();
     std::advance(begin, who_gets_what[1]); // wgw[0] == 0 always
     Tvec.erase(begin, Tvec.end());
     Tvec.shrink_to_fit(); // Yay now I only have rank 0 data
 
-    auto total_after = Tvec.size() + total_sent;
+    ttb_indx total_after = Tvec.size() + total_sent;
     if (total_after != total_before) {
       throw std::logic_error(
           "The number of elements after sending and shrinking did not match "
           "the input number of elements.");
     }
   } else {
-    const auto nelements = who_gets_what[rank + 1] - who_gets_what[rank];
+    const ttb_indx nelements = who_gets_what[rank + 1] - who_gets_what[rank];
     Tvec.resize(nelements);
-    const auto nbytes = nelements * dt_size;
+    const ttb_indx nbytes = nelements * dt_size;
     MPI_Recv(Tvec.data(), nbytes, MPI_BYTE, 0, rank, comm, MPI_STATUS_IGNORE);
   }
 
@@ -272,8 +272,8 @@ distributeTensorToVectors(const Tensor& dn_tensor_host, uint64_t nnz,
 }
 
 namespace {
-int blockInThatDim(int element, const small_vector<int>& range) {
-  // const auto nblocks = range.size();
+ttb_indx blockInThatDim(ttb_indx element, const small_vector<ttb_indx>& range) {
+  // const ttb_indx nblocks = range.size();
   assert(element < range.back()); // This would mean the element is too large
   assert(range.size() >= 2);      // Range always has at least 2 elements
 
@@ -281,7 +281,7 @@ int blockInThatDim(int element, const small_vector<int>& range) {
   // suspect this is fine. Because range.back() is always 1 more than the
   // largest possible element and range.size() >= 2 we don't have to worry
   // about block_guess + 1 going past the end.
-  auto block_guess = 0;
+  ttb_indx block_guess = 0;
   while (element >= range[block_guess + 1]) {
     ++block_guess;
   }
@@ -291,11 +291,11 @@ int blockInThatDim(int element, const small_vector<int>& range) {
 
 // The MPI_Comm must be the one that represents the grid for this to work
 template <typename IntType>
-int rankInGridThatOwns(IntType const *COO, MPI_Comm grid_comm,
-                       const std::vector<small_vector<int>>& ElementRanges) {
-  const auto ndims = ElementRanges.size();
+ttb_indx rankInGridThatOwns(IntType const *COO, MPI_Comm grid_comm,
+                       const std::vector<small_vector<ttb_indx>>& ElementRanges) {
+  const ttb_indx ndims = ElementRanges.size();
   small_vector<int> GridPos(ndims);
-  for (auto i = 0u; i < ndims; ++i) {
+  for (ttb_indx i = 0; i < ndims; ++i) {
     GridPos[i] = blockInThatDim(COO[i], ElementRanges[i]);
   }
 
@@ -309,45 +309,47 @@ int rankInGridThatOwns(IntType const *COO, MPI_Comm grid_comm,
 std::vector<SpDataType>
 redistributeTensor(const std::vector<SpDataType>& Tvec,
                    const std::vector<ttb_indx>& TDims,
-                   const std::vector<small_vector<int>>& blocking,
+                   const std::vector<small_vector<ttb_indx>>& blocking,
                    const ProcessorMap& pmap) {
 
-  const auto nprocs = pmap.gridSize();
+  const ttb_indx nprocs = pmap.gridSize();
   MPI_Comm grid_comm = pmap.gridComm();
 
   std::vector<std::vector<SpDataType>> elems_to_write(nprocs);
   for (auto const &elem : Tvec) {
-    auto elem_owner_rank = rankInGridThatOwns(elem.coo, grid_comm, blocking);
+    ttb_indx elem_owner_rank = rankInGridThatOwns(elem.coo, grid_comm, blocking);
     elems_to_write[elem_owner_rank].push_back(elem);
   }
 
-  small_vector<int> amount_to_write(nprocs);
-  for (auto i = 0; i < nprocs; ++i) {
+  small_vector<ttb_indx> amount_to_write(nprocs);
+  for (ttb_indx i = 0; i < nprocs; ++i) {
     amount_to_write[i] = elems_to_write[i].size();
   }
 
-  small_vector<int> offset_to_write_at(nprocs);
-  MPI_Exscan(amount_to_write.data(), offset_to_write_at.data(), nprocs, MPI_INT,
+  small_vector<ttb_indx> offset_to_write_at(nprocs);
+  MPI_Exscan(amount_to_write.data(), offset_to_write_at.data(), nprocs,
+             DistContext::toMpiType<ttb_indx>(),
              MPI_SUM, grid_comm);
 
-  int amount_to_allocate_for_window = 0;
+  ttb_indx amount_to_allocate_for_window = 0;
   MPI_Reduce_scatter_block(amount_to_write.data(),
-                           &amount_to_allocate_for_window, 1, MPI_INT, MPI_SUM,
+                           &amount_to_allocate_for_window, 1,
+                           DistContext::toMpiType<ttb_indx>(), MPI_SUM,
                            grid_comm);
 
   if (amount_to_allocate_for_window == 0) {
-    const auto my_rank = pmap.gridRank();
-    const auto ndims = blocking.size();
+    const ttb_indx my_rank = pmap.gridRank();
+    const ttb_indx ndims = blocking.size();
     std::stringstream ss;
     ss << "WARNING MPI rank(" << my_rank
        << "), received zero nnz in the current blocking.\n\tTensor block: [ ";
-    for (auto i=0u; i<ndims; i++)
+    for (ttb_indx i=0; i<ndims; i++)
       ss << pmap.gridCoord(i) << " ";
     ss << "],  range: [ ";
-    for (auto i=0u; i<ndims; i++)
+    for (ttb_indx i=0; i<ndims; i++)
       ss << blocking[i][pmap.gridCoord(i)] << " ";
     ss << "] to [ ";
-    for (auto i=0u; i<ndims; i++)
+    for (ttb_indx i=0; i<ndims; i++)
       ss << blocking[i][pmap.gridCoord(i)+1] << " ";
     ss << "]\n";
     std::cout << ss.str() << std::flush;
@@ -371,7 +373,7 @@ redistributeTensor(const std::vector<SpDataType>& Tvec,
   // contained so won't impact TBS
   SpDataType *data;
   MPI_Win window;
-  constexpr auto DataElemSize = sizeof(SpDataType);
+  constexpr ttb_indx DataElemSize = sizeof(SpDataType);
   MPI_Win_allocate(amount_to_allocate_for_window * DataElemSize,
                    /*displacement = */ DataElemSize, MPI_INFO_NULL, grid_comm,
                    &data, &window);
@@ -383,7 +385,7 @@ redistributeTensor(const std::vector<SpDataType>& Tvec,
   // Jonathan L. told me for AllToAll Fences are probably better than locking
   // if communications don't conflict
   MPI_Win_fence(0, window);
-  for (auto i = 0; i < nprocs; ++i) {
+  for (ttb_indx i = 0; i < nprocs; ++i) {
     MPI_Put(
         /* Origin ptr */ elems_to_write[i].data(),
         /* Origin num elements */ amount_to_write[i],
@@ -409,10 +411,10 @@ std::vector<ttb_real>
 redistributeTensor(const std::vector<ttb_real>& Tvec,
                    const ttb_indx global_nnz, const ttb_indx global_offset,
                    const std::vector<ttb_indx>& TDims,
-                   const std::vector<small_vector<int>>& blocking,
+                   const std::vector<small_vector<ttb_indx>>& blocking,
                    const ProcessorMap& pmap)
 {
-  const auto nprocs = pmap.gridSize();
+  const ttb_indx nprocs = pmap.gridSize();
   MPI_Comm grid_comm = pmap.gridComm();
 
   std::vector<std::vector<ttb_real>> elems_to_write(nprocs);
@@ -420,42 +422,44 @@ redistributeTensor(const std::vector<ttb_real>& Tvec,
   const ttb_indx ndims = TDims.size();
   IndxArray sub(ndims);
   IndxArray siz(ndims);
-  for (auto dim=0u; dim<ndims; ++dim)
+  for (ttb_indx dim=0; dim<ndims; ++dim)
     siz[dim] = TDims[dim];
-  for (auto i=0u; i<local_nnz; ++i) {
+  for (ttb_indx i=0; i<local_nnz; ++i) {
     Impl::ind2sub(sub, siz, global_nnz, i+global_offset);
-    auto elem_owner_rank =
+    ttb_indx elem_owner_rank =
       rankInGridThatOwns(sub.values().data(), grid_comm, blocking);
     elems_to_write[elem_owner_rank].push_back(Tvec[i]);
   }
 
-  small_vector<int> amount_to_write(nprocs);
-  for (auto i = 0; i < nprocs; ++i) {
+  small_vector<ttb_indx> amount_to_write(nprocs);
+  for (ttb_indx i = 0; i < nprocs; ++i) {
     amount_to_write[i] = elems_to_write[i].size();
   }
 
-  small_vector<int> offset_to_write_at(nprocs);
-  MPI_Exscan(amount_to_write.data(), offset_to_write_at.data(), nprocs, MPI_INT,
+  small_vector<ttb_indx> offset_to_write_at(nprocs);
+  MPI_Exscan(amount_to_write.data(), offset_to_write_at.data(), nprocs,
+             DistContext::toMpiType<ttb_indx>(),
              MPI_SUM, grid_comm);
 
-  int amount_to_allocate_for_window = 0;
+  ttb_indx amount_to_allocate_for_window = 0;
   MPI_Reduce_scatter_block(amount_to_write.data(),
-                           &amount_to_allocate_for_window, 1, MPI_INT, MPI_SUM,
+                           &amount_to_allocate_for_window, 1,
+                           DistContext::toMpiType<ttb_indx>(), MPI_SUM,
                            grid_comm);
 
   if (amount_to_allocate_for_window == 0) {
-    const auto my_rank = pmap.gridRank();
-    const auto ndims = blocking.size();
+    const ttb_indx my_rank = pmap.gridRank();
+    const ttb_indx ndims = blocking.size();
     std::stringstream ss;
     ss << "WARNING MPI rank(" << my_rank
        << "), received zero nnz in the current blocking.\n\tTensor block: [ ";
-    for (auto i=0u; i<ndims; i++)
+    for (ttb_indx i=0; i<ndims; i++)
       ss << pmap.gridCoord(i) << " ";
     ss << "],  range: [ ";
-    for (auto i=0u; i<ndims; i++)
+    for (ttb_indx i=0; i<ndims; i++)
       ss << blocking[i][pmap.gridCoord(i)] << " ";
     ss << "] to [ ";
-    for (auto i=0u; i<ndims; i++)
+    for (ttb_indx i=0; i<ndims; i++)
       ss << blocking[i][pmap.gridCoord(i)+1] << " ";
     ss << "]\n";
     std::cout << ss.str() << std::flush;
@@ -479,7 +483,7 @@ redistributeTensor(const std::vector<ttb_real>& Tvec,
   // contained so won't impact TBS
   ttb_real *data;
   MPI_Win window;
-  constexpr auto DataElemSize = sizeof(ttb_real);
+  constexpr ttb_indx DataElemSize = sizeof(ttb_real);
   MPI_Win_allocate(amount_to_allocate_for_window * DataElemSize,
                    /*displacement = */ DataElemSize, MPI_INFO_NULL, grid_comm,
                    &data, &window);
@@ -491,7 +495,7 @@ redistributeTensor(const std::vector<ttb_real>& Tvec,
   // Jonathan L. told me for AllToAll Fences are probably better than locking
   // if communications don't conflict
   MPI_Win_fence(0, window);
-  for (auto i = 0; i < nprocs; ++i) {
+  for (ttb_indx i = 0; i < nprocs; ++i) {
     MPI_Put(
         /* Origin ptr */ elems_to_write[i].data(),
         /* Origin num elements */ amount_to_write[i],
@@ -522,17 +526,17 @@ distributeTensorImpl(const Sptensor& X, const AlgParams& algParams)
 {
   // Check if we have already distributed a tensor, in which case this one
   // needs to be of the same size
-  const auto ndims = X.ndims();
+  const ttb_indx ndims = X.ndims();
   if (global_dims_.size() > 0) {
     if (global_dims_.size() != ndims)
       Genten::error("distributeTensor() called twice with different number of dimensions!");
-    for (auto i=0u; i<ndims; ++i)
+    for (ttb_indx i=0; i<ndims; ++i)
       if (global_dims_[i] != X.size(i))
           Genten::error("distributeTensor() called twice with different sized tensors!");
   }
   else {
     global_dims_.resize(ndims);
-    for (auto i=0u; i<ndims; ++i)
+    for (ttb_indx i=0; i<ndims; ++i)
       global_dims_[i] = X.size(i);
 
     const bool use_tpetra =
@@ -563,17 +567,17 @@ distributeTensorImpl(const Tensor& X, const AlgParams& algParams)
 {
   // Check if we have already distributed a tensor, in which case this one
   // needs to be of the same size
-  const auto ndims = X.ndims();
+  const ttb_indx ndims = X.ndims();
   if (global_dims_.size() > 0) {
     if (global_dims_.size() != ndims)
       Genten::error("distributeTensor() called twice with different number of dimensions!");
-    for (auto i=0u; i<ndims; ++i)
+    for (ttb_indx i=0; i<ndims; ++i)
       if (global_dims_[i] != X.size(i))
           Genten::error("distributeTensor() called twice with different sized tensors!");
   }
   else {
     global_dims_.resize(ndims);
-    for (auto i=0u; i<ndims; ++i)
+    for (ttb_indx i=0; i<ndims; ++i)
       global_dims_[i] = X.size(i);
 
     const bool use_tpetra =
@@ -609,7 +613,7 @@ globalNorm(const SptensorT<ExecSpace>& X) const
 }
 
 template <typename ExecSpace>
-std::uint64_t
+ttb_indx
 DistTensorContext<ExecSpace>::
 globalNNZ(const SptensorT<ExecSpace>& X) const
 {
@@ -636,7 +640,7 @@ globalNorm(const TensorT<ExecSpace>& X) const
 }
 
 template <typename ExecSpace>
-std::uint64_t
+ttb_indx
 DistTensorContext<ExecSpace>::
 globalNNZ(const TensorT<ExecSpace>& X) const
 {
@@ -664,16 +668,16 @@ void
 DistTensorContext<ExecSpace>::
 allReduce(KtensorT<ExecSpace>& u, const bool divide_by_grid_size) const
 {
-  const int nd = u.ndims();
-  assert(int(global_dims_.size()) == nd);
+  const ttb_indx nd = u.ndims();
+  assert(ttb_indx(global_dims_.size()) == nd);
 
-  for (int n=0; n<nd; ++n)
+  for (ttb_indx n=0; n<nd; ++n)
     pmap_->subGridAllReduce(
       n, u[n].view().data(), u[n].view().span());
 
   if (divide_by_grid_size) {
     auto const &gridSizes = pmap_->subCommSizes();
-    for (int n=0; n<nd; ++n) {
+    for (ttb_indx n=0; n<nd; ++n) {
       const ttb_real scale = ttb_real(1.0 / gridSizes[n]);
       u[n].times(scale);
     }
@@ -716,7 +720,7 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
     Tensor X_dense_host;
     Sptensor X_sparse_host;
     std::size_t ndims;
-    small_vector<int> dims;
+    small_vector<ttb_indx> dims;
 
     if (gridRank() == 0) {
       reader.read();
@@ -724,7 +728,7 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
         X_sparse_host = reader.getSparseTensor();
         nnz = X_sparse_host.nnz();
         ndims = X_sparse_host.ndims();
-        dims = small_vector<int>(ndims);
+        dims = small_vector<ttb_indx>(ndims);
         for (std::size_t i=0; i<ndims; ++i)
           dims[i] = X_sparse_host.size(i);
       }
@@ -732,7 +736,7 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
         X_dense_host = reader.getDenseTensor();
         nnz = X_dense_host.nnz();
         ndims = X_dense_host.ndims();
-        dims = small_vector<int>(ndims);
+        dims = small_vector<ttb_indx>(ndims);
         for (std::size_t i=0; i<ndims; ++i)
           dims[i] = X_dense_host.size(i);
       }
@@ -740,7 +744,7 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
     DistContext::Bcast(nnz, 0);
     DistContext::Bcast(ndims, 0);
     if (gridRank() != 0)
-      dims = small_vector<int>(ndims);
+      dims = small_vector<ttb_indx>(ndims);
     DistContext::Bcast(dims, 0);
 
     global_dims = std::vector<ttb_indx>(ndims);
@@ -764,11 +768,11 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
 
   // Check if we have already distributed a tensor, in which case this one
   // needs to be of the same size
-  const auto ndims = global_dims.size();
+  const ttb_indx ndims = global_dims.size();
   if (global_dims_.size() > 0) {
     if (global_dims_.size() != ndims)
       Genten::error("distributeTensor() called twice with different number of dimensions!");
-    for (auto i=0u; i<ndims; ++i)
+    for (ttb_indx i=0; i<ndims; ++i)
       if (global_dims_[i] != global_dims[i])
           Genten::error("distributeTensor() called twice with different sized tensors!");
   }
@@ -801,7 +805,7 @@ SptensorT<ExecSpace>
 DistTensorContext<ExecSpace>::
 distributeTensorData(const std::vector<SpDataType>& Tvec,
                      const std::vector<ttb_indx>& TensorDims,
-                     const std::vector<small_vector<int>>& blocking,
+                     const std::vector<small_vector<ttb_indx>>& blocking,
                      const ProcessorMap& pmap, const AlgParams& algParams)
 {
   const bool use_tpetra =
@@ -822,25 +826,25 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
   }
 
   std::vector<detail::RangePair> range;
-  auto ndims = TensorDims.size();
-  for (auto i = 0u; i < ndims; ++i) {
-    auto coord = pmap_->gridCoord(i);
+  ttb_indx ndims = TensorDims.size();
+  for (ttb_indx i = 0; i < ndims; ++i) {
+    ttb_indx coord = pmap_->gridCoord(i);
     range.push_back({global_blocking_[i][coord],
                       global_blocking_[i][coord + 1]});
   }
 
   std::vector<ttb_indx> indices(ndims);
   local_dims_.resize(ndims);
-  for (auto i = 0u; i < ndims; ++i) {
+  for (ttb_indx i = 0; i < ndims; ++i) {
     auto const &rpair = range[i];
     indices[i] = rpair.upper - rpair.lower;
     local_dims_[i] = indices[i];
   }
 
-  const auto local_nnz = distributedData.size();
+  const ttb_indx local_nnz = distributedData.size();
   std::vector<ttb_real> values(local_nnz);
   std::vector<std::vector<ttb_indx>> subs(local_nnz);
-  for (auto i = 0u; i < local_nnz; ++i) {
+  for (ttb_indx i = 0; i < local_nnz; ++i) {
     auto data = distributedData[i];
     values[i] = data.val;
     subs[i] = std::vector<ttb_indx>(data.coo, data.coo + ndims);
@@ -848,7 +852,7 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
     // Do not subtract off the lower bound of the bounding box for Tpetra
     // since it will map GIDs to LIDs below
     if (!use_tpetra)
-      for (auto j = 0u; j < ndims; ++j)
+      for (ttb_indx j = 0; j < ndims; ++j)
         subs[i][j] -= range[j].lower;
   }
 
@@ -871,7 +875,7 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
     // ToDo:  consider possibly not doing this when the number of rows is
     // small.  It might be better to replicate rows instead
     factorMap.resize(ndims);
-    for (auto dim=0u; dim<ndims; ++dim) {
+    for (ttb_indx dim=0; dim<ndims; ++dim) {
       const tpetra_go_type numGlobalElements = global_dims_[dim];
       factorMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(numGlobalElements, indexBase, tpetra_comm));
     }
@@ -882,12 +886,12 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
     using unordered_map_type = Kokkos::UnorderedMap<tpetra_go_type,tpetra_lo_type,DefaultHostExecutionSpace>;
     std::vector<unordered_map_type> map(ndims);
     std::vector<tpetra_lo_type> cnt(ndims, 0);
-    for (auto dim=0u; dim<ndims; ++dim)
+    for (ttb_indx dim=0; dim<ndims; ++dim)
       map[dim].rehash(local_dims_[dim]);
-    for (auto i=0u; i<local_nnz; ++i) {
-      for (auto dim=0u; dim<ndims; ++dim) {
-        auto gid = subs[i][dim];
-        auto idx = map[dim].find(gid);
+    for (ttb_indx i=0; i<local_nnz; ++i) {
+      for (ttb_indx dim=0; dim<ndims; ++dim) {
+        ttb_indx gid = subs[i][dim];
+        ttb_indx idx = map[dim].find(gid);
         if (!map[dim].valid_at(idx)) {
           tpetra_lo_type lid = cnt[dim]++;
           if (map[dim].insert(gid,lid).failed())
@@ -895,19 +899,19 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
         }
       }
     }
-    for (auto dim=0u; dim<ndims; ++dim)
+    for (ttb_indx dim=0; dim<ndims; ++dim)
       assert(cnt[dim] == tpetra_lo_type(map[dim].size()));
 
     // Map tensor GIDs to LIDs.  We use the hash-map for this instead of just
     // subtracting off the lower bound because there may be empty slices
     // in our block (and LIDs must be contiguous)
     std::vector<std::vector<ttb_indx>> subs_gids(local_nnz);
-    for (auto i=0u; i<local_nnz; ++i) {
+    for (ttb_indx i=0; i<local_nnz; ++i) {
       subs_gids[i].resize(ndims);
-      for (auto dim=0u; dim<ndims; ++dim) {
-        const auto gid = subs[i][dim];
-        const auto idx = map[dim].find(gid);
-        const auto lid = map[dim].value_at(idx);
+      for (ttb_indx dim=0; dim<ndims; ++dim) {
+        const ttb_indx gid = subs[i][dim];
+        const ttb_indx idx = map[dim].find(gid);
+        const ttb_indx lid = map[dim].value_at(idx);
         subs[i][dim] = lid;
         subs_gids[i][dim] = gid;
       }
@@ -915,14 +919,14 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
 
     // Construct overlap maps for each dimension
     overlapFactorMap.resize(ndims);
-    for (auto dim=0u; dim<ndims; ++dim) {
+    for (ttb_indx dim=0; dim<ndims; ++dim) {
       Kokkos::View<tpetra_go_type*,ExecSpace> gids("gids", cnt[dim]);
       auto gids_host = create_mirror_view(gids);
-      const auto sz = map[dim].capacity();
-      for (auto idx=0u; idx<sz; ++idx) {
+      const ttb_indx sz = map[dim].capacity();
+      for (ttb_indx idx=0; idx<sz; ++idx) {
         if (map[dim].valid_at(idx)) {
-          const auto gid = map[dim].key_at(idx);
-          const auto lid = map[dim].value_at(idx);
+          const ttb_indx gid = map[dim].key_at(idx);
+          const ttb_indx lid = map[dim].value_at(idx);
           gids_host[lid] = gid;
         }
       }
@@ -938,7 +942,7 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
           std::cerr, err, *factorMap[dim], *overlapFactorMap[dim]);
         if (err)
           Genten::error("Tpetra::Details::makeOptimizedColMap failed!");
-        for (auto i=0u; i<local_nnz; ++i)
+        for (ttb_indx i=0; i<local_nnz; ++i)
           subs[i][dim] =
             overlapFactorMap[dim]->getLocalElement(subs_gids[i][dim]);
       }
@@ -946,14 +950,14 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
 
     // Build sparse tensor
     std::vector<ttb_indx> lower(ndims), upper(ndims);
-    for (auto dim=0u; dim<ndims; ++dim) {
+    for (ttb_indx dim=0; dim<ndims; ++dim) {
       lower[dim] = range[dim].lower;
       upper[dim] = range[dim].upper;
     }
     Sptensor sptensor_host(indices, values, subs, subs_gids, lower, upper);
     sptensor = create_mirror_view(ExecSpace(), sptensor_host);
     deep_copy(sptensor, sptensor_host);
-    for (auto dim=0u; dim<ndims; ++dim) {
+    for (ttb_indx dim=0; dim<ndims; ++dim) {
       sptensor.factorMap(dim) = factorMap[dim];
       sptensor.tensorMap(dim) = overlapFactorMap[dim];
       if (!overlapFactorMap[dim]->isSameAs(*factorMap[dim]))
@@ -965,7 +969,7 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
     // Build maps and importers for importing factor matrices to/from root
     rootMap.resize(ndims);
     rootImporter.resize(ndims);
-    for (auto dim=0u; dim<ndims; ++dim) {
+    for (ttb_indx dim=0; dim<ndims; ++dim) {
       const Tpetra::global_size_t numGlobalElements = global_dims_[dim];
       const size_t numLocalElements =
         (gridRank() == 0) ? global_dims_[dim] : 0;
@@ -999,7 +1003,7 @@ DistTensorContext<ExecSpace>::
 distributeTensorData(const std::vector<ttb_real>& Tvec,
                      const ttb_indx global_nnz, const ttb_indx global_offset,
                      const std::vector<ttb_indx>& TensorDims,
-                     const std::vector<small_vector<int>>& blocking,
+                     const std::vector<small_vector<ttb_indx>>& blocking,
                      const ProcessorMap& pmap, const AlgParams& algParams)
 {
   const bool use_tpetra =
@@ -1021,22 +1025,22 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
   }
 
   std::vector<detail::RangePair> range;
-  auto ndims = TensorDims.size();
-  for (auto i = 0u; i < ndims; ++i) {
-    auto coord = pmap_->gridCoord(i);
+  ttb_indx ndims = TensorDims.size();
+  for (ttb_indx i = 0; i < ndims; ++i) {
+    ttb_indx coord = pmap_->gridCoord(i);
     range.push_back({global_blocking_[i][coord],
                       global_blocking_[i][coord + 1]});
   }
 
   std::vector<ttb_indx> indices(ndims);
   local_dims_.resize(ndims);
-  for (auto i = 0u; i < ndims; ++i) {
+  for (ttb_indx i = 0; i < ndims; ++i) {
     auto const &rpair = range[i];
     indices[i] = rpair.upper - rpair.lower;
     local_dims_[i] = indices[i];
   }
 
-  const auto local_nnz = values.size();
+  const ttb_indx local_nnz = values.size();
 
   TensorT<ExecSpace> tensor;
   if (!use_tpetra) {
@@ -1058,19 +1062,19 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
     // ToDo:  consider possibly not doing this when the number of rows is
     // small.  It might be better to replicate rows instead
     factorMap.resize(ndims);
-    for (auto dim=0u; dim<ndims; ++dim) {
+    for (ttb_indx dim=0; dim<ndims; ++dim) {
       const tpetra_go_type numGlobalElements = global_dims_[dim];
       factorMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(numGlobalElements, indexBase, tpetra_comm));
     }
 
     // Build tensor maps based on slices owned by each processor
     overlapFactorMap.resize(ndims);
-    for (auto dim=0u; dim<ndims; ++dim) {
-      const auto sz = local_dims_[dim];
+    for (ttb_indx dim=0; dim<ndims; ++dim) {
+      const ttb_indx sz = local_dims_[dim];
       Kokkos::View<tpetra_go_type*,ExecSpace> gids("gids", sz);
       auto gids_host = create_mirror_view(gids);
-      const auto l = range[dim].lower;
-      for (auto idx=0u; idx<sz; ++idx)
+      const ttb_indx l = range[dim].lower;
+      for (ttb_indx idx=0; idx<sz; ++idx)
         gids_host[idx] = l + idx;
       deep_copy(gids, gids_host);
       overlapFactorMap[dim] =
@@ -1083,13 +1087,13 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
                        Array(local_nnz, values.data(), false));
     IndxArray lower = tensor_host.getLowerBounds();
     IndxArray upper = tensor_host.getUpperBounds();
-    for (auto dim=0u; dim<ndims; ++dim) {
+    for (ttb_indx dim=0; dim<ndims; ++dim) {
       lower[dim] = range[dim].lower;
       upper[dim] = range[dim].upper;
     }
     tensor = create_mirror_view(ExecSpace(), tensor_host);
     deep_copy(tensor, tensor_host);
-    for (auto dim=0u; dim<ndims; ++dim) {
+    for (ttb_indx dim=0; dim<ndims; ++dim) {
       tensor.factorMap(dim) = factorMap[dim];
       tensor.tensorMap(dim) = overlapFactorMap[dim];
       if (!overlapFactorMap[dim]->isSameAs(*factorMap[dim]))
@@ -1101,7 +1105,7 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
     // Build maps and importers for importing factor matrices to/from root
     rootMap.resize(ndims);
     rootImporter.resize(ndims);
-    for (auto dim=0u; dim<ndims; ++dim) {
+    for (ttb_indx dim=0; dim<ndims; ++dim) {
       const Tpetra::global_size_t numGlobalElements = global_dims_[dim];
       const size_t numLocalElements =
         (gridRank() == 0) ? global_dims_[dim] : 0;
@@ -1146,16 +1150,16 @@ distributeTensor(const std::string& file,
   reader.read();
   if (reader.isSparse()) {
     X_sparse = reader.getSparseTensor();
-    const int nd = X_sparse.ndims();
+    const ttb_indx nd = X_sparse.ndims();
     global_dims_.resize(nd);
-    for (int i=0; i<nd; ++i)
+    for (ttb_indx i=0; i<nd; ++i)
       global_dims_[i] = X_sparse.size(i);
   }
   else if (reader.isDense()) {
     X_dense = reader.getDenseTensor();
-    const int nd = X_dense.ndims();
+    const ttb_indx nd = X_dense.ndims();
     global_dims_.resize(nd);
-    for (int i=0; i<nd; ++i)
+    for (ttb_indx i=0; i<nd; ++i)
       global_dims_[i] = X_dense.size(i);
   }
   else
@@ -1196,8 +1200,8 @@ template <typename ExecSpace>
 KtensorT<ExecSpace>
 DistTensorContext<ExecSpace>::
 randomInitialGuess(const SptensorT<ExecSpace>& X,
-                   const int rank,
-                   const int seed,
+                   const ttb_indx rank,
+                   const ttb_indx seed,
                    const bool prng,
                    const bool scale_guess_by_norm_x,
                    const std::string& dist_method) const
@@ -1212,7 +1216,7 @@ randomInitialGuess(const SptensorT<ExecSpace>& X,
     // Compute random ktensor on rank 0 and broadcast to all proc's
     IndxArrayT<ExecSpace> sz(nd);
     auto hsz = create_mirror_view(sz);
-    for (auto i=0u; i<nd; ++i)
+    for (ttb_indx i=0; i<nd; ++i)
       hsz[i] = global_dims_[i];
     deep_copy(sz,hsz);
     Genten::KtensorT<ExecSpace> u0(rank, nd, sz);
@@ -1225,10 +1229,10 @@ randomInitialGuess(const SptensorT<ExecSpace>& X,
   else if (dist_method == "parallel" || dist_method == "parallel-drew") {
 #ifdef HAVE_TPETRA
     if (tpetra_comm != Teuchos::null) {
-      const int nd = X.ndims();
+      const ttb_indx nd = X.ndims();
       IndxArrayT<ExecSpace> sz(nd);
       auto hsz = create_mirror_view(sz);
-      for (int i=0; i<nd; ++i)
+      for (ttb_indx i=0; i<nd; ++i)
         hsz[i] = factorMap[i]->getLocalNumElements();
       deep_copy(sz,hsz);
       u = KtensorT<ExecSpace>(rank, nd, sz);
@@ -1265,8 +1269,8 @@ template <typename ExecSpace>
 KtensorT<ExecSpace>
 DistTensorContext<ExecSpace>::
 randomInitialGuess(const TensorT<ExecSpace>& X,
-                   const int rank,
-                   const int seed,
+                   const ttb_indx rank,
+                   const ttb_indx seed,
                    const bool prng,
                    const bool scale_guess_by_norm_x,
                    const std::string& dist_method) const
@@ -1281,7 +1285,7 @@ randomInitialGuess(const TensorT<ExecSpace>& X,
     // Compute random ktensor on rank 0 and broadcast to all proc's
     IndxArrayT<ExecSpace> sz(nd);
     auto hsz = create_mirror_view(sz);
-    for (auto i=0u; i<nd; ++i)
+    for (ttb_indx i=0; i<nd; ++i)
       hsz[i] = global_dims_[i];
     deep_copy(sz,hsz);
     Genten::KtensorT<ExecSpace> u0(rank, nd, sz);
@@ -1294,10 +1298,10 @@ randomInitialGuess(const TensorT<ExecSpace>& X,
   else if (dist_method == "parallel" || dist_method == "parallel-drew") {
 #ifdef HAVE_TPETRA
     if (tpetra_comm != Teuchos::null) {
-      const int nd = X.ndims();
+      const ttb_indx nd = X.ndims();
       IndxArrayT<ExecSpace> sz(nd);
       auto hsz = create_mirror_view(sz);
-      for (int i=0; i<nd; ++i)
+      for (ttb_indx i=0; i<nd; ++i)
         hsz[i] = factorMap[i]->getLocalNumElements();
       deep_copy(sz,hsz);
       u = KtensorT<ExecSpace>(rank, nd, sz);
@@ -1344,10 +1348,10 @@ computeInitialGuess(const SptensorT<ExecSpace>& X, const ptree& input) const
     u = readInitialGuess(file_name);
   }
   else if (init_method == "rand") {
-    const int seed = kt_input.get<int>("seed",std::random_device{}());
+    const ttb_indx seed = kt_input.get<int>("seed",std::random_device{}());
     const bool prng = kt_input.get<bool>("prng",true);
     const bool scale_by_x = kt_input.get<bool>("scale-guess-by-norm-x", false);
-    const int nc = kt_input.get<int>("rank");
+    const ttb_indx nc = kt_input.get<int>("rank");
     const std::string dist_method =
       kt_input.get<std::string>("distributed-guess", "serial");
     u = randomInitialGuess(X, nc, seed, prng, scale_by_x, dist_method);
