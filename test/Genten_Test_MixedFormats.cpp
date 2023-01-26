@@ -157,7 +157,6 @@ TYPED_TEST(TestMixedFormatsT, SptensorTensorKtensorInnerprod) {
 TYPED_TEST(TestMixedFormatsT, SptensorKtensorTimesDivide) {
   DistContext::Barrier();
 
-  using exec_space = typename TestFixture::exec_space;
   using host_exec_space = DefaultHostExecutionSpace;
 
   INFO_MSG("Resizing Sptensor for times/divide test");

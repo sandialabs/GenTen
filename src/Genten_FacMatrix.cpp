@@ -666,11 +666,8 @@ gramian(const Genten::FacMatrixT<ExecSpace> & v, const bool full,
   cali::Function cali_func("Genten::FacMatrix::gramian");
 #endif
 
-  const ttb_indx m = v.data.extent(0);
-  const ttb_indx n = v.data.extent(1);
-
-  assert(data.extent(0) == n);
-  assert(data.extent(1) == n);
+  assert(data.extent(0) == v.data.extent(1));
+  assert(data.extent(1) == v.data.extent(1));
 
   Genten::Impl::gramianImpl<ExecSpace>(data,v.data,full,uplo);
 
@@ -1361,7 +1358,7 @@ scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise) const
     if (n < 1) { n =1; }
     // flags array so we don't count repeats twice toward fraction target
     Genten::IndxArrayT<ExecSpace> marked(tot,(ttb_indx)0);
-    int misses = 0;
+    ttb_indx misses = 0;
     while (i < n ) {
       k = ::random() % tot;
       if (!marked[k]) {
@@ -1843,12 +1840,14 @@ gemm(const bool trans_a, const bool trans_b, const ttb_real alpha,
   cali::Function cali_func("Genten::FacMatrix::gemm");
 #endif
 
+#ifndef NDEBUG
   const ttb_indx m = data.extent(0);
   const ttb_indx n = data.extent(1);
   const ttb_indx rows_op_a = trans_a ? A.data.extent(1) : A.data.extent(0);
   const ttb_indx cols_op_a = trans_a ? A.data.extent(0) : A.data.extent(1);
   const ttb_indx rows_op_b = trans_b ? B.data.extent(1) : B.data.extent(0);
   const ttb_indx cols_op_b = trans_b ? B.data.extent(0) : B.data.extent(1);
+#endif
 
   assert(rows_op_a == m);
   assert(cols_op_a == rows_op_b);
@@ -1902,7 +1901,7 @@ namespace Genten {
       char uplo = ul == Upper ? 'L' : 'U';
 
       if (algParams.rank_def_solver) {
-        ttb_indx rank = Genten::gelsy(ncols, ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0(), algParams.rcond);
+        /*ttb_indx rank =*/ Genten::gelsy(ncols, ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0(), algParams.rcond);
         // if (rank < ncols) {
         //   std::cout << "Matrix is not full rank!  Numerical rank = " << rank
         //             << ", matrix order is " << ncols << std::endl;
@@ -2698,9 +2697,6 @@ solveTransposeRHS (const Genten::FacMatrixT<ExecSpace> & A,
                    const bool spd,
                    const AlgParams& algParams) const
 {
-  const ttb_indx nrows = data.extent(0);
-  const ttb_indx ncols = data.extent(1);
-
   assert(A.nRows() == A.nCols());
   assert(nCols() == A.nRows());
 

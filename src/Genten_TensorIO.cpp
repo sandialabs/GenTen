@@ -70,7 +70,7 @@ SptnFileHeader::SptnFileHeader(const Sptensor& X,
   ndims(X.ndims()), float_bits(float_size), dim_lengths(ndims), dim_bits(ndims),
   nnz(X.nnz())
 {
-  for (auto n=0; n<ndims; ++n) {
+  for (auto n=0u; n<ndims; ++n) {
     dim_lengths[n] = X.size(n);
     dim_bits[n] = smallestBuiltinThatHolds(X.size(n));
   }
@@ -105,7 +105,7 @@ SptnFileHeader::SptnFileHeader(const ptree& tree)
       Genten::error("sub-bits must be an array of the same length as dims!");
   }
   dim_bits.resize(ndims);
-  for (auto n=0; n<ndims; ++n) {
+  for (auto n=0u; n<ndims; ++n) {
     if (sub_bits[n] != 16 && sub_bits[n] != 32 && sub_bits[n] != 64)
       Genten::error("Each entry of sub-bits must be one of 16, 32, or 64!");
     dim_bits[n] = sub_bits[n];
@@ -124,7 +124,7 @@ SptnFileHeader::dataByteOffset() const {
 
 std::uint64_t
 SptnFileHeader::indByteOffset(int ind) const {
-  if (ind >= ndims) {
+  if (ind >= int(ndims)) {
     throw std::out_of_range(
         "Called indByteOffset with index that was out of range\n");
   }
@@ -191,12 +191,12 @@ SptnFileHeader::readBinary(std::istream& in)
 
   // Size of each dimension
   dim_lengths.resize(ndims);
-  for (auto n=0; n<ndims; ++n)
+  for (auto n=0u; n<ndims; ++n)
     in.read(reinterpret_cast<char*>(&dim_lengths[n]), sizeof(dim_type));
 
   // Subscript size
   dim_bits.resize(ndims);
-  for (auto n=0; n<ndims; ++n)
+  for (auto n=0u; n<ndims; ++n)
     in.read(reinterpret_cast<char*>(&dim_bits[n]), sizeof(sub_size_type));
 
   // Number of nonzeros
@@ -209,9 +209,9 @@ SptnFileHeader::writeBinary(std::ostream& out)
   out.write("sptn", 4);
   out.write(reinterpret_cast<char*>(&ndims), sizeof(nd_type));
   out.write(reinterpret_cast<char*>(&float_bits), sizeof(float_size_type));
-  for (auto n=0; n<ndims; ++n)
+  for (auto n=0u; n<ndims; ++n)
     out.write(reinterpret_cast<char*>(&dim_lengths[n]), sizeof(dim_type));
-  for (auto n=0; n<ndims; ++n)
+  for (auto n=0u; n<ndims; ++n)
     out.write(reinterpret_cast<char*>(&dim_bits[n]), sizeof(sub_size_type));
   out.write(reinterpret_cast<char*>(&(nnz)), sizeof(nnz_type));
 }
@@ -220,7 +220,7 @@ DntnFileHeader::DntnFileHeader(const Tensor& X,
                                const float_size_type float_size) :
   ndims(X.ndims()), float_bits(float_size), dim_lengths(ndims), nnz(X.nnz())
 {
-  for (auto n=0; n<ndims; ++n)
+  for (auto n=0u; n<ndims; ++n)
     dim_lengths[n] = X.size(n);
 }
 
@@ -308,7 +308,7 @@ DntnFileHeader::readBinary(std::istream& in)
 
   // Size of each dimension
   dim_lengths.resize(ndims);
-  for (auto n=0; n<ndims; ++n)
+  for (auto n=0u; n<ndims; ++n)
     in.read(reinterpret_cast<char*>(&dim_lengths[n]), sizeof(dim_type));
 
   // Number of nonzeros
@@ -321,7 +321,7 @@ DntnFileHeader::writeBinary(std::ostream& out)
   out.write("dntn", 4);
   out.write(reinterpret_cast<char*>(&ndims), sizeof(nd_type));
   out.write(reinterpret_cast<char*>(&float_bits), sizeof(float_size_type));
-  for (auto n=0; n<ndims; ++n)
+  for (auto n=0u; n<ndims; ++n)
     out.write(reinterpret_cast<char*>(&dim_lengths[n]), sizeof(dim_type));
   out.write(reinterpret_cast<char*>(&(nnz)), sizeof(nnz_type));
 }
@@ -453,13 +453,13 @@ Genten::Sptensor read_binary_sparse_tensor(const std::string& filename)
 
   // Allocate tensor
   Genten::IndxArray sz(h.ndims);
-  for (auto n=0; n<h.ndims; ++n)
+  for (auto n=0u; n<h.ndims; ++n)
     sz[n] = h.dim_lengths[n];
   Genten::Sptensor x(sz, h.nnz);
 
   // Read nonzeros
-  for (auto i=0; i<h.nnz; ++i) {
-    for (auto n=0; n<h.ndims; ++n)
+  for (auto i=0u; i<h.nnz; ++i) {
+    for (auto n=0u; n<h.ndims; ++n)
       x.subscript(i,n) = readSubValue(infile, h.dim_bits[n]);
     x.value(i) = readDataValue(infile, h.float_bits);
   }
@@ -476,13 +476,13 @@ Genten::Sptensor read_binary_sparse_tensor(const std::string& filename,
 
   // Allocate tensor
   Genten::IndxArray sz(h.ndims);
-  for (auto n=0; n<h.ndims; ++n)
+  for (auto n=0u; n<h.ndims; ++n)
     sz[n] = h.dim_lengths[n];
   Genten::Sptensor x(sz, h.nnz);
 
   // Read nonzeros
-  for (auto i=0; i<h.nnz; ++i) {
-    for (auto n=0; n<h.ndims; ++n)
+  for (auto i=0u; i<h.nnz; ++i) {
+    for (auto n=0u; n<h.ndims; ++n)
       x.subscript(i,n) = readSubValue(infile, h.dim_bits[n]);
     x.value(i) = readDataValue(infile, h.float_bits);
   }
@@ -501,12 +501,12 @@ Genten::Sptensor read_binary_dense_tensor(const std::string& filename)
 
   // Allocate tensor
   Genten::IndxArray sz(h.ndims);
-  for (auto n=0; n<h.ndims; ++n)
+  for (auto n=0u; n<h.ndims; ++n)
     sz[n] = h.dim_lengths[n];
   Genten::Tensor x(sz);
 
   // Read onzeros
-  for (auto i=0; i<h.nnz; ++i)
+  for (auto i=0u; i<h.nnz; ++i)
     x[i] = readDataValue(infile, h.float_bits);
 
   return x;
@@ -521,12 +521,12 @@ Genten::Sptensor read_binary_dense_tensor(const std::string& filename,
 
   // Allocate tensor
   Genten::IndxArray sz(h.ndims);
-  for (auto n=0; n<h.ndims; ++n)
+  for (auto n=0u; n<h.ndims; ++n)
     sz[n] = h.dim_lengths[n];
   Genten::Tensor x(sz);
 
   // Read onzeros
-  for (auto i=0; i<h.nnz; ++i)
+  for (auto i=0u; i<h.nnz; ++i)
     x[i] = readDataValue(infile, h.float_bits);
 
   return x;
@@ -561,8 +561,8 @@ void write_binary_sparse_tensor(const std::string filename,
   if (write_header)
     h.writeBinary(outfile);
 
-  for (auto i=0; i<h.nnz; ++i) {
-    for (auto n=0; n<h.ndims; ++n)
+  for (auto i=0u; i<h.nnz; ++i) {
+    for (auto n=0u; n<h.ndims; ++n)
       writeSubValue(outfile, x.subscript(i,n), h.dim_bits[n]);
     writeDataValue(outfile, x.value(i), float_data_size);
   }
@@ -590,7 +590,7 @@ void write_binary_dense_tensor(const std::string filename,
   if (write_header)
     h.writeBinary(outfile);
 
-  for (auto i=0; i<h.nnz; ++i)
+  for (auto i=0u; i<h.nnz; ++i)
     writeDataValue(outfile, x[i], float_data_size);
 }
 
@@ -834,7 +834,7 @@ queryFile()
       std::string t;
       while (std::getline(ss,t,' '))
         tokens.push_back(t);
-      for (auto i=0; i<tokens.size()-1; ++i)
+      for (auto i=0u; i<tokens.size()-1; ++i)
         std::stol(tokens[i]);
       std::stod(tokens[tokens.size()-1]);
       is_sparse = true;

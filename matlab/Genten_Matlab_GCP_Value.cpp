@@ -67,7 +67,7 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
     algParams.fixup<ExecSpace>(std::cout);
 
     // Parse inputs
-    unsigned arg = 0;
+    int arg = 0;
     const Sptensor_type X = mxGetSptensor<ExecSpace>(prhs[arg++]);
     const Ktensor_type u = mxGetKtensor<ExecSpace>(prhs[arg++]);
     const Ktensor_type uprev = mxGetKtensor<ExecSpace>(prhs[arg++]);

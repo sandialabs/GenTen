@@ -232,8 +232,8 @@ AlgParams DistGCP<ExecSpace>::setAlgParams() {
   global_zg = pmap().gridAllReduce(local_batch_sizez);
   global_zf = pmap().gridAllReduce(local_value_sizez);
 
-  const auto percent_nz_batch =
-      double(global_batch_size_nz) / double(gnz) * 100.0;
+  // const auto percent_nz_batch =
+  //     double(global_batch_size_nz) / double(gnz) * 100.0;
   percent_nz_epoch =
       double(algParams.epoch_iters * global_batch_size_nz) / double(gnz) *
       100.0;
@@ -309,7 +309,7 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
   const ProcessorMap* pmap = &dtc_.pmap();
 
   const auto start_time = MPI_Wtime();
-  const auto nprocs = dtc_.nprocs();
+  //const auto nprocs = dtc_.nprocs();
   const auto my_rank = pmap->gridRank();
 
   std::ostream& out = my_rank == 0 ? std::cout : Genten::bhcout;
@@ -410,7 +410,7 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
   const int timer_sort = num_timers++;
   const int timer_sample_f = num_timers++;
   const int timer_fest = num_timers++;
-  const int timer_sample_g = num_timers++;
+  //const int timer_sample_g = num_timers++;
   const int timer_grad = num_timers++;
   const int timer_grad_nzs = num_timers++;
   const int timer_grad_zs = num_timers++;
@@ -462,8 +462,8 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
 
   //double t0 = 0;
   double t1 = 0;
-  int nfails = 0;
-  for (auto e = 0; e < maxEpochs; ++e) { // Epochs
+  ttb_indx nfails = 0;
+  for (ttb_indx e = 0; e < maxEpochs; ++e) { // Epochs
     //t0 = MPI_Wtime();
     auto epoch_lr = annealer(e);
     stepper->setStep(epoch_lr);
@@ -496,7 +496,7 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
     auto evaluation_time = 0.0;
     auto sync_time = 0.0;
 
-    for (auto i = 0; i < epochIters; ++i) {
+    for (ttb_indx i = 0; i < epochIters; ++i) {
       do_epoch_iter(gradient_time, evaluation_time);
       if ((i + 1) % dp_iters == 0 || i == (epochIters - 1)) {
         auto s0 = MPI_Wtime();
@@ -768,7 +768,7 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
   // For adam with all of the all reduces I am hopeful the barriers don't
   // really matter for timeing
 
-  for (auto e = 0; e < maxEpochs; ++e) { // Epochs
+  for (ttb_indx e = 0; e < maxEpochs; ++e) { // Epochs
     pmap().gridBarrier();                // Makes times more accurate
     double e_start = MPI_Wtime();
     const auto epoch_lr = annealer(e);
@@ -778,7 +778,7 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
     double gradient_time = 0;
     double allreduce_time = 0;
     double eval_time = 0;
-    for (auto i = 0; i < epochIters; ++i) {
+    for (ttb_indx i = 0; i < epochIters; ++i) {
       stepper->update();
       //g.zero();
       auto ze = MPI_Wtime();
@@ -796,13 +796,13 @@ ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
       ++allreduceCounter;
     }
 
-    double fest_start = MPI_Wtime();
+    //double fest_start = MPI_Wtime();
     sampler.value(ut, hist, penalty, loss, fest, ften);
     fest = pmap().gridAllReduce(fest);
     pmap().gridBarrier(); // Makes times more accurate
     double e_end = MPI_Wtime();
-    auto epoch_time = e_end - e_start;
-    auto fest_time = e_end - fest_start;
+    //auto epoch_time = e_end - e_start;
+    //auto fest_time = e_end - fest_start;
     const auto fest_diff = fest_prev - fest;
 
     std::vector<double> gradient_times;

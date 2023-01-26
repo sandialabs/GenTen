@@ -224,7 +224,7 @@ exportFromRoot(const KtensorT<ExecSpaceSrc>& u) const
 {
   const int nd = u.ndims();
   const int nc = u.ncomponents();
-  assert(global_dims_.size() == nd);
+  assert(int(global_dims_.size()) == nd);
 
   Genten::KtensorT<ExecSpace> exp;
   IndxArrayT<ExecSpace> sz(nd);
@@ -324,7 +324,7 @@ importToRoot(const KtensorT<ExecSpace>& u) const
 
   const int nd = u.ndims();
   const int nc = u.ncomponents();
-  assert(global_dims_.size() == nd);
+  assert(int(global_dims_.size()) == nd);
 
   IndxArrayT<ExecSpaceDst> sizes_idx(nd);
   auto sizes_idx_host = create_mirror_view(sizes_idx);
@@ -369,7 +369,7 @@ importToRoot(const KtensorT<ExecSpace>& u) const
       const auto nblocks = global_blocking_[d].size() - 1;
       if (print)
         std::cout << "\tDim(" << d << ")\n";
-      for (auto b = 0; b < nblocks; ++b) {
+      for (auto b = 0u; b < nblocks; ++b) {
         if (print)
           std::cout << "\t\t{" << global_blocking_[d][b]
                     << ", " << global_blocking_[d][b + 1]
@@ -476,7 +476,7 @@ importToRoot(const int dim, const FacMatrixT<ExecSpace>& u) const
     std::vector<int> recvcounts(pmap_->gridSize(), 0);
     std::vector<int> displs(pmap_->gridSize(), 0);
     const auto nblocks = global_blocking_[dim].size() - 1;
-    for (auto b = 0; b < nblocks; ++b) {
+    for (auto b = 0u; b < nblocks; ++b) {
       grid_pos[dim] = b;
       int owner = 0;
       MPI_Cart_rank(pmap_->gridComm(), grid_pos.data(), &owner);

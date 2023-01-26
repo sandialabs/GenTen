@@ -124,9 +124,9 @@ namespace Genten {
                   PerfHistory& h) : M(m), cp_model(x, m, algParams), history(h),
                                     timer(1)
     {
+#if COPY_KTENSOR
       const ttb_indx nc = M.ncomponents();
       const ttb_indx nd = M.ndims();
-#if COPY_KTENSOR
       V = ktensor_type(nc, nd, x.size(), M.getProcessorMap());
       G = ktensor_type(nc, nd, x.size(), M.getProcessorMap());
 #endif

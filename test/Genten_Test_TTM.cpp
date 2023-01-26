@@ -172,8 +172,6 @@ TYPED_TEST(TestTtmT, ModeZero) {
 
   INFO_MSG("preparing to calculate ttm:  5x2 * 3x4x2x2 along mode 0");
 
-  int prod = Z.size().prod();
-
   ttb_real unit_test[120] = {
       25,  28,  31,  34,   37,   70,  82,  94,  106,  118, 115, 136, 157, 178,
       199, 160, 190, 220,  250,  280, 205, 244, 283,  322, 361, 250, 298, 346,
@@ -220,8 +218,6 @@ TYPED_TEST(TestTtmT, ModeOne) {
   TensorT<host_space> Z(result_size, 0.0);
   INFO_MSG("preparing to calculate ttm:  5x4 * 3x4x2x2 along mode 1");
 
-  int prod = Z.size().prod();
-
   ttb_real unit_test[60] = {
       210,  240,  270,  228,  262,  296,  246,  284,  322,  264,  306,  348,
       282,  328,  374,  570,  600,  630,  636,  670,  704,  702,  740,  778,
@@ -266,8 +262,6 @@ TYPED_TEST(TestTtmT, ModeTwo) {
 
   TensorT<host_space> Z(result_size, 0.0);
   INFO_MSG("preparing to calculate ttm: 5x2 * 3x4x2x2 along mode 2");
-
-  int prod = Z.size().prod();
 
   ttb_real unit_test[120] = {
       60,  65,  70,  75,  80,  85,  90,  95,  100, 105, 110, 115, 72,  79,
@@ -317,8 +311,6 @@ TYPED_TEST(TestTtmT, ModeThree) {
 
   TensorT<host_space> Z(result_size, 0.0);
   INFO_MSG("preparing to calculate ttm:  5x2 * 3x4x2x2 along mode 3");
-
-  int prod = Z.size().prod();
 
   ttb_real unit_test[120] = {
       120, 125, 130, 135, 140, 145, 150, 155, 160, 165, 170, 175, 180, 185,

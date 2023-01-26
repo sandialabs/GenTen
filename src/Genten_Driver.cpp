@@ -87,8 +87,6 @@ driver(const DistTensorContext<ExecSpace>& dtc,
 {
   GENTEN_TIME_MONITOR("Genten driver");
 
-  typedef Genten::SptensorT<ExecSpace> Sptensor_type;
-  typedef Genten::SptensorT<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
   typedef Genten::KtensorT<ExecSpace> Ktensor_type;
   typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
 
@@ -218,7 +216,7 @@ driver(const DistTensorContext<ExecSpace>& dtc,
     x.setProcessorMap(nullptr); // DistGCP handles communication itself
     u.setProcessorMap(nullptr);
     DistGCP<ExecSpace> dgcp(dtc, x, u, ptree, history);
-    ttb_real resNorm = dgcp.compute();
+    dgcp.compute();
 #else
     Genten::error("gcp-sgd-dist requires MPI support!");
 #endif
@@ -281,8 +279,6 @@ driver(const DistTensorContext<ExecSpace>& dtc,
 {
   GENTEN_TIME_MONITOR("Genten driver");
 
-  typedef Genten::TensorT<ExecSpace> Tensor_type;
-  typedef Genten::TensorT<Genten::DefaultHostExecutionSpace> Tensor_host_type;
   typedef Genten::KtensorT<ExecSpace> Ktensor_type;
   typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
 

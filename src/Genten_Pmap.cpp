@@ -97,7 +97,7 @@ auto nelementsForRank1Factors(small_vector<int> const &grid,
 
   const auto ndims = grid.size();
   int64_t nelements = 0;
-  for (auto i = 0; i < ndims; ++i) {
+  for (auto i = 0u; i < ndims; ++i) {
     const auto replicated_procs = nprocs / grid[i];
     nelements += replicated_procs * tensor_dims[i];
   }
@@ -179,7 +179,7 @@ ProcessorMap::ProcessorMap(std::vector<ttb_indx> const &tensor_dims,
   sub_comm_sizes_.resize(ndims);
 
   // Get information for the MPI Subgrid for each Dimension
-  for (auto i = 0; i < ndims; ++i) {
+  for (auto i = 0u; i < ndims; ++i) {
     dim_filter[i] = 0; // Get all dims except this one
     MPI_Cart_sub(cart_comm_, dim_filter.data(), &sub_maps_[i]);
     dim_filter[i] = 1; // Reset the dim_filter
@@ -193,12 +193,12 @@ ProcessorMap::ProcessorMap(std::vector<ttb_indx> const &tensor_dims,
 
   // For Tpetra approach, factor matrices are distributed across all procs
   if (use_tpetra) {
-    for (auto i = 0; i < ndims; ++i)
+    for (auto i = 0u; i < ndims; ++i)
       fac_maps_[i] = FacMap(cart_comm_);
   }
   else {
     // Get information for the MPI Subgrid for each Dimension
-    for (auto i = 0; i < ndims; ++i) {
+    for (auto i = 0u; i < ndims; ++i) {
       dim_filter2[i] = 1; // Get only this dim
       MPI_Comm lcl_comm;
       MPI_Cart_sub(cart_comm_, dim_filter2.data(), &lcl_comm);

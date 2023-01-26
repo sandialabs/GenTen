@@ -200,7 +200,7 @@ SpDataType readSparseElement(SptnFileHeader const &h,
     }
   };
 
-  for (auto i = 0; i < ndims; ++i) {
+  for (auto i = 0u; i < ndims; ++i) {
     data.coo[i] = read_index(data_ptr + h.indByteOffset(i), bits[i]);
   }
 
@@ -282,7 +282,7 @@ parallelReadElements(MPI_Comm comm, MPI_File fh, SptnFileHeader const &h) {
   MPI_Type_free(&element_type);
 
   // Fill the vector
-  for (auto i = 0; i < nlocal_elements; ++i) {
+  for (auto i = 0u; i < nlocal_elements; ++i) {
     auto curr = byte_array.get() + i * bytes_per_element;
     out.push_back(readSparseElement(h, curr));
   }
@@ -337,7 +337,7 @@ parallelReadElements(MPI_Comm comm, MPI_File fh, DntnFileHeader const &h) {
   MPI_Type_free(&element_type);
 
   // Fill the vector
-  for (auto i = 0; i < nlocal_elements; ++i) {
+  for (auto i = 0u; i < nlocal_elements; ++i) {
     auto curr = byte_array.get() + i * bytes_per_element;
     out.push_back(readDenseElement(h, curr));
   }

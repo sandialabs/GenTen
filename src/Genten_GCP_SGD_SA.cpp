@@ -75,7 +75,6 @@ namespace Genten {
                          std::ostream& out)
     {
       typedef KokkosVector<ExecSpace> VectorType;
-      typedef typename VectorType::view_type view_type;
       using std::sqrt;
       using std::pow;
 
@@ -113,9 +112,6 @@ namespace Genten {
       constexpr ttb_real ub = LossFunction::upper_bound();
 
       if (printIter > 0) {
-        const ttb_indx nnz = X.global_nnz();
-        const ttb_real tsz = X.global_numel_float();
-        const ttb_real nz = tsz - nnz;
         out << "\nGCP-SGD (Generalized CP Tensor Decomposition):\n"
             << "  Generalized function type: " << loss_func.name() << std::endl
             << "  Optimization method: " << (use_adam ? "adam\n" : "sgd\n")
@@ -135,7 +131,7 @@ namespace Genten {
       const int timer_sgd = num_timers++;
       const int timer_sort = num_timers++;
       const int timer_sample_f = num_timers++;
-      const int timer_sample_g = num_timers++;
+      //const int timer_sample_g = num_timers++;
       const int timer_fest = num_timers++;
       const int timer_grad = num_timers++;
       const int timer_grad_nzs = num_timers++;
@@ -144,8 +140,8 @@ namespace Genten {
       const int timer_grad_sort = num_timers++;
       const int timer_grad_scan = num_timers++;
       const int timer_step = num_timers++;
-      const int timer_sample_g_z_nz = num_timers++;
-      const int timer_sample_g_perm = num_timers++;
+      //const int timer_sample_g_z_nz = num_timers++;
+      //const int timer_sample_g_perm = num_timers++;
       const int timer_comm = num_timers++;
       SystemTimer timer(num_timers, algParams.timings, pmap);
 

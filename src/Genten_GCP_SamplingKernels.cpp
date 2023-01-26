@@ -102,7 +102,7 @@ namespace {
 #ifndef NDEBUG
       auto cnt_host = create_mirror_view(cnt);
       deep_copy(cnt_host, cnt);
-      assert(cnt_host() == map.size());
+      assert(cnt_host() == tpetra_lo_type(map.size()));
 #endif
 
       GENTEN_START_TIMER("tensor map constructor");
@@ -181,7 +181,7 @@ namespace {
       }
     }
     for (unsigned n=0; n<nd; ++n)
-      assert(cnt[n] == map[n].size());
+      assert(cnt[n] == tpetra_lo_type(map[n].size()));
     GENTEN_STOP_TIMER("compute GID hash");
 
     // Construct sampled tpetra maps
@@ -308,7 +308,6 @@ namespace {
 
       const auto X = Xd.impl();
 
-      /*const*/ ttb_indx nnz = X.nnz();
       /*const*/ unsigned nd = u.ndims();
       /*const*/ ttb_indx ns = num_samples;
       const ttb_indx N = (ns+RowsPerTeam-1)/RowsPerTeam;
@@ -407,7 +406,6 @@ namespace {
 
       const auto X = Xd.impl();
 
-      /*const*/ ttb_indx nnz = X.nnz();
       /*const*/ unsigned nd = u.ndims();
       /*const*/ ttb_indx ns = num_samples;
       const ttb_indx N = (ns+RowsPerTeam-1)/RowsPerTeam;
@@ -895,7 +893,6 @@ namespace {
       static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
-      /*const*/ ttb_indx nnz = X.nnz();
       /*const*/ unsigned nd = X.ndims();
       /*const*/ ttb_indx ns_nz = num_samples_nonzeros;
       /*const*/ ttb_indx total_samples =

@@ -154,10 +154,6 @@ namespace Genten {
                std::ostream& out,
                const bool print)
   {
-    typedef KokkosVector<ExecSpace> VectorType;
-    typedef typename VectorType::view_type view_type;
-
-    const ttb_indx nd = u.ndims();
     ttb_indx num_epoch = 0;
 
     if (print)
@@ -175,9 +171,7 @@ namespace Genten {
              GCP_Streaming_Solver::OnlineCP)
       leastSquaresSolve(true,X,u,fest,ften,out,print);
     else
-      Genten::error(
-        std::string("Unknown temporal streaming solver method ") +
-        std::string(GCP_Streaming_Solver::names[temporalAlgParams.streaming_solver]));
+      Genten::error("Unknown temporal streaming solver method ");
 
     if (print)
       out << "Updating spatial modes..." << std::endl;
@@ -220,9 +214,7 @@ namespace Genten {
       }
     }
     else
-      Genten::error(
-        std::string("Unknown factor matrix solver method ") +
-        std::string(GCP_Streaming_Solver::names[spatialAlgParams.streaming_solver]));
+      Genten::error("Unknown factor matrix solver method ");
 
     // Update history window
     if (algParams.window_size > 0 &&

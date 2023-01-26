@@ -159,12 +159,9 @@ namespace Genten {
         const bool print_itn) const
   {
     typedef KokkosVector<exec_space> VectorType;
-    typedef typename VectorType::view_type view_type;
     using std::sqrt;
     using std::pow;
 
-    const ttb_indx nd = u0.ndims();
-    const ttb_indx nc = u0.ncomponents();
     const ProcessorMap* pmap = u0.getProcessorMap();
 
     // Constants for the algorithm
@@ -183,9 +180,6 @@ namespace Genten {
       createSampler<LossFunction>(X, u0, algParams);
 
     if (print_hdr) {
-      const ttb_indx nnz = X.global_nnz();
-      const ttb_real tsz = X.global_numel_float();
-      const ttb_real nz = tsz - nnz;
       out << "\nGCP-SGD (Generalized CP Tensor Decomposition):\n"
           << "Generalized function type: " << loss_func.name() << std::endl
           << "Optimization method: " << GCP_Step::names[algParams.step_type]

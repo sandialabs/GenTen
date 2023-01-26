@@ -294,10 +294,9 @@ ttb_real Genten::innerprod(const Genten::SptensorT<ExecSpace>& s,
   const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
 
   const ttb_indx nc = u.ncomponents();               // Number of components
-  const ttb_indx nd = u.ndims();                     // Number of dimensions
 
   // Check on sizes
-  assert(nd == s.ndims());
+  assert(u.ndims() == s.ndims());
   assert(u.isConsistent(s.size()));
   assert(nc == lambda.size());
 

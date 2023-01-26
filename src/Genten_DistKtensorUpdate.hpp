@@ -410,7 +410,7 @@ public:
                              KOKKOS_LAMBDA(const ttb_indx i)
         {
           auto row = row_n[i];
-          for (int j=0; j<ncom; ++j) {
+          for (ttb_indx j=0; j<ncom; ++j) {
             u_n.entry(row,j) += val_n(i,j);
           }
         });
@@ -421,7 +421,7 @@ public:
                              KOKKOS_LAMBDA(const ttb_indx i)
         {
           auto row = row_n[i];
-          for (int j=0; j<ncom; ++j) {
+          for (ttb_indx j=0; j<ncom; ++j) {
             Kokkos::atomic_add(&(u_n.entry(row,j)), val_n(i,j));
           }
         });
@@ -476,7 +476,7 @@ public:
                              KOKKOS_LAMBDA(const ttb_indx i)
         {
           auto row = row_n[i];
-          for (int j=0; j<ncom; ++j) {
+          for (ttb_indx j=0; j<ncom; ++j) {
             u_n.entry(row,j) += val_n(i,j);
           }
         });
@@ -487,7 +487,7 @@ public:
                              KOKKOS_LAMBDA(const ttb_indx i)
         {
           auto row = row_n[i];
-          for (int j=0; j<ncom; ++j) {
+          for (ttb_indx j=0; j<ncom; ++j) {
             Kokkos::atomic_add(&(u_n.entry(row,j)), val_n(i,j));
           }
         });
@@ -534,7 +534,7 @@ public:
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         auto row = row_n[i];
-        for (int j=0; j<ncom; ++j) {
+        for (ttb_indx j=0; j<ncom; ++j) {
           u[n].entry(row,j) += val_n(i,j);
         }
       });
@@ -544,8 +544,7 @@ public:
                            Kokkos::RangePolicy<ExecSpace>(0,nrow),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
-        auto row = row_n[i];
-        for (int j=0; j<ncom; ++j) {
+        for (ttb_indx j=0; j<ncom; ++j) {
           Kokkos::atomic_add(&(u[n].entry(row_n[i],j)), val_n(i,j));
         }
       });
@@ -594,7 +593,7 @@ public:
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         auto row = row_n[i];
-        for (int j=0; j<ncom; ++j) {
+        for (ttb_indx j=0; j<ncom; ++j) {
           u[n].entry(row,j) += val_n(i,j);
         }
       });
@@ -604,8 +603,7 @@ public:
                            Kokkos::RangePolicy<ExecSpace>(0,nrow),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
-        auto row = row_n[i];
-        for (int j=0; j<ncom; ++j) {
+        for (ttb_indx j=0; j<ncom; ++j) {
           Kokkos::atomic_add(&(u[n].entry(row_n[i],j)), val_n(i,j));
         }
       });
