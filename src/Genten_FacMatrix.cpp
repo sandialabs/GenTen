@@ -50,7 +50,6 @@
 #include "Genten_portability.hpp"
 #include "CMakeInclude.h"
 #include <algorithm>     // for std::max with MSVC compiler
-#include <assert.h>
 #include <cstring>
 
 #if defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)
@@ -221,8 +220,8 @@ update(const ttb_real a, const Genten::FacMatrixT<ExecSpace> & y,
     data_1d.update(a, y_data_1d, b);
   }
   else { // matrices might not have the same padding
-    assert(data.extent(0) == y.data.extent(0));
-    assert(data.extent(1) == y.data.extent(1));
+    gt_assert(data.extent(0) == y.data.extent(0));
+    gt_assert(data.extent(1) == y.data.extent(1));
     auto d = data;
     Kokkos::parallel_for("FacMatrix::update",
                          Kokkos::RangePolicy<ExecSpace>(0,d.extent(0)),
@@ -666,8 +665,8 @@ gramian(const Genten::FacMatrixT<ExecSpace> & v, const bool full,
   cali::Function cali_func("Genten::FacMatrix::gramian");
 #endif
 
-  assert(data.extent(0) == v.data.extent(1));
-  assert(data.extent(1) == v.data.extent(1));
+  gt_assert(data.extent(0) == v.data.extent(1));
+  gt_assert(data.extent(1) == v.data.extent(1));
 
   Genten::Impl::gramianImpl<ExecSpace>(data,v.data,full,uplo);
 
@@ -726,8 +725,8 @@ oprod(const Genten::ArrayT<ExecSpace> & v) const
 #endif
 
   const ttb_indx n = v.size();
-  assert(data.extent(0) == n);
-  assert(data.extent(1) == n);
+  gt_assert(data.extent(0) == n);
+  gt_assert(data.extent(1) == n);
 
   view_type d = data;
   Kokkos::parallel_for("Genten::FacMatrix::oprod_kernel",
@@ -751,8 +750,8 @@ oprod(const Genten::ArrayT<ExecSpace> & v1,
 
   const ttb_indx m = v1.size();
   const ttb_indx n = v2.size();
-  assert(data.extent(0) == m);
-  assert(data.extent(1) == n);
+  gt_assert(data.extent(0) == m);
+  gt_assert(data.extent(1) == n);
 
   view_type d = data;
   Kokkos::parallel_for("Genten::FacMatrix::oprod_kernel",
@@ -1264,7 +1263,7 @@ colScale(const Genten::ArrayT<ExecSpace> & v, bool inverse) const
 #endif
 
   const ttb_indx n = data.extent(1);
-  assert(v.size() == n);
+  gt_assert(v.size() == n);
 
   Genten::ArrayT<ExecSpace> w;
   if (inverse) {
@@ -1308,7 +1307,7 @@ rowScale(const Genten::ArrayT<ExecSpace> & v, bool inverse) const
 
   const ttb_indx m = data.extent(0);
   const ttb_indx n = data.extent(1);
-  assert(v.size() == m);
+  gt_assert(v.size() == m);
 
   auto d = data;
 
@@ -1631,8 +1630,8 @@ multByVector(bool bTranspose,
 
   if (bTranspose == false)
   {
-    assert(x.size() == ncols);
-    assert(y.size() == nrows);
+    gt_assert(x.size() == ncols);
+    gt_assert(y.size() == nrows);
     // Data for the matrix is stored in row-major order but gemv expects
     // column-major, so tell it transpose dimensions.
     Genten::gemv('T', ncols, nrows, 1.0, ptr(), data.stride_0(),
@@ -1640,8 +1639,8 @@ multByVector(bool bTranspose,
   }
   else
   {
-    assert(x.size() == nrows);
-    assert(y.size() == ncols);
+    gt_assert(x.size() == nrows);
+    gt_assert(y.size() == ncols);
     // Data for the matrix is stored in row-major order but gemv expects
     // column-major, so tell it transpose dimensions.
     Genten::gemv('N', ncols, nrows, 1.0, ptr(), data.stride_0(),
@@ -1840,18 +1839,16 @@ gemm(const bool trans_a, const bool trans_b, const ttb_real alpha,
   cali::Function cali_func("Genten::FacMatrix::gemm");
 #endif
 
-#ifndef NDEBUG
   const ttb_indx m = data.extent(0);
   const ttb_indx n = data.extent(1);
   const ttb_indx rows_op_a = trans_a ? A.data.extent(1) : A.data.extent(0);
   const ttb_indx cols_op_a = trans_a ? A.data.extent(0) : A.data.extent(1);
   const ttb_indx rows_op_b = trans_b ? B.data.extent(1) : B.data.extent(0);
   const ttb_indx cols_op_b = trans_b ? B.data.extent(0) : B.data.extent(1);
-#endif
 
-  assert(rows_op_a == m);
-  assert(cols_op_a == rows_op_b);
-  assert(cols_op_b == n);
+  gt_assert(rows_op_a == m);
+  gt_assert(cols_op_a == rows_op_b);
+  gt_assert(cols_op_b == n);
 
   Genten::Impl::gemmImpl<ExecSpace>(
     trans_a,trans_b,alpha,A.data,B.data,beta,data);
@@ -1939,8 +1936,8 @@ namespace Genten {
       const cublasFillMode_t uplo = ul == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
       cusolverStatus_t status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
@@ -2022,8 +2019,8 @@ namespace Genten {
       const cublasFillMode_t uplo = ul == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
       cusolverStatus_t status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
@@ -2114,8 +2111,8 @@ namespace Genten {
       const int ldb = B.stride_0();
       cusolverStatus_t status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
@@ -2192,8 +2189,8 @@ namespace Genten {
       const cublasFillMode_t uplo = ul == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
       cusolverStatus_t status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
@@ -2273,8 +2270,8 @@ namespace Genten {
       const cublasFillMode_t uplo = ul == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
       cusolverStatus_t status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
@@ -2365,8 +2362,8 @@ namespace Genten {
       const int ldb = B.stride_0();
       cusolverStatus_t status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
@@ -2443,8 +2440,8 @@ namespace Genten {
       const rocblas_fill uplo = ul == Upper ? rocblas_fill_lower : rocblas_fill_upper;
       rocblas_status status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Experimental::HIP> info("info");
       status = rocsolver_dpotrf(RocblasHandle::get(), uplo, n, A.data(), lda, info.data());
@@ -2519,8 +2516,8 @@ namespace Genten {
       const int ldb = B.stride_0();
       rocblas_status status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       Kokkos::View<int*,Kokkos::LayoutRight,Kokkos::Experimental::HIP> piv("piv",n);
       Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Experimental::HIP> info("info");
@@ -2574,8 +2571,8 @@ namespace Genten {
       const rocblas_fill uplo = ul == Upper ? rocblas_fill_lower : rocblas_fill_upper;
       rocblas_status status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Experimental::HIP> info("info");
       status = rocsolver_spotrf(RocblasHandle::get(), uplo, n, A.data(), lda, info.data());
@@ -2650,8 +2647,8 @@ namespace Genten {
       const int ldb = B.stride_0();
       rocblas_status status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       Kokkos::View<int*,Kokkos::LayoutRight,Kokkos::Experimental::HIP> piv("piv",n);
       Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Experimental::HIP> info("info");
@@ -2697,8 +2694,8 @@ solveTransposeRHS (const Genten::FacMatrixT<ExecSpace> & A,
                    const bool spd,
                    const AlgParams& algParams) const
 {
-  assert(A.nRows() == A.nCols());
-  assert(nCols() == A.nRows());
+  gt_assert(A.nRows() == A.nCols());
+  gt_assert(nCols() == A.nRows());
 
   // Copy A because LAPACK needs to overwrite the invertible square matrix.
   view_type Atmp("Atmp", A.nRows(), A.nCols());
@@ -2730,7 +2727,7 @@ void Genten::FacMatrixT<ExecSpace>::
 rowTimes(Genten::ArrayT<ExecSpace> & x,
          const ttb_indx nRow) const
 {
-  assert(x.size() == data.extent(1));
+  gt_assert(x.size() == data.extent(1));
 
   const ttb_real * rptr = this->rowptr(nRow);
   ttb_real * xptr = x.ptr();
@@ -2746,7 +2743,7 @@ rowTimes(const ttb_indx         nRow,
          const Genten::FacMatrixT<ExecSpace> & other,
          const ttb_indx         nRowOther) const
 {
-  assert(other.nCols() == data.extent(1));
+  gt_assert(other.nCols() == data.extent(1));
 
   ttb_real * rowPtr1 = this->rowptr(nRow);
   const ttb_real * rowPtr2 = other.rowptr(nRowOther);
@@ -2763,7 +2760,7 @@ rowDot(const ttb_indx         nRow,
        const ttb_indx         nRowOther) const
 {
   const ttb_indx ncols = data.extent(1);
-  assert(other.nCols() == ncols);
+  gt_assert(other.nCols() == ncols);
 
   // Using LAPACK ddot is slower on perf_CpAprRandomKtensor.
   //   ttb_real  result = dot(ncols, this->rowptr(nRow), 1,
@@ -2787,7 +2784,7 @@ rowDScale(const ttb_indx         nRow,
           const ttb_real         dScalar) const
 {
   const ttb_indx ncols = data.extent(1);
-  assert(other.nCols() == ncols);
+  gt_assert(other.nCols() == ncols);
 
   // Using LAPACK daxpy is slower on perf_CpAprRandomKtensor.
   //   axpy(ncols, dScalar, this->rowptr(nRow), 1, other.rowptr(nRowOther), 1);

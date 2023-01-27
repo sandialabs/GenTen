@@ -479,6 +479,11 @@ namespace Genten {
   extern oblackholestream bhcout;
 }
 
+// Define our own assertion macro that doesn't rely on NDEBUG.
+// Only use this for non-performance critical code
+#define gt_assert(e) \
+  ((e) ? (void)0 : Genten::error("Assertion failed at " __FILE__ ":" + std::to_string(__LINE__) + "\n" #e "\n"))
+
 #ifdef HAVE_TEUCHOS
 #include "Teuchos_TimeMonitor.hpp"
 #include "Teuchos_StackedTimer.hpp"

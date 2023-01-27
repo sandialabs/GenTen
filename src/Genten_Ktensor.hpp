@@ -40,7 +40,7 @@
 
 
 #pragma once
-#include <assert.h>
+#include <cassert>
 
 #include "Genten_FacMatArray.hpp"
 #include "Genten_IndxArray.hpp"

@@ -45,7 +45,7 @@
 
 #pragma once
 #include <vector>
-#include <assert.h>
+#include <cassert>
 
 #include "Genten_Util.hpp"
 #include "Genten_RandomMT.hpp"

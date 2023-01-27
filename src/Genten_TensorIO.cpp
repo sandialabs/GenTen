@@ -141,7 +141,7 @@ SptnFileHeader::totalBytesToRead() const {
 small_vector<std::uint64_t>
 SptnFileHeader::getOffsetRanges(ttb_indx nranks) const {
   const ttb_indx nper_rank = nnz / nranks;
-  assert(nper_rank != 0);
+  gt_assert(nper_rank != 0);
 
   small_vector<std::uint64_t> out;
   out.reserve(nranks + 1);
@@ -250,7 +250,7 @@ DntnFileHeader::DntnFileHeader(const ptree& tree)
 small_vector<std::uint64_t>
 DntnFileHeader::getOffsetRanges(ttb_indx nranks) const {
   const ttb_indx nper_rank = nnz / nranks;
-  assert(nper_rank != 0);
+  gt_assert(nper_rank != 0);
 
   small_vector<std::uint64_t> out;
   out.reserve(nranks + 1);
@@ -288,7 +288,7 @@ ttb_indx
 DntnFileHeader::getGlobalElementOffset(ttb_indx rank, ttb_indx nranks) const
 {
   const ttb_indx nper_rank = nnz / nranks;
-  assert(nper_rank != 0);
+  gt_assert(nper_rank != 0);
   return nper_rank*rank;
 }
 

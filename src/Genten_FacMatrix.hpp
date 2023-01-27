@@ -51,7 +51,7 @@
 #include "Genten_Util.hpp"
 #include "Genten_AlgParams.hpp"
 #include "Genten_Pmap.hpp"
-#include <assert.h>
+#include <cassert>
 
 namespace Genten
 {

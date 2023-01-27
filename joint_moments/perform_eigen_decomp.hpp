@@ -26,7 +26,7 @@ void perform_eigen_decomp(int nRows, gram_view_type& gram_matrix, eig_view_type&
 
     // Eigenvalue step 1: create cusolver/cublas handle
     cusolver_status = cusolverDnCreate(&cusolverH);
-    assert(CUSOLVER_STATUS_SUCCESS == cusolver_status);
+    gt_assert(CUSOLVER_STATUS_SUCCESS == cusolver_status);
 
     // Eigenvalue step 2: query working space of syevd
     int lwork = 0;
@@ -38,7 +38,7 @@ void perform_eigen_decomp(int nRows, gram_view_type& gram_matrix, eig_view_type&
                                                   nRows,  // leading dimension of input matrix
                                                   eig_vals.data(),    // vector of eigenvalues
                                                   &lwork);// on return size of working array
-    assert (cusolver_status == CUSOLVER_STATUS_SUCCESS);
+    gt_assert (cusolver_status == CUSOLVER_STATUS_SUCCESS);
 
     //Eigenvalue step 3: compute actualy eigen decomposition
 
@@ -59,8 +59,8 @@ void perform_eigen_decomp(int nRows, gram_view_type& gram_matrix, eig_view_type&
 
 
     cudaStat = cudaDeviceSynchronize();
-    assert(CUSOLVER_STATUS_SUCCESS == cusolver_status);
-    assert(cudaSuccess == cudaStat);
+    gt_assert(CUSOLVER_STATUS_SUCCESS == cusolver_status);
+    gt_assert(cudaSuccess == cudaStat);
 #elif defined (LAPACK_FOUND)
 
     ttb_blas_int lwork = 0; 

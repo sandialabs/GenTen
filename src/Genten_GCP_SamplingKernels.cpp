@@ -181,7 +181,7 @@ namespace {
       }
     }
     for (unsigned n=0; n<nd; ++n)
-      assert(cnt[n] == tpetra_lo_type(map[n].size()));
+      gt_assert(cnt[n] == tpetra_lo_type(map[n].size()));
     GENTEN_STOP_TIMER("compute GID hash");
 
     // Construct sampled tpetra maps

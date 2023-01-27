@@ -40,8 +40,6 @@
 
 #pragma once
 
-#include <assert.h>
-
 #include <type_traits>
 
 #include "Genten_Util.hpp"
@@ -715,17 +713,17 @@ void orig_kokkos_mttkrp(const SptensorImpl<ExecSpace>& X,
   const ttb_indx nc = u.ncomponents();     // Number of components
   const ttb_indx nd = u.ndims();           // Number of dimensions
 
-  assert(X.ndims() == nd);
-  assert(u.isConsistent());
+  gt_assert(X.ndims() == nd);
+  gt_assert(u.isConsistent());
   for (ttb_indx i = 0; i < nd; i++)
   {
     if (i != n)
-      assert(u[i].nRows() == X.size(i));
+      gt_assert(u[i].nRows() == X.size(i));
   }
 
   // Resize and initialize the output factor matrix to zero.
-  assert( v.nRows() == X.size(n) );
-  assert( v.nCols() == nc );
+  gt_assert( v.nRows() == X.size(n) );
+  gt_assert( v.nCols() == nc );
   if (zero_v)
     v = ttb_real(0.0);
 
@@ -769,15 +767,15 @@ void mttkrp(const SptensorT<ExecSpace>& X,
   const ttb_indx nc = u.ncomponents();     // Number of components
   const ttb_indx nd = u.ndims();           // Number of dimensions
 
-  assert(X.ndims() == nd);
-  assert(u.isConsistent());
+  gt_assert(X.ndims() == nd);
+  gt_assert(u.isConsistent());
   for (ttb_indx i = 0; i < nd; i++)
   {
     if (i != n)
-      assert(u[i].nRows() == X.size(i));
+      gt_assert(u[i].nRows() == X.size(i));
   }
-  assert( v.nRows() == X.size(n) );
-  assert( v.nCols() == nc );
+  gt_assert( v.nRows() == X.size(n) );
+  gt_assert( v.nCols() == nc );
 
   if (algParams.mttkrp_method == MTTKRP_Method::OrigKokkos) {
     Impl::orig_kokkos_mttkrp(X.impl(),u,n,v,zero_v);
@@ -805,17 +803,17 @@ void mttkrp_all(const SptensorT<ExecSpace>& X,
   const ttb_indx nc = u.ncomponents();     // Number of components
   const ttb_indx nd = u.ndims();           // Number of dimensions
 
-  assert(X.ndims() == nd);
-  assert(v.ncomponents() == nc);
-  assert(u.isConsistent());
+  gt_assert(X.ndims() == nd);
+  gt_assert(v.ncomponents() == nc);
+  gt_assert(u.isConsistent());
   for (ttb_indx i=0; i<nd; ++i) {
-    assert(u[i].nRows() == X.size(i));
+    gt_assert(u[i].nRows() == X.size(i));
   }
-  assert(mode_beg <= mode_end);
-  assert(mode_end <= nd);
-  assert(v.ndims() == (mode_end - mode_beg));
+  gt_assert(mode_beg <= mode_end);
+  gt_assert(mode_end <= nd);
+  gt_assert(v.ndims() == (mode_end - mode_beg));
   for (ttb_indx i=mode_beg; i<mode_end; ++i) {
-    assert(v[i-mode_beg].nRows() == X.size(i));
+    gt_assert(v[i-mode_beg].nRows() == X.size(i));
   }
 
   using Kokkos::Experimental::ScatterDuplicated;

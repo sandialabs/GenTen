@@ -234,7 +234,7 @@ public:
   // Set a view
   void set_view(const ttb_indx i, const ViewType& src) const
   {
-    assert(i < size());
+    gt_assert(i < size());
     host_data[i] = src;
     auto v = data;
     if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename exec_space::memory_space >::accessible) {
@@ -502,7 +502,7 @@ public:
   {
     GENTEN_TIME_MONITOR("k-tensor export");
 
-    assert(u[n].nCols() == nc);
+    gt_assert(u[n].nCols() == nc);
 
     deep_copy(u[n], u_overlapped[n]); // no-op if u and u_overlapped are the same
 
@@ -560,7 +560,7 @@ public:
   {
     GENTEN_TIME_MONITOR("k-tensor export");
 
-    assert(u[n].nCols() == nc);
+    gt_assert(u[n].nCols() == nc);
 
     deep_copy(u[n], u_overlapped[n]); // no-op if u and u_overlapped are the same
 

@@ -118,8 +118,8 @@ small_vector<ttb_indx> singleDimUniformBlocking(ttb_indx ModeLength, ttb_indx Pr
     Range.resize(ProcsInMode+1,Range.back());
 
   // Sanity check that we ended with the correct number of blocks and fibers
-  assert(ttb_indx(Range.size()) == ProcsInMode + 1);
-  assert(Range.back() == ModeLength);
+  gt_assert(ttb_indx(Range.size()) == ProcsInMode + 1);
+  gt_assert(Range.back() == ModeLength);
 
   return Range;
 }
@@ -274,8 +274,8 @@ distributeTensorToVectors(const Tensor& dn_tensor_host, ttb_indx nnz,
 namespace {
 ttb_indx blockInThatDim(ttb_indx element, const small_vector<ttb_indx>& range) {
   // const ttb_indx nblocks = range.size();
-  assert(element < range.back()); // This would mean the element is too large
-  assert(range.size() >= 2);      // Range always has at least 2 elements
+  gt_assert(element < range.back()); // This would mean the element is too large
+  gt_assert(range.size() >= 2);      // Range always has at least 2 elements
 
   // We could binary search, which could be faster for large ranges, but I
   // suspect this is fine. Because range.back() is always 1 more than the
@@ -669,7 +669,7 @@ DistTensorContext<ExecSpace>::
 allReduce(KtensorT<ExecSpace>& u, const bool divide_by_grid_size) const
 {
   const ttb_indx nd = u.ndims();
-  assert(ttb_indx(global_dims_.size()) == nd);
+  gt_assert(ttb_indx(global_dims_.size()) == nd);
 
   for (ttb_indx n=0; n<nd; ++n)
     pmap_->subGridAllReduce(
@@ -900,7 +900,7 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
       }
     }
     for (ttb_indx dim=0; dim<ndims; ++dim)
-      assert(cnt[dim] == tpetra_lo_type(map[dim].size()));
+      gt_assert(cnt[dim] == tpetra_lo_type(map[dim].size()));
 
     // Map tensor GIDs to LIDs.  We use the hash-map for this instead of just
     // subtracting off the lower bound because there may be empty slices

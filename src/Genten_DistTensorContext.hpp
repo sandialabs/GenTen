@@ -224,7 +224,7 @@ exportFromRoot(const KtensorT<ExecSpaceSrc>& u) const
 {
   const ttb_indx nd = u.ndims();
   const ttb_indx nc = u.ncomponents();
-  assert(ttb_indx(global_dims_.size()) == nd);
+  gt_assert(ttb_indx(global_dims_.size()) == nd);
 
   Genten::KtensorT<ExecSpace> exp;
   IndxArrayT<ExecSpace> sz(nd);
@@ -324,7 +324,7 @@ importToRoot(const KtensorT<ExecSpace>& u) const
 
   const ttb_indx nd = u.ndims();
   const ttb_indx nc = u.ncomponents();
-  assert(ttb_indx(global_dims_.size()) == nd);
+  gt_assert(ttb_indx(global_dims_.size()) == nd);
 
   IndxArrayT<ExecSpaceDst> sizes_idx(nd);
   auto sizes_idx_host = create_mirror_view(sizes_idx);

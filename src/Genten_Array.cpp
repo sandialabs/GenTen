@@ -43,7 +43,6 @@
   @brief Data class for "flat" versions of vectors, matrices and tensors.
 */
 
-#include <assert.h>
 #include <cstring>
 #include <limits>
 

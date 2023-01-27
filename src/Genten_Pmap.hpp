@@ -250,7 +250,7 @@ private:
    */
   MPI_Comm cart_comm_ = MPI_COMM_NULL;
   ttb_indx grid_nprocs_ = 0;
-  ttb_indx grid_rank_ = -1;
+  ttb_indx grid_rank_ = 0;
   small_vector<ttb_indx> coord_;
   small_vector<ttb_indx> dimension_sizes_;
 

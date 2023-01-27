@@ -40,7 +40,6 @@
 
 #include "Genten_HessVec.hpp"
 
-#include <assert.h>
 #include <type_traits>
 
 #include "Genten_Util.hpp"
@@ -648,17 +647,17 @@ void hess_vec(const SptensorT<ExecSpace>& X,
   const ttb_indx nc = a.ncomponents();     // Number of components
   const ttb_indx nd = a.ndims();           // Number of dimensions
 
-  assert(X.ndims() == nd);
-  assert(v.ndims() == nd);
-  assert(v.ncomponents() == nc);
-  assert(u.ndims() == nd);
-  assert(u.ncomponents() == nc);
-  assert(v.isConsistent());
-  assert(u.isConsistent());
+  gt_assert(X.ndims() == nd);
+  gt_assert(v.ndims() == nd);
+  gt_assert(v.ncomponents() == nc);
+  gt_assert(u.ndims() == nd);
+  gt_assert(u.ncomponents() == nc);
+  gt_assert(v.isConsistent());
+  gt_assert(u.isConsistent());
   for (ttb_indx i=0; i<nd; ++i) {
-    assert(a_overlap[i].nRows() == X.size(i));
-    assert(v_overlap[i].nRows() == X.size(i));
-    assert(u_overlap[i].nRows() == X.size(i));
+    gt_assert(a_overlap[i].nRows() == X.size(i));
+    gt_assert(v_overlap[i].nRows() == X.size(i));
+    gt_assert(u_overlap[i].nRows() == X.size(i));
   }
 
   using Kokkos::Experimental::ScatterDuplicated;
@@ -729,17 +728,17 @@ void hess_vec(const TensorT<ExecSpace>& X,
   dku.doImport(a_overlap, a);
   dku.doImport(v_overlap, v);
 
-  assert(X.ndims() == nd);
-  assert(v.ndims() == nd);
-  assert(v.ncomponents() == nc);
-  assert(u.ndims() == nd);
-  assert(u.ncomponents() == nc);
-  assert(v.isConsistent());
-  assert(u.isConsistent());
+  gt_assert(X.ndims() == nd);
+  gt_assert(v.ndims() == nd);
+  gt_assert(v.ncomponents() == nc);
+  gt_assert(u.ndims() == nd);
+  gt_assert(u.ncomponents() == nc);
+  gt_assert(v.isConsistent());
+  gt_assert(u.isConsistent());
   for (ttb_indx i=0; i<nd; ++i) {
-    assert(a_overlap[i].nRows() == X.size(i));
-    assert(v_overlap[i].nRows() == X.size(i));
-    assert(u_overlap[i].nRows() == X.size(i));
+    gt_assert(a_overlap[i].nRows() == X.size(i));
+    gt_assert(v_overlap[i].nRows() == X.size(i));
+    gt_assert(u_overlap[i].nRows() == X.size(i));
   }
 
   // Compute first (tensor) term
@@ -770,13 +769,13 @@ void gauss_newton_hess_vec(const TensorType& X,
   const ttb_indx nc = a.ncomponents();     // Number of components
   const ttb_indx nd = a.ndims();           // Number of dimensions
 
-  assert(X.ndims() == nd);
-  assert(v.ndims() == nd);
-  assert(v.ncomponents() == nc);
-  assert(u.ndims() == nd);
-  assert(u.ncomponents() == nc);
-  assert(v.isConsistent());
-  assert(u.isConsistent());
+  gt_assert(X.ndims() == nd);
+  gt_assert(v.ndims() == nd);
+  gt_assert(v.ncomponents() == nc);
+  gt_assert(u.ndims() == nd);
+  gt_assert(u.ncomponents() == nc);
+  gt_assert(v.isConsistent());
+  gt_assert(u.isConsistent());
 
   u.setMatrices(0.0);
 
@@ -841,13 +840,13 @@ void blk_diag_prec_vec(const TensorType& X,
   const ttb_indx nc = a.ncomponents();     // Number of components
   const ttb_indx nd = a.ndims();           // Number of dimensions
 
-  assert(X.ndims() == nd);
-  assert(v.ndims() == nd);
-  assert(v.ncomponents() == nc);
-  assert(u.ndims() == nd);
-  assert(u.ncomponents() == nc);
-  assert(v.isConsistent());
-  assert(u.isConsistent());
+  gt_assert(X.ndims() == nd);
+  gt_assert(v.ndims() == nd);
+  gt_assert(v.ncomponents() == nc);
+  gt_assert(u.ndims() == nd);
+  gt_assert(u.ncomponents() == nc);
+  gt_assert(v.isConsistent());
+  gt_assert(u.isConsistent());
 
   IndxArrayT<ExecSpace> nrow(nd, nc);
   FacMatArrayT<ExecSpace> Z(nd, nrow, nc);

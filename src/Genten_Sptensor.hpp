@@ -40,7 +40,7 @@
 
 #pragma once
 
-#include <assert.h>
+#include <cassert>
 
 #include "CMakeInclude.h"
 #include "Genten_Array.hpp"
