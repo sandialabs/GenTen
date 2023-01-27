@@ -40,9 +40,8 @@
 
 #pragma once
 
-#include <cassert>
-
 #include "ROL_Vector.hpp"
+#include "Genten_Util.hpp"
 #include "Genten_KokkosVector.hpp"
 
 #include "Teuchos_TimeMonitor.hpp"
@@ -67,7 +66,7 @@ namespace Genten {
     RolKokkosVector(const Ktensor_type& V, const bool make_view,
                     const DistKtensorUpdate<ExecSpace> *dku) : kv(V, dku)
     {
-      assert(make_view == false);
+      gt_assert(make_view == false);
     }
 
     RolKokkosVector(const unsigned nc, const unsigned nd, const IndxArray& sz,

@@ -241,7 +241,7 @@ namespace Genten {
                          T& val, const U& lower, const V& upper)
   {
     val = input.get<T>(name, val);
-    if (val < lower || val > upper) {
+    if (val < T(lower) || val > T(upper)) {
       std::ostringstream error_string;
       error_string << "Bad input: " << name << " " << val
                    << ",  must be in the range (" << lower << ", " << upper
@@ -260,9 +260,8 @@ namespace Genten {
                          const U& lower, const V& upper)
   {
     val = input.get<std::vector<T> >(name);
-    int nv = val.size();
     for (const auto& v : val) {
-      if (v < lower || v > upper) {
+      if (v < T(lower) || v > T(upper)) {
         std::ostringstream error_string;
         error_string << "Bad input: " << name << " " << v
                      << ",  must be in the range (" << lower << ", " << upper

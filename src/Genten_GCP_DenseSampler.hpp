@@ -118,7 +118,6 @@ namespace Genten {
       dku->doImport(u_overlap, u);
 
       const ttb_indx nd = u.ndims();
-      const ttb_indx nc = u.ncomponents();
       const ttb_real ip = innerprod(X, u_overlap);
       const ttb_real nrmx = X.global_norm();
       const ttb_real nrmusq = u.normFsq();

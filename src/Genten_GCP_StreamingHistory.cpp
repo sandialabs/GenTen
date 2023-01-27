@@ -169,9 +169,7 @@ namespace Genten {
         //           window_idx.values().data()+algParams.window_size);
       }
       else
-        Genten::error(
-          std::string("Unsupported window method: ") +
-          std::string(GCP_Streaming_Window_Method::names[algParams.window_method]));
+        Genten::error("Unsupported window method: ");
     }
 
     // Update slice index counter
@@ -202,9 +200,6 @@ namespace Genten {
     if (window_val.size() == 0 || window_penalty == ttb_real(0.0))
       return 0.0;
 
-    const ttb_indx nd = u.ndims();
-    const ttb_indx nc = u.ncomponents();
-
     ttb_real loss = 0.0;
     if (algParams.history_method == GCP_Streaming_History_Method::Ktensor_Fro)
       loss = ktensor_fro_objective(u);
@@ -224,7 +219,6 @@ namespace Genten {
       return 0.0;
 
     const ttb_indx nd = u.ndims();
-    const ttb_indx nc = u.ncomponents();
 
     // For using Gaussian loss on history term
     // = window_penatly * \sum_h window(h)*\|up - ut\|_F^2 where ut = u
@@ -272,7 +266,6 @@ namespace Genten {
       return 0.0;
 
     const ttb_indx nd = u.ndims();
-    const ttb_indx nc = u.ncomponents();
 
     ttb_real loss = 0.0;
     for (ttb_indx k=0; k<nd-1; ++k) {
@@ -298,7 +291,6 @@ namespace Genten {
       return;
 
     const ttb_indx nd = u.ndims();
-    const ttb_indx nc = u.ncomponents();
 
     if (mode_end >= nd)
       Genten::error("History term on temporal mode nd-1 is not supported!");
@@ -351,7 +343,6 @@ namespace Genten {
       return;
 
     const ttb_indx nd = u.ndims();
-    const ttb_indx nc = u.ncomponents();
 
     if (mode_end >= nd)
       Genten::error("History term on temporal mode nd-1 is not supported!");

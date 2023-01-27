@@ -115,7 +115,6 @@ mxGetSptensor(const mxArray *ptr, const bool print = false) {
 template <typename ExecSpace>
 mxArray* mxSetSptensor(const Genten::SptensorT<ExecSpace>& X,
                        const bool print = false) {
-  typedef Genten::SptensorT<ExecSpace> Sptensor_type;
   typedef Genten::Sptensor Sptensor_host_type;
   typedef typename Sptensor_host_type::exec_space host_exec_space;
   typedef typename Sptensor_host_type::subs_view_type subs_view_type;
@@ -173,7 +172,6 @@ mxArray* mxSetSptensor(const Genten::SptensorT<ExecSpace>& X,
 template <typename ExecSpace>
 mxArray* mxSetKtensor(const Genten::KtensorT<ExecSpace>& u,
                       const bool print = false) {
-  typedef Genten::KtensorT<ExecSpace> Ktensor_type;
   typedef Genten::Ktensor Ktensor_host_type;
   typedef typename Ktensor_host_type::exec_space host_exec_space;
 
@@ -274,7 +272,6 @@ mxGetKtensor(const mxArray* ptr, const bool print = false) {
 template <typename ExecSpace>
 mxArray* mxSetFacMatrix(const Genten::FacMatrixT<ExecSpace>& u,
                         const bool print = false) {
-  typedef Genten::FacMatrixT<ExecSpace> FacMatrix_type;
   typedef Genten::FacMatrix FacMatrix_host_type;
   typedef typename FacMatrix_host_type::exec_space host_exec_space;
 
@@ -321,7 +318,6 @@ mxGetArray(const mxArray* ptr) {
 
 template <typename ExecSpace>
 mxArray* mxSetArray(const Genten::ArrayT<ExecSpace>& w) {
-  typedef Genten::ArrayT<ExecSpace> array_type;
   typedef Genten::Array array_host_type;
   typedef typename array_host_type::exec_space host_exec_space;
 
@@ -343,7 +339,6 @@ Genten::IndxArrayT<ExecSpace>
 mxGetIndxArray(const mxArray* ptr, const bool subtract_one = false) {
   typedef Genten::IndxArrayT<ExecSpace> array_type;
   typedef Genten::IndxArray array_host_type;
-  typedef typename array_host_type::exec_space host_exec_space;
 
   // Get matlab array data
   ttb_real* mx_w = mxGetDoubles(ptr);

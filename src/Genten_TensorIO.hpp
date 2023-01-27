@@ -77,14 +77,13 @@ struct SptnFileHeader {
   std::uint64_t data_starting_byte = 0;
 
   std::uint64_t bytesInDataLine() const;
-  std::uint64_t indByteOffset(int ind) const;
+  std::uint64_t indByteOffset(ttb_indx ind) const;
   std::uint64_t dataByteOffset() const;
   std::uint64_t totalBytesToRead() const;
 
-  small_vector<std::uint64_t> getOffsetRanges(int nranks) const;
-
-  std::pair<std::uint64_t, std::uint64_t> getLocalOffsetRange(int rank,
-                                                              int nranks) const;
+  small_vector<std::uint64_t> getOffsetRanges(ttb_indx nranks) const;
+  std::pair<std::uint64_t, std::uint64_t>
+  getLocalOffsetRange(ttb_indx rank, ttb_indx nranks) const;
   std::vector<ttb_indx> getGlobalDims() const;
   ttb_indx getGlobalNnz() const;
 
@@ -111,14 +110,12 @@ struct DntnFileHeader {
 
   std::uint64_t bytesInDataLine() const { return float_bits / 8; }
   std::uint64_t totalBytesToRead() const { return bytesInDataLine() * nnz; }
-
-  small_vector<std::uint64_t> getOffsetRanges(int nranks) const;
-
-  std::pair<std::uint64_t, std::uint64_t> getLocalOffsetRange(int rank,
-                                                              int nranks) const;
+  small_vector<std::uint64_t> getOffsetRanges(ttb_indx nranks) const;
+  std::pair<std::uint64_t, std::uint64_t>
+  getLocalOffsetRange(ttb_indx rank, ttb_indx nranks) const;
   std::vector<ttb_indx> getGlobalDims() const;
   ttb_indx getGlobalNnz() const;
-  ttb_indx getGlobalElementOffset(int rank, int nranks) const;
+  ttb_indx getGlobalElementOffset(ttb_indx rank, ttb_indx nranks) const;
 
   void readBinary(std::istream& in);
   void writeBinary(std::ostream& out);

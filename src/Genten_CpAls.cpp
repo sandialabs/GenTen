@@ -142,7 +142,7 @@ namespace Genten {
     int num_timers = 0;
     const int timer_cpals = num_timers++;
     const int timer_mttkrp = num_timers++;
-    const int timer_mttkrp_local = num_timers++;
+    //const int timer_mttkrp_local = num_timers++;
     const int timer_comm = num_timers++;
     const int timer_update = num_timers++;
     const int timer_ip = num_timers++;
@@ -216,8 +216,8 @@ namespace Genten {
     // Pre-calculate the Frobenius norm of the tensor x.
     ttb_real xNorm = x.global_norm();
 
-    ttb_real fit;
-    ttb_real fitold;
+    ttb_real fit = 0.0;
+    ttb_real fitold = 0.0;
     // Compute residual norm and fit of the initial guess.
     // Fit can be a huge negative number for bad start points,
     // so bound it at zero.

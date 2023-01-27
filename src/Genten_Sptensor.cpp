@@ -164,7 +164,7 @@ SptensorImpl(const std::vector<ttb_indx>& dims,
   subs_gids(subs), perm(), is_sorted(false),
   lower_bound(nNumDims,ttb_indx(0)), upper_bound(siz.clone())
 {
-  assert(vals.size() == subscripts.size());
+  gt_assert(vals.size() == subscripts.size());
 
   siz_host = create_mirror_view(siz);
   deep_copy(siz_host, siz);
@@ -197,10 +197,10 @@ SptensorImpl(const std::vector<ttb_indx>& dims,
   lower_bound(ttb_indx(dims.size()),const_cast<ttb_indx*>(global_lower_bound.data())),
   upper_bound(ttb_indx(dims.size()),const_cast<ttb_indx*>(global_upper_bound.data()))
 {
-  assert(vals.size() == subscripts.size());
-  assert(vals.size() == global_subscripts.size());
-  assert(global_lower_bound.size() == dims.size());
-  assert(global_upper_bound.size() == dims.size());
+  gt_assert(vals.size() == subscripts.size());
+  gt_assert(vals.size() == global_subscripts.size());
+  gt_assert(global_lower_bound.size() == dims.size());
+  gt_assert(global_upper_bound.size() == dims.size());
 
   siz_host = create_mirror_view(siz);
   deep_copy(siz_host, siz);
@@ -290,7 +290,7 @@ times(const Genten::KtensorT<ExecSpace> & K,
   deep_copy(*this, X);
 
   // Check sizes
-  assert(K.isConsistent(siz));
+  gt_assert(K.isConsistent(siz));
 
   // Stream through nonzeros
   Genten::IndxArrayT<ExecSpace> subs(nNumDims);
@@ -313,7 +313,7 @@ divide(const Genten::KtensorT<ExecSpace> & K,
   deep_copy(*this, X);
 
   // Check sizes
-  assert(K.isConsistent(siz));
+  gt_assert(K.isConsistent(siz));
 
   // Stream through nonzeros
   Genten::IndxArrayT<ExecSpace> subs(nNumDims);

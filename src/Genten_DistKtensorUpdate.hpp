@@ -234,7 +234,7 @@ public:
   // Set a view
   void set_view(const ttb_indx i, const ViewType& src) const
   {
-    assert(i < size());
+    gt_assert(i < size());
     host_data[i] = src;
     auto v = data;
     if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename exec_space::memory_space >::accessible) {
@@ -410,7 +410,7 @@ public:
                              KOKKOS_LAMBDA(const ttb_indx i)
         {
           auto row = row_n[i];
-          for (int j=0; j<ncom; ++j) {
+          for (ttb_indx j=0; j<ncom; ++j) {
             u_n.entry(row,j) += val_n(i,j);
           }
         });
@@ -421,7 +421,7 @@ public:
                              KOKKOS_LAMBDA(const ttb_indx i)
         {
           auto row = row_n[i];
-          for (int j=0; j<ncom; ++j) {
+          for (ttb_indx j=0; j<ncom; ++j) {
             Kokkos::atomic_add(&(u_n.entry(row,j)), val_n(i,j));
           }
         });
@@ -476,7 +476,7 @@ public:
                              KOKKOS_LAMBDA(const ttb_indx i)
         {
           auto row = row_n[i];
-          for (int j=0; j<ncom; ++j) {
+          for (ttb_indx j=0; j<ncom; ++j) {
             u_n.entry(row,j) += val_n(i,j);
           }
         });
@@ -487,7 +487,7 @@ public:
                              KOKKOS_LAMBDA(const ttb_indx i)
         {
           auto row = row_n[i];
-          for (int j=0; j<ncom; ++j) {
+          for (ttb_indx j=0; j<ncom; ++j) {
             Kokkos::atomic_add(&(u_n.entry(row,j)), val_n(i,j));
           }
         });
@@ -502,7 +502,7 @@ public:
   {
     GENTEN_TIME_MONITOR("k-tensor export");
 
-    assert(u[n].nCols() == nc);
+    gt_assert(u[n].nCols() == nc);
 
     deep_copy(u[n], u_overlapped[n]); // no-op if u and u_overlapped are the same
 
@@ -534,7 +534,7 @@ public:
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         auto row = row_n[i];
-        for (int j=0; j<ncom; ++j) {
+        for (ttb_indx j=0; j<ncom; ++j) {
           u[n].entry(row,j) += val_n(i,j);
         }
       });
@@ -544,8 +544,7 @@ public:
                            Kokkos::RangePolicy<ExecSpace>(0,nrow),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
-        auto row = row_n[i];
-        for (int j=0; j<ncom; ++j) {
+        for (ttb_indx j=0; j<ncom; ++j) {
           Kokkos::atomic_add(&(u[n].entry(row_n[i],j)), val_n(i,j));
         }
       });
@@ -561,7 +560,7 @@ public:
   {
     GENTEN_TIME_MONITOR("k-tensor export");
 
-    assert(u[n].nCols() == nc);
+    gt_assert(u[n].nCols() == nc);
 
     deep_copy(u[n], u_overlapped[n]); // no-op if u and u_overlapped are the same
 
@@ -594,7 +593,7 @@ public:
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         auto row = row_n[i];
-        for (int j=0; j<ncom; ++j) {
+        for (ttb_indx j=0; j<ncom; ++j) {
           u[n].entry(row,j) += val_n(i,j);
         }
       });
@@ -604,8 +603,7 @@ public:
                            Kokkos::RangePolicy<ExecSpace>(0,nrow),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
-        auto row = row_n[i];
-        for (int j=0; j<ncom; ++j) {
+        for (ttb_indx j=0; j<ncom; ++j) {
           Kokkos::atomic_add(&(u[n].entry(row_n[i],j)), val_n(i,j));
         }
       });

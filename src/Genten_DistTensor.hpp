@@ -73,32 +73,32 @@ public:
 #ifdef HAVE_TPETRA
   Teuchos::RCP<const tpetra_map_type<ExecSpace> >
   factorMap(const unsigned n) const {
-    assert(n < factorMaps.size());
+    gt_assert(n < factorMaps.size());
     return factorMaps[n];
   }
   Teuchos::RCP<const tpetra_map_type<ExecSpace> >
   tensorMap(const unsigned n) const {
-    assert(n < tensorMaps.size());
+    gt_assert(n < tensorMaps.size());
     return tensorMaps[n];
   }
   Teuchos::RCP<const tpetra_import_type<ExecSpace> >
   importer(const unsigned n) const {
-    assert(n < importers.size());
+    gt_assert(n < importers.size());
     return importers[n];
   }
   Teuchos::RCP<const tpetra_map_type<ExecSpace> >&
   factorMap(const unsigned n) {
-    assert(n < factorMaps.size());
+    gt_assert(n < factorMaps.size());
     return factorMaps[n];
   }
   Teuchos::RCP<const tpetra_map_type<ExecSpace> >&
   tensorMap(const unsigned n) {
-    assert(n < tensorMaps.size());
+    gt_assert(n < tensorMaps.size());
     return tensorMaps[n];
   }
   Teuchos::RCP<const tpetra_import_type<ExecSpace> >&
   importer(const unsigned n) {
-    assert(n < importers.size());
+    gt_assert(n < importers.size());
     return importers[n];
   }
 

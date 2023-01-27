@@ -62,8 +62,8 @@ struct ComputeKhatriRaoProduct{
   view_type krp_result_;
 
   ComputeKhatriRaoProduct(int nrows, int ncols, int nteams_x, int nteams_y, const view_type& inp_raw_data, view_type& krp_result):
-          input_raw_data_(inp_raw_data), krp_result_(krp_result),
-          nrows_(nrows), ncols_(ncols), nteams_x_(nteams_x), nteams_y_(nteams_y)
+    nrows_(nrows), ncols_(ncols), nteams_x_(nteams_x), nteams_y_(nteams_y),
+    input_raw_data_(inp_raw_data), krp_result_(krp_result)
   {}
   KOKKOS_INLINE_FUNCTION void
   operator() (const member_type team_member) const{

@@ -39,7 +39,7 @@
 //@HEADER
 
 #include <iostream>
-#include <assert.h>
+#include <cassert>
 #include <utility>
 #include <sstream>
 
@@ -614,7 +614,7 @@ namespace Genten
 
     const ttb_indx nd = Y.ndims(); // Number of dimensions
 
-    assert(Y.size(n) == V.size(1));
+    gt_assert(Y.size(n) == V.size(1));
     if (al.ttm_method == Genten::TTM_Method::DGEMM)
     {
       if (Genten::is_cuda_space<ExecSpace>::value ||

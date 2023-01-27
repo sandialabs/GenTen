@@ -52,9 +52,6 @@ void matlab_driver(int nlhs, mxArray *plhs[],
   typedef Genten::SptensorT<ExecSpace> Sptensor_type;
   typedef Genten::KtensorT<ExecSpace> Ktensor_type;
   typedef Genten::FacMatrixT<ExecSpace> FacMatrix_type;
-  typedef Genten::Sptensor Sptensor_host_type;
-  typedef typename Sptensor_type::subs_view_type subs_type;
-  typedef typename Sptensor_host_type::subs_view_type host_subs_type;
 
   algParams.fixup<ExecSpace>(std::cout);
 

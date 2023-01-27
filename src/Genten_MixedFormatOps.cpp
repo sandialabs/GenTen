@@ -46,8 +46,6 @@
  * like Ktensor.
  */
 
-#include <assert.h>
-
 #include "Genten_Util.hpp"
 #include "Genten_FacMatrix.hpp"
 #include "Genten_Ktensor.hpp"
@@ -294,12 +292,11 @@ ttb_real Genten::innerprod(const Genten::SptensorT<ExecSpace>& s,
   const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
 
   const ttb_indx nc = u.ncomponents();               // Number of components
-  const ttb_indx nd = u.ndims();                     // Number of dimensions
 
   // Check on sizes
-  assert(nd == s.ndims());
-  assert(u.isConsistent(s.size()));
-  assert(nc == lambda.size());
+  gt_assert(u.ndims() == s.ndims());
+  gt_assert(u.isConsistent(s.size()));
+  gt_assert(nc == lambda.size());
 
   // Call kernel with factor block size determined from nc
   ttb_real d = 0.0;
@@ -352,9 +349,9 @@ ttb_real Genten::innerprod(const Genten::TensorT<ExecSpace>& xd,
   const ttb_indx N = (ne+TeamSize-1)/TeamSize;
 
   // Check on sizes
-  assert(nd == x.ndims());
-  assert(u.isConsistent(x.size()));
-  assert(nc == lambda.size());
+  gt_assert(nd == x.ndims());
+  gt_assert(u.isConsistent(x.size()));
+  gt_assert(nc == lambda.size());
 
   ttb_real d = 0.0;
   const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
@@ -541,15 +538,15 @@ void Genten::mttkrp(const Genten::TensorT<ExecSpace>& X,
   const ttb_indx nc = u.ncomponents();     // Number of components
   const ttb_indx nd = u.ndims();           // Number of dimensions
 
-  assert(X.ndims() == nd);
-  assert(u.isConsistent());
+  gt_assert(X.ndims() == nd);
+  gt_assert(u.isConsistent());
   for (ttb_indx i = 0; i < nd; i++)
   {
     if (i != n)
-      assert(u[i].nRows() == X.size(i));
+      gt_assert(u[i].nRows() == X.size(i));
   }
-  assert( v.nRows() == X.size(n) );
-  assert( v.nCols() == nc );
+  gt_assert( v.nRows() == X.size(n) );
+  gt_assert( v.nCols() == nc );
 
   if (zero_v)
     v = ttb_real(0.0);

@@ -162,7 +162,8 @@ struct DistContext {
   }
 
   // Bcasts that I don't want to figure out how to do the other way right now
-  static int Bcast(small_vector<int> &t, int root);
+  template <typename T>
+  static int Bcast(small_vector<T> &t, int root);
   static int Bcast(std::size_t &t, int root);
   static int Bcast(ptree &t, int root);
 
@@ -176,6 +177,30 @@ private:
   DistContext() = default;
   static std::unique_ptr<DistContext> instance_;
 };
+
+template <typename T>
+int DistContext::Bcast(small_vector<T> &t, int root) {
+  assert(instance_ != nullptr);
+  if (DistContext::nranks() == 1 && root == 0) {
+    return MPI_SUCCESS;
+  }
+
+  int bcast_result = MPI_SUCCESS;
+  if (DistContext::rank() == root) {
+    int size = t.size();
+    MPI_Bcast(&size, 1, MPI_INT, root, instance_->commWorld());
+    bcast_result =
+      MPI_Bcast(t.data(), t.size(), toMpiType<T>(), root, instance_->commWorld());
+  } else {
+    int size = 0;
+    MPI_Bcast(&size, 1, MPI_INT, root, instance_->commWorld());
+    t.resize(size);
+    bcast_result =
+        MPI_Bcast(t.data(), t.size(), toMpiType<T>(), root, instance_->commWorld());
+  }
+
+  return bcast_result;
+}
 
 } // namespace Genten
 

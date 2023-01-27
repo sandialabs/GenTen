@@ -81,7 +81,7 @@ gcp_gradient_driver(
 
   // Initialize gradient
   Genten::KtensorT<ExecSpace> G(nc,d); // length(modes), not u.ndims()
-  for (int k=0; k<d; ++k) {
+  for (ttb_indx k=0; k<d; ++k) {
     const ttb_indx kk = modes_host[k];
     Genten::FacMatrixT<ExecSpace> v(u[kk].nRows(), nc); // initializes to zero
     G.set_factor(k, v);
@@ -154,7 +154,7 @@ gcp_gradient_driver(
     if (algParams.mttkrp_method == Genten::MTTKRP_Method::Perm &&
         !Y.havePerm())
       Y.createPermutation();
-    for (int k=0; k<d; ++k) {
+    for (ttb_indx k=0; k<d; ++k) {
       const ttb_indx kk = modes_host[k];
       Genten::mttkrp(Y, u, kk, G[k], algParams);
     }
@@ -184,7 +184,7 @@ gcp_gradient_driver(
       if (algParams.mttkrp_method == Genten::MTTKRP_Method::Perm &&
           !Yt.havePerm())
         Yt.createPermutation();
-      for (int k=0; k<d; ++k) {
+      for (ttb_indx k=0; k<d; ++k) {
         const ttb_indx kk = modes_host[k];
         Genten::FacMatrixT<ExecSpace> v(u[kk].nRows(), nc);
         Genten::mttkrp(Yt, ut, kk, v, algParams);
@@ -195,7 +195,7 @@ gcp_gradient_driver(
 
   // to do:  saxpy
   if (penalty != 0.0) {
-    for (int k=0; k<d; ++k) {
+    for (ttb_indx k=0; k<d; ++k) {
       const ttb_indx kk = modes_host[k];
       Genten::FacMatrixT<ExecSpace> v(u[kk].nRows(), nc);
       deep_copy(v, u[kk]);
@@ -230,7 +230,7 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
     algParams.fixup<ExecSpace>(std::cout);
 
     // Parse inputs
-    unsigned arg = 0;
+    int arg = 0;
     const std::string method = mxGetStdString(prhs[arg++]);
     Sptensor_type X = mxGetSptensor<ExecSpace>(prhs[arg++]);
     const ttb_indx num_samples_nonzeros =
