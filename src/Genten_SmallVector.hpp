@@ -68,17 +68,6 @@ constexpr auto default_small_vector_size() {
 template <typename T, int N = detail::default_small_vector_size<T>()>
 using small_vector = boost::container::small_vector<T, N>;
 
-template <typename U, typename T>
-small_vector<U>
-convert(const small_vector<T>& in)
-{
-  small_vector<U> out(in.size());
-  const int n = in.size();
-  for (int i=0; i<n; ++i)
-    out[i] = in[i];
-  return out;
-}
-
 } // namespace Genten
 
 #else
@@ -93,3 +82,18 @@ using small_vector = std::vector<T>;
 }
 
 #endif
+
+namespace Genten {
+
+template <typename U, typename T>
+small_vector<U>
+convert(const small_vector<T>& in)
+{
+  small_vector<U> out(in.size());
+  const int n = in.size();
+  for (int i=0; i<n; ++i)
+    out[i] = in[i];
+  return out;
+}
+
+}
