@@ -42,6 +42,8 @@
 
 #include <vector>
 #include <ostream>
+#include <iomanip>
+#include <fstream>
 #include "Genten_Util.hpp"
 
 namespace Genten {

@@ -60,6 +60,7 @@ OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files and distri
 OPTION(ENABLE_MPI "Enable MPI distributed memory functionality" OFF)
 OPTION(ENABLE_CALIPER "Enable Caliper for application profiling" OFF)
 OPTION(ENABLE_MATLAB "Enable MATLAB linkage to Tensor Toolbox" OFF)
+OPTION(ENABLE_PYTHON "Enable PYTHON linkage to pyTTB" OFF)
 OPTION(FLOAT_TYPE "C++ data type used for floating-point values" OFF)
 OPTION(INDEX_TYPE "C++ data type used for tensor indices" OFF)
 OPTION(ENABLE_GCP "Enable experimental GCP code" ON)
@@ -204,6 +205,51 @@ IF(ENABLE_MATLAB)
   ELSE()
     MESSAGE(FATAL_ERROR "Could not find MATLAB!")
   ENDIF()
+ENDIF()
+
+IF(ENABLE_PYTHON)
+  IF(NOT BUILD_SHARED_LIBS)
+    MESSAGE(FATAL_ERROR "Must build shared libraries when enabling Python!")
+  ENDIF()
+  MESSAGE("-- PYTHON_EXECUTABLE:")
+  IF(NOT DEFINED PYTHON_EXECUTABLE)
+    find_program(PYTHON_EXECUTABLE
+        NAMES python3 python
+        )
+    MESSAGE("  -- CMake has set: PYTHON_EXECUTABLE = ${PYTHON_EXECUTABLE}")
+  ELSE()
+    MESSAGE("  -- User has set: PYTHON_EXECUTABLE = ${PYTHON_EXECUTABLE}")
+  ENDIF()
+  # Get the python version
+  EXECUTE_PROCESS(COMMAND ${PYTHON_EXECUTABLE} -c
+                          "import sys; print(sys.version_info.major)"
+    OUTPUT_VARIABLE PYTHON_MAJOR_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+
+  # Get the python version
+  EXECUTE_PROCESS(COMMAND ${PYTHON_EXECUTABLE} -c
+                          "import sys; print(sys.version_info.minor)"
+    OUTPUT_VARIABLE PYTHON_MINOR_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+
+  SET(PYTHON_VERSION ${PYTHON_MAJOR_VERSION}.${PYTHON_MINOR_VERSION})
+  MESSAGE("  -- PYTHON_VERSION = ${PYTHON_VERSION}")
+  MESSAGE("  -- PYTHON_MAJOR_VERSION = ${PYTHON_MAJOR_VERSION}")
+
+  SET(PYBIND11_PYTHON_VERSION ${PYTHON_VERSION})
+
+  include(FetchContent)
+  FetchContent_Declare(
+    pybind11
+    GIT_REPOSITORY https://github.com/pybind/pybind11.git
+    GIT_TAG        v2.6.2
+    GIT_SHALLOW    TRUE
+  )
+  
+  FetchContent_MakeAvailable(pybind11)
+  SET(HAVE_PYTHON ON)
 ENDIF()
 
 IF(Kokkos_ENABLE_CUDA OR GENTEN_ENABLE_SYCL_FOR_CUDA)
@@ -735,6 +781,15 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
     DIRECTORY ${Genten_SOURCE_DIR}/matlab/matlab_src/
     DESTINATION ${CMAKE_INSTALL_DATADIR}/genten/matlab)
 
+ENDIF()
+
+IF(HAVE_PYTHON AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
+# Determine the install directory
+  SET(pyGenten_INSTALL_DIR
+    ${CMAKE_INSTALL_PREFIX}/lib/python${PYTHON_VERSION}/site-packages/PyGenten
+    )
+  MESSAGE("-- PyGenten installation path: ${pyGenten_INSTALL_DIR}")
+  add_subdirectory( python )
 ENDIF()
 
 add_subdirectory(tools)

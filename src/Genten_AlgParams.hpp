@@ -144,7 +144,7 @@ namespace Genten {
     static void print_help(std::ostream& out);
 
     // Print parmeters
-    void print(std::ostream& out);
+    void print(std::ostream& out) const;
 
     // Fixup alg params to correct values
     template <typename ExecSpace>

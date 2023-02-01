@@ -547,7 +547,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --async            Asynchronous SGD solver" << std::endl;
 }
 
-void Genten::AlgParams::print(std::ostream& out)
+void Genten::AlgParams::print(std::ostream& out) const
 {
   out << "Generic options: " << std::endl;
   out << "  exec-space = " << Genten::Execution_Space::names[exec_space] << std::endl;
