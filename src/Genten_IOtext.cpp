@@ -47,6 +47,8 @@
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <algorithm>
+#include <cctype>
 
 #include "Genten_FacMatrix.hpp"
 #include "Genten_IOtext.hpp"
@@ -117,6 +119,14 @@ static void  get_import_type (std::istream  & fIn,
   return;
 }
 
+// Determine whether the given stream only contains whitespace
+static bool is_white_space(std::istream& is)
+{
+  std::string s;
+  is >> s;
+  return std::all_of(s.begin(),s.end(),isspace);
+}
+
 //! Read a line and parse a single positive integer.
 /*!
  *  Read and verify a line containing a specific number of positive integers.
@@ -158,7 +168,7 @@ static void  read_positive_ints (      std::istream        & fIn,
       Genten::error(sErrMsg.str());
     }
   }
-  if (ss.eof() == false)
+  if (ss.eof() == false && !is_white_space(ss))
   {
     std::ostringstream  sErrMsg;
     sErrMsg << sMsgPrefix << " - line contains too many integers"
@@ -744,7 +754,7 @@ void Genten::import_matrix (std::ifstream       & fIn,
         Genten::error(sErrMsg.str());
       }
     }
-    if (ss.eof() == false)
+    if (ss.eof() == false && !is_white_space(ss))
     {
       std::ostringstream  sErrMsg;
       sErrMsg << "Genten::import_matrix - too many values"
@@ -908,7 +918,7 @@ void Genten::import_ktensor (std::ifstream & fIn,
       Genten::error("Genten::import_ktensor - factor weight cannot be negative");
     }
   }
-  if (ss.eof() == false)
+  if (ss.eof() == false && !is_white_space(ss))
   {
     std::ostringstream  sErrMsg;
     sErrMsg << "Genten::import_ktensor - too many values"
