@@ -146,13 +146,13 @@ void print_environment(const Genten::TensorT<ExecSpace>& x,
                        std::ostream& out)
 {
   const ttb_indx nd = x.ndims();
-  const ttb_indx tsz = x.numel();
+  const ttb_real tsz = dtc.globalNumelFloat(x);
   const ttb_real nrm = dtc.globalNorm(x);
   if (Genten::DistContext::rank() == 0) {
     out << std::endl
         << "Dense tensor: " << std::endl << "  ";
     for (ttb_indx i=0; i<nd; ++i) {
-      out << x.size(i) << " ";
+      out << dtc.dims()[i] << " ";
       if (i<nd-1)
         out << "x ";
     }
