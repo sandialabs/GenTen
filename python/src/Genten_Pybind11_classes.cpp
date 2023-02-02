@@ -204,10 +204,47 @@ void pygenten_ktensor(pybind11::module &m){
         }));
     }
     {
+        py::class_<Genten::FacMatrix, std::shared_ptr<Genten::FacMatrix>> cl(m, "FacMatrix", py::buffer_protocol());
+        cl.def( py::init( [](){ return new Genten::FacMatrix(); } ) );
+        cl.def( py::init( [](ttb_indx m, ttb_indx n){ return new Genten::FacMatrix(m, n); } ) );
+        cl.def( py::init( [](ttb_indx m, ttb_indx n, const ttb_real * cvec){ return new Genten::FacMatrix(m, n, cvec); } ) );
+        cl.def_buffer([](Genten::FacMatrix &m) -> py::buffer_info {
+                return py::buffer_info(
+                    m.rowptr(0),
+                    sizeof(ttb_real),
+                    py::format_descriptor<ttb_real>::format(),
+                    2,
+                    { m.nRows(), m.nCols() },
+                    { m.nCols() * sizeof(ttb_real), sizeof(ttb_real)}
+                );
+            });
+        cl.def(py::init([](py::buffer b) {
+            py::buffer_info info = b.request();
+
+            if (info.format != py::format_descriptor<ttb_real>::format())
+                throw std::runtime_error("Incompatible format: expected a ttb_real array!");
+
+            if (info.ndim != 2)
+                throw std::runtime_error("Incompatible buffer dimension!");
+
+            return Genten::FacMatrix(info.shape[0], info.shape[1], static_cast<ttb_real *>(info.ptr));
+        }));
+    }
+    {
+        py::class_<Genten::FacMatArray, std::shared_ptr<Genten::FacMatArray>> cl(m, "FacMatArray");
+        cl.def( py::init( [](ttb_indx n){ return new Genten::FacMatArray(n); } ) );
+        cl.def( py::init( [](ttb_indx n, const Genten::IndxArray & nrow, ttb_indx ncol){ return new Genten::FacMatArray(n, nrow, ncol); } ) );
+        cl.def( py::init( [](const Genten::FacMatArray & src){ return new Genten::FacMatArray(src); } ) );
+        cl.def("size", (ttb_indx (Genten::FacMatArray::*)()) &Genten::FacMatArray::size, "Return the number of factor matrices.");
+        cl.def("reals", (ttb_indx (Genten::FacMatArray::*)()) &Genten::FacMatArray::reals, "Count the total ttb_reals currently stored here for any purpose.");
+        cl.def("set_factor", (void (Genten::FacMatArray::*)(const ttb_indx, const Genten::FacMatrix&)) &Genten::FacMatArray::set_factor, "Set a factor matrix");
+    }
+    {
         py::class_<Genten::Ktensor, std::shared_ptr<Genten::Ktensor>> cl(m, "Ktensor");
         cl.def( py::init( [](){ return new Genten::Ktensor(); } ) );
         cl.def( py::init( [](ttb_indx nc, ttb_indx nd){ return new Genten::Ktensor(nc, nd); } ), "" , pybind11::arg("nc"), pybind11::arg("nd"));
         cl.def( py::init( [](ttb_indx nc, ttb_indx nd, const Genten::IndxArray &sz){ return new Genten::Ktensor(nc, nd, sz); } ), "" , pybind11::arg("nc"), pybind11::arg("nd"), pybind11::arg("sz"));
+        cl.def( py::init( [](const Genten::Array &w, const Genten::FacMatArray &vals){ return new Genten::Ktensor(w, vals); } ), "" , pybind11::arg("w"), pybind11::arg("vals"));
         cl.def("setWeightsRand", (void (Genten::Ktensor::*)()) &Genten::Ktensor::setWeightsRand, "Set all entries to random values between 0 and 1.  Does not change the matrix array, so the Ktensor can become inconsistent");
         cl.def("setWeights", [](Genten::Ktensor const &o, ttb_real val) -> void { o.setWeights(val); }, "Set all weights equal to val.", pybind11::arg("val"));
         cl.def("setWeights", [](Genten::Ktensor const &o, const Genten::Array &newWeights) -> void { o.setWeights(newWeights); }, "Set all weights equal to val.", pybind11::arg("newWeights"));
@@ -226,6 +263,7 @@ void pygenten_ktensor(pybind11::module &m){
         cl.def("isNonnegative", (bool (Genten::Ktensor::*)(bool)) &Genten::Ktensor::isNonnegative, "", pybind11::arg("bDisplayErrors"));
         cl.def("weights", [](Genten::Ktensor const &o) -> Genten::Array { return o.weights(); }, "Return reference to weights vector.");
         cl.def("weights", [](Genten::Ktensor const &o, ttb_indx i) -> ttb_real { return o.weights(i); }, "Return reference to weights vector.", pybind11::arg("i"));
+        cl.def("__getitem__", [](Genten::Ktensor const &o, ttb_indx n) -> const Genten::FacMatrix & { return o[n]; }, "Return a reference to the n-th factor matrix", pybind11::arg("n"));
     }
     {
         py::class_<Genten::Tensor, std::shared_ptr<Genten::Tensor>> cl(m, "Tensor");
