@@ -308,7 +308,7 @@ void gcp_opt_lbfgsb(const TensorT<ExecSpace>& x, KtensorT<ExecSpace>& u,
 }
 
 #define INST_MACRO(SPACE)                                               \
-  template void Genten::gcp_opt_lbfgsb<SPACE>(                          \
+  template void gcp_opt_lbfgsb<SPACE>(                                  \
     const TensorT<SPACE>& x,                                            \
     KtensorT<SPACE>& u,                                                 \
     const AlgParams& algParms,                                          \
