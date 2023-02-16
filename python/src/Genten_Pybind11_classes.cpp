@@ -5,6 +5,7 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_Tensor.hpp"
 #include "Genten_CpAls.hpp"
+#include "Genten_IOtext.hpp"
 
 namespace py = pybind11;
 
@@ -274,18 +275,41 @@ void pygenten_ktensor(pybind11::module &m){
         cl.def( py::init( [](const Genten::IndxArray &sz, const Genten::Array &vals){ return new Genten::Tensor(sz, vals); } ), "Construct tensor with given size and values", pybind11::arg("sz"), pybind11::arg("vals"));
         cl.def("ndims", (ttb_indx (Genten::Tensor::*)()) &Genten::Tensor::ndims, "Return the number of dimensions (i.e., the order).");
         cl.def("size", [](Genten::Tensor const &o, ttb_indx i) -> ttb_indx { return o.size(i); } , "Return size of dimension i.", pybind11::arg("i"));
+        cl.def("size", [](Genten::Tensor const &o) -> Genten::IndxArray { return o.size(); } , "Return sizes array.");
         cl.def("numel", (ttb_indx (Genten::Tensor::*)()) &Genten::Tensor::numel, "Return the total number of elements in the tensor.");
     }
 
-    m.def("cpals", [](const Genten::Tensor& x, 
-                      Genten::Ktensor u,
-                      const Genten::AlgParams& algParams,
-                      ttb_indx& numIters,
-                      ttb_real& resNorm,
-                      const ttb_indx perfIter,
-                      Genten::PerfHistory& perfInfo) -> void {
-        Genten::cpals_core(x, u, algParams, numIters, resNorm, perfIter, perfInfo);
-    });  
+    m.def("cpals", [](const Genten::Tensor& x,
+                      const Genten::Ktensor& u0,
+                      const Genten::AlgParams& algParams) -> Genten::Ktensor {
+       // Copy u0 into new Ktensor because cp-als overwrites it
+       const ttb_indx nc = u0.ncomponents();
+       const ttb_indx nd = u0.ndims();
+       Genten::Ktensor u(nc, nd);
+       deep_copy(u.weights(), u0.weights());
+       for (ttb_indx i=0; i<nd; ++i) {
+         Genten::FacMatrix A(u0[i].nRows(), nc);
+         deep_copy(A, u0[i]);
+         u.set_factor(i, A);
+       }
+       ttb_indx numIters = 0;
+       ttb_real resNorm = 0.0;
+       ttb_indx perfIter = 1;
+       Genten::PerfHistory perfInfo;
+       Genten::cpals_core(x, u, algParams, numIters, resNorm, perfIter, perfInfo);
+       return u;
+    });
+
+    m.def("import_tensor", [](const std::string& fName) -> Genten::Tensor {
+        Genten::Tensor X;
+        Genten::import_tensor(fName, X);
+        return X;
+    });
+
+    m.def("export_ktensor", [](const std::string& fName,
+                               const Genten::Ktensor& u) -> void {
+        Genten::export_ktensor(fName, u);
+    });
 }
 
 void pygenten_classes(pybind11::module &m){

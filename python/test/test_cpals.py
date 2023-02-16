@@ -12,12 +12,8 @@ u.setWeights(1.)
 u.setMatricesRand()
 
 algParams = pyGenten.AlgParams()
-numIters = 10
-resNorm = 1.
-perfIter = 10
-perfInfo = pyGenten.PerfHistory()
 
-pyGenten.cpals(x, u, algParams, numIters, resNorm, perfIter, perfInfo)
+u = pyGenten.cpals(x, u, algParams)
 
 del sizes_np, sizes, u, x
 pyGenten.finalizeKokkos()
