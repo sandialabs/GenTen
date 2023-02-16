@@ -44,7 +44,6 @@
 #include <random>
 
 #include "Genten_GCP_SGD.hpp"
-#include "Genten_GCP_StratifiedSampler.hpp"
 #include "Genten_GCP_SemiStratifiedSampler.hpp"
 #include "Genten_GCP_ValueKernels.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
@@ -53,6 +52,7 @@
 #include "Genten_Sptensor.hpp"
 #include "Genten_SystemTimer.hpp"
 #include "Genten_MixedFormatOps.hpp"
+#include "Genten_DistKtensorUpdate.hpp"
 
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
@@ -75,7 +75,6 @@ namespace Genten {
                          std::ostream& out)
     {
       typedef KokkosVector<ExecSpace> VectorType;
-      typedef typename VectorType::view_type view_type;
       using std::sqrt;
       using std::pow;
 
@@ -103,7 +102,7 @@ namespace Genten {
 
       // Create sampler
       Genten::SemiStratifiedSampler<ExecSpace,LossFunction> sampler(
-        X, algParams, true);
+        X, u0, algParams, true);
       const ttb_indx tot_num_grad_samples = sampler.totalNumGradSamples();
 
       // bounds
@@ -113,9 +112,6 @@ namespace Genten {
       constexpr ttb_real ub = LossFunction::upper_bound();
 
       if (printIter > 0) {
-        const ttb_indx nnz = X.global_nnz();
-        const ttb_real tsz = X.global_numel_float();
-        const ttb_real nz = tsz - nnz;
         out << "\nGCP-SGD (Generalized CP Tensor Decomposition):\n"
             << "  Generalized function type: " << loss_func.name() << std::endl
             << "  Optimization method: " << (use_adam ? "adam\n" : "sgd\n")
@@ -135,7 +131,7 @@ namespace Genten {
       const int timer_sgd = num_timers++;
       const int timer_sort = num_timers++;
       const int timer_sample_f = num_timers++;
-      const int timer_sample_g = num_timers++;
+      //const int timer_sample_g = num_timers++;
       const int timer_fest = num_timers++;
       const int timer_grad = num_timers++;
       const int timer_grad_nzs = num_timers++;
@@ -144,8 +140,9 @@ namespace Genten {
       const int timer_grad_sort = num_timers++;
       const int timer_grad_scan = num_timers++;
       const int timer_step = num_timers++;
-      const int timer_sample_g_z_nz = num_timers++;
-      const int timer_sample_g_perm = num_timers++;
+      //const int timer_sample_g_z_nz = num_timers++;
+      //const int timer_sample_g_perm = num_timers++;
+      const int timer_comm = num_timers++;
       SystemTimer timer(num_timers, algParams.timings, pmap);
 
       // Start timer for total execution time of the algorithm.
@@ -187,28 +184,38 @@ namespace Genten {
         adam_v_prev.zero();
       }
 
+      // History (empty for now)
+      StreamingHistory<ExecSpace> hist;
+      ttb_real factor_penalty = 0.0;
+
       // Initialize sampler (sorting, hashing, ...)
       timer.start(timer_sort);
       Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
-      sampler.initialize(rand_pool, out);
+      sampler.initialize(rand_pool, printIter, out);
       timer.stop(timer_sort);
 
       // Sample X for f-estimate
-      SptensorT<ExecSpace> X_val, X_grad;
-      ArrayT<ExecSpace> w_val, w_grad;
       timer.start(timer_sample_f);
-      sampler.sampleTensor(false, ut, loss_func, X_val, w_val);
+      sampler.sampleTensorF(ut, loss_func);
       timer.stop(timer_sample_f);
 
       // Objective estimates
       ttb_real fit = 0.0;
       ttb_real x_norm = 0.0;
-      timer.start(timer_fest);
-      fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
+      DistKtensorUpdate<ExecSpace> *dku_fit = nullptr;
+      KtensorT<ExecSpace> ut_overlap_fit;
       if (compute_fit) {
         x_norm = X.global_norm();
+        dku_fit = createKtensorUpdate(X, ut, algParams);
+        ut_overlap_fit = dku_fit->createOverlapKtensor(ut);
+      }
+      timer.start(timer_fest);
+      ttb_real ften = 0.0;
+      sampler.value(ut, hist, factor_penalty, loss_func, fest, ften);
+      if (compute_fit) {
         ttb_real u_norm = sqrt(u.normFsq());
-        ttb_real dot = innerprod(X, ut);
+        dku_fit->doImport(ut_overlap_fit, ut, timer, timer_comm);
+        ttb_real dot = innerprod(X, ut_overlap_fit);
         fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
       }
       timer.stop(timer_fest);
@@ -264,15 +271,12 @@ namespace Genten {
 
             // compute gradient
             timer.start(timer_grad);
-            timer.start(timer_grad_init);
-            g.zero(); // algorithm does not use weights
-            timer.stop(timer_grad_init);
             sampler.fusedGradientAndStep(
-              u, loss_func, g, gind, perm,
+              u, loss_func, g, gt, gind, perm,
               use_adam, adam_m, adam_v, beta1, beta2, eps,
               use_adam ? adam_step : step,
               has_bounds, lb, ub,
-              timer, timer_grad_nzs, timer_grad_zs,
+              timer, timer_grad_init, timer_grad_nzs, timer_grad_zs,
               timer_grad_sort, timer_grad_scan, timer_step);
             timer.stop(timer_grad);
           }
@@ -280,10 +284,11 @@ namespace Genten {
 
         // compute objective estimate
         timer.start(timer_fest);
-        fest = Impl::gcp_value(X_val, ut, w_val, loss_func);
+        sampler.value(ut, hist, factor_penalty, loss_func, fest, ften);
         if (compute_fit) {
           ttb_real u_norm = sqrt(u.normFsq());
-          ttb_real dot = innerprod(X, ut);
+          dku_fit->doImport(ut_overlap_fit, ut, timer, timer_comm);
+          ttb_real dot = innerprod(X, ut_overlap_fit);
           fit = 1.0 - sqrt(x_norm*x_norm + u_norm*u_norm - 2.0*dot) / x_norm;
         }
         timer.stop(timer_fest);
@@ -395,6 +400,8 @@ namespace Genten {
       // Normalize Ktensor u
       u0.normalize(Genten::NormTwo);
       u0.arrange();
+      if (dku_fit != nullptr)
+        delete dku_fit;
     }
 
   }

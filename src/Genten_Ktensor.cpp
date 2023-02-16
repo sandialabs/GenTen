@@ -38,8 +38,6 @@
 // ************************************************************************
 //@HEADER
 
-
-#include <assert.h>
 #include <algorithm>
 #include <iostream>
 
@@ -86,7 +84,7 @@ template <typename ExecSpace>
 void Genten::KtensorT<ExecSpace>::
 setWeights(const Genten::ArrayT<ExecSpace> &  newWeights) const
 {
-  assert(newWeights.size() == lambda.size());
+  gt_assert(newWeights.size() == lambda.size());
   deep_copy(lambda, newWeights);
   return;
 }
@@ -331,7 +329,7 @@ ttb_real Genten::KtensorT<ExecSpace>::
 entry(const Genten::IndxArrayT<ExecSpace> & subs) const
 {
   ttb_indx nd = this->ndims();
-  assert(subs.size() == nd);
+  gt_assert(subs.size() == nd);
 
   // This vector product is fundamental to many big computations; hence,
   // stride should be one.  Since FacMatrix stores by row, the factor vectors
@@ -360,8 +358,8 @@ entry(const Genten::IndxArrayT<ExecSpace> & subs,
       const Genten::ArrayT<ExecSpace> & altLambda) const
 {
   ttb_indx nd = this->ndims();
-  assert(subs.size() == nd);
-  assert(altLambda.size() == lambda.size());
+  gt_assert(subs.size() == nd);
+  gt_assert(altLambda.size() == lambda.size());
 
   // This vector product is fundamental to many big computations; hence,
   // stride across lambda should be one.  Since FacMatrix stores by row,
@@ -444,12 +442,13 @@ normalize(Genten::NormType norm_type, ttb_indx i) const
   //     norms[k] = 1;
   //   }
   // }
-  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,n),
+  Kokkos::parallel_for("Genten::Ktensor::normalize_init_kernel",
+                       Kokkos::RangePolicy<ExecSpace>(0,n),
                        KOKKOS_LAMBDA(const ttb_indx k)
   {
     if (norms[k] == ttb_real(0))
       norms[k] = ttb_real(1);
-  }, "Genten::Ktensor::normalize_init_kernel");
+  });
 
 #if CKFINITE
   if (data[i].hasNonFinite(bad)) {

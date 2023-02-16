@@ -76,6 +76,12 @@
 //---- DEFINED IF Caliper IS ENABLED.
 #cmakedefine HAVE_CALIPER
 
+//---- DEFINED IF Teuchos IS ENABLED.
+#cmakedefine HAVE_TEUCHOS
+
+//---- DEFINED IF Tpetra IS ENABLED.
+#cmakedefine HAVE_TPETRA
+
 //---- DEFINED IF ROL IS ENABLED.
 #cmakedefine HAVE_ROL
 

@@ -84,17 +84,18 @@ void perm_sort_op(const PermType& perm, const Op& op)
 
   typedef typename PermType::execution_space exec_space;
   typedef typename PermType::size_type size_type;
-  typedef typename PermType::non_const_value_type perm_val_type;
 
   // Initialize perm
   const size_type sz = perm.extent(0);
-  Kokkos::parallel_for(Kokkos::RangePolicy<exec_space>(0,sz),
+  Kokkos::parallel_for("Genten::perm_sort::perm_init",
+                       Kokkos::RangePolicy<exec_space>(0,sz),
                        KOKKOS_LAMBDA(const size_type i)
   {
     perm(i) = i;
-  }, "Genten::perm_sort::perm_init");
+  } );
 
 #if defined(KOKKOS_ENABLE_CUDA) || (defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCTHRUST))
+  typedef typename PermType::non_const_value_type perm_val_type;
   if (is_gpu_space<exec_space>::value) {
     thrust::stable_sort(thrust::device_ptr<perm_val_type>(perm.data()),
                         thrust::device_ptr<perm_val_type>(perm.data()+sz),
@@ -206,6 +207,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
     KeyViewType block_keys("block_keys", num_blocks);
     Kokkos::TeamPolicy<exec_space> policy(league_size,team_size,vector_size);
     Kokkos::parallel_for(
+      "Genten::key_scan::parallel_scan",
       policy.set_scratch_size(0,Kokkos::PerThread(bytes)),
       KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -251,13 +253,14 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
         {
           block_vals(block,j) = s[j];
         });
-      }, "Genten::key_scan::parallel_scan");
+      });
 
     // Scan the block results that are in the same segment
     key_scan(block_vals, block_keys, check);
 
     // Update scans for blocks [1,num_blocks) from inter-block scans
     Kokkos::parallel_for(
+      "Genten::key_scan::block_scan",
       policy.set_scratch_size(0,Kokkos::PerThread(bytes)),
       KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -281,12 +284,13 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
           });
           ++i;
         }
-      }, "Genten::key_scan::block_scan");
+      });
   }
   else {
     // Serial scan
     Kokkos::TeamPolicy<exec_space> policy(1,1,vector_size);
     Kokkos::parallel_for(
+      "Genten::key_scan::serial_scan",
       policy.set_scratch_size(0,Kokkos::PerThread(bytes)),
       KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -319,7 +323,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
             vals(i,j) = s[j];
           });
         }
-      }, "Genten::key_scan::serial_scan");
+      });
   }
 
   if (check) {
@@ -337,16 +341,16 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
     std::vector<val_type> s(r);
     key_type key = 0;
     key_type key_prev = 0;
-    for (int i=0; i<n; ++i) {
+    for (size_type i=0; i<n; ++i) {
       key_prev = key;
       key = keys_host(i);
       if (i == 0 || key != key_prev)
-        for (int j=0; j<r; ++j)
+        for (size_type j=0; j<r; ++j)
           s[j] = vals_host(i,j);
       else
-        for (int j=0; j<r; ++j)
+        for (size_type j=0; j<r; ++j)
           s[j] += vals_host(i,j);
-      for (int j=0; j<r; ++j) {
+      for (size_type j=0; j<r; ++j) {
         if (scans_host(i,j) != s[j]) {
           correct = false;
           break;
@@ -356,39 +360,39 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
 
     // Print incorrect values
     if (!correct) {
-      const int w1 = std::ceil(std::log10(n))+2;
+      const size_type w1 = std::ceil(std::log10(n))+2;
       const val_type w2 = std::ceil(std::log10(100))+2;
       std::cout << std::setw(w1) << "i" << " "
                 << std::setw(w2-1) << "k" << " ";
-      for (int j=0; j<r; ++j)
+      for (size_type j=0; j<r; ++j)
         std::cout << std::setw(w2-1) << "v" << j << " ";
-      for (int j=0; j<r; ++j)
+      for (size_type j=0; j<r; ++j)
         std::cout << std::setw(w2) << "s" << j << " ";
-      for (int j=0; j<r; ++j)
+      for (size_type j=0; j<r; ++j)
         std::cout << std::setw(w2) << "t" << j << " ";
       std::cout << std::endl
                 << std::setw(w1) << "==" << " "
                 << std::setw(w2) << "==" << " ";
-      for (int j=0; j<r; ++j)
+      for (size_type j=0; j<r; ++j)
         std::cout << std::setw(w2) << "==" << " ";
-      for (int j=0; j<r; ++j)
+      for (size_type j=0; j<r; ++j)
         std::cout << std::setw(w2+1) << "==" << " ";
-      for (int j=0; j<r; ++j)
+      for (size_type j=0; j<r; ++j)
         std::cout << std::setw(w2+1) << "==" << " ";
       std::cout << std::endl;
       key_type key = 0;
       key_type key_prev = 0;
-      for (int i=0; i<n; ++i) {
+      for (size_type i=0; i<n; ++i) {
         key_prev = key;
         key = keys_host(i);
         if (i == 0 || key != key_prev)
-          for (int j=0; j<r; ++j)
+          for (size_type j=0; j<r; ++j)
             s[j] = vals_host(i,j);
         else
-          for (int j=0; j<r; ++j)
+          for (size_type j=0; j<r; ++j)
             s[j] += vals_host(i,j);
         bool line_correct = true;
-        for (int j=0; j<r; ++j) {
+        for (size_type j=0; j<r; ++j) {
           if (scans_host(i,j) != s[j]) {
             line_correct = false;
             break;
@@ -397,11 +401,11 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
         if (!line_correct) {
           std::cout << std::setw(w1) << i << " "
                     << std::setw(w2) << keys_host(i) << " ";
-          for (int j=0; j<r; ++j)
+          for (size_type j=0; j<r; ++j)
             std::cout << std::setw(w2) << vals_host(i,j) << " ";
-          for (int j=0; j<r; ++j)
+          for (size_type j=0; j<r; ++j)
             std::cout << std::setw(w2+1) << scans_host(i,j) << " ";
-          for (int j=0; j<r; ++j)
+          for (size_type j=0; j<r; ++j)
             std::cout << std::setw(w2+1) << s[j] << " ";
           std::cout << "Wrong!" << std::endl;
         }
@@ -482,6 +486,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
     KeyViewType block_keys("block_keys", num_blocks);
     Kokkos::TeamPolicy<exec_space> policy(league_size,team_size,vector_size);
     Kokkos::parallel_for(
+      "Genten::key_scan_perm::parallel_scan",
       policy.set_scratch_size(0,Kokkos::PerThread(bytes)),
       KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -529,7 +534,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
         {
           block_vals(block,j) = s[j];
         });
-      }, "Genten::key_scan_perm::parallel_scan");
+      });
 
     // Scan the block results that are in the same segment (does not use
     // permutation)
@@ -537,6 +542,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
 
     // Update scans for blocks [1,num_blocks) from inter-block scans
     Kokkos::parallel_for(
+      "Genten::key_scan_perm::block_scan",
       policy.set_scratch_size(0,Kokkos::PerThread(bytes)),
       KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -562,12 +568,13 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
           ++i;
           p = perm(i);
         }
-      }, "Genten::key_scan_perm::block_scan");
+      });
   }
   else {
     // Serial scan
     Kokkos::TeamPolicy<exec_space> policy(1,1,vector_size);
     Kokkos::parallel_for(
+      "Genten::key_scan_perm::serial_scan",
       policy.set_scratch_size(0,Kokkos::PerThread(bytes)),
       KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -602,7 +609,7 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
             vals(p,j) = s[j];
           });
         }
-      }, "Genten::key_scan_perm::serial_scan");
+      });
   }
 
   if (check) {
@@ -623,17 +630,17 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
     std::vector<val_type> s(r);
     key_type key = 0;
     key_type key_prev = 0;
-    for (int i=0; i<n; ++i) {
+    for (size_type i=0; i<n; ++i) {
       perm_type p = perm_host(i);
       key_prev = key;
       key = keys_host(p);
       if (p == 0 || key != key_prev)
-        for (int j=0; j<r; ++j)
+        for (size_type j=0; j<r; ++j)
           s[j] = vals_host(p,j);
       else
-        for (int j=0; j<r; ++j)
+        for (size_type j=0; j<r; ++j)
           s[j] += vals_host(p,j);
-      for (int j=0; j<r; ++j) {
+      for (size_type j=0; j<r; ++j) {
         if (scans_host(p,j) != s[j]) {
           correct = false;
           break;
@@ -643,40 +650,40 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
 
     // Print incorrect values
     if (!correct) {
-      const int w1 = std::ceil(std::log10(n))+2;
+      const size_type w1 = std::ceil(std::log10(n))+2;
       const val_type w2 = std::ceil(std::log10(100))+2;
       std::cout << std::setw(w1) << "i" << " "
                 << std::setw(w2-1) << "k" << " ";
-      for (int j=0; j<r; ++j)
+      for (size_type j=0; j<r; ++j)
         std::cout << std::setw(w2-1) << "v" << j << " ";
-      for (int j=0; j<r; ++j)
+      for (size_type j=0; j<r; ++j)
         std::cout << std::setw(w2) << "s" << j << " ";
-      for (int j=0; j<r; ++j)
+      for (size_type j=0; j<r; ++j)
         std::cout << std::setw(w2) << "t" << j << " ";
       std::cout << std::endl
                 << std::setw(w1) << "==" << " "
                 << std::setw(w2) << "==" << " ";
-      for (int j=0; j<r; ++j)
+      for (size_type j=0; j<r; ++j)
         std::cout << std::setw(w2) << "==" << " ";
-      for (int j=0; j<r; ++j)
+      for (size_type j=0; j<r; ++j)
         std::cout << std::setw(w2+1) << "==" << " ";
-      for (int j=0; j<r; ++j)
+      for (size_type j=0; j<r; ++j)
         std::cout << std::setw(w2+1) << "==" << " ";
       std::cout << std::endl;
       key_type key = 0;
       key_type key_prev = 0;
-      for (int i=0; i<n; ++i) {
+      for (size_type i=0; i<n; ++i) {
         perm_type p = perm_host(i);
         key_prev = key;
         key = keys_host(p);
         if (p == 0 || key != key_prev)
-          for (int j=0; j<r; ++j)
+          for (size_type j=0; j<r; ++j)
             s[j] = vals_host(p,j);
         else
-          for (int j=0; j<r; ++j)
+          for (size_type j=0; j<r; ++j)
             s[j] += vals_host(p,j);
         bool line_correct = true;
-        for (int j=0; j<r; ++j) {
+        for (size_type j=0; j<r; ++j) {
           if (scans_host(p,j) != s[j]) {
             line_correct = false;
             break;
@@ -685,11 +692,11 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
         if (!line_correct) {
           std::cout << std::setw(w1) << p << " "
                     << std::setw(w2) << keys_host(p) << " ";
-          for (int j=0; j<r; ++j)
+          for (size_type j=0; j<r; ++j)
             std::cout << std::setw(w2) << vals_host(p,j) << " ";
-          for (int j=0; j<r; ++j)
+          for (size_type j=0; j<r; ++j)
             std::cout << std::setw(w2+1) << scans_host(p,j) << " ";
-          for (int j=0; j<r; ++j)
+          for (size_type j=0; j<r; ++j)
             std::cout << std::setw(w2+1) << s[j] << " ";
           std::cout << "Wrong!" << std::endl;
         }
@@ -886,14 +893,14 @@ void seg_scan(const ValViewType& vals, const FlagViewType& flags,
     Kokkos::deep_copy(scans_host, vals);
     bool correct = true;
     std::vector<val_type> s(r);
-    for (int i=0; i<n; ++i) {
+    for (size_type i=0; i<n; ++i) {
       if (i == 0 || flags_host(i) == 1)
-        for (int j=0; j<r; ++j)
+        for (size_type j=0; j<r; ++j)
           s[j] = vals_host(i,j);
       else
-        for (int j=0; j<r; ++j)
+        for (size_type j=0; j<r; ++j)
           s[j] += vals_host(i,j);
-      for (int j=0; j<r; ++j) {
+      for (size_type j=0; j<r; ++j) {
         if (scans_host(i,j) != s[j]) {
           correct = false;
           break;
@@ -903,35 +910,35 @@ void seg_scan(const ValViewType& vals, const FlagViewType& flags,
 
     // Print incorrect values
     if (!correct) {
-      const int w1 = std::ceil(std::log10(n))+2;
+      const size_type w1 = std::ceil(std::log10(n))+2;
       const val_type w2 = std::ceil(std::log10(100))+2;
       std::cout << std::setw(w1) << "i" << " "
                 << std::setw(2) << "k" << " ";
-      for (int j=0; j<r; ++j)
+      for (size_type j=0; j<r; ++j)
         std::cout << std::setw(w2-1) << "v" << j << " ";
-      for (int j=0; j<r; ++j)
+      for (size_type j=0; j<r; ++j)
         std::cout << std::setw(w2) << "s" << j << " ";
-      for (int j=0; j<r; ++j)
+      for (size_type j=0; j<r; ++j)
         std::cout << std::setw(w2) << "t" << j << " ";
       std::cout << std::endl
                 << std::setw(w1) << "==" << " "
                 << std::setw(2) << "=" << " ";
-      for (int j=0; j<r; ++j)
+      for (size_type j=0; j<r; ++j)
         std::cout << std::setw(w2) << "==" << " ";
-      for (int j=0; j<r; ++j)
+      for (size_type j=0; j<r; ++j)
         std::cout << std::setw(w2+1) << "==" << " ";
-      for (int j=0; j<r; ++j)
+      for (size_type j=0; j<r; ++j)
         std::cout << std::setw(w2+1) << "==" << " ";
       std::cout << std::endl;
-      for (int i=0; i<n; ++i) {
+      for (size_type i=0; i<n; ++i) {
         if (i == 0 || flags_host(i) == 1)
-          for (int j=0; j<r; ++j)
+          for (size_type j=0; j<r; ++j)
             s[j] = vals_host(i,j);
         else
-          for (int j=0; j<r; ++j)
+          for (size_type j=0; j<r; ++j)
             s[j] += vals_host(i,j);
         bool line_correct = true;
-        for (int j=0; j<r; ++j) {
+        for (size_type j=0; j<r; ++j) {
           if (scans_host(i,j) != s[j]) {
             line_correct = false;
             break;
@@ -940,11 +947,11 @@ void seg_scan(const ValViewType& vals, const FlagViewType& flags,
         if (!line_correct) {
           std::cout << std::setw(w1) << i << " "
                     << std::setw(2) << flags_host(i) << " ";
-          for (int j=0; j<r; ++j)
+          for (size_type j=0; j<r; ++j)
             std::cout << std::setw(w2) << vals_host(i,j) << " ";
-          for (int j=0; j<r; ++j)
+          for (size_type j=0; j<r; ++j)
             std::cout << std::setw(w2+1) << scans_host(i,j) << " ";
-          for (int j=0; j<r; ++j)
+          for (size_type j=0; j<r; ++j)
             std::cout << std::setw(w2+1) << s[j] << " ";
           std::cout << "Wrong!" << std::endl;
         }

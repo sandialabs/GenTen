@@ -41,10 +41,12 @@
 #pragma once
 
 #include "ROL_Objective.hpp"
+#include "Genten_Tensor.hpp"
+#include "Genten_Ktensor.hpp"
+#include "Genten_AlgParams.hpp"
+#include "Genten_PerfHistory.hpp"
 #include "Genten_RolKokkosVector.hpp"
 #include "Genten_RolKtensorVector.hpp"
-
-#include "Teuchos_TimeMonitor.hpp"
 
 // Choose implementation of ROL::Vector (KtensorVector or KokkosVector)
 #define USE_KTENSOR_VECTOR 0
@@ -54,112 +56,41 @@
 // when using RolKokkosVector.
 #define COPY_KTENSOR 0
 
-#include "Genten_GCP_ValueKernels.hpp"
-
-// Whether to compute gradient tensor "Y" explicitly in GCP gradient kernels
-#define COMPUTE_Y 0
-#include "Genten_GCP_GradientKernels.hpp"
-
 namespace Genten {
 
-  //! Implementation of ROL::Objective for GCP problem
-  template <typename Tensor, typename LossFunction>
-  class GCP_RolObjective : public ROL::Objective<ttb_real> {
-
+  template <typename ExecSpace>
+  class GCP_RolObjectiveBase : public ROL::Objective<ttb_real> {
   public:
-
-    typedef Tensor tensor_type;
-    typedef LossFunction loss_function_type;
-    typedef typename tensor_type::exec_space exec_space;
-    typedef KtensorT<exec_space> ktensor_type;
+    typedef ExecSpace exec_space;
 #if USE_KTENSOR_VECTOR
     typedef RolKtensorVector<exec_space> vector_type;
 #else
     typedef RolKokkosVector<exec_space> vector_type;
 #endif
 
-    GCP_RolObjective(const tensor_type& x,
-                     const ktensor_type& m,
-                     const loss_function_type& func,
-                     const AlgParams& algParms) :
-      X(x), M(m), f(func), algParams(algParms),
-      w(x.nnz(), ttb_real(1.0)/ttb_real(x.nnz()))
-    {
-#if COPY_KTENSOR
-      const unsigned nd = M.ndims();
-      const unsigned nc = M.ncomponents();
-      G = ktensor_type(nc, nd);
-      for (unsigned i=0; i<nd; ++i)
-        G.set_factor(i, FacMatrixT<exec_space>(M[i].nRows(), nc));
-#endif
-    }
+    GCP_RolObjectiveBase() = default;
+    virtual ~GCP_RolObjectiveBase() {}
 
-    virtual ~GCP_RolObjective() {}
+    virtual ROL::Ptr<vector_type> createDesignVector() const = 0;
 
-    virtual ttb_real value(const ROL::Vector<ttb_real>& x, ttb_real& tol);
+    virtual std::string lossFunctionName() const = 0;
 
-    virtual void gradient(ROL::Vector<ttb_real>& g,
-                          const ROL::Vector<ttb_real>& x, ttb_real &tol);
+    virtual bool lossFunctionHasLowerBound() const = 0;
 
-    ROL::Ptr<vector_type> createDesignVector() const
-    {
-      return ROL::makePtr<vector_type>(M, false);
-    }
+    virtual bool lossFunctionHasUpperBound() const = 0;
 
-  protected:
+    virtual ttb_real lossFunctionLowerBound() const = 0;
 
-    tensor_type X;
-    tensor_type Y;
-    ktensor_type M;
-    ktensor_type G;
-    ArrayT<exec_space> w;
-    loss_function_type f;
-    AlgParams algParams;
+    virtual ttb_real lossFunctionUpperBound() const = 0;
 
+    virtual ttb_real computeFit(const KtensorT<ExecSpace>& u) = 0;
   };
 
-  template <typename Tensor, typename LossFunction>
-  ttb_real
-  GCP_RolObjective<Tensor,LossFunction>::
-  value(const ROL::Vector<ttb_real>& xx, ttb_real& tol)
-  {
-    TEUCHOS_FUNC_TIME_MONITOR("GCP_RolObjective::value");
-
-    const vector_type& x = dynamic_cast<const vector_type&>(xx);
-
-    // Convert input vector to a Ktensor
-    M = x.getKtensor();
-#if COPY_KTENSOR
-    x.copyToKtensor(M);
-#endif
-
-    return Impl::gcp_value(X, M, w, f);
-  }
-
-  template <typename Tensor, typename LossFunction>
-  void
-  GCP_RolObjective<Tensor,LossFunction>::
-  gradient(ROL::Vector<ttb_real>& gg, const ROL::Vector<ttb_real>& xx,
-           ttb_real &tol)
-  {
-    TEUCHOS_FUNC_TIME_MONITOR("GCP_RolObjective::gradient");
-
-    const vector_type& x = dynamic_cast<const vector_type&>(xx);
-    vector_type& g = dynamic_cast<vector_type&>(gg);
-
-    // Convert input vector to a Ktensor
-    M = x.getKtensor();
-    G = g.getKtensor();
-#if COPY_KTENSOR
-    x.copyToKtensor(M);
-#endif
-
-    Impl::gcp_gradient(X, Y, M, w, f, G, algParams);
-
-    // Convert Ktensor to vector
-#if COPY_KTENSOR
-    g.copyFromKtensor(G);
-#endif
-  }
+  template <typename ExecSpace>
+  Teuchos::RCP< GCP_RolObjectiveBase<ExecSpace> >
+  GCP_createRolObjective(const TensorT<ExecSpace>& x,
+                         const KtensorT<ExecSpace>& m,
+                         const AlgParams& algParams,
+                         PerfHistory& h);
 
 }

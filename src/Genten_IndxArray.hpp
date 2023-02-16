@@ -40,7 +40,7 @@
 
 #pragma once
 
-#include <assert.h>
+#include <cassert>
 #include <ostream>
 #include <initializer_list>
 

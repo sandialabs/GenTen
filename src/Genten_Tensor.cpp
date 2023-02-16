@@ -13,26 +13,29 @@
 //@HEADER
 
 #include "Genten_Tensor.hpp"
+#include "Genten_Sptensor.hpp"
 
 namespace Genten {
 
 namespace Impl {
 
 template <typename ExecSpace>
-void copyFromSptensor(const TensorT<ExecSpace>& x,
-                      const SptensorT<ExecSpace>& src)
+void copyFromSptensor(const TensorImpl<ExecSpace>& x,
+                      const SptensorT<ExecSpace>& src_dist)
 {
+  const auto src = src_dist.impl();
   const ttb_indx nnz = src.nnz();
-  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nnz),
+  Kokkos::parallel_for("copyFromSptensor",
+                       Kokkos::RangePolicy<ExecSpace>(0,nnz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
     const ttb_indx k = x.sub2ind(src.getSubscripts(i));
     x[k] = src.value(i);
-  }, "copyFromSptensor");
+  });
 }
 
 template <typename ExecSpace>
-void copyFromKtensor(const TensorT<ExecSpace>& x,
+void copyFromKtensor(const TensorImpl<ExecSpace>& x,
                      const KtensorT<ExecSpace>& src)
 {
   typedef Kokkos::TeamPolicy<ExecSpace> Policy;
@@ -51,7 +54,8 @@ void copyFromKtensor(const TensorT<ExecSpace>& x,
 
   const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
   Policy policy(N, TeamSize, VectorSize);
-  Kokkos::parallel_for(policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+  Kokkos::parallel_for("copyFromKtensor",
+                       policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
                        KOKKOS_LAMBDA(const TeamMember& team)
   {
     // Compute indices for entry "i"
@@ -86,14 +90,17 @@ void copyFromKtensor(const TensorT<ExecSpace>& x,
       x[i] = src_val;
     });
 
-  }, "copyFromKtensor");
+  });
 }
 
 }
 
 template <typename ExecSpace>
-TensorT<ExecSpace>::
-TensorT(const SptensorT<ExecSpace>& src) : siz(src.size())
+TensorImpl<ExecSpace>::
+TensorImpl(const SptensorT<ExecSpace>& src) :
+  siz(src.size()),
+  lower_bound(src.getLowerBounds().clone()),
+  upper_bound(src.getUpperBounds().clone())
 {
   siz_host = create_mirror_view(siz);
   deep_copy(siz_host, siz);
@@ -102,8 +109,10 @@ TensorT(const SptensorT<ExecSpace>& src) : siz(src.size())
 }
 
 template <typename ExecSpace>
-TensorT<ExecSpace>::
-TensorT(const KtensorT<ExecSpace>& src) : siz(src.ndims())
+TensorImpl<ExecSpace>::
+TensorImpl(const KtensorT<ExecSpace>& src) :
+  siz(src.ndims()),
+  lower_bound(src.ndims(),ttb_indx(0))
 {
   siz_host = create_mirror_view(siz);
   const ttb_indx nd = siz_host.size();
@@ -112,9 +121,10 @@ TensorT(const KtensorT<ExecSpace>& src) : siz(src.ndims())
   deep_copy(siz, siz_host);
   values = ArrayT<ExecSpace>(siz_host.prod());
   Impl::copyFromKtensor(*this, src);
+  upper_bound = siz.clone();
 }
 
 }
 
-#define INST_MACRO(SPACE) template class Genten::TensorT<SPACE>;
+#define INST_MACRO(SPACE) template class Genten::TensorImpl<SPACE>;
 GENTEN_INST(INST_MACRO)

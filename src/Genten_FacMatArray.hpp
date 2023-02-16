@@ -63,10 +63,12 @@ void assign_factor_matrix_view(const ttb_indx i, const ViewType& v,
                                const MatrixType& mat)
 {
   Kokkos::RangePolicy<typename ViewType::execution_space> policy(0,1);
-  Kokkos::parallel_for( policy, KOKKOS_LAMBDA(const ttb_indx j)
+  Kokkos::parallel_for(
+    "Genten::Impl::assign_factor_matrix_view",
+    policy, KOKKOS_LAMBDA(const ttb_indx j)
   {
     v[i].assign_view(mat);
-  }, "Genten::Impl::assign_factor_matrix_view");
+  });
 }
 
 }
@@ -141,7 +143,7 @@ public:
   // Set a factor matrix
   void set_factor(const ttb_indx i, const FacMatrixT<ExecSpace>& src) const
   {
-    assert(i < size());
+    gt_assert(i < size());
     host_data[i] = src;
     if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename ExecSpace::memory_space >::accessible)
       Genten::Impl::assign_factor_matrix_view(i, data, src);
@@ -223,7 +225,7 @@ create_mirror_view(const FacMatArrayT<ExecSpace>& a)
 template <typename E1, typename E2>
 void deep_copy(const FacMatArrayT<E1>& dst, const FacMatArrayT<E2>& src)
 {
-  assert( dst.size() == src.size() );
+  gt_assert( dst.size() == src.size() );
   const ttb_indx n = dst.size();
 
   for (ttb_indx i=0; i<n; ++i)

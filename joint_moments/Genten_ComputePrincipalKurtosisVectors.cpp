@@ -108,9 +108,9 @@ void ComputePrincipalKurtosisVectors(double *raw_data_ptr, int nsamples, int nva
 {
 
   typedef Genten::DefaultExecutionSpace Space;
-  typedef Genten::TensorT<Space> Tensor_type;
+  //typedef Genten::TensorT<Space> Tensor_type;
   typedef Genten::DefaultHostExecutionSpace HostSpace;
-  typedef Genten::TensorT<HostSpace> Tensor_host_type;
+  //typedef Genten::TensorT<HostSpace> Tensor_host_type;
 
   //Declare Kokkos Views for principal kurtosis vectors and values
   //These Views are internal, and their content will be memcpied to the pointers

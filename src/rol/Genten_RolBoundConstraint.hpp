@@ -65,8 +65,8 @@ namespace Genten {
                        const ttb_real& scale = 1.0) :
       l(lower->getView()),
       u(upper->getView()),
-      policy(0,l.extent(0)),
-      s(scale)
+      s(scale),
+      policy(0,l.extent(0))
     {
       compute_gap();
     }

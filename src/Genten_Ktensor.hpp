@@ -40,7 +40,7 @@
 
 
 #pragma once
-#include <assert.h>
+#include <cassert>
 
 #include "Genten_FacMatArray.hpp"
 #include "Genten_IndxArray.hpp"
@@ -347,7 +347,7 @@ void deep_copy(const KtensorT<E1>& dst, const KtensorT<E2>& src)
   deep_copy( dst.factors(), src.factors() );
 }
 
-template <typename ExecSpace> class SptensorT;
+template <typename ExecSpace> class SptensorImpl;
 
 // Compute Ktensor value using Sptensor subscripts
 // Len and WarpOrWavefrontSize are for nested parallelism using TinyVec
@@ -355,7 +355,7 @@ template <typename ExecSpace, unsigned Len, unsigned WarpOrWavefrontSize>
 KOKKOS_INLINE_FUNCTION
 ttb_real compute_Ktensor_value(const typename Kokkos::TeamPolicy<ExecSpace>::member_type& team,
                                const KtensorT<ExecSpace>& M,
-                               const SptensorT<ExecSpace>& X,
+                               const SptensorImpl<ExecSpace>& X,
                                const ttb_indx i) {
   typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, Len, Len, WarpOrWavefrontSize> TVM1;
 
@@ -447,6 +447,19 @@ ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
   }
 
   return m_val;
+}
+
+template <typename ExecSpace>
+KtensorT<ExecSpace> clone(const KtensorT<ExecSpace>& u)
+{
+  const ttb_indx nd = u.ndims();
+  const ttb_indx nc = u.ncomponents();
+  KtensorT<ExecSpace> v(nc,nd,u.getProcessorMap());
+  for (ttb_indx i=0; i<nd; ++i) {
+    FacMatrixT<ExecSpace> mat(u[i].nRows(), nc);
+    v.set_factor(i,mat);
+  }
+  return v;
 }
 
 }

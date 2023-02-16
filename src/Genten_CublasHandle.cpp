@@ -61,7 +61,10 @@ CublasHandle::CublasHandle() {
 
 CublasHandle::~CublasHandle() { cublasDestroy(handle); }
 
-cublasHandle_t CublasHandle::get() const { return handle; }
+cublasHandle_t CublasHandle::get() {
+  static CublasHandle h;
+  return h.handle;
+}
 
 } // namespace Genten
 

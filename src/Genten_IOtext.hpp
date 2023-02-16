@@ -48,12 +48,12 @@
 #include <string>
 #include <vector>
 #include <ostream>
+#include <memory>
 
 #include "Genten_FacMatrix.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_Tensor.hpp"
-#include "Genten_TensorInfo.hpp"
 
 //! Namespace for the Genten C++ project.
 namespace Genten
@@ -80,19 +80,11 @@ namespace Genten
    *  @param[in,out] X  Tensor resized and filled with data.
    *  @throws string    for any error.
    */
-  void import_tensor (const std::string& fName,
+  void import_tensor (std::istream& fIn,
                       Genten::Tensor& X);
-
-  //! Write a Tensor to a text file, matching import_tensor().
-  /*!
-   *  Elements are output with the default format "%0.15e".
-   *
-   *  @param[in] fName  Output filename.
-   *  @param[in] X      Tensor to be exported.
-   *  @throws string    for any error.
-   */
-  void export_tensor (const std::string& fName,
-                      const Genten::Tensor& X);
+  void import_tensor (const std::string& fName,
+                      Genten::Tensor& X,
+                      const bool bCompressed = false);
 
   //! Write a Tensor to a text file, matching import_tensor().
   /*!
@@ -100,28 +92,30 @@ namespace Genten
    *  @param[in] X               Tensor to export.
    *  @param[in] bUseScientific  True means use "%e" format, false means "%f".
    *  @param[in] nDecimalDigits  Number of digits after the decimal point.
+   *  @param[in] bCompressed     Write compressed output file if true
    *  @throws string             for any error.
    */
   void export_tensor (const std::string& fName,
                       const Genten::Tensor& X,
-                      const bool bUseScientific,
-                      const int nDecimalDigits);
+                      const bool bUseScientific = true,
+                      const int nDecimalDigits = 15,
+                      const bool bCompressed = false);
 
   //! Write a Tensor to an opened file stream, matching import_tensor().
   /*!
    *  See previous method for details.
    *
-   *  @param[in] fOut            File stream for output.
+   *  @param[in] fOut            Stream for output.
    *                             The file is not closed by this method.
    *  @param[in] X               Tensor to export.
    *  @param[in] bUseScientific  True means use "%e" format, false means "%f".
    *  @param[in] nDecimalDigits  Number of digits after the decimal point.
    *  @throws string             for any error.
    */
-  void export_tensor (std::ofstream& fOut,
+  void export_tensor (std::ostream& fOut,
                       const Genten::Tensor& X,
-                      const bool bUseScientific,
-                      const int nDecimalDigits);
+                      const bool bUseScientific = true,
+                      const int nDecimalDigits = 15);
 
   //! Pretty-print a tensor to an output stream.
   /*!
@@ -138,21 +132,6 @@ namespace Genten
    *  @name I/O Methods for Sptensor (sparse tensor)
    *  @{
    *  ---------------------------------------------------------------- */
-
-  //! Read a Sptensor header
-  /*!
-   *  <pre>
-   *  The file should have four header lines followed by the entries.  
-   *  1st line must be the keyword 'sptensor', 
-   *  2nd line must provide the number of modes.  
-   *  3rd line must provide the sizes of all modes.  
-   *  4th line must provide the number of nonzero elements.
-   *  </pre>
-   *
-   *  @param[in] fName  Input filename.
-   *  @throws string    for any error.
-   */
-  TensorInfo read_sptensor_header (std::istream& fIn);
 
   //! Read a Sptensor from a text file, matching export_sptensor().
   /*!
@@ -183,39 +162,27 @@ namespace Genten
 
   //! Write a Sptensor to a text file, matching import_sptensor().
   /*!
-   *  Elements are output with the default format "%0.15e".
-   *
-   *  @param[in] fName         Output filename.
-   *  @param[in] X             Sptensor to be exported.
-   *  @param[in] bStartAtZero  True if indices start at zero,
-   *                           false if at one.
-   *  @throws string           for any error.
-   */
-  void export_sptensor (const std::string   & fName,
-                        const Genten::Sptensor & X,
-                        const bool            bStartAtZero = true);
-
-  //! Write a Sptensor to a text file, matching import_sptensor().
-  /*!
    *  @param[in] fName           Output filename.
    *  @param[in] X               Sptensor to export.
    *  @param[in] bUseScientific  True means use "%e" format, false means "%f".
    *  @param[in] nDecimalDigits  Number of digits after the decimal point.
    *  @param[in] bStartAtZero    True if indices start at zero,
    *                             false if at one.
+   *  @param[in] bCompressed     Write compressed output file if true
    *  @throws string             for any error.
    */
-  void export_sptensor (const std::string   & fName,
-                        const Genten::Sptensor & X,
-                        const bool          & bUseScientific,
-                        const int           & nDecimalDigits,
-                        const bool            bStartAtZero = true);
+  void export_sptensor (const std::string& fName,
+                        const Genten::Sptensor& X,
+                        const bool bUseScientific = true,
+                        const int nDecimalDigits = 15,
+                        const bool bStartAtZero = true,
+                        const bool bCompressed = false);
 
   //! Write a Sptensor to an opened file stream, matching import_sptensor().
   /*!
    *  See previous method for details.
    *
-   *  @param[in] fOut            File stream for output.
+   *  @param[in] fOut            Stream for output.
    *                             The file is not closed by this method.
    *  @param[in] X               Sptensor to export.
    *  @param[in] bUseScientific  True means use "%e" format, false means "%f".
@@ -224,11 +191,11 @@ namespace Genten
    *                             false if at one.
    *  @throws string             for any error.
    */
-  void export_sptensor (      std::ofstream & fOut,
-                              const Genten::Sptensor & X,
-                              const bool          & bUseScientific,
-                              const int           & nDecimalDigits,
-                              const bool            bStartAtZero = true);
+  void export_sptensor (std::ostream& fOut,
+                        const Genten::Sptensor& X,
+                        const bool bUseScientific = true,
+                        const int nDecimalDigits = 15,
+                        const bool bStartAtZero = true);
 
   //! Pretty-print a sparse tensor to an output stream.
   /*!
@@ -498,6 +465,10 @@ namespace Genten
     print_matrix(X, os);
     return os;
   }
+
+  std::pair<std::shared_ptr<std::istream>,
+            std::shared_ptr<std::istream>>
+  createCompressedInputFileStream(const std::string& filename);
 
    /** @} */
 

@@ -51,7 +51,7 @@
 #include "Genten_Util.hpp"
 #include "Genten_AlgParams.hpp"
 #include "Genten_Pmap.hpp"
-#include <assert.h>
+#include <cassert>
 
 namespace Genten
 {
@@ -221,7 +221,7 @@ public:
     KOKKOS_INLINE_FUNCTION
     ttb_real & entry(IType i, JType j) const
     {
-      assert((i < data.extent(0)) && (j < data.extent(1)));
+      assert((i < IType(data.extent(0))) && (j < JType(data.extent(1))));
       return data(i,j);
     }
 
@@ -234,7 +234,7 @@ public:
     KOKKOS_INLINE_FUNCTION
     ttb_real & operator()(IType i, JType j) const
     {
-      assert((i < data.extent(0)) && (j < data.extent(1)));
+      assert((i < IType(data.extent(0))) && (j < JType(data.extent(1))));
       return data(i,j);
     }
 

@@ -143,10 +143,46 @@ static nlohmann::json json_schema = R"(
                   "type": "boolean",
                   "default": false
               },
-              "sparse": {
+              "format": {
                   "description": "Whether tensor is sparse or dense",
+                  "type": "string",
+                  "default": "sparse"
+              },
+              "file-type": {
+                  "description": "File type of tensor file, text or binary",
+                  "type": "string",
+                  "default": "auto"
+              },
+              "parallel-read": {
+                  "description": "Use MPI-IO to read tensor file",
                   "type": "boolean",
                   "default": true
+              },
+              "dims": {
+                  "description": "Tensor dimensions for binary files without a header",
+                  "type": "array",
+                  "items": {
+                      "type": "integer",
+                      "minimum": 1
+                  }
+              },
+              "nnz": {
+                  "description": "Number of tensor nonzeros for binary files without a header",
+                  "type": "integer",
+                  "minimum": 1
+              },
+              "value-bits": {
+                  "description": "Number of bits used to represent tensor entries in sparse or dense binary files without a header",
+                  "type": "integer",
+                  "minimum": 16
+              },
+              "sub-bits": {
+                  "description": "Number of bits used to represent subscripts in sparse binary files without a header",
+                  "type": "array",
+                  "items": {
+                      "type": "integer",
+                      "minimum": 16
+                  }
               },
               "output-file": {
                   "description": "Path to output tensor file when generating tensor randomly",
@@ -210,6 +246,26 @@ static nlohmann::json json_schema = R"(
                   "description": "Use parallel random number generator",
                   "type": "boolean",
                   "default": false
+              },
+              "scale-guess-by-norm-x": {
+                  "description": "Scale initial guess by norm of the tensor",
+                  "type": "boolean",
+                  "default": true
+              },
+              "dist-method": {
+                  "description": "Distributed Ktensor update method",
+                  "enum": ["all-reduce", "all-gather", "tpetra"],
+                  "default": "all-reduce"
+              },
+              "optimize-maps": {
+                  "description": "Optimize distributed maps to reduce communication",
+                  "type": "boolean",
+                  "default": false
+              },
+              "build-maps-on-device": {
+                  "description": "Build distributed maps on the device",
+                  "type": "boolean",
+                  "default": true
               }
           }
       },
@@ -343,6 +399,79 @@ static nlohmann::json json_schema = R"(
               }
           }
       },
+      "gcp-opt": {
+          "type": "object",
+          "description": "GCP-OPT decomposition algorithm",
+          "additionalProperties": false,
+          "properties": {
+              "type": {
+                  "description": "Loss function type for GCP",
+                  "enum": ["gaussian", "rayleigh", "gamma", "bernoulli", "poisson"],
+                  "default": "gaussian"
+              },
+              "eps": {
+                  "description": "Perturbation of loss functions for entries near 0",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "maximum": 1.0,
+                  "default": 1e-10
+              },
+              "maxiters": {
+                  "description": "maximum iterations to perform",
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 100
+              },
+              "tol": {
+                  "description": "Stopping tolerance",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "default": 0.004
+              },
+              "mttkrp": {
+                  "$ref": "#/definitions/mttkrp"
+              },
+              "method": {
+                  "description": "Optimization method",
+                  "enum": ["lbfgsb", "rol"],
+                  "default": "lbfgsb"
+              },
+              "rol-file": {
+                  "description": "Path to ROL optimization settings",
+                  "type": "string",
+                  "default": ""
+              },
+              "factr": {
+                  "description": "factr parameter for L-BFGS-B",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "default": 1e7
+              },
+              "pgtol": {
+                  "description": "pgtol parameter for L-BFGS-B",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "default": 1e-5
+              },
+              "memory": {
+                  "description": "memory parameter for L-BFGS-B",
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 5
+              },
+              "total-iters": {
+                  "description": "Max total iterations for L-BFGS-B",
+                  "type": "integer",
+                  "minimum": 0,
+                  "default": 5000
+             },
+             "fit": {
+                  "description": "Compute fit metric",
+                  "type": "boolean",
+                  "default": false
+              }
+          }
+      },
       "gcp-sgd": {
           "type": "object",
           "description": "GCP-SGD decomposition algorithm",
@@ -377,7 +506,7 @@ static nlohmann::json json_schema = R"(
               },
               "sampling": {
                   "description": "Sampling method",
-                  "enum": ["uniform", "stratified", "semi-stratified"],
+                  "enum": ["uniform", "stratified", "semi-stratified", "dense"],
                   "default": "stratified"
               },
               "seed": {
@@ -731,6 +860,52 @@ static nlohmann::json json_schema = R"(
                           "default": 10.0
                       }
                   }
+              }
+          }
+      },
+      "streaming-gcp": {
+          "type": "object",
+          "description": "Streaming GCP decomposition algorithm",
+          "additionalProperties": false,
+          "properties": {
+              "solver": {
+                  "description": "Streaming solver algorithm",
+                  "enum": ["sgd", "least-squares", "online-cp"],
+                  "default": "sgd"
+              },
+              "history-method": {
+                  "description": "History term formulation",
+                  "enum": ["ktensor-fro", "factor-fro", "gcp-loss"],
+                  "default": "ktensor-fro"
+              },
+              "window-method": {
+                  "description": "Algorithm for choosing samples in the window",
+                  "enum": ["reservoir", "last"],
+                  "default": "reservoir"
+              },
+              "window-size": {
+                  "description": "Number of slices in streaming history window",
+                  "type": "integer",
+                  "minimum": 0,
+                  "default": 0
+              },
+              "window-weight": {
+                  "description": "Multiplier for each streaming window term",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "default": 0.0
+              },
+              "window-penalty": {
+                  "description": "Multiplier for entire streaming window",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "default": 0.0
+              },
+              "factor-penalty": {
+                  "description": "Penalty term on factor matrices",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "default": 0.0
               }
           }
       },

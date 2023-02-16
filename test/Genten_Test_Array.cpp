@@ -146,13 +146,13 @@ TEST(TestArray, AssignmentOperatorArray) {
 TEST(TestArray, AssignmentOperatorScalar) {
   Array arr(5, 0.0);
   ASSERT_EQ(arr.size(), 5);
-  for (int i = 0; i < arr.size(); ++i) {
+  for (ttb_indx i = 0; i < arr.size(); ++i) {
     ASSERT_FLOAT_EQ(arr[i], 0.0);
   }
 
   arr = 0.5;
   ASSERT_EQ(arr.size(), 5);
-  for (int i = 0; i < arr.size(); ++i) {
+  for (ttb_indx i = 0; i < arr.size(); ++i) {
     ASSERT_FLOAT_EQ(arr[i], 0.5);
   }
 }
@@ -164,7 +164,7 @@ TEST(TestArray, Reset) {
 
   arr = Array(3, 0.5);
   ASSERT_EQ(arr.size(), 3);
-  for (int i = 0; i < arr.size(); ++i) {
+  for (ttb_indx i = 0; i < arr.size(); ++i) {
     ASSERT_FLOAT_EQ(arr[i], 0.5);
   }
 

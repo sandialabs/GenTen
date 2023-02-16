@@ -162,7 +162,7 @@ namespace Genten {
       GCP_SGD_DIST,
       GCP_OPT
     };
-    static constexpr unsigned num_types = 4;
+    static constexpr unsigned num_types = 5;
     static constexpr type types[] = {
       CP_ALS, CP_OPT, GCP_SGD, GCP_SGD_DIST, GCP_OPT
     };
@@ -234,6 +234,25 @@ namespace Genten {
       "default", "iterated", "atomic", "duplicated", "single"
     };
     static constexpr type default_type = Default;
+  };
+
+  // Distributed Ktensor update algorithm
+  struct Dist_Update_Method {
+    enum type {
+      AllReduce,
+      AllGather,
+      Tpetra
+    };
+    static constexpr unsigned num_types = 3;
+    static constexpr type types[] = {
+      AllReduce,
+      AllGather,
+      Tpetra
+    };
+    static constexpr const char* names[] = {
+      "all-reduce", "all-gather", "tpetra"
+    };
+    static constexpr type default_type = AllReduce;
   };
 
   // Hessian-vector product method for CP-OPT w/ROL
@@ -334,14 +353,15 @@ namespace Genten {
     enum type {
       Uniform,
       Stratified,
-      SemiStratified
+      SemiStratified,
+      Dense
     };
-    static constexpr unsigned num_types = 3;
+    static constexpr unsigned num_types = 4;
     static constexpr type types[] = {
-      Uniform, Stratified, SemiStratified
+      Uniform, Stratified, SemiStratified, Dense
     };
     static constexpr const char* names[] = {
-      "uniform", "stratified", "semi-stratified"
+      "uniform", "stratified", "semi-stratified", "dense"
     };
     static constexpr type default_type = Stratified;
   };
@@ -364,6 +384,56 @@ namespace Genten {
       "sgd", "adam", "adagrad", "amsgrad", "sgd-momentum", "demon"
     };
     static constexpr type default_type = ADAM;
+  };
+
+  // Sampling functions supported by GCP
+  struct GCP_Streaming_Solver {
+    enum type {
+      SGD,
+      LeastSquares,
+      OnlineCP
+    };
+    static constexpr unsigned num_types = 3;
+    static constexpr type types[] = {
+      SGD, LeastSquares, OnlineCP
+    };
+    static constexpr const char* names[] = {
+      "sgd", "least-squares", "online-cp"
+    };
+    static constexpr type default_type = SGD;
+  };
+
+  // Sampling functions supported by GCP
+  struct GCP_Streaming_Window_Method {
+    enum type {
+      Reservoir,
+      Last
+    };
+    static constexpr unsigned num_types = 2;
+    static constexpr type types[] = {
+      Reservoir, Last
+    };
+    static constexpr const char* names[] = {
+      "reservoir", "last"
+    };
+    static constexpr type default_type = Reservoir;
+  };
+
+  // Sampling functions supported by GCP
+  struct GCP_Streaming_History_Method {
+    enum type {
+      Ktensor_Fro,
+      Factor_Fro,
+      GCP_Loss
+    };
+    static constexpr unsigned num_types = 3;
+    static constexpr type types[] = {
+      Ktensor_Fro, Factor_Fro, GCP_Loss
+    };
+    static constexpr const char* names[] = {
+      "ktensor-fro", "factor-fro", "gcp-loss"
+    };
+    static constexpr type default_type = Ktensor_Fro;
   };
 }
 
@@ -408,3 +478,26 @@ namespace Genten {
   };
   extern oblackholestream bhcout;
 }
+
+// Define our own assertion macro that doesn't rely on NDEBUG.
+// Only use this for non-performance critical code
+#define gt_assert(e) \
+  ((e) ? (void)0 : Genten::error("Assertion failed at " __FILE__ ":" + std::to_string(__LINE__) + "\n" #e "\n"))
+
+#ifdef HAVE_TEUCHOS
+#include "Teuchos_TimeMonitor.hpp"
+#include "Teuchos_StackedTimer.hpp"
+#define GENTEN_TIME_MONITOR(FUNCNAME) \
+  TEUCHOS_FUNC_TIME_MONITOR(FUNCNAME)
+#define GENTEN_TIME_MONITOR_DIFF(FUNCNAME, DIFF) \
+  TEUCHOS_FUNC_TIME_MONITOR_DIFF(FUNCNAME, DIFF)
+#define GENTEN_START_TIMER(FUNCNAME) \
+  Teuchos::TimeMonitor::getStackedTimer()->start(FUNCNAME)
+#define GENTEN_STOP_TIMER(FUNCNAME) \
+  Teuchos::TimeMonitor::getStackedTimer()->stop(FUNCNAME)
+#else
+#define GENTEN_TIME_MONITOR(FUNCNAME)
+#define GENTEN_TIME_MONITOR_DIFF(FUNCNAME, DIFF)
+#define GENTEN_START_TIMER(FUNCNAME)
+#define GENTEN_STOP_TIMER(FUNCNAME)
+#endif

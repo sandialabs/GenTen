@@ -60,11 +60,15 @@ Genten::AlgParams::AlgParams() :
   rcond(1e-8),
   penalty(0.0),
   dist_guess_method("serial"),
+  scale_guess_by_norm_x(true),
   mttkrp_method(MTTKRP_Method::default_type),
   mttkrp_all_method(MTTKRP_All_Method::default_type),
   mttkrp_nnz_tile_size(128),
   mttkrp_duplicated_factor_matrix_tile_size(0),
   mttkrp_duplicated_threshold(-1.0),
+  dist_update_method(Dist_Update_Method::default_type),
+  optimize_maps(false),
+  build_maps_on_device(true),
   warmup(false),
   ttm_method(TTM_Method::default_type),
   opt_method(Opt_Method::default_type),
@@ -111,7 +115,14 @@ Genten::AlgParams::AlgParams() :
   async(false),
   anneal(false),
   anneal_min_lr(1e-14),
-  anneal_max_lr(1e-10)
+  anneal_max_lr(1e-10),
+  streaming_solver(Genten::GCP_Streaming_Solver::default_type),
+  history_method(Genten::GCP_Streaming_History_Method::default_type),
+  window_method(Genten::GCP_Streaming_Window_Method::default_type),
+  window_size(0),
+  window_weight(1.0),
+  window_penalty(1.0),
+  factor_penalty(0.0)
 {}
 
 void Genten::AlgParams::parse(std::vector<std::string>& args)
@@ -142,6 +153,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   rcond = parse_ttb_real(args, "--rcond", rcond, 0.0, DOUBLE_MAX);
   penalty = parse_ttb_real(args, "--penalty", penalty, 0.0, DOUBLE_MAX);
   dist_guess_method = parse_string(args, "--dist-guess", dist_guess_method);
+  scale_guess_by_norm_x = parse_ttb_bool(args, "--scale-guess-by-norm-x", "--no-scale-guess-by-norm-x", scale_guess_by_norm_x);
 
   // MTTKRP options
   mttkrp_method = parse_ttb_enum(args, "--mttkrp-method", mttkrp_method,
@@ -159,9 +171,15 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   mttkrp_duplicated_factor_matrix_tile_size =
     parse_ttb_indx(args, "--mttkrp-duplicated-tile-size",
                    mttkrp_duplicated_factor_matrix_tile_size, 0, INT_MAX);
-   mttkrp_duplicated_threshold =
+  mttkrp_duplicated_threshold =
     parse_ttb_real(args, "--mttkrp-duplicated-threshold",
                    mttkrp_duplicated_factor_matrix_tile_size, -1.0, DOUBLE_MAX);
+  dist_update_method = parse_ttb_enum(args, "--dist-method", dist_update_method,
+                                 Genten::Dist_Update_Method::num_types,
+                                 Genten::Dist_Update_Method::types,
+                                 Genten::Dist_Update_Method::names);
+  optimize_maps = parse_ttb_bool(args, "--optimize-maps", "--no-optimize-maps", optimize_maps);
+  build_maps_on_device = parse_ttb_bool(args, "--build-maps-on-device", "--no-build-maps-on-device", build_maps_on_device);
   warmup = parse_ttb_bool(args, "--warmup", "--no-warmup", warmup);
 
   // TTM options
@@ -255,6 +273,30 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   anneal = parse_ttb_bool(args, "--anneal", "--no-anneal", anneal);
   anneal_min_lr = parse_ttb_real(args, "--anneal-min-lr", anneal_min_lr, 0.0, 1.0);
   anneal_max_lr = parse_ttb_real(args, "--anneal-max-lr", anneal_max_lr, 0.0, 1.0);
+
+  // Streaming GCP
+  streaming_solver = parse_ttb_enum(args, "--streaming-solver",
+                                    streaming_solver,
+                                    Genten::GCP_Streaming_Solver::num_types,
+                                    Genten::GCP_Streaming_Solver::types,
+                                    Genten::GCP_Streaming_Solver::names);
+  history_method = parse_ttb_enum(args, "--history-method",
+                                 history_method,
+                                 Genten::GCP_Streaming_History_Method::num_types,
+                                 Genten::GCP_Streaming_History_Method::types,
+                                 Genten::GCP_Streaming_History_Method::names);
+  window_method = parse_ttb_enum(args, "--window-method",
+                                 window_method,
+                                 Genten::GCP_Streaming_Window_Method::num_types,
+                                 Genten::GCP_Streaming_Window_Method::types,
+                                 Genten::GCP_Streaming_Window_Method::names);
+  window_size = parse_ttb_indx(args, "--window-size", window_size, 0, INT_MAX);
+  window_weight = parse_ttb_real(args, "--window-weight", window_weight, 0.0,
+                                 DOUBLE_MAX);
+  window_penalty = parse_ttb_real(args, "--window-penalty", window_penalty, 0.0,
+                                  DOUBLE_MAX);
+  factor_penalty = parse_ttb_real(args, "--factor-penalty", factor_penalty, 0.0,
+                                  DOUBLE_MAX);
 }
 
 void Genten::AlgParams::parse(const ptree& input)
@@ -296,6 +338,17 @@ void Genten::AlgParams::parse(const ptree& input)
     }
   };
 
+  auto parse_cpopt = [&](const ptree& cpopt_input) {
+    parse_ptree_enum<Opt_Method>(cpopt_input, "method", opt_method);
+    parse_generic_solver_params(cpopt_input);
+    parse_ptree_value(cpopt_input, "rol-file", rolfilename);
+    parse_ptree_value(cpopt_input, "factr", factr, 0.0, DOUBLE_MAX);
+    parse_ptree_value(cpopt_input, "pgtol", pgtol, 0.0, DOUBLE_MAX);
+    parse_ptree_value(cpopt_input, "memory", memory, 0, INT_MAX);
+    parse_ptree_value(cpopt_input, "total-iters", max_total_iters, 0, INT_MAX);
+    parse_mttkrp(cpopt_input);
+  };
+
   // ktensor
   auto ktensor_input_o = input.get_child_optional("k-tensor");
   if (ktensor_input_o) {
@@ -304,6 +357,10 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_value(ktensor_input, "seed", seed, 0, ULONG_MAX);
     parse_ptree_value(ktensor_input, "prng", prng);
     parse_ptree_value(ktensor_input, "distributed-guess", dist_guess_method);
+    parse_ptree_value(ktensor_input, "scale-guess-by-norm-x", scale_guess_by_norm_x);
+    parse_ptree_enum<Dist_Update_Method>(ktensor_input, "dist-method", dist_update_method);
+    parse_ptree_value(ktensor_input, "optimize-maps", optimize_maps);
+    parse_ptree_value(ktensor_input, "build-maps-on-device", build_maps_on_device);
   }
 
   // CP-ALS
@@ -329,23 +386,26 @@ void Genten::AlgParams::parse(const ptree& input)
   auto cpopt_input_o = input.get_child_optional("cp-opt");
   if (cpopt_input_o) {
     auto& cpopt_input = *cpopt_input_o;
-    parse_ptree_enum<Opt_Method>(cpopt_input, "method", opt_method);
-    parse_generic_solver_params(cpopt_input);
+    parse_cpopt(cpopt_input);
     parse_ptree_value(cpopt_input, "lower", lower, -DOUBLE_MAX, DOUBLE_MAX);
     parse_ptree_value(cpopt_input, "upper", upper, -DOUBLE_MAX, DOUBLE_MAX);
-    parse_ptree_value(cpopt_input, "rol-file", rolfilename);
-    parse_ptree_value(cpopt_input, "factr", factr, 0.0, DOUBLE_MAX);
-    parse_ptree_value(cpopt_input, "pgtol", pgtol, 0.0, DOUBLE_MAX);
-    parse_ptree_value(cpopt_input, "memory", memory, 0, INT_MAX);
-    parse_ptree_value(cpopt_input, "total-iters", max_total_iters, 0, INT_MAX);
     parse_ptree_enum<Hess_Vec_Method>(cpopt_input, "hess-vec", hess_vec_method);
     parse_ptree_enum<Hess_Vec_Tensor_Method>(cpopt_input, "hess-vec-tensor", hess_vec_tensor_method);
     parse_ptree_enum<Hess_Vec_Prec_Method>(cpopt_input, "hess-vec-prec", hess_vec_prec_method);
     parse_ptree_value(cpopt_input, "penalty", penalty, 0.0, DOUBLE_MAX);
-    parse_mttkrp(cpopt_input);
   }
 
-  // GCP
+  // GCP-OPT
+  auto gcpopt_input_o = input.get_child_optional("gcp-opt");
+  if (gcpopt_input_o) {
+    auto& gcpopt_input = *gcpopt_input_o;
+    parse_cpopt(gcpopt_input);
+    parse_ptree_enum<GCP_LossFunction>(gcpopt_input, "type", loss_function_type);
+    parse_ptree_value(gcpopt_input, "eps", loss_eps, 0.0, 1.0);
+    parse_ptree_value(gcpopt_input, "fit", compute_fit);
+  }
+
+  // GCP-SGD
   auto gcp_input_o = input.get_child_optional("gcp-sgd");
   if (gcp_input_o) {
     auto& gcp_input = *gcp_input_o;
@@ -387,6 +447,19 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_value(gcp_input, "anneal-min-lr", anneal_min_lr, 0.0, 1.0);
     parse_ptree_value(gcp_input, "anneal-max-lr", anneal_max_lr, 0.0, 1.0);
   }
+
+  // Streaming GCP
+  auto sgcp_input_o = input.get_child_optional("streaming-gcp");
+  if (sgcp_input_o) {
+    auto& sgcp_input = *sgcp_input_o;
+    parse_ptree_enum<GCP_Streaming_Solver>(sgcp_input, "solver", streaming_solver);
+    parse_ptree_enum<GCP_Streaming_History_Method>(sgcp_input, "history-method", history_method);
+    parse_ptree_enum<GCP_Streaming_Window_Method>(sgcp_input, "window-method", window_method);
+    parse_ptree_value(sgcp_input, "window-size", window_size, 0, INT_MAX);
+    parse_ptree_value(sgcp_input, "window-weight", window_weight, 0.0, DOUBLE_MAX);
+    parse_ptree_value(sgcp_input, "window-penalty", window_penalty, 0.0, DOUBLE_MAX);
+    parse_ptree_value(sgcp_input, "factor-penalty", factor_penalty, 0.0, DOUBLE_MAX);
+  }
 }
 
 void Genten::AlgParams::print_help(std::ostream& out)
@@ -420,6 +493,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --rcond <float>    truncation parameter for rank-deficient solver" << std::endl;
   out << "  --penalty <float>  penalty term for regularization (useful if gram matrix is singular)" << std::endl;
   out << "  --dist-guess <string> method for distributed initial guess" << std::endl;
+  out << "  --scale-guess-by-norm-x scale initial guess by norm of the tensor" << std::endl;
 
   out << std::endl;
   out << "MTTKRP options:" << std::endl;
@@ -441,6 +515,15 @@ void Genten::AlgParams::print_help(std::ostream& out)
       << std::endl;
   out << "  --mttkrp-duplicated-tile-size <int> Factor matrix tile size for duplicated mttkrp algorithm" << std::endl;
   out << "  --mttkrp-duplicated-threshold <float> Theshold for determining when to not use duplicated mttkrp algorithm (set to -1.0 to always use duplicated)" << std::endl;
+  out << "  --dist-method <method> Distributed Ktensor update method: ";
+  for (unsigned i=0; i<Genten::Dist_Update_Method::num_types; ++i) {
+    out << Genten::Dist_Update_Method::names[i];
+    if (i != Genten::Dist_Update_Method::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
+  out << "  --optimize-maps    optimize distributed maps to reduce communication" << std::endl;
+  out << "  --build-maps-on-device build distributed maps on the device" << std::endl;
   out << "  --warmup           do an iteration of mttkrp to warmup (useful for generating accurate timing information)" << std::endl;
 
   out << std::endl;
@@ -545,6 +628,38 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --adam-beta2       Decay rate for 2nd moment avg." << std::endl;
   out << "  --adam-eps         Shift in ADAM step." << std::endl;
   out << "  --async            Asynchronous SGD solver" << std::endl;
+
+  out << std::endl;
+  out << "Streaming GCP options:" << std::endl;
+  out << "  --streaming-solver <type> solver type for streaming GCP: ";
+  for (unsigned i=0; i<Genten::GCP_Streaming_Solver::num_types; ++i) {
+    out << Genten::GCP_Streaming_Solver::names[i];
+    if (i != Genten::GCP_Streaming_Solver::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
+  out << "  --history-method <type> history method for streaming GCP: ";
+  for (unsigned i=0; i<Genten::GCP_Streaming_History_Method::num_types; ++i) {
+    out << Genten::GCP_Streaming_History_Method::names[i];
+    if (i != Genten::GCP_Streaming_History_Method::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
+  out << "  --window-method <type> window method for streaming GCP: ";
+  for (unsigned i=0; i<Genten::GCP_Streaming_Window_Method::num_types; ++i) {
+    out << Genten::GCP_Streaming_Window_Method::names[i];
+    if (i != Genten::GCP_Streaming_Window_Method::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
+  out << "  --window-size       Number of slices in streaming history window."
+      << std::endl;
+  out << "  --window-weight     Multiplier for each streaming window term."
+      << std::endl;
+  out << "  --window-penalty    Multiplier for entire streaming window."
+      << std::endl;
+  out << "  --factor-penalty    Penalty term on factor matrices."
+      << std::endl;
 }
 
 void Genten::AlgParams::print(std::ostream& out) const
@@ -566,6 +681,7 @@ void Genten::AlgParams::print(std::ostream& out) const
   out << "  rcond = " << rcond << std::endl;
   out << "  penalty = " << penalty << std::endl;
   out << "  dist-guess = " << dist_guess_method << std::endl;
+  out << "  scale-guess-by-norm-x = " << (scale_guess_by_norm_x ? "true" : "false") << std::endl;
 
   out << std::endl;
   out << "MTTKRP options:" << std::endl;
@@ -576,6 +692,10 @@ void Genten::AlgParams::print(std::ostream& out) const
   out << "  mttkrp-nnz-tile-size = " << mttkrp_nnz_tile_size << std::endl;
   out << "  mttkrp-duplicated-tile-size = " << mttkrp_duplicated_factor_matrix_tile_size << std::endl;
   out << "  mttkrp-duplicated-threshold = " << mttkrp_duplicated_threshold << std::endl;
+  out << "  dist-method = " << Genten::Dist_Update_Method::names[dist_update_method]
+      << std::endl;
+  out << "  optimize-maps = " << (optimize_maps ? "true" : "false") << std::endl;
+  out << "  build-maps-on-device = " << (build_maps_on_device ? "true" : "false") << std::endl;
   out << "  warmup = " << (warmup ? "true" : "false") << std::endl;
 
   out << std::endl;
@@ -604,6 +724,10 @@ void Genten::AlgParams::print(std::ostream& out) const
       << std::endl;
   out << "  eps = " << loss_eps << std::endl;
   out << "  gcp-tol = " << gcp_tol << std::endl;
+
+  out << std::endl;
+  out << "GCP-Opt options:" << std::endl;
+  out << "  rol = " << rolfilename << std::endl;
 
   out << std::endl;
   out << "GCP-SGD options:" << std::endl;
@@ -641,6 +765,22 @@ void Genten::AlgParams::print(std::ostream& out) const
     out << "  anneal-min-lr = " << anneal_min_lr << std::endl;
     out << "  anneal-max-lr = " << anneal_max_lr << std::endl;
   }
+
+  out << std::endl;
+  out << "Streaming GCP options:" << std::endl;
+  out << "  streaming-solver = "
+      << Genten::GCP_Streaming_Solver::names[streaming_solver]
+      << std::endl;
+  out << "  history-method = "
+      << Genten::GCP_Streaming_History_Method::names[history_method]
+      << std::endl;
+  out << "  window-method = "
+      << Genten::GCP_Streaming_Window_Method::names[window_method]
+      << std::endl;
+  out << "  window-size = " << window_size << std::endl;
+  out << "  window-weight = " << window_weight << std::endl;
+  out << "  window-penalty = " << window_penalty << std::endl;
+  out << "  factor-penalty = " << factor_penalty << std::endl;
 }
 
 ttb_real
@@ -710,15 +850,19 @@ Genten::parse_ttb_indx(std::vector<std::string>& args,
       return tmp;
     }
     // convert to ttb_indx
-    char *cend = 0;
-    tmp = std::strtol(it->c_str(),&cend,10);
-    // check if cl_arg is actually a ttb_indx
-    if (it->c_str() == cend) {
-      std::ostringstream error_string;
-      error_string << "Unparseable input: " << cl_arg << " " << *it
-                   << ", must be an integer" << std::endl;
-      Genten::error(error_string.str());
-      exit(1);
+    if (*it == "inf" || *it == "Inf")
+      tmp = INT_MAX;
+    else {
+      char *cend = 0;
+      tmp = std::strtol(it->c_str(),&cend,10);
+      // check if cl_arg is actually a ttb_indx
+      if (it->c_str() == cend) {
+        std::ostringstream error_string;
+        error_string << "Unparseable input: " << cl_arg << " " << *it
+                     << ", must be an integer" << std::endl;
+        Genten::error(error_string.str());
+        exit(1);
+      }
     }
     // Remove argument from list
     args.erase(arg_it, ++it);

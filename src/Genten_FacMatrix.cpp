@@ -50,7 +50,6 @@
 #include "Genten_portability.hpp"
 #include "CMakeInclude.h"
 #include <algorithm>     // for std::max with MSVC compiler
-#include <assert.h>
 #include <cstring>
 
 #if defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)
@@ -61,10 +60,12 @@
 #if defined(KOKKOS_ENABLE_HIP)
 
 #if defined(HAVE_ROCBLAS)
+#include "Genten_RocblasHandle.hpp"
 #include "rocblas.h"
 #endif
 
 #if defined(HAVE_ROCSOLVER)
+#include "Genten_RocblasHandle.hpp"
 #include "rocsolver.h"
 #endif
 
@@ -219,15 +220,16 @@ update(const ttb_real a, const Genten::FacMatrixT<ExecSpace> & y,
     data_1d.update(a, y_data_1d, b);
   }
   else { // matrices might not have the same padding
-    assert(data.extent(0) == y.data.extent(0));
-    assert(data.extent(1) == y.data.extent(1));
+    gt_assert(data.extent(0) == y.data.extent(0));
+    gt_assert(data.extent(1) == y.data.extent(1));
     auto d = data;
-    Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,d.extent(0)),
+    Kokkos::parallel_for("FacMatrix::update",
+                         Kokkos::RangePolicy<ExecSpace>(0,d.extent(0)),
                          KOKKOS_LAMBDA(const ttb_indx i)
     {
       for (ttb_indx j=0; j<d.extent(1); ++j)
         d(i,j) = a*y.data(i,j) + b*d(i,j);
-    }, "FacMatrix::update");
+    });
   }
 }
 
@@ -431,7 +433,8 @@ void gramian_kernel(const ViewC& C, const ViewA& A)
   typedef typename Kernel::TeamMember TeamMember;
 
   deep_copy( C, 0.0 );
-  Kokkos::parallel_for(Kernel::policy(m),
+  Kokkos::parallel_for("Genten::FacMatrix::gramian_kernel",
+                       Kernel::policy(m),
                        KOKKOS_LAMBDA(TeamMember team)
   {
     GramianKernel<ExecSpace,ViewC,ViewA,ColBlockSize,RowBlockSize,TeamSize,VectorSize> kernel(C, A, team);
@@ -443,7 +446,7 @@ void gramian_kernel(const ViewC& C, const ViewA& A)
           kernel.template run<0>(i_block, j_block, n-j_block);
       }
     }
-  }, "Genten::FacMatrix::gramian_kernel");
+  });
 }
 
 template <typename ExecSpace, typename ViewC, typename ViewA>
@@ -488,21 +491,20 @@ void gramianImpl(const ViewC& C, const ViewA& A,
     const double alpha = 1.0;
     const double beta = 0.0;
     cublasStatus_t status;
-    CublasHandle handle;
 
     // We compute C = A'*A.  But since A is LayoutRight, and GEMM/SYRK
     // assumes layout left we compute this as C = A*A'.  Since SYRK writes
     // C', uplo == Upper means we call SYRK with 'L', and vice versa.
 
     if (full) {
-      status = cublasDgemm(handle.get(), CUBLAS_OP_N, CUBLAS_OP_T, n, n, m,
+      status = cublasDgemm(CublasHandle::get(), CUBLAS_OP_N, CUBLAS_OP_T, n, n, m,
                            &alpha, A.data(), lda, A.data(), lda,
                            &beta, C.data(), ldc);
     }
     else {
       cublasFillMode_t cu_uplo =
         uplo == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
-      status = cublasDsyrk(handle.get(), cu_uplo, CUBLAS_OP_N, n, m,
+      status = cublasDsyrk(CublasHandle::get(), cu_uplo, CUBLAS_OP_N, n, m,
                            &alpha, A.data(), lda, &beta, C.data(), ldc);
     }
     if (status != CUBLAS_STATUS_SUCCESS) {
@@ -532,21 +534,20 @@ void gramianImpl(const ViewC& C, const ViewA& A,
     const float alpha = 1.0;
     const float beta = 0.0;
     cublasStatus_t status;
-    CublasHandle handle;
 
     // We compute C = A'*A.  But since A is LayoutRight, and GEMM/SYRK
     // assumes layout left we compute this as C = A*A'.  Since SYRK writes
     // C', uplo == Upper means we call SYRK with 'L', and vice versa.
 
     if (full) {
-      status = cublasSgemm(handle.get(), CUBLAS_OP_N, CUBLAS_OP_T, n, n, m,
+      status = cublasSgemm(CublasHandle::get(), CUBLAS_OP_N, CUBLAS_OP_T, n, n, m,
                            &alpha, A.data(), lda, A.data(), lda,
                            &beta, C.data(), ldc);
     }
     else {
       cublasFillMode_t cu_uplo =
         uplo == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
-      status = cublasSsyrk(handle.get(), cu_uplo, CUBLAS_OP_N, n, m,
+      status = cublasSsyrk(CublasHandle::get(), cu_uplo, CUBLAS_OP_N, n, m,
                            &alpha, A.data(), lda, &beta, C.data(), ldc);
     }
     if (status != CUBLAS_STATUS_SUCCESS) {
@@ -585,27 +586,15 @@ void gramianImpl(const ViewC& C, const ViewA& A,
     // assumes layout left we compute this as C = A*A'.  Since SYRK writes
     // C', uplo == Upper means we call SYRK with 'L', and vice versa.
 
-    static rocblas_handle handle = 0;
-    if (handle == 0) {
-      status = rocblas_create_handle(&handle);
-      if (status != rocblas_status_success) {
-        std::stringstream ss;
-        ss << "Error!  rocblas_create_handle() failed with status "
-           << status;
-        std::cerr << ss.str() << std::endl;
-        throw ss.str();
-      }
-    }
-
     if (full) {
-      status = rocblas_dgemm(handle, rocblas_operation_none, rocblas_operation_transpose, n, n, m,
+      status = rocblas_dgemm(RocblasHandle::get(), rocblas_operation_none, rocblas_operation_transpose, n, n, m,
                            &alpha, A.data(), lda, A.data(), lda,
                            &beta, C.data(), ldc);
     }
     else {
       rocblas_fill roc_uplo =
         uplo == Upper ? rocblas_fill_lower : rocblas_fill_upper;
-      status = rocblas_dsyrk(handle, roc_uplo, rocblas_operation_none, n, m,
+      status = rocblas_dsyrk(RocblasHandle::get(), roc_uplo, rocblas_operation_none, n, m,
                            &alpha, A.data(), lda, &beta, C.data(), ldc);
     }
 
@@ -641,27 +630,15 @@ void gramianImpl(const ViewC& C, const ViewA& A,
     // assumes layout left we compute this as C = A*A'.  Since SYRK writes
     // C', uplo == Upper means we call SYRK with 'L', and vice versa.
 
-    static rocblas_handle handle = 0;
-    if (handle == 0) {
-      status = rocblas_create_handle(&handle);
-      if (status != rocblas_status_success) {
-        std::stringstream ss;
-        ss << "Error!  rocblas_create_handle() failed with status "
-           << status;
-        std::cerr << ss.str() << std::endl;
-        throw ss.str();
-      }
-    }
-
     if (full) {
-      status = rocblas_sgemm(handle, rocblas_operation_none, rocblas_operation_transpose, n, n, m,
+      status = rocblas_sgemm(RocblasHandle::get(), rocblas_operation_none, rocblas_operation_transpose, n, n, m,
                            &alpha, A.data(), lda, A.data(), lda,
                            &beta, C.data(), ldc);
     }
     else {
       rocblas_fill roc_uplo =
         uplo == Upper ? rocblas_fill_lower : rocblas_fill_upper;
-      status = rocblas_ssyrk(handle, roc_uplo, rocblas_operation_none, n, m,
+      status = rocblas_ssyrk(RocblasHandle::get(), roc_uplo, rocblas_operation_none, n, m,
                            &alpha, A.data(), lda, &beta, C.data(), ldc);
     }
 
@@ -688,11 +665,8 @@ gramian(const Genten::FacMatrixT<ExecSpace> & v, const bool full,
   cali::Function cali_func("Genten::FacMatrix::gramian");
 #endif
 
-  const ttb_indx m = v.data.extent(0);
-  const ttb_indx n = v.data.extent(1);
-
-  assert(data.extent(0) == n);
-  assert(data.extent(1) == n);
+  gt_assert(data.extent(0) == v.data.extent(1));
+  gt_assert(data.extent(1) == v.data.extent(1));
 
   Genten::Impl::gramianImpl<ExecSpace>(data,v.data,full,uplo);
 
@@ -751,17 +725,18 @@ oprod(const Genten::ArrayT<ExecSpace> & v) const
 #endif
 
   const ttb_indx n = v.size();
-  assert(data.extent(0) == n);
-  assert(data.extent(1) == n);
+  gt_assert(data.extent(0) == n);
+  gt_assert(data.extent(1) == n);
 
   view_type d = data;
-  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,n),
+  Kokkos::parallel_for("Genten::FacMatrix::oprod_kernel",
+                       Kokkos::RangePolicy<ExecSpace>(0,n),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
     const ttb_real vi = v[i];
     for (ttb_indx j=0; j<n; ++j)
       d(i,j) = vi * v[j];
-  }, "Genten::FacMatrix::oprod_kernel");
+  });
 }
 
 template <typename ExecSpace>
@@ -775,17 +750,18 @@ oprod(const Genten::ArrayT<ExecSpace> & v1,
 
   const ttb_indx m = v1.size();
   const ttb_indx n = v2.size();
-  assert(data.extent(0) == m);
-  assert(data.extent(1) == n);
+  gt_assert(data.extent(0) == m);
+  gt_assert(data.extent(1) == n);
 
   view_type d = data;
-  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,m),
+  Kokkos::parallel_for("Genten::FacMatrix::oprod_kernel",
+                       Kokkos::RangePolicy<ExecSpace>(0,m),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
     const ttb_real vi = v1[i];
     for (ttb_indx j=0; j<n; ++j)
       d(i,j) = vi * v2[j];
-  }, "Genten::FacMatrix::oprod_kernel");
+  });
 }
 
 namespace Genten {
@@ -1068,7 +1044,8 @@ void colNorms_kernel(
   {
     typedef ColNormsKernel_Inf<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> Kernel;
     typedef typename Kernel::TeamMember TeamMember;
-    Kokkos::parallel_for(Kernel::policy(m),
+    Kokkos::parallel_for("Genten::FacMatrix::colNorms_inf_kernel",
+                         Kernel::policy(m),
                          KOKKOS_LAMBDA(TeamMember team)
     {
       ColNormsKernel_Inf<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> kernel(data, norms, team);
@@ -1078,7 +1055,7 @@ void colNorms_kernel(
         else
           kernel.template run<0>(j_block, n-j_block);
       }
-    }, "Genten::FacMatrix::colNorms_inf_kernel");
+    });
     if (pmap != nullptr) {
       Kokkos::fence();
       pmap->allReduce(norms.data(), norms.size(), ProcessorMap::Max);
@@ -1091,7 +1068,8 @@ void colNorms_kernel(
   {
     typedef ColNormsKernel_1<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> Kernel;
     typedef typename Kernel::TeamMember TeamMember;
-    Kokkos::parallel_for(Kernel::policy(m),
+    Kokkos::parallel_for("Genten::FacMatrix::colNorms_1_kernel",
+                         Kernel::policy(m),
                          KOKKOS_LAMBDA(TeamMember team)
     {
       ColNormsKernel_1<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> kernel(data, norms, team);
@@ -1101,7 +1079,7 @@ void colNorms_kernel(
         else
           kernel.template run<0>(j_block, n-j_block);
       }
-    }, "Genten::FacMatrix::colNorms_1_kernel");
+    });
     if (pmap != nullptr) {
       Kokkos::fence();
       pmap->allReduce(norms.data(), norms.size());
@@ -1113,7 +1091,8 @@ void colNorms_kernel(
   {
     typedef ColNormsKernel_2<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> Kernel;
     typedef typename Kernel::TeamMember TeamMember;
-    Kokkos::parallel_for(Kernel::policy(m),
+    Kokkos::parallel_for("Genten::FacMatrix::colNorms_2_kernel",
+                         Kernel::policy(m),
                          KOKKOS_LAMBDA(TeamMember team)
     {
       ColNormsKernel_2<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> kernel(data, norms, team);
@@ -1123,7 +1102,7 @@ void colNorms_kernel(
         else
           kernel.template run<0>(j_block, n-j_block);
       }
-    }, "Genten::FacMatrix::colNorms_2_kernel");
+    });
     if (pmap != nullptr) {
       Kokkos::fence();
       pmap->allReduce(norms.data(), norms.size());
@@ -1259,7 +1238,8 @@ void colScale_kernel(const ViewType& data, const Genten::ArrayT<ExecSpace>& v)
   typedef ColScaleKernel<ExecSpace,ViewType,ColBlockSize,RowBlockSize,TeamSize,VectorSize> Kernel;
   typedef typename Kernel::TeamMember TeamMember;
 
-  Kokkos::parallel_for(Kernel::policy(m), KOKKOS_LAMBDA(TeamMember team)
+  Kokkos::parallel_for("Genten::FacMatrix::colScale_kernel",
+                       Kernel::policy(m), KOKKOS_LAMBDA(TeamMember team)
   {
     ColScaleKernel<ExecSpace,ViewType,ColBlockSize,RowBlockSize,TeamSize,VectorSize> kernel(data, v, team);
     for (unsigned j_block=0; j_block<n; j_block+=ColBlockSize) {
@@ -1268,7 +1248,7 @@ void colScale_kernel(const ViewType& data, const Genten::ArrayT<ExecSpace>& v)
       else
         kernel.template run<0>(j_block, n-j_block);
     }
-  }, "Genten::FacMatrix::colScale_kernel");
+  });
 }
 
 }
@@ -1283,7 +1263,7 @@ colScale(const Genten::ArrayT<ExecSpace> & v, bool inverse) const
 #endif
 
   const ttb_indx n = data.extent(1);
-  assert(v.size() == n);
+  gt_assert(v.size() == n);
 
   Genten::ArrayT<ExecSpace> w;
   if (inverse) {
@@ -1327,16 +1307,16 @@ rowScale(const Genten::ArrayT<ExecSpace> & v, bool inverse) const
 
   const ttb_indx m = data.extent(0);
   const ttb_indx n = data.extent(1);
-  assert(v.size() == m);
+  gt_assert(v.size() == m);
 
   auto d = data;
 
-  const bool is_cuda = Genten::is_cuda_space<ExecSpace>::value;
+  const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
   // t = largest power of 2 <= n at most 256
   const unsigned t = std::min(
     256u, static_cast<unsigned>(std::pow(2,static_cast<unsigned>(std::log2(n)))));
-  const unsigned VectorSize = is_cuda ? t : 1;
-  const unsigned TeamSize = is_cuda ? 256/t : 1;
+  const unsigned VectorSize = is_gpu ? t : 1;
+  const unsigned TeamSize = is_gpu ? 256/t : 1;
   const ttb_indx LeagueSize = (m+TeamSize-1)/TeamSize;
   typedef Kokkos::TeamPolicy<ExecSpace> Policy;
   Policy policy(LeagueSize, TeamSize, VectorSize);
@@ -1377,7 +1357,7 @@ scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise) const
     if (n < 1) { n =1; }
     // flags array so we don't count repeats twice toward fraction target
     Genten::IndxArrayT<ExecSpace> marked(tot,(ttb_indx)0);
-    int misses = 0;
+    ttb_indx misses = 0;
     while (i < n ) {
       k = ::random() % tot;
       if (!marked[k]) {
@@ -1622,13 +1602,14 @@ permute(const Genten::IndxArray& perm_indices) const
       // be much more efficient to move the j-loop inside the parallel_for
       // and use vector parallelism
       view_type d = data;
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,nrows),
+      Kokkos::parallel_for("Genten::FacMatrix::permute_kernel",
+                           Kokkos::RangePolicy<ExecSpace>(0,nrows),
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         const ttb_real temp = d(i,loc);
         d(i,loc) = d(i,j);
         d(i,j) = temp;
-      }, "Genten::FacMatrix::permute_kernel");
+      });
 
       // Swap curr_indices to mark where data was moved.
       ttb_indx  k = curr_indices[j];
@@ -1649,8 +1630,8 @@ multByVector(bool bTranspose,
 
   if (bTranspose == false)
   {
-    assert(x.size() == ncols);
-    assert(y.size() == nrows);
+    gt_assert(x.size() == ncols);
+    gt_assert(y.size() == nrows);
     // Data for the matrix is stored in row-major order but gemv expects
     // column-major, so tell it transpose dimensions.
     Genten::gemv('T', ncols, nrows, 1.0, ptr(), data.stride_0(),
@@ -1658,8 +1639,8 @@ multByVector(bool bTranspose,
   }
   else
   {
-    assert(x.size() == nrows);
-    assert(y.size() == ncols);
+    gt_assert(x.size() == nrows);
+    gt_assert(y.size() == ncols);
     // Data for the matrix is stored in row-major order but gemv expects
     // column-major, so tell it transpose dimensions.
     Genten::gemv('N', ncols, nrows, 1.0, ptr(), data.stride_0(),
@@ -1718,11 +1699,10 @@ gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
   const ttb_indx ldb = B.stride(0);
   const ttb_indx ldc = C.stride(0);
 
-  CublasHandle handle;
   cublasStatus_t status;
 
   status = cublasDgemm(
-    handle.get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
+    CublasHandle::get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
     &beta, C.data(), ldc);
   if (status != CUBLAS_STATUS_SUCCESS) {
     std::stringstream ss;
@@ -1756,11 +1736,10 @@ gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
   const ttb_indx ldb = B.stride(0);
   const ttb_indx ldc = C.stride(0);
 
-  CublasHandle handle;
   cublasStatus_t status;
 
   status = cublasSgemm(
-    handle.get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
+    CublasHandle::get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
     &beta, C.data(), ldc);
   if (status != CUBLAS_STATUS_SUCCESS) {
     std::stringstream ss;
@@ -1798,21 +1777,8 @@ gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
   const ttb_indx ldb = B.stride(0);
   const ttb_indx ldc = C.stride(0);
 
-  static rocblas_handle handle = 0;
-  rocblas_status status;
-  if (handle == 0) {
-    status = rocblas_create_handle(&handle);
-    if (status != rocblas_status_success) {
-      std::stringstream ss;
-      ss << "Error!  rocblas_create_handle() failed with status "
-         << status;
-      std::cerr << ss.str() << std::endl;
-      throw ss.str();
-    }
-  }
-
-  status = rocblas_dgemm(
-    handle, tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
+  rocblas_status status = rocblas_dgemm(
+    RocblasHandle::get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
     &beta, C.data(), ldc);
   if (status != rocblas_status_success) {
     std::stringstream ss;
@@ -1846,21 +1812,8 @@ gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
   const ttb_indx ldb = B.stride(0);
   const ttb_indx ldc = C.stride(0);
 
-  static rocblas_handle handle = 0;
-  rocblas_status status;
-  if (handle == 0) {
-    status = rocblas_create_handle(&handle);
-    if (status != rocblas_status_success) {
-      std::stringstream ss;
-      ss << "Error!  rocblas_create_handle() failed with status "
-         << status;
-      std::cerr << ss.str() << std::endl;
-      throw ss.str();
-    }
-  }
-
-  status = rocblas_sgemm(
-    handle, tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
+  rocblas_status status = rocblas_sgemm(
+    RocblasHandle::get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
     &beta, C.data(), ldc);
   if (status != rocblas_status_success) {
     std::stringstream ss;
@@ -1893,9 +1846,9 @@ gemm(const bool trans_a, const bool trans_b, const ttb_real alpha,
   const ttb_indx rows_op_b = trans_b ? B.data.extent(1) : B.data.extent(0);
   const ttb_indx cols_op_b = trans_b ? B.data.extent(0) : B.data.extent(1);
 
-  assert(rows_op_a == m);
-  assert(cols_op_a == rows_op_b);
-  assert(cols_op_b == n);
+  gt_assert(rows_op_a == m);
+  gt_assert(cols_op_a == rows_op_b);
+  gt_assert(cols_op_b == n);
 
   Genten::Impl::gemmImpl<ExecSpace>(
     trans_a,trans_b,alpha,A.data,B.data,beta,data);
@@ -1945,7 +1898,7 @@ namespace Genten {
       char uplo = ul == Upper ? 'L' : 'U';
 
       if (algParams.rank_def_solver) {
-        ttb_indx rank = Genten::gelsy(ncols, ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0(), algParams.rcond);
+        /*ttb_indx rank =*/ Genten::gelsy(ncols, ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0(), algParams.rcond);
         // if (rank < ncols) {
         //   std::cout << "Matrix is not full rank!  Numerical rank = " << rank
         //             << ", matrix order is " << ncols << std::endl;
@@ -1983,14 +1936,12 @@ namespace Genten {
       const cublasFillMode_t uplo = ul == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
       cusolverStatus_t status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
-
-      CusolverHandle handle;
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
-      status = cusolverDnDpotrf_bufferSize(handle.get(), uplo, n, A.data(), lda, &lwork);
+      status = cusolverDnDpotrf_bufferSize(CusolverHandle::get(), uplo, n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnDpotrf_bufferSize() failed with status "
@@ -2001,7 +1952,7 @@ namespace Genten {
 
       Kokkos::View<double *, Kokkos::LayoutRight, exec_space> work("work", lwork);
       Kokkos::View<int, Kokkos::LayoutRight, exec_space> info("info");
-      status = cusolverDnDpotrf(handle.get(), uplo, n, A.data(), lda, work.data(),
+      status = cusolverDnDpotrf(CusolverHandle::get(), uplo, n, A.data(), lda, work.data(),
                                 lwork, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2021,7 +1972,7 @@ namespace Genten {
       if (info_host() > 0)
         return false;  // Matrix is not SPD
 
-      status = cusolverDnDpotrs(handle.get(), uplo, n, m, A.data(), lda,
+      status = cusolverDnDpotrs(CusolverHandle::get(), uplo, n, m, A.data(), lda,
                                 B.data(), ldb, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2068,14 +2019,12 @@ namespace Genten {
       const cublasFillMode_t uplo = ul == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
       cusolverStatus_t status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
-
-      CusolverHandle handle;
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
-      status = cusolverDnDsytrf_bufferSize(handle.get(), n, A.data(), lda, &lwork);
+      status = cusolverDnDsytrf_bufferSize(CusolverHandle::get(), n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnDsytrf_bufferSize() failed with status "
@@ -2087,7 +2036,7 @@ namespace Genten {
       Kokkos::View<double*,Kokkos::LayoutRight,exec_space> work("work",lwork);
       Kokkos::View<int*,Kokkos::LayoutRight,exec_space> piv("piv",n);
       Kokkos::View<int,Kokkos::LayoutRight,exec_space> info("info");
-      status = cusolverDnDsytrf(handle.get(), uplo, n, A.data(), lda, piv.data(),
+      status = cusolverDnDsytrf(CusolverHandle::get(), uplo, n, A.data(), lda, piv.data(),
                                 work.data(), lwork, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2105,7 +2054,7 @@ namespace Genten {
         throw ss.str();
       }
 
-      status = cusolverDnDsytrs_bufferSize(handle.get(), uplo, n, m, A.data(), lda,
+      status = cusolverDnDsytrs_bufferSize(CusolverHandle::get(), uplo, n, m, A.data(), lda,
                                            piv.data(), B.data(), ldb, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2115,7 +2064,7 @@ namespace Genten {
         throw ss.str();
       }
       Kokkos::View<double*,Kokkos::LayoutRight,exec_space> work2("work2",lwork);
-      status = cusolverDnDsytrs(handle.get(), uplo, n, m, A.data(), lda,
+      status = cusolverDnDsytrs(CusolverHandle::get(), uplo, n, m, A.data(), lda,
                                 piv.data(), B.data(), ldb, work2.data(), lwork,
                                 info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
@@ -2162,14 +2111,12 @@ namespace Genten {
       const int ldb = B.stride_0();
       cusolverStatus_t status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
-
-      CusolverHandle handle;
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
-      status = cusolverDnDgetrf_bufferSize(handle.get(), n, n, A.data(), lda, &lwork);
+      status = cusolverDnDgetrf_bufferSize(CusolverHandle::get(), n, n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnDgetrf_bufferSize() failed with status "
@@ -2181,7 +2128,7 @@ namespace Genten {
       Kokkos::View<double *, Kokkos::LayoutRight, exec_space> work("work", lwork);
       Kokkos::View<int *, Kokkos::LayoutRight, exec_space> piv("piv", n);
       Kokkos::View<int, Kokkos::LayoutRight, exec_space> info("info");
-      status = cusolverDnDgetrf(handle.get(), n, n, A.data(), lda, work.data(),
+      status = cusolverDnDgetrf(CusolverHandle::get(), n, n, A.data(), lda, work.data(),
                                 piv.data(), info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2199,7 +2146,7 @@ namespace Genten {
         throw ss.str();
       }
 
-      status = cusolverDnDgetrs(handle.get(), CUBLAS_OP_N, n, m, A.data(), lda,
+      status = cusolverDnDgetrs(CusolverHandle::get(), CUBLAS_OP_N, n, m, A.data(), lda,
                                 piv.data(), B.data(), ldb, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2242,14 +2189,12 @@ namespace Genten {
       const cublasFillMode_t uplo = ul == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
       cusolverStatus_t status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
-
-      CusolverHandle handle;
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
-      status = cusolverDnSpotrf_bufferSize(handle.get(), uplo, n, A.data(), lda, &lwork);
+      status = cusolverDnSpotrf_bufferSize(CusolverHandle::get(), uplo, n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnSpotrf_bufferSize() failed with status "
@@ -2260,7 +2205,7 @@ namespace Genten {
 
       Kokkos::View<float *, Kokkos::LayoutRight, exec_space> work("work", lwork);
       Kokkos::View<int, Kokkos::LayoutRight, exec_space> info("info");
-      status = cusolverDnSpotrf(handle.get(), uplo, n, A.data(), lda, work.data(),
+      status = cusolverDnSpotrf(CusolverHandle::get(), uplo, n, A.data(), lda, work.data(),
                                 lwork, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2280,7 +2225,7 @@ namespace Genten {
       if (info_host() > 0)
         return false;  // Matrix is not SPD
 
-      status = cusolverDnSpotrs(handle.get(), uplo, n, m, A.data(), lda,
+      status = cusolverDnSpotrs(CusolverHandle::get(), uplo, n, m, A.data(), lda,
                                 B.data(), ldb, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2325,14 +2270,12 @@ namespace Genten {
       const cublasFillMode_t uplo = ul == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
       cusolverStatus_t status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
-
-      CusolverHandle handle;
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
-      status = cusolverDnSsytrf_bufferSize(handle.get(), n, A.data(), lda, &lwork);
+      status = cusolverDnSsytrf_bufferSize(CusolverHandle::get(), n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnSsytrf_bufferSize() failed with status "
@@ -2344,7 +2287,7 @@ namespace Genten {
       Kokkos::View<float*,Kokkos::LayoutRight,exec_space> work("work",lwork);
       Kokkos::View<int*,Kokkos::LayoutRight,exec_space> piv("piv",n);
       Kokkos::View<int,Kokkos::LayoutRight,exec_space> info("info");
-      status = cusolverDnSsytrf(handle.get(), uplo, n, A.data(), lda, piv.data(),
+      status = cusolverDnSsytrf(CusolverHandle::get(), uplo, n, A.data(), lda, piv.data(),
                                 work.data(), lwork, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2362,7 +2305,7 @@ namespace Genten {
         throw ss.str();
       }
 
-      status = cusolverDnSsytrs_bufferSize(handle.get(), uplo, n, m, A.data(), lda,
+      status = cusolverDnSsytrs_bufferSize(CusolverHandle::get(), uplo, n, m, A.data(), lda,
                                            piv.data(), B.data(), ldb, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2372,7 +2315,7 @@ namespace Genten {
         throw ss.str();
       }
       Kokkos::View<float*,Kokkos::LayoutRight,exec_space> work2("work2",lwork);
-      status = cusolverDnSsytrs(handle.get(), uplo, n, m, A.data(), lda,
+      status = cusolverDnSsytrs(CusolverHandle::get(), uplo, n, m, A.data(), lda,
                                 piv.data(), B.data(), ldb, work2.data(), lwork,
                                 info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
@@ -2419,14 +2362,12 @@ namespace Genten {
       const int ldb = B.stride_0();
       cusolverStatus_t status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
-
-      CusolverHandle handle;
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       // lwork is a host pointer, but info is a device pointer.  Go figure.
       int lwork = 0;
-      status = cusolverDnSgetrf_bufferSize(handle.get(), n, n, A.data(), lda, &lwork);
+      status = cusolverDnSgetrf_bufferSize(CusolverHandle::get(), n, n, A.data(), lda, &lwork);
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
         ss << "Error!  cusolverDnSgetrf_bufferSize() failed with status "
@@ -2438,7 +2379,7 @@ namespace Genten {
       Kokkos::View<float *, Kokkos::LayoutRight, exec_space> work("work", lwork);
       Kokkos::View<int *, Kokkos::LayoutRight, exec_space> piv("piv", n);
       Kokkos::View<int, Kokkos::LayoutRight, exec_space> info("info");
-      status = cusolverDnSgetrf(handle.get(), n, n, A.data(), lda, work.data(),
+      status = cusolverDnSgetrf(CusolverHandle::get(), n, n, A.data(), lda, work.data(),
                                 piv.data(), info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2456,7 +2397,7 @@ namespace Genten {
         throw ss.str();
       }
 
-      status = cusolverDnSgetrs(handle.get(), CUBLAS_OP_N, n, m, A.data(), lda,
+      status = cusolverDnSgetrs(CusolverHandle::get(), CUBLAS_OP_N, n, m, A.data(), lda,
                                 piv.data(), B.data(), ldb, info.data());
       if (status != CUSOLVER_STATUS_SUCCESS) {
         std::stringstream ss;
@@ -2499,23 +2440,11 @@ namespace Genten {
       const rocblas_fill uplo = ul == Upper ? rocblas_fill_lower : rocblas_fill_upper;
       rocblas_status status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
-
-      static rocblas_handle handle = 0;
-      if (handle == 0) {
-        status = rocblas_create_handle(&handle);
-        if (status != rocblas_status_success) {
-          std::stringstream ss;
-          ss << "Error!  rocblas_create_handle() failed with status "
-             << status;
-          std::cerr << ss.str() << std::endl;
-          throw ss.str();
-        }
-      }
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Experimental::HIP> info("info");
-      status = rocsolver_dpotrf(handle, uplo, n, A.data(), lda, info.data());
+      status = rocsolver_dpotrf(RocblasHandle::get(), uplo, n, A.data(), lda, info.data());
       if (status != rocblas_status_success) {
         std::stringstream ss;
         ss << "Error!  rocsolver_dpotrf() failed with status "
@@ -2534,7 +2463,7 @@ namespace Genten {
       if (info_host() > 0)
         return false;  // Matrix is not SPD
 
-      status = rocsolver_dpotrs(handle, uplo, n, m, A.data(), lda,
+      status = rocsolver_dpotrs(RocblasHandle::get(), uplo, n, m, A.data(), lda,
                                 B.data(), ldb);
       if (status != rocblas_status_success) {
         std::stringstream ss;
@@ -2587,24 +2516,12 @@ namespace Genten {
       const int ldb = B.stride_0();
       rocblas_status status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
-
-      static rocblas_handle handle = 0;
-      if (handle == 0) {
-        status = rocblas_create_handle(&handle);
-        if (status != rocblas_status_success) {
-          std::stringstream ss;
-          ss << "Error!  rocblas_create_handle() failed with status "
-             << status;
-          std::cerr << ss.str() << std::endl;
-          throw ss.str();
-        }
-      }
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       Kokkos::View<int*,Kokkos::LayoutRight,Kokkos::Experimental::HIP> piv("piv",n);
       Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Experimental::HIP> info("info");
-      status = rocsolver_dgetrf(handle, n, n, A.data(), lda,
+      status = rocsolver_dgetrf(RocblasHandle::get(), n, n, A.data(), lda,
                                 piv.data(), info.data());
       if (status != rocblas_status_success) {
         std::stringstream ss;
@@ -2622,7 +2539,7 @@ namespace Genten {
         throw ss.str();
       }
 
-      status = rocsolver_dgetrs(handle, rocblas_operation_none, n, m, A.data(), lda,
+      status = rocsolver_dgetrs(RocblasHandle::get(), rocblas_operation_none, n, m, A.data(), lda,
                                 piv.data(), B.data(), ldb);
       if (status != rocblas_status_success) {
         std::stringstream ss;
@@ -2654,23 +2571,11 @@ namespace Genten {
       const rocblas_fill uplo = ul == Upper ? rocblas_fill_lower : rocblas_fill_upper;
       rocblas_status status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
-
-      static rocblas_handle handle = 0;
-      if (handle == 0) {
-        status = rocblas_create_handle(&handle);
-        if (status != rocblas_status_success) {
-          std::stringstream ss;
-          ss << "Error!  rocblas_create_handle() failed with status "
-             << status;
-          std::cerr << ss.str() << std::endl;
-          throw ss.str();
-        }
-      }
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Experimental::HIP> info("info");
-      status = rocsolver_spotrf(handle, uplo, n, A.data(), lda, info.data());
+      status = rocsolver_spotrf(RocblasHandle::get(), uplo, n, A.data(), lda, info.data());
       if (status != rocblas_status_success) {
         std::stringstream ss;
         ss << "Error!  rocsolver_spotrf() failed with status "
@@ -2689,7 +2594,7 @@ namespace Genten {
       if (info_host() > 0)
         return false;  // Matrix is not SPD
 
-      status = rocsolver_spotrs(handle, uplo, n, m, A.data(), lda,
+      status = rocsolver_spotrs(RocblasHandle::get(), uplo, n, m, A.data(), lda,
                                 B.data(), ldb);
       if (status != rocblas_status_success) {
         std::stringstream ss;
@@ -2742,24 +2647,12 @@ namespace Genten {
       const int ldb = B.stride_0();
       rocblas_status status;
 
-      assert(A.extent(0) == n);
-      assert(A.extent(1) == n);
-
-      static rocblas_handle handle = 0;
-      if (handle == 0) {
-        status = rocblas_create_handle(&handle);
-        if (status != rocblas_status_success) {
-          std::stringstream ss;
-          ss << "Error!  rocblas_create_handle() failed with status "
-             << status;
-          std::cerr << ss.str() << std::endl;
-          throw ss.str();
-        }
-      }
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
 
       Kokkos::View<int*,Kokkos::LayoutRight,Kokkos::Experimental::HIP> piv("piv",n);
       Kokkos::View<int,Kokkos::LayoutRight,Kokkos::Experimental::HIP> info("info");
-      status = rocsolver_sgetrf(handle, n, n, A.data(), lda,
+      status = rocsolver_sgetrf(RocblasHandle::get(), n, n, A.data(), lda,
                                 piv.data(), info.data());
       if (status != rocblas_status_success) {
         std::stringstream ss;
@@ -2777,7 +2670,7 @@ namespace Genten {
         throw ss.str();
       }
 
-      status = rocsolver_sgetrs(handle, rocblas_operation_none, n, m, A.data(), lda,
+      status = rocsolver_sgetrs(RocblasHandle::get(), rocblas_operation_none, n, m, A.data(), lda,
                                 piv.data(), B.data(), ldb);
       if (status != rocblas_status_success) {
         std::stringstream ss;
@@ -2801,11 +2694,8 @@ solveTransposeRHS (const Genten::FacMatrixT<ExecSpace> & A,
                    const bool spd,
                    const AlgParams& algParams) const
 {
-  const ttb_indx nrows = data.extent(0);
-  const ttb_indx ncols = data.extent(1);
-
-  assert(A.nRows() == A.nCols());
-  assert(nCols() == A.nRows());
+  gt_assert(A.nRows() == A.nCols());
+  gt_assert(nCols() == A.nRows());
 
   // Copy A because LAPACK needs to overwrite the invertible square matrix.
   view_type Atmp("Atmp", A.nRows(), A.nCols());
@@ -2837,7 +2727,7 @@ void Genten::FacMatrixT<ExecSpace>::
 rowTimes(Genten::ArrayT<ExecSpace> & x,
          const ttb_indx nRow) const
 {
-  assert(x.size() == data.extent(1));
+  gt_assert(x.size() == data.extent(1));
 
   const ttb_real * rptr = this->rowptr(nRow);
   ttb_real * xptr = x.ptr();
@@ -2853,7 +2743,7 @@ rowTimes(const ttb_indx         nRow,
          const Genten::FacMatrixT<ExecSpace> & other,
          const ttb_indx         nRowOther) const
 {
-  assert(other.nCols() == data.extent(1));
+  gt_assert(other.nCols() == data.extent(1));
 
   ttb_real * rowPtr1 = this->rowptr(nRow);
   const ttb_real * rowPtr2 = other.rowptr(nRowOther);
@@ -2870,7 +2760,7 @@ rowDot(const ttb_indx         nRow,
        const ttb_indx         nRowOther) const
 {
   const ttb_indx ncols = data.extent(1);
-  assert(other.nCols() == ncols);
+  gt_assert(other.nCols() == ncols);
 
   // Using LAPACK ddot is slower on perf_CpAprRandomKtensor.
   //   ttb_real  result = dot(ncols, this->rowptr(nRow), 1,
@@ -2894,7 +2784,7 @@ rowDScale(const ttb_indx         nRow,
           const ttb_real         dScalar) const
 {
   const ttb_indx ncols = data.extent(1);
-  assert(other.nCols() == ncols);
+  gt_assert(other.nCols() == ncols);
 
   // Using LAPACK daxpy is slower on perf_CpAprRandomKtensor.
   //   axpy(ncols, dScalar, this->rowptr(nRow), 1, other.rowptr(nRowOther), 1);

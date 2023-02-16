@@ -46,6 +46,8 @@
 #include "Genten_CpAls.hpp"
 #ifdef HAVE_ROL
 #include "Genten_CP_Opt_Rol.hpp"
+#include "Teuchos_RCP.hpp"
+#include "Teuchos_XMLParameterListHelpers.hpp"
 #endif
 #ifdef HAVE_LBFGSB
 #include "Genten_CP_Opt_Lbfgsb.hpp"
@@ -57,19 +59,25 @@
 #ifdef HAVE_DIST
 #include "Genten_DistGCP.hpp"
 #endif
+#ifdef HAVE_LBFGSB
+#include "Genten_GCP_Opt_Lbfgsb.hpp"
+#endif
 #ifdef HAVE_ROL
-#include "Genten_GCP_Opt.hpp"
+#include "Genten_GCP_Opt_Rol.hpp"
 #include "Teuchos_RCP.hpp"
 #include "Teuchos_XMLParameterListHelpers.hpp"
-#include "Teuchos_TimeMonitor.hpp"
 #endif
+#endif
+#ifdef HAVE_TEUCHOS
+#include "Teuchos_TimeMonitor.hpp"
+#include "Teuchos_StackedTimer.hpp"
 #endif
 
 namespace Genten {
 
 template<typename ExecSpace>
 KtensorT<ExecSpace>
-driver(const DistTensorContext& dtc,
+driver(const DistTensorContext<ExecSpace>& dtc,
        SptensorT<ExecSpace>& x,
        KtensorT<ExecSpace>& u,
        AlgParams& algParams,
@@ -77,8 +85,8 @@ driver(const DistTensorContext& dtc,
        PerfHistory& history,
        std::ostream& out_in)
 {
-  typedef Genten::SptensorT<ExecSpace> Sptensor_type;
-  typedef Genten::SptensorT<Genten::DefaultHostExecutionSpace> Sptensor_host_type;
+  GENTEN_TIME_MONITOR("Genten driver");
+
   typedef Genten::KtensorT<ExecSpace> Ktensor_type;
   typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
 
@@ -94,9 +102,10 @@ driver(const DistTensorContext& dtc,
   // Generate a random starting point if initial guess is empty
   if (u.ncomponents() == 0 && u.ndims() == 0) {
     timer.start(0);
-    u = dtc.randomInitialGuess<ExecSpace>(x, algParams.rank, algParams.seed,
-                                          algParams.prng,
-                                          algParams.dist_guess_method);
+    u = dtc.randomInitialGuess(x, algParams.rank, algParams.seed,
+                               algParams.prng,
+                               algParams.scale_guess_by_norm_x,
+                               algParams.dist_guess_method);
     timer.stop(0);
     if (algParams.timings)
       out << "Creating random initial guess took " << timer.getTotalTime(0)
@@ -104,11 +113,9 @@ driver(const DistTensorContext& dtc,
   }
 
   if (algParams.debug) {
-    Ktensor_type u0 = dtc.importToRoot(u);
-    Ktensor_host_type u0_host = create_mirror_view(
-    Genten::DefaultHostExecutionSpace(), u0 );
-    deep_copy(u0_host, u0);
-    Genten::print_ktensor(u0_host, out, "Initial guess");
+    Ktensor_host_type u0 =
+      dtc.template importToRoot<Genten::DefaultHostExecutionSpace>(u);
+    Genten::print_ktensor(u0, out, "Initial guess");
   }
 
   // Fixup algorithmic choices
@@ -196,6 +203,8 @@ driver(const DistTensorContext& dtc,
   }
   else if (algParams.method == Genten::Solver_Method::GCP_SGD &&
            algParams.fuse_sa) {
+    if (algParams.dist_update_method == Dist_Update_Method::Tpetra)
+      Genten::error("Fused-SA GCP-SGD method does not work with Tpetra distributed parallelism");
     // Run GCP-SGD
     ttb_indx iter;
     ttb_real resNorm;
@@ -207,14 +216,13 @@ driver(const DistTensorContext& dtc,
     x.setProcessorMap(nullptr); // DistGCP handles communication itself
     u.setProcessorMap(nullptr);
     DistGCP<ExecSpace> dgcp(dtc, x, u, ptree, history);
-    ttb_real resNorm = dgcp.compute();
+    dgcp.compute();
 #else
     Genten::error("gcp-sgd-dist requires MPI support!");
 #endif
   }
-#ifdef HAVE_ROL
   else if (algParams.method == Genten::Solver_Method::GCP_OPT) {
-    Genten::error("gcp-opt is disabled because it doesn't work!");
+    Genten::error("gcp-opt is not implemented for sparse tensors since the gradient evaluation involves a dense MTTKRP.  Try \"gcp-sgd\" instead or convert your tensor to dense using the \"convert_tensor\" utility.");
     // // Run GCP
     // Teuchos::RCP<Teuchos::ParameterList> rol_params;
     // if (algParams.rolfilename != "")
@@ -228,23 +236,29 @@ driver(const DistTensorContext& dtc,
     // out << "GCP took " << timer.getTotalTime(2) << " seconds\n";
   }
 #endif
-#endif
   else {
     Genten::error(std::string("Unknown decomposition method:  ") +
                   Genten::Solver_Method::names[algParams.method]);
   }
 
   if (algParams.debug) {
-    Ktensor_type u0 = dtc.importToRoot(u);
-    Ktensor_host_type u0_host = create_mirror_view(
-      Genten::DefaultHostExecutionSpace(), u0 );
-    deep_copy(u0_host, u0);
-    Genten::print_ktensor(u0_host, out, "Solution");
+    Ktensor_host_type u0 =
+      dtc.template importToRoot<Genten::DefaultHostExecutionSpace>(u);
+    Genten::print_ktensor(u0, out, "Solution");
   }
 
-#if defined(HAVE_GCP) && defined(HAVE_ROL)
-  if (algParams.method == Genten::Solver_Method::GCP_OPT)
-    Teuchos::TimeMonitor::summarize();
+#if defined(HAVE_TEUCHOS)
+  Teuchos::StackedTimer::OutputOptions options;
+  options.output_fraction = true;
+  options.output_minmax   = true;
+  options.align_columns   = true;
+  options.print_warnings  = false;
+#ifdef HAVE_DIST
+  auto comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap->gridComm()));
+#else
+  auto comm = Teuchos::createSerialComm<int>();
+#endif
+  Teuchos::TimeMonitor::getStackedTimer()->report(out, comm, options);
 #endif
 
   x.setProcessorMap(nullptr);
@@ -255,58 +269,52 @@ driver(const DistTensorContext& dtc,
 
 template<typename ExecSpace>
 KtensorT<ExecSpace>
-driver(TensorT<ExecSpace>& x,
-       KtensorT<ExecSpace>& u_init,
+driver(const DistTensorContext<ExecSpace>& dtc,
+       TensorT<ExecSpace>& x,
+       KtensorT<ExecSpace>& u,
        AlgParams& algParams,
+       const ptree& ptree,
        PerfHistory& history,
-       std::ostream& out)
+       std::ostream& out_in)
 {
-  typedef Genten::TensorT<ExecSpace> Tensor_type;
-  typedef Genten::TensorT<Genten::DefaultHostExecutionSpace> Tensor_host_type;
+  GENTEN_TIME_MONITOR("Genten driver");
+
   typedef Genten::KtensorT<ExecSpace> Ktensor_type;
   typedef Genten::KtensorT<Genten::DefaultHostExecutionSpace> Ktensor_host_type;
 
+  // Set parallel output stream
+  const ProcessorMap* pmap = dtc.pmap_ptr().get();
+  std::ostream& out = pmap->gridRank() == 0 ? out_in : Genten::bhcout;
+
   Genten::SystemTimer timer(3);
 
-  out.setf(std::ios_base::scientific);
+  // out.setf(std::ios_base::scientific);
   out.precision(2);
 
-  Ktensor_type u(algParams.rank, x.ndims(), x.size());
-  Ktensor_host_type u_host =
-    create_mirror_view( Genten::DefaultHostExecutionSpace(), u );
-
   // Generate a random starting point if initial guess is empty
-  if (u_init.ncomponents() == 0 && u_init.ndims() == 0) {
-    u_init = Ktensor_type(algParams.rank, x.ndims(), x.size());
-
-    Genten::RandomMT cRMT(algParams.seed);
-    timer.start(0);
-    if (algParams.prng) {
-      u_init.setWeights(1.0); // Matlab cp_als always sets the weights to one.
-      u_init.setMatricesScatter(false, true, cRMT);
-      if (algParams.debug) deep_copy( u_host, u_init );
-    }
-    else {
-      u_host.setWeights(1.0); // Matlab cp_als always sets the weights to one.
-      u_host.setMatricesScatter(false, false, cRMT);
-      deep_copy( u_init, u_host );
-    }
-    // Normalize
-    const ttb_real norm_x = x.norm();
-    const ttb_real norm_u = std::sqrt(u_init.normFsq());
-    u_init.weights().times(norm_x/norm_u);
+  if (u.ncomponents() == 0 && u.ndims() == 0) {
+    u = dtc.randomInitialGuess(x, algParams.rank, algParams.seed,
+                               algParams.prng,
+                               algParams.scale_guess_by_norm_x,
+                               algParams.dist_guess_method);
     timer.stop(0);
-    out << "Creating random initial guess took " << timer.getTotalTime(0)
-        << " seconds\n";
+    if (algParams.timings)
+      out << "Creating random initial guess took " << timer.getTotalTime(0)
+          << " seconds\n";
   }
 
-  // Copy initial guess into u
-  deep_copy(u, u_init);
-
-  if (algParams.debug) Genten::print_ktensor(u_host, out, "Initial guess");
+  if (algParams.debug) {
+     Ktensor_host_type u0 =
+      dtc.template importToRoot<Genten::DefaultHostExecutionSpace>(u);
+     Genten::print_ktensor(u0, out, "Initial guess");
+  }
 
   // Fixup algorithmic choices
   algParams.fixup<ExecSpace>(out);
+
+  // Set parallel maps
+  x.setProcessorMap(pmap);
+  u.setProcessorMap(pmap);
 
   if (algParams.warmup)
   {
@@ -357,12 +365,78 @@ driver(TensorT<ExecSpace>& x,
     if (algParams.timings)
       out << "CP-OPT took " << timer.getTotalTime(2) << " seconds\n";
   }
+#ifdef HAVE_GCP
+  else if (algParams.method == Genten::Solver_Method::GCP_SGD &&
+           !algParams.fuse_sa) {
+    // Run GCP-SGD
+    ttb_indx iter;
+    ttb_real resNorm;
+    gcp_sgd(x, u, algParams, iter, resNorm, history, out);
+  }
+  else if (algParams.method == Genten::Solver_Method::GCP_SGD &&
+           algParams.fuse_sa) {
+    Genten::error("Fused-SA GCP-SGD method does not work with dense tensors");
+  }
+  else if (algParams.method == Genten::Solver_Method::GCP_OPT) {
+    timer.start(2);
+    if (algParams.opt_method == Genten::Opt_Method::LBFGSB) {
+#ifdef HAVE_LBFGSB
+      // Run GCP-OPT using L-BFGS-B.  It does not support MPI parallelism
+      if (dtc.nprocs() > 1)
+        Genten::error("GCP-OPT using L-BFGS-B does not support MPI parallelism with > 1 processor.  Try ROL instead.");
+      gcp_opt_lbfgsb(x, u, algParams, history);
+#else
+      Genten::error("L-BFGS-B requested but not available!");
+#endif
+    }
+    else if (algParams.opt_method == Genten::Opt_Method::ROL) {
+#ifdef HAVE_ROL
+      // Run GCP-OPT using ROL
+      Teuchos::RCP<Teuchos::ParameterList> rol_params;
+      if (algParams.rolfilename != "")
+        rol_params = Teuchos::getParametersFromXmlFile(algParams.rolfilename);
+      if (rol_params != Teuchos::null)
+        gcp_opt_rol(x, u, algParams, history, *rol_params, out);
+      else
+        gcp_opt_rol(x, u, algParams, history, out);
+#else
+      Genten::error("ROL requested but not available!");
+#endif
+    }
+    else
+      Genten::error("Invalid opt method!");
+    timer.stop(2);
+    if (algParams.timings)
+      out << "GCP-OPT took " << timer.getTotalTime(2) << " seconds\n";
+  }
+#endif
   else {
     Genten::error(std::string("Unknown decomposition method:  ") +
                   Genten::Solver_Method::names[algParams.method]);
   }
 
-  if (algParams.debug) Genten::print_ktensor(u_host, out, "Solution");
+  if (algParams.debug) {
+    Ktensor_host_type u0 =
+      dtc.template importToRoot<Genten::DefaultHostExecutionSpace>(u);
+    Genten::print_ktensor(u0, out, "Solution");
+  }
+
+#if defined(HAVE_TEUCHOS)
+  Teuchos::StackedTimer::OutputOptions options;
+  options.output_fraction = true;
+  options.output_minmax   = true;
+  options.align_columns   = true;
+  options.print_warnings  = false;
+// #ifdef HAVE_DIST
+//   auto comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap->gridComm()));
+// #else
+  auto comm = Teuchos::createSerialComm<int>();
+// #endif
+  Teuchos::TimeMonitor::getStackedTimer()->report(out, comm, options);
+#endif
+
+  x.setProcessorMap(nullptr);
+  u.setProcessorMap(nullptr);
 
   return u;
 }
@@ -372,7 +446,7 @@ driver(TensorT<ExecSpace>& x,
 #define INST_MACRO(SPACE)                                               \
   template KtensorT<SPACE>                                              \
   driver<SPACE>(                                                        \
-    const DistTensorContext& dtc,                                       \
+    const DistTensorContext<SPACE>& dtc,                                \
     SptensorT<SPACE>& x,                                                \
     KtensorT<SPACE>& u_init,                                            \
     AlgParams& algParams,                                               \
@@ -382,9 +456,11 @@ driver(TensorT<ExecSpace>& x,
                                                                         \
   template KtensorT<SPACE>                                              \
   driver<SPACE>(                                                        \
+    const DistTensorContext<SPACE>& dtc,                                \
     TensorT<SPACE>& x,                                                  \
     KtensorT<SPACE>& u_init,                                            \
     AlgParams& algParams,                                               \
+    const ptree& ptree,                                                 \
     PerfHistory& history,                                               \
     std::ostream& os);
 

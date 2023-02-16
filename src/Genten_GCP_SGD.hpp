@@ -42,17 +42,73 @@
 
 #include <ostream>
 
+#include "Genten_DistTensorContext.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_AlgParams.hpp"
+#include "Genten_GCP_SGD_Step.hpp"
+#include "Genten_GCP_StreamingHistory.hpp"
 #include "Genten_PerfHistory.hpp"
 
 namespace Genten {
 
+  //! Class implementing the generalized CP decomposition using SGD approach
+  template <typename TensorType, typename LossFunction>
+  class GCPSGD {
+  public:
+    using exec_space = typename TensorType::exec_space;
+
+  protected:
+    const LossFunction loss_func;
+    const ttb_indx mode_beg;
+    const ttb_indx mode_end;
+    const AlgParams algParams;
+    Impl::GCP_SGD_Step<exec_space,LossFunction> *stepper;
+
+  public:
+    GCPSGD(const KtensorT<exec_space>& u,
+           const LossFunction& loss_func,
+           const ttb_indx mode_begin,
+           const ttb_indx mode_end,
+           const AlgParams& algParams);
+
+    GCPSGD(const KtensorT<exec_space>& u,
+           const LossFunction& loss_func,
+           const AlgParams& algParams);
+
+    ~GCPSGD();
+
+    void reset();
+
+    void solve(TensorType& X,
+               KtensorT<exec_space>& u0,
+               const ttb_real penalty,
+               ttb_indx& numEpochs,
+               ttb_real& fest,
+               PerfHistory& perfInfo,
+               std::ostream& out,
+               const bool print_hdr,
+               const bool print_ftr,
+               const bool print_itn) const;
+
+    void solve(TensorType& X,
+               KtensorT<exec_space>& u,
+               const StreamingHistory<exec_space>& hist,
+               const ttb_real penalty,
+               ttb_indx& numEpochs,
+               ttb_real& fest,
+               ttb_real& ften,
+               PerfHistory& perfInfo,
+               std::ostream& out,
+               const bool print_hdr,
+               const bool print_ftr,
+               const bool print_itn) const;
+  };
+
   //! Compute the generalized CP decomposition of a tensor using SGD approach
-  template<typename TensorT, typename ExecSpace>
-  void gcp_sgd (TensorT& x,
-                KtensorT<ExecSpace>& u,
+  template<typename TensorType>
+  void gcp_sgd (TensorType& x,
+                KtensorT<typename TensorType::exec_space>& u,
                 const AlgParams& algParams,
                 ttb_indx& numIters,
                 ttb_real& resNorm,

@@ -56,10 +56,10 @@ namespace Genten {
 
 namespace {
 // Silly function to compute divisors
-auto divisors(int input) {
-  small_vector<int> divisors(1, input);
-  int sroot = std::sqrt(input);
-  for (auto i = 1; i <= sroot; ++i) {
+small_vector<ttb_indx> divisors(ttb_indx input) {
+  small_vector<ttb_indx> divisors(1, input);
+  ttb_indx sroot = std::sqrt(input);
+  for (ttb_indx i = 1; i <= sroot; ++i) {
     if (input % i == 0) {
       divisors.push_back(i);
       if (i > 1 && i != sroot) {
@@ -90,15 +90,15 @@ auto divisors(int input) {
 // To keep this code from needing to know about the rank of the factors we will
 // return the result for rank 1 factors. The calling code can simply scale this
 // result by the rank to figure out the total number of elements
-auto nelementsForRank1Factors(small_vector<int> const &grid,
-                              std::vector<std::uint32_t> const &tensor_dims) {
-  auto nprocs =
+ttb_indx nelementsForRank1Factors(small_vector<ttb_indx> const &grid,
+                              std::vector<ttb_indx> const &tensor_dims) {
+  ttb_indx nprocs =
       std::accumulate(grid.begin(), grid.end(), 1ll, std::multiplies<>{});
 
-  const auto ndims = grid.size();
-  int64_t nelements = 0;
-  for (auto i = 0; i < ndims; ++i) {
-    const auto replicated_procs = nprocs / grid[i];
+  const ttb_indx ndims = grid.size();
+  ttb_indx nelements = 0;
+  for (ttb_indx i = 0; i < ndims; ++i) {
+    const ttb_indx replicated_procs = nprocs / grid[i];
     nelements += replicated_procs * tensor_dims[i];
   }
 
@@ -107,9 +107,9 @@ auto nelementsForRank1Factors(small_vector<int> const &grid,
 
 // This function writes the grid with that leads to the minimal storage
 // required for the factor matrices
-auto recurseMinSpaceGrid(int nprocs, small_vector<int> &grid,
-                         std::vector<std::uint32_t> const &tensor_dims,
-                         int dims_remaining) {
+void recurseMinSpaceGrid(ttb_indx nprocs, small_vector<ttb_indx> &grid,
+                         std::vector<ttb_indx> const &tensor_dims,
+                         ttb_indx dims_remaining) {
   assert(dims_remaining >= 1);
 
   // The last index has no freedom just set it and return
@@ -119,19 +119,19 @@ auto recurseMinSpaceGrid(int nprocs, small_vector<int> &grid,
   }
 
   // Current index tells us which position we are in
-  const auto current_index = grid.size() - dims_remaining;
+  const ttb_indx current_index = grid.size() - dims_remaining;
 
   // Make copy for testing on so that we only ever write to grid when we've
   // found a better option
   auto test = grid;
-  auto min_storage = std::numeric_limits<int64_t>::max();
+  ttb_indx min_storage = std::numeric_limits<ttb_indx>::max();
 
   for (auto d : divisors(nprocs)) {
     test[current_index] = d;
-    const auto remaining_procs = nprocs / d;
+    const ttb_indx remaining_procs = nprocs / d;
     recurseMinSpaceGrid(remaining_procs, test, tensor_dims, dims_remaining - 1);
 
-    auto test_storage = nelementsForRank1Factors(test, tensor_dims);
+    ttb_indx test_storage = nelementsForRank1Factors(test, tensor_dims);
     if (test_storage < min_storage) {
       min_storage = test_storage;
       grid = test;
@@ -139,10 +139,10 @@ auto recurseMinSpaceGrid(int nprocs, small_vector<int> &grid,
   }
 }
 
-auto minFactorSpaceGrid(int nprocs,
-                        std::vector<std::uint32_t> const &tensor_dims) {
-  const auto ndims = tensor_dims.size();
-  auto grid = small_vector<int>(ndims);
+small_vector<ttb_indx>
+minFactorSpaceGrid(ttb_indx nprocs, std::vector<ttb_indx> const &tensor_dims) {
+  const ttb_indx ndims = tensor_dims.size();
+  small_vector<ttb_indx> grid(ndims);
   if (DistContext::rank() == 0) {
     recurseMinSpaceGrid(nprocs, grid, tensor_dims, ndims);
   }
@@ -150,72 +150,31 @@ auto minFactorSpaceGrid(int nprocs,
   return grid;
 }
 
-// small_vector<int> singleDimUniformBlocking(int ModeLength, int ProcsInMode) {
-//   small_vector<int> Range{0};
-//   const auto FibersPerBlock = ModeLength / ProcsInMode;
-//   auto Remainder = ModeLength % ProcsInMode;
-
-//   // We ended up with more processors than rows in the fiber :O Just return all
-//   // fibers in the same block. It seems easier to handle this here than to try
-//   // to make the while loop logic do something smart
-//   if (FibersPerBlock == 0) {
-//     Range.push_back(ModeLength);
-//   }
-
-//   while (Range.back() < ModeLength) {
-//     const auto back = Range.back();
-//     // This branch makes our blocks 1 bigger to eat the Remainder fibers
-//     if (Remainder > 0) {
-//       Range.push_back(back + FibersPerBlock + 1);
-//       --Remainder;
-//     } else {
-//       Range.push_back(back + FibersPerBlock);
-//     }
-//   }
-
-//   // Sanity check that we ended with the correct number of blocks and fibers
-//   assert(Range.size() == ProcsInMode + 1);
-//   assert(Range.back() == ModeLength);
-
-//   return Range;
-// }
-
-// std::vector<small_vector<int>>
-// generateUniformBlocking(std::vector<std::uint32_t> const &ModeLengths,
-//                         small_vector<int> const &ProcGridSizes) {
-//   const auto Ndims = ModeLengths.size();
-//   std::vector<small_vector<int>> blocking;
-//   blocking.reserve(Ndims);
-
-//   for (auto i = 0; i < Ndims; ++i) {
-//     blocking.emplace_back(
-//         singleDimUniformBlocking(ModeLengths[i], ProcGridSizes[i]));
-//   }
-
-//   return blocking;
-// }
-
-small_vector<int> CartGrid(int nprocs,
-                           std::vector<std::uint32_t> const &tensor_dims) {
+small_vector<ttb_indx>
+CartGrid(ttb_indx nprocs, std::vector<ttb_indx> const &tensor_dims) {
   return minFactorSpaceGrid(nprocs, tensor_dims);
 }
 } // namespace
 
-ProcessorMap::ProcessorMap(std::vector<std::uint32_t> const &tensor_dims,
-                           small_vector<int> const &predetermined_grid)
+ProcessorMap::ProcessorMap(std::vector<ttb_indx> const &tensor_dims,
+                           small_vector<ttb_indx> const &predetermined_grid,
+                           const bool use_tpetra)
     : dimension_sizes_(predetermined_grid) {
-  const auto ndims = dimension_sizes_.size();
+  const ttb_indx ndims = dimension_sizes_.size();
 
   // I don't think we need to be periodic
   small_vector<int> periodic(ndims, 0);
   bool reorder = true; // Let MPI be smart I guess
-  MPI_Cart_create(DistContext::commWorld(), ndims, dimension_sizes_.data(),
+  small_vector<int> dimension_sizes_int = convert<int>(dimension_sizes_);
+  MPI_Cart_create(DistContext::commWorld(), ndims, dimension_sizes_int.data(),
                   periodic.data(), reorder, &cart_comm_);
 
-  MPI_Comm_size(cart_comm_, &grid_nprocs_);
-  MPI_Comm_rank(cart_comm_, &grid_rank_);
-  coord_.resize(ndims);
-  MPI_Cart_coords(cart_comm_, grid_rank_, ndims, coord_.data());
+  int tmp;
+  MPI_Comm_size(cart_comm_, &tmp); grid_nprocs_ = tmp;
+  MPI_Comm_rank(cart_comm_, &tmp); grid_rank_ = tmp;
+  small_vector<int> coord_int(ndims);
+  MPI_Cart_coords(cart_comm_, grid_rank_, ndims, coord_int.data());
+  coord_ = convert<ttb_indx>(coord_int);
 
   small_vector<int> dim_filter(ndims, 1);
   sub_maps_.resize(ndims);
@@ -223,31 +182,40 @@ ProcessorMap::ProcessorMap(std::vector<std::uint32_t> const &tensor_dims,
   sub_comm_sizes_.resize(ndims);
 
   // Get information for the MPI Subgrid for each Dimension
-  for (auto i = 0; i < ndims; ++i) {
+  for (ttb_indx i = 0; i < ndims; ++i) {
     dim_filter[i] = 0; // Get all dims except this one
     MPI_Cart_sub(cart_comm_, dim_filter.data(), &sub_maps_[i]);
     dim_filter[i] = 1; // Reset the dim_filter
 
-    MPI_Comm_rank(sub_maps_[i], &sub_grid_rank_[i]);
-    MPI_Comm_size(sub_maps_[i], &sub_comm_sizes_[i]);
+    MPI_Comm_rank(sub_maps_[i], &tmp); sub_grid_rank_[i] = tmp;
+    MPI_Comm_size(sub_maps_[i], &tmp); sub_comm_sizes_[i] = tmp;
   }
 
   small_vector<int> dim_filter2(ndims, 0);
   fac_maps_.resize(ndims);
 
-  // Get information for the MPI Subgrid for each Dimension
-  for (auto i = 0; i < ndims; ++i) {
-    dim_filter2[i] = 1; // Get only this dim
-    MPI_Comm lcl_comm;
-    MPI_Cart_sub(cart_comm_, dim_filter2.data(), &lcl_comm);
-    fac_maps_[i] = FacMap(lcl_comm);
-    dim_filter2[i] = 0; // Reset the dim_filter
+  // For Tpetra approach, factor matrices are distributed across all procs
+  if (use_tpetra) {
+    for (ttb_indx i = 0; i < ndims; ++i)
+      fac_maps_[i] = FacMap(cart_comm_);
+  }
+  else {
+    // Get information for the MPI Subgrid for each Dimension
+    for (ttb_indx i = 0; i < ndims; ++i) {
+      dim_filter2[i] = 1; // Get only this dim
+      MPI_Comm lcl_comm;
+      MPI_Cart_sub(cart_comm_, dim_filter2.data(), &lcl_comm);
+      fac_maps_[i] = FacMap(lcl_comm);
+      dim_filter2[i] = 0; // Reset the dim_filter
+    }
   }
 }
 
-ProcessorMap::ProcessorMap(std::vector<std::uint32_t> const &tensor_dims)
+ProcessorMap::ProcessorMap(std::vector<ttb_indx> const &tensor_dims,
+                           const bool use_tpetra)
     : ProcessorMap(tensor_dims,
-                   CartGrid(DistContext::nranks(), tensor_dims)) {}
+                   CartGrid(DistContext::nranks(), tensor_dims),
+                   use_tpetra) {}
 
 void ProcessorMap::gridBarrier() const {
   if (grid_nprocs_ > 1) {

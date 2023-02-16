@@ -81,11 +81,6 @@ namespace Genten {
       Genten::error("Genten::cp_opt - ktensor u is not consistent");
     if (x.ndims() != u.ndims())
       Genten::error("Genten::cp_opt - u and x have different num dims");
-    for (ttb_indx  i = 0; i < x.ndims(); i++)
-    {
-      if (x.size(i) != u[i].nRows())
-        Genten::error("Genten::cp_opt - u and x have different size");
-    }
 
     const ProcessorMap* pmap = u.getProcessorMap();
 
@@ -169,7 +164,7 @@ namespace Genten {
 
     // Run CP
     {
-      TEUCHOS_FUNC_TIME_MONITOR("CP_Optimization");
+      GENTEN_TIME_MONITOR("CP_Optimization");
       solver.solve(stream);
       z->copyToKtensor(u);
     }
@@ -191,12 +186,6 @@ namespace Genten {
       stream << "Final fit = " << fit << std::endl;
       stream << "Total time = " << timer.getTotalTime(0) << std::endl
              << std::endl;
-    }
-
-    // Print Teuchos timing info
-    if (algParams.timings) {
-      Teuchos::TimeMonitor::summarize(stream);
-      stream << std::endl;
     }
   }
 

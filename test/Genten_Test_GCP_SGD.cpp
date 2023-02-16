@@ -131,8 +131,8 @@ void RunGcpSgdTest(const std::string &label, GCP_Sampling::type sampling_type,
 
   GENTEN_EQ(X.nnz(), 11, "Data tensor has 11 nonzeroes");
 
-  Genten::DistTensorContext dtc;
-  SptensorT<exec_space> X_dev = dtc.distributeTensor<exec_space>(X);
+  Genten::DistTensorContext<exec_space> dtc;
+  SptensorT<exec_space> X_dev = dtc.distributeTensor(X);
   if (mttkrp_method == MTTKRP_Method::Perm) {
     X_dev.createPermutation();
   }
@@ -145,14 +145,11 @@ void RunGcpSgdTest(const std::string &label, GCP_Sampling::type sampling_type,
   initialBasis.setMatricesScatter(false, false, cRMT);
   initialBasis.setWeights(1.0);
 
-  KtensorT<exec_space> ib_dev = create_mirror_view(exec_space(), initialBasis);
-  deep_copy(ib_dev, initialBasis);
-
-  KtensorT<exec_space> initialBasis_dev = dtc.exportFromRoot(ib_dev);
-
   // Set parallel maps
   const ProcessorMap *pmap = dtc.pmap_ptr().get();
   X_dev.setProcessorMap(pmap);
+
+  std::ostream& out = pmap->gridRank() == 0 ? std::cout : Genten::bhcout;
 
   // Factorize.
   AlgParams algParams;
@@ -160,36 +157,34 @@ void RunGcpSgdTest(const std::string &label, GCP_Sampling::type sampling_type,
   algParams.epoch_iters = 50;
   algParams.gcp_tol = 1.0e-6;
   algParams.maxiters = 100;
-  algParams.printitn = 0;
+  algParams.printitn = 1;
   algParams.sampling_type = sampling_type;
   algParams.mttkrp_method = mttkrp_method;
   algParams.mttkrp_all_method = mttkrp_all_method;
   algParams.fuse = fuse;
   algParams.loss_function_type = loss_type;
   algParams.oversample_factor = 5;
+  algParams.gcp_seed = 12345;
 
   ttb_indx numIters;
   ttb_real resNorm;
-  KtensorT<exec_space> result_dev =
-      create_mirror_view(exec_space(), initialBasis_dev);
-  deep_copy(result_dev, initialBasis_dev);
+  Ktensor result(nNumComponents, dims.size(), dims);
+  deep_copy(result, initialBasis);
+  KtensorT<exec_space> result_dev = dtc.exportFromRoot(result);
   result_dev.setProcessorMap(pmap);
   PerfHistory history;
   EXPECT_NO_THROW({
     if (!fuse_sa) {
       gcp_sgd(X_dev, result_dev, algParams, numIters, resNorm, history,
-              std::cout);
+              out);
     } else {
       gcp_sgd_sa(X_dev, result_dev, algParams, numIters, resNorm, history,
-                 std::cout);
+                 out);
     }
   });
 
-  KtensorT<exec_space> result = dtc.importToRoot(result_dev);
+  result = dtc.template importToRoot<typename Ktensor::exec_space>(result_dev);
   if (dtc.gridRank() == 0) {
-    Ktensor result_host = create_mirror_view(host_exec_space(), result);
-    deep_copy(result_host, result);
-
     // Multiply Ktensor entries and compare to tensor
     const ttb_real tol = 1.0e-3;
     const ttb_indx nnz = X.nnz();
@@ -197,7 +192,7 @@ void RunGcpSgdTest(const std::string &label, GCP_Sampling::type sampling_type,
     for (ttb_indx i = 0; i < nnz; ++i) {
       X.getSubscripts(i, subs);
       const ttb_real x_val = X.value(i);
-      const ttb_real val = result_host.entry(subs);
+      const ttb_real val = result.entry(subs);
       GENTEN_LE(fabs(x_val - val), tol, "Result matches");
     }
   }

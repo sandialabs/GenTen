@@ -41,25 +41,253 @@
 #include <cmath>
 
 #include "Genten_GCP_SamplingKernels.hpp"
+#include "Genten_Tpetra.hpp"
+#include "Genten_DistFacMatrix.hpp"
 
 #include "Kokkos_Random.hpp"
 #include "Kokkos_UnorderedMap.hpp"
 
-#include "Genten_IOtext.hpp"
-
 namespace Genten {
+
+#ifdef HAVE_TPETRA
+namespace {
+
+  template <typename ExecSpace, typename subs_type>
+  void build_tensor_maps_on_device(
+    const subs_type& subs_lids, const subs_type& subs_gids,
+    const std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& factorMaps,
+    std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& tensorMaps,
+    std::vector< Teuchos::RCP< const tpetra_import_type<ExecSpace> > >& importers,
+    const AlgParams& algParams)
+  {
+    using unordered_map_type = Kokkos::UnorderedMap<tpetra_go_type,tpetra_lo_type,ExecSpace>;
+
+    GENTEN_START_TIMER("build tensor maps");
+    const ttb_indx total_samples = subs_lids.extent(0);
+    const unsigned nd = subs_lids.extent(1);
+    const tpetra_go_type indexBase = tpetra_go_type(0);
+    const Tpetra::global_size_t invalid =
+      Teuchos::OrdinalTraits<Tpetra::global_size_t>::invalid();
+
+    // Build new communication maps for sampled tensor.
+    for (unsigned n=0; n<nd; ++n) {
+      GENTEN_START_TIMER("compute GID hash");
+      unordered_map_type map(total_samples);  // min(total_samples, X.upperBound(n)-X.lowerBound(n)) might be a more accurate bound, but that requires a device-host transfer
+      Kokkos::parallel_for("Genten::build_tensor_maps::build_hash",
+                           Kokkos::RangePolicy<ExecSpace>(0,total_samples),
+                           KOKKOS_LAMBDA(const ttb_indx i)
+      {
+        const tpetra_go_type gid = subs_gids(i,n);
+        if (!map.exists(gid))
+          if (map.insert(gid,tpetra_lo_type(1)).failed())
+            Kokkos::abort("Insertion of GID failed, something is wrong!");
+      });
+      GENTEN_STOP_TIMER("compute GID hash");
+
+      // Construct sampled tpetra maps
+      GENTEN_START_TIMER("construct maps");
+      const ttb_indx sz = map.capacity();
+      Kokkos::View<tpetra_lo_type,ExecSpace> cnt("cnt");
+      Kokkos::View<tpetra_go_type*,ExecSpace> gids("gids", map.size());
+      Kokkos::parallel_for("Genten::build_tensor_maps::build_maps",
+                           Kokkos::RangePolicy<ExecSpace>(0,sz),
+                           KOKKOS_LAMBDA(const ttb_indx idx)
+      {
+        if (map.valid_at(idx)) {
+          const tpetra_go_type gid = map.key_at(idx);
+          const tpetra_lo_type lid = Kokkos::atomic_fetch_add(&cnt(), 1);
+          gids[lid] = gid;
+        }
+      });
+#ifndef NDEBUG
+      auto cnt_host = create_mirror_view(cnt);
+      deep_copy(cnt_host, cnt);
+      assert(cnt_host() == tpetra_lo_type(map.size()));
+#endif
+
+      GENTEN_START_TIMER("tensor map constructor");
+      tensorMaps[n] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(
+        invalid, gids, indexBase, factorMaps[n]->getComm()));
+      GENTEN_STOP_TIMER("tensor map constructor");
+      if (algParams.optimize_maps) {
+        GENTEN_START_TIMER("optimize tensor maps");
+        bool err = false;
+        auto p = Tpetra::Details::makeOptimizedColMapAndImport(
+          std::cerr, err, *factorMaps[n], *tensorMaps[n]);
+        if (err)
+          Genten::error("Tpetra::Details::makeOptimizedColMap failed!");
+        tensorMaps[n] = p.first;
+        importers[n] = p.second;
+        GENTEN_STOP_TIMER("optimize tensor maps");
+      }
+      else {
+        GENTEN_START_TIMER("import constructor");
+        importers[n] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(
+          factorMaps[n], tensorMaps[n]));
+        GENTEN_STOP_TIMER("import constructor");
+      }
+      auto lcl_map = tensorMaps[n]->getLocalMap();
+      Kokkos::parallel_for("Genten::build_tensor_maps::remap_lids",
+                           Kokkos::RangePolicy<ExecSpace>(0,total_samples),
+                           KOKKOS_LAMBDA(const ttb_indx i)
+      {
+        subs_lids(i,n) = lcl_map.getLocalElement(subs_gids(i,n));
+      });
+      GENTEN_STOP_TIMER("construct maps");
+    }
+    GENTEN_STOP_TIMER("build tensor maps");
+  }
+
+  template <typename ExecSpace, typename subs_type>
+  void build_tensor_maps_on_host(
+    const subs_type& subs_lids, const subs_type& subs_gids,
+    const std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& factorMaps,
+    std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& tensorMaps,
+    std::vector< Teuchos::RCP< const tpetra_import_type<ExecSpace> > >& importers,
+    const AlgParams& algParams)
+  {
+    using unordered_map_type = Kokkos::UnorderedMap<tpetra_go_type,tpetra_lo_type,DefaultHostExecutionSpace>;
+
+    GENTEN_START_TIMER("build tensor maps");
+    const ttb_indx total_samples = subs_lids.extent(0);
+    const unsigned nd = subs_lids.extent(1);
+    const tpetra_go_type indexBase = tpetra_go_type(0);
+    const Tpetra::global_size_t invalid =
+      Teuchos::OrdinalTraits<Tpetra::global_size_t>::invalid();
+
+    // Build new communication maps for sampled tensor.
+    std::vector<unordered_map_type> map(nd);
+    std::vector<tpetra_lo_type> cnt(nd, 0);
+    auto subs_lids_host = create_mirror_view(subs_lids);
+    auto subs_gids_host = create_mirror_view(subs_gids);
+    deep_copy(subs_gids_host, subs_gids);
+    for (unsigned n=0; n<nd; ++n)
+      map[n].rehash(total_samples); // min(total_samples, X.upperBound(n)-X.lowerBound(n)) might be a more accurate bound, but that requires a device-host transfer
+
+    GENTEN_START_TIMER("compute GID hash");
+    for (ttb_indx i=0; i<total_samples; ++i) {
+      for (unsigned n=0; n<nd; ++n) {
+        const tpetra_go_type gid = subs_gids_host(i,n);
+        auto idx = map[n].find(gid);
+        tpetra_lo_type lid;
+        if (map[n].valid_at(idx))
+          lid = map[n].value_at(idx);
+        else {
+          lid = cnt[n]++;
+          if (map[n].insert(gid,lid).failed())
+            Genten::error("Insertion of GID failed, something is wrong!");
+        }
+        subs_lids_host(i,n) = lid;
+      }
+    }
+    for (unsigned n=0; n<nd; ++n)
+      gt_assert(cnt[n] == tpetra_lo_type(map[n].size()));
+    GENTEN_STOP_TIMER("compute GID hash");
+
+    // Construct sampled tpetra maps
+    GENTEN_START_TIMER("construct maps");
+    for (unsigned n=0; n<nd; ++n) {
+      Kokkos::View<tpetra_go_type*,ExecSpace> gids("gids", cnt[n]);
+      const unordered_map_type map_n = map[n];
+      const ttb_indx sz = map_n.capacity();
+      auto gids_host = create_mirror_view(gids);
+      for (ttb_indx idx=0; idx<sz; ++idx) {
+        if (map_n.valid_at(idx)) {
+          const tpetra_go_type gid = map_n.key_at(idx);
+          const tpetra_lo_type lid = map_n.value_at(idx);
+          gids_host[lid] = gid;
+        }
+      }
+      deep_copy(gids, gids_host);
+
+      GENTEN_START_TIMER("tensor map constructor");
+      tensorMaps[n] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(
+        invalid, gids, indexBase, factorMaps[n]->getComm()));
+      GENTEN_STOP_TIMER("tensor map constructor");
+      if (algParams.optimize_maps) {
+        GENTEN_START_TIMER("optimize tensor maps");
+        bool err = false;
+        auto p = Tpetra::Details::makeOptimizedColMapAndImport(
+          std::cerr, err, *factorMaps[n], *tensorMaps[n]);
+        if (err)
+          Genten::error("Tpetra::Details::makeOptimizedColMap failed!");
+        tensorMaps[n] = p.first;
+        importers[n] = p.second;
+        for (ttb_indx i=0; i<total_samples; ++i)
+          subs_lids_host(i,n) =
+            tensorMaps[n]->getLocalElement(subs_gids_host(i,n));
+        GENTEN_STOP_TIMER("optimize tensor maps");
+      }
+      else {
+        GENTEN_START_TIMER("import constructor");
+        importers[n] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(
+          factorMaps[n], tensorMaps[n]));
+        GENTEN_STOP_TIMER("import constructor");
+      }
+      deep_copy(subs_lids, subs_lids_host);
+    }
+    GENTEN_STOP_TIMER("construct maps");
+    GENTEN_STOP_TIMER("build tensor maps");
+  }
+
+  template <typename ExecSpace, typename subs_type>
+  void build_tensor_maps(
+    const subs_type& subs_lids, const subs_type& subs_gids,
+    const std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& factorMaps,
+    std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& tensorMaps,
+    std::vector< Teuchos::RCP< const tpetra_import_type<ExecSpace> > >& importers,
+    const AlgParams& algParams)
+  {
+    if (is_gpu_space<ExecSpace>::value && algParams.build_maps_on_device) {
+      build_tensor_maps_on_device(subs_lids, subs_gids, factorMaps, tensorMaps, importers, algParams);
+    }
+    else
+       build_tensor_maps_on_host(subs_lids, subs_gids, factorMaps, tensorMaps, importers, algParams);
+  }
+
+  template <typename ExecSpace>
+  KtensorT<ExecSpace> import_ktensor_to_tensor_map(
+    const KtensorT<ExecSpace>& u,
+    const std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& factorMaps,
+    const std::vector< Teuchos::RCP< const tpetra_map_type<ExecSpace> > >& tensorMaps,
+    const std::vector< Teuchos::RCP< const tpetra_import_type<ExecSpace> > >& importers)
+  {
+    GENTEN_START_TIMER("create overlapped k-tensor");
+    const unsigned nd = u.ndims();
+    const unsigned nc = u.ncomponents();
+    KtensorT<ExecSpace> u_overlap(nc, nd);
+    for (unsigned n=0; n<nd; ++n) {
+      FacMatrixT<ExecSpace> mat(tensorMaps[n]->getLocalNumElements(), nc);
+      u_overlap.set_factor(n, mat);
+    }
+    u_overlap.setProcessorMap(u.getProcessorMap());
+    GENTEN_STOP_TIMER("create overlapped k-tensor");
+
+    GENTEN_START_TIMER("ktensor import");
+    for (unsigned n=0; n<nd; ++n) {
+      DistFacMatrix<ExecSpace> src(u[n], factorMaps[n]);
+      DistFacMatrix<ExecSpace> dst(u_overlap[n], tensorMaps[n]);
+      dst.doImport(src, *(importers[n]), Tpetra::INSERT);
+    }
+    GENTEN_STOP_TIMER("ktensor import");
+
+    return u_overlap;
+  }
+}
+#endif
 
   namespace Impl {
 
-    template <typename ExecSpace, typename LossFunction>
+    template <typename TensorType, typename ExecSpace, typename Searcher, typename LossFunction>
     void uniform_sample_tensor(
-      const SptensorT<ExecSpace>& X,
+      const TensorType& Xd,
+      const Searcher& searcher,
       const ttb_indx num_samples,
       const ttb_real weight,
       const KtensorT<ExecSpace>& u,
       const LossFunction& loss_func,
       const bool compute_gradient,
-      SptensorT<ExecSpace>& Y,
+      SptensorT<ExecSpace>& Yd,
       ArrayT<ExecSpace>& w,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams)
@@ -78,7 +306,8 @@ namespace Genten {
       static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
-      /*const*/ ttb_indx nnz = X.nnz();
+      const auto X = Xd.impl();
+
       /*const*/ unsigned nd = u.ndims();
       /*const*/ ttb_indx ns = num_samples;
       const ttb_indx N = (ns+RowsPerTeam-1)/RowsPerTeam;
@@ -86,14 +315,16 @@ namespace Genten {
 
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples;
-      if (Y.nnz() < total_samples) {
-        Y = SptensorT<ExecSpace>(X.size(), total_samples);
+      if (Yd.nnz() < total_samples) {
+        Yd = SptensorT<ExecSpace>(X.size(), total_samples);
         w = ArrayT<ExecSpace>(total_samples);
       }
+      const auto Y = Yd.impl();
 
       // Generate samples of tensor
       Policy policy(N, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "Genten::GCP_SGD::Uniform_Sample",
         policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -114,11 +345,7 @@ namespace Genten {
           {
             for (ttb_indx m=0; m<nd; ++m)
               ind[m] = Rand::draw(gen,0,X.size(m));
-            const ttb_indx i = X.index(ind);
-            if (i < nnz)
-              xv = X.value(i);
-            else
-              xv = 0.0;
+            xv = searcher.value(ind);
           }, x_val);
 
           // Compute Ktensor value
@@ -144,23 +371,25 @@ namespace Genten {
           });
         }
         rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::Uniform_Sample");
+      });
     }
 
-    template <typename ExecSpace, typename LossFunction>
-    void uniform_sample_tensor_hash(
-      const SptensorT<ExecSpace>& X,
-      const TensorHashMap<ExecSpace>& hash,
+    template <typename TensorType, typename ExecSpace, typename Searcher, typename LossFunction>
+    void uniform_sample_tensor_tpetra(
+      const TensorType& Xd,
+      const Searcher& searcher,
       const ttb_indx num_samples,
       const ttb_real weight,
       const KtensorT<ExecSpace>& u,
       const LossFunction& loss_func,
       const bool compute_gradient,
-      SptensorT<ExecSpace>& Y,
+      SptensorT<ExecSpace>& Yd,
       ArrayT<ExecSpace>& w,
+      KtensorT<ExecSpace>& u_overlap,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams)
     {
+#ifdef HAVE_TPETRA
       typedef Kokkos::TeamPolicy<ExecSpace> Policy;
       typedef typename Policy::member_type TeamMember;
       typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
@@ -175,23 +404,29 @@ namespace Genten {
       static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
-      /*const*/ ttb_indx nnz = X.nnz();
+      const auto X = Xd.impl();
+
       /*const*/ unsigned nd = u.ndims();
       /*const*/ ttb_indx ns = num_samples;
       const ttb_indx N = (ns+RowsPerTeam-1)/RowsPerTeam;
-
       const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
 
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples;
-      if (Y.nnz() < total_samples) {
-        Y = SptensorT<ExecSpace>(X.size(), total_samples);
+      if (Yd.nnz() < total_samples) {
+        Yd = SptensorT<ExecSpace>(X.size(), total_samples);// Correct size is set later
+        Yd.allocGlobalSubscripts();
+        deep_copy(Yd.getLowerBounds(), Xd.getLowerBounds());
+        deep_copy(Yd.getUpperBounds(), Xd.getUpperBounds());
+        Yd.setProcessorMap(Xd.getProcessorMap());
         w = ArrayT<ExecSpace>(total_samples);
       }
+      const auto Y = Yd.impl();
 
       // Generate samples of tensor
       Policy policy(N, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "Genten::GCP_SGD::Uniform_Sample",
         policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -207,874 +442,632 @@ namespace Genten {
             continue;
 
           // Sample tensor and get value
-          ttb_real x_val = 0.0;
-          Kokkos::single( Kokkos::PerThread( team ), [&] (ttb_real& xv)
-          {
-            for (ttb_indx m=0; m<nd; ++m)
-              ind[m] = Rand::draw(gen,0,X.size(m));
-            const auto hash_index = hash.find(ind);
-            if (hash.valid_at(hash_index)) {
-              const ttb_indx i = hash.value_at(hash_index);
-              xv = X.value(i);
-            }
-            else
-              xv = 0.0;
-          }, x_val);
-
-          // Compute Ktensor value
-          ttb_real m_val;
-          if (compute_gradient)
-            m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
-
-          // Add new entry
-          const ttb_indx row = idx;
           Kokkos::single( Kokkos::PerThread( team ), [&] ()
           {
             for (ttb_indx m=0; m<nd; ++m)
-              Y.subscript(row,m) = ind[m];
-            if (compute_gradient) {
-              Y.value(row) =
-                weight * loss_func.deriv(x_val, m_val);
-            }
-            else {
-              Y.value(row) = x_val;
-              w[row] = weight;
-            }
+              ind[m] = Rand::draw(gen,X.lowerBound(m),X.upperBound(m));
+            Y.value(idx) = searcher.value(ind);
+            for (ttb_indx m=0; m<nd; ++m)
+              Y.globalSubscript(idx,m) = ind[m];
+            if (!compute_gradient)
+              w[idx] = weight;
           });
         }
         rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::Uniform_Sample");
-    }
+      });
 
-    template <typename ExecSpace, typename LossFunction>
-    void stratified_sample_tensor(
-      const SptensorT<ExecSpace>& X,
-      const ttb_indx num_samples_nonzeros,
-      const ttb_indx num_samples_zeros,
-      const ttb_real weight_nonzeros,
-      const ttb_real weight_zeros,
-      const KtensorT<ExecSpace>& u,
-      const LossFunction& loss_func,
-      const bool compute_gradient,
-      SptensorT<ExecSpace>& Y,
-      ArrayT<ExecSpace>& w,
-      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
-      const AlgParams& algParams)
-    {
-      typedef Kokkos::TeamPolicy<ExecSpace> Policy;
-      typedef typename Policy::member_type TeamMember;
-      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
-      typedef typename RandomPool::generator_type generator_type;
-      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
-      typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+      // Build tensor maps
+      Yd.getFactorMaps() = Xd.getFactorMaps();
+      build_tensor_maps(Yd.getSubscripts(), Yd.getGlobalSubscripts(),
+                        Xd.getFactorMaps(), Yd.getTensorMaps(),
+                        Yd.getImporters(), algParams);
 
-      static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
-      static const unsigned RowBlockSize = 1;
-      static const unsigned FacBlockSize = 16; // FIXME
-      static const unsigned VectorSize = is_gpu ? 16 : 1; //FIXME
-      static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
-      static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
+      // Set correct size in tensor
+      auto sz_host = Yd.size_host();
+      for (unsigned n=0; n<nd; ++n)
+        sz_host[n] = Yd.tensorMap(n)->getLocalNumElements();
+      deep_copy(Y.size(), sz_host);
 
-      /*const*/ ttb_indx nnz = X.nnz();
-      /*const*/ unsigned nd = u.ndims();
-      /*const*/ ttb_indx ns_nz = num_samples_nonzeros;
-      /*const*/ ttb_indx ns_z = num_samples_zeros;
-      const ttb_indx N_nz = (ns_nz+RowsPerTeam-1)/RowsPerTeam;
-      const ttb_indx N_z = (ns_z+RowsPerTeam-1)/RowsPerTeam;
-      const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
+      // Import u to overlapped tensor map
+      u_overlap = import_ktensor_to_tensor_map(
+        u, Yd.getFactorMaps(), Yd.getTensorMaps(), Yd.getImporters());
 
-      // Resize Y if necessary
-      const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
-      if (Y.nnz() < total_samples) {
-        Y = SptensorT<ExecSpace>(X.size(), total_samples);
-        w = ArrayT<ExecSpace>(total_samples);
-      }
+      // Set gradient values in sampled tensor
+      if (compute_gradient) {
 
-      // Generate samples of nonzeros
-      Policy policy_nz(N_nz, TeamSize, VectorSize);
-      Kokkos::parallel_for(
-        policy_nz.set_scratch_size(0,Kokkos::PerTeam(bytes)),
-        KOKKOS_LAMBDA(const TeamMember& team)
-      {
-        generator_type gen = rand_pool.get_state();
-        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
-        ttb_indx *ind = &(team_ind(team.team_rank(),0));
+        Kokkos::parallel_for(
+          "Genten::GCP_SGD::Uniform_Gradient",
+          policy,
+          KOKKOS_LAMBDA(const TeamMember& team)
+        {
+          const ttb_indx offset =
+            (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+          for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+            const ttb_indx idx = offset + ii;
+            if (idx >= ns)
+              continue;
 
-        const ttb_indx offset =
-          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
-        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
-          const ttb_indx idx = offset + ii;
-          if (idx >= ns_nz)
-            continue;
+            // Compute Ktensor value
+            ttb_real m_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(
+                team, u_overlap, Y.getSubscripts(idx));
 
-          // Generate random tensor index
-          ttb_real x_val = 0.0;
-          Kokkos::single( Kokkos::PerThread( team ), [&] (ttb_real& xv)
-          {
-            const ttb_indx i = Rand::draw(gen,0,nnz);
-            for (ttb_indx m=0; m<nd; ++m)
-              ind[m] = X.subscript(i,m);
-            xv = X.value(i);
-          }, x_val);
-
-          // Compute Ktensor value
-          ttb_real m_val = 0.0;
-          if (compute_gradient)
-            m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
-
-          // Add new nonzero
-          Kokkos::single( Kokkos::PerThread( team ), [&] ()
-          {
-            for (ttb_indx m=0; m<nd; ++m)
-              Y.subscript(idx,m) = ind[m];
-            if (compute_gradient) {
-              Y.value(idx) =
-                weight_nonzeros * loss_func.deriv(x_val, m_val);
-            }
-            else {
-              Y.value(idx) = x_val;
-              w[idx] = weight_nonzeros;
-            }
-          });
-        }
-        rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::Stratified_Sample_Nonzeros");
-
-
-      // Generate samples of zeros
-      Policy policy_z(N_z, TeamSize, VectorSize);
-      Kokkos::parallel_for(
-        policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
-        KOKKOS_LAMBDA(const TeamMember& team)
-      {
-        generator_type gen = rand_pool.get_state();
-        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
-        ttb_indx *ind = &(team_ind(team.team_rank(),0));
-
-        const ttb_indx offset =
-          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
-        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
-          const ttb_indx idx = offset + ii;
-          if (idx >= ns_z)
-            continue;
-
-          // Keep generating samples until we get one not in the tensor
-          int found = 1;
-          while (found) {
-            Kokkos::single( Kokkos::PerThread( team ), [&] (int& f)
+            // Set value in tensor
+            Kokkos::single( Kokkos::PerThread( team ), [&] ()
             {
-              // Generate index
-              for (ttb_indx m=0; m<nd; ++m)
-                ind[m] = Rand::draw(gen,0,X.size(m));
-
-              // Search for index
-              f = (X.index(ind) < nnz);
-            }, found);
+              const ttb_real x_val = Y.value(idx);
+              Y.value(idx) = weight * loss_func.deriv(x_val, m_val);
+            });
           }
-
-          // Compute Ktensor value
-          ttb_real m_val;
-          if (compute_gradient)
-            m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
-
-          // Add new nonzero
-          const ttb_indx row = num_samples_nonzeros + idx;
-          Kokkos::single( Kokkos::PerThread( team ), [&] ()
-          {
-            for (ttb_indx m=0; m<nd; ++m)
-              Y.subscript(row,m) = ind[m];
-            if (compute_gradient) {
-              Y.value(row) =
-                weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
-            }
-            else {
-              Y.value(row) = 0.0;
-              w[row] = weight_zeros;
-            }
-          });
-        }
-        rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::Stratified_Sample_Zeros");
-    }
-
-    template <typename ExecSpace, typename LossFunction>
-    void stratified_sample_tensor_hash(
-      const SptensorT<ExecSpace>& X,
-      const TensorHashMap<ExecSpace>& hash,
-      const ttb_indx num_samples_nonzeros,
-      const ttb_indx num_samples_zeros,
-      const ttb_real weight_nonzeros,
-      const ttb_real weight_zeros,
-      const KtensorT<ExecSpace>& u,
-      const LossFunction& loss_func,
-      const bool compute_gradient,
-      SptensorT<ExecSpace>& Y,
-      ArrayT<ExecSpace>& w,
-      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
-      const AlgParams& algParams)
-    {
-      typedef Kokkos::TeamPolicy<ExecSpace> Policy;
-      typedef typename Policy::member_type TeamMember;
-      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
-      typedef typename RandomPool::generator_type generator_type;
-      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
-      typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
-
-      static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
-      static const unsigned RowBlockSize = 1;
-      static const unsigned FacBlockSize = 16; // FIXME
-      static const unsigned VectorSize = is_gpu ? 16 : 1; //FIXME
-      static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
-      static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
-
-      /*const*/ ttb_indx nnz = X.nnz();
-      /*const*/ unsigned nd = u.ndims();
-      /*const*/ ttb_indx ns_nz = num_samples_nonzeros;
-      /*const*/ ttb_indx ns_z = num_samples_zeros;
-      const ttb_indx N_nz = (ns_nz+RowsPerTeam-1)/RowsPerTeam;
-      const ttb_indx N_z = (ns_z+RowsPerTeam-1)/RowsPerTeam;
-      const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
-
-      // Resize Y if necessary
-      const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
-      if (Y.nnz() < total_samples) {
-        Y = SptensorT<ExecSpace>(X.size(), total_samples);
-        w = ArrayT<ExecSpace>(total_samples);
+        });
       }
-
-      // Generate samples of nonzeros
-      Policy policy_nz(N_nz, TeamSize, VectorSize);
-      Kokkos::parallel_for(
-        policy_nz.set_scratch_size(0,Kokkos::PerTeam(bytes)),
-        KOKKOS_LAMBDA(const TeamMember& team)
-      {
-        generator_type gen = rand_pool.get_state();
-        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
-        ttb_indx *ind = &(team_ind(team.team_rank(),0));
-
-        const ttb_indx offset =
-          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
-        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
-          const ttb_indx idx = offset + ii;
-          if (idx >= ns_nz)
-            continue;
-
-          // Generate random tensor index
-          ttb_real x_val = 0.0;
-          Kokkos::single( Kokkos::PerThread( team ), [&] (ttb_real& xv)
-          {
-            const ttb_indx i = Rand::draw(gen,0,nnz);
-            for (ttb_indx m=0; m<nd; ++m)
-              ind[m] = X.subscript(i,m);
-            xv = X.value(i);
-          }, x_val);
-
-          // Compute Ktensor value
-          ttb_real m_val = 0.0;
-          if (compute_gradient)
-            m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
-
-          // Add new nonzero
-          Kokkos::single( Kokkos::PerThread( team ), [&] ()
-          {
-            for (ttb_indx m=0; m<nd; ++m)
-              Y.subscript(idx,m) = ind[m];
-            if (compute_gradient) {
-              Y.value(idx) =
-                weight_nonzeros * loss_func.deriv(x_val, m_val);
-            }
-            else {
-              Y.value(idx) = x_val;
-              w[idx] = weight_nonzeros;
-            }
-          });
-        }
-        rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::Stratified_Sample_Nonzeros");
-
-      // Generate samples of zeros
-      Policy policy_z(N_z, TeamSize, VectorSize);
-      Kokkos::parallel_for(
-        policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
-        KOKKOS_LAMBDA(const TeamMember& team)
-      {
-        generator_type gen = rand_pool.get_state();
-        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
-        ttb_indx *ind = &(team_ind(team.team_rank(),0));
-
-        const ttb_indx offset =
-          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
-        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
-          const ttb_indx idx = offset + ii;
-          if (idx >= ns_z)
-            continue;
-
-          // Keep generating samples until we get one not in the tensor
-          int found = 1;
-          while (found) {
-            Kokkos::single( Kokkos::PerThread( team ), [&] (int& f)
-            {
-              // Generate index
-              for (ttb_indx m=0; m<nd; ++m)
-                ind[m] = Rand::draw(gen,0,X.size(m));
-
-              // Search for index
-              f = hash.exists(ind);
-            }, found);
-          }
-
-          // Compute Ktensor value
-          ttb_real m_val;
-          if (compute_gradient)
-            m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
-
-          // Add new nonzero
-          const ttb_indx row = num_samples_nonzeros + idx;
-          Kokkos::single( Kokkos::PerThread( team ), [&] ()
-          {
-            for (ttb_indx m=0; m<nd; ++m)
-              Y.subscript(row,m) = ind[m];
-            if (compute_gradient) {
-              Y.value(row) =
-                weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
-            }
-            else {
-              Y.value(row) = 0.0;
-              w[row] = weight_zeros;
-            }
-          });
-        }
-        rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::Stratified_Sample_Zeros");
-    }
-
-    template <typename ExecSpace, typename LossFunction>
-    void semi_stratified_sample_tensor(
-      const SptensorT<ExecSpace>& X,
-      const ttb_indx num_samples_nonzeros,
-      const ttb_indx num_samples_zeros,
-      const ttb_real weight_nonzeros,
-      const ttb_real weight_zeros,
-      const KtensorT<ExecSpace>& u,
-      const LossFunction& loss_func,
-      const bool compute_gradient,
-      SptensorT<ExecSpace>& Y,
-      ArrayT<ExecSpace>& w,
-      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
-      const AlgParams& algParams)
-    {
-      typedef Kokkos::TeamPolicy<ExecSpace> Policy;
-      typedef typename Policy::member_type TeamMember;
-      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
-      typedef typename RandomPool::generator_type generator_type;
-      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
-      typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
-
-      static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
-      static const unsigned RowBlockSize = 1;
-      static const unsigned FacBlockSize = 16; // FIXME
-      static const unsigned VectorSize = is_gpu ? 16 : 1; //FIXME
-      static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
-      static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
-
-      /*const*/ ttb_indx nnz = X.nnz();
-      /*const*/ unsigned nd = u.ndims();
-      /*const*/ ttb_indx ns_nz = num_samples_nonzeros;
-      /*const*/ ttb_indx ns_z = num_samples_zeros;
-      const ttb_indx N_nz = (ns_nz+RowsPerTeam-1)/RowsPerTeam;
-      const ttb_indx N_z = (ns_z+RowsPerTeam-1)/RowsPerTeam;
-      const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
-
-      // Resize Y if necessary
-      const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
-      if (Y.nnz() < total_samples) {
-        Y = SptensorT<ExecSpace>(X.size(), total_samples);
-        w = ArrayT<ExecSpace>(total_samples);
-      }
-
-      // Generate samples of nonzeros
-      Policy policy_nz(N_nz, TeamSize, VectorSize);
-      Kokkos::parallel_for(
-        policy_nz.set_scratch_size(0,Kokkos::PerTeam(bytes)),
-        KOKKOS_LAMBDA(const TeamMember& team)
-      {
-        generator_type gen = rand_pool.get_state();
-        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
-        ttb_indx *ind = &(team_ind(team.team_rank(),0));
-
-        const ttb_indx offset =
-          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
-        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
-          const ttb_indx idx = offset + ii;
-          if (idx >= ns_nz)
-            continue;
-
-          // Generate random tensor index
-          ttb_real x_val = 0.0;
-          Kokkos::single( Kokkos::PerThread( team ), [&] (ttb_real& xv)
-          {
-            const ttb_indx i = Rand::draw(gen,0,nnz);
-            for (ttb_indx m=0; m<nd; ++m)
-              ind[m] = X.subscript(i,m);
-            xv = X.value(i);
-          }, x_val);
-
-          // Compute Ktensor value
-          ttb_real m_val = 0.0;
-          if (compute_gradient)
-            m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
-
-          // Add new nonzero
-          Kokkos::single( Kokkos::PerThread( team ), [&] ()
-          {
-            for (ttb_indx m=0; m<nd; ++m)
-              Y.subscript(idx,m) = ind[m];
-            if (compute_gradient) {
-              Y.value(idx) =
-                weight_nonzeros * ( loss_func.deriv(x_val, m_val) -
-                                    loss_func.deriv(ttb_real(0.0), m_val) );
-            }
-            else {
-              Y.value(idx) = x_val;
-              w[idx] = weight_nonzeros;
-            }
-          });
-        }
-        rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::SemiStratified_Sample_Nonzeros");
-
-      // Generate samples of zeros
-      Policy policy_z(N_z, TeamSize, VectorSize);
-      Kokkos::parallel_for(
-        policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
-        KOKKOS_LAMBDA(const TeamMember& team)
-      {
-        generator_type gen = rand_pool.get_state();
-        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
-        ttb_indx *ind = &(team_ind(team.team_rank(),0));
-
-        const ttb_indx offset =
-          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
-        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
-          const ttb_indx idx = offset + ii;
-          if (idx >= ns_z)
-            continue;
-
-          // Generate index -- use broadcast form to force warp sync
-          // so that ind is updated before used by other threads
-          int sync = 0;
-          Kokkos::single( Kokkos::PerThread( team ), [&] (int& s)
-          {
-            for (ttb_indx m=0; m<nd; ++m)
-              ind[m] = Rand::draw(gen,0,X.size(m));
-            s = 1;
-          }, sync);
-
-          // Compute Ktensor value
-          ttb_real m_val = 0.0;
-          if (compute_gradient)
-            m_val =
-              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
-
-          // Add new nonzero
-          const ttb_indx row = num_samples_nonzeros + idx;
-          Kokkos::single( Kokkos::PerThread( team ), [&] ()
-          {
-            for (ttb_indx m=0; m<nd; ++m)
-              Y.subscript(row,m) = ind[m];
-            if (compute_gradient) {
-              Y.value(row) =
-                weight_zeros * loss_func.deriv(ttb_real(0.0), m_val);
-            }
-            else {
-              Y.value(row) = 0.0;
-              w[row] = weight_zeros;
-            }
-          });
-        }
-        rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::SemiStratified_Sample_Zeros");
-    }
-
-    template <typename ExecSpace, typename LossFunction>
-    void sample_tensor_nonzeros(
-      const SptensorT<ExecSpace>& X,
-      const ttb_indx offset,
-      const ttb_indx num_samples,
-      const ttb_real weight,
-      const KtensorT<ExecSpace>& u,
-      const LossFunction& loss_func,
-      const bool compute_gradient,
-      SptensorT<ExecSpace>& Y,
-      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
-      const AlgParams& algParams)
-    {
-      const ttb_indx nnz = X.nnz();
-      const ttb_indx nd = X.ndims();
-
-      // Resize Y if necessary
-      if (Y.nnz() < offset+num_samples) {
-        Y = SptensorT<ExecSpace>(X.size(), offset+num_samples);
-      }
-
-      // Parallel sampling on the device
-      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
-      typedef typename RandomPool::generator_type generator_type;
-      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
-      const ttb_indx nloops = algParams.rng_iters;
-      const ttb_indx N_nonzeros = (num_samples+nloops-1)/nloops;
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
-                           KOKKOS_LAMBDA(const ttb_indx k)
-      {
-        generator_type gen = rand_pool.get_state();
-        for (ttb_indx l=0; l<nloops; ++l) {
-          const ttb_indx i = k*nloops+l;
-          if (i<num_samples) {
-            const ttb_indx idx = Rand::draw(gen,0,nnz);
-            const auto& ind = X.getSubscripts(idx);
-            if (compute_gradient) {
-              const ttb_real m_val = compute_Ktensor_value(u, ind);
-              Y.value(offset+i) =
-                weight * loss_func.deriv(X.value(idx), m_val);
-            }
-            else {
-              Y.value(offset+i) = X.value(idx);
-            }
-            for (ttb_indx j=0; j<nd; ++j)
-              Y.subscript(offset+i,j) = ind[j];
-          }
-        }
-        rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::sample_tensor_nonzeros");
-
-    }
-
-    template <typename ExecSpace, typename LossFunction>
-    void sample_tensor_nonzeros(
-      const SptensorT<ExecSpace>& X,
-      const ArrayT<ExecSpace>& w,
-      const ttb_indx num_samples,
-      const KtensorT<ExecSpace>& u,
-      const LossFunction& loss_func,
-      SptensorT<ExecSpace>& Y,
-      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
-      const AlgParams& algParams)
-    {
-      const ttb_indx nnz = X.nnz();
-      const ttb_indx nd = X.ndims();
-
-      // Resize Y if necessary
-      if (Y.nnz() < num_samples) {
-        Y = SptensorT<ExecSpace>(X.size(), num_samples);
-      }
-
-      // Parallel sampling on the device
-      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
-      typedef typename RandomPool::generator_type generator_type;
-      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
-      const ttb_indx nloops = algParams.rng_iters;
-      const ttb_indx N_nonzeros = (num_samples+nloops-1)/nloops;
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
-                           KOKKOS_LAMBDA(const ttb_indx k)
-      {
-        generator_type gen = rand_pool.get_state();
-        for (ttb_indx l=0; l<nloops; ++l) {
-          const ttb_indx i = k*nloops+l;
-          if (i<num_samples) {
-            const ttb_indx idx = Rand::draw(gen,0,nnz);
-            const auto& ind = X.getSubscripts(idx);
-            const ttb_real m_val = compute_Ktensor_value(u, ind);
-            Y.value(i) = w[idx] * loss_func.deriv(X.value(idx), m_val);
-            for (ttb_indx j=0; j<nd; ++j)
-              Y.subscript(i,j) = ind[j];
-          }
-        }
-        rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::sample_tensor_nonzeros");
-
-    }
-
-    template <typename ExecSpace>
-    void sample_tensor_nonzeros(
-      const SptensorT<ExecSpace>& X,
-      const ArrayT<ExecSpace>& w,
-      const ttb_indx num_samples,
-      SptensorT<ExecSpace>& Y,
-      ArrayT<ExecSpace>& z,
-      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
-      const AlgParams& algParams)
-    {
-      const ttb_indx nnz = X.nnz();
-      const ttb_indx nd = X.ndims();
-
-      // Resize Y if necessary
-      if (Y.nnz() < num_samples) {
-        Y = SptensorT<ExecSpace>(X.size(), num_samples);
-        z = ArrayT<ExecSpace>(num_samples);
-      }
-
-      // Parallel sampling on the device
-      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
-      typedef typename RandomPool::generator_type generator_type;
-      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
-      const ttb_indx nloops = algParams.rng_iters;
-      const ttb_indx N_nonzeros = (num_samples+nloops-1)/nloops;
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_nonzeros),
-                           KOKKOS_LAMBDA(const ttb_indx k)
-      {
-        generator_type gen = rand_pool.get_state();
-        for (ttb_indx l=0; l<nloops; ++l) {
-          const ttb_indx i = k*nloops+l;
-          if (i<num_samples) {
-            const ttb_indx idx = Rand::draw(gen,0,nnz);
-            Y.value(i) = X.value(idx);
-            for (ttb_indx j=0; j<nd; ++j)
-              Y.subscript(i,j) = X.subscript(idx,j);
-            z[i] = w[idx];
-          }
-        }
-        rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::sample_tensor_nonzeros");
-
-    }
-
-    template <typename ExecSpace>
-    void sample_tensor_zeros(
-      const SptensorT<ExecSpace>& X,
-      const ttb_indx offset,
-      const ttb_indx num_samples,
-      SptensorT<ExecSpace>& Y,
-      SptensorT<ExecSpace>& Z,
-      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
-      const AlgParams& algParams)
-    {
-      const ttb_indx nnz = X.nnz();
-      const ttb_indx nd = X.ndims();
-      const ttb_real ne = X.numel_float();
-      const ttb_indx ns = std::min(num_samples, ttb_indx(ne-nnz));
-
-      // Resize Y if necessary
-      if (Y.nnz() < offset+ns) {
-        Y = SptensorT<ExecSpace>(X.size(), offset+ns);
-      }
-
-      // Parallel sampling on the device
-      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
-      typedef typename RandomPool::generator_type generator_type;
-      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
-      const ttb_indx nloops = algParams.rng_iters;
-
-      // First generate oversample_factor*ns samples of potential zeros
-      const ttb_real oversample = algParams.oversample_factor;
-      const ttb_indx total_samples =
-        static_cast<ttb_indx>(oversample*num_samples);
-      if (Z.nnz() < total_samples) {
-        Z = SptensorT<ExecSpace>(X.size(), total_samples);
-      }
-      const ttb_indx N_zeros_gen = (total_samples+nloops-1)/nloops;
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_zeros_gen),
-                           KOKKOS_LAMBDA(const ttb_indx k)
-      {
-        generator_type gen = rand_pool.get_state();
-        for (ttb_indx l=0; l<nloops; ++l) {
-          const ttb_indx i = k*nloops+l;
-          if (i<total_samples) {
-            for (ttb_indx j=0; j<nd; ++j)
-              Z.subscript(i,j) = Rand::draw(gen,0,X.size(j));
-            Z.value(i) = 0.0;
-          }
-        }
-        rand_pool.free_state(gen);
-      }, "Genten::GCP_SGD::sample_tensor_zeros_bulk");
-
-      // Sort Z
-      Z.setIsSorted(false);
-      Z.sort();
-
-      // Copy Z into Y skipping entries that are in X and duplicates
-
-#if 0
-      // Serial version
-      ttb_indx n = 0;
-      ttb_indx i = 0;
-      ttb_indx ind = 0;
-      while (n<total_samples && i<ns) {
-        const auto sub = Z.getSubscripts(n);
-        ind = X.sorted_lower_bound(sub,ind);
-        const bool found = X.isSubscriptEqual(ind,sub);
-        if (!found) {
-          bool in_Y = i > 0 ? true : false;
-          if (i>0) {
-            for (ttb_indx j=0; j<nd; ++j) {
-              if (Y.subscript(offset+i-1,j) != Z.subscript(n,j)) {
-                in_Y = false;
-                break;
-              }
-            }
-          }
-          if (!in_Y) {
-            for (ttb_indx j=0; j<nd; ++j)
-              Y.subscript(offset+i,j) = Z.subscript(n,j);
-            Y.value(offset+i) = 0.0;
-            ++i;
-          }
-        }
-        ++n;
-      }
-      if (n == total_samples && i < ns)
-        Kokkos::abort("Ran out of zeros before completion!");
-#elif 0
-      // Parallel version using a hash map
-      // Determine unique entries in Z
-      Kokkos::UnorderedMap<ttb_indx,void,ExecSpace> unique_map(total_samples);
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,total_samples),
-                           KOKKOS_LAMBDA(const ttb_indx n)
-      {
-        bool duplicate = false;
-        if (n > 0) {
-          duplicate = true;
-          for (ttb_indx j=0; j<nd; ++j) {
-            if (Z.subscript(n-1,j) != Z.subscript(n,j)) {
-              duplicate = false;
-              break;
-            }
-          }
-        }
-        if (!duplicate) {
-          if (unique_map.insert(n).failed())
-            Kokkos::abort("Unordered map insert failed!");
-        }
-      }, "Genten::GCP_SGD::sample_tensor_zeros_duplicates");
-
-      // Determine which entries in Z are not in X
-      Kokkos::UnorderedMap<ttb_indx,void,ExecSpace> map(total_samples);
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_zeros_gen),
-                           KOKKOS_LAMBDA(const ttb_indx k)
-      {
-        ttb_indx ind = 0;
-        for (ttb_indx l=0; l<nloops; ++l) {
-          const ttb_indx n = k*nloops+l;
-          if (n < total_samples) {
-            const auto sub = Z.getSubscripts(n);
-            ind = X.sorted_lower_bound(sub,ind);
-            const bool found = X.isSubscriptEqual(ind,sub);
-            if (!found) {
-              if (unique_map.exists(n)) {
-                if (map.insert(n).failed())
-                  Kokkos::abort("Unordered map insert failed!");
-              }
-            }
-          }
-        }
-      }, "Genten::GCP_SGD::sample_tensor_zeros_search");
-
-      // Add entries in Z not in X into Y, eliminating duplicates
-      const ttb_indx sz = map.capacity();
-      Kokkos::View<ttb_indx,ExecSpace> idx("idx");
-      // for (ttb_indx m=0; m<sz; ++m)
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
-                           KOKKOS_LAMBDA(const ttb_indx m)
-      {
-        if (map.valid_at(m)) {
-          const ttb_indx n = map.key_at(m);
-          const ttb_indx i = Kokkos::atomic_fetch_add(&idx(), ttb_indx(1));
-          if (i < ns) {
-            for (ttb_indx j=0; j<nd; ++j)
-              Y.subscript(offset+i,j) = Z.subscript(n,j);
-            Y.value(offset+i) = 0.0;
-          }
-        }
-      }, "Genten::GCP_SGD::sample_tensor_zeros_search");
-      typename Kokkos::View<ttb_indx,ExecSpace>::HostMirror idx_h =
-        create_mirror_view(idx);
-      deep_copy(idx_h, idx);
-      if (idx_h() < ns)
-        Kokkos::abort("Ran out of zeros before completion!");
 #else
-      // Direct parallel version
-      Kokkos::View<ttb_indx,ExecSpace> idx("idx");
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,N_zeros_gen),
-                           KOKKOS_LAMBDA(const ttb_indx k)
-      {
-        ttb_indx ind = 0;
-        for (ttb_indx l=0; l<nloops; ++l) {
-          const ttb_indx n = k*nloops+l;
-          if (n < total_samples) {
-            const auto sub = Z.getSubscripts(n);
-            bool duplicate = false;
-            if (n > 0) {
-              duplicate = true;
-              for (ttb_indx j=0; j<nd; ++j) {
-                if (Z.subscript(n-1,j) != sub(j)) {
-                  duplicate = false;
-                  break;
-                }
-              }
-            }
-            if (!duplicate) {
-              ind = X.sorted_lower_bound(sub,ind);
-              const bool found = X.isSubscriptEqual(ind,sub);
-              if (!found) {
-                const ttb_indx i =
-                  Kokkos::atomic_fetch_add(&idx(), ttb_indx(1));
-                if (i < ns) {
-                  for (ttb_indx j=0; j<nd; ++j)
-                    Y.subscript(offset+i,j) = sub(j);
-                  Y.value(offset+i) = 0.0;
-                }
-              }
-            }
-          }
-        }
-      }, "Genten::GCP_SGD::sample_tensor_zeros_search");
-      typename Kokkos::View<ttb_indx,ExecSpace>::HostMirror idx_h =
-        create_mirror_view(idx);
-      deep_copy(idx_h, idx);
-      if (idx_h() < ns)
-        Kokkos::abort("Ran out of zeros before completion!");
+      Genten::error("Uniform sampling with dist-update-method == tpetra requires tpetra!");
 #endif
-
     }
 
-    template <typename ExecSpace>
-    void merge_sampled_tensors(const SptensorT<ExecSpace>& X_nz,
-                               const SptensorT<ExecSpace>& X_z,
-                               SptensorT<ExecSpace>& X,
-                               const AlgParams& algParams)
+    template <typename ExecSpace, typename Searcher, typename Gradient>
+    void stratified_sample_tensor(
+      const SptensorT<ExecSpace>& Xd,
+      const Searcher& searcher,
+      const ttb_indx num_samples_nonzeros,
+      const ttb_indx num_samples_zeros,
+      const ttb_real weight_nonzeros,
+      const ttb_real weight_zeros,
+      const KtensorT<ExecSpace>& u,
+      const Gradient& gradient,
+      const bool compute_gradient,
+      SptensorT<ExecSpace>& Yd,
+      ArrayT<ExecSpace>& w,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams)
     {
-      const ttb_indx xnz = X_nz.nnz();
-      const ttb_indx xz = X_z.nnz();
-      const ttb_indx nz = xnz+xz;
-      const ttb_indx nd = X_nz.ndims();
+      typedef Kokkos::TeamPolicy<ExecSpace> Policy;
+      typedef typename Policy::member_type TeamMember;
+      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
+      typedef typename RandomPool::generator_type generator_type;
+      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
+      typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
-      // Resize X if necessary
-      if (X.nnz() < nz) {
-        X = SptensorT<ExecSpace>(X_nz.size(), nz);
+      static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+      static const unsigned RowBlockSize = 1;
+      static const unsigned FacBlockSize = 16; // FIXME
+      static const unsigned VectorSize = is_gpu ? 16 : 1; //FIXME
+      static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
+      static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
+
+      const auto X = Xd.impl();
+
+      /*const*/ ttb_indx nnz = X.nnz();
+      /*const*/ unsigned nd = X.ndims();
+      /*const*/ ttb_indx ns_nz = num_samples_nonzeros;
+      /*const*/ ttb_indx ns_z = num_samples_zeros;
+      const ttb_indx N_nz = (ns_nz+RowsPerTeam-1)/RowsPerTeam;
+      const ttb_indx N_z = (ns_z+RowsPerTeam-1)/RowsPerTeam;
+      const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
+
+      // Resize Y if necessary
+      const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
+      if (Yd.nnz() < total_samples) {
+        Yd = SptensorT<ExecSpace>(X.size(), total_samples);
+        w = ArrayT<ExecSpace>(total_samples);
+      }
+      const auto Y = Yd.impl();
+
+      // Generate samples of nonzeros
+      Policy policy_nz(N_nz, TeamSize, VectorSize);
+      Kokkos::parallel_for(
+        "Genten::GCP_SGD::Stratified_Sample_Nonzeros",
+        policy_nz.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+        KOKKOS_LAMBDA(const TeamMember& team)
+      {
+        generator_type gen = rand_pool.get_state();
+        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
+        ttb_indx *ind = &(team_ind(team.team_rank(),0));
+
+        const ttb_indx offset =
+          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+          /*const*/ ttb_indx idx = offset + ii;
+          if (idx >= ns_nz)
+            continue;
+
+          // Generate random tensor index
+          ttb_real x_val = 0.0;
+          Kokkos::single( Kokkos::PerThread( team ), [&] (ttb_real& xv)
+          {
+            ttb_indx i;
+            if (ns_nz == nnz)
+              i = idx;        // Don't sample if all nonzeros were requested
+            else
+              i = Rand::draw(gen,0,nnz);
+            for (ttb_indx m=0; m<nd; ++m)
+              ind[m] = X.subscript(i,m);
+            xv = X.value(i);
+          }, x_val);
+
+          // Compute Ktensor value
+          ttb_real m_val = 0.0;
+          if (compute_gradient)
+            m_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
+
+          // Add new nonzero
+          Kokkos::single( Kokkos::PerThread( team ), [&] ()
+          {
+            for (ttb_indx m=0; m<nd; ++m)
+              Y.subscript(idx,m) = ind[m];
+            if (compute_gradient) {
+              Y.value(idx) =
+                gradient.evalNonZero(x_val, m_val, weight_nonzeros);
+            }
+            else {
+              Y.value(idx) = x_val;
+              w[idx] = weight_nonzeros;
+            }
+          });
+        }
+        rand_pool.free_state(gen);
+      });
+
+
+      // Generate samples of zeros
+      Policy policy_z(N_z, TeamSize, VectorSize);
+      Kokkos::parallel_for(
+        "Genten::GCP_SGD::Stratified_Sample_Zeros",
+        policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+        KOKKOS_LAMBDA(const TeamMember& team)
+      {
+        generator_type gen = rand_pool.get_state();
+        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
+        ttb_indx *ind = &(team_ind(team.team_rank(),0));
+
+        const ttb_indx offset =
+          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+          const ttb_indx idx = offset + ii;
+          if (idx >= ns_z)
+            continue;
+
+          // Keep generating samples until we get one not in the tensor
+          int found = 1;
+          while (found) {
+            Kokkos::single( Kokkos::PerThread( team ), [&] (int& f)
+            {
+              // Generate index
+              for (ttb_indx m=0; m<nd; ++m)
+                ind[m] = Rand::draw(gen,0,X.size(m));
+
+              // Search for index
+              f = searcher.search(ind);
+            }, found);
+          }
+
+          // Compute Ktensor value
+          ttb_real m_val;
+          if (compute_gradient)
+            m_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
+
+          // Add new nonzero
+          const ttb_indx row = num_samples_nonzeros + idx;
+          Kokkos::single( Kokkos::PerThread( team ), [&] ()
+          {
+            for (ttb_indx m=0; m<nd; ++m)
+              Y.subscript(row,m) = ind[m];
+            if (compute_gradient) {
+              Y.value(row) =
+                gradient.evalZero(m_val, weight_zeros);
+            }
+            else {
+              Y.value(row) = 0.0;
+              w[row] = weight_zeros;
+            }
+          });
+        }
+        rand_pool.free_state(gen);
+      });
+    }
+
+    template <typename ExecSpace, typename Searcher, typename Gradient>
+    void stratified_sample_tensor_tpetra(
+      const SptensorT<ExecSpace>& Xd,
+      const Searcher& searcher,
+      const ttb_indx num_samples_nonzeros,
+      const ttb_indx num_samples_zeros,
+      const ttb_real weight_nonzeros,
+      const ttb_real weight_zeros,
+      const KtensorT<ExecSpace>& u,
+      const Gradient& gradient,
+      const bool compute_gradient,
+      SptensorT<ExecSpace>& Yd,
+      ArrayT<ExecSpace>& w,
+      KtensorT<ExecSpace>& u_overlap,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams)
+    {
+#ifdef HAVE_TPETRA
+      typedef Kokkos::TeamPolicy<ExecSpace> Policy;
+      typedef typename Policy::member_type TeamMember;
+      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
+      typedef typename RandomPool::generator_type generator_type;
+      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
+      typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+      static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+      static const unsigned RowBlockSize = 1;
+      static const unsigned FacBlockSize = 16; // FIXME
+      static const unsigned VectorSize = is_gpu ? 16 : 1; //FIXME
+      static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
+      static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
+
+      const auto X = Xd.impl();
+
+      /*const*/ ttb_indx nnz = X.nnz();
+      /*const*/ unsigned nd = X.ndims();
+      /*const*/ ttb_indx ns_nz = num_samples_nonzeros;
+      /*const*/ ttb_indx ns_z = num_samples_zeros;
+      /*const*/ ttb_indx ns_t = ns_nz + ns_z;
+      const ttb_indx N_nz = (ns_nz+RowsPerTeam-1)/RowsPerTeam;
+      const ttb_indx N_z = (ns_z+RowsPerTeam-1)/RowsPerTeam;
+      const ttb_indx N_t = (ns_t+RowsPerTeam-1)/RowsPerTeam;
+      const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
+
+      // Resize Y if necessary
+      const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
+      if (Yd.nnz() < total_samples) {
+        Yd = SptensorT<ExecSpace>(Xd.size(), total_samples); // Correct size is set later
+        Yd.allocGlobalSubscripts();
+        deep_copy(Yd.getLowerBounds(), Xd.getLowerBounds());
+        deep_copy(Yd.getUpperBounds(), Xd.getUpperBounds());
+        Yd.setProcessorMap(Xd.getProcessorMap());
+        w = ArrayT<ExecSpace>(total_samples);
+      }
+      auto Y = Yd.impl();
+
+      // Generate samples of nonzeros
+      GENTEN_START_TIMER("sample nonzeros");
+      Policy policy_nz(N_nz, TeamSize, VectorSize);
+      Kokkos::parallel_for(
+        "Genten::GCP_SGD::Sample_Nonzeros",
+        policy_nz,
+        KOKKOS_LAMBDA(const TeamMember& team)
+      {
+        generator_type gen = rand_pool.get_state();
+
+        const ttb_indx offset =
+          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+          const ttb_indx idx = offset + ii;
+          if (idx >= ns_nz)
+            continue;
+
+          // Generate random tensor index
+          Kokkos::single( Kokkos::PerThread( team ), [&] ()
+          {
+            const ttb_indx i = Rand::draw(gen,0,nnz);
+            for (ttb_indx m=0; m<nd; ++m)
+              Y.globalSubscript(idx,m) = X.globalSubscript(i,m);
+            Y.value(idx) = X.value(i); // We need x_val for both value and grad
+            if (!compute_gradient)
+              w[idx] = weight_nonzeros;
+          });
+        }
+        rand_pool.free_state(gen);
+      });
+      GENTEN_STOP_TIMER("sample nonzeros");
+
+      // Generate samples of zeros
+      GENTEN_START_TIMER("sample zeros");
+      Policy policy_z(N_z, TeamSize, VectorSize);
+      Kokkos::parallel_for(
+        "Genten::GCP_SGD::Sample_Zeros",
+        policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+        KOKKOS_LAMBDA(const TeamMember& team)
+      {
+        generator_type gen = rand_pool.get_state();
+        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
+        ttb_indx *ind = &(team_ind(team.team_rank(),0));
+
+        const ttb_indx offset =
+          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+          const ttb_indx idx = offset + ii;
+          if (idx >= ns_z)
+            continue;
+
+          // Keep generating samples until we get one not in the tensor
+          int found = 1;
+          while (found) {
+            Kokkos::single( Kokkos::PerThread( team ), [&] (int& f)
+            {
+              // Generate index
+              for (ttb_indx m=0; m<nd; ++m)
+                ind[m] = Rand::draw(gen,X.lowerBound(m),X.upperBound(m));
+
+              // Search for index
+              f = searcher.search(ind);
+            }, found);
+          }
+
+          // Add new nonzero
+          const ttb_indx row = num_samples_nonzeros + idx;
+          Kokkos::single( Kokkos::PerThread( team ), [&] ()
+          {
+            for (ttb_indx m=0; m<nd; ++m)
+              Y.globalSubscript(row,m) = ind[m];
+            if (!compute_gradient) {
+              Y.value(row) = 0.0; // We don't need the value for grad
+              w[row] = weight_zeros;
+            }
+          });
+        }
+        rand_pool.free_state(gen);
+      });
+      GENTEN_STOP_TIMER("sample zeros");
+
+      // Build tensor maps
+      Yd.getFactorMaps() = Xd.getFactorMaps();
+      build_tensor_maps(Yd.getSubscripts(), Yd.getGlobalSubscripts(),
+                        Xd.getFactorMaps(), Yd.getTensorMaps(),
+                        Yd.getImporters(), algParams);
+
+      // Set correct size in tensor
+      auto sz_host = Y.size_host();
+      for (unsigned n=0; n<nd; ++n)
+        sz_host[n] = Yd.tensorMap(n)->getLocalNumElements();
+      deep_copy(Y.size(), sz_host);
+
+      // Import u to overlapped tensor map
+      u_overlap = import_ktensor_to_tensor_map(
+        u, Yd.getFactorMaps(), Yd.getTensorMaps(), Yd.getImporters());
+
+      // Set gradient values in sampled tensor
+      if (compute_gradient) {
+        GENTEN_TIME_MONITOR_DIFF("compute gradient tensor",compute_grad);
+        Policy policy_t(N_t, TeamSize, VectorSize);
+        Kokkos::parallel_for(
+          "Genten::GCP_SGD::Stratified_Gradient",
+          policy_t,
+          KOKKOS_LAMBDA(const TeamMember& team)
+        {
+          const ttb_indx offset =
+            (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+          for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+            const ttb_indx idx = offset + ii;
+            if (idx >= ns_t)
+              continue;
+
+            // Compute Ktensor value
+            const ttb_real m_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(
+                team, u_overlap, Y.getSubscripts(idx));
+
+            // Set value in tensor
+            Kokkos::single( Kokkos::PerThread( team ), [&] ()
+            {
+              if (idx < ns_nz) { // This is a nonzero
+                const ttb_real x_val = Y.value(idx);
+                Y.value(idx) = gradient.evalNonZero(x_val, m_val, weight_nonzeros);
+              }
+              else { // This is a zero
+                Y.value(idx) = gradient.evalZero(m_val, weight_zeros);
+              }
+            });
+          }
+        });
+      }
+#else
+      Genten::error("Stratified sampling with dist-update-method == tpetra requires tpetra!");
+#endif
+    }
+
+    // In this function, X is a stratified sampled tensor from some other
+    // tensor, and the history term uses the same set of samples from the
+    // samples tensor for each slice in the history term
+    template <typename ExecSpace, typename LossFunction>
+    void stratified_ktensor_grad(
+      const SptensorT<ExecSpace>& Xd,
+      const ttb_indx num_samples_nonzeros,
+      const ttb_indx num_samples_zeros,
+      const ttb_real weight_nonzeros,
+      const ttb_real weight_zeros,
+      const KtensorT<ExecSpace>& u,
+      const KtensorT<ExecSpace>& up,
+      const ArrayT<ExecSpace>& window,
+      const ttb_real window_penalty,
+      const LossFunction& loss_func,
+      SptensorT<ExecSpace>& Yd,
+      const AlgParams& algParams)
+    {
+      const auto X = Xd.impl();
+
+      typedef Kokkos::TeamPolicy<ExecSpace> Policy;
+      typedef typename Policy::member_type TeamMember;
+      typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+      static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+      static const unsigned RowBlockSize = 1;
+      static const unsigned FacBlockSize = 16; // FIXME
+      static const unsigned VectorSize = is_gpu ? 16 : 1; //FIXME
+      static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
+      static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
+
+      /*const*/ unsigned nd = X.ndims();
+      /*const*/ ttb_indx ns_nz = num_samples_nonzeros;
+      /*const*/ ttb_indx total_samples =
+        num_samples_nonzeros + num_samples_zeros;
+      const ttb_indx N = (total_samples+RowsPerTeam-1)/RowsPerTeam;
+      const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
+      /*const*/ ttb_indx nh = window.size();
+
+      if (u[nd-1].nRows() != nh)
+        Genten::error("stratified_ktensor_grad():  temporal mode size of ktensor u does not match given history window!");
+      if (up[nd-1].nRows() != nh)
+        Genten::error("stratified_ktensor_grad():  temporal mode size of ktensor up does not match given history window!");
+
+      // Resize Y if necessary
+      if (Yd.nnz() < total_samples*nh) {
+        IndxArrayT<ExecSpace> sz = X.size().clone();
+        auto sz_host = create_mirror_view(sz);
+        deep_copy(sz_host, sz);
+        sz_host[nd-1] = nh;
+        deep_copy(sz, sz_host);
+        Yd = SptensorT<ExecSpace>(sz, total_samples*nh);
       }
 
-      // Copy X_nz
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,xnz),
-                           KOKKOS_LAMBDA(const ttb_indx i)
-      {
-        for (ttb_indx j=0; j<nd; ++j)
-          X.subscript(i,j) = X_nz.subscript(i,j);
-        X.value(i) = X_nz.value(i);
-      }, "Genten::GCP_SGD::merge_sampled_tensors_nz");
+      const auto Y = Yd.impl();
 
-      // Copy X_z
-      Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,xz),
-                           KOKKOS_LAMBDA(const ttb_indx i)
+      // Generate terms from given tensor X
+      Policy policy(N, TeamSize, VectorSize);
+      Kokkos::parallel_for(
+        "Genten::GCP_SGD::stratified_ktensor_grad",
+        policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+        KOKKOS_LAMBDA(const TeamMember& team)
       {
-        for (ttb_indx j=0; j<nd; ++j)
-          X.subscript(i+xnz,j) = X_z.subscript(i,j);
-        X.value(i+xnz) = X_z.value(i);
-      }, "Genten::GCP_SGD::merge_sampled_tensors_z");
+        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
+        ttb_indx *ind = &(team_ind(team.team_rank(),0));
+
+        const ttb_indx offset =
+          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+          /*const*/ ttb_indx idx = offset + ii;
+          if (idx >= total_samples)
+            continue;
+
+          // Weight is based on whether sample is for a zero or nonzero
+          ttb_real w;
+          if (idx < ns_nz)
+            w = weight_nonzeros;
+          else
+            w = weight_zeros;
+
+          for (ttb_indx h=0; h<nh; ++h) {
+
+            // Get and set subscripts
+            Kokkos::single( Kokkos::PerThread( team ), [&] ()
+            {
+              for (ttb_indx m=0; m<nd; ++m) {
+                ind[m] = m == nd-1 ? h : X.subscript(idx,m);
+                Y.subscript(idx+total_samples*h,m) = ind[m];
+              }
+            });
+
+            // Compute Ktensor values
+            ttb_real m_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
+            ttb_real mp_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, up, ind);
+
+            // Compute tensor value
+            Kokkos::single( Kokkos::PerThread( team ), [&] ()
+            {
+              Y.value(idx+total_samples*h) =
+                  window_penalty * window[h] * w *
+                  loss_func.deriv(mp_val, m_val);
+            });
+          }
+        }
+      });
+    }
+
+    // This function uniformly samples a Ktensor for computing the history
+    // window term gradient.  It currently samples each slice in the history
+    // term independently.
+    template <typename ExecSpace, typename LossFunction>
+    void uniform_ktensor_grad(
+      const ttb_indx num_samples,
+      const ttb_real weight,
+      const KtensorT<ExecSpace>& u,
+      const KtensorT<ExecSpace>& up,
+      const ArrayT<ExecSpace>& window,
+      const ttb_real window_penalty,
+      const LossFunction& loss_func,
+      SptensorT<ExecSpace>& Yd,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams)
+    {
+      typedef Kokkos::TeamPolicy<ExecSpace> Policy;
+      typedef typename Policy::member_type TeamMember;
+      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
+      typedef typename RandomPool::generator_type generator_type;
+      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
+      typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+      static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+      static const unsigned RowBlockSize = 1;
+      static const unsigned FacBlockSize = 16; // FIXME
+      static const unsigned VectorSize = is_gpu ? 16 : 1; //FIXME
+      static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
+      static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
+
+      /*const*/ unsigned nd = u.ndims();
+      /*const*/ ttb_indx ns = num_samples;
+      const ttb_indx N = (num_samples+RowsPerTeam-1)/RowsPerTeam;
+      const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
+      /*const*/ ttb_indx nh = window.size();
+
+      if (u[nd-1].nRows() != nh)
+        Genten::error("uniform_ktensor_grad():  temporal mode size of ktensor u does not match given history window!");
+      if (up[nd-1].nRows() != nh)
+        Genten::error("uniform_ktensor_grad():  temporal mode size of ktensor up does not match given history window!");
+
+      // Resize Y if necessary
+      if (Yd.nnz() < num_samples*nh) {
+        IndxArrayT<ExecSpace> sz(nd);
+        auto sz_host = create_mirror_view(sz);
+        for (unsigned i=0; i<nd; ++i)
+          sz_host[i] = u[i].nRows();
+        deep_copy(sz, sz_host);
+        Yd = SptensorT<ExecSpace>(sz, num_samples*nh);
+      }
+      const auto Y = Yd.impl();
+
+      // Generate terms from given tensor X
+      Policy policy(N, TeamSize, VectorSize);
+      Kokkos::parallel_for(
+        "Genten::GCP_SGD::uniform_ktensor_grad",
+        policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+        KOKKOS_LAMBDA(const TeamMember& team)
+      {
+        generator_type gen = rand_pool.get_state();
+        TmpScratchSpace team_ind(team.team_scratch(0), TeamSize, nd);
+        ttb_indx *ind = &(team_ind(team.team_rank(),0));
+
+        const ttb_indx offset =
+          (team.league_rank()*TeamSize+team.team_rank())*RowBlockSize;
+        for (unsigned ii=0; ii<RowBlockSize; ++ii) {
+          /*const*/ ttb_indx idx = offset + ii;
+          if (idx >= ns)
+            continue;
+
+          for (ttb_indx h=0; h<nh; ++h) {
+
+            // Sample and set subscripts
+            Kokkos::single( Kokkos::PerThread( team ), [&] ()
+            {
+              for (ttb_indx m=0; m<nd; ++m) {
+                ind[m] = m == nd-1 ? h : Rand::draw(gen,0,u[m].nRows());
+                Y.subscript(idx+ns*h,m) = ind[m];
+              }
+            });
+
+            // Compute Ktensor values
+            ttb_real m_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, u, ind);
+            ttb_real mp_val =
+              compute_Ktensor_value<ExecSpace,FacBlockSize,VectorSize>(team, up, ind);
+
+            // Compute tensor value
+            Kokkos::single( Kokkos::PerThread( team ), [&] ()
+            {
+              Y.value(idx+num_samples*h) = window_penalty * window[h] * weight *
+                loss_func.deriv(mp_val, m_val);
+            });
+
+          }
+        }
+      });
     }
 
   }
@@ -1085,7 +1078,8 @@ namespace Genten {
 
 #define LOSS_INST_MACRO(SPACE,LOSS)                                     \
   template void Impl::uniform_sample_tensor(                            \
-    const SptensorT<SPACE>& X,                                          \
+    const TensorT<SPACE>& X,                                            \
+    const Impl::DenseSearcher<SPACE>& searcher,                         \
     const ttb_indx num_samples,                                         \
     const ttb_real weight,                                              \
     const KtensorT<SPACE>& u,                                           \
@@ -1096,13 +1090,83 @@ namespace Genten {
     Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
     const AlgParams& algParams);                                        \
                                                                         \
-  template void Impl::uniform_sample_tensor_hash(                       \
+  template void Impl::uniform_sample_tensor(                            \
     const SptensorT<SPACE>& X,                                          \
-    const TensorHashMap<SPACE>& hash,                                   \
+    const Impl::SortSearcher<SPACE>& searcher,                          \
     const ttb_indx num_samples,                                         \
     const ttb_real weight,                                              \
     const KtensorT<SPACE>& u,                                           \
     const LOSS& loss_func,                                              \
+    const bool compute_gradient,                                        \
+    SptensorT<SPACE>& Y,                                                \
+    ArrayT<SPACE>& w,                                                   \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template void Impl::uniform_sample_tensor(                            \
+    const SptensorT<SPACE>& X,                                          \
+    const Impl::HashSearcher<SPACE>& searcher,                          \
+    const ttb_indx num_samples,                                         \
+    const ttb_real weight,                                              \
+    const KtensorT<SPACE>& u,                                           \
+    const LOSS& loss_func,                                              \
+    const bool compute_gradient,                                        \
+    SptensorT<SPACE>& Y,                                                \
+    ArrayT<SPACE>& w,                                                   \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template void Impl::uniform_sample_tensor_tpetra(                     \
+    const TensorT<SPACE>& X,                                            \
+    const Impl::DenseSearcher<SPACE>& searcher,                         \
+    const ttb_indx num_samples,                                         \
+    const ttb_real weight,                                              \
+    const KtensorT<SPACE>& u,                                           \
+    const LOSS& loss_func,                                              \
+    const bool compute_gradient,                                        \
+    SptensorT<SPACE>& Y,                                                \
+    ArrayT<SPACE>& w,                                                   \
+    KtensorT<SPACE>& u_overlap,                                         \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template void Impl::uniform_sample_tensor_tpetra(                     \
+    const SptensorT<SPACE>& X,                                          \
+    const Impl::SortSearcher<SPACE>& searcher,                          \
+    const ttb_indx num_samples,                                         \
+    const ttb_real weight,                                              \
+    const KtensorT<SPACE>& u,                                           \
+    const LOSS& loss_func,                                              \
+    const bool compute_gradient,                                        \
+    SptensorT<SPACE>& Y,                                                \
+    ArrayT<SPACE>& w,                                                   \
+    KtensorT<SPACE>& u_overlap,                                         \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template void Impl::uniform_sample_tensor_tpetra(                     \
+    const SptensorT<SPACE>& X,                                          \
+    const Impl::HashSearcher<SPACE>& searcher,                          \
+    const ttb_indx num_samples,                                         \
+    const ttb_real weight,                                              \
+    const KtensorT<SPACE>& u,                                           \
+    const LOSS& loss_func,                                              \
+    const bool compute_gradient,                                        \
+    SptensorT<SPACE>& Y,                                                \
+    ArrayT<SPACE>& w,                                                   \
+    KtensorT<SPACE>& u_overlap,                                         \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template void Impl::stratified_sample_tensor(                         \
+    const SptensorT<SPACE>& X,                                          \
+    const Impl::SortSearcher<SPACE>& searcher,                          \
+    const ttb_indx num_samples_nonzeros,                                \
+    const ttb_indx num_samples_zeros,                                   \
+    const ttb_real weight_nonzeros,                                     \
+    const ttb_real weight_zeros,                                        \
+    const KtensorT<SPACE>& u,                                           \
+    const Impl::StratifiedGradient<LOSS>& gradient,                     \
     const bool compute_gradient,                                        \
     SptensorT<SPACE>& Y,                                                \
     ArrayT<SPACE>& w,                                                   \
@@ -1111,64 +1175,103 @@ namespace Genten {
                                                                         \
   template void Impl::stratified_sample_tensor(                         \
     const SptensorT<SPACE>& X,                                          \
+    const Impl::HashSearcher<SPACE>& searcher,                          \
     const ttb_indx num_samples_nonzeros,                                \
     const ttb_indx num_samples_zeros,                                   \
     const ttb_real weight_nonzeros,                                     \
     const ttb_real weight_zeros,                                        \
     const KtensorT<SPACE>& u,                                           \
-    const LOSS& loss_func,                                              \
+    const Impl::StratifiedGradient<LOSS>& gradient,                     \
     const bool compute_gradient,                                        \
     SptensorT<SPACE>& Y,                                                \
     ArrayT<SPACE>& w,                                                   \
     Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
     const AlgParams& algParams);                                        \
                                                                         \
-  template void Impl::stratified_sample_tensor_hash(                    \
+  template void Impl::stratified_sample_tensor(                         \
     const SptensorT<SPACE>& X,                                          \
-    const TensorHashMap<SPACE>& hash, \
+    const Impl::SemiStratifiedSearcher<SPACE>& searcher,                \
     const ttb_indx num_samples_nonzeros,                                \
     const ttb_indx num_samples_zeros,                                   \
     const ttb_real weight_nonzeros,                                     \
     const ttb_real weight_zeros,                                        \
     const KtensorT<SPACE>& u,                                           \
-    const LOSS& loss_func,                                              \
+    const Impl::SemiStratifiedGradient<LOSS>& gradient,                 \
     const bool compute_gradient,                                        \
     SptensorT<SPACE>& Y,                                                \
     ArrayT<SPACE>& w,                                                   \
     Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
     const AlgParams& algParams);                                        \
                                                                         \
-  template void Impl::semi_stratified_sample_tensor(                    \
+  template void Impl::stratified_sample_tensor_tpetra(                  \
+    const SptensorT<SPACE>& X,                                          \
+    const Impl::SortSearcher<SPACE>& searcher,                          \
+    const ttb_indx num_samples_nonzeros,                                \
+    const ttb_indx num_samples_zeros,                                   \
+    const ttb_real weight_nonzeros,                                     \
+    const ttb_real weight_zeros,                                        \
+    const KtensorT<SPACE>& u,                                           \
+    const Impl::StratifiedGradient<LOSS>& gradient,                     \
+    const bool compute_gradient,                                        \
+    SptensorT<SPACE>& Y,                                                \
+    ArrayT<SPACE>& w,                                                   \
+    KtensorT<SPACE>& u_overlap,                                         \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template void Impl::stratified_sample_tensor_tpetra(                  \
+    const SptensorT<SPACE>& X,                                          \
+    const Impl::HashSearcher<SPACE>& searcher,                          \
+    const ttb_indx num_samples_nonzeros,                                \
+    const ttb_indx num_samples_zeros,                                   \
+    const ttb_real weight_nonzeros,                                     \
+    const ttb_real weight_zeros,                                        \
+    const KtensorT<SPACE>& u,                                           \
+    const Impl::StratifiedGradient<LOSS>& gradient,                     \
+    const bool compute_gradient,                                        \
+    SptensorT<SPACE>& Y,                                                \
+    ArrayT<SPACE>& w,                                                   \
+    KtensorT<SPACE>& u_overlap,                                         \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template void Impl::stratified_sample_tensor_tpetra(                  \
+    const SptensorT<SPACE>& X,                                          \
+    const Impl::SemiStratifiedSearcher<SPACE>& searcher,                \
+    const ttb_indx num_samples_nonzeros,                                \
+    const ttb_indx num_samples_zeros,                                   \
+    const ttb_real weight_nonzeros,                                     \
+    const ttb_real weight_zeros,                                        \
+    const KtensorT<SPACE>& u,                                           \
+    const Impl::SemiStratifiedGradient<LOSS>& gradient,                 \
+    const bool compute_gradient,                                        \
+    SptensorT<SPACE>& Y,                                                \
+    ArrayT<SPACE>& w,                                                   \
+    KtensorT<SPACE>& u_overlap,                                         \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template void Impl::stratified_ktensor_grad(                          \
     const SptensorT<SPACE>& X,                                          \
     const ttb_indx num_samples_nonzeros,                                \
     const ttb_indx num_samples_zeros,                                   \
     const ttb_real weight_nonzeros,                                     \
     const ttb_real weight_zeros,                                        \
     const KtensorT<SPACE>& u,                                           \
+    const KtensorT<SPACE>& up,                                          \
+    const ArrayT<SPACE>& window,                                        \
+    const ttb_real window_penalty,                                      \
     const LOSS& loss_func,                                              \
-    const bool compute_gradient,                                        \
     SptensorT<SPACE>& Y,                                                \
-    ArrayT<SPACE>& w,                                                   \
-    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
     const AlgParams& algParams);                                        \
                                                                         \
-  template void Impl::sample_tensor_nonzeros(                           \
-    const SptensorT<SPACE>& X,                                          \
-    const ttb_indx offset,                                              \
+  template void Impl::uniform_ktensor_grad(                             \
     const ttb_indx num_samples,                                         \
     const ttb_real weight,                                              \
     const KtensorT<SPACE>& u,                                           \
-    const LOSS& loss_func,                                              \
-    const bool compute_gradient,                                        \
-    SptensorT<SPACE>& Y,                                                \
-    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
-    const AlgParams& algParams);                                        \
-                                                                        \
-  template void Impl::sample_tensor_nonzeros(                           \
-    const SptensorT<SPACE>& X,                                          \
-    const ArrayT<SPACE>& w,                                             \
-    const ttb_indx num_samples,                                         \
-    const KtensorT<SPACE>& u,                                           \
+    const KtensorT<SPACE>& up,                                          \
+    const ArrayT<SPACE>& window,                                        \
+    const ttb_real window_penalty,                                      \
     const LOSS& loss_func,                                              \
     SptensorT<SPACE>& Y,                                                \
     Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
@@ -1179,30 +1282,6 @@ namespace Genten {
   LOSS_INST_MACRO(SPACE,RayleighLossFunction)                           \
   LOSS_INST_MACRO(SPACE,GammaLossFunction)                              \
   LOSS_INST_MACRO(SPACE,BernoulliLossFunction)                          \
-  LOSS_INST_MACRO(SPACE,PoissonLossFunction)                            \
-                                                                        \
-  template void Impl::sample_tensor_nonzeros(                           \
-    const SptensorT<SPACE>& X,                                          \
-    const ArrayT<SPACE>& w,                                             \
-    const ttb_indx num_samples,                                         \
-    SptensorT<SPACE>& Y,                                                \
-    ArrayT<SPACE>& z,                                                   \
-    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
-    const AlgParams& algParams);                                        \
-                                                                        \
-  template void Impl::sample_tensor_zeros(                              \
-    const SptensorT<SPACE>& X,                                          \
-    const ttb_indx offset,                                              \
-    const ttb_indx num_samples,                                         \
-    SptensorT<SPACE>& Y,                                                \
-    SptensorT<SPACE>& Z,                                                \
-    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
-    const AlgParams& algParams);                                        \
-                                                                        \
-  template void Impl::merge_sampled_tensors(                            \
-    const SptensorT<SPACE>& X_nz,                                       \
-    const SptensorT<SPACE>& X_z,                                        \
-    SptensorT<SPACE>& X,                                                \
-    const AlgParams& algParams);
+  LOSS_INST_MACRO(SPACE,PoissonLossFunction)
 
 GENTEN_INST(INST_MACRO)

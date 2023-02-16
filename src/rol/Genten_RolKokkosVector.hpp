@@ -40,9 +40,8 @@
 
 #pragma once
 
-#include <cassert>
-
 #include "ROL_Vector.hpp"
+#include "Genten_Util.hpp"
 #include "Genten_KokkosVector.hpp"
 
 #include "Teuchos_TimeMonitor.hpp"
@@ -64,14 +63,16 @@ namespace Genten {
     typedef typename kokkos_vector::Ktensor_type Ktensor_type;
 
     // This just copies the shape of V, not the values
-    RolKokkosVector(const Ktensor_type& V, const bool make_view) : kv(V)
+    RolKokkosVector(const Ktensor_type& V, const bool make_view,
+                    const DistKtensorUpdate<ExecSpace> *dku) : kv(V, dku)
     {
-      assert(make_view == false);
+      gt_assert(make_view == false);
     }
 
     RolKokkosVector(const unsigned nc, const unsigned nd, const IndxArray& sz,
-                    const ProcessorMap* pmap = nullptr) :
-      kv(nc,nd,sz,pmap)
+                    const ProcessorMap* pmap,
+                    const DistKtensorUpdate<ExecSpace> *dku) :
+      kv(nc,nd,sz,pmap,dku)
     {
     }
 

@@ -46,8 +46,6 @@
  * like Ktensor.
  */
 
-#include <assert.h>
-
 #include "Genten_Util.hpp"
 #include "Genten_FacMatrix.hpp"
 #include "Genten_Ktensor.hpp"
@@ -76,7 +74,7 @@ struct InnerProductKernel {
   typedef typename Policy::member_type TeamMember;
   typedef Kokkos::View< ttb_real**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
-  const Genten::SptensorT<ExecSpace>& s;
+  const Genten::SptensorImpl<ExecSpace>& s;
   const Genten::KtensorT<ExecSpace>& u;
   const Genten::ArrayT<ExecSpace>& lambda;
   const ttb_indx nnz;
@@ -96,7 +94,7 @@ struct InnerProductKernel {
   }
 
   KOKKOS_INLINE_FUNCTION
-  InnerProductKernel(const Genten::SptensorT<ExecSpace>& s_,
+  InnerProductKernel(const Genten::SptensorImpl<ExecSpace>& s_,
                      const Genten::KtensorT<ExecSpace>& u_,
                      const Genten::ArrayT<ExecSpace>& lambda_,
                      const TeamMember& team_) :
@@ -176,7 +174,7 @@ struct InnerProductKernel<ExecSpace,RowBlockSize,FacBlockSize,1,1> {
   typedef Kokkos::TeamPolicy<ExecSpace> Policy;
   typedef typename Policy::member_type TeamMember;
 
-  const Genten::SptensorT<ExecSpace>& s;
+  const Genten::SptensorImpl<ExecSpace>& s;
   const Genten::KtensorT<ExecSpace>& u;
   const Genten::ArrayT<ExecSpace>& lambda;
   const ttb_indx nnz;
@@ -193,7 +191,7 @@ struct InnerProductKernel<ExecSpace,RowBlockSize,FacBlockSize,1,1> {
   }
 
   KOKKOS_INLINE_FUNCTION
-  InnerProductKernel(const Genten::SptensorT<ExecSpace>& s_,
+  InnerProductKernel(const Genten::SptensorImpl<ExecSpace>& s_,
                      const Genten::KtensorT<ExecSpace>& u_,
                      const Genten::ArrayT<ExecSpace>& lambda_,
                      const TeamMember& team_) :
@@ -238,7 +236,7 @@ struct InnerProductKernel<ExecSpace,RowBlockSize,FacBlockSize,1,1> {
 };
 
 template <typename ExecSpace, unsigned FacBlockSize>
-ttb_real innerprod_kernel(const Genten::SptensorT<ExecSpace>& s,
+ttb_real innerprod_kernel(const Genten::SptensorImpl<ExecSpace>& s,
                           const Genten::KtensorT<ExecSpace>& u,
                           const Genten::ArrayT<ExecSpace>& lambda)
 {
@@ -294,29 +292,28 @@ ttb_real Genten::innerprod(const Genten::SptensorT<ExecSpace>& s,
   const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
 
   const ttb_indx nc = u.ncomponents();               // Number of components
-  const ttb_indx nd = u.ndims();                     // Number of dimensions
 
   // Check on sizes
-  assert(nd == s.ndims());
-  assert(u.isConsistent(s.size()));
-  assert(nc == lambda.size());
+  gt_assert(u.ndims() == s.ndims());
+  gt_assert(u.isConsistent(s.size()));
+  gt_assert(nc == lambda.size());
 
   // Call kernel with factor block size determined from nc
   ttb_real d = 0.0;
   if (nc == 1)
-    d = Impl::innerprod_kernel<ExecSpace,1>(s,u,lambda);
+    d = Impl::innerprod_kernel<ExecSpace,1>(s.impl(),u,lambda);
   else if (nc == 2)
-    d = Impl::innerprod_kernel<ExecSpace,2>(s,u,lambda);
+    d = Impl::innerprod_kernel<ExecSpace,2>(s.impl(),u,lambda);
   else if (nc <= 4)
-    d = Impl::innerprod_kernel<ExecSpace,4>(s,u,lambda);
+    d = Impl::innerprod_kernel<ExecSpace,4>(s.impl(),u,lambda);
   else if (nc <= 8)
-    d = Impl::innerprod_kernel<ExecSpace,8>(s,u,lambda);
+    d = Impl::innerprod_kernel<ExecSpace,8>(s.impl(),u,lambda);
   else if (nc <= 16)
-    d = Impl::innerprod_kernel<ExecSpace,16>(s,u,lambda);
+    d = Impl::innerprod_kernel<ExecSpace,16>(s.impl(),u,lambda);
   else if (nc < 64 || !is_gpu)
-    d = Impl::innerprod_kernel<ExecSpace,32>(s,u,lambda);
+    d = Impl::innerprod_kernel<ExecSpace,32>(s.impl(),u,lambda);
   else
-    d = Impl::innerprod_kernel<ExecSpace,64>(s,u,lambda);
+    d = Impl::innerprod_kernel<ExecSpace,64>(s.impl(),u,lambda);
 
   if (u.getProcessorMap() != nullptr) {
     Kokkos::fence();
@@ -327,13 +324,15 @@ ttb_real Genten::innerprod(const Genten::SptensorT<ExecSpace>& s,
 }
 
 template <typename ExecSpace>
-ttb_real Genten::innerprod(const Genten::TensorT<ExecSpace>& x,
+ttb_real Genten::innerprod(const Genten::TensorT<ExecSpace>& xd,
                            const Genten::KtensorT<ExecSpace>& u,
                            const Genten::ArrayT<ExecSpace>& lambda)
 {
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::innerprod");
 #endif
+
+  const auto x = xd.impl();
 
   typedef Kokkos::TeamPolicy<ExecSpace> Policy;
   typedef typename Policy::member_type TeamMember;
@@ -350,9 +349,9 @@ ttb_real Genten::innerprod(const Genten::TensorT<ExecSpace>& x,
   const ttb_indx N = (ne+TeamSize-1)/TeamSize;
 
   // Check on sizes
-  assert(nd == x.ndims());
-  assert(u.isConsistent(x.size()));
-  assert(nc == lambda.size());
+  gt_assert(nd == x.ndims());
+  gt_assert(u.isConsistent(x.size()));
+  gt_assert(nc == lambda.size());
 
   ttb_real d = 0.0;
   const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,nd);
@@ -415,13 +414,13 @@ namespace Impl {
 
 template <typename ExecSpace>
 struct MTTKRP_Dense_Kernel {
-  const TensorT<ExecSpace> XX;
+  const TensorImpl<ExecSpace> XX;
   const KtensorT<ExecSpace> uu;
   const ttb_indx nn;
   const FacMatrixT<ExecSpace> vv;
   const AlgParams algParams;
 
-  MTTKRP_Dense_Kernel(const TensorT<ExecSpace>& X_,
+  MTTKRP_Dense_Kernel(const TensorImpl<ExecSpace>& X_,
                       const KtensorT<ExecSpace>& u_,
                       const ttb_indx n_,
                       const FacMatrixT<ExecSpace>& v_,
@@ -431,7 +430,7 @@ struct MTTKRP_Dense_Kernel {
   template <unsigned FBS, unsigned VS>
   void run() const
   {
-    const TensorT<ExecSpace> X = XX;
+    const TensorImpl<ExecSpace> X = XX;
     const KtensorT<ExecSpace> u = uu;
     const ttb_indx n = nn;
     const FacMatrixT<ExecSpace> v = vv;
@@ -452,7 +451,8 @@ struct MTTKRP_Dense_Kernel {
 
     const size_t bytes = TmpScratchSpace::shmem_size(TeamSize, nd);
     Policy policy(N, TeamSize, VectorSize);
-    Kokkos::parallel_for(policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
+    Kokkos::parallel_for("mttkrp_kernel",
+                         policy.set_scratch_size(0,Kokkos::PerTeam(bytes)),
                          KOKKOS_LAMBDA(const TeamMember& team)
     {
       // Row of v we write to
@@ -473,7 +473,7 @@ struct MTTKRP_Dense_Kernel {
         // Work around internal-compiler errors in recent Intel compilers
         unsigned nd_ = nd;
         unsigned n_ = n;
-        TensorT<ExecSpace> X_ = X;
+        TensorImpl<ExecSpace> X_ = X;
 
         // Initialize our subscript array for row i of mode n
         Kokkos::single(Kokkos::PerThread(team), [&]()
@@ -515,7 +515,7 @@ struct MTTKRP_Dense_Kernel {
           row_func(j, nj, std::integral_constant<unsigned,0>());
         }
       }
-    }, "mttkrp_kernel");
+    });
   }
 
 };
@@ -538,20 +538,20 @@ void Genten::mttkrp(const Genten::TensorT<ExecSpace>& X,
   const ttb_indx nc = u.ncomponents();     // Number of components
   const ttb_indx nd = u.ndims();           // Number of dimensions
 
-  assert(X.ndims() == nd);
-  assert(u.isConsistent());
+  gt_assert(X.ndims() == nd);
+  gt_assert(u.isConsistent());
   for (ttb_indx i = 0; i < nd; i++)
   {
     if (i != n)
-      assert(u[i].nRows() == X.size(i));
+      gt_assert(u[i].nRows() == X.size(i));
   }
-  assert( v.nRows() == X.size(n) );
-  assert( v.nCols() == nc );
+  gt_assert( v.nRows() == X.size(n) );
+  gt_assert( v.nCols() == nc );
 
   if (zero_v)
     v = ttb_real(0.0);
 
-  Genten::Impl::MTTKRP_Dense_Kernel<ExecSpace> kernel(X,u,n,v,algParams);
+  Genten::Impl::MTTKRP_Dense_Kernel<ExecSpace> kernel(X.impl(),u,n,v,algParams);
   Genten::Impl::run_row_simd_kernel(kernel, nc);
 }
 

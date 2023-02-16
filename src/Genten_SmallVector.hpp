@@ -82,3 +82,18 @@ using small_vector = std::vector<T>;
 }
 
 #endif
+
+namespace Genten {
+
+template <typename U, typename T>
+small_vector<U>
+convert(const small_vector<T>& in)
+{
+  small_vector<U> out(in.size());
+  const int n = in.size();
+  for (int i=0; i<n; ++i)
+    out[i] = in[i];
+  return out;
+}
+
+}

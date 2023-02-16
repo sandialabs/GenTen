@@ -45,6 +45,7 @@
 
 #include "Genten_Kokkos.hpp"
 #include "Genten_Ktensor.hpp"
+#include "Genten_DistKtensorUpdate.hpp"
 #include "Kokkos_Random.hpp"
 
 namespace Genten {
@@ -58,10 +59,12 @@ namespace Genten {
     typedef Kokkos::View<ttb_real*,exec_space> view_type;
     typedef KtensorT<exec_space> Ktensor_type;
 
-    KokkosVector() : nc(0), nd(0), sz(0), pmap(nullptr) {}
+    KokkosVector() : nc(0), nd(0), sz(0), pmap(nullptr), dku(nullptr) {}
 
-    KokkosVector(const Ktensor_type& V_) :
-      nc(V_.ncomponents()), nd(V_.ndims()), sz(nd), pmap(V_.getProcessorMap())
+    KokkosVector(const Ktensor_type& V_,
+                 const DistKtensorUpdate<ExecSpace> *dku_ = nullptr) :
+      nc(V_.ncomponents()), nd(V_.ndims()), sz(nd), pmap(V_.getProcessorMap()),
+      dku(dku_)
     {
       for (unsigned j=0; j<nd; ++j)
         sz[j] = V_[j].nRows();
@@ -71,8 +74,9 @@ namespace Genten {
     template <typename Space>
     KokkosVector(const unsigned nc_, const unsigned nd_,
                  const IndxArrayT<Space> & sz_,
-                 const ProcessorMap* pmap_ = nullptr) :
-      nc(nc_), nd(nd_), sz(sz_.size()), pmap(pmap_)
+                 const ProcessorMap* pmap_ = nullptr,
+                 const DistKtensorUpdate<ExecSpace> *dku_ = nullptr) :
+      nc(nc_), nd(nd_), sz(sz_.size()), pmap(pmap_), dku(dku_)
     {
       deep_copy(sz, sz_);
       initialize();
@@ -80,7 +84,7 @@ namespace Genten {
 
     KokkosVector(const KokkosVector& x, const ttb_indx mode_beg,
                  const ttb_indx mode_end) :
-      nc(x.nc), nd(mode_end-mode_beg), pmap(x.pmap)
+      nc(x.nc), nd(mode_end-mode_beg), pmap(x.pmap), dku(x.dku)
     {
       auto sub =
         Kokkos::subview(x.sz.values(), std::make_pair(mode_beg,mode_end));
@@ -127,7 +131,7 @@ namespace Genten {
 
     KokkosVector clone() const
     {
-      return KokkosVector<exec_space>(nc,nd,sz,pmap);
+      return KokkosVector<exec_space>(nc,nd,sz,pmap,dku);
     }
 
     KokkosVector clone(const ttb_indx mode_beg, const ttb_indx mode_end) const
@@ -135,7 +139,7 @@ namespace Genten {
       const ttb_indx nm = mode_end-mode_beg;
       auto sub =
         Kokkos::subview(sz.values(), std::make_pair(mode_beg,mode_end));
-      return KokkosVector(nc,nm,IndxArray(sub),pmap);
+      return KokkosVector(nc,nm,IndxArray(sub),pmap,dku);
     }
 
     KokkosVector subview(const ttb_indx mode_beg, const ttb_indx mode_end) const
@@ -349,12 +353,16 @@ namespace Genten {
       // Broadcast values across each sub-grid from sub-grid root to ensure
       // consistency
       if (pmap != nullptr) {
-        ttb_indx n_beg = 0;
-        ttb_indx n_end = 0;
-        for (ttb_indx i=0; i<nd; ++i) {
-          n_beg = n_end;
-          n_end = n_end + sz[i]*nc;
-          pmap->subGridBcast(i, v.data()+n_beg, n_end-n_beg, 0);
+        if (dku == nullptr)
+          Genten::error("KokkosVector:randomize() called in distributed setting with null DistKtensorUpdate!");
+        if (dku->isReplicated()) {
+          ttb_indx n_beg = 0;
+          ttb_indx n_end = 0;
+          for (ttb_indx i=0; i<nd; ++i) {
+            n_beg = n_end;
+            n_end = n_end + sz[i]*nc;
+            pmap->subGridBcast(i, v.data()+n_beg, n_end-n_beg, 0);
+          }
         }
       }
     }
@@ -364,7 +372,7 @@ namespace Genten {
     {
       const ttb_indx n = v.extent(0);
       Kokkos::RangePolicy<exec_space> policy(0,n);
-      Kokkos::parallel_for(policy, f, name);
+      Kokkos::parallel_for(name, policy, f);
     }
 
     template <typename Func>
@@ -394,6 +402,7 @@ namespace Genten {
     IndxArray sz;  // this is on the host
     view_type v;
     const ProcessorMap* pmap;
+    const DistKtensorUpdate<exec_space> *dku;
 
   };
 

@@ -39,6 +39,7 @@
 //@HEADER
 
 #include "Genten_Sptensor.hpp"
+#include "Genten_Tensor.hpp"
 
 #include "Kokkos_Sort.hpp"
 
@@ -78,17 +79,52 @@ void init_subs(const SubsViewType& subs, const T* sbs, const ttb_indx shift)
   });
 }
 
+template <typename ExecSpace>
+ttb_indx countNonzeros(const TensorImpl<ExecSpace>& x)
+{
+  const ttb_indx ne = x.numel();
+  ttb_indx nz = 0;
+  Kokkos::parallel_reduce("countNonzeros",
+                         Kokkos::RangePolicy<ExecSpace>(0,ne),
+                         KOKKOS_LAMBDA(const ttb_indx i, ttb_indx& n)
+  {
+    if (x[i] != ttb_real(0.0)) ++n;
+  }, nz);
+  return nz;
+}
+
+template <typename ExecSpace, typename SubsViewType, typename ValsViewType>
+void copyFromTensor(const TensorImpl<ExecSpace>& x, const SubsViewType& subs,
+                    const ValsViewType& vals)
+{
+  Kokkos::View<ttb_indx,ExecSpace> nonzero_index("nonzero_index");
+  const ttb_indx ne = x.numel();
+  Kokkos::parallel_for("copyFromTensor",
+                       Kokkos::RangePolicy<ExecSpace>(0,ne),
+                       KOKKOS_LAMBDA(const ttb_indx i)
+  {
+    const ttb_real xv = x[i];
+    if (xv != ttb_real(0.0)) {
+      const ttb_indx ind = Kokkos::atomic_fetch_add(&(nonzero_index()), 1);
+      vals[ind] = xv;
+      auto sub = Kokkos::subview(subs, ind, Kokkos::ALL);
+      x.ind2sub(sub, i);
+    }
+  });
+}
+
 }
 }
 
 template <typename ExecSpace>
-Genten::SptensorT<ExecSpace>::
-SptensorT(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls,
-          ttb_real * sbs):
+Genten::SptensorImpl<ExecSpace>::
+SptensorImpl(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls,
+             ttb_real * sbs):
   siz(nd,sz), nNumDims(nd), values(nz,vls,false),
   subs(Kokkos::view_alloc("Genten::Sptensor::subs",
                           Kokkos::WithoutInitializing),nz,nd),
-  perm(), is_sorted(false), pmap(nullptr)
+  subs_gids(subs), perm(), is_sorted(false),
+  lower_bound(nNumDims,ttb_indx(0)), upper_bound(siz.clone())
 {
   siz_host = create_mirror_view(siz);
   deep_copy(siz_host, siz);
@@ -99,13 +135,14 @@ SptensorT(ttb_indx nd, ttb_real * sz, ttb_indx nz, ttb_real * vls,
 }
 
 template <typename ExecSpace>
-Genten::SptensorT<ExecSpace>::
-SptensorT(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals,
-          ttb_indx *subscripts):
+Genten::SptensorImpl<ExecSpace>::
+SptensorImpl(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals,
+             ttb_indx *subscripts):
   siz(nd,dims), nNumDims(nd), values(nz,vals,false),
   subs(Kokkos::view_alloc("Genten::Sptensor::subs",
                           Kokkos::WithoutInitializing),nd,nz),
-  perm(), is_sorted(false), pmap(nullptr)
+  subs_gids(subs), perm(), is_sorted(false),
+  lower_bound(nNumDims,ttb_indx(0)), upper_bound(siz.clone())
 {
   siz_host = create_mirror_view(siz);
   deep_copy(siz_host, siz);
@@ -116,30 +153,95 @@ SptensorT(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals,
 }
 
 template <typename ExecSpace>
-Genten::SptensorT<ExecSpace>::
-SptensorT(const std::vector<ttb_indx>& dims,
-          const std::vector<ttb_real>& vals,
-          const std::vector< std::vector<ttb_indx> >& subscripts):
+Genten::SptensorImpl<ExecSpace>::
+SptensorImpl(const std::vector<ttb_indx>& dims,
+             const std::vector<ttb_real>& vals,
+             const std::vector< std::vector<ttb_indx> >& subscripts):
   siz(ttb_indx(dims.size()),const_cast<ttb_indx*>(dims.data())),
   nNumDims(dims.size()),
   values(vals.size(),const_cast<ttb_real*>(vals.data()),false),
-  subs("Genten::Sptensor::subs",vals.size(),dims.size()),
-  perm(), is_sorted(false), pmap(nullptr)
+  subs("Genten::Sptensor::subs",subscripts.size(),dims.size()),
+  subs_gids(subs), perm(), is_sorted(false),
+  lower_bound(nNumDims,ttb_indx(0)), upper_bound(siz.clone())
 {
+  gt_assert(vals.size() == subscripts.size());
+
   siz_host = create_mirror_view(siz);
   deep_copy(siz_host, siz);
 
+  auto subs_host = create_mirror_view(subs);
   for (ttb_indx i = 0; i < vals.size(); i ++)
   {
     for (ttb_indx j = 0; j < dims.size(); j ++)
     {
-      subs(i,j) = subscripts[i][j];
+      subs_host(i,j) = subscripts[i][j];
     }
   }
+  deep_copy(subs, subs_host);
 }
 
 template <typename ExecSpace>
-void Genten::SptensorT<ExecSpace>::
+Genten::SptensorImpl<ExecSpace>::
+SptensorImpl(const std::vector<ttb_indx>& dims,
+             const std::vector<ttb_real>& vals,
+             const std::vector< std::vector<ttb_indx> >& subscripts,
+             const std::vector< std::vector<ttb_indx> >& global_subscripts,
+             const std::vector<ttb_indx>& global_lower_bound,
+             const std::vector<ttb_indx>& global_upper_bound):
+  siz(ttb_indx(dims.size()),const_cast<ttb_indx*>(dims.data())),
+  nNumDims(dims.size()),
+  values(vals.size(),const_cast<ttb_real*>(vals.data()),false),
+  subs("Genten::Sptensor::subs",subscripts.size(),dims.size()),
+  subs_gids("Genten::Sptensor::subs_gids",global_subscripts.size(),dims.size()),
+  perm(), is_sorted(false),
+  lower_bound(ttb_indx(dims.size()),const_cast<ttb_indx*>(global_lower_bound.data())),
+  upper_bound(ttb_indx(dims.size()),const_cast<ttb_indx*>(global_upper_bound.data()))
+{
+  gt_assert(vals.size() == subscripts.size());
+  gt_assert(vals.size() == global_subscripts.size());
+  gt_assert(global_lower_bound.size() == dims.size());
+  gt_assert(global_upper_bound.size() == dims.size());
+
+  siz_host = create_mirror_view(siz);
+  deep_copy(siz_host, siz);
+
+  auto subs_host = create_mirror_view(subs);
+  auto subs_gids_host = create_mirror_view(subs_gids);
+  for (ttb_indx i = 0; i < vals.size(); i ++)
+  {
+    for (ttb_indx j = 0; j < dims.size(); j ++)
+    {
+      subs_host(i,j) = subscripts[i][j];
+      subs_gids_host(i,j) = global_subscripts[i][j];
+    }
+  }
+  deep_copy(subs, subs_host);
+  deep_copy(subs_gids, subs_gids_host);
+}
+
+template <typename ExecSpace>
+Genten::SptensorImpl<ExecSpace>::
+SptensorImpl(const TensorT<ExecSpace>& x) :
+  siz(x.size().clone()), nNumDims(x.ndims()), values(),
+  subs(), subs_gids(), perm(),
+  is_sorted(false),
+  lower_bound(nNumDims,ttb_indx(0)), upper_bound(siz.clone())
+{
+  siz_host = create_mirror_view(siz);
+  deep_copy(siz_host, siz);
+
+  // Compute number of nonzeros
+  const ttb_indx nz = Impl::countNonzeros(x.impl());
+
+  // Compute nonzero subscripts and copy values
+  subs = subs_view_type("Genten::Sptensor::subs",nz,siz.size());
+  values = ArrayT<ExecSpace>(nz);
+  Impl::copyFromTensor(x.impl(), subs, values.values());
+  subs_gids = subs;
+}
+
+template <typename ExecSpace>
+void Genten::SptensorImpl<ExecSpace>::
 words(ttb_indx& iw, ttb_indx& rw) const
 {
   rw = values.size();
@@ -147,7 +249,7 @@ words(ttb_indx& iw, ttb_indx& rw) const
 }
 
 template <typename ExecSpace>
-bool Genten::SptensorT<ExecSpace>::
+bool Genten::SptensorImpl<ExecSpace>::
 isEqual(const Genten::SptensorT<ExecSpace> & b, ttb_real tol) const
 {
   // Check for equal sizes.
@@ -180,7 +282,7 @@ isEqual(const Genten::SptensorT<ExecSpace> & b, ttb_real tol) const
 }
 
 template <typename ExecSpace>
-void Genten::SptensorT<ExecSpace>::
+void Genten::SptensorImpl<ExecSpace>::
 times(const Genten::KtensorT<ExecSpace> & K,
       const Genten::SptensorT<ExecSpace> & X)
 {
@@ -188,7 +290,7 @@ times(const Genten::KtensorT<ExecSpace> & K,
   deep_copy(*this, X);
 
   // Check sizes
-  assert(K.isConsistent(siz));
+  gt_assert(K.isConsistent(siz));
 
   // Stream through nonzeros
   Genten::IndxArrayT<ExecSpace> subs(nNumDims);
@@ -203,7 +305,7 @@ times(const Genten::KtensorT<ExecSpace> & K,
 }
 
 template <typename ExecSpace>
-void Genten::SptensorT<ExecSpace>::
+void Genten::SptensorImpl<ExecSpace>::
 divide(const Genten::KtensorT<ExecSpace> & K,
        const Genten::SptensorT<ExecSpace> & X, ttb_real epsilon)
 {
@@ -211,7 +313,7 @@ divide(const Genten::KtensorT<ExecSpace> & K,
   deep_copy(*this, X);
 
   // Check sizes
-  assert(K.isConsistent(siz));
+  gt_assert(K.isConsistent(siz));
 
   // Stream through nonzeros
   Genten::IndxArrayT<ExecSpace> subs(nNumDims);
@@ -268,11 +370,12 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
 #else
 
     // Sort tmp=[1:sz] using subs(:,n) as a comparator
-    Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+    Kokkos::parallel_for("Genten::Sptensor::createPermutationImpl_init_kernel",
+                         Kokkos::RangePolicy<ExecSpace>(0,sz),
                          KOKKOS_LAMBDA(const ttb_indx i)
     {
       tmp(i) = i;
-    }, "Genten::Sptensor::createPermutationImpl_init_kernel");
+    });
 
 #if defined(KOKKOS_ENABLE_CUDA) || (defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCTHRUST))
     if (is_gpu_space<ExecSpace>::value) {
@@ -355,33 +458,34 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
 // non-member function because lambda capture of *this doesn't work on Cuda.
 template <typename ExecSpace, typename vals_type, typename subs_type>
 void
-sortImpl(vals_type& vals, subs_type& subs)
+sortImpl(vals_type& vals, subs_type& subs, subs_type& subs_gids)
 {
-  const ttb_indx sz = subs.extent(0);
-  const unsigned nd = subs.extent(1);
+  const ttb_indx sz = subs_gids.extent(0);
+  const unsigned nd = subs_gids.extent(1);
 
   // Neither std::sort or the Kokkos sort will work with non-contiguous views,
   // so we need to sort into temporary views
   Kokkos::View<ttb_indx*,typename subs_type::array_layout,ExecSpace>
     tmp(Kokkos::view_alloc(Kokkos::WithoutInitializing,"tmp_perm"),sz);
 
-  // Sort tmp=[1:sz] using subs as a comparator to compute permutation array
-  // to lexicographically sorted order
+  // Sort tmp=[1:sz] using subs_gids as a comparator to compute permutation
+  // array to lexicographically sorted order
 
   // Initialize tmp to unsorted order
-  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+  Kokkos::parallel_for("Genten::Sptensor::sortImpl_init_kernel",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
     tmp(i) = i;
-  }, "Genten::Sptensor::sortImpl_init_kernel");
+  });
 
   // Comparison functor for lexicographic sorting
   auto cmp =
     KOKKOS_LAMBDA(const ttb_indx& a, const ttb_indx& b)
     {
       unsigned n = 0;
-      while ((n < nd) && (subs(a,n) == subs(b,n))) ++n;
-      if (n == nd || subs(a,n) >= subs(b,n)) return false;
+      while ((n < nd) && (subs_gids(a,n) == subs_gids(b,n))) ++n;
+      if (n == nd || subs_gids(a,n) >= subs_gids(b,n)) return false;
       return true;
     };
 
@@ -396,8 +500,8 @@ sortImpl(vals_type& vals, subs_type& subs)
 
 #if defined(ENABLE_SYCL_FOR_CUDA)
   if (is_sycl_space<ExecSpace>::value) {
-    auto subs_mir = create_mirror_view(subs);
-    deep_copy(subs_mir, subs);
+    auto subs_gids_mir = create_mirror_view(subs_gids);
+    deep_copy(subs_gids_mir, subs_gids);
 
     auto tmp_mir = create_mirror_view(tmp);
     deep_copy(tmp_mir, tmp);
@@ -406,8 +510,8 @@ sortImpl(vals_type& vals, subs_type& subs)
       std::execution::par, tmp_mir.data(), tmp_mir.data() + sz,
       KOKKOS_LAMBDA(const ttb_indx& a, const ttb_indx& b) {
         unsigned n = 0;
-        while ((n < nd) && (subs_mir(a,n) == subs_mir(b,n))) ++n;
-        if (n == nd || subs_mir(a,n) >= subs_mir(b,n)) return false;
+        while ((n < nd) && (subs_gids_mir(a,n) == subs_gids_mir(b,n))) ++n;
+        if (n == nd || subs_gids_mir(a,n) >= subs_gids_mir(b,n)) return false;
         return true;
       }
     );
@@ -432,22 +536,36 @@ sortImpl(vals_type& vals, subs_type& subs)
   subs_type sorted_subs(
     Kokkos::view_alloc("Genten::Sptensor::subs", Kokkos::WithoutInitializing),
     sz, nd);
-  Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,sz),
+  subs_type sorted_subs_gids;
+  const bool has_gids = subs.data() != subs_gids.data();
+  if (has_gids)
+    sorted_subs_gids = subs_type(
+      Kokkos::view_alloc("Genten::Sptensor::subs_gids",
+                         Kokkos::WithoutInitializing),
+      sz, nd);
+  else
+    sorted_subs_gids = sorted_subs;
+  Kokkos::parallel_for("Genten::Sptensor::sortImpl_copy_kernel",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
     sorted_vals(i) = vals[tmp(i)];
-    for (unsigned n=0; n<nd; ++n)
+    for (unsigned n=0; n<nd; ++n) {
       sorted_subs(i,n) = subs(tmp(i),n);
-  }, "Genten::Sptensor::sortImpl_copy_kernel");
+      if (has_gids)
+        sorted_subs_gids(i,n) = subs_gids(tmp(i),n);
+    }
+  });
 
   vals = vals_type(sorted_vals);
   subs = sorted_subs;
+  subs_gids = sorted_subs_gids;
 }
 }
 }
 
 template <typename ExecSpace>
-void Genten::SptensorT<ExecSpace>::
+void Genten::SptensorImpl<ExecSpace>::
 createPermutation()
 {
 #ifdef HAVE_CALIPER
@@ -466,7 +584,7 @@ createPermutation()
 }
 
 template <typename ExecSpace>
-void Genten::SptensorT<ExecSpace>::
+void Genten::SptensorImpl<ExecSpace>::
 sort()
 {
 #ifdef HAVE_CALIPER
@@ -474,10 +592,10 @@ sort()
 #endif
 
   if (!is_sorted) {
-    Genten::Impl::sortImpl<ExecSpace>(values, subs);
+    Genten::Impl::sortImpl<ExecSpace>(values, subs, subs_gids);
     is_sorted = true;
   }
 }
 
-#define INST_MACRO(SPACE) template class Genten::SptensorT<SPACE>;
+#define INST_MACRO(SPACE) template class Genten::SptensorImpl<SPACE>;
 GENTEN_INST(INST_MACRO)

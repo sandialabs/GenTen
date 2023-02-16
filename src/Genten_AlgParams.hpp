@@ -70,6 +70,7 @@ namespace Genten {
     ttb_real rcond;      // Truncation threshold in rank-deficient solver
     ttb_real penalty;    // Regularization penalty
     std::string dist_guess_method; // Method for distributed initial guess
+    bool scale_guess_by_norm_x; // Scale initial guess by norm of the tensor
 
     // MTTKRP options
     MTTKRP_Method::type mttkrp_method; // MTTKRP algorithm
@@ -77,7 +78,10 @@ namespace Genten {
     unsigned mttkrp_nnz_tile_size; // Nonzero tile size (i.e., RowBlockSize)
     unsigned mttkrp_duplicated_factor_matrix_tile_size; // Tile size for MTTKRP
     ttb_real mttkrp_duplicated_threshold;  // Theshold for when dup is used
-    bool warmup; // Warmup by calling MTTKRP before decompsition
+    Dist_Update_Method::type dist_update_method;
+    bool optimize_maps;  // Optimize Tpetra maps to reduce communication'
+    bool build_maps_on_device;  //Build Tpetra maps on the device
+    bool warmup; // Warmup by calling MTTKRP before decomposition
 
     // TTM options
     TTM_Method::type ttm_method; // TTM algorithm
@@ -132,6 +136,15 @@ namespace Genten {
     bool anneal;                         // Do Cosine annealing
     ttb_real anneal_min_lr;
     ttb_real anneal_max_lr;
+
+    // Streaming GCP options
+    GCP_Streaming_Solver::type streaming_solver;  // Streaming solver
+    GCP_Streaming_History_Method::type history_method; // History method
+    GCP_Streaming_Window_Method::type window_method; // Windowing method
+    ttb_indx window_size;                // Number of terms in window
+    ttb_real window_weight;              // Multiplier for each window term
+    ttb_real window_penalty;             // Multiplier for entire window
+    ttb_real factor_penalty;             // Penalty term on factor matrices
 
     // Constructor initializing values to defaults
     AlgParams();
@@ -228,7 +241,7 @@ namespace Genten {
                          T& val, const U& lower, const V& upper)
   {
     val = input.get<T>(name, val);
-    if (val < lower || val > upper) {
+    if (val < T(lower) || val > T(upper)) {
       std::ostringstream error_string;
       error_string << "Bad input: " << name << " " << val
                    << ",  must be in the range (" << lower << ", " << upper
@@ -247,9 +260,8 @@ namespace Genten {
                          const U& lower, const V& upper)
   {
     val = input.get<std::vector<T> >(name);
-    int nv = val.size();
     for (const auto& v : val) {
-      if (v < lower || v > upper) {
+      if (v < T(lower) || v > T(upper)) {
         std::ostringstream error_string;
         error_string << "Bad input: " << name << " " << v
                      << ",  must be in the range (" << lower << ", " << upper
@@ -266,6 +278,11 @@ namespace Genten {
                         typename T::type& val)
   {
     val = Genten::parse_enum<T>(input.get<std::string>(name, T::names[val]));
+  }
+  template <typename T>
+  typename T::type parse_ptree_enum(const Genten::ptree& input, const std::string& name)
+  {
+    return Genten::parse_enum<T>(input.get<std::string>(name, T::names[T::default_type]));
   }
 
   // Convert (argc,argv) to list of strings

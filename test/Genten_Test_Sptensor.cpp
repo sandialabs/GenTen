@@ -65,9 +65,8 @@ TEST(TestSptensor, LengthConstructor) {
   Sptensor st_b(dims, 5);
   ASSERT_EQ(st_b.nnz(), 5);
 
-  Genten::DistTensorContext dtc;
-  Sptensor st_distributed =
-      dtc.distributeTensor<DefaultHostExecutionSpace>(st_b);
+  Genten::DistTensorContext<DefaultHostExecutionSpace> dtc;
+  Sptensor st_distributed = dtc.distributeTensor(st_b);
 
   const ProcessorMap *pmap = dtc.pmap_ptr().get();
   st_distributed.setProcessorMap(pmap);

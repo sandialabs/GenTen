@@ -59,7 +59,7 @@ namespace Genten {
     template <unsigned FBS, unsigned VS,
               typename ExecSpace, typename loss_type>
     void gcp_sgd_ss_grad_sa_kernel(
-      const SptensorT<ExecSpace>& X,
+      const SptensorImpl<ExecSpace>& X,
       const KtensorT<ExecSpace>& M,
       const loss_type& f,
       const ttb_indx num_samples_nonzeros,
@@ -100,6 +100,7 @@ namespace Genten {
       timer.start(timer_nzs);
       Policy policy_nz(N_nz, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "gcp_sgd_ss_grad_sa_nonzero_kernel",
         policy_nz.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -162,12 +163,13 @@ namespace Genten {
           } // n
         } // i
         rand_pool.free_state(gen);
-      }, "gcp_sgd_ss_grad_sa_nonzero_kernel");
+      }); 
       timer.stop(timer_nzs);
 
       timer.start(timer_zs);
       Policy policy_z(N_z, TeamSize, VectorSize);
       Kokkos::parallel_for(
+        "gcp_sgd_ss_grad_sa_zero_kernel",
         policy_z.set_scratch_size(0,Kokkos::PerTeam(bytes)),
         KOKKOS_LAMBDA(const TeamMember& team)
       {
@@ -228,14 +230,14 @@ namespace Genten {
           } // n
         } // i
         rand_pool.free_state(gen);
-      }, "gcp_sgd_ss_grad_sa_zero_kernel");
+      });
       timer.stop(timer_zs);
     }
 
     template <typename ExecSpace, typename loss_type>
     struct GCP_SS_Grad_SA {
       typedef ExecSpace exec_space;
-      typedef SptensorT<exec_space> tensor_type;
+      typedef SptensorImpl<exec_space> tensor_type;
       typedef KtensorT<exec_space> Ktensor_type;
       typedef Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,ExecSpace> grad_index_type;
 
@@ -319,7 +321,7 @@ namespace Genten {
       KtensorT<ExecSpace> Mt = M.getKtensor();
       KtensorT<ExecSpace> Gt = G.getKtensor();
       GCP_SS_Grad_SA<ExecSpace,loss_type> kernel(
-        X,Mt,f,num_samples_nonzeros,num_samples_zeros,
+        X.impl(),Mt,f,num_samples_nonzeros,num_samples_zeros,
         weight_nonzeros,weight_zeros,Gt,Gind,rand_pool,algParams,
         timer,timer_nzs,timer_zs);
       run_row_simd_kernel(kernel, Mt.ncomponents());
@@ -360,7 +362,8 @@ namespace Genten {
         typedef Kokkos::TeamPolicy<ExecSpace> Policy;
         typedef typename Policy::member_type TeamMember;
         Policy policy(league_size, team_size, vector_size);
-        Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const TeamMember& team)
+        Kokkos::parallel_for("Genten::Impl::gcp_sgd_ss_grad_sa::step_clip",
+                             policy, KOKKOS_LAMBDA(const TeamMember& team)
         {
           using std::sqrt;
           const ttb_indx i =
@@ -396,7 +399,7 @@ namespace Genten {
               });
             }
           }
-        }, "Genten::Impl::gcp_sgd_ss_grad_sa::step_clip");
+        });
         timer.stop(timer_step);
       }
     }
