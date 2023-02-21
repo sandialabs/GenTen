@@ -1,19 +1,32 @@
 import pygenten
-import numpy as np
+
+try:
+    from matplotlib import pyplot
+    have_matplotlib = True
+except:
+    have_matplotlib = False
 
 pygenten.initializeKokkos()
-sizes = pygenten.IndxArray(3)
-sizes_np = np.array(sizes, copy=False)
-sizes_np[0:3] = [3,4,5]
 
-x = pygenten.Tensor(sizes, 2.)
-u = pygenten.Ktensor(1, 3, sizes)
-u.setWeights(1.)
-u.setMatricesRand()
+x = pygenten.import_tensor("aminoacid_data_dense.txt")
 
-algParams = pygenten.AlgParams()
+u,perf = pygenten.cp_als(x, rank=8, maxiters=20, tol=1e-4)
 
-u = pygenten.cpals(x, u, algParams)
+pygenten.export_ktensor("aminoacid.ktn", u)
 
-del sizes_np, sizes, u, x
+if have_matplotlib:
+    it = []
+    fit = []
+    s = perf.size()
+    for i in range(s):
+        it.append(perf[i].iteration)
+        fit.append(perf[i].fit)
+
+    pyplot.plot(it, fit)
+    pyplot.xlabel("iteration")
+    pyplot.ylabel("fit")
+    pyplot.draw()
+    pyplot.savefig("conv.pdf")
+
+del u, x
 pygenten.finalizeKokkos()
