@@ -1,4 +1,4 @@
-from PyGenten import pyGenten
+import pygenten
 
 try:
     from matplotlib import pyplot
@@ -6,13 +6,13 @@ try:
 except:
     have_matplotlib = False
 
-pyGenten.initializeKokkos()
+pygenten.initializeKokkos()
 
-x = pyGenten.import_tensor("aminoacid_data_dense.txt")
+x = pygenten.import_tensor("aminoacid_data_dense.txt")
 
-u,perf = pyGenten.cp_als(x, rank=8, maxiters=20, tol=1e-4)
+u,perf = pygenten.cp_als(x, rank=8, maxiters=20, tol=1e-4)
 
-pyGenten.export_ktensor("aminoacid.ktn", u)
+pygenten.export_ktensor("aminoacid.ktn", u)
 
 if have_matplotlib:
     it = []
@@ -29,4 +29,4 @@ if have_matplotlib:
     pyplot.savefig("conv.pdf")
 
 del u, x
-pyGenten.finalizeKokkos()
+pygenten.finalizeKokkos()

@@ -1,12 +1,11 @@
-
 #include "Genten_Pybind11_include.hpp"
 #include "Genten_Pybind11_classes.hpp"
 #include "Kokkos_Core.hpp"
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_pyGenten, m) {
-    m.doc() = "_pyGenten module";
+PYBIND11_MODULE(_pygenten, m) {
+    m.doc() = "_pygenten module";
     m.def("initializeKokkos", [](const int num_threads, const int num_devices, const int device_id) -> void {
         if(!Kokkos::is_initialized()) {
             Kokkos::InitArguments args(num_threads,num_devices,device_id);

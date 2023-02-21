@@ -1,3 +1,3 @@
-from PyGenten import pyGenten
+import pygenten
 
-help(pyGenten)
+help(pygenten)

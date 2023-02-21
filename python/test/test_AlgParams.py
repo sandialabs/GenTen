@@ -1,6 +1,6 @@
-from PyGenten import pyGenten
+import pygenten
 
-algParams = pyGenten.AlgParams()
+algParams = pygenten.AlgParams()
 print(algParams)
 print(algParams.exec_space)
 print(algParams.printitn)

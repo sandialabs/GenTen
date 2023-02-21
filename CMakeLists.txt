@@ -980,9 +980,9 @@ ENDIF()
 IF(HAVE_PYTHON AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
 # Determine the install directory
   SET(pyGenten_INSTALL_DIR
-    ${CMAKE_INSTALL_PREFIX}/lib/python${PYTHON_VERSION}/site-packages/PyGenten
+    ${CMAKE_INSTALL_PREFIX}/lib/python${PYTHON_VERSION}/site-packages/pygenten
     )
-  MESSAGE("-- PyGenten installation path: ${pyGenten_INSTALL_DIR}")
+  MESSAGE("-- pygenten installation path: ${pyGenten_INSTALL_DIR}")
   add_subdirectory( python )
 ENDIF()
 

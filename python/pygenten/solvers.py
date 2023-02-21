@@ -1,4 +1,4 @@
-import PyGenten._pyGenten as gt
+import pygenten._pygenten as gt
 
 def make_algparams(args):
   a = gt.AlgParams()
@@ -14,7 +14,7 @@ def make_guess(args):
   u = gt.Ktensor()
   rem = args
   if 'init' in rem:
-      u = rem.pop(key)
+      u = rem.pop('init')
   return u,rem
 
 def check_invalid(args):

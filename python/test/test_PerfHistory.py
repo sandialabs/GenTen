@@ -1,8 +1,8 @@
-from PyGenten import pyGenten
+import pygenten
 
-entry = pyGenten.Entry()
+entry = pygenten.Entry()
 entry.iteration = 10
-history = pyGenten.PerfHistory()
+history = pygenten.PerfHistory()
 history.addEntry(entry)
 entry_last = history.lastEntry()
 print(entry_last.iteration)
