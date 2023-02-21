@@ -522,6 +522,10 @@ public:
   SptensorT<ExecSpace> distributeTensor(const SptensorT<ExecSpaceSrc>& X,
                                         const AlgParams& algParams = AlgParams())
   {
+    const ttb_indx ndims = X.ndims();
+    global_dims_.resize(ndims);
+    for (ttb_indx i=0; i<ndims; ++i)
+      global_dims_[i] = X.size(i);
     SptensorT<ExecSpace> X_dst = create_mirror_view(ExecSpace(), X);
     deep_copy(X_dst, X);
     return X_dst;
@@ -530,6 +534,10 @@ public:
   TensorT<ExecSpace> distributeTensor(const TensorT<ExecSpaceSrc>& X,
                                       const AlgParams& algParams = AlgParams())
   {
+    const ttb_indx ndims = X.ndims();
+    global_dims_.resize(ndims);
+    for (ttb_indx i=0; i<ndims; ++i)
+      global_dims_[i] = X.size(i);
     TensorT<ExecSpace> X_dst = create_mirror_view(ExecSpace(), X);
     deep_copy(X_dst, X);
     return X_dst;
