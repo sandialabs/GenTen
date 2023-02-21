@@ -6,6 +6,7 @@
 #include "Genten_Tensor.hpp"
 #include "Genten_CpAls.hpp"
 #include "Genten_IOtext.hpp"
+#include "Genten_Driver.hpp"
 
 namespace py = pybind11;
 
@@ -278,6 +279,28 @@ void pygenten_ktensor(pybind11::module &m){
         cl.def("size", [](Genten::Tensor const &o) -> Genten::IndxArray { return o.size(); } , "Return sizes array.");
         cl.def("numel", (ttb_indx (Genten::Tensor::*)()) &Genten::Tensor::numel, "Return the total number of elements in the tensor.");
     }
+
+    m.def("driver", [](const Genten::Tensor& x,
+                       const Genten::Ktensor& u0,
+                       Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::PerfHistory > {
+       // Copy u0 into new Ktensor because the driver overwrites it
+       const ttb_indx nc = u0.ncomponents();
+       const ttb_indx nd = u0.ndims();
+       Genten::Ktensor u(nc, nd);
+       deep_copy(u.weights(), u0.weights());
+       for (ttb_indx i=0; i<nd; ++i) {
+         Genten::FacMatrix A(u0[i].nRows(), nc);
+         deep_copy(A, u0[i]);
+         u.set_factor(i, A);
+       }
+
+       Genten::DistTensorContext<Genten::DefaultHostExecutionSpace> dtc;
+       Genten::Tensor X = dtc.distributeTensor(x, algParams);
+       Genten::ptree ptree;
+       Genten::PerfHistory perfInfo;
+       u = Genten::driver(dtc, X, u, algParams, ptree, perfInfo, std::cout);
+       return std::make_tuple(u, perfInfo);
+    });
 
     m.def("cpals", [](const Genten::Tensor& x,
                       const Genten::Ktensor& u0,
