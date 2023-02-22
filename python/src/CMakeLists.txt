@@ -8,6 +8,7 @@ target_include_directories(_pygenten PUBLIC ${Genten_SOURCE_DIR}/src)
 target_compile_features(_pygenten PUBLIC cxx_std_17)
 target_link_libraries(_pygenten PRIVATE gentenlib)
 set_target_properties(_pygenten PROPERTIES SUFFIX ".so")
+set_target_properties(_pygenten PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${pyGenten_BUILD_DIR})
 
 install(TARGETS _pygenten
     LIBRARY DESTINATION ${pyGenten_INSTALL_DIR}

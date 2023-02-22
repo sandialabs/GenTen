@@ -978,7 +978,10 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
 ENDIF()
 
 IF(HAVE_PYTHON AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
-# Determine the install directory
+  # Determine the build and install directory
+  SET(pyGenten_BUILD_DIR
+    ${Genten_BINARY_DIR}/python/pygenten
+    )
   SET(pyGenten_INSTALL_DIR
     ${CMAKE_INSTALL_PREFIX}/lib/python${PYTHON_VERSION}/site-packages/pygenten
     )
