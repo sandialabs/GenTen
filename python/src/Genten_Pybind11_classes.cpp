@@ -4,9 +4,90 @@
 #include "Genten_AlgParams.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_Tensor.hpp"
-#include "Genten_CpAls.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_Driver.hpp"
+
+namespace {
+
+template <typename ExecSpace, typename TensorType>
+Genten::Ktensor
+driver_impl(const TensorType& x,
+            const Genten::Ktensor& u,
+            Genten::AlgParams& algParams,
+            const Genten::ptree& ptree,
+            Genten::PerfHistory& history,
+            std::ostream& out)
+{
+  Genten::DistTensorContext<ExecSpace> dtc;
+  auto xd = dtc.distributeTensor(x, algParams);
+
+  // We do not create a mirror-view of u because we always want a copy,
+  // since driver overwrites it and we don't want that in python
+  const ttb_indx nc = u.ncomponents();
+  const ttb_indx nd = u.ndims();
+  Genten::KtensorT<ExecSpace> ud;
+  if (nd > 0 && nc > 0) {
+    ud = Genten::KtensorT<ExecSpace>(nc, nd);
+    deep_copy(ud.weights(), u.weights());
+    for (ttb_indx i=0; i<nd; ++i) {
+      Genten::FacMatrixT<ExecSpace> A(u[i].nRows(), nc);
+      deep_copy(A, u[i]);
+      ud.set_factor(i, A);
+    }
+  }
+
+  ud = Genten::driver(dtc, xd, ud, algParams, ptree, history, out);
+
+  Genten::Ktensor ret = create_mirror_view(ud);
+  deep_copy(ret, ud);
+
+  return ret;
+}
+
+template <typename TensorType>
+Genten::Ktensor
+driver_host(const TensorType& x,
+            const Genten::Ktensor& u,
+            Genten::AlgParams& algParams,
+            const Genten::ptree& ptree,
+            Genten::PerfHistory& history,
+            std::ostream& out)
+{
+  Genten::Ktensor ret;
+  if (algParams.exec_space == Genten::Execution_Space::Default)
+    ret = driver_impl<Genten::DefaultExecutionSpace>(x, u, algParams, ptree, history, out);
+#ifdef HAVE_CUDA
+  else if (algParams.exec_space == Genten::Execution_Space::Cuda)
+    ret = driver_impl<Kokkos::Cuda>(x, u, algParams, ptree, history, out);
+#endif
+#ifdef HAVE_HIP
+  else if (algParams.exec_space == Genten::Execution_Space::HIP)
+    ret = driver_impl<Kokkos::Experimental::HIP>(x, u, algParams, ptree, history, out);
+#endif
+#ifdef HAVE_SYCL
+  else if (algParams.exec_space == Genten::Execution_Space::SYCL)
+    ret = driver_impl<Kokkos::Experimental::SYCL>(x, u, algParams, ptree, history, out);
+#endif
+#ifdef HAVE_OPENMP
+  else if (algParams.exec_space == Genten::Execution_Space::OpenMP)
+    ret = driver_impl<Kokkos::OpenMP>(x, u, algParams, ptree, history, out);
+#endif
+#ifdef HAVE_THREADS
+  else if (algParams.exec_space == Genten::Execution_Space::Threads)
+    ret = driver_impl<Kokkos::Threads>(x, u, algParams, ptree, history, out);
+#endif
+#ifdef HAVE_SERIAL
+  else if (algParams.exec_space == Genten::Execution_Space::Serial)
+    ret = driver_impl<Kokkos::Serial>(x, u, algParams, ptree, history, out);
+#endif
+  else
+    Genten::error("Invalid execution space: " + std::string(Genten::Execution_Space::names[algParams.exec_space]));
+
+  return ret;
+}
+
+}
+
 
 namespace py = pybind11;
 
@@ -283,44 +364,10 @@ void pygenten_ktensor(pybind11::module &m){
     m.def("driver", [](const Genten::Tensor& x,
                        const Genten::Ktensor& u0,
                        Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::PerfHistory > {
-       // Copy u0 into new Ktensor because the driver overwrites it
-       const ttb_indx nc = u0.ncomponents();
-       const ttb_indx nd = u0.ndims();
-       Genten::Ktensor u(nc, nd);
-       deep_copy(u.weights(), u0.weights());
-       for (ttb_indx i=0; i<nd; ++i) {
-         Genten::FacMatrix A(u0[i].nRows(), nc);
-         deep_copy(A, u0[i]);
-         u.set_factor(i, A);
-       }
-
-       Genten::DistTensorContext<Genten::DefaultHostExecutionSpace> dtc;
-       Genten::Tensor X = dtc.distributeTensor(x, algParams);
        Genten::ptree ptree;
        Genten::PerfHistory perfInfo;
-       u = Genten::driver(dtc, X, u, algParams, ptree, perfInfo, std::cout);
+       Genten::Ktensor u = driver_host(x, u0, algParams, ptree, perfInfo, std::cout);
        return std::make_tuple(u, perfInfo);
-    });
-
-    m.def("cpals", [](const Genten::Tensor& x,
-                      const Genten::Ktensor& u0,
-                      const Genten::AlgParams& algParams) -> Genten::Ktensor {
-       // Copy u0 into new Ktensor because cp-als overwrites it
-       const ttb_indx nc = u0.ncomponents();
-       const ttb_indx nd = u0.ndims();
-       Genten::Ktensor u(nc, nd);
-       deep_copy(u.weights(), u0.weights());
-       for (ttb_indx i=0; i<nd; ++i) {
-         Genten::FacMatrix A(u0[i].nRows(), nc);
-         deep_copy(A, u0[i]);
-         u.set_factor(i, A);
-       }
-       ttb_indx numIters = 0;
-       ttb_real resNorm = 0.0;
-       ttb_indx perfIter = 1;
-       Genten::PerfHistory perfInfo;
-       Genten::cpals_core(x, u, algParams, numIters, resNorm, perfIter, perfInfo);
-       return u;
     });
 
     m.def("import_tensor", [](const std::string& fName) -> Genten::Tensor {
