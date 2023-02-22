@@ -8,7 +8,7 @@ except:
 
 pygenten.initializeKokkos()
 
-x = pygenten.import_tensor("aminoacid_data_dense.txt")
+x = pygenten.import_tensor("data/aminoacid_data_dense.txt")
 
 u,perf = pygenten.cp_als(x, rank=8, maxiters=20, tol=1e-4)
 
