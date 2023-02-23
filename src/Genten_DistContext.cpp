@@ -171,6 +171,31 @@ bool InitializeGenten(int *argc, char ***argv) {
   return initialized;
 }
 
+bool InitializeGenten() {
+  // Why is this in a lambda?
+  static bool initialized = [&] {
+    int provided = 0;
+    int argc = 0;
+    char **argv = nullptr;
+    MPI_Init_thread(&argc, &argv, MPI_THREAD_SINGLE, &provided);
+
+    if (!Kokkos::is_initialized()) {
+      Kokkos::InitializationSettings args;
+      Kokkos::initialize(args);
+    }
+
+    DistContext::instance_ = std::unique_ptr<DistContext>(new DistContext());
+    auto &dc = *DistContext::instance_;
+    MPI_Comm_dup(MPI_COMM_WORLD, &(dc.commWorld_));
+    MPI_Comm_rank(dc.commWorld_, &(dc.rank_));
+    MPI_Comm_size(dc.commWorld_, &(dc.nranks_));
+
+    return true;
+  }();
+
+  return initialized;
+}
+
 bool FinalizeGenten() {
   MPI_Barrier(DistContext::commWorld());
   DistContext::instance_ = nullptr;
@@ -194,6 +219,14 @@ namespace Genten {
 
 bool InitializeGenten(int *argc, char ***argv) {
   Kokkos::initialize(*argc, *argv);
+  return true;
+}
+
+bool InitializeGenten() {
+  if (!Kokkos::is_initialized()) {
+    Kokkos::InitArguments args;
+    Kokkos::initialize(args);
+  }
   return true;
 }
 

@@ -44,12 +44,13 @@
 #include <sstream>
 #include <sys/types.h>
 #include <unistd.h>
+#include <exception>
 
 
 void Genten::error(std::string s)
 {
   std::cerr << "FATAL ERROR: " << s << std::endl;
-  throw s;
+  throw std::runtime_error(s);
 }
 
 bool  Genten::isEqualToTol(ttb_real  d1,

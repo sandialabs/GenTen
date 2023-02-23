@@ -20,13 +20,16 @@ driver_impl(const TensorType& x,
 {
   Genten::DistTensorContext<ExecSpace> dtc;
   auto xd = dtc.distributeTensor(x, algParams);
-
-  // We do not create a mirror-view of u because we always want a copy,
-  // since driver overwrites it and we don't want that in python
+  Genten::KtensorT<ExecSpace> ud;
   const ttb_indx nc = u.ncomponents();
   const ttb_indx nd = u.ndims();
-  Genten::KtensorT<ExecSpace> ud;
   if (nd > 0 && nc > 0) {
+#ifdef HAVE_DIST
+    ud = dtc.exportFromRoot(u);
+#else
+    // We do not create a mirror-view of u because we always want a copy,
+    // since driver overwrites it and we don't want that in python.  And
+    // dtc.exportFromRoot() in serial builds is just a mirror.
     ud = Genten::KtensorT<ExecSpace>(nc, nd);
     deep_copy(ud.weights(), u.weights());
     for (ttb_indx i=0; i<nd; ++i) {
@@ -34,12 +37,15 @@ driver_impl(const TensorType& x,
       deep_copy(A, u[i]);
       ud.set_factor(i, A);
     }
+#endif
   }
+
+  Genten::print_environment(xd, dtc, out);
 
   ud = Genten::driver(dtc, xd, ud, algParams, ptree, history, out);
 
-  Genten::Ktensor ret = create_mirror_view(ud);
-  deep_copy(ret, ud);
+  Genten::Ktensor ret =
+    dtc.template importToAll<Genten::DefaultHostExecutionSpace>(ud);
 
   return ret;
 }
@@ -142,6 +148,85 @@ void pygenten_algparams(py::module &m){
         .value("GCP_SGD_DIST", Genten::Solver_Method::type::GCP_SGD_DIST)
         .value("GCP_OPT", Genten::Solver_Method::type::GCP_OPT)
         .export_values();
+    py::enum_<Genten::Opt_Method::type>(m, "Opt_Method")
+        .value("LBFGSB", Genten::Opt_Method::type::LBFGSB)
+        .value("ROL", Genten::Opt_Method::type::ROL)
+        .export_values();
+    py::enum_<Genten::MTTKRP_Method::type>(m, "MTTKRP_Method")
+        .value("Default", Genten::MTTKRP_Method::type::Default)
+        .value("OrigKokkos", Genten::MTTKRP_Method::type::OrigKokkos)
+        .value("Atomic", Genten::MTTKRP_Method::type::Atomic)
+        .value("Duplicated", Genten::MTTKRP_Method::type::Duplicated)
+        .value("Single", Genten::MTTKRP_Method::type::Single)
+        .value("Perm", Genten::MTTKRP_Method::type::Perm)
+        .export_values();
+    py::enum_<Genten::MTTKRP_All_Method::type>(m, "MTTKRP_All_Method")
+        .value("Default", Genten::MTTKRP_All_Method::type::Default)
+        .value("Iterated", Genten::MTTKRP_All_Method::type::Iterated)
+        .value("Atomic", Genten::MTTKRP_All_Method::type::Atomic)
+        .value("Duplicated", Genten::MTTKRP_All_Method::type::Duplicated)
+        .value("Single", Genten::MTTKRP_All_Method::type::Single)
+        .export_values();
+    py::enum_<Genten::Dist_Update_Method::type>(m, "Dist_Update_Method")
+        .value("AllReduce", Genten::Dist_Update_Method::type::AllReduce)
+        .value("AllGather", Genten::Dist_Update_Method::type::AllGather)
+        .value("Tpetra", Genten::Dist_Update_Method::type::Tpetra)
+        .export_values();
+    py::enum_<Genten::Hess_Vec_Method::type>(m, "Hess_Vec_Method")
+        .value("Full", Genten::Hess_Vec_Method::type::Full)
+        .value("GaussNewton", Genten::Hess_Vec_Method::type::GaussNewton)
+        .value("FiniteDifference", Genten::Hess_Vec_Method::type::FiniteDifference)
+        .export_values();
+    py::enum_<Genten::Hess_Vec_Tensor_Method::type>(m, "Hess_Vec_Tensor_Method")
+        .value("Default", Genten::Hess_Vec_Tensor_Method::type::Default)
+        .value("Atomic", Genten::Hess_Vec_Tensor_Method::type::Atomic)
+        .value("Duplicated", Genten::Hess_Vec_Tensor_Method::type::Duplicated)
+        .value("Single", Genten::Hess_Vec_Tensor_Method::type::Single)
+        .value("Perm", Genten::Hess_Vec_Tensor_Method::type::Perm)
+        .export_values();
+    py::enum_<Genten::Hess_Vec_Prec_Method::type>(m, "Hess_Vec_Prec_Method")
+        .value("None", Genten::Hess_Vec_Prec_Method::type::None)
+        .value("ApproxBlockDiag", Genten::Hess_Vec_Prec_Method::type::ApproxBlockDiag)
+        .export_values();
+    py::enum_<Genten::TTM_Method::type>(m, "TTM_Method")
+        .value("DGEMM", Genten::TTM_Method::type::DGEMM)
+        .value("Parfor_DGEMM", Genten::TTM_Method::type::Parfor_DGEMM)
+        .export_values();
+    py::enum_<Genten::GCP_LossFunction::type>(m, "GCP_LossFunction")
+        .value("Gaussian", Genten::GCP_LossFunction::type::Gaussian)
+        .value("Rayleigh", Genten::GCP_LossFunction::type::Rayleigh)
+        .value("Gamma", Genten::GCP_LossFunction::type::Gamma)
+        .value("Bernoulli", Genten::GCP_LossFunction::type::Bernoulli)
+        .value("Poisson", Genten::GCP_LossFunction::type::Poisson)
+        .export_values();
+    py::enum_<Genten::GCP_Sampling::type>(m, "GCP_Sampling")
+        .value("Uniform", Genten::GCP_Sampling::type::Uniform)
+        .value("Stratified", Genten::GCP_Sampling::type::Stratified)
+        .value("SemiStratified", Genten::GCP_Sampling::type::SemiStratified)
+        .value("Dense", Genten::GCP_Sampling::type::Dense)
+        .export_values();
+    py::enum_<Genten::GCP_Step::type>(m, "GCP_Step")
+        .value("SGD", Genten::GCP_Step::type::SGD)
+        .value("ADAM", Genten::GCP_Step::type::ADAM)
+        .value("AdaGrad", Genten::GCP_Step::type::AdaGrad)
+        .value("AMSGrad", Genten::GCP_Step::type::AMSGrad)
+        .value("SGDMomentum", Genten::GCP_Step::type::SGDMomentum)
+        .value("DEMON", Genten::GCP_Step::type::DEMON)
+        .export_values();
+    py::enum_<Genten::GCP_Streaming_Solver::type>(m, "GCP_Streaming_Solver")
+        .value("SGD", Genten::GCP_Streaming_Solver::type::SGD)
+        .value("LeastSquares", Genten::GCP_Streaming_Solver::type::LeastSquares)
+        .value("OnlineCP", Genten::GCP_Streaming_Solver::type::OnlineCP)
+        .export_values();
+    py::enum_<Genten::GCP_Streaming_Window_Method::type>(m, "GCP_Streaming_Window_Method")
+        .value("Reservoir", Genten::GCP_Streaming_Window_Method::type::Reservoir)
+        .value("Last", Genten::GCP_Streaming_Window_Method::type::Last)
+        .export_values();
+    py::enum_<Genten::GCP_Streaming_History_Method::type>(m, "GCP_Streaming_History_Method")
+        .value("Ktensor_Fro", Genten::GCP_Streaming_History_Method::type::Ktensor_Fro)
+        .value("Factor_Fro", Genten::GCP_Streaming_History_Method::type::Factor_Fro)
+        .value("GCP_Loss", Genten::GCP_Streaming_History_Method::type::GCP_Loss)
+        .export_values();
     {
         py::class_<Genten::AlgParams, std::shared_ptr<Genten::AlgParams>> cl(m, "AlgParams");
         cl.def( py::init( [](){ return new Genten::AlgParams(); } ) );
@@ -161,12 +246,16 @@ void pygenten_algparams(py::module &m){
         cl.def_readwrite("rcond", &Genten::AlgParams::rcond);
         cl.def_readwrite("penalty", &Genten::AlgParams::penalty);
         cl.def_readwrite("dist_guess_method", &Genten::AlgParams::dist_guess_method);
+        cl.def_readwrite("scale_guess_by_norm_x", &Genten::AlgParams::scale_guess_by_norm_x);
 
         cl.def_readwrite("mttkrp_method", &Genten::AlgParams::mttkrp_method);
         cl.def_readwrite("mttkrp_all_method", &Genten::AlgParams::mttkrp_all_method);
         cl.def_readwrite("mttkrp_nnz_tile_size", &Genten::AlgParams::mttkrp_nnz_tile_size);
         cl.def_readwrite("mttkrp_duplicated_factor_matrix_tile_size", &Genten::AlgParams::mttkrp_duplicated_factor_matrix_tile_size);
         cl.def_readwrite("mttkrp_duplicated_threshold", &Genten::AlgParams::mttkrp_duplicated_threshold);
+        cl.def_readwrite("dist_update_method", &Genten::AlgParams::dist_update_method);
+        cl.def_readwrite("optimize_maps", &Genten::AlgParams::optimize_maps);
+        cl.def_readwrite("build_maps_on_device", &Genten::AlgParams::build_maps_on_device);
         cl.def_readwrite("warmup", &Genten::AlgParams::warmup);
 
         cl.def_readwrite("ttm_method", &Genten::AlgParams::ttm_method);
@@ -218,6 +307,14 @@ void pygenten_algparams(py::module &m){
         cl.def_readwrite("anneal", &Genten::AlgParams::anneal);
         cl.def_readwrite("anneal_min_lr", &Genten::AlgParams::anneal_min_lr);
         cl.def_readwrite("anneal_max_lr", &Genten::AlgParams::anneal_max_lr);
+
+        cl.def_readwrite("streaming_solver", &Genten::AlgParams::streaming_solver);
+        cl.def_readwrite("history_method", &Genten::AlgParams::history_method);
+        cl.def_readwrite("window_method", &Genten::AlgParams::window_method);
+        cl.def_readwrite("window_size", &Genten::AlgParams::window_size);
+        cl.def_readwrite("window_weight", &Genten::AlgParams::window_weight);
+        cl.def_readwrite("window_penalty", &Genten::AlgParams::window_penalty);
+        cl.def_readwrite("factor_penalty", &Genten::AlgParams::factor_penalty);
 
         cl.def("__str__", [](Genten::AlgParams const &o) -> std::string {
             std::ostringstream s;
@@ -379,6 +476,15 @@ void pygenten_ktensor(pybind11::module &m){
     m.def("export_ktensor", [](const std::string& fName,
                                const Genten::Ktensor& u) -> void {
         Genten::export_ktensor(fName, u);
+    });
+
+    m.def("proc_rank", []() -> int {
+        gt_assert(Genten::DistContext::initialized());
+        return Genten::DistContext::rank();
+    });
+    m.def("num_procs", []() -> int {
+        gt_assert(Genten::DistContext::initialized());
+        return Genten::DistContext::nranks();
     });
 }
 

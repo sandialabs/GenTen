@@ -99,73 +99,6 @@ void usage(char **argv)
   Genten::AlgParams::print_help(std::cout);
 }
 
-template <typename ExecSpace>
-void print_environment(const Genten::SptensorT<ExecSpace>& x,
-                       const Genten::DistTensorContext<ExecSpace>& dtc,
-                       std::ostream& out)
-{
-  const ttb_indx nd = x.ndims();
-  const ttb_indx nnz = dtc.globalNNZ(x);
-  const ttb_real tsz = dtc.globalNumelFloat(x);
-  const ttb_real nz = tsz - nnz;
-  const ttb_real nrm = dtc.globalNorm(x);
-  if (Genten::DistContext::rank() == 0) {
-    out << std::endl
-        << "Sparse tensor: " << std::endl << "  ";
-    for (ttb_indx i=0; i<nd; ++i) {
-      out << dtc.dims()[i] << " ";
-      if (i<nd-1)
-        out << "x ";
-    }
-    out << "(" << tsz << " total entries)" << std::endl
-        << "  " << nnz << " ("
-        << std::setprecision(1) << std::fixed << 100.0*(nnz/tsz)
-        << "%) Nonzeros" << " and "
-        << std::setprecision(0) << std::fixed << nz << " ("
-        << std::setprecision(1) << std::fixed << 100.0*(nz/tsz)
-        << "%) Zeros" << std::endl
-        << "  " << std::setprecision(1) << std::scientific << nrm
-        << " Frobenius norm" << std::endl << std::endl
-        << "Execution environment:" << std::endl
-        << "  MPI grid: ";
-    for (ttb_indx i=0; i<nd; ++i) {
-      out << dtc.pmap().gridDim(i) << " ";
-      if (i<nd-1)
-        out << "x ";
-    }
-    out << "processes (" << dtc.nprocs() << " total)" << std::endl
-        << "  Execution space: "
-        << Genten::SpaceProperties<ExecSpace>::verbose_name()
-        << std::endl << std::endl;
-  }
-}
-
-template <typename ExecSpace>
-void print_environment(const Genten::TensorT<ExecSpace>& x,
-                       const Genten::DistTensorContext<ExecSpace>& dtc,
-                       std::ostream& out)
-{
-  const ttb_indx nd = x.ndims();
-  const ttb_real tsz = dtc.globalNumelFloat(x);
-  const ttb_real nrm = dtc.globalNorm(x);
-  if (Genten::DistContext::rank() == 0) {
-    out << std::endl
-        << "Dense tensor: " << std::endl << "  ";
-    for (ttb_indx i=0; i<nd; ++i) {
-      out << dtc.dims()[i] << " ";
-      if (i<nd-1)
-        out << "x ";
-    }
-    out << "(" << tsz << " total entries)" << std::endl
-        << "  " << std::setprecision(1) << std::scientific << nrm
-        << " Frobenius norm" << std::endl << std::endl
-        << "Execution environment:" << std::endl;
-    out << "  Execution space: "
-        << Genten::SpaceProperties<ExecSpace>::verbose_name()
-        << std::endl << std::endl;
-  }
-}
-
 template <typename Space>
 int main_driver(Genten::AlgParams& algParams,
                 const Genten::ptree& json_input,
@@ -245,7 +178,7 @@ int main_driver(Genten::AlgParams& algParams,
     }
 
     // Print execution environment
-    print_environment(x, dtc, std::cout);
+    Genten::print_environment(x, dtc, std::cout);
 
     if (algParams.debug) Genten::print_sptensor(x_host, std::cout, "tensor");
 
@@ -300,7 +233,7 @@ int main_driver(Genten::AlgParams& algParams,
     }
 
     // Print execution environment
-    print_environment(x, dtc, std::cout);
+    Genten::print_environment(x, dtc, std::cout);
 
     if (algParams.debug) Genten::print_tensor(x_host, std::cout, "tensor");
 

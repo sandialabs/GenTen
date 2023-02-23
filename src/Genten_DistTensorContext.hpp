@@ -129,6 +129,8 @@ public:
   KtensorT<ExecSpace> exportFromRoot(const KtensorT<ExecSpaceSrc>& u) const;
   template <typename ExecSpaceDst>
   KtensorT<ExecSpaceDst> importToRoot(const KtensorT<ExecSpace>& u) const;
+  template <typename ExecSpaceDst>
+  KtensorT<ExecSpaceDst> importToAll(const KtensorT<ExecSpace>& u) const;
   void allReduce(KtensorT<ExecSpace>& u,
                  const bool divide_by_grid_size = false) const;
   void exportToFile(const KtensorT<ExecSpace>& u,
@@ -189,6 +191,9 @@ private:
   std::vector< Teuchos::RCP<const tpetra_map_type<ExecSpace> > > overlapFactorMap;
   std::vector< Teuchos::RCP<const tpetra_map_type<ExecSpace> > > rootMap;
   std::vector< Teuchos::RCP<const tpetra_import_type<ExecSpace> > > rootImporter;
+
+  std::vector< Teuchos::RCP<const tpetra_map_type<ExecSpace> > > replicatedMap;
+  std::vector< Teuchos::RCP<const tpetra_import_type<ExecSpace> > > replicatedImporter;
 #endif
 
   MPI_Datatype mpiElemType_ = DistContext::toMpiType<ttb_real>();
@@ -409,6 +414,101 @@ importToRoot(const KtensorT<ExecSpace>& u) const
 }
 
 template <typename ExecSpace>
+template <typename ExecSpaceDst>
+KtensorT<ExecSpaceDst>
+DistTensorContext<ExecSpace>::
+importToAll(const KtensorT<ExecSpace>& u) const
+{
+  const bool print =
+    DistContext::isDebug() && (pmap_->gridRank() == 0);
+
+  const ttb_indx nd = u.ndims();
+  const ttb_indx nc = u.ncomponents();
+  gt_assert(ttb_indx(global_dims_.size()) == nd);
+
+  IndxArrayT<ExecSpaceDst> sizes_idx(nd);
+  auto sizes_idx_host = create_mirror_view(sizes_idx);
+  for (ttb_indx i=0; i<nd; ++i) {
+    sizes_idx_host[i] = global_dims_[i];
+  }
+  deep_copy(sizes_idx, sizes_idx_host);
+
+  KtensorT<ExecSpaceDst> out(nc, nd, sizes_idx);
+  out.setMatrices(0.0);
+
+  if (!weightsAreSame(u)) {
+    throw std::string(
+        "Ktensor weights are expected to be the same on all ranks");
+  }
+  deep_copy(out.weights(), u.weights());
+
+#ifdef HAVE_TPETRA
+  if (tpetra_comm != Teuchos::null) {
+    for (ttb_indx i=0; i<nd; ++i) {
+      if (rootImporter[i] != Teuchos::null) {
+        FacMatrixT<ExecSpace> oi = create_mirror_view(ExecSpace(), out[i]);
+        DistFacMatrix<ExecSpace> dist_u(u[i], factorMap[i]);
+        DistFacMatrix<ExecSpace> dist_out(oi, replicatedMap[i]);
+        dist_out.doImport(dist_u, *(replicatedImporter[i]), Tpetra::INSERT);
+        deep_copy(out[i], oi);
+      }
+      else
+        deep_copy(out[i], u[i]);
+    }
+  }
+  else
+#endif
+  {
+    if (print)
+      std::cout << "Blocking:\n";
+
+    small_vector<int> grid_pos(nd, 0);
+    for (ttb_indx d=0; d<nd; ++d) {
+      std::vector<int> recvcounts(pmap_->gridSize(), 0);
+      std::vector<int> displs(pmap_->gridSize(), 0);
+      const ttb_indx nblocks = global_blocking_[d].size() - 1;
+      if (print)
+        std::cout << "\tDim(" << d << ")\n";
+      for (ttb_indx b = 0; b < nblocks; ++b) {
+        if (print)
+          std::cout << "\t\t{" << global_blocking_[d][b]
+                    << ", " << global_blocking_[d][b + 1]
+                    << "} owned by ";
+        grid_pos[d] = b;
+        int owner = 0;
+        MPI_Cart_rank(pmap_->gridComm(), grid_pos.data(), &owner);
+        if (print)
+          std::cout << owner << "\n";
+        recvcounts[owner] =
+          u[d].view().stride(0)*(global_blocking_[d][b+1]-global_blocking_[d][b]);
+        displs[owner] = out[d].view().stride(0)*global_blocking_[d][b];
+        grid_pos[d] = 0;
+      }
+
+      const bool is_sub_root = pmap_->subCommRank(d) == 0;
+      std::size_t send_size = is_sub_root ? u[d].view().span() : 0;
+      MPI_Allgatherv(u[d].view().data(), send_size,
+                  DistContext::toMpiType<ttb_real>(),
+                  out[d].view().data(), recvcounts.data(), displs.data(),
+                  DistContext::toMpiType<ttb_real>(),
+                  pmap_->gridComm());
+      pmap_->gridBarrier();
+    }
+
+    if (print) {
+      std::cout << std::endl;
+      std::cout << "Subcomm sizes: ";
+      for (auto s : pmap_->subCommSizes()) {
+        std::cout << s << " ";
+      }
+      std::cout << std::endl;
+    }
+  }
+
+  return out;
+}
+
+template <typename ExecSpace>
 template <typename ExecSpaceSrc>
 FacMatrixT<ExecSpace>
 DistTensorContext<ExecSpace>::
@@ -573,6 +673,12 @@ public:
   }
   template <typename ExecSpaceDst>
   KtensorT<ExecSpaceDst> importToRoot(const KtensorT<ExecSpace>& u) const {
+    KtensorT<ExecSpaceDst> v = create_mirror_view(ExecSpaceDst(), u);
+    deep_copy(v, u);
+    return v;
+  }
+  template <typename ExecSpaceDst>
+  KtensorT<ExecSpaceDst> importToAll(const KtensorT<ExecSpace>& u) const {
     KtensorT<ExecSpaceDst> v = create_mirror_view(ExecSpaceDst(), u);
     deep_copy(v, u);
     return v;

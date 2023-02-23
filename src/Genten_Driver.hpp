@@ -59,6 +59,16 @@
 
 namespace Genten {
 
+  template <typename ExecSpace>
+  void print_environment(const SptensorT<ExecSpace>& x,
+                         const DistTensorContext<ExecSpace>& dtc,
+                         std::ostream& out);
+
+  template <typename ExecSpace>
+  void print_environment(const TensorT<ExecSpace>& x,
+                         const DistTensorContext<ExecSpace>& dtc,
+                         std::ostream& out);
+
   template<typename ExecSpace>
   KtensorT<ExecSpace>
   driver(const DistTensorContext<ExecSpace>& dtc,

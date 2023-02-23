@@ -158,8 +158,8 @@ rangesToIndexArray(const small_vector<RangePair>& ranges)
 }
 
 std::vector<SpDataType>
-distributeTensorToVectors(const Sptensor& sp_tensor_host, ttb_indx nnz,
-                          MPI_Comm comm, ttb_indx rank, ttb_indx nprocs) {
+distributeTensorToVectorsSparse(const Sptensor& sp_tensor_host, ttb_indx nnz,
+                                MPI_Comm comm, ttb_indx rank, ttb_indx nprocs) {
   constexpr ttb_indx dt_size = sizeof(SpDataType);
   std::vector<SpDataType> Tvec;
   small_vector<ttb_indx> who_gets_what =
@@ -206,8 +206,11 @@ distributeTensorToVectors(const Sptensor& sp_tensor_host, ttb_indx nnz,
     ttb_indx total_after = Tvec.size() + total_sent;
     if (total_after != total_before) {
       throw std::logic_error(
-          "The number of elements after sending and shrinking did not match "
-          "the input number of elements.");
+        "Genten::distributeTensorToVectorsSparse():  "
+        "The number of elements after sending and shrinking (" +
+        std::to_string(total_after) +
+        ") did not match the input number of elements (" +
+        std::to_string(total_before) + ").");
     }
   } else {
     const ttb_indx nelements = who_gets_what[rank + 1] - who_gets_what[rank];
@@ -220,9 +223,9 @@ distributeTensorToVectors(const Sptensor& sp_tensor_host, ttb_indx nnz,
 }
 
 std::vector<ttb_real>
-distributeTensorToVectors(const Tensor& dn_tensor_host, ttb_indx nnz,
-                          MPI_Comm comm, ttb_indx rank, ttb_indx nprocs,
-                          ttb_indx& offset) {
+distributeTensorToVectorsDense(const Tensor& dn_tensor_host, ttb_indx nnz,
+                               MPI_Comm comm, ttb_indx rank, ttb_indx nprocs,
+                               ttb_indx& offset) {
   constexpr ttb_indx dt_size = sizeof(ttb_real);
   std::vector<ttb_real> Tvec;
   small_vector<ttb_indx> who_gets_what =
@@ -258,8 +261,11 @@ distributeTensorToVectors(const Tensor& dn_tensor_host, ttb_indx nnz,
     ttb_indx total_after = Tvec.size() + total_sent;
     if (total_after != total_before) {
       throw std::logic_error(
-          "The number of elements after sending and shrinking did not match "
-          "the input number of elements.");
+        "Genten::distributeTensorToVectorsDense():  "
+        "The number of elements after sending and shrinking (" +
+        std::to_string(total_after) +
+        ") did not match the input number of elements (" +
+        std::to_string(total_before) + ").");
     }
   } else {
     const ttb_indx nelements = who_gets_what[rank + 1] - who_gets_what[rank];
@@ -552,7 +558,7 @@ distributeTensorImpl(const Sptensor& X, const AlgParams& algParams)
     DistContext::Barrier();
   }
 
-  auto Tvec = detail::distributeTensorToVectors(
+  auto Tvec = detail::distributeTensorToVectorsSparse(
     X, X.nnz(), pmap_->gridComm(), pmap_->gridRank(),
     pmap_->gridSize());
 
@@ -584,6 +590,7 @@ distributeTensorImpl(const Tensor& X, const AlgParams& algParams)
       algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
     pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
                                                            use_tpetra));
+
     detail::printGrids(*pmap_);
 
     global_blocking_ =
@@ -593,12 +600,14 @@ distributeTensorImpl(const Tensor& X, const AlgParams& algParams)
     DistContext::Barrier();
   }
 
-  auto Tvec = detail::distributeTensorToVectors(
-    X, X.nnz(), pmap_->gridComm(), pmap_->gridRank(),
-    pmap_->gridSize());
+  ttb_indx nnz = X.nnz();
+  ttb_indx offset = 0;
+  auto Tvec = detail::distributeTensorToVectorsDense(
+    X, nnz, pmap_->gridComm(), pmap_->gridRank(),
+    pmap_->gridSize(), offset);
 
-  return distributeTensorData(Tvec, global_dims_, global_blocking_, *pmap_,
-                              algParams);
+  return distributeTensorData(Tvec, nnz, offset, global_dims_, global_blocking_,
+                              *pmap_, algParams);
 }
 
 template <typename ExecSpace>
@@ -752,11 +761,11 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
       global_dims[i] = dims[i];
 
     if (reader.isDense())
-      Tvec_dense = detail::distributeTensorToVectors(
+      Tvec_dense = detail::distributeTensorToVectorsDense(
         X_dense_host, nnz, DistContext::commWorld(), DistContext::rank(),
         DistContext::nranks(), offset);
     else
-      Tvec_sparse = detail::distributeTensorToVectors(
+      Tvec_sparse = detail::distributeTensorToVectorsSparse(
         X_sparse_host, nnz, DistContext::commWorld(), DistContext::rank(),
         DistContext::nranks());
   }
@@ -821,8 +830,8 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
   DistContext::Barrier();
   auto t5 = MPI_Wtime();
 
-  if (gridRank() == 0) {
-    std::cout << "  Redistributied file in: " << t5 - t4 << "s" << std::endl;
+  if (algParams.timings && gridRank() == 0) {
+    std::cout << "  Redistributed tensor in: " << t5 - t4 << "s" << std::endl;
   }
 
   std::vector<detail::RangePair> range;
@@ -976,6 +985,15 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
       rootMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(numGlobalElements, numLocalElements, indexBase, tpetra_comm));
       rootImporter[dim] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(factorMap[dim], rootMap[dim]));
     }
+
+    // Build maps and importers for importing factor matrices to all procs
+    replicatedMap.resize(ndims);
+    replicatedImporter.resize(ndims);
+    for (ttb_indx dim=0; dim<ndims; ++dim) {
+      const Tpetra::global_size_t numGlobalElements = global_dims_[dim];
+      replicatedMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(numGlobalElements, indexBase, tpetra_comm, Tpetra::LocallyReplicated));
+      replicatedImporter[dim] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(factorMap[dim], replicatedMap[dim]));
+    }
   }
 #else
   if (use_tpetra)
@@ -1020,8 +1038,8 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
   DistContext::Barrier();
   auto t5 = MPI_Wtime();
 
-  if (gridRank() == 0) {
-    std::cout << "  Redistributied file in: " << t5 - t4 << "s" << std::endl;
+  if (algParams.timings && gridRank() == 0) {
+    std::cout << "  Redistributed tensor in: " << t5 - t4 << "s" << std::endl;
   }
 
   std::vector<detail::RangePair> range;
@@ -1111,6 +1129,15 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
         (gridRank() == 0) ? global_dims_[dim] : 0;
       rootMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(numGlobalElements, numLocalElements, indexBase, tpetra_comm));
       rootImporter[dim] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(factorMap[dim], rootMap[dim]));
+    }
+
+    // Build maps and importers for importing factor matrices to all procs
+    replicatedMap.resize(ndims);
+    replicatedImporter.resize(ndims);
+    for (ttb_indx dim=0; dim<ndims; ++dim) {
+      const Tpetra::global_size_t numGlobalElements = global_dims_[dim];
+      replicatedMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(numGlobalElements, indexBase, tpetra_comm, Tpetra::LocallyReplicated));
+      replicatedImporter[dim] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(factorMap[dim], replicatedMap[dim]));
     }
   }
 #else
