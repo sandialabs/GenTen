@@ -172,8 +172,7 @@ bool InitializeGenten(int *argc, char ***argv) {
 }
 
 bool InitializeGenten() {
-  // Why is this in a lambda?
-  static bool initialized = [&] {
+  if (DistContext::instance_ == nullptr) {
     int provided = 0;
     int argc = 0;
     char **argv = nullptr;
@@ -189,11 +188,8 @@ bool InitializeGenten() {
     MPI_Comm_dup(MPI_COMM_WORLD, &(dc.commWorld_));
     MPI_Comm_rank(dc.commWorld_, &(dc.rank_));
     MPI_Comm_size(dc.commWorld_, &(dc.nranks_));
-
-    return true;
-  }();
-
-  return initialized;
+  }
+  return true;
 }
 
 bool FinalizeGenten() {

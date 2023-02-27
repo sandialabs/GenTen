@@ -380,7 +380,9 @@ void pygenten_ktensor(pybind11::module &m){
             if (info.ndim != 1)
                 throw std::runtime_error("Incompatible buffer dimension!");
 
-            return Genten::Array(info.shape[0], static_cast<ttb_real *>(info.ptr), true);
+            // Always use false here so we don't alias python arrays (they
+            // may be temporaries)
+            return Genten::Array(info.shape[0], static_cast<ttb_real *>(info.ptr), false);
         }));
     }
     {

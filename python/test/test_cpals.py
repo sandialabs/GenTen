@@ -6,8 +6,6 @@ try:
 except:
     have_matplotlib = False
 
-pygenten.initializeGenten()
-
 x = pygenten.import_tensor("data/aminoacid_data_dense.txt")
 
 u,perf = pygenten.cp_als(x, rank=8, maxiters=20, tol=1e-4, timings=True)
@@ -30,4 +28,3 @@ if pygenten.proc_rank() == 0:
         pyplot.savefig("conv.pdf")
 
 del u, x
-pygenten.finalizeGenten()

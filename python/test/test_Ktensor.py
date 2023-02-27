@@ -1,7 +1,6 @@
 import pygenten
 import numpy as np
 
-pygenten.initializeKokkos()
 tensor = pygenten.Ktensor(10,2)
 
 weights = np.array(tensor.weights(), copy=False)
@@ -14,4 +13,3 @@ tensor.setWeights(pygenten.Array(weights3))
 weights4 = np.array(tensor.weights(), copy=False)
 print(weights4)
 del weights, weights2, weights4, tensor
-pygenten.finalizeKokkos()
