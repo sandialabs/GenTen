@@ -411,6 +411,11 @@ void pygenten_ktensor(pybind11::module &m){
 
             return Genten::FacMatrix(info.shape[0], info.shape[1], static_cast<ttb_real *>(info.ptr));
         }));
+        cl.def("__str__", [](const Genten::FacMatrix& A) {
+            std::stringstream ss;
+            Genten::print_matrix(A, ss);
+            return ss.str();
+          });
     }
     {
         py::class_<Genten::FacMatArray, std::shared_ptr<Genten::FacMatArray>> cl(m, "FacMatArray");
@@ -427,6 +432,41 @@ void pygenten_ktensor(pybind11::module &m){
         cl.def( py::init( [](ttb_indx nc, ttb_indx nd){ return new Genten::Ktensor(nc, nd); } ), "" , pybind11::arg("nc"), pybind11::arg("nd"));
         cl.def( py::init( [](ttb_indx nc, ttb_indx nd, const Genten::IndxArray &sz){ return new Genten::Ktensor(nc, nd, sz); } ), "" , pybind11::arg("nc"), pybind11::arg("nd"), pybind11::arg("sz"));
         cl.def( py::init( [](const Genten::Array &w, const Genten::FacMatArray &vals){ return new Genten::Ktensor(w, vals); } ), "" , pybind11::arg("w"), pybind11::arg("vals"));
+
+        cl.def( py::init( [](const py::buffer& w, const py::list& f) {
+          // Get weights
+          py::buffer_info w_info = w.request();
+          if (w_info.format != py::format_descriptor<ttb_real>::format())
+            throw std::runtime_error("Incompatible format: expected a ttb_real array!");
+          if (w_info.ndim != 1)
+            throw std::runtime_error("Incompatible buffer dimension!");
+          const ttb_indx nc = w_info.shape[0];
+          Genten::Array weights(nc, static_cast<ttb_real *>(w_info.ptr), false);
+
+          // Get factors
+          const ttb_indx nd = f.size();
+          Genten::FacMatArray factors(nd);
+          for (ttb_indx i=0; i<nd; ++i) {
+            auto mat = py::cast<py::array>(f[i]);
+            py::buffer_info mat_info = mat.request();
+            if (mat_info.format != py::format_descriptor<ttb_real>::format())
+              throw std::runtime_error("Incompatible format: expected a ttb_real array!");
+            if (mat_info.ndim != 2)
+              throw std::runtime_error("Incompatible buffer dimension!");
+            const ttb_indx nrow = mat_info.shape[0];
+            if (mat_info.shape[1] != nc)
+              throw std::runtime_error("Invalid number of columns!");
+            Genten::FacMatrix A(nrow, nc);
+            ttb_real *ptr = static_cast<ttb_real *>(mat_info.ptr);
+            Kokkos::View<ttb_real**, Kokkos::LayoutRight, Genten::DefaultHostExecutionSpace> v(ptr, nrow, nc);
+            deep_copy(A.view(), v);
+            factors.set_factor(i, A);
+          }
+          Genten::Ktensor u(weights, factors);
+          return u;
+        }));
+
+
         cl.def("setWeightsRand", (void (Genten::Ktensor::*)()) &Genten::Ktensor::setWeightsRand, "Set all entries to random values between 0 and 1.  Does not change the matrix array, so the Ktensor can become inconsistent");
         cl.def("setWeights", [](Genten::Ktensor const &o, ttb_real val) -> void { o.setWeights(val); }, "Set all weights equal to val.", pybind11::arg("val"));
         cl.def("setWeights", [](Genten::Ktensor const &o, const Genten::Array &newWeights) -> void { o.setWeights(newWeights); }, "Set all weights equal to val.", pybind11::arg("newWeights"));
