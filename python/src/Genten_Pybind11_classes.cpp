@@ -454,6 +454,51 @@ void pygenten_ktensor(pybind11::module &m){
         cl.def( py::init( [](const Genten::IndxArray &sz){ return new Genten::Tensor(sz); } ), "Construct tensor of given size initialized to val", pybind11::arg("sz"));
         cl.def( py::init( [](const Genten::IndxArray &sz, ttb_real val){ return new Genten::Tensor(sz, val); } ), "Construct tensor of given size initialized to val", pybind11::arg("sz"), pybind11::arg("val"));
         cl.def( py::init( [](const Genten::IndxArray &sz, const Genten::Array &vals){ return new Genten::Tensor(sz, vals); } ), "Construct tensor with given size and values", pybind11::arg("sz"), pybind11::arg("vals"));
+        cl.def( py::init( [](const py::buffer& b) {
+          // Initialize a Genten::Tensor from a numpy array.
+          // The numpy array is always stored with "C" layout,
+          // so we need to transpose it.  This could be done using
+          // py::array_t<ttb_real, py::array::f_style>, but that creates two
+          // copies (one for py::array_t and one for Tensor)
+          py::buffer_info info = b.request();
+
+          if (info.format != py::format_descriptor<ttb_real>::format())
+            throw std::runtime_error("Incompatible format: expected a ttb_real array!");
+
+          // Tensor size
+          const ttb_indx nd = info.ndim;
+          Genten::IndxArray sz(nd), szt(nd);
+          ttb_indx numel = 1;
+          for (ttb_indx i=0; i<nd; ++i) {
+            sz[i]  = info.shape[i];      // size of this tensor
+            szt[i] = info.shape[nd-i-1]; // size of transposed tensor
+            numel *= sz[i];
+          }
+
+          // Tensor values
+          // To do:  make this parallel.  But we should combine that with
+          // putting the tensor on the device.
+          Genten::Array vals(numel);
+          Genten::IndxArray s(nd), st(nd);
+          ttb_real *ptr = static_cast<ttb_real*>(info.ptr);
+          for (ttb_indx i=0; i<numel; ++i) {
+
+            // Map linearized index to mult-index
+            Genten::Impl::ind2sub(s, sz, numel, i);
+
+            // Compute multi-index of transposed tensor
+            for (ttb_indx j=0; j<nd; ++j)
+              st[j] = s[nd-j-1];
+
+            // Map transpose multi-index to transposed linearized index
+            const ttb_indx k = Genten::Impl::sub2ind(st, szt);
+
+            // Copy corresponding values
+            vals[i] = ptr[k];
+          }
+          Genten::Tensor x(sz, vals);
+          return x;
+        }));
         cl.def("ndims", (ttb_indx (Genten::Tensor::*)()) &Genten::Tensor::ndims, "Return the number of dimensions (i.e., the order).");
         cl.def("size", [](Genten::Tensor const &o, ttb_indx i) -> ttb_indx { return o.size(i); } , "Return size of dimension i.", pybind11::arg("i"));
         cl.def("size", [](Genten::Tensor const &o) -> Genten::IndxArray { return o.size(); } , "Return sizes array.");
