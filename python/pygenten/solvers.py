@@ -30,9 +30,11 @@ def driver(X, u, args):
     except:
         have_ttb = False
 
-    # Convert TTB tensor to Genten Tensor
+    # Convert TTB tensor/sptensor to Genten Tensor/Sptensor
     if have_ttb and isinstance(X, ttb.tensor):
         X = gt.Tensor(X.data)
+    if have_ttb and isinstance(X, ttb.sptensor):
+        X = gt.Sptensor(X.shape, X.subs, X.vals)
 
     # Convert TTB ktensor to Genten Ktensor
     ttb_ktensor = False

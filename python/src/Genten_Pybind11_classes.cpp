@@ -4,6 +4,7 @@
 #include "Genten_AlgParams.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_Tensor.hpp"
+#include "Genten_Sptensor.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_Driver.hpp"
 
@@ -568,8 +569,70 @@ void pygenten_ktensor(pybind11::module &m){
             return ss.str();
           });
     }
+    {
+        py::class_<Genten::Sptensor, std::shared_ptr<Genten::Sptensor>> cl(m, "Sptensor");
+        cl.def( py::init( [](){ return new Genten::Sptensor(); } ), "Empty constructor" );
+        cl.def( py::init( [](const Genten::Sptensor& src){ return new Genten::Sptensor(src); } ), "Copy constructor", pybind11::arg("src") );
+        cl.def( py::init( [](const Genten::IndxArray &sz, ttb_indx nz){ return new Genten::Sptensor(sz,nz); } ), "Constructor for a given size and number of nonzeros", pybind11::arg("sz"), pybind11::arg("nz"));
+
+        cl.def(py::init([](const py::tuple& sizes,
+                           const py::array_t<std::int64_t,py::array::c_style>& subs,
+                           const py::array_t<ttb_real,py::array::c_style>& vals) {
+          // Sizes
+          const ttb_indx nd = sizes.size();
+          Genten::IndxArray sz(nd);
+          for (ttb_indx i=0; i<nd; ++i)
+            sz[i] = py::cast<ttb_indx>(sizes[i]);
+
+          // Subscripts
+          py::buffer_info subs_info = subs.request();
+          if (subs_info.ndim != 2)
+            throw std::runtime_error("Incompatible subs dimension!");
+          if (subs_info.shape[1] != nd)
+              throw std::runtime_error("Invalid number of subscript columns!");
+          const ttb_indx nnz = subs_info.shape[0];
+          std::int64_t *subs_ptr = static_cast<std::int64_t *>(subs_info.ptr);
+          typename Genten::Sptensor::subs_view_type s("subs", nnz, nd);
+          for (ttb_indx i=0; i<nnz; ++i)
+            for (ttb_indx j=0; j<nd; ++j)
+              s(i,j) = subs_ptr[i*nd+j];
+
+          // Values.  TTB stores it as a 2-D array for some reason
+          py::buffer_info vals_info = vals.request();
+          if (vals_info.ndim != 1 && vals_info.ndim != 2)
+            throw std::runtime_error("Incompatible vals dimension!");
+          if (vals_info.shape[0] != nnz)
+              throw std::runtime_error("Invalid number of value rows!");
+          if (vals_info.ndim == 2 && vals_info.shape[1] != 1)
+              throw std::runtime_error("Invalid number of value columns!");
+          ttb_real *vals_ptr = static_cast<ttb_real *>(vals_info.ptr);
+          typename Genten::Sptensor::vals_view_type v(vals_ptr, nnz);
+
+          Genten::Sptensor x(sz, v, s);
+          return x;
+        }));
+
+        cl.def("ndims", (ttb_indx (Genten::Sptensor::*)()) &Genten::Sptensor::ndims, "Return the number of dimensions (i.e., the order).");
+        cl.def("size", [](Genten::Sptensor const &o, ttb_indx i) -> ttb_indx { return o.size(i); } , "Return size of dimension i.", pybind11::arg("i"));
+        cl.def("size", [](Genten::Sptensor const &o) -> Genten::IndxArray { return o.size(); } , "Return sizes array.");
+        cl.def("numel", (ttb_real (Genten::Sptensor::*)()) &Genten::Sptensor::numel, "Return the total number of elements in the tensor.");
+        cl.def("nnz", (ttb_indx (Genten::Sptensor::*)()) &Genten::Sptensor::nnz, "Return the total number of nonzeros.");
+        cl.def("__str__", [](const Genten::Sptensor& X) {
+            std::stringstream ss;
+            Genten::print_sptensor(X, ss);
+            return ss.str();
+          });
+    }
 
     m.def("driver", [](const Genten::Tensor& x,
+                       const Genten::Ktensor& u0,
+                       Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::PerfHistory > {
+       Genten::ptree ptree;
+       Genten::PerfHistory perfInfo;
+       Genten::Ktensor u = driver_host(x, u0, algParams, ptree, perfInfo, std::cout);
+       return std::make_tuple(u, perfInfo);
+    });
+    m.def("driver", [](const Genten::Sptensor& x,
                        const Genten::Ktensor& u0,
                        Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::PerfHistory > {
        Genten::ptree ptree;
@@ -581,6 +644,11 @@ void pygenten_ktensor(pybind11::module &m){
     m.def("import_tensor", [](const std::string& fName) -> Genten::Tensor {
         Genten::Tensor X;
         Genten::import_tensor(fName, X);
+        return X;
+    });
+    m.def("import_sptensor", [](const std::string& fName) -> Genten::Sptensor {
+        Genten::Sptensor X;
+        Genten::import_sptensor(fName, X);
         return X;
     });
 
