@@ -482,6 +482,11 @@ void pygenten_ktensor(pybind11::module &m){
         cl.def("weights", [](Genten::Ktensor const &o) -> Genten::Array { return o.weights(); }, "Return reference to weights vector.");
         cl.def("weights", [](Genten::Ktensor const &o, ttb_indx i) -> ttb_real { return o.weights(i); }, "Return reference to weights vector.", pybind11::arg("i"));
         cl.def("__getitem__", [](Genten::Ktensor const &o, ttb_indx n) -> const Genten::FacMatrix & { return o[n]; }, "Return a reference to the n-th factor matrix", pybind11::arg("n"));
+        cl.def("__str__", [](const Genten::Ktensor& u) {
+            std::stringstream ss;
+            Genten::print_ktensor(u, ss);
+            return ss.str();
+          });
     }
     {
         py::class_<Genten::Tensor, std::shared_ptr<Genten::Tensor>> cl(m, "Tensor");
@@ -557,6 +562,11 @@ void pygenten_ktensor(pybind11::module &m){
         cl.def("size", [](Genten::Tensor const &o, ttb_indx i) -> ttb_indx { return o.size(i); } , "Return size of dimension i.", pybind11::arg("i"));
         cl.def("size", [](Genten::Tensor const &o) -> Genten::IndxArray { return o.size(); } , "Return sizes array.");
         cl.def("numel", (ttb_indx (Genten::Tensor::*)()) &Genten::Tensor::numel, "Return the total number of elements in the tensor.");
+        cl.def("__str__", [](const Genten::Tensor& X) {
+            std::stringstream ss;
+            Genten::print_tensor(X, ss);
+            return ss.str();
+          });
     }
 
     m.def("driver", [](const Genten::Tensor& x,
