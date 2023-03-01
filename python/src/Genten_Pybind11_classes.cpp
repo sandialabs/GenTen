@@ -433,33 +433,30 @@ void pygenten_ktensor(pybind11::module &m){
         cl.def( py::init( [](ttb_indx nc, ttb_indx nd, const Genten::IndxArray &sz){ return new Genten::Ktensor(nc, nd, sz); } ), "" , pybind11::arg("nc"), pybind11::arg("nd"), pybind11::arg("sz"));
         cl.def( py::init( [](const Genten::Array &w, const Genten::FacMatArray &vals){ return new Genten::Ktensor(w, vals); } ), "" , pybind11::arg("w"), pybind11::arg("vals"));
 
-        cl.def( py::init( [](const py::buffer& w, const py::list& f) {
+        cl.def(py::init([](const py::array_t<ttb_real>& w, const py::list& f) {
           // Get weights
           py::buffer_info w_info = w.request();
-          if (w_info.format != py::format_descriptor<ttb_real>::format())
-            throw std::runtime_error("Incompatible format: expected a ttb_real array!");
           if (w_info.ndim != 1)
             throw std::runtime_error("Incompatible buffer dimension!");
           const ttb_indx nc = w_info.shape[0];
-          Genten::Array weights(nc, static_cast<ttb_real *>(w_info.ptr), false);
+          Genten::Array weights(nc, static_cast<ttb_real *>(w_info.ptr), true);
 
           // Get factors
           const ttb_indx nd = f.size();
           Genten::FacMatArray factors(nd);
           for (ttb_indx i=0; i<nd; ++i) {
-            auto mat = py::cast<py::array>(f[i]);
+            auto mat = py::cast<py::array_t<ttb_real,py::array::c_style> >(f[i]);
             py::buffer_info mat_info = mat.request();
-            if (mat_info.format != py::format_descriptor<ttb_real>::format())
-              throw std::runtime_error("Incompatible format: expected a ttb_real array!");
             if (mat_info.ndim != 2)
               throw std::runtime_error("Incompatible buffer dimension!");
             const ttb_indx nrow = mat_info.shape[0];
             if (mat_info.shape[1] != nc)
               throw std::runtime_error("Invalid number of columns!");
-            Genten::FacMatrix A(nrow, nc);
             ttb_real *ptr = static_cast<ttb_real *>(mat_info.ptr);
             Kokkos::View<ttb_real**, Kokkos::LayoutRight, Genten::DefaultHostExecutionSpace> v(ptr, nrow, nc);
-            deep_copy(A.view(), v);
+            //Genten::FacMatrix A(nrow, nc);
+            //deep_copy(A.view(), v);
+            Genten::FacMatrix A(nrow, nc, v);
             factors.set_factor(i, A);
           }
           Genten::Ktensor u(weights, factors);
@@ -494,16 +491,11 @@ void pygenten_ktensor(pybind11::module &m){
         cl.def( py::init( [](const Genten::IndxArray &sz){ return new Genten::Tensor(sz); } ), "Construct tensor of given size initialized to val", pybind11::arg("sz"));
         cl.def( py::init( [](const Genten::IndxArray &sz, ttb_real val){ return new Genten::Tensor(sz, val); } ), "Construct tensor of given size initialized to val", pybind11::arg("sz"), pybind11::arg("val"));
         cl.def( py::init( [](const Genten::IndxArray &sz, const Genten::Array &vals){ return new Genten::Tensor(sz, vals); } ), "Construct tensor with given size and values", pybind11::arg("sz"), pybind11::arg("vals"));
-        cl.def( py::init( [](const py::buffer& b) {
-          // Initialize a Genten::Tensor from a numpy array.
-          // The numpy array is always stored with "C" layout,
-          // so we need to transpose it.  This could be done using
-          // py::array_t<ttb_real, py::array::f_style>, but that creates two
-          // copies (one for py::array_t and one for Tensor)
-          py::buffer_info info = b.request();
 
-          if (info.format != py::format_descriptor<ttb_real>::format())
-            throw std::runtime_error("Incompatible format: expected a ttb_real array!");
+        cl.def(py::init([](const py::array_t<ttb_real,py::array::c_style>& b) {
+          // Initialize a Genten::Tensor from a numpy array using "C" layout,
+          // which requires a transpose
+          py::buffer_info info = b.request();
 
           // Tensor size
           const ttb_indx nd = info.ndim;
@@ -539,6 +531,29 @@ void pygenten_ktensor(pybind11::module &m){
           Genten::Tensor x(sz, vals);
           return x;
         }));
+        cl.def(py::init([](const py::array_t<ttb_real,py::array::f_style>& b) {
+          // Initialize a Genten::Tensor from a numpy array using "F" layout,
+          // which is the same as GenTen's layout, so no need to transpose
+          py::buffer_info info = b.request();
+
+          // Tensor size
+          const ttb_indx nd = info.ndim;
+          Genten::IndxArray sz(nd);
+          ttb_indx numel = 1;
+          for (ttb_indx i=0; i<nd; ++i) {
+            sz[i]  = info.shape[i];      // size of this tensor
+            numel *= sz[i];
+          }
+
+          // Tensor values.  We use a view to avoid the copy.  This should be
+          // safe because I believe we aren't alloying pybind to create a
+          // temporary because we did not include py::array::forcecast in the
+          // template parameters.
+          Genten::Array vals(numel, static_cast<ttb_real*>(info.ptr), true);
+          Genten::Tensor x(sz, vals);
+          return x;
+        }));
+
         cl.def("ndims", (ttb_indx (Genten::Tensor::*)()) &Genten::Tensor::ndims, "Return the number of dimensions (i.e., the order).");
         cl.def("size", [](Genten::Tensor const &o, ttb_indx i) -> ttb_indx { return o.size(i); } , "Return size of dimension i.", pybind11::arg("i"));
         cl.def("size", [](Genten::Tensor const &o) -> Genten::IndxArray { return o.size(); } , "Return sizes array.");
