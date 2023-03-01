@@ -400,16 +400,15 @@ void pygenten_ktensor(pybind11::module &m){
                     { m.nCols() * sizeof(ttb_real), sizeof(ttb_real)}
                 );
             });
-        cl.def(py::init([](py::buffer b) {
+        cl.def(py::init([](const py::array_t<ttb_real,py::array::c_style>& b) {
             py::buffer_info info = b.request();
-
-            if (info.format != py::format_descriptor<ttb_real>::format())
-                throw std::runtime_error("Incompatible format: expected a ttb_real array!");
-
             if (info.ndim != 2)
                 throw std::runtime_error("Incompatible buffer dimension!");
-
-            return Genten::FacMatrix(info.shape[0], info.shape[1], static_cast<ttb_real *>(info.ptr));
+            const ttb_indx nrow = info.shape[0];
+            const ttb_indx ncol = info.shape[1];
+            ttb_real *ptr = static_cast<ttb_real *>(info.ptr);
+            Kokkos::View<ttb_real**, Kokkos::LayoutRight, Genten::DefaultHostExecutionSpace> v(ptr, nrow, ncol);
+            return Genten::FacMatrix(nrow, ncol, v);
         }));
         cl.def("__str__", [](const Genten::FacMatrix& A) {
             std::stringstream ss;
