@@ -483,7 +483,7 @@ public:
         typename dest_type::array_layout,
         Layout>::value,
         "ScatterView contribute destination has different layout");
-    static_assert(Kokkos::Impl::SpaceAccessibility<
+    static_assert(Kokkos::SpaceAccessibility<
         ExecSpace,
         typename dest_type::memory_space>::accessible,
         "ScatterView contribute destination memory space not accessible");
@@ -673,7 +673,7 @@ public:
         typename dest_type::array_layout,
         Kokkos::LayoutRight>::value,
         "ScatterView deep_copy destination has different layout");
-    static_assert(Kokkos::Impl::SpaceAccessibility<
+    static_assert(Kokkos::SpaceAccessibility<
         ExecSpace,
         typename dest_type::memory_space>::accessible,
         "ScatterView deep_copy destination memory space not accessible");
@@ -820,7 +820,7 @@ public:
         typename dest_type::array_layout,
         Kokkos::LayoutLeft>::value,
         "ScatterView deep_copy destination has different layout");
-    static_assert(Kokkos::Impl::SpaceAccessibility<
+    static_assert(Kokkos::SpaceAccessibility<
         ExecSpace,
         typename dest_type::memory_space>::accessible,
         "ScatterView deep_copy destination memory space not accessible");
