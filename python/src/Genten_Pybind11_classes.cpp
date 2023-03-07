@@ -8,6 +8,8 @@
 #include "Genten_IOtext.hpp"
 #include "Genten_Driver.hpp"
 
+#include <pybind11/iostream.h>
+
 namespace {
 
 template <typename ExecSpace, typename TensorType>
@@ -627,6 +629,14 @@ void pygenten_ktensor(pybind11::module &m){
     m.def("driver", [](const Genten::Tensor& x,
                        const Genten::Ktensor& u0,
                        Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::PerfHistory > {
+       py::scoped_ostream_redirect stream(
+         std::cout,                                // std::ostream&
+         py::module_::import("sys").attr("stdout") // Python output
+       );
+       py::scoped_ostream_redirect err_stream(
+         std::cerr,                                // std::ostream&
+         py::module_::import("sys").attr("stderr") // Python output
+       );
        Genten::ptree ptree;
        Genten::PerfHistory perfInfo;
        Genten::Ktensor u = driver_host(x, u0, algParams, ptree, perfInfo, std::cout);
@@ -635,6 +645,14 @@ void pygenten_ktensor(pybind11::module &m){
     m.def("driver", [](const Genten::Sptensor& x,
                        const Genten::Ktensor& u0,
                        Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::PerfHistory > {
+       py::scoped_ostream_redirect stream(
+         std::cout,                                // std::ostream&
+         py::module_::import("sys").attr("stdout") // Python output
+       );
+       py::scoped_ostream_redirect err_stream(
+         std::cerr,                                // std::ostream&
+         py::module_::import("sys").attr("stderr") // Python output
+       );
        Genten::ptree ptree;
        Genten::PerfHistory perfInfo;
        Genten::Ktensor u = driver_host(x, u0, algParams, ptree, perfInfo, std::cout);
