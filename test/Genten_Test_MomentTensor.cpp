@@ -49,7 +49,19 @@
 #include <iostream>
 #include <sstream>
 
-using namespace Genten::Test;
+#include <gtest/gtest.h>
+// using namespace Genten::Test;
+
+namespace Genten {
+namespace UnitTests {
+template <typename ExecSpace> struct TestJMMT : public ::testing::Test {
+  using exec_space = ExecSpace;
+};
+
+TYPED_TEST_SUITE(TestMomentTensor, genten_test_types);
+
+// Unit Test for the computation of the Joint Matricized Moment Tensor (JMMT)
+
 
 template <typename ExecSpace>
 Kokkos::View<ttb_real**, Kokkos::LayoutLeft, ExecSpace> generateTestInput(
@@ -136,42 +148,49 @@ void Genten_Test_MomentTensorImpl(int infolevel) {
                       const auto rar = refactoredAlgoRes(i, j, k, l);
                       if (not Genten::isEqualToTol(nar, rar, epsilon)) {
                         std::stringstream resDiff;
-                        resDiff << "(" << i << "," << j << "," << k << "," << l
+                        std::cout << "(" << i << "," << j << "," << k << "," << l
                                 << "): naiveAlgoRes = " << nar
-                                << ", refactoredAlgoRes = " << rar;
-                        MESSAGE(resDiff.str());
+                                << ", refactoredAlgoRes = " << rar<<std::endl;
+                        // MESSAGE(resDiff.str());
                       }
                     }
                   }
                 }
               }
             }
-
-            ASSERT(tensorsAreEqual, "4th joint moment computation");
+            std::cout<<"tensorsAreEqual: "<<tensorsAreEqual<<std::endl;
+            std::cout << "FINISHED for matrix " << numRows
+                      << "x" << numCols << ", blockSize: " << blockSize
+                      << ", teamSize: " << teamSize <<std::endl;
+            std::cout<<"wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"<<std::endl;
+            ASSERT_EQ(tensorsAreEqual, 1);
+            n_configs_tested++;
           }
         }
       }
     }
   }
+  std::cout<<"n_configs_tested: "<<n_configs_tested<<std::endl;
 
-  finalize();
 }
+TEST(TestMoment, ComputeMoment) {
 
-void Genten_MomentTensor(int infolevel) {
-
-#ifdef KOKKOS_ENABLE_CUDA
-  Genten_Test_MomentTensorImpl<Kokkos::Cuda>(infolevel);
-#endif
-#ifdef KOKKOS_ENABLE_HIP
-  Genten_Test_MomentTensorImpl<Kokkos::Experimental::HIP>(infolevel);
-#endif
-#ifdef KOKKOS_ENABLE_OPENMP
-  Genten_Test_MomentTensorImpl<Kokkos::OpenMP>(infolevel);
-#endif
-#ifdef KOKKOS_ENABLE_THREADS
-  Genten_Test_MomentTensorImpl<Kokkos::Threads>(infolevel);
-#endif
-#ifdef KOKKOS_ENABLE_SERIAL
-  Genten_Test_MomentTensorImpl<Kokkos::Serial>(infolevel);
-#endif
-}
+  int infolevel = 1;
+  #ifdef KOKKOS_ENABLE_CUDA
+    Genten_Test_MomentTensorImpl<Kokkos::Cuda>(infolevel);
+  #endif
+  #ifdef KOKKOS_ENABLE_HIP
+    Genten_Test_MomentTensorImpl<Kokkos::Experimental::HIP>(infolevel);
+  #endif
+  #ifdef KOKKOS_ENABLE_OPENMP
+    Genten_Test_MomentTensorImpl<Kokkos::OpenMP>(infolevel);
+  #endif
+  #ifdef KOKKOS_ENABLE_THREADS
+    Genten_Test_MomentTensorImpl<Kokkos::Threads>(infolevel);
+  #endif
+  #ifdef KOKKOS_ENABLE_SERIAL
+    Genten_Test_MomentTensorImpl<Kokkos::Serial>(infolevel);
+  #endif
+} //end TestMoment
+} //end namespace UnitTests
+} //end namespace Genten
