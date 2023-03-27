@@ -299,55 +299,86 @@ TensorT<Kokkos::DefaultHostExecutionSpace> cokurtosis_impl(
 
     int blockIndex [4];
     rankToBlockIndex(ki, blockIndex, flatIndexArr_host);
-    const auto s = stdBlockSize;
-    const auto sSquare = s*s;
-    const auto sCube = sSquare*s;
+
+	auto s = stdBlockSize;
+	int blockSizes_h [4];
+    for (int i = 0; i < 4; i++) {
+		blockSizes_h[i] = ((XnCol % stdBlockSize == 0) || blockIndex[i] != (nBlocks-1))
+            ? stdBlockSize
+            : oddBlockSize;
+			std::cout<<"blockSizes[i]"<<blockSizes_h[i]<<std::endl;
+	}
+
+    const auto size_i = blockSizes_h[0];
+	const auto size_j = blockSizes_h[1];
+	const auto size_k = blockSizes_h[2];
+	const auto size_l = blockSizes_h[3];
 
     const auto iShift = blockIndex[0] * s;
     const auto jShift = blockIndex[1] * s;
     const auto kShift = blockIndex[2] * s;
     const auto lShift = blockIndex[3] * s;
 
-    for (std::size_t ji = 0; ji < blockView.extent(1); ++ji) {
-      for (std::size_t ii = 0; ii < blockView.extent(0); ++ii) {
-        const auto linIdx = ii + ji*sSquare;
+	const auto n_elements_in_block = size_i*size_j*size_k*size_l;
 
-        const auto lIdx = linIdx / sCube + lShift;
-        const auto b = linIdx % sCube;
-        const auto kIdx = b / sSquare + kShift;
-        const auto c = b % sSquare;
-        const auto jIdx = c / s + jShift;
-        const auto iIdx = c % s + iShift;
+    std::cout<<"ji: "<<blockView.extent(1)<<std::endl;
+	std::cout<<"ii: "<<blockView.extent(0)<<std::endl;
+	std::cout<<"shifts, i,j,k,l: "<<iShift<<" "<<jShift<<" "<<kShift<<" "<<lShift<<" "<<std::endl;
+	std::cout<<"Number of Elements in Block "<<n_elements_in_block<<std::endl;
+	const int upper_limit_ji = size_k*size_l;
+	const int upper_limit_ii = size_i*size_j;
+	std::cout<<"upper_limit_ji: "<<upper_limit_ji<<std::endl;
+	std::cout<<"upper_limit_ii: "<<upper_limit_ii<<std::endl;
+
+    for (std::size_t ji = 0; ji < upper_limit_ji; ++ji) {
+      for (std::size_t ii = 0; ii < upper_limit_ii; ++ii) {
+        const auto linIdx = ii + ji*(size_i*size_j);
+	    gt_assert(linIdx<n_elements_in_block);
+
+        const auto lIdx = linIdx / (size_i*size_j*size_k) + lShift;
+        const auto b = linIdx % (size_i*size_j*size_k);
+        const auto kIdx = b / (size_i*size_j) + kShift;
+        const auto c = b % (size_i*size_j);
+        const auto jIdx = c / size_i + jShift;
+        const auto iIdx = c % size_i + iShift;
+
+        //std::cout<<"linIdx, i,j,k,l: "<<linIdx<<", "<<iIdx<<", "<<jIdx<<", "<<kIdx<<", "<<lIdx<<std::endl;
+		gt_assert(iIdx<XnCol);
+		gt_assert(jIdx<XnCol);
+		gt_assert(kIdx<XnCol);
+		gt_assert(lIdx<XnCol);
 
         std::vector<long unsigned int> indices{iIdx, jIdx, kIdx, lIdx};
         std::sort(indices.begin(), indices.end());
+		//This works because moment is a symmetric tensor
         const auto m = blockView(ii, ji);
         do {
           moment(indices[0], indices[1], indices[2], indices[3]) = m;
         } while (std::next_permutation(indices.begin(), indices.end()));
-      }
-    }
-  }
+	  }
 
-  // printf("\n# ncokurtosis_impl()\n\n");
-  // printf("nUniqueBlocks = %d\n", nUniqueBlocks);
-  // printf("| moment | k | i | j | count |\n");
-  // printf("| ------ | - | - | - | ----- |\n");
-  // std::size_t count = 0;
-  // for (std::size_t k = 0; k < flatResults.extent(2); ++k) {
-  //   auto blockView =
-  //       Kokkos::subview(flatResults, Kokkos::ALL(), Kokkos::ALL(), k);
-  //   for (std::size_t j = 0; j < blockView.extent(1); ++j) {
-  //     for (std::size_t i = 0; i < blockView.extent(0); ++i) {
-  //       printf(
-  //         "| %f | %zu | %zu | %zu | %zu |\n",
-  //         blockView(i, j), k, i, j, count
-  //       );
+    }//end ji
+  } //end ki
 
-  //       ++count;
-  //     }
-  //   }
-  // }
+//   printf("\n# ncokurtosis_impl()\n\n");
+//   printf("nUniqueBlocks = %d\n", nUniqueBlocks);
+//   printf("| moment | k | i | j | count |\n");
+//   printf("| ------ | - | - | - | ----- |\n");
+//   std::size_t count = 0;
+//   for (std::size_t k = 0; k < flatResults.extent(2); ++k) {
+//     auto blockView =
+//         Kokkos::subview(flatResults, Kokkos::ALL(), Kokkos::ALL(), k);
+//     for (std::size_t j = 0; j < blockView.extent(1); ++j) {
+//       for (std::size_t i = 0; i < blockView.extent(0); ++i) {
+//         printf(
+//           "| %f | %zu | %zu | %zu | %zu |\n",
+//           blockView(i, j), k, i, j, count
+//         );
+
+//         ++count;
+//       }
+//     }
+//   }
 
   return moment;
 }
