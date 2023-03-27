@@ -135,7 +135,8 @@ TensorT<Kokkos::DefaultHostExecutionSpace> cokurtosis_impl(
   const int oddBlockSize = XnCol - stdBlockSize * (nBlocks - 1);
   //# of unique blocks = (n+4-1) choose 4 or n choose 4 with repetition
   const int nUniqueBlocks = ((nBlocks+3)*(nBlocks+2)*(nBlocks+1)*nBlocks)/(4*3*2*1);
-  // printf("nUniqueBlocks: %f\n", nUniqueBlocks);
+  std::cout<<"nBlocks: "<<nBlocks<<std::endl;
+  std::cout<<"nUniqueBlocks: "<<nUniqueBlocks<<std::endl;
 
   const int nTile = XnRow%tileSize == 0 ? XnRow/tileSize : XnRow/tileSize + 1;
 
@@ -198,7 +199,7 @@ TensorT<Kokkos::DefaultHostExecutionSpace> cokurtosis_impl(
         rankToBlockIndex(blockLinInd, blockIndex, flatIndexArr);
 
         // printf(
-        //   "blockLinInd: %d, blockIndex[0]: %d, blockIndex[1]: %d, blockIndex[2]: %d, blockIndex[3]: %d\n",
+        //   "======indices========blockLinInd: %d, blockIndex[0]: %d, blockIndex[1]: %d, blockIndex[2]: %d, blockIndex[3]: %d\n",
         //   blockLinInd, blockIndex[0], blockIndex[1], blockIndex[2], blockIndex[3]
         // );
 
@@ -206,14 +207,14 @@ TensorT<Kokkos::DefaultHostExecutionSpace> cokurtosis_impl(
         int blockSizes [4];
         for (int i = 0; i < 4; i++) {
           blockSizes[i] =
-            // TODO: should be `nBlocks` or `nBlocks-1`?
-            (XnCol % stdBlockSize == 0 || blockIndex[i] != nBlocks-1)
+
+            ((XnCol % stdBlockSize == 0) || blockIndex[i] != (nBlocks-1))
             ? stdBlockSize
             : oddBlockSize;
         }
 
         // printf(
-        //   "blockSizes[0]: %d, blockSizes[1]: %d, blockSizes[2]: %d, blockSizes[3]: %d\n",
+        //   "-----sizes-----------blockSizes[0]: %d, blockSizes[1]: %d, blockSizes[2]: %d, blockSizes[3]: %d\n",
         //   blockSizes[0], blockSizes[1], blockSizes[2], blockSizes[3]
         // );
 

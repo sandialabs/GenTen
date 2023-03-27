@@ -110,18 +110,16 @@ Genten::TensorT<Kokkos::DefaultHostExecutionSpace> naiveAlgo(ViewT x) {
 template <typename ExecSpace>
 void Genten_Test_MomentTensorImpl(int infolevel) {
   std::string space_name = Genten::SpaceProperties<ExecSpace>::name();
-  initialize("Tests on Genten::MomentTensor (" + space_name + ")", infolevel);
 
+  int n_configs_tested=0;
   for (const int numRows : {20, 35, 40, 91}) {
-    for (const int numCols : {4, 5, 6}) {
+    for (const int numCols : { 4, 5, 6, 7, 8, 9, 10, 11, 12}) {
       for (const int blockSize : {2, 3, 4, 5, 6}) {
-        if (numCols <= blockSize) {
+        if (numCols >= (blockSize)) {
           for (const int teamSize : {1, 2, 4}) {
-            std::stringstream inputInfo;
-            inputInfo << "Computing 4th joint moment for matrix " << numRows
+            std::cout << "Computing 4th joint moment for matrix " << numRows
                       << "x" << numCols << ", blockSize: " << blockSize
-                      << ", teamSize: " << teamSize;
-            MESSAGE(inputInfo.str());
+                      << ", teamSize: " << teamSize << std::endl;
 
             const auto x = generateTestInput<ExecSpace>(numRows, numCols);
 
@@ -139,7 +137,6 @@ void Genten_Test_MomentTensorImpl(int infolevel) {
               );
 
             if (not tensorsAreEqual) {
-              MESSAGE("Results differences:");
               for (int i = 0; i < numCols; ++i) {
                 for (int j = 0; j < numCols; ++j) {
                   for (int k = 0; k < numCols; ++k) {
@@ -151,7 +148,6 @@ void Genten_Test_MomentTensorImpl(int infolevel) {
                         std::cout << "(" << i << "," << j << "," << k << "," << l
                                 << "): naiveAlgoRes = " << nar
                                 << ", refactoredAlgoRes = " << rar<<std::endl;
-                        // MESSAGE(resDiff.str());
                       }
                     }
                   }
