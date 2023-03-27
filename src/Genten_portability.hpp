@@ -84,9 +84,9 @@ void Genten_Test_GCP_SGD(int infolevel);
 #define RESTRICT
 #endif // gnug
 #endif // not previously seen
-  Genten_MomentTensor(infolevel);
+  // Genten_MomentTensor(infolevel);
 
-  cout << "Unit tests complete for " << Genten::getGentenVersion() << endl;
+  // std::cout << "Unit tests complete for " << Genten::getGentenVersion() << endl;
 
 
 namespace Genten {
