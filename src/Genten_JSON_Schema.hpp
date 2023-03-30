@@ -91,6 +91,28 @@ static nlohmann::json json_schema = R"(
                   "default": false
               }
           }
+      },
+      "goal": {
+          "description": "Goal function parameters",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+              "method": {
+                  "description": "Goal method",
+                  "enum": ["none", "python-module", "python-object"],
+                  "default": "none"
+              },
+              "python-module-name": {
+                  "description": "Name of python module containing goal function",
+                  "type": "string",
+                  "default": "__main__"
+              },
+              "python-object-name": {
+                  "description": "Name of python object in python module containing goal function",
+                  "type": "string",
+                  "default": "goal"
+              }
+          }
       }
   },
   "additionalProperties": false,
@@ -469,7 +491,10 @@ static nlohmann::json json_schema = R"(
                   "description": "Compute fit metric",
                   "type": "boolean",
                   "default": false
-              }
+             },
+             "goal": {
+                  "$ref": "#/definitions/goal"
+             }
           }
       },
       "gcp-sgd": {
@@ -685,6 +710,9 @@ static nlohmann::json json_schema = R"(
                   "minimum": 0.0,
                   "maximum": 1.0,
                   "default": 1e-10
+              },
+              "goal": {
+                "$ref": "#/definitions/goal"
               }
           }
       },

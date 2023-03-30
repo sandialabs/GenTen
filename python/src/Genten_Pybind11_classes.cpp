@@ -142,7 +142,7 @@ void pygenten_algparams(py::module &m){
         .value("OpenMP", Genten::Execution_Space::type::OpenMP)
         .value("Threads", Genten::Execution_Space::type::Threads)
         .value("Serial", Genten::Execution_Space::type::Serial)
-        .value("Default", Genten::Execution_Space::type::Default)
+        .value("ExecSpaceDefault", Genten::Execution_Space::type::Default)
         .export_values();
     py::enum_<Genten::Solver_Method::type>(m, "Solver_Method")
         .value("CP_ALS", Genten::Solver_Method::type::CP_ALS)
@@ -156,19 +156,19 @@ void pygenten_algparams(py::module &m){
         .value("ROL", Genten::Opt_Method::type::ROL)
         .export_values();
     py::enum_<Genten::MTTKRP_Method::type>(m, "MTTKRP_Method")
-        .value("Default", Genten::MTTKRP_Method::type::Default)
-        .value("OrigKokkos", Genten::MTTKRP_Method::type::OrigKokkos)
-        .value("Atomic", Genten::MTTKRP_Method::type::Atomic)
-        .value("Duplicated", Genten::MTTKRP_Method::type::Duplicated)
-        .value("Single", Genten::MTTKRP_Method::type::Single)
-        .value("Perm", Genten::MTTKRP_Method::type::Perm)
+        .value("MttkrpDefault", Genten::MTTKRP_Method::type::Default)
+        .value("MttkrpOrigKokkos", Genten::MTTKRP_Method::type::OrigKokkos)
+        .value("MttkrpAtomic", Genten::MTTKRP_Method::type::Atomic)
+        .value("MttkrpDuplicated", Genten::MTTKRP_Method::type::Duplicated)
+        .value("MttkrpSingle", Genten::MTTKRP_Method::type::Single)
+        .value("MttkrpPerm", Genten::MTTKRP_Method::type::Perm)
         .export_values();
     py::enum_<Genten::MTTKRP_All_Method::type>(m, "MTTKRP_All_Method")
-        .value("Default", Genten::MTTKRP_All_Method::type::Default)
-        .value("Iterated", Genten::MTTKRP_All_Method::type::Iterated)
-        .value("Atomic", Genten::MTTKRP_All_Method::type::Atomic)
-        .value("Duplicated", Genten::MTTKRP_All_Method::type::Duplicated)
-        .value("Single", Genten::MTTKRP_All_Method::type::Single)
+        .value("MttkrpAllDefault", Genten::MTTKRP_All_Method::type::Default)
+        .value("MttkrpAllIterated", Genten::MTTKRP_All_Method::type::Iterated)
+        .value("AMttkrpAlltomic", Genten::MTTKRP_All_Method::type::Atomic)
+        .value("MttkrpAllDuplicated", Genten::MTTKRP_All_Method::type::Duplicated)
+        .value("MttkrpAllSingle", Genten::MTTKRP_All_Method::type::Single)
         .export_values();
     py::enum_<Genten::Dist_Update_Method::type>(m, "Dist_Update_Method")
         .value("AllReduce", Genten::Dist_Update_Method::type::AllReduce)
@@ -181,11 +181,11 @@ void pygenten_algparams(py::module &m){
         .value("FiniteDifference", Genten::Hess_Vec_Method::type::FiniteDifference)
         .export_values();
     py::enum_<Genten::Hess_Vec_Tensor_Method::type>(m, "Hess_Vec_Tensor_Method")
-        .value("Default", Genten::Hess_Vec_Tensor_Method::type::Default)
-        .value("Atomic", Genten::Hess_Vec_Tensor_Method::type::Atomic)
-        .value("Duplicated", Genten::Hess_Vec_Tensor_Method::type::Duplicated)
-        .value("Single", Genten::Hess_Vec_Tensor_Method::type::Single)
-        .value("Perm", Genten::Hess_Vec_Tensor_Method::type::Perm)
+        .value("HessVecDefault", Genten::Hess_Vec_Tensor_Method::type::Default)
+        .value("HessVecAtomic", Genten::Hess_Vec_Tensor_Method::type::Atomic)
+        .value("HessVecDuplicated", Genten::Hess_Vec_Tensor_Method::type::Duplicated)
+        .value("HessVecSingle", Genten::Hess_Vec_Tensor_Method::type::Single)
+        .value("HessVecPerm", Genten::Hess_Vec_Tensor_Method::type::Perm)
         .export_values();
     py::enum_<Genten::Hess_Vec_Prec_Method::type>(m, "Hess_Vec_Prec_Method")
         .value("None", Genten::Hess_Vec_Prec_Method::type::None)
@@ -217,7 +217,7 @@ void pygenten_algparams(py::module &m){
         .value("DEMON", Genten::GCP_Step::type::DEMON)
         .export_values();
     py::enum_<Genten::GCP_Streaming_Solver::type>(m, "GCP_Streaming_Solver")
-        .value("SGD", Genten::GCP_Streaming_Solver::type::SGD)
+        .value("StreamingSGD", Genten::GCP_Streaming_Solver::type::SGD)
         .value("LeastSquares", Genten::GCP_Streaming_Solver::type::LeastSquares)
         .value("OnlineCP", Genten::GCP_Streaming_Solver::type::OnlineCP)
         .export_values();
@@ -229,6 +229,11 @@ void pygenten_algparams(py::module &m){
         .value("Ktensor_Fro", Genten::GCP_Streaming_History_Method::type::Ktensor_Fro)
         .value("Factor_Fro", Genten::GCP_Streaming_History_Method::type::Factor_Fro)
         .value("GCP_Loss", Genten::GCP_Streaming_History_Method::type::GCP_Loss)
+        .export_values();
+    py::enum_<Genten::GCP_Goal_Method::type>(m, "GCP_Goal_Method")
+        .value("NoGoal", Genten::GCP_Goal_Method::type::None)
+        .value("PythonModule", Genten::GCP_Goal_Method::type::PythonModule)
+        .value("PythonObject", Genten::GCP_Goal_Method::type::PythonObject)
         .export_values();
     {
         py::class_<Genten::AlgParams, std::shared_ptr<Genten::AlgParams>> cl(m, "AlgParams");
@@ -278,6 +283,12 @@ void pygenten_algparams(py::module &m){
         cl.def_readwrite("loss_function_type", &Genten::AlgParams::loss_function_type);
         cl.def_readwrite("loss_eps", &Genten::AlgParams::loss_eps);
         cl.def_readwrite("gcp_tol", &Genten::AlgParams::gcp_tol);
+        cl.def_readwrite("gcp_goal_method", &Genten::AlgParams::goal_method);
+        cl.def_readwrite("gcp_goal_python_module_name", &Genten::AlgParams::python_module_name);
+        cl.def_readwrite("gcp_goal_python_object_name", &Genten::AlgParams::python_object_name);
+        // Setting the python object this way appears to not work.  Use the
+        // set_py_goal() method belwo.
+        //cl.def_readwrite("gcp_goal_python_object", &Genten::AlgParams::python_object);
 
         cl.def_readwrite("sampling_type", &Genten::AlgParams::sampling_type);
         cl.def_readwrite("rate", &Genten::AlgParams::rate);
@@ -324,7 +335,12 @@ void pygenten_algparams(py::module &m){
             o.print(s);
             return s.str();
         } );
-    }    
+
+        cl.def("set_py_goal", [](Genten::AlgParams& a, const py::object& po) {
+            a.python_object = po;
+            a.goal_method = Genten::GCP_Goal_Method::PythonObject;
+          });
+    }
 }
 
 void pygenten_ktensor(pybind11::module &m){
@@ -400,7 +416,7 @@ void pygenten_ktensor(pybind11::module &m){
                     py::format_descriptor<ttb_real>::format(),
                     2,
                     { m.nRows(), m.nCols() },
-                    { m.nCols() * sizeof(ttb_real), sizeof(ttb_real)}
+                    { m.view().stride(0)*sizeof(ttb_real), m.view().stride(1)*sizeof(ttb_real)}
                 );
             });
         cl.def(py::init([](const py::array_t<ttb_real,py::array::c_style>& b) {
@@ -409,9 +425,35 @@ void pygenten_ktensor(pybind11::module &m){
                 throw std::runtime_error("Incompatible buffer dimension!");
             const ttb_indx nrow = info.shape[0];
             const ttb_indx ncol = info.shape[1];
+            const ttb_indx s0 = info.strides[0]/sizeof(ttb_real);
+            const ttb_indx s1 = info.strides[1]/sizeof(ttb_real);
+            if (s1 != 1) {
+              std::string msg = "Buffer is not layout-right!  Dims = (" +
+                std::to_string(nrow) + ", " + std::to_string(ncol) +
+                "), strides = (" + std::to_string(s0) + ", " +
+                std::to_string(s1) + ")";
+              throw std::runtime_error(msg);
+            }
             ttb_real *ptr = static_cast<ttb_real *>(info.ptr);
-            Kokkos::View<ttb_real**, Kokkos::LayoutRight, Genten::DefaultHostExecutionSpace> v(ptr, nrow, ncol);
-            return Genten::FacMatrix(nrow, ncol, v);
+            Genten::FacMatrix A;
+            if (s0 == ncol) {
+              Kokkos::View<ttb_real**, Kokkos::LayoutRight, Genten::DefaultHostExecutionSpace> v(ptr, nrow, ncol);
+              //A = Genten::FacMatrix(nrow, ncol, v);
+              A = Genten::FacMatrix(nrow, ncol);
+              deep_copy(A.view(), v);
+            }
+            else {
+              Kokkos::LayoutStride layout;
+              layout.dimension[0] = nrow;
+              layout.dimension[1] = ncol;
+              layout.stride[0] = s0;
+              layout.stride[1] = s1;
+              Kokkos::View<ttb_real**, Kokkos::LayoutStride, Genten::DefaultHostExecutionSpace> v(ptr, layout);
+              //A = Genten::FacMatrix(nrow, ncol, v);
+              A = Genten::FacMatrix(nrow, ncol);
+              deep_copy(A.view(), v);
+            }
+            return A;
         }));
         cl.def("__str__", [](const Genten::FacMatrix& A) {
             std::stringstream ss;
@@ -454,12 +496,35 @@ void pygenten_ktensor(pybind11::module &m){
             const ttb_indx nrow = mat_info.shape[0];
             if (mat_info.shape[1] != nc)
               throw std::runtime_error("Invalid number of columns!");
+            const ttb_indx s0 = mat_info.strides[0]/sizeof(ttb_real);
+            const ttb_indx s1 = mat_info.strides[1]/sizeof(ttb_real);
+            if (s1 != 1) {
+              std::string msg = "Buffer is not layout-right!  Dims = (" +
+                std::to_string(nrow) + ", " + std::to_string(nc) +
+                "), strides = (" + std::to_string(s0) + ", " +
+                std::to_string(s1) + ")";
+              throw std::runtime_error(msg);
+            }
             ttb_real *ptr = static_cast<ttb_real *>(mat_info.ptr);
-            Kokkos::View<ttb_real**, Kokkos::LayoutRight, Genten::DefaultHostExecutionSpace> v(ptr, nrow, nc);
-            //Genten::FacMatrix A(nrow, nc);
-            //deep_copy(A.view(), v);
-            Genten::FacMatrix A(nrow, nc, v);
-            factors.set_factor(i, A);
+            if (s0 == nc) {
+              Kokkos::View<ttb_real**, Kokkos::LayoutRight, Genten::DefaultHostExecutionSpace> v(ptr, nrow, nc);
+              //Genten::FacMatrix A(nrow, nc, v);
+              Genten::FacMatrix A(nrow, nc);
+              deep_copy(A.view(), v);
+              factors.set_factor(i, A);
+            }
+            else {
+              Kokkos::LayoutStride layout;
+              layout.dimension[0] = nrow;
+              layout.dimension[1] = nc;
+              layout.stride[0] = s0;
+              layout.stride[1] = s1;
+              Kokkos::View<ttb_real**, Kokkos::LayoutStride, Genten::DefaultHostExecutionSpace> v(ptr, layout);
+              //Genten::FacMatrix A(nrow, nc, v);
+              Genten::FacMatrix A(nrow, nc);
+              deep_copy(A.view(), v);
+              factors.set_factor(i, A);
+            }
           }
           Genten::Ktensor u(weights, factors);
           return u;
@@ -565,6 +630,7 @@ void pygenten_ktensor(pybind11::module &m){
         cl.def("size", [](Genten::Tensor const &o, ttb_indx i) -> ttb_indx { return o.size(i); } , "Return size of dimension i.", pybind11::arg("i"));
         cl.def("size", [](Genten::Tensor const &o) -> Genten::IndxArray { return o.size(); } , "Return sizes array.");
         cl.def("numel", (ttb_indx (Genten::Tensor::*)()) &Genten::Tensor::numel, "Return the total number of elements in the tensor.");
+        cl.def("values", [](Genten::Tensor const &o) -> Genten::Array { return o.getValues(); } , "Return data array.");
         cl.def("__str__", [](const Genten::Tensor& X) {
             std::stringstream ss;
             Genten::print_tensor(X, ss);

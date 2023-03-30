@@ -4,7 +4,9 @@ def make_algparams(args):
     a = gt.AlgParams()
     rem = {}
     for key,value in args.items():
-        if hasattr(a, key):
+        if key == "goal":
+            a.set_py_goal(value)
+        elif hasattr(a, key):
             setattr(a, key, value)
         else:
             rem[key] = value

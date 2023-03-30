@@ -21,8 +21,8 @@ PYBIND11_MODULE(_pygenten, m) {
             Kokkos::finalize();
     });
 
-    m.def("initializeGenten", []() -> void {
-        Genten::InitializeGenten();
+    m.def("initializeGenten", []() -> bool {
+        return Genten::InitializeGenten();
     });
     m.def("finalizeGenten", []() -> void {
         Genten::FinalizeGenten();

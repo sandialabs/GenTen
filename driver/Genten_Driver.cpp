@@ -46,6 +46,10 @@
 #include "Genten_FacTestSetGenerator.hpp"
 #include "Genten_Ptree.hpp"
 
+#ifdef HAVE_PYTHON
+#include <pybind11/embed.h>
+#endif
+
 void print_banner(std::ostream& out)
 {
   std::string banner = R"(
@@ -394,6 +398,11 @@ int main(int argc, char* argv[])
     Genten::InitializeGenten(&argc, &argv);
 
     print_banner(std::cout);
+
+#ifdef HAVE_PYTHON
+    // Start up python interpreter
+    pybind11::scoped_interpreter guard{};
+#endif
 
     // Convert argc,argv to list of arguments
     auto args = Genten::build_arg_list(argc,argv);

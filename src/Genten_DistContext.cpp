@@ -188,8 +188,9 @@ bool InitializeGenten() {
     MPI_Comm_dup(MPI_COMM_WORLD, &(dc.commWorld_));
     MPI_Comm_rank(dc.commWorld_, &(dc.rank_));
     MPI_Comm_size(dc.commWorld_, &(dc.nranks_));
+    return true; // we initialized
   }
-  return true;
+  return false; // we did not initialize
 }
 
 bool FinalizeGenten() {

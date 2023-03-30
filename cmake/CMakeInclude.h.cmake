@@ -112,3 +112,6 @@ typedef @GENTEN_INDEX_TYPE@ ttb_indx;
 #cmakedefine HAVE_CUDA
 #cmakedefine HAVE_HIP
 #cmakedefine HAVE_SYCL
+
+//---- DEFINED IF PYTHON
+#cmakedefine HAVE_PYTHON

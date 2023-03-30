@@ -47,6 +47,7 @@
 #include "Genten_DistKtensorUpdate.hpp"
 #include "Genten_GCP_ValueKernels.hpp"
 #include "Genten_GCP_GradientKernels.hpp"
+#include "Genten_GCP_Goal.hpp"
 
 namespace Genten {
 
@@ -99,6 +100,9 @@ namespace Genten {
 
     ttb_real nrm_X_sq;
 
+    GCP_Goal<ExecSpace> *goal;
+    ttb_real s;
+
   };
 
   template <typename ExecSpace, typename LossFunction>
@@ -110,8 +114,9 @@ namespace Genten {
     X(x), f(func), algParams(algParms)
   {
     dku = createKtensorUpdate(x, M, algParams);
-    M_overlap = dku->createOverlapKtensor(M);
     G_overlap = dku->createOverlapKtensor(M);
+    M_overlap = dku->createOverlapKtensor(M);
+    dku->doImport(M_overlap, M);
     for (ttb_indx  i = 0; i < x.ndims(); i++)
     {
       if (x.size(i) != M_overlap[i].nRows())
@@ -120,7 +125,26 @@ namespace Genten {
 
     nrm_X_sq = x.global_norm();
     nrm_X_sq = nrm_X_sq*nrm_X_sq;
-    w = ttb_real(1.0)/nrm_X_sq;
+
+    goal = goalFactory(X, M_overlap, algParams);
+    if (goal != nullptr) {
+      // Scale statistical and goal terms so each is 0.5 at the initial guess
+      ttb_real t = Impl::gcp_value(X, M_overlap, 1.0, f);
+      if (t == 0.0)
+        w = 1.0;
+      else
+        w = 0.5/t;
+
+      goal->update(M_overlap);
+      t = goal->value(M_overlap);
+      if (t == 0.0)
+        s = 1.0;
+      else
+        s = 0.5/t;
+    }
+    else
+      // Scale statistical term by inverse of ||X||^2
+      w = ttb_real(1.0)/nrm_X_sq;
   }
 
   template <typename ExecSpace, typename LossFunction>
@@ -128,6 +152,8 @@ namespace Genten {
   ~GCP_Model()
   {
     delete dku;
+    if (goal != nullptr)
+      delete goal;
   }
 
   template <typename ExecSpace, typename LossFunction>
@@ -138,6 +164,8 @@ namespace Genten {
     if (dku->overlapAliasesArg())
       M_overlap = dku->createOverlapKtensor(M);
     dku->doImport(M_overlap, M);
+    if (goal != nullptr)
+      goal->update(M_overlap);
   }
 
   template <typename ExecSpace, typename LossFunction>
@@ -145,7 +173,10 @@ namespace Genten {
   GCP_Model<ExecSpace,LossFunction>::
   value(const ktensor_type& M) const
   {
-    return Impl::gcp_value(X, M_overlap, w, f);
+    ttb_real F = Impl::gcp_value(X, M_overlap, w, f);
+    if (goal != nullptr)
+      F += goal->value(M_overlap)*s;
+    return F;
   }
 
   template <typename ExecSpace, typename LossFunction>
@@ -157,6 +188,8 @@ namespace Genten {
       G_overlap = dku->createOverlapKtensor(G);
 
     Impl::gcp_gradient(X, Y, M_overlap, w, f, G_overlap, algParams);
+    if (goal != nullptr)
+      goal->gradient(G_overlap, M_overlap, s);
     dku->doExport(G, G_overlap);
   }
 
