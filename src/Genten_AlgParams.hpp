@@ -59,6 +59,7 @@ namespace Genten {
 
     // Generic options
     Execution_Space::type exec_space; // Chosen execution space
+    IndxArray proc_grid; // User-defined processor grid
     Solver_Method::type method; // Solver method ("cp-als", "gcp-sgd", ...)
     ttb_indx rank;       // Rank of decomposition
     unsigned long seed;  // Random number seed for initial guess

@@ -45,6 +45,7 @@
 
 Genten::AlgParams::AlgParams() :
   exec_space(Execution_Space::default_type),
+  proc_grid(),
   method(Solver_Method::default_type),
   rank(16),
   seed(12345),
@@ -137,6 +138,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                               Genten::Execution_Space::num_types,
                               Genten::Execution_Space::types,
                               Genten::Execution_Space::names);
+  proc_grid = parse_ttb_indx_array(args, "--proc-grid", proc_grid, 1, INT_MAX);
   method = parse_ttb_enum(args, "--method", method,
                           Genten::Solver_Method::num_types,
                           Genten::Solver_Method::types,
@@ -319,6 +321,9 @@ void Genten::AlgParams::parse(const ptree& input)
 
   // Generic options
   parse_ptree_enum<Execution_Space>(input, "exec-space", exec_space);
+  std::vector<ttb_real> grid;
+  parse_ptree_value(input, "proc-grid", grid, 1, INT_MAX);
+  proc_grid = IndxArray(grid.size(), grid.data());
   parse_ptree_enum<Solver_Method>(input, "solver-method", method);
   parse_ptree_value(input, "debug", debug);
   parse_ptree_value(input, "timings", timings);
@@ -500,6 +505,8 @@ void Genten::AlgParams::print_help(std::ostream& out)
       out << ", ";
   }
   out << std::endl;
+  out << "  --proc-grid <array>  number of MPI processors in each dimension"
+      << std::endl;
   out << "  --method <method>  decomposition method: ";
   for (unsigned i=0; i<Genten::Solver_Method::num_types; ++i) {
     out << Genten::Solver_Method::names[i];
@@ -703,6 +710,7 @@ void Genten::AlgParams::print(std::ostream& out) const
 {
   out << "Generic options: " << std::endl;
   out << "  exec-space = " << Genten::Execution_Space::names[exec_space] << std::endl;
+  out << "  proc-grid = " << proc_grid << std::endl;
   out << "  method = " << Genten::Solver_Method::names[method] << std::endl;
   out << "  rank = " << rank << std::endl;
   out << "  seed = " << seed << std::endl;

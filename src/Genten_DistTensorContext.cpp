@@ -547,8 +547,18 @@ distributeTensorImpl(const Sptensor& X, const AlgParams& algParams)
 
     const bool use_tpetra =
       algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
-    pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
-                                                           use_tpetra));
+    if (algParams.proc_grid.size() > 0) {
+      gt_assert(algParams.proc_grid.size() == ndims);
+      small_vector<ttb_indx> grid(ndims);
+      for (ttb_indx i=0; i<ndims; ++i)
+        grid[i] = algParams.proc_grid[i];
+      pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
+                                                             grid,
+                                                             use_tpetra));
+    }
+    else
+      pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
+                                                             use_tpetra));
     detail::printGrids(*pmap_);
 
     global_blocking_ =
@@ -588,7 +598,17 @@ distributeTensorImpl(const Tensor& X, const AlgParams& algParams)
 
     const bool use_tpetra =
       algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
-    pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
+    if (algParams.proc_grid.size() > 0) {
+      gt_assert(algParams.proc_grid.size() == ndims);
+      small_vector<ttb_indx> grid(ndims);
+      for (ttb_indx i=0; i<ndims; ++i)
+        grid[i] = algParams.proc_grid[i];
+      pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
+                                                             grid,
+                                                             use_tpetra));
+    }
+    else
+      pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
                                                            use_tpetra));
 
     detail::printGrids(*pmap_);
@@ -791,8 +811,18 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
     const bool use_tpetra =
       algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
 
-    pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
-                                                           use_tpetra));
+    if (algParams.proc_grid.size() > 0) {
+      gt_assert(algParams.proc_grid.size() == ndims);
+      small_vector<ttb_indx> grid(ndims);
+      for (ttb_indx i=0; i<ndims; ++i)
+        grid[i] = algParams.proc_grid[i];
+      pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
+                                                             grid,
+                                                             use_tpetra));
+    }
+    else
+      pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
+                                                             use_tpetra));
     detail::printGrids(*pmap_);
 
     global_blocking_ =

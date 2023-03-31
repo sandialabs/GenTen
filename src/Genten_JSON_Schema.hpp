@@ -127,6 +127,14 @@ static nlohmann::json json_schema = R"(
           "enum": ["cuda", "hip", "sycl", "openmp", "threads", "serial", "default"],
           "default": "default"
       },
+      "proc-grid": {
+          "description": "Number of MPI procesors in each dimension",
+          "type": "array",
+          "items": {
+              "type": "integer",
+              "minimum": 1
+           }
+      },
       "solver-method": {
           "description": "Decomposition method",
           "enum": ["cp-als", "cp-opt", "gcp-sgd", "gcp-sgd-dist", "gcp-opt"]
