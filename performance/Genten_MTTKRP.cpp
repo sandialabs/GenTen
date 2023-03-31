@@ -57,8 +57,6 @@
 #include "Genten_AlgParams.hpp"
 #include "Genten_MixedFormatOps.hpp"
 
-#include "Kokkos_UniqueToken.hpp"
-
 template <typename Space>
 int run_sparse_mttkrp(const std::string& inputfilename,
                       const ttb_indx index_base,
@@ -434,18 +432,8 @@ int run_dense_mttkrp(const std::string& inputfilename,
     auto cResult_host = create_mirror_view(cResult);
     deep_copy( cResult_host, cResult );
     const ttb_indx nel = cData_host.numel();
-
-    // Make array of subscripts, one per thread
-    Kokkos::Experimental::UniqueToken<Genten::DefaultHostExecutionSpace> token;
-    const int num_thread = token.size();
-    Genten::IndxArray *subs = new Genten::IndxArray[num_thread];
-    for (int i=0; i<num_thread; ++i)
-      subs[i] = Genten::IndxArray(nDims);
-
-    Kokkos::RangePolicy<Genten::DefaultHostExecutionSpace> policy(0,nel);
-    Kokkos::parallel_for(policy, [=](const ttb_indx i)
-    {
-      Genten::IndxArray sub = subs[token.acquire()];
+    Genten::IndxArray sub(nDims);
+    for (ttb_indx i=0; i<nel; ++i) {
       cData_host.ind2sub(sub,i);
       const ttb_real val = cData_host[i];
       for (ttb_indx j=0; j<nNumComponents; ++j) {
@@ -458,8 +446,7 @@ int run_dense_mttkrp(const std::string& inputfilename,
             &(cAnswer_host[n].entry(sub[n],j)), tmp);
         }
       }
-    });
-    delete [] subs;
+    }
 
     // Compare cResult with cAnswer
     const ttb_real tol = MACHINE_EPSILON * 1000;
