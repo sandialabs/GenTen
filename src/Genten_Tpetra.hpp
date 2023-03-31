@@ -51,7 +51,7 @@
 namespace Genten {
 
 template <typename ExecSpace>
-using tpetra_node_type = Kokkos::Compat::KokkosDeviceWrapperNode<ExecSpace>;
+using tpetra_node_type = Tpetra::KokkosCompat::KokkosDeviceWrapperNode<ExecSpace>;
 
 using tpetra_lo_type = int;
 
