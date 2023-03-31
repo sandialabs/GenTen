@@ -109,6 +109,10 @@ IF(ENABLE_TRILINOS)
   MESSAGE(STATUS "  Build shared libs: ${Trilinos_BUILD_SHARED_LIBS}")
   MESSAGE(STATUS "  CXX compiler flags: ${Trilinos_CXX_COMPILER_FLAGS}")
 
+  # Get list of target so we can figure out what was enabled
+  GET_PROPERTY(Trilinos_Target_List DIRECTORY PROPERTY IMPORTED_TARGETS)
+  #MESSAGE("Trilinos targets: ${Trilinos_Target_List}")
+
   # Setup GenTen configuration to match Trilinos, unless user is providing
   # their own settings
   IF(NOT DEFINED CMAKE_CXX_COMPILER)
@@ -135,7 +139,7 @@ IF(ENABLE_TRILINOS)
   LINK_DIRECTORIES(${Trilinos_LIBRARY_DIRS} ${Trilinos_TPL_LIBRARY_DIRS} )
 
   # Look for Kokkos (optional)
-  LIST(FIND Trilinos_PACKAGE_LIST Kokkos Kokkos_List_ID)
+  LIST(FIND Trilinos_Target_List KokkosCore::all_libs Kokkos_List_ID)
   IF(Kokkos_List_ID GREATER -1)
     MESSAGE(STATUS "  Looking for Kokkos: Found")
     MESSAGE(STATUS "    Enabled Kokkos devices: ${Kokkos_DEVICES}")
@@ -147,7 +151,7 @@ IF(ENABLE_TRILINOS)
 
   # Look for Teuchos (optional)
   IF(ENABLE_TEUCHOS)
-    LIST(FIND Trilinos_PACKAGE_LIST TeuchosComm Teuchos_List_ID)
+    LIST(FIND Trilinos_Target_List TeuchosComm::all_libs Teuchos_List_ID)
     IF(Teuchos_List_ID GREATER -1)
       MESSAGE(STATUS "  Looking for Teuchos: Found")
       SET(HAVE_TEUCHOS ON)
@@ -158,7 +162,7 @@ IF(ENABLE_TRILINOS)
 
   # Look for Tpetra (optional)
   IF(ENABLE_TPETRA)
-    LIST(FIND Trilinos_PACKAGE_LIST Tpetra Tpetra_List_ID)
+    LIST(FIND Trilinos_Target_List TpetraCore::all_libs Tpetra_List_ID)
     IF(Tpetra_List_ID GREATER -1)
       MESSAGE(STATUS "  Looking for Tpetra: Found")
       SET(HAVE_TPETRA ON)
@@ -169,7 +173,7 @@ IF(ENABLE_TRILINOS)
 
   # Look for ROL (optional)
   IF(ENABLE_ROL)
-    LIST(FIND Trilinos_PACKAGE_LIST ROL ROL_List_ID)
+    LIST(FIND Trilinos_Target_List ROL::all_libs ROL_List_ID)
     IF(ROL_List_ID GREATER -1)
       MESSAGE(STATUS "  Looking for ROL: Found")
       SET(HAVE_ROL ON)
@@ -179,8 +183,8 @@ IF(ENABLE_TRILINOS)
   ENDIF()
 
   # Look for BLAS/LAPACK TPL
-  LIST(FIND Trilinos_TPL_LIST LAPACK LAPACK_List_ID)
-  LIST(FIND Trilinos_TPL_LIST BLAS BLAS_List_ID)
+  LIST(FIND Trilinos_Target_List LAPACK::all_libs LAPACK_List_ID)
+  LIST(FIND Trilinos_Target_List BLAS::all_libs BLAS_List_ID)
   IF(LAPACK_List_ID GREATER -1 AND BLAS_List_ID GREATER -1)
     MESSAGE(STATUS "  Looking for BLAS/LAPACK: Found")
     SET(ENABLE_LAPACK ON)
@@ -191,7 +195,7 @@ IF(ENABLE_TRILINOS)
 
   # Look for MPI TPL
   IF(ENABLE_MPI)
-    LIST(FIND Trilinos_TPL_LIST MPI MPI_List_ID)
+    LIST(FIND Trilinos_Target_List MPI::all_libs MPI_List_ID)
     IF(MPI_List_ID GREATER -1)
       MESSAGE(STATUS "  Looking for MPI: Found")
       SET(MPI_FOUND ON)
