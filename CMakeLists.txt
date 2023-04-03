@@ -63,6 +63,7 @@ OPTION(ENABLE_TRILINOS "Enable use of Trilinos packages" OFF)
 OPTION(ENABLE_TEUCHOS "Enable Teuchos utilities" ON)
 OPTION(ENABLE_TPETRA "Enable Tpetra distributed parallelism" ON)
 OPTION(ENABLE_ROL "Enable ROL optimization package" ON)
+OPTION(ENABLE_CMAKE_TIMERS "Enable timers for each compile/link step" OFF)
 
 # Warn about some deprecated variables
 IF(DEFINED KOKKOS_PATH)
@@ -607,6 +608,12 @@ ENDIF()
 #------------------------------------------------------------
 #---- Genten Library
 #------------------------------------------------------------
+
+# Add timers for each compile/link
+IF(ENABLE_CMAKE_TIMERS)
+  SET_PROPERTY(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CMAKE_COMMAND} -E time")
+  SET_PROPERTY(GLOBAL PROPERTY RULE_LAUNCH_LINK "${CMAKE_COMMAND} -E time")
+ENDIF()
 
 #---- List the source files to be built.
 SET (Genten_SOURCE_LIST
