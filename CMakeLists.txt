@@ -667,10 +667,14 @@ ENDIF()
 
 IF (ENABLE_GCP)
   SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SamplingKernels.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD_SA.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Gaussian.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Poisson.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Rayleigh.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Gamma.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Bernoulli.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_Gaussian.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_Poisson.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_Rayleigh.cpp

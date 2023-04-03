@@ -446,8 +446,6 @@ namespace Genten {
 
 }
 
-#include "Genten_GCP_LossFunctions.hpp"
-
 #define LOSS_INST_MACRO(SPACE,LOSS)                                     \
   template ttb_real                                                     \
   Impl::gcp_value<SPACE,LOSS>(const SptensorT<SPACE>& X,                \
@@ -470,13 +468,4 @@ namespace Genten {
   Impl::gcp_value<SPACE,LOSS>(const TensorT<SPACE>& X,                  \
                               const KtensorT<SPACE>& M,                 \
                               const ttb_real w,                         \
-                              const LOSS& f);                           \
-
-#define INST_MACRO(SPACE)                                               \
-  LOSS_INST_MACRO(SPACE,GaussianLossFunction)                           \
-  LOSS_INST_MACRO(SPACE,RayleighLossFunction)                           \
-  LOSS_INST_MACRO(SPACE,GammaLossFunction)                              \
-  LOSS_INST_MACRO(SPACE,BernoulliLossFunction)                          \
-  LOSS_INST_MACRO(SPACE,PoissonLossFunction)
-
-GENTEN_INST(INST_MACRO)
+                              const LOSS& f);
