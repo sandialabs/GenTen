@@ -150,6 +150,16 @@ IF(ENABLE_TRILINOS)
     MESSAGE(STATUS "  Looking for Kokkos: NOT Found")
   ENDIF()
 
+  # Look for Kokkos-Kernels (optional)
+  LIST(FIND Trilinos_Target_List KokkosKernels::all_libs KokkosKernels_List_ID)
+  IF(KokkosKernels_List_ID GREATER -1)
+    MESSAGE(STATUS "  Looking for KokkosKernels: Found")
+    SET(HAVE_KOKKOS_KERNELS ON)
+    SET(HAVE_TRILINOS_KOKKOSKERNELS ON)
+  ELSE()
+    MESSAGE(STATUS "  Looking for KokkosKernels: NOT Found")
+  ENDIF()
+
   # Look for Teuchos (optional)
   IF(ENABLE_TEUCHOS)
     LIST(FIND Trilinos_Target_List TeuchosComm::all_libs Teuchos_List_ID)
@@ -240,7 +250,7 @@ ENDIF()
 
 # We support 3 options for Kokkos:
 #  - Inline build of bundled sources in tpls/kokkos.
-#  - Linking to external library determined by KOKKOS_ROOT.
+#  - Linking to external library determined by Kokkos_ROOT.
 #  - Linking to external library through Trilinos.
 # If Trilinos is enabled and it enables Kokkos, we must use it
 IF(Kokkos_ROOT OR HAVE_TRILINOS_KOKKOS)
@@ -249,6 +259,29 @@ ELSE()
   SET(KOKKOS_INLINE_BUILD ON)
 ENDIF()
 MESSAGE(STATUS "Inline Kokkos build is ${KOKKOS_INLINE_BUILD}")
+
+# We support 3 options for KokkosKernels:
+#  - Inline build of bundled sources in tpls/kokkos-kernels.
+#  - Linking to external library determined by KokkosKernels_ROOT.
+#  - Linking to external library through Trilinos.
+# If Trilinos is enabled and it enables KokkosKernels, we must use it
+IF(KokkosKernels_ROOT OR HAVE_TRILINOS_KOKKOSKERNELS)
+  SET(KOKKOSKERNELS_INLINE_BUILD OFF)
+ELSE()
+  SET(KOKKOSKERNELS_INLINE_BUILD ON)
+ENDIF()
+MESSAGE(STATUS "Inline Kokkos-Kernels build is ${KOKKOSKERNELS_INLINE_BUILD}")
+
+# Make sure kokkos and kokkos-kernels builds are consistent
+# IF(KOKKOS_INLINE_BUILD OR KOKKOSKERNELS_INLINE_BUILD)
+#   IF(NOT (KOKKOS_INLINE_BUILD EQUAL KOKKOSKERNELS_INLINE_BUILD))
+#     MESSAGE(FATAL_ERROR "Both Kokkos and KokkosKernels must use the inline build if either does!")
+#   ENDIF()
+# ELSEIF(HAVE_TRILINOS_KOKKOS OR HAVE_TRILINOS_KOKKOSKERNELS)
+#   IF(NOT (HAVE_TRILINOS_KOKKOS EQUAL HAVE_TRILINOS_KOKKOSKERNELS))
+#     MESSAGE(FATAL_ERROR "Both Kokkos and KokkosKernels must use the Trilinos build if either does!")
+#   ENDIF()
+# ENDIF()
 
 #---- Declaring the project name will define ${Genten_SOURCE_DIR} to be
 #---- the path to this source file, and ${Genten_BINARY_DIR} to be the path
@@ -450,6 +483,41 @@ endif()
 
 IF(ENABLE_GCP)
   SET(HAVE_GCP ON)
+ENDIF()
+
+# If we are doing an inline build of Kokkos-Kernels
+IF(KOKKOSKERNELS_INLINE_BUILD)
+
+  # Configure kokkos-kernels
+  SET(KokkosKernels_ADD_DEFAULT_ETI OFF CACHE BOOL "")
+  #SET(KokkosKernels_INST_LAYOUTLEFT ON CACHE BOOL "")
+  #SET(KokkosKernels_INST_LAYOUTRIGHT ON CACHE BOOL "")
+  SET(KokkosKernels_ENABLE_ALL_COMPONENTS OFF CACHE BOOL "")
+  SET(KokkosKernels_ENABLE_COMPONENT_BLAS ON CACHE BOOL "")
+  SET(KokkosKernels_ENABLE_COMPONENT_BATCHED ON CACHE BOOL "")
+  IF(LAPACK_FOUND)
+    SET(KokkosKernels_ENABLE_TPL_BLAS ON CACHE BOOL "")
+  ENDIF()
+  IF(Kokkos_ENABLE_CUDA OR GENTEN_ENABLE_SYCL_FOR_CUDA)
+    IF(ENABLE_CUBLAS)
+      SET(KokkosKernels_ENABLE_TPL_CUBLAS ON CACHE BOOL "")
+    ENDIF()
+  ENDIF()
+  IF(Kokkos_ENABLE_HIP)
+    IF(ENABLE_ROCBLAS)
+      SET(KokkosKernels_ENABLE_TPL_ROCBLAS ON CACHE BOOL "")
+    ENDIF()
+  ENDIF()
+  ADD_SUBDIRECTORY(tpls/kokkos-kernels)
+  SET(HAVE_KOKKOS_KERNELS ON)
+
+ELSEIF(NOT HAVE_TRILINOS_KOKKOSKERNELS)
+
+  # Link against installed KokkosKernels
+  FIND_PACKAGE(KokkosKernels REQUIRED)
+  MESSAGE("-- Genten:  Using KokkosKernels:  ${KokkosKernels_CONFIG}")
+  SET(HAVE_KOKKOS_KERNELS ON)
+
 ENDIF()
 
 # Strip leading/trailing whitespace from GENTEN_LIBS
