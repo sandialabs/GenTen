@@ -53,4 +53,4 @@ RUN \
   mkdir -p /build/genten  && \
   cd /build/genten && \
   /src/genten/scripts/gitlab_clang/do_configure.sh 2>&1 | tee cmake_output.txt && \
-  make -j8 install 2>&1 | tee make_output.txt
+  make -j4 install 2>&1 | tee make_output.txt
