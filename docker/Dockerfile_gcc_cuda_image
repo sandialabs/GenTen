@@ -17,6 +17,7 @@ RUN \
   apt-get dist-upgrade --yes && \
   apt-get install --yes \
     cmake \
+    gfortran \
     libblas-dev \
     liblapack-dev \
     libboost-iostreams-dev \
