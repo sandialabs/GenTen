@@ -11,7 +11,24 @@
 
 #include <pybind11/iostream.h>
 
+namespace py = pybind11;
+
 namespace {
+
+Genten::IndxArray
+make_indxarray(py::buffer b) {
+  Genten::IndxArray a;
+  py::buffer_info info = b.request();
+  if (info.ndim != 1)
+    throw std::runtime_error("Incompatible buffer dimension!");
+  if (info.format == py::format_descriptor<ttb_indx>::format())
+    a = Genten::IndxArray(info.shape[0], static_cast<ttb_indx*>(info.ptr));
+  else if (info.format == py::format_descriptor<ttb_real>::format())
+    a = Genten::IndxArray(info.shape[0], static_cast<ttb_real*>(info.ptr));
+  else
+    throw std::runtime_error("Incompatible format: expected a ttb_indx or ttb_real array!");
+  return a;
+}
 
 template <typename ExecSpace, typename TensorType>
 Genten::Ktensor
@@ -98,9 +115,6 @@ driver_host(const TensorType& x,
 
 }
 
-
-namespace py = pybind11;
-
 void pygenten_perfhistory(py::module &m){
     {
         py::class_<Genten::PerfHistory::Entry, std::shared_ptr<Genten::PerfHistory::Entry>> cl(m, "Entry");
@@ -120,13 +134,13 @@ void pygenten_perfhistory(py::module &m){
     {
         py::class_<Genten::PerfHistory, std::shared_ptr<Genten::PerfHistory>> cl(m, "PerfHistory");
         cl.def( py::init( [](){ return new Genten::PerfHistory(); } ) );
-        cl.def("addEntry", (void (Genten::PerfHistory::*)(const class Genten::PerfHistory::Entry &)) &Genten::PerfHistory::addEntry, "Add a new entry", pybind11::arg("entry"));
+        cl.def("addEntry", (void (Genten::PerfHistory::*)(const class Genten::PerfHistory::Entry &)) &Genten::PerfHistory::addEntry, "Add a new entry", py::arg("entry"));
         cl.def("addEntry", (void (Genten::PerfHistory::*)()) &Genten::PerfHistory::addEntry, "Add an empty entry");
-        cl.def("getEntry", (class Genten::PerfHistory::Entry & (Genten::PerfHistory::*)(const ttb_indx)) &Genten::PerfHistory::getEntry, "Get a given entry", pybind11::arg("i"));
-        cl.def("__getitem__", (class Genten::PerfHistory::Entry & (Genten::PerfHistory::*)(const ttb_indx)) &Genten::PerfHistory::getEntry, "Get a given entry", pybind11::arg("i"));
+        cl.def("getEntry", (class Genten::PerfHistory::Entry & (Genten::PerfHistory::*)(const ttb_indx)) &Genten::PerfHistory::getEntry, "Get a given entry", py::arg("i"));
+        cl.def("__getitem__", (class Genten::PerfHistory::Entry & (Genten::PerfHistory::*)(const ttb_indx)) &Genten::PerfHistory::getEntry, "Get a given entry", py::arg("i"));
         cl.def("lastEntry", (class Genten::PerfHistory::Entry & (Genten::PerfHistory::*)()) &Genten::PerfHistory::lastEntry, "Get the last entry");
         cl.def("size", (ttb_indx (Genten::PerfHistory::*)()) &Genten::PerfHistory::size, "The number of entries");
-        cl.def("resize", (void (Genten::PerfHistory::*)(const ttb_indx)) &Genten::PerfHistory::resize, "Resize to given size", pybind11::arg("new_size"));
+        cl.def("resize", (void (Genten::PerfHistory::*)(const ttb_indx)) &Genten::PerfHistory::resize, "Resize to given size", py::arg("new_size"));
         cl.def("__str__", [](Genten::PerfHistory const &o) -> std::string {
             std::ostringstream s;
             o.print(s);
@@ -240,6 +254,9 @@ void pygenten_algparams(py::module &m){
         py::class_<Genten::AlgParams, std::shared_ptr<Genten::AlgParams>> cl(m, "AlgParams");
         cl.def( py::init( [](){ return new Genten::AlgParams(); } ) );
         cl.def_readwrite("exec_space", &Genten::AlgParams::exec_space);
+        // Setting the processor grid this way appears to not work.  Use the
+        // set_proc_grid() method below
+        //cl.def_readwrite("proc_grid", &Genten::AlgParams::proc_grid);
         cl.def_readwrite("method", &Genten::AlgParams::method);
         cl.def_readwrite("rank", &Genten::AlgParams::rank);
         cl.def_readwrite("seed", &Genten::AlgParams::seed);
@@ -288,7 +305,7 @@ void pygenten_algparams(py::module &m){
         cl.def_readwrite("gcp_goal_python_module_name", &Genten::AlgParams::python_module_name);
         cl.def_readwrite("gcp_goal_python_object_name", &Genten::AlgParams::python_object_name);
         // Setting the python object this way appears to not work.  Use the
-        // set_py_goal() method belwo.
+        // set_py_goal() method below
         //cl.def_readwrite("gcp_goal_python_object", &Genten::AlgParams::python_object);
 
         cl.def_readwrite("sampling_type", &Genten::AlgParams::sampling_type);
@@ -337,6 +354,9 @@ void pygenten_algparams(py::module &m){
             return s.str();
         } );
 
+        cl.def("set_proc_grid", [](Genten::AlgParams& a, py::buffer b) {
+            a.proc_grid = make_indxarray(b);
+          });
         cl.def("set_py_goal", [](Genten::AlgParams& a, const py::object& po) {
             a.python_object = po;
             a.goal_method = Genten::GCP_Goal_Method::PythonObject;
@@ -344,7 +364,7 @@ void pygenten_algparams(py::module &m){
     }
 }
 
-void pygenten_ktensor(pybind11::module &m){
+void pygenten_ktensor(py::module &m){
     {
         py::class_<Genten::ProcessorMap, std::shared_ptr<Genten::ProcessorMap>> cl(m, "ProcessorMap");
         cl.def("gridSize", (ttb_indx (Genten::ProcessorMap::*)()) &Genten::ProcessorMap::gridSize, "Return number of processors in grid");
@@ -380,17 +400,12 @@ void pygenten_ktensor(pybind11::module &m){
                     &m[0], sizeof(ttb_indx), py::format_descriptor<ttb_indx>::format(), m.size()
                 );
             });
-        cl.def(py::init([](py::buffer b) {
-            py::buffer_info info = b.request();
-
-            if (info.format != py::format_descriptor<ttb_indx>::format())
-                throw std::runtime_error("Incompatible format: expected a ttb_indx array!");
-
-            if (info.ndim != 1)
-                throw std::runtime_error("Incompatible buffer dimension!");
-
-            return Genten::IndxArray(info.shape[0], static_cast<ttb_indx *>(info.ptr));
-        }));
+        cl.def(py::init([](py::buffer b) { return make_indxarray(b); }));
+        cl.def_buffer([](Genten::IndxArray &m) -> py::buffer_info {
+            return py::buffer_info(
+              &m[0], sizeof(ttb_real), py::format_descriptor<ttb_indx>::format(), m.size()
+              );
+          });
     }
     {
         py::class_<Genten::Array, std::shared_ptr<Genten::Array>> cl(m, "Array", py::buffer_protocol());
@@ -489,9 +504,9 @@ void pygenten_ktensor(pybind11::module &m){
     {
         py::class_<Genten::Ktensor, std::shared_ptr<Genten::Ktensor>> cl(m, "Ktensor");
         cl.def( py::init( [](){ return new Genten::Ktensor(); } ) );
-        cl.def( py::init( [](ttb_indx nc, ttb_indx nd){ return new Genten::Ktensor(nc, nd); } ), "" , pybind11::arg("nc"), pybind11::arg("nd"));
-        cl.def( py::init( [](ttb_indx nc, ttb_indx nd, const Genten::IndxArray &sz){ return new Genten::Ktensor(nc, nd, sz); } ), "" , pybind11::arg("nc"), pybind11::arg("nd"), pybind11::arg("sz"));
-        cl.def( py::init( [](const Genten::Array &w, const Genten::FacMatArray &vals){ return new Genten::Ktensor(w, vals); } ), "" , pybind11::arg("w"), pybind11::arg("vals"));
+        cl.def( py::init( [](ttb_indx nc, ttb_indx nd){ return new Genten::Ktensor(nc, nd); } ), "" , py::arg("nc"), py::arg("nd"));
+        cl.def( py::init( [](ttb_indx nc, ttb_indx nd, const Genten::IndxArray &sz){ return new Genten::Ktensor(nc, nd, sz); } ), "" , py::arg("nc"), py::arg("nd"), py::arg("sz"));
+        cl.def( py::init( [](const Genten::Array &w, const Genten::FacMatArray &vals){ return new Genten::Ktensor(w, vals); } ), "" , py::arg("w"), py::arg("vals"));
 
         cl.def(py::init([](const py::array_t<ttb_real>& w, const py::list& f) {
           // Get weights
@@ -548,37 +563,44 @@ void pygenten_ktensor(pybind11::module &m){
 
 
         cl.def("setWeightsRand", (void (Genten::Ktensor::*)()) &Genten::Ktensor::setWeightsRand, "Set all entries to random values between 0 and 1.  Does not change the matrix array, so the Ktensor can become inconsistent");
-        cl.def("setWeights", [](Genten::Ktensor const &o, ttb_real val) -> void { o.setWeights(val); }, "Set all weights equal to val.", pybind11::arg("val"));
-        cl.def("setWeights", [](Genten::Ktensor const &o, const Genten::Array &newWeights) -> void { o.setWeights(newWeights); }, "Set all weights equal to val.", pybind11::arg("newWeights"));
-        cl.def("setMatrices", (void (Genten::Ktensor::*)(ttb_real)) &Genten::Ktensor::setMatrices, "Set all matrix entries equal to val.", pybind11::arg("val"));
+        cl.def("setWeights", [](Genten::Ktensor const &o, ttb_real val) -> void { o.setWeights(val); }, "Set all weights equal to val.", py::arg("val"));
+        cl.def("setWeights", [](Genten::Ktensor const &o, const Genten::Array &newWeights) -> void { o.setWeights(newWeights); }, "Set all weights equal to val.", py::arg("newWeights"));
+        cl.def("setMatrices", (void (Genten::Ktensor::*)(ttb_real)) &Genten::Ktensor::setMatrices, "Set all matrix entries equal to val.", py::arg("val"));
         cl.def("setMatricesRand", (void (Genten::Ktensor::*)()) &Genten::Ktensor::setMatricesRand, "Set all entries to random values in [0,1).");
-        cl.def("setMatricesScatter", (void (Genten::Ktensor::*)(const bool, const bool, Genten::RandomMT &)) &Genten::Ktensor::setMatricesScatter, "Set all entries to reproducible random values.", pybind11::arg("bUseMatlabRNG"), pybind11::arg("bUseParallelRNG"), pybind11::arg("cRMT"));
-        cl.def("setRandomUniform", (void (Genten::Ktensor::*)(const bool, Genten::RandomMT &)) &Genten::Ktensor::setRandomUniform, "Fill the Ktensor with uniform random values, normalized to be stochastic.", pybind11::arg("bUseMatlabRNG"), pybind11::arg("cRMT"));
+        cl.def("setMatricesScatter", (void (Genten::Ktensor::*)(const bool, const bool, Genten::RandomMT &)) &Genten::Ktensor::setMatricesScatter, "Set all entries to reproducible random values.", py::arg("bUseMatlabRNG"), py::arg("bUseParallelRNG"), py::arg("cRMT"));
+        cl.def("setRandomUniform", (void (Genten::Ktensor::*)(const bool, Genten::RandomMT &)) &Genten::Ktensor::setRandomUniform, "Fill the Ktensor with uniform random values, normalized to be stochastic.", py::arg("bUseMatlabRNG"), py::arg("cRMT"));
         cl.def("scaleRandomElements", (void (Genten::Ktensor::*)()) &Genten::Ktensor::scaleRandomElements, "multiply (plump) a fraction (indices randomly chosen) of each FacMatrix by scale.");
         //setProcessorMap - ProcessorMap
-        cl.def("getProcessorMap", (const Genten::ProcessorMap* (Genten::Ktensor::*)()) &Genten::Ktensor::getProcessorMap, "Get parallel processor map", pybind11::return_value_policy::reference);
+        cl.def("getProcessorMap", (const Genten::ProcessorMap* (Genten::Ktensor::*)()) &Genten::Ktensor::getProcessorMap, "Get parallel processor map", py::return_value_policy::reference);
         cl.def("ncomponents", (ttb_indx (Genten::Ktensor::*)()) &Genten::Ktensor::ncomponents, "Return number of components.");
         cl.def("ndims", (ttb_indx (Genten::Ktensor::*)()) &Genten::Ktensor::ndims, "Return number of dimensions of Ktensor.");
         cl.def("isConsistent", [](Genten::Ktensor const &o) -> bool { return o.isConsistent(); }, "Consistency check on sizes.");
         cl.def("isConsistent", [](Genten::Ktensor const &o, const Genten::IndxArray & sz) -> bool { return o.isConsistent(sz); }, "Consistency check on sizes.");
-        cl.def("hasNonFinite", (bool (Genten::Ktensor::*)(ttb_indx &)) &Genten::Ktensor::hasNonFinite, "", pybind11::arg("bad"));
-        cl.def("isNonnegative", (bool (Genten::Ktensor::*)(bool)) &Genten::Ktensor::isNonnegative, "", pybind11::arg("bDisplayErrors"));
+        cl.def("hasNonFinite", (bool (Genten::Ktensor::*)(ttb_indx &)) &Genten::Ktensor::hasNonFinite, "", py::arg("bad"));
+        cl.def("isNonnegative", (bool (Genten::Ktensor::*)(bool)) &Genten::Ktensor::isNonnegative, "", py::arg("bDisplayErrors"));
         cl.def("weights", [](Genten::Ktensor const &o) -> Genten::Array { return o.weights(); }, "Return reference to weights vector.");
-        cl.def("weights", [](Genten::Ktensor const &o, ttb_indx i) -> ttb_real { return o.weights(i); }, "Return reference to weights vector.", pybind11::arg("i"));
-        cl.def("__getitem__", [](Genten::Ktensor const &o, ttb_indx n) -> const Genten::FacMatrix & { return o[n]; }, "Return a reference to the n-th factor matrix", pybind11::arg("n"));
+        cl.def("weights", [](Genten::Ktensor const &o, ttb_indx i) -> ttb_real { return o.weights(i); }, "Return reference to weights vector.", py::arg("i"));
+        cl.def("__getitem__", [](Genten::Ktensor const &o, ttb_indx n) -> const Genten::FacMatrix & { return o[n]; }, "Return a reference to the n-th factor matrix", py::arg("n"));
         cl.def("__str__", [](const Genten::Ktensor& u) {
             std::stringstream ss;
             Genten::print_ktensor(u, ss);
             return ss.str();
           });
+        cl.def("shape", [](const Genten::Ktensor& u) {
+            const ttb_indx nd = u.ndims();
+            Genten::IndxArray sz(nd);
+            for (ttb_indx i=0; i<nd; ++i)
+              sz[i] = u[i].nRows();
+            return sz;
+          });
     }
     {
         py::class_<Genten::Tensor, std::shared_ptr<Genten::Tensor>> cl(m, "Tensor");
         cl.def( py::init( [](){ return new Genten::Tensor(); } ), "Empty constructor" );
-        cl.def( py::init( [](const Genten::Tensor& src){ return new Genten::Tensor(src); } ), "Copy constructor", pybind11::arg("src") );
-        cl.def( py::init( [](const Genten::IndxArray &sz){ return new Genten::Tensor(sz); } ), "Construct tensor of given size initialized to val", pybind11::arg("sz"));
-        cl.def( py::init( [](const Genten::IndxArray &sz, ttb_real val){ return new Genten::Tensor(sz, val); } ), "Construct tensor of given size initialized to val", pybind11::arg("sz"), pybind11::arg("val"));
-        cl.def( py::init( [](const Genten::IndxArray &sz, const Genten::Array &vals){ return new Genten::Tensor(sz, vals); } ), "Construct tensor with given size and values", pybind11::arg("sz"), pybind11::arg("vals"));
+        cl.def( py::init( [](const Genten::Tensor& src){ return new Genten::Tensor(src); } ), "Copy constructor", py::arg("src") );
+        cl.def( py::init( [](const Genten::IndxArray &sz){ return new Genten::Tensor(sz); } ), "Construct tensor of given size initialized to val", py::arg("sz"));
+        cl.def( py::init( [](const Genten::IndxArray &sz, ttb_real val){ return new Genten::Tensor(sz, val); } ), "Construct tensor of given size initialized to val", py::arg("sz"), py::arg("val"));
+        cl.def( py::init( [](const Genten::IndxArray &sz, const Genten::Array &vals){ return new Genten::Tensor(sz, vals); } ), "Construct tensor with given size and values", py::arg("sz"), py::arg("vals"));
 
         cl.def(py::init([](const py::array_t<ttb_real,py::array::c_style>& b) {
           // Initialize a Genten::Tensor from a numpy array using "C" layout,
@@ -643,7 +665,7 @@ void pygenten_ktensor(pybind11::module &m){
         }));
 
         cl.def("ndims", (ttb_indx (Genten::Tensor::*)()) &Genten::Tensor::ndims, "Return the number of dimensions (i.e., the order).");
-        cl.def("size", [](Genten::Tensor const &o, ttb_indx i) -> ttb_indx { return o.size(i); } , "Return size of dimension i.", pybind11::arg("i"));
+        cl.def("size", [](Genten::Tensor const &o, ttb_indx i) -> ttb_indx { return o.size(i); } , "Return size of dimension i.", py::arg("i"));
         cl.def("size", [](Genten::Tensor const &o) -> Genten::IndxArray { return o.size(); } , "Return sizes array.");
         cl.def("numel", (ttb_indx (Genten::Tensor::*)()) &Genten::Tensor::numel, "Return the total number of elements in the tensor.");
         cl.def("values", [](Genten::Tensor const &o) -> Genten::Array { return o.getValues(); } , "Return data array.");
@@ -652,13 +674,13 @@ void pygenten_ktensor(pybind11::module &m){
             Genten::print_tensor(X, ss);
             return ss.str();
           });
-        cl.def("getProcessorMap", (const Genten::ProcessorMap* (Genten::Tensor::*)()) &Genten::Tensor::getProcessorMap, "Get parallel processor map", pybind11::return_value_policy::reference);
+        cl.def("getProcessorMap", (const Genten::ProcessorMap* (Genten::Tensor::*)()) &Genten::Tensor::getProcessorMap, "Get parallel processor map", py::return_value_policy::reference);
     }
     {
         py::class_<Genten::Sptensor, std::shared_ptr<Genten::Sptensor>> cl(m, "Sptensor");
         cl.def( py::init( [](){ return new Genten::Sptensor(); } ), "Empty constructor" );
-        cl.def( py::init( [](const Genten::Sptensor& src){ return new Genten::Sptensor(src); } ), "Copy constructor", pybind11::arg("src") );
-        cl.def( py::init( [](const Genten::IndxArray &sz, ttb_indx nz){ return new Genten::Sptensor(sz,nz); } ), "Constructor for a given size and number of nonzeros", pybind11::arg("sz"), pybind11::arg("nz"));
+        cl.def( py::init( [](const Genten::Sptensor& src){ return new Genten::Sptensor(src); } ), "Copy constructor", py::arg("src") );
+        cl.def( py::init( [](const Genten::IndxArray &sz, ttb_indx nz){ return new Genten::Sptensor(sz,nz); } ), "Constructor for a given size and number of nonzeros", py::arg("sz"), py::arg("nz"));
 
         cl.def(py::init([](const py::tuple& sizes,
                            const py::array_t<std::int64_t,py::array::c_style>& subs,
@@ -698,7 +720,7 @@ void pygenten_ktensor(pybind11::module &m){
         }));
 
         cl.def("ndims", (ttb_indx (Genten::Sptensor::*)()) &Genten::Sptensor::ndims, "Return the number of dimensions (i.e., the order).");
-        cl.def("size", [](Genten::Sptensor const &o, ttb_indx i) -> ttb_indx { return o.size(i); } , "Return size of dimension i.", pybind11::arg("i"));
+        cl.def("size", [](Genten::Sptensor const &o, ttb_indx i) -> ttb_indx { return o.size(i); } , "Return size of dimension i.", py::arg("i"));
         cl.def("size", [](Genten::Sptensor const &o) -> Genten::IndxArray { return o.size(); } , "Return sizes array.");
         cl.def("numel", (ttb_real (Genten::Sptensor::*)()) &Genten::Sptensor::numel, "Return the total number of elements in the tensor.");
         cl.def("nnz", (ttb_indx (Genten::Sptensor::*)()) &Genten::Sptensor::nnz, "Return the total number of nonzeros.");
@@ -707,7 +729,7 @@ void pygenten_ktensor(pybind11::module &m){
             Genten::print_sptensor(X, ss);
             return ss.str();
           });
-        cl.def("getProcessorMap", (const Genten::ProcessorMap* (Genten::Sptensor::*)()) &Genten::Sptensor::getProcessorMap, "Get parallel processor map", pybind11::return_value_policy::reference);
+        cl.def("getProcessorMap", (const Genten::ProcessorMap* (Genten::Sptensor::*)()) &Genten::Sptensor::getProcessorMap, "Get parallel processor map", py::return_value_policy::reference);
     }
 
     m.def("driver", [](const Genten::Tensor& x,
@@ -767,9 +789,13 @@ void pygenten_ktensor(pybind11::module &m){
         gt_assert(Genten::DistContext::initialized());
         return Genten::DistContext::nranks();
     });
+    m.def("barrier", []() {
+        gt_assert(Genten::DistContext::initialized());
+        Genten::DistContext::Barrier();
+    });
 }
 
-void pygenten_classes(pybind11::module &m){
+void pygenten_classes(py::module &m){
     pygenten_perfhistory(m);
     pygenten_algparams(m);
     pygenten_ktensor(m);

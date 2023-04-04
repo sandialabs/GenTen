@@ -6,6 +6,8 @@ def make_algparams(args):
     for key,value in args.items():
         if key == "goal":
             a.set_py_goal(value)
+        elif key == "proc_grid":
+            a.set_proc_grid(value)
         elif hasattr(a, key):
             setattr(a, key, value)
         else:
@@ -33,22 +35,24 @@ def driver(X, u, args):
         have_ttb = False
 
     # Convert TTB tensor/sptensor to Genten Tensor/Sptensor
+    is_ttb = False
     if have_ttb and isinstance(X, ttb.tensor):
         X = gt.Tensor(X.data)
+        is_ttb = True
     if have_ttb and isinstance(X, ttb.sptensor):
         X = gt.Sptensor(X.shape, X.subs, X.vals)
+        is_ttb = True
 
     # Convert TTB ktensor to Genten Ktensor
-    ttb_ktensor = False
     if have_ttb and isinstance(u, ttb.ktensor):
         u = gt.Ktensor(u.weights, u.factor_matrices)
-        ttb_ktensor = True
+        is_ttb = True
 
     # Call Genten
     M,info = gt.driver(X, u, args);
 
     # Convert result Ktensor to TTB ktensor if necessary
-    if ttb_ktensor:
+    if is_ttb:
         weights = np.array(M.weights(), copy=True)
         factor_matrices = []
         for i in range(0, M.ndims()):
