@@ -322,17 +322,19 @@ driver(const DistTensorContext<ExecSpace>& dtc,
   }
 
 #if defined(HAVE_TEUCHOS)
-  Teuchos::StackedTimer::OutputOptions options;
-  options.output_fraction = true;
-  options.output_minmax   = true;
-  options.align_columns   = true;
-  options.print_warnings  = false;
+  if (algParams.timings) {
+    Teuchos::StackedTimer::OutputOptions options;
+    options.output_fraction = true;
+    options.output_minmax   = true;
+    options.align_columns   = true;
+    options.print_warnings  = false;
 #ifdef HAVE_DIST
-  auto comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap->gridComm()));
+    auto comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap->gridComm()));
 #else
-  auto comm = Teuchos::createSerialComm<int>();
+    auto comm = Teuchos::createSerialComm<int>();
 #endif
-  Teuchos::TimeMonitor::getStackedTimer()->report(out, comm, options);
+    Teuchos::TimeMonitor::getStackedTimer()->report(out, comm, options);
+  }
 #endif
 
   x.setProcessorMap(nullptr);
@@ -498,17 +500,19 @@ driver(const DistTensorContext<ExecSpace>& dtc,
   }
 
 #if defined(HAVE_TEUCHOS)
-  Teuchos::StackedTimer::OutputOptions options;
-  options.output_fraction = true;
-  options.output_minmax   = true;
-  options.align_columns   = true;
-  options.print_warnings  = false;
-// #ifdef HAVE_DIST
-//   auto comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap->gridComm()));
-// #else
-  auto comm = Teuchos::createSerialComm<int>();
-// #endif
-  Teuchos::TimeMonitor::getStackedTimer()->report(out, comm, options);
+  if (algParams.timings) {
+    Teuchos::StackedTimer::OutputOptions options;
+    options.output_fraction = true;
+    options.output_minmax   = true;
+    options.align_columns   = true;
+    options.print_warnings  = false;
+#ifdef HAVE_DIST
+    auto comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap->gridComm()));
+#else
+    auto comm = Teuchos::createSerialComm<int>();
+#endif
+    Teuchos::TimeMonitor::getStackedTimer()->report(out, comm, options);
+  }
 #endif
 
   x.setProcessorMap(nullptr);
