@@ -7,6 +7,7 @@
 #include "Genten_Sptensor.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_Driver.hpp"
+#include "Genten_Pmap.hpp"
 
 #include <pybind11/iostream.h>
 
@@ -345,6 +346,21 @@ void pygenten_algparams(py::module &m){
 
 void pygenten_ktensor(pybind11::module &m){
     {
+        py::class_<Genten::ProcessorMap, std::shared_ptr<Genten::ProcessorMap>> cl(m, "ProcessorMap");
+        cl.def("gridSize", (ttb_indx (Genten::ProcessorMap::*)()) &Genten::ProcessorMap::gridSize, "Return number of processors in grid");
+        cl.def("gridRank", (ttb_indx (Genten::ProcessorMap::*)()) &Genten::ProcessorMap::gridRank, "Return rank of this processor in grid");
+        cl.def("gridAllReduce", [](const Genten::ProcessorMap& pmap, py::buffer b) {
+            py::buffer_info info = b.request();
+            if (info.format != py::format_descriptor<ttb_real>::format())
+                throw std::runtime_error("Incompatible format: expected a ttb_real array!");
+            if (info.ndim != 1)
+                throw std::runtime_error("Incompatible buffer dimension!");
+            ttb_real *ptr = static_cast<ttb_real*>(info.ptr);
+            ttb_indx n = info.shape[0];
+            pmap.gridAllReduce(ptr, n);
+          });
+    }
+    {
         py::class_<Genten::RandomMT, std::shared_ptr<Genten::RandomMT>> cl(m, "RandomMT");
         cl.def( py::init( [](const unsigned long  nnSeed){ return new Genten::RandomMT(nnSeed); } ) );
         cl.def("genrnd_int32", (unsigned long (Genten::RandomMT::*)()) &Genten::RandomMT::genrnd_int32, "Return a uniform random number on the interval [0,0xffffffff].");
@@ -540,7 +556,7 @@ void pygenten_ktensor(pybind11::module &m){
         cl.def("setRandomUniform", (void (Genten::Ktensor::*)(const bool, Genten::RandomMT &)) &Genten::Ktensor::setRandomUniform, "Fill the Ktensor with uniform random values, normalized to be stochastic.", pybind11::arg("bUseMatlabRNG"), pybind11::arg("cRMT"));
         cl.def("scaleRandomElements", (void (Genten::Ktensor::*)()) &Genten::Ktensor::scaleRandomElements, "multiply (plump) a fraction (indices randomly chosen) of each FacMatrix by scale.");
         //setProcessorMap - ProcessorMap
-        //getProcessorMap - ProcessorMap
+        cl.def("getProcessorMap", (const Genten::ProcessorMap* (Genten::Ktensor::*)()) &Genten::Ktensor::getProcessorMap, "Get parallel processor map", pybind11::return_value_policy::reference);
         cl.def("ncomponents", (ttb_indx (Genten::Ktensor::*)()) &Genten::Ktensor::ncomponents, "Return number of components.");
         cl.def("ndims", (ttb_indx (Genten::Ktensor::*)()) &Genten::Ktensor::ndims, "Return number of dimensions of Ktensor.");
         cl.def("isConsistent", [](Genten::Ktensor const &o) -> bool { return o.isConsistent(); }, "Consistency check on sizes.");
@@ -636,6 +652,7 @@ void pygenten_ktensor(pybind11::module &m){
             Genten::print_tensor(X, ss);
             return ss.str();
           });
+        cl.def("getProcessorMap", (const Genten::ProcessorMap* (Genten::Tensor::*)()) &Genten::Tensor::getProcessorMap, "Get parallel processor map", pybind11::return_value_policy::reference);
     }
     {
         py::class_<Genten::Sptensor, std::shared_ptr<Genten::Sptensor>> cl(m, "Sptensor");
@@ -690,6 +707,7 @@ void pygenten_ktensor(pybind11::module &m){
             Genten::print_sptensor(X, ss);
             return ss.str();
           });
+        cl.def("getProcessorMap", (const Genten::ProcessorMap* (Genten::Sptensor::*)()) &Genten::Sptensor::getProcessorMap, "Get parallel processor map", pybind11::return_value_policy::reference);
     }
 
     m.def("driver", [](const Genten::Tensor& x,
