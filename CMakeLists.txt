@@ -570,6 +570,7 @@ INCLUDE_DIRECTORIES (
   ${Genten_SOURCE_DIR}/tpls/json/single_include/nlohmann/
   ${Genten_SOURCE_DIR}/tpls/json-validator/src/
   ${Genten_SOURCE_DIR}/tpls/json-validator/src/nlohmann/
+  ${Genten_SOURCE_DIR}/joint_moments/
   )
 FILE (GLOB genten_headers
   ${Genten_SOURCE_DIR}/src/*.h
@@ -579,6 +580,7 @@ FILE (GLOB genten_headers
   ${Genten_SOURCE_DIR}/src/rol/*.hpp
   ${Genten_SOURCE_DIR}/src/lbfgsb/*.hpp
   ${Genten_SOURCE_DIR}/tpls/lbfgsb/*.h
+  ${Genten_SOURCE_DIR}/joint_moments/Genten_HigherMoments.hpp
   )
 INSTALL (
   FILES ${genten_headers}
@@ -709,6 +711,7 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_Sptensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Tensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_HessVec.cpp
+  ${Genten_SOURCE_DIR}/joint_moments/Genten_HigherMoments.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
   ${Genten_SOURCE_DIR}/src/Genten_CublasHandle.cpp
   ${Genten_SOURCE_DIR}/src/Genten_CusolverHandle.cpp
@@ -773,8 +776,12 @@ ENDIF()
 
 #---- Tell CMake to build the library.
 ADD_LIBRARY (gentenlib ${Genten_SOURCE_LIST})
+
 IF(HAVE_TRILINOS)
   TARGET_LINK_LIBRARIES(gentenlib Trilinos::all_libs)
+ENDIF()
+IF(NOT HAVE_TRILINOS_KOKKOSKERNELS)
+  TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkoskernels)
 ENDIF()
 IF(NOT HAVE_TRILINOS_KOKKOS)
   TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkos)

@@ -38,11 +38,22 @@
 // ************************************************************************
 //@HEADER
 
-//#include "Genten_Kokkos.hpp"
-//#include "Genten_Tensor.hpp"
-//#include "Genten_IOtext.hpp"
+#ifndef GENTEN_HIGHER_ORDER_MOMENT_HPP_
+#define GENTEN_HIGHER_ORDER_MOMENT_HPP_
 
-extern "C" {
+#include "CMakeInclude.h"
 
+#include "Genten_Tensor.hpp"
+#include <Kokkos_Core_fwd.hpp>
 
-}
+namespace Genten {
+
+template <class ExecSpace>
+TensorT<Kokkos::DefaultHostExecutionSpace> create_and_compute_moment_tensor(
+  Kokkos::View<ttb_real**, Kokkos::LayoutLeft, ExecSpace> x,
+  const int blockSize, const int teamSize
+);
+
+} // namespace Genten
+
+#endif
