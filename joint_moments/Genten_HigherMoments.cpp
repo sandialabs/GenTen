@@ -160,7 +160,7 @@ TensorT<Kokkos::DefaultHostExecutionSpace> cokurtosis_impl(
   Kokkos::parallel_for(
     "BlocksLoop", policy.set_scratch_size(0, Kokkos::PerTeam(scratch_size)),
     KOKKOS_LAMBDA(const member_type &teamMember) {
-      const int tRank = teamMember.team_rank();
+      //const int tRank = teamMember.team_rank();
       const int lRank = teamMember.league_rank();
 
       int variableTileSize = tileSize;
@@ -325,15 +325,15 @@ TensorT<Kokkos::DefaultHostExecutionSpace> cokurtosis_impl(
 	std::cout<<"ii: "<<blockView.extent(0)<<std::endl;
 	std::cout<<"shifts, i,j,k,l: "<<iShift<<" "<<jShift<<" "<<kShift<<" "<<lShift<<" "<<std::endl;
 	std::cout<<"Number of Elements in Block "<<n_elements_in_block<<std::endl;
-	const int upper_limit_ji = size_k*size_l;
-	const int upper_limit_ii = size_i*size_j;
+	const std::size_t upper_limit_ji = size_k*size_l;
+	const std::size_t upper_limit_ii = size_i*size_j;
 	std::cout<<"upper_limit_ji: "<<upper_limit_ji<<std::endl;
 	std::cout<<"upper_limit_ii: "<<upper_limit_ii<<std::endl;
 
     for (std::size_t ji = 0; ji < upper_limit_ji; ++ji) {
       for (std::size_t ii = 0; ii < upper_limit_ii; ++ii) {
         const auto linIdx = ii + ji*(size_i*size_j);
-	    gt_assert(linIdx<n_elements_in_block);
+        gt_assert(static_cast<const int>(linIdx)<n_elements_in_block);
 
         const auto lIdx = linIdx / (size_i*size_j*size_k) + lShift;
         const auto b = linIdx % (size_i*size_j*size_k);

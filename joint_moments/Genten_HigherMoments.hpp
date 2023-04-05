@@ -45,7 +45,6 @@
 
 #include "Genten_Tensor.hpp"
 #include <Kokkos_Core_fwd.hpp>
-#include <Kokkos_Layout.hpp>
 
 namespace Genten {
 
