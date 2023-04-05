@@ -608,7 +608,6 @@ TensorReader(const std::string& fn,
   is_sparse(false), is_dense(false), is_binary(false), is_text(false),
   user_header(false)
 {
-  std::string format = "sparse";
   if (tree.contains("format")) {
     std::string format = tree.get<std::string>("format");
     if (format == "sparse")
@@ -619,9 +618,8 @@ TensorReader(const std::string& fn,
       Genten::error("Invalid tensor format \"" + format + "\".  Must be \"sparse\" or \"dense\"");
   }
 
-  std::string type = "text";
   if (tree.contains("file-type")) {
-    type = tree.get<std::string>("file-type");
+    std::string type = tree.get<std::string>("file-type");
     if (type == "binary")
       is_binary = true;
     else if (type == "text")
