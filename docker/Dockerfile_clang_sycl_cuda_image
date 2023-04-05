@@ -19,6 +19,7 @@ RUN \
     libblas-dev \
     liblapack-dev \
     libboost-iostreams-dev \
+    gfortran \
     && \
   rm -rf /var/lib/apt/lists/*
 

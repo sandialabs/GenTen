@@ -63,6 +63,7 @@ OPTION(ENABLE_TRILINOS "Enable use of Trilinos packages" OFF)
 OPTION(ENABLE_TEUCHOS "Enable Teuchos utilities" ON)
 OPTION(ENABLE_TPETRA "Enable Tpetra distributed parallelism" ON)
 OPTION(ENABLE_ROL "Enable ROL optimization package" ON)
+OPTION(ENABLE_CMAKE_TIMERS "Enable timers for each compile/link step" OFF)
 
 # Warn about some deprecated variables
 IF(DEFINED KOKKOS_PATH)
@@ -109,6 +110,10 @@ IF(ENABLE_TRILINOS)
   MESSAGE(STATUS "  Build shared libs: ${Trilinos_BUILD_SHARED_LIBS}")
   MESSAGE(STATUS "  CXX compiler flags: ${Trilinos_CXX_COMPILER_FLAGS}")
 
+  # Get list of target so we can figure out what was enabled
+  GET_PROPERTY(Trilinos_Target_List DIRECTORY PROPERTY IMPORTED_TARGETS)
+  #MESSAGE("Trilinos targets: ${Trilinos_Target_List}")
+
   # Setup GenTen configuration to match Trilinos, unless user is providing
   # their own settings
   IF(NOT DEFINED CMAKE_CXX_COMPILER)
@@ -135,7 +140,7 @@ IF(ENABLE_TRILINOS)
   LINK_DIRECTORIES(${Trilinos_LIBRARY_DIRS} ${Trilinos_TPL_LIBRARY_DIRS} )
 
   # Look for Kokkos (optional)
-  LIST(FIND Trilinos_PACKAGE_LIST Kokkos Kokkos_List_ID)
+  LIST(FIND Trilinos_Target_List KokkosCore::all_libs Kokkos_List_ID)
   IF(Kokkos_List_ID GREATER -1)
     MESSAGE(STATUS "  Looking for Kokkos: Found")
     MESSAGE(STATUS "    Enabled Kokkos devices: ${Kokkos_DEVICES}")
@@ -145,9 +150,19 @@ IF(ENABLE_TRILINOS)
     MESSAGE(STATUS "  Looking for Kokkos: NOT Found")
   ENDIF()
 
+  # Look for Kokkos-Kernels (optional)
+  LIST(FIND Trilinos_Target_List KokkosKernels::all_libs KokkosKernels_List_ID)
+  IF(KokkosKernels_List_ID GREATER -1)
+    MESSAGE(STATUS "  Looking for KokkosKernels: Found")
+    SET(HAVE_KOKKOS_KERNELS ON)
+    SET(HAVE_TRILINOS_KOKKOSKERNELS ON)
+  ELSE()
+    MESSAGE(STATUS "  Looking for KokkosKernels: NOT Found")
+  ENDIF()
+
   # Look for Teuchos (optional)
   IF(ENABLE_TEUCHOS)
-    LIST(FIND Trilinos_PACKAGE_LIST TeuchosComm Teuchos_List_ID)
+    LIST(FIND Trilinos_Target_List TeuchosComm::all_libs Teuchos_List_ID)
     IF(Teuchos_List_ID GREATER -1)
       MESSAGE(STATUS "  Looking for Teuchos: Found")
       SET(HAVE_TEUCHOS ON)
@@ -158,7 +173,7 @@ IF(ENABLE_TRILINOS)
 
   # Look for Tpetra (optional)
   IF(ENABLE_TPETRA)
-    LIST(FIND Trilinos_PACKAGE_LIST Tpetra Tpetra_List_ID)
+    LIST(FIND Trilinos_Target_List TpetraCore::all_libs Tpetra_List_ID)
     IF(Tpetra_List_ID GREATER -1)
       MESSAGE(STATUS "  Looking for Tpetra: Found")
       SET(HAVE_TPETRA ON)
@@ -169,7 +184,7 @@ IF(ENABLE_TRILINOS)
 
   # Look for ROL (optional)
   IF(ENABLE_ROL)
-    LIST(FIND Trilinos_PACKAGE_LIST ROL ROL_List_ID)
+    LIST(FIND Trilinos_Target_List ROL::all_libs ROL_List_ID)
     IF(ROL_List_ID GREATER -1)
       MESSAGE(STATUS "  Looking for ROL: Found")
       SET(HAVE_ROL ON)
@@ -179,8 +194,8 @@ IF(ENABLE_TRILINOS)
   ENDIF()
 
   # Look for BLAS/LAPACK TPL
-  LIST(FIND Trilinos_TPL_LIST LAPACK LAPACK_List_ID)
-  LIST(FIND Trilinos_TPL_LIST BLAS BLAS_List_ID)
+  LIST(FIND Trilinos_Target_List LAPACK::all_libs LAPACK_List_ID)
+  LIST(FIND Trilinos_Target_List BLAS::all_libs BLAS_List_ID)
   IF(LAPACK_List_ID GREATER -1 AND BLAS_List_ID GREATER -1)
     MESSAGE(STATUS "  Looking for BLAS/LAPACK: Found")
     SET(ENABLE_LAPACK ON)
@@ -191,7 +206,7 @@ IF(ENABLE_TRILINOS)
 
   # Look for MPI TPL
   IF(ENABLE_MPI)
-    LIST(FIND Trilinos_TPL_LIST MPI MPI_List_ID)
+    LIST(FIND Trilinos_Target_List MPI::all_libs MPI_List_ID)
     IF(MPI_List_ID GREATER -1)
       MESSAGE(STATUS "  Looking for MPI: Found")
       SET(MPI_FOUND ON)
@@ -235,7 +250,7 @@ ENDIF()
 
 # We support 3 options for Kokkos:
 #  - Inline build of bundled sources in tpls/kokkos.
-#  - Linking to external library determined by KOKKOS_ROOT.
+#  - Linking to external library determined by Kokkos_ROOT.
 #  - Linking to external library through Trilinos.
 # If Trilinos is enabled and it enables Kokkos, we must use it
 IF(Kokkos_ROOT OR HAVE_TRILINOS_KOKKOS)
@@ -244,6 +259,29 @@ ELSE()
   SET(KOKKOS_INLINE_BUILD ON)
 ENDIF()
 MESSAGE(STATUS "Inline Kokkos build is ${KOKKOS_INLINE_BUILD}")
+
+# We support 3 options for KokkosKernels:
+#  - Inline build of bundled sources in tpls/kokkos-kernels.
+#  - Linking to external library determined by KokkosKernels_ROOT.
+#  - Linking to external library through Trilinos.
+# If Trilinos is enabled and it enables KokkosKernels, we must use it
+IF(KokkosKernels_ROOT OR HAVE_TRILINOS_KOKKOSKERNELS)
+  SET(KOKKOSKERNELS_INLINE_BUILD OFF)
+ELSE()
+  SET(KOKKOSKERNELS_INLINE_BUILD ON)
+ENDIF()
+MESSAGE(STATUS "Inline Kokkos-Kernels build is ${KOKKOSKERNELS_INLINE_BUILD}")
+
+# Make sure kokkos and kokkos-kernels builds are consistent
+# IF(KOKKOS_INLINE_BUILD OR KOKKOSKERNELS_INLINE_BUILD)
+#   IF(NOT (KOKKOS_INLINE_BUILD EQUAL KOKKOSKERNELS_INLINE_BUILD))
+#     MESSAGE(FATAL_ERROR "Both Kokkos and KokkosKernels must use the inline build if either does!")
+#   ENDIF()
+# ELSEIF(HAVE_TRILINOS_KOKKOS OR HAVE_TRILINOS_KOKKOSKERNELS)
+#   IF(NOT (HAVE_TRILINOS_KOKKOS EQUAL HAVE_TRILINOS_KOKKOSKERNELS))
+#     MESSAGE(FATAL_ERROR "Both Kokkos and KokkosKernels must use the Trilinos build if either does!")
+#   ENDIF()
+# ENDIF()
 
 #---- Declaring the project name will define ${Genten_SOURCE_DIR} to be
 #---- the path to this source file, and ${Genten_BINARY_DIR} to be the path
@@ -448,6 +486,41 @@ IF(ENABLE_GCP)
   SET(HAVE_GCP ON)
 ENDIF()
 
+# If we are doing an inline build of Kokkos-Kernels
+IF(KOKKOSKERNELS_INLINE_BUILD)
+
+  # Configure kokkos-kernels
+  SET(KokkosKernels_ADD_DEFAULT_ETI OFF CACHE BOOL "")
+  #SET(KokkosKernels_INST_LAYOUTLEFT ON CACHE BOOL "")
+  #SET(KokkosKernels_INST_LAYOUTRIGHT ON CACHE BOOL "")
+  SET(KokkosKernels_ENABLE_ALL_COMPONENTS OFF CACHE BOOL "")
+  SET(KokkosKernels_ENABLE_COMPONENT_BLAS ON CACHE BOOL "")
+  SET(KokkosKernels_ENABLE_COMPONENT_BATCHED ON CACHE BOOL "")
+  IF(LAPACK_FOUND)
+    SET(KokkosKernels_ENABLE_TPL_BLAS ON CACHE BOOL "")
+  ENDIF()
+  IF(Kokkos_ENABLE_CUDA OR GENTEN_ENABLE_SYCL_FOR_CUDA)
+    IF(ENABLE_CUBLAS)
+      SET(KokkosKernels_ENABLE_TPL_CUBLAS ON CACHE BOOL "")
+    ENDIF()
+  ENDIF()
+  IF(Kokkos_ENABLE_HIP)
+    IF(ENABLE_ROCBLAS)
+      SET(KokkosKernels_ENABLE_TPL_ROCBLAS ON CACHE BOOL "")
+    ENDIF()
+  ENDIF()
+  ADD_SUBDIRECTORY(tpls/kokkos-kernels)
+  SET(HAVE_KOKKOS_KERNELS ON)
+
+ELSEIF(NOT HAVE_TRILINOS_KOKKOSKERNELS)
+
+  # Link against installed KokkosKernels
+  FIND_PACKAGE(KokkosKernels REQUIRED)
+  MESSAGE("-- Genten:  Using KokkosKernels:  ${KokkosKernels_CONFIG}")
+  SET(HAVE_KOKKOS_KERNELS ON)
+
+ENDIF()
+
 # Strip leading/trailing whitespace from GENTEN_LIBS
 STRING(STRIP "${GENTEN_LIBS}" GENTEN_LIBS)
 
@@ -607,6 +680,12 @@ ENDIF()
 #---- Genten Library
 #------------------------------------------------------------
 
+# Add timers for each compile/link
+IF(ENABLE_CMAKE_TIMERS)
+  SET_PROPERTY(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CMAKE_COMMAND} -E time")
+  SET_PROPERTY(GLOBAL PROPERTY RULE_LAUNCH_LINK "${CMAKE_COMMAND} -E time")
+ENDIF()
+
 #---- List the source files to be built.
 SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_DistContext.cpp
@@ -660,10 +739,14 @@ ENDIF()
 
 IF (ENABLE_GCP)
   SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SamplingKernels.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD_SA.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Gaussian.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Poisson.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Rayleigh.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Gamma.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Bernoulli.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_Gaussian.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_Poisson.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_Rayleigh.cpp
@@ -1011,6 +1094,13 @@ if (HAVE_SYCL)
   list(APPEND kokkos_devices "sycl")
 endif()
 
+# distributed methods to run
+set(dist_methods "")
+list(APPEND dist_methods "all-reduce")
+if (HAVE_TPETRA)
+  list(APPEND dist_methods "tpetra")
+endif()
+
 add_subdirectory(tpls/googletest)
 add_subdirectory(test)
 
@@ -1022,16 +1112,18 @@ function(add_genten_perf_tests name cmd args spaces)
   endforeach()
 endfunction(add_genten_perf_tests)
 
-function(add_genten_mpi_tests name cmd args spaces)
+function(add_genten_mpi_tests name cmd args spaces dists)
   foreach(space ${spaces})
-    string(CONCAT test_name ${name} "_" ${space})
-    string(CONCAT test_args ${args} " --exec-space " ${space})
-    # The tests can run VERY slowly with multiple threads and MPI ranks,
-    # so run with a single thread for OpenMP and Threads
-    if (HAVE_MPI AND (space STREQUAL "openmp") OR (space STREQUAL "threads"))
-      string(CONCAT test_args ${test_args} " --kokkos-threads=1")
-    endif()
-    genten_add_test(NAME ${test_name} COMMAND ${cmd} ARGS ${test_args} PARALLEL)
+    foreach(dist ${dists})
+      string(CONCAT test_name ${name} "_" ${space} "_" ${dist})
+      string(CONCAT test_args ${args} " --exec-space " ${space} " --dist-method " ${dist})
+      # The tests can run VERY slowly with multiple threads and MPI ranks,
+      # so run with a single thread for OpenMP and Threads
+      if (HAVE_MPI AND (space STREQUAL "openmp") OR (space STREQUAL "threads"))
+        string(CONCAT test_args ${test_args} " --kokkos-threads=1")
+      endif()
+      genten_add_test(NAME ${test_name} COMMAND ${cmd} ARGS ${test_args} PARALLEL)
+    endforeach()
   endforeach()
 endfunction(add_genten_mpi_tests)
 
@@ -1041,26 +1133,27 @@ add_genten_perf_tests(Genten_MTTKRP_random_perm "${Genten_BINARY_DIR}/bin/perf_M
 add_genten_perf_tests(Genten_MTTKRP_aminoacid_atomic "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method atomic" "${kokkos_devices}")
 add_genten_perf_tests(Genten_MTTKRP_aminoacid_dupl "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method duplicated" "${kokkos_devices}")
 add_genten_perf_tests(Genten_MTTKRP_aminoacid_perm "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --input ${Genten_BINARY_DIR}/data/aminoacid_data.txt --mttkrp-method perm" "${kokkos_devices}")
-add_genten_perf_tests(Genten_MTTKRP_random_dense "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [30,40,50] --dense" "${kokkos_devices}")
+add_genten_perf_tests(Genten_MTTKRP_random_dense "${Genten_BINARY_DIR}/bin/perf_MTTKRP" "--nc 16 --dims [30,40,50] --dense" "${kokkos_devices}" "${dist_methods}")
 
-add_genten_mpi_tests(Genten_driver_aminoacid_cpals "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpals.json" "${kokkos_devices}")
-add_genten_mpi_tests(Genten_driver_aminoacid_cpals_dense "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpals-dense.json" "${kokkos_devices}")
+add_genten_mpi_tests(Genten_driver_aminoacid_cpals "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpals.json" "${kokkos_devices}" "${dist_methods}")
+add_genten_mpi_tests(Genten_driver_aminoacid_cpals_dense "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpals-dense.json" "${kokkos_devices}" "${dist_methods}")
 if (HAVE_LBFGSB)
   # L-BFGS-B does not work with MPI (implements its own vector operations)
   add_genten_perf_tests(Genten_driver_aminoacid_cpopt-lbfgsb "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpopt-lbfgsb.json" "${kokkos_devices}")
 endif()
 if (HAVE_ROL)
-  add_genten_mpi_tests(Genten_driver_aminoacid_cpopt-rol "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpopt-rol.json" "${kokkos_devices}")
-  add_genten_mpi_tests(Genten_driver_aminoacid_cpopt-rol-hess "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpopt-rol-hess.json" "${kokkos_devices}")
+  add_genten_mpi_tests(Genten_driver_aminoacid_cpopt-rol "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpopt-rol.json" "${kokkos_devices}" "${dist_methods}")
+  add_genten_mpi_tests(Genten_driver_aminoacid_cpopt-rol-hess "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-cpopt-rol-hess.json" "${kokkos_devices}" "${dist_methods}")
 endif()
 if (HAVE_GCP)
-  add_genten_mpi_tests(Genten_driver_aminoacid_sgd "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-sgd.json" "${kokkos_devices}")
+  add_genten_mpi_tests(Genten_driver_aminoacid_sgd "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-sgd.json" "${kokkos_devices}" "${dist_methods}")
   if (HAVE_MPI)
-    add_genten_mpi_tests(Genten_driver_aminoacid_sgd_dist "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-sgd-dist.json" "${kokkos_devices}")
+    # SGD-Dist cannot use Tpetra
+    add_genten_mpi_tests(Genten_driver_aminoacid_sgd_dist "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-sgd-dist.json" "${kokkos_devices}" "all-reduce")
   endif()
-  add_genten_mpi_tests(Genten_driver_aminoacid_sgd_dense "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-sgd-dense.json" "${kokkos_devices}")
+  add_genten_mpi_tests(Genten_driver_aminoacid_sgd_dense "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-sgd-dense.json" "${kokkos_devices}" "${dist_methods}")
   if (HAVE_ROL)
-    add_genten_mpi_tests(Genten_driver_aminoacid_gcpopt-rol "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-gcpopt-rol.json" "${kokkos_devices}")
+    add_genten_mpi_tests(Genten_driver_aminoacid_gcpopt-rol "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-gcpopt-rol.json" "${kokkos_devices}" "${dist_methods}")
   endif()
   if (HAVE_LBFGSB)
     # L-BFGS-B does not work with MPI (implements its own vector operations)
