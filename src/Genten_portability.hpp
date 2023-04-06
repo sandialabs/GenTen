@@ -44,31 +44,9 @@
 
 #include "Genten_Util.hpp"
 
-using namespace std;
-
-// Forward declarations.
-void Genten_Test_TTM(int infolevel);
-void Genten_Test_Array(int infolevel);
-void Genten_Test_CpAls(int infolevel);
-#ifdef HAVE_LBFGSB
-void Genten_Test_CpOptLbfgsb(int infolevel);
-#endif
-#ifdef HAVE_ROL
-void Genten_Test_CpOptRol(int infolevel);
-#endif
-void Genten_Test_FacMatrix(int infolevel, const string & dirname);
-void Genten_Test_IndxArray(int infolevel);
-void Genten_Test_IO(int infolevel, const string & dirname);
-void Genten_Test_Ktensor(int infolevel);
-void Genten_Test_MixedFormats(int infolevel);
-void Genten_Test_Sptensor(int infolevel);
-void Genten_Test_Tensor(int infolevel);
-void Genten_MomentTensor(int infolevel);
-#ifdef HAVE_GCP
-// #ifdef HAVE_ROL
-// void Genten_Test_GCP_Opt(int infolevel);
-// #endif
-void Genten_Test_GCP_SGD(int infolevel);
+#ifdef __INTEL_COMPILER
+// for intel RESTRICT requires -restrict on CXXFLAGS, CFLAGS
+#define RESTRICT restrict
 #endif
 
 #ifdef __PGI
@@ -84,9 +62,6 @@ void Genten_Test_GCP_SGD(int infolevel);
 #define RESTRICT
 #endif // gnug
 #endif // not previously seen
-  // Genten_MomentTensor(infolevel);
-
-  // std::cout << "Unit tests complete for " << Genten::getGentenVersion() << endl;
 
 
 namespace Genten {
