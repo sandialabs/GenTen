@@ -1,6 +1,10 @@
 from pygenten._pygenten import *
 from pygenten.solvers import cp_als, cp_opt, gcp_opt, gcp_sgd
-from pygenten.helpers import make_ttb_tensor, make_ttb_ktensor
+from pygenten.utils import read_and_distribute_tensor, distribute_tensor
+try:
+    from pygenten.helpers import make_ttb_tensor, make_ttb_ktensor
+except:
+    pass
 import atexit
 
 # Initialize GenTen when module is loaded (it internally checks if GenTen

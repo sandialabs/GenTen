@@ -8,10 +8,14 @@
 #include "Genten_IOtext.hpp"
 #include "Genten_Driver.hpp"
 #include "Genten_Pmap.hpp"
+#include "Genten_DistTensorContext.hpp"
 
 #include <pybind11/iostream.h>
 
 namespace py = pybind11;
+namespace Genten {
+  using DTC = DistTensorContext<Genten::DefaultHostExecutionSpace>;
+}
 
 namespace {
 
@@ -21,12 +25,22 @@ make_indxarray(py::buffer b) {
   py::buffer_info info = b.request();
   if (info.ndim != 1)
     throw std::runtime_error("Incompatible buffer dimension!");
+  const ttb_indx n = info.shape[0];
   if (info.format == py::format_descriptor<ttb_indx>::format())
-    a = Genten::IndxArray(info.shape[0], static_cast<ttb_indx*>(info.ptr));
+    a = Genten::IndxArray(n, static_cast<ttb_indx*>(info.ptr));
   else if (info.format == py::format_descriptor<ttb_real>::format())
-    a = Genten::IndxArray(info.shape[0], static_cast<ttb_real*>(info.ptr));
+    a = Genten::IndxArray(n, static_cast<ttb_real*>(info.ptr));
   else
-    throw std::runtime_error("Incompatible format: expected a ttb_indx or ttb_real array!");
+    throw std::runtime_error("Incompatible format: expected a ttb_indx or ttb_real array!  Format is " + info.format);
+  return a;
+}
+
+Genten::IndxArray
+make_indxarray(py::tuple b) {
+  const ttb_indx n = b.size();
+  Genten::IndxArray a(n);
+  for (ttb_indx i=0; i<n; ++i)
+    a[i] = py::cast<int>(b[i]);
   return a;
 }
 
@@ -106,6 +120,88 @@ driver_host(const TensorType& x,
 #ifdef HAVE_SERIAL
   else if (algParams.exec_space == Genten::Execution_Space::Serial)
     ret = driver_impl<Kokkos::Serial>(x, u, algParams, ptree, history, out);
+#endif
+  else
+    Genten::error("Invalid execution space: " + std::string(Genten::Execution_Space::names[algParams.exec_space]));
+
+  return ret;
+}
+
+template <typename ExecSpace, typename TensorType>
+Genten::Ktensor
+driver_impl(const Genten::DTC& dtc,
+            const TensorType& x,
+            const Genten::Ktensor& u,
+            Genten::AlgParams& algParams,
+            const Genten::ptree& ptree,
+            Genten::PerfHistory& history,
+            std::ostream& out)
+{
+  auto xd = create_mirror_view(ExecSpace(), x);
+  deep_copy(xd, x);
+  Genten::KtensorT<ExecSpace> ud;
+  const ttb_indx nc = u.ncomponents();
+  const ttb_indx nd = u.ndims();
+  if (nd > 0 && nc > 0) {
+    // We do not create a mirror-view of u because we always want a copy,
+    // since driver overwrites it and we don't want that in python.
+    ud = Genten::KtensorT<ExecSpace>(nc, nd);
+    deep_copy(ud.weights(), u.weights());
+    for (ttb_indx i=0; i<nd; ++i) {
+      Genten::FacMatrixT<ExecSpace> A(u[i].nRows(), nc);
+      deep_copy(A, u[i]);
+      ud.set_factor(i, A);
+    }
+  }
+
+  Genten::DistTensorContext<ExecSpace> dtc2(dtc);
+
+  Genten::print_environment(xd, dtc2, out);
+
+  ud = Genten::driver(dtc2, xd, ud, algParams, ptree, history, out);
+
+  Genten::Ktensor ret = create_mirror_view(ud);
+  deep_copy(ret, ud);
+
+  return ret;
+}
+
+template <typename TensorType>
+Genten::Ktensor
+driver_host(const Genten::DTC& dtc,
+            const TensorType& x,
+            const Genten::Ktensor& u,
+            Genten::AlgParams& algParams,
+            const Genten::ptree& ptree,
+            Genten::PerfHistory& history,
+            std::ostream& out)
+{
+  Genten::Ktensor ret;
+  if (algParams.exec_space == Genten::Execution_Space::Default)
+    ret = driver_impl<Genten::DefaultExecutionSpace>(dtc, x, u, algParams, ptree, history, out);
+#ifdef HAVE_CUDA
+  else if (algParams.exec_space == Genten::Execution_Space::Cuda)
+    ret = driver_impl<Kokkos::Cuda>(dtc, x, u, algParams, ptree, history, out);
+#endif
+#ifdef HAVE_HIP
+  else if (algParams.exec_space == Genten::Execution_Space::HIP)
+    ret = driver_impl<Kokkos::Experimental::HIP>(dtc, x, u, algParams, ptree, history, out);
+#endif
+#ifdef HAVE_SYCL
+  else if (algParams.exec_space == Genten::Execution_Space::SYCL)
+    ret = driver_impl<Kokkos::Experimental::SYCL>(dtc, x, u, algParams, ptree, history, out);
+#endif
+#ifdef HAVE_OPENMP
+  else if (algParams.exec_space == Genten::Execution_Space::OpenMP)
+    ret = driver_impl<Kokkos::OpenMP>(dtc, x, u, algParams, ptree, history, out);
+#endif
+#ifdef HAVE_THREADS
+  else if (algParams.exec_space == Genten::Execution_Space::Threads)
+    ret = driver_impl<Kokkos::Threads>(dtc, x, u, algParams, ptree, history, out);
+#endif
+#ifdef HAVE_SERIAL
+  else if (algParams.exec_space == Genten::Execution_Space::Serial)
+    ret = driver_impl<Kokkos::Serial>(dtc, x, u, algParams, ptree, history, out);
 #endif
   else
     Genten::error("Invalid execution space: " + std::string(Genten::Execution_Space::names[algParams.exec_space]));
@@ -250,6 +346,10 @@ void pygenten_algparams(py::module &m){
         .value("PythonModule", Genten::GCP_Goal_Method::type::PythonModule)
         .value("PythonObject", Genten::GCP_Goal_Method::type::PythonObject)
         .export_values();
+    py::enum_<Genten::ProcessorMap::MpiOp>(m, "MpiOp")
+        .value("SumOp", Genten::ProcessorMap::MpiOp::Sum)
+        .value("MaxOp", Genten::ProcessorMap::MpiOp::Max)
+        .export_values();
     {
         py::class_<Genten::AlgParams, std::shared_ptr<Genten::AlgParams>> cl(m, "AlgParams");
         cl.def( py::init( [](){ return new Genten::AlgParams(); } ) );
@@ -357,6 +457,9 @@ void pygenten_algparams(py::module &m){
         cl.def("set_proc_grid", [](Genten::AlgParams& a, py::buffer b) {
             a.proc_grid = make_indxarray(b);
           });
+        cl.def("set_proc_grid", [](Genten::AlgParams& a, py::tuple b) {
+            a.proc_grid = make_indxarray(b);
+          });
         cl.def("set_py_goal", [](Genten::AlgParams& a, const py::object& po) {
             a.python_object = po;
             a.goal_method = Genten::GCP_Goal_Method::PythonObject;
@@ -369,7 +472,17 @@ void pygenten_ktensor(py::module &m){
         py::class_<Genten::ProcessorMap, std::shared_ptr<Genten::ProcessorMap>> cl(m, "ProcessorMap");
         cl.def("gridSize", (ttb_indx (Genten::ProcessorMap::*)()) &Genten::ProcessorMap::gridSize, "Return number of processors in grid");
         cl.def("gridRank", (ttb_indx (Genten::ProcessorMap::*)()) &Genten::ProcessorMap::gridRank, "Return rank of this processor in grid");
-        cl.def("gridAllReduce", [](const Genten::ProcessorMap& pmap, py::buffer b) {
+        cl.def("gridAllReduceArray", [](const Genten::ProcessorMap& pmap, py::buffer b, Genten::ProcessorMap::MpiOp op) {
+            py::buffer_info info = b.request();
+            if (info.format != py::format_descriptor<ttb_real>::format())
+                throw std::runtime_error("Incompatible format: expected a ttb_real array!");
+            if (info.ndim != 1)
+                throw std::runtime_error("Incompatible buffer dimension!");
+            ttb_real *ptr = static_cast<ttb_real*>(info.ptr);
+            ttb_indx n = info.shape[0];
+            pmap.gridAllReduce(ptr, n, op);
+          });
+        cl.def("gridAllReduceArray", [](const Genten::ProcessorMap& pmap, py::buffer b) {
             py::buffer_info info = b.request();
             if (info.format != py::format_descriptor<ttb_real>::format())
                 throw std::runtime_error("Incompatible format: expected a ttb_real array!");
@@ -378,6 +491,12 @@ void pygenten_ktensor(py::module &m){
             ttb_real *ptr = static_cast<ttb_real*>(info.ptr);
             ttb_indx n = info.shape[0];
             pmap.gridAllReduce(ptr, n);
+          });
+        cl.def("gridAllReduce", [](const Genten::ProcessorMap& pmap, ttb_real x, Genten::ProcessorMap::MpiOp op) {
+            return pmap.gridAllReduce(x, op);
+          });
+        cl.def("gridAllReduce", [](const Genten::ProcessorMap& pmap, ttb_real x) {
+            return pmap.gridAllReduce(x);
           });
     }
     {
@@ -731,6 +850,63 @@ void pygenten_ktensor(py::module &m){
           });
         cl.def("getProcessorMap", (const Genten::ProcessorMap* (Genten::Sptensor::*)()) &Genten::Sptensor::getProcessorMap, "Get parallel processor map", py::return_value_policy::reference);
     }
+    {
+        py::class_<Genten::DTC, std::shared_ptr<Genten::DTC>> cl(m, "DistTensorContext");
+        cl.def( py::init( [](){ return new Genten::DTC(); } ), "Empty constructor" );
+        cl.def("getProcessorMap", [](const Genten::DTC& dtc) {
+            return dtc.pmap_ptr();
+          }, "Get parallel processor map");
+        cl.def("distributeTensor", [](Genten::DTC& dtc,
+                                      const std::string& file,
+                                      const ttb_indx index_base,
+                                      const bool compressed,
+                                      const std::string& json,
+                                      const Genten::AlgParams& algParams)
+          {
+           py::scoped_ostream_redirect stream(
+              std::cout,                                // std::ostream&
+              py::module_::import("sys").attr("stdout") // Python output
+              );
+            py::scoped_ostream_redirect err_stream(
+              std::cerr,                                // std::ostream&
+              py::module_::import("sys").attr("stderr") // Python output
+              );
+            Genten::ptree tree;
+            tree.parse(json);
+            Genten::Sptensor X_sparse;
+            Genten::Tensor X_dense;
+            dtc.distributeTensor(file, index_base, compressed, tree,
+                                 algParams, X_sparse, X_dense);
+            return std::make_tuple(X_sparse,X_dense);
+          }, "Read a tensor from a file and distribute it in parallel");
+        cl.def("distributeTensor", [](Genten::DTC& dtc,
+                                      const Genten::Sptensor& X,
+                                      const Genten::AlgParams& algParams)
+          {
+            return dtc.distributeTensor(X, algParams);
+          }, "Distribute a given sparse tensor in parallel");
+        cl.def("distributeTensor", [](Genten::DTC& dtc,
+                                      const Genten::Tensor& X,
+                                      const Genten::AlgParams& algParams)
+          {
+            return dtc.distributeTensor(X, algParams);
+          }, "Distribute a given dense tensor in parallel");
+        cl.def("importToAll", [](const Genten::DTC& dtc,
+                                 const Genten::Ktensor& u)
+          {
+            return dtc.importToAll<Genten::DefaultHostExecutionSpace>(u);
+          }, "Import a Ktensor to all processors");
+        cl.def("importToRoot", [](const Genten::DTC& dtc,
+                                  const Genten::Ktensor& u)
+          {
+            return dtc.importToRoot<Genten::DefaultHostExecutionSpace>(u);
+          }, "Import a Ktensor to root processor");
+        cl.def("exportFromRoot", [](const Genten::DTC& dtc,
+                                    const Genten::Ktensor& u)
+          {
+            return dtc.exportFromRoot<Genten::DefaultHostExecutionSpace>(u);
+          }, "Export a Ktensor from the root processor to all");
+    }
 
     m.def("driver", [](const Genten::Tensor& x,
                        const Genten::Ktensor& u0,
@@ -762,6 +938,41 @@ void pygenten_ktensor(py::module &m){
        Genten::ptree ptree;
        Genten::PerfHistory perfInfo;
        Genten::Ktensor u = driver_host(x, u0, algParams, ptree, perfInfo, std::cout);
+       return std::make_tuple(u, perfInfo);
+    });
+
+    m.def("driver", [](const Genten::DTC& dtc,
+                       const Genten::Tensor& x,
+                       const Genten::Ktensor& u0,
+                       Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::PerfHistory > {
+       py::scoped_ostream_redirect stream(
+         std::cout,                                // std::ostream&
+         py::module_::import("sys").attr("stdout") // Python output
+       );
+       py::scoped_ostream_redirect err_stream(
+         std::cerr,                                // std::ostream&
+         py::module_::import("sys").attr("stderr") // Python output
+       );
+       Genten::ptree ptree;
+       Genten::PerfHistory perfInfo;
+       Genten::Ktensor u = driver_host(dtc, x, u0, algParams, ptree, perfInfo, std::cout);
+       return std::make_tuple(u, perfInfo);
+    });
+    m.def("driver", [](const Genten::DTC& dtc,
+                       const Genten::Sptensor& x,
+                       const Genten::Ktensor& u0,
+                       Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::PerfHistory > {
+       py::scoped_ostream_redirect stream(
+         std::cout,                                // std::ostream&
+         py::module_::import("sys").attr("stdout") // Python output
+       );
+       py::scoped_ostream_redirect err_stream(
+         std::cerr,                                // std::ostream&
+         py::module_::import("sys").attr("stderr") // Python output
+       );
+       Genten::ptree ptree;
+       Genten::PerfHistory perfInfo;
+       Genten::Ktensor u = driver_host(dtc, x, u0, algParams, ptree, perfInfo, std::cout);
        return std::make_tuple(u, perfInfo);
     });
 

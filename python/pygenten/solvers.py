@@ -1,18 +1,5 @@
 import pygenten._pygenten as gt
-
-def make_algparams(args):
-    a = gt.AlgParams()
-    rem = {}
-    for key,value in args.items():
-        if key == "goal":
-            a.set_py_goal(value)
-        elif key == "proc_grid":
-            a.set_proc_grid(value)
-        elif hasattr(a, key):
-            setattr(a, key, value)
-        else:
-            rem[key] = value
-    return a, rem
+from pygenten.utils import make_algparams
 
 def make_guess(args):
     u = gt.Ktensor()
@@ -21,12 +8,19 @@ def make_guess(args):
         u = rem.pop('init')
     return u,rem
 
+def make_dtc(args):
+    dtc = None
+    rem = args
+    if 'dtc' in rem:
+        dtc = rem.pop('dtc')
+    return dtc,rem
+
 def check_invalid(args):
     if len(args) > 0:
       msg = "Invalid solver arguments:  " + str(args)
       raise RuntimeError(msg)
 
-def driver(X, u, args):
+def driver(X, u, args, dtc=None):
     try:
         import pyttb as ttb
         import numpy as np
@@ -49,7 +43,10 @@ def driver(X, u, args):
         is_ttb = True
 
     # Call Genten
-    M,info = gt.driver(X, u, args);
+    if dtc is not None:
+        M,info = gt.driver(dtc, X, u, args);
+    else:
+        M,info = gt.driver(X, u, args);
 
     # Convert result Ktensor to TTB ktensor if necessary
     if is_ttb:
@@ -65,34 +62,38 @@ def cp_als(X, **kwargs):
     rem = kwargs
     u,rem = make_guess(rem)
     a,rem = make_algparams(rem)
+    dtc,rem = make_dtc(rem)
     check_invalid(rem)
 
     a.method = gt.CP_ALS
-    return driver(X, u, a)
+    return driver(X, u, a, dtc)
 
 def cp_opt(X, **kwargs):
     rem = kwargs
     u,rem = make_guess(rem)
     a,rem = make_algparams(rem)
+    dtc,rem = make_dtc(rem)
     check_invalid(rem)
 
     a.method = gt.CP_OPT
-    return driver(X, u, a)
+    return driver(X, u, a, dtc)
 
 def gcp_opt(X, **kwargs):
     rem = kwargs
     u,rem = make_guess(rem)
     a,rem = make_algparams(rem)
+    dtc,rem = make_dtc(rem)
     check_invalid(rem)
 
     a.method = gt.GCP_OPT
-    return driver(X, u, a)
+    return driver(X, u, a, dtc)
 
 def gcp_sgd(X, **kwargs):
     rem = kwargs
     u,rem = make_guess(rem)
     a,rem = make_algparams(rem)
+    dtc,rem = make_dtc(rem)
     check_invalid(rem)
 
     a.method = gt.GCP_SGD
-    return driver(X, u, a)
+    return driver(X, u, a, dtc)
