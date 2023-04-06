@@ -77,6 +77,9 @@ public:
   DistTensorContext& operator=(DistTensorContext&&) = default;
   DistTensorContext& operator=(const DistTensorContext&) = default;
 
+  template <typename ExecSpaceSrc>
+  DistTensorContext(const DistTensorContext<ExecSpaceSrc>& src);
+
   void distributeTensor(const std::string& file,
                         const ttb_indx index_base,
                         const bool compressed,
@@ -197,7 +200,48 @@ private:
 #endif
 
   MPI_Datatype mpiElemType_ = DistContext::toMpiType<ttb_real>();
+
+  template <typename ExecSpaceSrc> friend class DistTensorContext;
 };
+
+template <typename ExecSpace>
+template <typename ExecSpaceSrc>
+DistTensorContext<ExecSpace>::
+DistTensorContext(const DistTensorContext<ExecSpaceSrc>& src) :
+  local_dims_(src.local_dims_),
+  global_dims_(src.global_dims_),
+  ktensor_local_dims_(src.ktensor_local_dims_),
+  pmap_(src.pmap_),
+  global_blocking_(src.global_blocking_)
+{
+#ifdef HAVE_TPETRA
+  tpetra_comm = src.tpetra_comm;
+  const ttb_indx ndims = src.factorMap.size();
+  factorMap.resize(ndims);
+  overlapFactorMap.resize(ndims);
+  rootMap.resize(ndims);
+  replicatedMap.resize(ndims);
+  rootImporter.resize(ndims);
+  replicatedImporter.resize(ndims);
+  auto create_and_copy_map = [](const tpetra_map_type<ExecSpaceSrc>& map) {
+    auto gids_src = map.getMyGlobalIndices();
+    Kokkos::View<tpetra_go_type*,ExecSpace> gids("gids", gids_src.extent(0));
+    deep_copy(gids, gids_src);
+    return Teuchos::rcp(new tpetra_map_type<ExecSpace>(
+        map.getGlobalNumElements(), gids, map.getIndexBase(), map.getComm()));
+  };
+  for (ttb_indx dim=0; dim<ndims; ++dim) {
+    factorMap[dim]          = create_and_copy_map(*src.factorMap[dim]);
+    overlapFactorMap[dim]   = create_and_copy_map(*src.overlapFactorMap[dim]);
+    rootMap[dim]            = create_and_copy_map(*src.rootMap[dim]);
+    replicatedMap[dim]      = create_and_copy_map(*src.replicatedMap[dim]);
+    rootImporter[dim]       = Teuchos::rcp(new tpetra_import_type<ExecSpace>(
+      factorMap[dim], rootMap[dim]));
+    replicatedImporter[dim] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(
+      factorMap[dim], replicatedMap[dim]));
+  }
+#endif
+}
 
 template <typename ExecSpace>
 template <typename ExecSpaceSrc>
@@ -611,6 +655,11 @@ public:
   DistTensorContext& operator=(DistTensorContext&&) = default;
   DistTensorContext& operator=(const DistTensorContext&) = default;
 
+  template <typename ExecSpaceSrc>
+  DistTensorContext(const DistTensorContext<ExecSpaceSrc>& src) :
+    global_dims_(src.global_dims_),
+    pmap_(src.pmap_) {}
+
   void distributeTensor(const std::string& file,
                         const ttb_indx index_base,
                         const bool compressed,
@@ -721,6 +770,8 @@ public:
 private:
   std::vector<ttb_indx> global_dims_;
   std::shared_ptr<ProcessorMap> pmap_;
+
+  template <typename ExecSpaceSrc> friend class DistTensorContext;
 };
 
 #endif
