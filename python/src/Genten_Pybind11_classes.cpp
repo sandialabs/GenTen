@@ -464,13 +464,13 @@ void pygenten_ktensor(py::module &m){
     cl.def( py::init( [](ttb_indx nc, ttb_indx nd, const Genten::IndxArray &sz){ return new Genten::Ktensor(nc, nd, sz); } ), "" , py::arg("nc"), py::arg("nd"), py::arg("sz"));
     cl.def( py::init( [](const Genten::Array &w, const Genten::FacMatArray &vals){ return new Genten::Ktensor(w, vals); } ), "" , py::arg("w"), py::arg("vals"));
 
-    cl.def(py::init([](const py::array_t<ttb_real>& w, const py::list& f) {
+    cl.def(py::init([](const py::array_t<ttb_real>& w, const py::list& f, const bool copy=true) {
           // Get weights
           py::buffer_info w_info = w.request();
           if (w_info.ndim != 1)
             throw std::runtime_error("Incompatible buffer dimension!");
           const ttb_indx nc = w_info.shape[0];
-          Genten::Array weights(nc, static_cast<ttb_real *>(w_info.ptr), true);
+          Genten::Array weights(nc, static_cast<ttb_real *>(w_info.ptr), !copy);
 
           // Get factors
           const ttb_indx nd = f.size();
@@ -495,9 +495,14 @@ void pygenten_ktensor(py::module &m){
             ttb_real *ptr = static_cast<ttb_real *>(mat_info.ptr);
             if (s0 == nc) {
               Kokkos::View<ttb_real**, Kokkos::LayoutRight, Genten::DefaultHostExecutionSpace> v(ptr, nrow, nc);
-              //Genten::FacMatrix A(nrow, nc, v);
-              Genten::FacMatrix A(nrow, nc);
-              deep_copy(A.view(), v);
+              Genten::FacMatrix A;
+              if (copy) {
+                A = Genten::FacMatrix(nrow, nc);
+                deep_copy(A.view(), v);
+              }
+              else {
+                A = Genten::FacMatrix(nrow, nc, v);
+              }
               factors.set_factor(i, A);
             }
             else {
@@ -507,7 +512,8 @@ void pygenten_ktensor(py::module &m){
               layout.stride[0] = s0;
               layout.stride[1] = s1;
               Kokkos::View<ttb_real**, Kokkos::LayoutStride, Genten::DefaultHostExecutionSpace> v(ptr, layout);
-              //Genten::FacMatrix A(nrow, nc, v);
+              // for strided, we always have to copy because FacMatrix must
+              // be contiguous
               Genten::FacMatrix A(nrow, nc);
               deep_copy(A.view(), v);
               factors.set_factor(i, A);
@@ -515,7 +521,7 @@ void pygenten_ktensor(py::module &m){
           }
           Genten::Ktensor u(weights, factors);
           return u;
-        }));
+        }),"constructor from weights and factor matrices", py::arg("weights"), py::arg("factor_matrices"), py::arg("copy") = true);
 
 
     cl.def("setWeightsRand", (void (Genten::Ktensor::*)()) &Genten::Ktensor::setWeightsRand, "Set all entries to random values between 0 and 1.  Does not change the matrix array, so the Ktensor can become inconsistent");

@@ -39,7 +39,7 @@ def driver(X, u, args, dtc=None):
 
     # Convert TTB ktensor to Genten Ktensor
     if have_ttb and isinstance(u, ttb.ktensor):
-        u = gt.Ktensor(u.weights, u.factor_matrices)
+        u = gt.Ktensor(u.weights, u.factor_matrices, copy=False)
         is_ttb = True
 
     # Call Genten
@@ -49,12 +49,13 @@ def driver(X, u, args, dtc=None):
         M,info = gt.driver(X, u, args);
 
     # Convert result Ktensor to TTB ktensor if necessary
+    # We make a copy because the internal GenTen Ktensor will disappear
     if is_ttb:
-        weights = np.array(M.weights(), copy=True)
+        weights = np.array(M.weights())
         factor_matrices = []
         for i in range(0, M.ndims()):
-            factor_matrices.append(np.array(M[i], copy=True))
-        M = ttb.ktensor.from_data(weights, factor_matrices)
+            factor_matrices.append(np.array(M[i]))
+        M = ttb.ktensor.from_data(weights, factor_matrices, copy=True)
 
     return M, info
 
