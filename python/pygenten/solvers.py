@@ -51,11 +51,10 @@ def driver(X, u, args, dtc=None):
     # Convert result Ktensor to TTB ktensor if necessary
     # We make a copy because the internal GenTen Ktensor will disappear
     if is_ttb:
-        weights = np.array(M.weights())
         factor_matrices = []
-        for i in range(0, M.ndims()):
+        for i in range(0, M.ndims):
             factor_matrices.append(np.array(M[i]))
-        M = ttb.ktensor.from_data(weights, factor_matrices, copy=True)
+        M = ttb.ktensor.from_data(M.weights, factor_matrices, copy=True)
 
     return M, info
 

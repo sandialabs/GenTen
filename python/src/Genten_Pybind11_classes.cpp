@@ -460,9 +460,9 @@ void pygenten_ktensor(py::module &m){
   {
     py::class_<Genten::Ktensor, std::shared_ptr<Genten::Ktensor>> cl(m, "Ktensor");
     cl.def( py::init( [](){ return new Genten::Ktensor(); } ) );
-    cl.def( py::init( [](ttb_indx nc, ttb_indx nd){ return new Genten::Ktensor(nc, nd); } ), "" , py::arg("nc"), py::arg("nd"));
-    cl.def( py::init( [](ttb_indx nc, ttb_indx nd, const Genten::IndxArray &sz){ return new Genten::Ktensor(nc, nd, sz); } ), "" , py::arg("nc"), py::arg("nd"), py::arg("sz"));
-    cl.def( py::init( [](const Genten::Array &w, const Genten::FacMatArray &vals){ return new Genten::Ktensor(w, vals); } ), "" , py::arg("w"), py::arg("vals"));
+    // cl.def( py::init( [](ttb_indx nc, ttb_indx nd){ return new Genten::Ktensor(nc, nd); } ), "" , py::arg("nc"), py::arg("nd"));
+    // cl.def( py::init( [](ttb_indx nc, ttb_indx nd, const Genten::IndxArray &sz){ return new Genten::Ktensor(nc, nd, sz); } ), "" , py::arg("nc"), py::arg("nd"), py::arg("sz"));
+    // cl.def( py::init( [](const Genten::Array &w, const Genten::FacMatArray &vals){ return new Genten::Ktensor(w, vals); } ), "" , py::arg("w"), py::arg("vals"));
 
     cl.def(py::init([](const py::array_t<ttb_real>& w, const py::list& f, const bool copy=true) {
           // Get weights
@@ -524,36 +524,60 @@ void pygenten_ktensor(py::module &m){
         }),"constructor from weights and factor matrices", py::arg("weights"), py::arg("factor_matrices"), py::arg("copy") = true);
 
 
-    cl.def("setWeightsRand", (void (Genten::Ktensor::*)()) &Genten::Ktensor::setWeightsRand, "Set all entries to random values between 0 and 1.  Does not change the matrix array, so the Ktensor can become inconsistent");
-    cl.def("setWeights", [](Genten::Ktensor const &o, ttb_real val) -> void { o.setWeights(val); }, "Set all weights equal to val.", py::arg("val"));
-    cl.def("setWeights", [](Genten::Ktensor const &o, const Genten::Array &newWeights) -> void { o.setWeights(newWeights); }, "Set all weights equal to val.", py::arg("newWeights"));
-    cl.def("setMatrices", (void (Genten::Ktensor::*)(ttb_real)) &Genten::Ktensor::setMatrices, "Set all matrix entries equal to val.", py::arg("val"));
-    cl.def("setMatricesRand", (void (Genten::Ktensor::*)()) &Genten::Ktensor::setMatricesRand, "Set all entries to random values in [0,1).");
-    cl.def("setMatricesScatter", (void (Genten::Ktensor::*)(const bool, const bool, Genten::RandomMT &)) &Genten::Ktensor::setMatricesScatter, "Set all entries to reproducible random values.", py::arg("bUseMatlabRNG"), py::arg("bUseParallelRNG"), py::arg("cRMT"));
-    cl.def("setRandomUniform", (void (Genten::Ktensor::*)(const bool, Genten::RandomMT &)) &Genten::Ktensor::setRandomUniform, "Fill the Ktensor with uniform random values, normalized to be stochastic.", py::arg("bUseMatlabRNG"), py::arg("cRMT"));
-    cl.def("scaleRandomElements", (void (Genten::Ktensor::*)()) &Genten::Ktensor::scaleRandomElements, "multiply (plump) a fraction (indices randomly chosen) of each FacMatrix by scale.");
+    // cl.def("setWeightsRand", (void (Genten::Ktensor::*)()) &Genten::Ktensor::setWeightsRand, "Set all entries to random values between 0 and 1.  Does not change the matrix array, so the Ktensor can become inconsistent");
+    // cl.def("setWeights", [](Genten::Ktensor const &o, ttb_real val) -> void { o.setWeights(val); }, "Set all weights equal to val.", py::arg("val"));
+    // cl.def("setWeights", [](Genten::Ktensor const &o, const Genten::Array &newWeights) -> void { o.setWeights(newWeights); }, "Set all weights equal to val.", py::arg("newWeights"));
+    // cl.def("setMatrices", (void (Genten::Ktensor::*)(ttb_real)) &Genten::Ktensor::setMatrices, "Set all matrix entries equal to val.", py::arg("val"));
+    // cl.def("setMatricesRand", (void (Genten::Ktensor::*)()) &Genten::Ktensor::setMatricesRand, "Set all entries to random values in [0,1).");
+    // cl.def("setMatricesScatter", (void (Genten::Ktensor::*)(const bool, const bool, Genten::RandomMT &)) &Genten::Ktensor::setMatricesScatter, "Set all entries to reproducible random values.", py::arg("bUseMatlabRNG"), py::arg("bUseParallelRNG"), py::arg("cRMT"));
+    // cl.def("setRandomUniform", (void (Genten::Ktensor::*)(const bool, Genten::RandomMT &)) &Genten::Ktensor::setRandomUniform, "Fill the Ktensor with uniform random values, normalized to be stochastic.", py::arg("bUseMatlabRNG"), py::arg("cRMT"));
+    // cl.def("scaleRandomElements", (void (Genten::Ktensor::*)()) &Genten::Ktensor::scaleRandomElements, "multiply (plump) a fraction (indices randomly chosen) of each FacMatrix by scale.");
     //setProcessorMap - ProcessorMap
-    cl.def("getProcessorMap", (const Genten::ProcessorMap* (Genten::Ktensor::*)()) &Genten::Ktensor::getProcessorMap, "Get parallel processor map", py::return_value_policy::reference);
-    cl.def("ncomponents", (ttb_indx (Genten::Ktensor::*)()) &Genten::Ktensor::ncomponents, "Return number of components.");
-    cl.def("ndims", (ttb_indx (Genten::Ktensor::*)()) &Genten::Ktensor::ndims, "Return number of dimensions of Ktensor.");
-    cl.def("isConsistent", [](Genten::Ktensor const &o) -> bool { return o.isConsistent(); }, "Consistency check on sizes.");
-    cl.def("isConsistent", [](Genten::Ktensor const &o, const Genten::IndxArray & sz) -> bool { return o.isConsistent(sz); }, "Consistency check on sizes.");
-    cl.def("hasNonFinite", (bool (Genten::Ktensor::*)(ttb_indx &)) &Genten::Ktensor::hasNonFinite, "", py::arg("bad"));
-    cl.def("isNonnegative", (bool (Genten::Ktensor::*)(bool)) &Genten::Ktensor::isNonnegative, "", py::arg("bDisplayErrors"));
-    cl.def("weights", [](Genten::Ktensor const &o) -> Genten::Array { return o.weights(); }, "Return reference to weights vector.");
-    cl.def("weights", [](Genten::Ktensor const &o, ttb_indx i) -> ttb_real { return o.weights(i); }, "Return reference to weights vector.", py::arg("i"));
+    // cl.def("getProcessorMap", (const Genten::ProcessorMap* (Genten::Ktensor::*)()) &Genten::Ktensor::getProcessorMap, "Get parallel processor map", py::return_value_policy::reference);
+    // cl.def("ncomponents", (ttb_indx (Genten::Ktensor::*)()) &Genten::Ktensor::ncomponents, "Return number of components.");
+    // cl.def("ndims", (ttb_indx (Genten::Ktensor::*)()) &Genten::Ktensor::ndims, "Return number of dimensions of Ktensor.");
+    // cl.def("isConsistent", [](Genten::Ktensor const &o) -> bool { return o.isConsistent(); }, "Consistency check on sizes.");
+    // cl.def("isConsistent", [](Genten::Ktensor const &o, const Genten::IndxArray & sz) -> bool { return o.isConsistent(sz); }, "Consistency check on sizes.");
+    // cl.def("hasNonFinite", (bool (Genten::Ktensor::*)(ttb_indx &)) &Genten::Ktensor::hasNonFinite, "", py::arg("bad"));
+    // cl.def("isNonnegative", (bool (Genten::Ktensor::*)(bool)) &Genten::Ktensor::isNonnegative, "", py::arg("bDisplayErrors"));
+    // cl.def("weights", [](Genten::Ktensor const &o) -> Genten::Array { return o.weights(); }, "Return reference to weights vector.");
+    // cl.def("weights", [](Genten::Ktensor const &o, ttb_indx i) -> ttb_real { return o.weights(i); }, "Return reference to weights vector.", py::arg("i"));
     cl.def("__getitem__", [](Genten::Ktensor const &o, ttb_indx n) -> const Genten::FacMatrix & { return o[n]; }, "Return a reference to the n-th factor matrix", py::arg("n"));
     cl.def("__str__", [](const Genten::Ktensor& u) {
         std::stringstream ss;
         Genten::print_ktensor(u, ss);
         return ss.str();
       });
-    cl.def("shape", [](const Genten::Ktensor& u) {
+    cl.def_property_readonly("pmap", &Genten::Ktensor::getProcessorMap, py::return_value_policy::reference);
+    cl.def_property_readonly("ndims", &Genten::Ktensor::ndims);
+    cl.def_property_readonly("ncomponents", &Genten::Ktensor::ncomponents);
+    cl.def_property_readonly("shape", [](const Genten::Ktensor& u) {
         const ttb_indx nd = u.ndims();
-        Genten::IndxArray sz(nd);
+        auto sz = py::tuple(nd);
         for (ttb_indx i=0; i<nd; ++i)
           sz[i] = u[i].nRows();
         return sz;
+      });
+    cl.def_property("weights",[](const Genten::Ktensor& u) {
+        const ttb_indx nc = u.ncomponents();
+        // From https://github.com/pybind/pybind11/issues/1042, use a
+        // py::capsule to (1) make w a view of u.weights instead of a copy and
+        // (2) ensure the memory w wraps does not get deleted out from
+        // underneath it by incrementing the reference count now and
+        // decrementing it when w is destroyed in python
+        Genten::Array weights = u.weights();
+        py::capsule capsule(new Genten::Array(weights), [](void *v) { delete reinterpret_cast<Genten::Array*>(v); });
+        auto w = py::array_t<ttb_real>({nc}, {sizeof(ttb_real)}, weights.ptr(), capsule);
+        return w;
+      }, [](const Genten::Ktensor& u, const py::array_t<ttb_real>& w) {
+        py::buffer_info w_info = w.request();
+        if (w_info.ndim != 1)
+          throw std::runtime_error("Incompatible buffer dimension!");
+        const ttb_indx nc = u.ncomponents();
+        if (nc != w_info.shape[0])
+          throw std::runtime_error("Incompatible buffer length!");
+        Genten::Array weights(nc, static_cast<ttb_real *>(w_info.ptr), true);
+        deep_copy(u.weights(), weights);
       });
   }
 }
