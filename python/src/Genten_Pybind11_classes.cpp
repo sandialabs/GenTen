@@ -579,6 +579,28 @@ void pygenten_ktensor(py::module &m){
         Genten::Array weights(nc, static_cast<ttb_real *>(w_info.ptr), true);
         deep_copy(u.weights(), weights);
       });
+    cl.def_property_readonly("factor_matrices",[](const Genten::Ktensor& u) {
+        const ttb_indx nd = u.ndims();
+        // Return u.factor_matrices as a tuple instead of a list to make it
+        // immutable because while we alias each factor matrix, we don't (and
+        // can't) alias the list itself.  By making it immutable, we prevent
+        // assignments like "u.factor_matrices[0] = np.zeros(...)", which won't
+        // work as expected (you can still write to the factor matrices using
+        // slices though, e.g., "u.factor_matrices[0][:,:] = np.zeros(...)",
+        // which works as expected).
+        py::tuple fac_mats(nd);
+        for (ttb_indx dim=0; dim<nd; ++dim) {
+          const auto mat = u[dim];
+          const ttb_indx m = mat.nRows();
+          const ttb_indx n = mat.nCols();
+          const ttb_indx s0 = mat.view().stride(0)*sizeof(ttb_real);
+          const ttb_indx s1 = mat.view().stride(1)*sizeof(ttb_real);
+          py::capsule capsule(new Genten::FacMatrix(mat), [](void *v) { delete reinterpret_cast<Genten::FacMatrix*>(v); });
+          auto fac_mat = py::array_t<ttb_real>({m, n}, {s0, s1}, mat.view().data(), capsule);
+          fac_mats[dim] = fac_mat;
+        }
+        return fac_mats;
+      });
   }
 }
 

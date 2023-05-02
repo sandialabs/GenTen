@@ -49,12 +49,11 @@ def driver(X, u, args, dtc=None):
         M,info = gt.driver(X, u, args);
 
     # Convert result Ktensor to TTB ktensor if necessary
-    # We make a copy because the internal GenTen Ktensor will disappear
+    # Copying shouldn't be necessary since the python objects carry
+    # reference counts for the original GenTen objects, but it appears
+    # to not always work.
     if is_ttb:
-        factor_matrices = []
-        for i in range(0, M.ndims):
-            factor_matrices.append(np.array(M[i]))
-        M = ttb.ktensor.from_data(M.weights, factor_matrices, copy=True)
+        M = ttb.ktensor.from_data(M.weights, M.factor_matrices, copy=True)
 
     return M, info
 
