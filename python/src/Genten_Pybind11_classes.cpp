@@ -337,14 +337,6 @@ void pygenten_proc_map(py::module &m){
 
 void pygenten_ktensor(py::module &m){
   {
-    py::class_<Genten::RandomMT, std::shared_ptr<Genten::RandomMT>> cl(m, "RandomMT");
-    cl.def( py::init( [](const unsigned long  nnSeed){ return new Genten::RandomMT(nnSeed); } ) );
-    cl.def("genrnd_int32", (unsigned long (Genten::RandomMT::*)()) &Genten::RandomMT::genrnd_int32, "Return a uniform random number on the interval [0,0xffffffff].");
-    cl.def("genrnd_double", (double(Genten::RandomMT::*)()) &Genten::RandomMT::genrnd_double, "Return a uniform random number on the interval [0,1).");
-    cl.def("genrnd_doubleInclusive", (double(Genten::RandomMT::*)()) &Genten::RandomMT::genrnd_doubleInclusive, "Return a uniform random number on the interval [0,1].");
-    cl.def("genMatlabMT", (double(Genten::RandomMT::*)()) &Genten::RandomMT::genMatlabMT, "Return a uniform random number on the interval [0,1).");
-  }
-  {
     py::class_<Genten::IndxArray, std::shared_ptr<Genten::IndxArray>> cl(m, "IndxArray", py::buffer_protocol());
     cl.def( py::init( [](){ return new Genten::IndxArray(); } ) );
     cl.def( py::init( [](ttb_indx n){ return new Genten::IndxArray(n); } ) );
@@ -392,78 +384,8 @@ void pygenten_ktensor(py::module &m){
         }));
   }
   {
-    py::class_<Genten::FacMatrix, std::shared_ptr<Genten::FacMatrix>> cl(m, "FacMatrix", py::buffer_protocol());
-    cl.def( py::init( [](){ return new Genten::FacMatrix(); } ) );
-    cl.def( py::init( [](ttb_indx m, ttb_indx n){ return new Genten::FacMatrix(m, n); } ) );
-    cl.def( py::init( [](ttb_indx m, ttb_indx n, const ttb_real * cvec){ return new Genten::FacMatrix(m, n, cvec); } ) );
-    cl.def_buffer([](Genten::FacMatrix &m) -> py::buffer_info {
-        return py::buffer_info(
-          m.rowptr(0),
-          sizeof(ttb_real),
-          py::format_descriptor<ttb_real>::format(),
-          2,
-          { m.nRows(), m.nCols() },
-          { m.view().stride(0)*sizeof(ttb_real), m.view().stride(1)*sizeof(ttb_real)}
-          );
-      });
-    cl.def(py::init([](const py::array_t<ttb_real,py::array::c_style>& b) {
-          py::buffer_info info = b.request();
-          if (info.ndim != 2)
-            throw std::runtime_error("Incompatible buffer dimension!");
-          const ttb_indx nrow = info.shape[0];
-          const ttb_indx ncol = info.shape[1];
-          const ttb_indx s0 = info.strides[0]/sizeof(ttb_real);
-          const ttb_indx s1 = info.strides[1]/sizeof(ttb_real);
-          if (s1 != 1) {
-            std::string msg = "Buffer is not layout-right!  Dims = (" +
-              std::to_string(nrow) + ", " + std::to_string(ncol) +
-              "), strides = (" + std::to_string(s0) + ", " +
-              std::to_string(s1) + ")";
-            throw std::runtime_error(msg);
-          }
-          ttb_real *ptr = static_cast<ttb_real *>(info.ptr);
-          Genten::FacMatrix A;
-          if (s0 == ncol) {
-            Kokkos::View<ttb_real**, Kokkos::LayoutRight, Genten::DefaultHostExecutionSpace> v(ptr, nrow, ncol);
-            //A = Genten::FacMatrix(nrow, ncol, v);
-            A = Genten::FacMatrix(nrow, ncol);
-            deep_copy(A.view(), v);
-          }
-          else {
-            Kokkos::LayoutStride layout;
-            layout.dimension[0] = nrow;
-            layout.dimension[1] = ncol;
-            layout.stride[0] = s0;
-            layout.stride[1] = s1;
-            Kokkos::View<ttb_real**, Kokkos::LayoutStride, Genten::DefaultHostExecutionSpace> v(ptr, layout);
-            //A = Genten::FacMatrix(nrow, ncol, v);
-            A = Genten::FacMatrix(nrow, ncol);
-            deep_copy(A.view(), v);
-          }
-          return A;
-        }));
-    cl.def("__str__", [](const Genten::FacMatrix& A) {
-        std::stringstream ss;
-        Genten::print_matrix(A, ss);
-        return ss.str();
-      });
-  }
-  {
-    py::class_<Genten::FacMatArray, std::shared_ptr<Genten::FacMatArray>> cl(m, "FacMatArray");
-    cl.def( py::init( [](ttb_indx n){ return new Genten::FacMatArray(n); } ) );
-    cl.def( py::init( [](ttb_indx n, const Genten::IndxArray & nrow, ttb_indx ncol){ return new Genten::FacMatArray(n, nrow, ncol); } ) );
-    cl.def( py::init( [](const Genten::FacMatArray & src){ return new Genten::FacMatArray(src); } ) );
-    cl.def("size", (ttb_indx (Genten::FacMatArray::*)()) &Genten::FacMatArray::size, "Return the number of factor matrices.");
-    cl.def("reals", (ttb_indx (Genten::FacMatArray::*)()) &Genten::FacMatArray::reals, "Count the total ttb_reals currently stored here for any purpose.");
-    cl.def("set_factor", (void (Genten::FacMatArray::*)(const ttb_indx, const Genten::FacMatrix&)) &Genten::FacMatArray::set_factor, "Set a factor matrix");
-  }
-  {
     py::class_<Genten::Ktensor, std::shared_ptr<Genten::Ktensor>> cl(m, "Ktensor");
     cl.def( py::init( [](){ return new Genten::Ktensor(); } ) );
-    // cl.def( py::init( [](ttb_indx nc, ttb_indx nd){ return new Genten::Ktensor(nc, nd); } ), "" , py::arg("nc"), py::arg("nd"));
-    // cl.def( py::init( [](ttb_indx nc, ttb_indx nd, const Genten::IndxArray &sz){ return new Genten::Ktensor(nc, nd, sz); } ), "" , py::arg("nc"), py::arg("nd"), py::arg("sz"));
-    // cl.def( py::init( [](const Genten::Array &w, const Genten::FacMatArray &vals){ return new Genten::Ktensor(w, vals); } ), "" , py::arg("w"), py::arg("vals"));
-
     cl.def(py::init([](const py::array_t<ttb_real>& w, const py::list& f, const bool copy=true) {
           // Get weights
           py::buffer_info w_info = w.request();
@@ -523,26 +445,16 @@ void pygenten_ktensor(py::module &m){
           return u;
         }),"constructor from weights and factor matrices", py::arg("weights"), py::arg("factor_matrices"), py::arg("copy") = true);
 
-
-    // cl.def("setWeightsRand", (void (Genten::Ktensor::*)()) &Genten::Ktensor::setWeightsRand, "Set all entries to random values between 0 and 1.  Does not change the matrix array, so the Ktensor can become inconsistent");
-    // cl.def("setWeights", [](Genten::Ktensor const &o, ttb_real val) -> void { o.setWeights(val); }, "Set all weights equal to val.", py::arg("val"));
-    // cl.def("setWeights", [](Genten::Ktensor const &o, const Genten::Array &newWeights) -> void { o.setWeights(newWeights); }, "Set all weights equal to val.", py::arg("newWeights"));
-    // cl.def("setMatrices", (void (Genten::Ktensor::*)(ttb_real)) &Genten::Ktensor::setMatrices, "Set all matrix entries equal to val.", py::arg("val"));
-    // cl.def("setMatricesRand", (void (Genten::Ktensor::*)()) &Genten::Ktensor::setMatricesRand, "Set all entries to random values in [0,1).");
-    // cl.def("setMatricesScatter", (void (Genten::Ktensor::*)(const bool, const bool, Genten::RandomMT &)) &Genten::Ktensor::setMatricesScatter, "Set all entries to reproducible random values.", py::arg("bUseMatlabRNG"), py::arg("bUseParallelRNG"), py::arg("cRMT"));
-    // cl.def("setRandomUniform", (void (Genten::Ktensor::*)(const bool, Genten::RandomMT &)) &Genten::Ktensor::setRandomUniform, "Fill the Ktensor with uniform random values, normalized to be stochastic.", py::arg("bUseMatlabRNG"), py::arg("cRMT"));
-    // cl.def("scaleRandomElements", (void (Genten::Ktensor::*)()) &Genten::Ktensor::scaleRandomElements, "multiply (plump) a fraction (indices randomly chosen) of each FacMatrix by scale.");
-    //setProcessorMap - ProcessorMap
-    // cl.def("getProcessorMap", (const Genten::ProcessorMap* (Genten::Ktensor::*)()) &Genten::Ktensor::getProcessorMap, "Get parallel processor map", py::return_value_policy::reference);
-    // cl.def("ncomponents", (ttb_indx (Genten::Ktensor::*)()) &Genten::Ktensor::ncomponents, "Return number of components.");
-    // cl.def("ndims", (ttb_indx (Genten::Ktensor::*)()) &Genten::Ktensor::ndims, "Return number of dimensions of Ktensor.");
-    // cl.def("isConsistent", [](Genten::Ktensor const &o) -> bool { return o.isConsistent(); }, "Consistency check on sizes.");
-    // cl.def("isConsistent", [](Genten::Ktensor const &o, const Genten::IndxArray & sz) -> bool { return o.isConsistent(sz); }, "Consistency check on sizes.");
-    // cl.def("hasNonFinite", (bool (Genten::Ktensor::*)(ttb_indx &)) &Genten::Ktensor::hasNonFinite, "", py::arg("bad"));
-    // cl.def("isNonnegative", (bool (Genten::Ktensor::*)(bool)) &Genten::Ktensor::isNonnegative, "", py::arg("bDisplayErrors"));
-    // cl.def("weights", [](Genten::Ktensor const &o) -> Genten::Array { return o.weights(); }, "Return reference to weights vector.");
-    // cl.def("weights", [](Genten::Ktensor const &o, ttb_indx i) -> ttb_real { return o.weights(i); }, "Return reference to weights vector.", py::arg("i"));
-    cl.def("__getitem__", [](Genten::Ktensor const &o, ttb_indx n) -> const Genten::FacMatrix & { return o[n]; }, "Return a reference to the n-th factor matrix", py::arg("n"));
+    cl.def("__getitem__", [](const Genten::Ktensor&u, ttb_indx dim) {
+        const auto mat = u[dim];
+        const ttb_indx m = mat.nRows();
+        const ttb_indx n = mat.nCols();
+        const ttb_indx s0 = mat.view().stride(0)*sizeof(ttb_real);
+        const ttb_indx s1 = mat.view().stride(1)*sizeof(ttb_real);
+        py::capsule capsule(new Genten::FacMatrix(mat), [](void *v) { delete reinterpret_cast<Genten::FacMatrix*>(v); });
+        auto fac_mat = py::array_t<ttb_real>({m, n}, {s0, s1}, mat.view().data(), capsule);
+        return fac_mat;
+      }, "Return a reference to the dim-th factor matrix", py::arg("dim"));
     cl.def("__str__", [](const Genten::Ktensor& u) {
         std::stringstream ss;
         Genten::print_ktensor(u, ss);
