@@ -39,7 +39,8 @@ def driver(X, u, args, dtc=None):
 
     # Convert TTB ktensor to Genten Ktensor
     if have_ttb and isinstance(u, ttb.ktensor):
-        u = gt.Ktensor(u.weights, u.factor_matrices, copy=False)
+        # This needs to be a copy for some reason I do not fully understand
+        u = gt.Ktensor(u.weights, u.factor_matrices, copy=True)
         is_ttb = True
 
     # Call Genten

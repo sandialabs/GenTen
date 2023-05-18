@@ -337,53 +337,6 @@ void pygenten_proc_map(py::module &m){
 
 void pygenten_ktensor(py::module &m){
   {
-    py::class_<Genten::IndxArray, std::shared_ptr<Genten::IndxArray>> cl(m, "IndxArray", py::buffer_protocol());
-    cl.def( py::init( [](){ return new Genten::IndxArray(); } ) );
-    cl.def( py::init( [](ttb_indx n){ return new Genten::IndxArray(n); } ) );
-    cl.def( py::init( [](ttb_indx n, ttb_indx val){ return new Genten::IndxArray(n, val); } ) );
-    cl.def( py::init( [](ttb_indx n, ttb_indx *v){ return new Genten::IndxArray(n, v); } ) );
-    cl.def( py::init( [](ttb_indx n, const ttb_real *v, bool subtract_one){ return new Genten::IndxArray(n, v, subtract_one); } ) );
-    cl.def_buffer([](Genten::IndxArray &m) -> py::buffer_info {
-        return py::buffer_info(
-          &m[0], sizeof(ttb_indx), py::format_descriptor<ttb_indx>::format(), m.size()
-          );
-      });
-    cl.def(py::init([](py::buffer b) { return make_indxarray(b); }));
-    cl.def_buffer([](Genten::IndxArray &m) -> py::buffer_info {
-        return py::buffer_info(
-          &m[0], sizeof(ttb_real), py::format_descriptor<ttb_indx>::format(), m.size()
-          );
-      });
-  }
-  {
-    py::class_<Genten::Array, std::shared_ptr<Genten::Array>> cl(m, "Array", py::buffer_protocol());
-    cl.def( py::init( [](){ return new Genten::Array(); } ) );
-    cl.def( py::init( [](ttb_indx n){ return new Genten::Array(n); } ) );
-    cl.def( py::init( [](ttb_indx n, bool parallel){ return new Genten::Array(n, parallel); } ) );
-    cl.def( py::init( [](ttb_indx n, ttb_real val){ return new Genten::Array(n, val); } ) );
-    cl.def( py::init( [](ttb_indx n, ttb_real *d){ return new Genten::Array(n, d); } ) );
-    cl.def( py::init( [](ttb_indx n, ttb_real *d, bool shdw){ return new Genten::Array(n, d, shdw); } ) );
-    cl.def( py::init( [](const Genten::Array & src){ return new Genten::Array(src); } ) );
-    cl.def_buffer([](Genten::Array &m) -> py::buffer_info {
-        return py::buffer_info(
-          &m[0], sizeof(ttb_real), py::format_descriptor<ttb_real>::format(), m.size()
-          );
-      });
-    cl.def(py::init([](py::buffer b) {
-          py::buffer_info info = b.request();
-
-          if (info.format != py::format_descriptor<ttb_real>::format())
-            throw std::runtime_error("Incompatible format: expected a ttb_real array!");
-
-          if (info.ndim != 1)
-            throw std::runtime_error("Incompatible buffer dimension!");
-
-          // Always use false here so we don't alias python arrays (they
-          // may be temporaries)
-          return Genten::Array(info.shape[0], static_cast<ttb_real *>(info.ptr), false);
-        }));
-  }
-  {
     py::class_<Genten::Ktensor, std::shared_ptr<Genten::Ktensor>> cl(m, "Ktensor");
     cl.def( py::init( [](){ return new Genten::Ktensor(); } ) );
     cl.def(py::init([](const py::array_t<ttb_real>& w, const py::list& f, const bool copy=true) {
@@ -520,11 +473,6 @@ void pygenten_tensor(py::module &m){
   {
     py::class_<Genten::Tensor, std::shared_ptr<Genten::Tensor>> cl(m, "Tensor");
     cl.def( py::init( [](){ return new Genten::Tensor(); } ), "Empty constructor" );
-    cl.def( py::init( [](const Genten::Tensor& src){ return new Genten::Tensor(src); } ), "Copy constructor", py::arg("src") );
-    cl.def( py::init( [](const Genten::IndxArray &sz){ return new Genten::Tensor(sz); } ), "Construct tensor of given size initialized to val", py::arg("sz"));
-    cl.def( py::init( [](const Genten::IndxArray &sz, ttb_real val){ return new Genten::Tensor(sz, val); } ), "Construct tensor of given size initialized to val", py::arg("sz"), py::arg("val"));
-    cl.def( py::init( [](const Genten::IndxArray &sz, const Genten::Array &vals){ return new Genten::Tensor(sz, vals); } ), "Construct tensor with given size and values", py::arg("sz"), py::arg("vals"));
-
     cl.def(py::init([](const py::array_t<ttb_real,py::array::c_style>& b) {
           // Initialize a Genten::Tensor from a numpy array using "C" layout,
           // which requires a transpose
@@ -586,18 +534,30 @@ void pygenten_tensor(py::module &m){
           Genten::Tensor x(sz, vals);
           return x;
         }));
-
-    cl.def("ndims", (ttb_indx (Genten::Tensor::*)()) &Genten::Tensor::ndims, "Return the number of dimensions (i.e., the order).");
-    cl.def("size", [](Genten::Tensor const &o, ttb_indx i) -> ttb_indx { return o.size(i); } , "Return size of dimension i.", py::arg("i"));
-    cl.def("size", [](Genten::Tensor const &o) -> Genten::IndxArray { return o.size(); } , "Return sizes array.");
-    cl.def("numel", (ttb_indx (Genten::Tensor::*)()) &Genten::Tensor::numel, "Return the total number of elements in the tensor.");
-    cl.def("values", [](Genten::Tensor const &o) -> Genten::Array { return o.getValues(); } , "Return data array.");
+    cl.def_property_readonly("pmap", &Genten::Tensor::getProcessorMap, py::return_value_policy::reference);
+    cl.def_property_readonly("ndims", &Genten::Tensor::ndims);
+    cl.def_property_readonly("shape", [](const Genten::Tensor& X) {
+        const ttb_indx nd = X.ndims();
+        auto sz = py::tuple(nd);
+        for (ttb_indx i=0; i<nd; ++i)
+          sz[i] = X.size(i);
+        return sz;
+      });
+    cl.def_property_readonly("data",[](const Genten::Tensor& X) {
+        Genten::Array vals = X.getValues();
+        py::capsule capsule(new Genten::Array(vals), [](void *v) { delete reinterpret_cast<Genten::Array*>(v); });
+        const ttb_indx nd = X.ndims();
+        std::vector<ttb_indx> sz(nd);
+        for (ttb_indx i=0; i<nd; ++i)
+          sz[i] = X.size(i);
+        return py::array_t<ttb_real,py::array::f_style>(sz, vals.ptr(), capsule);
+      });
+    cl.def("nnz", (ttb_indx (Genten::Tensor::*)()) &Genten::Tensor::nnz, "Return the total number of elements in the tensor.");
     cl.def("__str__", [](const Genten::Tensor& X) {
         std::stringstream ss;
         Genten::print_tensor(X, ss);
         return ss.str();
       });
-    cl.def("getProcessorMap", (const Genten::ProcessorMap* (Genten::Tensor::*)()) &Genten::Tensor::getProcessorMap, "Get parallel processor map", py::return_value_policy::reference);
   }
 }
 
@@ -605,9 +565,6 @@ void pygenten_sptensor(py::module &m){
   {
     py::class_<Genten::Sptensor, std::shared_ptr<Genten::Sptensor>> cl(m, "Sptensor");
     cl.def( py::init( [](){ return new Genten::Sptensor(); } ), "Empty constructor" );
-    cl.def( py::init( [](const Genten::Sptensor& src){ return new Genten::Sptensor(src); } ), "Copy constructor", py::arg("src") );
-    cl.def( py::init( [](const Genten::IndxArray &sz, ttb_indx nz){ return new Genten::Sptensor(sz,nz); } ), "Constructor for a given size and number of nonzeros", py::arg("sz"), py::arg("nz"));
-
     cl.def(py::init([](const py::tuple& sizes, const py::array_t<std::int64_t,py::array::c_style>& subs, const py::array_t<ttb_real,py::array::c_style>& vals) {
           // Sizes
           const ttb_indx nd = sizes.size();
@@ -642,18 +599,36 @@ void pygenten_sptensor(py::module &m){
           Genten::Sptensor x(sz, v, s);
           return x;
         }));
-
-    cl.def("ndims", (ttb_indx (Genten::Sptensor::*)()) &Genten::Sptensor::ndims, "Return the number of dimensions (i.e., the order).");
-    cl.def("size", [](Genten::Sptensor const &o, ttb_indx i) -> ttb_indx { return o.size(i); } , "Return size of dimension i.", py::arg("i"));
-    cl.def("size", [](Genten::Sptensor const &o) -> Genten::IndxArray { return o.size(); } , "Return sizes array.");
-    cl.def("numel", (ttb_real (Genten::Sptensor::*)()) &Genten::Sptensor::numel, "Return the total number of elements in the tensor.");
-    cl.def("nnz", (ttb_indx (Genten::Sptensor::*)()) &Genten::Sptensor::nnz, "Return the total number of nonzeros.");
+    cl.def_property_readonly("pmap", &Genten::Sptensor::getProcessorMap, py::return_value_policy::reference);
+    cl.def_property_readonly("ndims", &Genten::Sptensor::ndims);
+    cl.def_property_readonly("shape", [](const Genten::Sptensor& X) {
+        const ttb_indx nd = X.ndims();
+        auto sz = py::tuple(nd);
+        for (ttb_indx i=0; i<nd; ++i)
+          sz[i] = X.size(i);
+        return sz;
+      });
+    cl.def_property_readonly("subs",[](const Genten::Sptensor& X) {
+        auto subs = X.getSubscripts();
+        using subs_type = decltype(subs);
+        py::capsule capsule(new subs_type(subs), [](void *s) { delete reinterpret_cast<subs_type*>(s); });
+        const ttb_indx nd = X.ndims();
+        const ttb_indx nz = X.nnz();
+        return py::array_t<ttb_indx,py::array::c_style>({nz, nd}, subs.data(), capsule);
+      });
+    cl.def_property_readonly("vals",[](const Genten::Sptensor& X) {
+        Genten::Array vals = X.getValues();
+        py::capsule capsule(new Genten::Array(vals), [](void *v) { delete reinterpret_cast<Genten::Array*>(v); });
+        const ttb_indx nd = X.ndims();
+        const ttb_indx nz = X.nnz();
+        return py::array_t<ttb_real,py::array::c_style>({nz, nd}, vals.ptr(), capsule);
+      });
+    cl.def("nnz", (ttb_indx (Genten::Sptensor::*)()) &Genten::Sptensor::nnz, "Return the total number of elements in the tensor.");
     cl.def("__str__", [](const Genten::Sptensor& X) {
         std::stringstream ss;
         Genten::print_sptensor(X, ss);
         return ss.str();
       });
-    cl.def("getProcessorMap", (const Genten::ProcessorMap* (Genten::Sptensor::*)()) &Genten::Sptensor::getProcessorMap, "Get parallel processor map", py::return_value_policy::reference);
   }
   {
     py::class_<Genten::DTC, std::shared_ptr<Genten::DTC>> cl(m, "DistTensorContext");
