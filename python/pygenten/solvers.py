@@ -1,7 +1,15 @@
+"""
+Solver functions for computing CP decompositions using GenTen.
+"""
+
 import pygenten._pygenten as gt
 from pygenten.utils import make_algparams
 
 def make_guess(args):
+    """
+    Utility function for extracting the initial guess from the given dict of
+    keyword arguments.
+    """
     u = gt.Ktensor()
     rem = args
     if 'init' in rem:
@@ -9,6 +17,10 @@ def make_guess(args):
     return u,rem
 
 def make_dtc(args):
+    """
+    Utility function for extracting the distributed tensor context from the
+    given dict of keyword arguments.
+    """
     dtc = None
     rem = args
     if 'dtc' in rem:
@@ -16,11 +28,20 @@ def make_dtc(args):
     return dtc,rem
 
 def check_invalid(args):
+    """
+    Utility function for determing whether arguments were valid.
+    """
     if len(args) > 0:
       msg = "Invalid solver arguments:  " + str(args)
       raise RuntimeError(msg)
 
 def driver(X, u, args, dtc=None):
+    """
+    Wrapper function for calling GenTen's CP solver driver.
+
+    This should not be called directly.  Call individual solver methods
+    corresponding to the chosen algorithm instead.
+    """
     try:
         import pyttb as ttb
         import numpy as np
@@ -59,6 +80,24 @@ def driver(X, u, args, dtc=None):
     return M, info
 
 def cp_als(X, **kwargs):
+    """
+    Compute CP decomposition using Alternating Least-Squares algorithm.
+
+    Parameters:
+      * X: Tensor to compute decomposition from.  May be provided using
+        pyttb or pygenten tensor classes (pyttb.tensor/pygenten.Tensor and
+        pyttb.sptensor/pygenten.Sptensor).
+      * kwargs:  Keyword arguments for optional arguments including:
+        * initial guess (as a pyttb.ktensor or pygenten.Ktensor).
+        * distributed tensor context.
+        * algorithmic parameters as pygenten.AlgParams.
+        * any named parameters stored within pygenten.AlgParams.
+
+    Returns:
+      * u:  the ktensor solution (as either a pyttb.ktensor
+        or pygenten.ktensor, depending on what was passed in).
+      * perfInfo:  performance information as pygenten.PerfHistory.
+    """
     rem = kwargs
     u,rem = make_guess(rem)
     a,rem = make_algparams(rem)
@@ -69,6 +108,24 @@ def cp_als(X, **kwargs):
     return driver(X, u, a, dtc)
 
 def cp_opt(X, **kwargs):
+    """
+    Compute CP decomposition using all-at-once gradient-based optimization.
+
+    Parameters:
+      * X: Tensor to compute decomposition from.  May be provided using
+        pyttb or pygenten tensor classes (pyttb.tensor/pygenten.Tensor and
+        pyttb.sptensor/pygenten.Sptensor).
+      * kwargs:  Keyword arguments for optional arguments including:
+        * initial guess (as a pyttb.ktensor or pygenten.Ktensor).
+        * distributed tensor context.
+        * algorithmic parameters as pygenten.AlgParams.
+        * any named parameters stored within pygenten.AlgParams.
+
+    Returns:
+      * u:  the ktensor solution (as either a pyttb.ktensor
+        or pygenten.ktensor, depending on what was passed in).
+      * perfInfo:  performance information as pygenten.PerfHistory.
+    """
     rem = kwargs
     u,rem = make_guess(rem)
     a,rem = make_algparams(rem)
@@ -79,6 +136,25 @@ def cp_opt(X, **kwargs):
     return driver(X, u, a, dtc)
 
 def gcp_opt(X, **kwargs):
+    """
+    Compute Generalized CP decomposition using all-at-once gradient-based
+    optimization.
+
+    Parameters:
+      * X: Tensor to compute decomposition from.  May be provided using
+        pyttb or pygenten tensor classes (pyttb.tensor/pygenten.Tensor and
+        pyttb.sptensor/pygenten.Sptensor).
+      * kwargs:  Keyword arguments for optional arguments including:
+        * initial guess (as a pyttb.ktensor or pygenten.Ktensor).
+        * distributed tensor context.
+        * algorithmic parameters as pygenten.AlgParams.
+        * any named parameters stored within pygenten.AlgParams.
+
+    Returns:
+      * u:  the ktensor solution (as either a pyttb.ktensor
+        or pygenten.ktensor, depending on what was passed in).
+      * perfInfo:  performance information as pygenten.PerfHistory.
+    """
     rem = kwargs
     u,rem = make_guess(rem)
     a,rem = make_algparams(rem)
@@ -89,6 +165,25 @@ def gcp_opt(X, **kwargs):
     return driver(X, u, a, dtc)
 
 def gcp_sgd(X, **kwargs):
+    """
+    Compute Generalized CP decomposition using all-at-once stochastic gradient
+    descent-based optimization.
+
+    Parameters:
+      * X: Tensor to compute decomposition from.  May be provided using
+        pyttb or pygenten tensor classes (pyttb.tensor/pygenten.Tensor and
+        pyttb.sptensor/pygenten.Sptensor).
+      * kwargs:  Keyword arguments for optional arguments including:
+        * initial guess (as a pyttb.ktensor or pygenten.Ktensor).
+        * distributed tensor context.
+        * algorithmic parameters as pygenten.AlgParams.
+        * any named parameters stored within pygenten.AlgParams.
+
+    Returns:
+      * u:  the ktensor solution (as either a pyttb.ktensor
+        or pygenten.ktensor, depending on what was passed in).
+      * perfInfo:  performance information as pygenten.PerfHistory.
+    """
     rem = kwargs
     u,rem = make_guess(rem)
     a,rem = make_algparams(rem)

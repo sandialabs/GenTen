@@ -1,3 +1,19 @@
+"""
+Python package for computing CP decompositions of sparse and dense tensors
+using GenTen.
+
+GenTen is a tool providing Canonical Polyadic (CP) tensor decomposition
+capabilities for sparse and dense tensors.  It provides data structures
+for storing sparse and dense tensors, and several solver methods
+for computing CP decompositions of those tensors.  It leverages Kokkos
+for shared-memory parallelism on CPU and GPU architectures, and MPI for
+distributed memory parallelism.
+
+pygenten is not intended to be used on its own, but rather in conjunction
+with the pyttb package, which provides a much larger set of tools for
+analyzing and manipulating tensor data.
+"""
+
 from pygenten._pygenten import *
 from pygenten.solvers import cp_als, cp_opt, gcp_opt, gcp_sgd
 from pygenten.utils import read_and_distribute_tensor, distribute_tensor

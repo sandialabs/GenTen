@@ -1,7 +1,14 @@
+"""
+Various utility functions for using GenTen.
+"""
+
 import pygenten._pygenten as gt
 import json
 
 def make_algparams(args):
+    """
+    Utility function for converting a dict to a pygenten.AlgParms.
+    """
     a = gt.AlgParams()
     rem = {}
     for key,value in args.items():
@@ -16,6 +23,27 @@ def make_algparams(args):
     return a, rem
 
 def read_and_distribute_tensor(filename, file_type=None, format=None, shape=None, nnz=None, value_bits=None, sub_bits=None, index_base=0, compressed=False, **kwargs):
+    """
+    Read a tensor from a file and distribute it in parallel.
+
+    Parameters:
+      * filename (str):  name of file to read
+      * file_type (str): type of file (test or binary)
+      * format (str): tensor format (sparse or dense)
+      * shape (tuple): shape of tensor for reading binary files without headers
+      * nnz (int): number of tensor nonzeros for reading binary files without
+        headers
+      * value_bits (int): number of bits used to store tensor values for reading
+        binary files without headers
+      * sub_bits (int): number of bits used to store tensor nonzero coordinates
+        for reading sparse, binary files without headers
+      * index_base (int): starting index for nonzero coordinates in the file
+      * comopressed (bool): whether the file is compressed or not
+      * kwards: keyword arguments for additional parameters needed when reading
+        the file.
+
+    Returns the dense/sparse tensor and the distributed tensor context.
+    """
     a,rem = make_algparams(kwargs)
     d = dict()
     if format is not None:
@@ -38,6 +66,11 @@ def read_and_distribute_tensor(filename, file_type=None, format=None, shape=None
     return Xd,dtc
 
 def distribute_tensor(X, **kwargs):
+    """
+    Distribute the given tensor in parallel and return the result.
+
+    Also returns the distributed tensor context.
+    """
     a,rem = make_algparams(kwargs)
     dtc = gt.DistTensorContext()
     XX = dtc.distributeTensor(X, a)
