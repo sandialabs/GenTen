@@ -182,7 +182,15 @@ driver_host(const Genten::DTC& dtc,
 }
 
 PYBIND11_MODULE(_pygenten, m) {
-  m.doc() = "_pygenten module";
+  m.doc() = R"(
+     Module providing Python wrappers for GenTen.
+
+     GenTen is a tool providing Canonical Polyadic (CP) tensor decomposition
+     capabilities for sparse and dense tensors.  It provides data structures
+     for storing sparse and dense tensors, and several solver methods
+     for computing CP decompositions of those tensors.  It leverages Kokkos
+     for shared-memory parallelism on CPU and GPU architectures, and MPI for
+     distributed memory parallelism.)";
   m.def("initializeKokkos", [](const int num_threads, const int num_devices, const int device_id) -> void {
       if(!Kokkos::is_initialized()) {
         Kokkos::InitializationSettings args;
@@ -191,18 +199,31 @@ PYBIND11_MODULE(_pygenten, m) {
         args.set_device_id(device_id);
         Kokkos::initialize(args);
       }
-    }, "", pybind11::arg("num_threads") = -1, pybind11::arg("num_devices") = -1, pybind11::arg("device_id") = -1);
+    }, R"(
+    Initialize Kokkos to set up the shared memory parallel environment.
+
+    Users should not generally call this, but instead call 'initializeGenten'.)", pybind11::arg("num_threads") = -1, pybind11::arg("num_devices") = -1, pybind11::arg("device_id") = -1);
   m.def("finalizeKokkos", []() -> void {
       if(Kokkos::is_initialized())
         Kokkos::finalize();
-    });
+    }, R"(
+    Finalize Kokkos to tear down the shared memory parallel environment.
+
+    Users should not generally call this, but instead call 'finalizeGenten'.)");
 
   m.def("initializeGenten", []() -> bool {
       return Genten::InitializeGenten();
-    });
+    }, R"(
+    Initialize GenTen to set up the parallel environment.
+
+    Returns True if this call resulted in the initialization and False if it
+    was already initialized.)");
   m.def("finalizeGenten", []() -> void {
       Genten::FinalizeGenten();
-    });
+    }, R"(
+    Finalize GenTen to tear down the parallel environment.
+
+    All GenTen data structures must be destroyed before calling this.)");
 
   m.def("driver", [](const Genten::Tensor& x, const Genten::Ktensor& u0, Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::PerfHistory > {
       py::scoped_ostream_redirect stream(
@@ -217,7 +238,21 @@ PYBIND11_MODULE(_pygenten, m) {
       Genten::PerfHistory perfInfo;
       Genten::Ktensor u = driver_host(x, u0, algParams, ptree, perfInfo, std::cout);
       return std::make_tuple(u, perfInfo);
-    });
+    }, R"(
+    Low-level driver for calling GenTen's solver methods on dense tensors.
+
+    Users should usually not call this directly, but rather the provided
+    solver wrappers for individual methods.
+
+    Parameters:
+      * X: the tensor to compute the CP decomposition from.
+      * u0: the initial guess, which may be empty, in which case GenTen will
+        compute a random initial guess.
+      * algParams: algorithmic parameters controlling which algorithm is chosen
+        as well as its solver parameters.
+
+    Returns a tuple of the Ktensor solution and PerfHistory containing
+    information on the performance of the algorithm.)", pybind11::arg("X"), pybind11::arg("u0"), pybind11::arg("algParams"));
     m.def("driver", [](const Genten::Sptensor& x, const Genten::Ktensor& u0, Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::PerfHistory > {
         py::scoped_ostream_redirect stream(
           std::cout,                                // std::ostream&
@@ -231,7 +266,21 @@ PYBIND11_MODULE(_pygenten, m) {
         Genten::PerfHistory perfInfo;
         Genten::Ktensor u = driver_host(x, u0, algParams, ptree, perfInfo, std::cout);
         return std::make_tuple(u, perfInfo);
-      });
+      }, R"(
+    Low-level driver for calling GenTen's solver methods on sparse tensors.
+
+    Users should usually not call this directly, but rather the provided
+    solver wrappers for individual methods.
+
+    Parameters:
+      * X: the tensor to compute the CP decomposition from.
+      * u0: the initial guess, which may be empty, in which case GenTen will
+        compute a random initial guess.
+      * algParams: algorithmic parameters controlling which algorithm is chosen
+        as well as its solver parameters.
+
+    Returns a tuple of the Ktensor solution and PerfHistory containing
+    information on the performance of the algorithm.)", pybind11::arg("X"), pybind11::arg("u0"), pybind11::arg("algParams"));
 
     m.def("driver", [](const Genten::DTC& dtc, const Genten::Tensor& x, const Genten::Ktensor& u0, Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::PerfHistory > {
         py::scoped_ostream_redirect stream(
@@ -246,7 +295,23 @@ PYBIND11_MODULE(_pygenten, m) {
         Genten::PerfHistory perfInfo;
         Genten::Ktensor u = driver_host(dtc, x, u0, algParams, ptree, perfInfo, std::cout);
         return std::make_tuple(u, perfInfo);
-      });
+      }, R"(
+    Low-level driver for calling GenTen's solver methods on dense tensors.
+
+    Users should usually not call this directly, but rather the provided
+    solver wrappers for individual methods.
+
+    Parameters:
+      * dtc: distributed tensor context containing informatio on how the
+        the tensor was distributed in parallel.
+      * X: the tensor to compute the CP decomposition from.
+      * u0: the initial guess, which may be empty, in which case GenTen will
+        compute a random initial guess.
+      * algParams: algorithmic parameters controlling which algorithm is chosen
+        as well as its solver parameters.
+
+    Returns a tuple of the Ktensor solution and PerfHistory containing
+    information on the performance of the algorithm.)", pybind11::arg("dtc"), pybind11::arg("X"), pybind11::arg("u0"), pybind11::arg("algParams"));
     m.def("driver", [](const Genten::DTC& dtc, const Genten::Sptensor& x, const Genten::Ktensor& u0, Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::PerfHistory > {
         py::scoped_ostream_redirect stream(
           std::cout,                                // std::ostream&
@@ -260,35 +325,57 @@ PYBIND11_MODULE(_pygenten, m) {
         Genten::PerfHistory perfInfo;
         Genten::Ktensor u = driver_host(dtc, x, u0, algParams, ptree, perfInfo, std::cout);
         return std::make_tuple(u, perfInfo);
-    });
+    }, R"(
+    Low-level driver for calling GenTen's solver methods on sparsetensors.
+
+    Users should usually not call this directly, but rather the provided
+    solver wrappers for individual methods.
+
+    Parameters:
+      * dtc: distributed tensor context containing informatio on how the
+        the tensor was distributed in parallel.
+      * X: the tensor to compute the CP decomposition from.
+      * u0: the initial guess, which may be empty, in which case GenTen will
+        compute a random initial guess.
+      * algParams: algorithmic parameters controlling which algorithm is chosen
+        as well as its solver parameters.
+
+    Returns a tuple of the Ktensor solution and PerfHistory containing
+    information on the performance of the algorithm.)", pybind11::arg("dtc"), pybind11::arg("X"), pybind11::arg("u0"), pybind11::arg("algParams"));
 
     m.def("import_tensor", [](const std::string& fName) -> Genten::Tensor {
         Genten::Tensor X;
         Genten::import_tensor(fName, X);
         return X;
-    });
+    }, R"(
+    Read and return a dense tensor from a given file.)", pybind11::arg("file"));
     m.def("import_sptensor", [](const std::string& fName) -> Genten::Sptensor {
         Genten::Sptensor X;
         Genten::import_sptensor(fName, X);
         return X;
-    });
+    }, R"(
+    Read and return a sparse tensor from a given file.)", pybind11::arg("file"));
 
     m.def("export_ktensor", [](const std::string& fName, const Genten::Ktensor& u) -> void {
         Genten::export_ktensor(fName, u);
-    });
+    }, R"(
+    Write a given Ktensor to the given file.)", pybind11::arg("file"), pybind11::arg("u"));
 
     m.def("proc_rank", []() -> int {
         gt_assert(Genten::DistContext::initialized());
         return Genten::DistContext::rank();
-    });
+    }, R"(
+    Return MPI rank of the this processor.)");
     m.def("num_procs", []() -> int {
         gt_assert(Genten::DistContext::initialized());
         return Genten::DistContext::nranks();
-    });
+    }, R"(
+    Return total number of MPI ranks.)");
     m.def("barrier", []() {
         gt_assert(Genten::DistContext::initialized());
         Genten::DistContext::Barrier();
-    });
+    }, R"(
+    MPI barrier to synchronize MPI ranks.)");
 
     pygenten_classes(m);
 }

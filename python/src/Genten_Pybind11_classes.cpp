@@ -47,35 +47,56 @@ namespace {
 
 void pygenten_perfhistory(py::module &m){
   {
-    py::class_<Genten::PerfHistory::Entry, std::shared_ptr<Genten::PerfHistory::Entry>> cl(m, "Entry");
-    cl.def( py::init( [](){ return new Genten::PerfHistory::Entry(); } ) );
-    cl.def_readwrite("iteration", &Genten::PerfHistory::Entry::iteration);
-    cl.def_readwrite("residual", &Genten::PerfHistory::Entry::residual);
-    cl.def_readwrite("fit", &Genten::PerfHistory::Entry::fit);
-    cl.def_readwrite("grad_norm", &Genten::PerfHistory::Entry::grad_norm);
-    cl.def_readwrite("cum_time", &Genten::PerfHistory::Entry::cum_time);
-    cl.def_readwrite("mttkrp_throughput", &Genten::PerfHistory::Entry::mttkrp_throughput);
+    py::class_<Genten::PerfHistory::Entry, std::shared_ptr<Genten::PerfHistory::Entry>> cl(m, "Entry",R"(
+    Class storing performance information from one iteration of a tensor
+    decomposition method.  Not all methods fill all properties.)");
+    cl.def(py::init([](){ return new Genten::PerfHistory::Entry(); }), R"(
+     Constructor that returns an empty Entry.)");
+    cl.def_readwrite("iteration", &Genten::PerfHistory::Entry::iteration, R"(
+     The solver iteration this entry corresponds to.)");
+    cl.def_readwrite("residual", &Genten::PerfHistory::Entry::residual, R"(
+     The residual of the objective function for this iteration.)");
+    cl.def_readwrite("fit", &Genten::PerfHistory::Entry::fit, R"(
+     The L2 fit for this iteration, i.e., 1-||X-M||_F/||X||_F.)");
+    cl.def_readwrite("grad_norm", &Genten::PerfHistory::Entry::grad_norm, R"(
+     Norm of the objective function gradient for this iteration.)");
+    cl.def_readwrite("cum_time", &Genten::PerfHistory::Entry::cum_time, R"(
+     Cummulative wall-clock time up to and including this iteration.)");
+    cl.def_readwrite("mttkrp_throughput", &Genten::PerfHistory::Entry::mttkrp_throughput,R"(
+     MTTKRP memory throughput.)");
     cl.def("__str__", [](Genten::PerfHistory::Entry const &o) -> std::string {
         std::ostringstream s;
         s << o.iteration << " " << o.residual << " " << o.fit << " " << o.grad_norm << " " << o.cum_time << " " << o.mttkrp_throughput;
         return s.str();
-      } );
+      }, R"(
+     Return a string representation of this entry.)" );
   }
   {
-    py::class_<Genten::PerfHistory, std::shared_ptr<Genten::PerfHistory>> cl(m, "PerfHistory");
-    cl.def( py::init( [](){ return new Genten::PerfHistory(); } ) );
-    cl.def("addEntry", (void (Genten::PerfHistory::*)(const class Genten::PerfHistory::Entry &)) &Genten::PerfHistory::addEntry, "Add a new entry", py::arg("entry"));
-    cl.def("addEntry", (void (Genten::PerfHistory::*)()) &Genten::PerfHistory::addEntry, "Add an empty entry");
-    cl.def("getEntry", (class Genten::PerfHistory::Entry & (Genten::PerfHistory::*)(const ttb_indx)) &Genten::PerfHistory::getEntry, "Get a given entry", py::arg("i"));
-    cl.def("__getitem__", (class Genten::PerfHistory::Entry & (Genten::PerfHistory::*)(const ttb_indx)) &Genten::PerfHistory::getEntry, "Get a given entry", py::arg("i"));
-    cl.def("lastEntry", (class Genten::PerfHistory::Entry & (Genten::PerfHistory::*)()) &Genten::PerfHistory::lastEntry, "Get the last entry");
-    cl.def("size", (ttb_indx (Genten::PerfHistory::*)()) &Genten::PerfHistory::size, "The number of entries");
-    cl.def("resize", (void (Genten::PerfHistory::*)(const ttb_indx)) &Genten::PerfHistory::resize, "Resize to given size", py::arg("new_size"));
+    py::class_<Genten::PerfHistory, std::shared_ptr<Genten::PerfHistory>> cl(m, "PerfHistory",R"(
+    Class storing performance history over iterations of a tensor
+    decomposition method by storing a list of objects of type Entry.)");
+    cl.def(py::init([](){ return new Genten::PerfHistory(); }), R"(
+     Constructor that returns an empty PerfHistory.)");
+    cl.def("addEntry", (void (Genten::PerfHistory::*)(const class Genten::PerfHistory::Entry &)) &Genten::PerfHistory::addEntry, R"(
+     Add the given entry to the end of the list.)", py::arg("entry"));
+    cl.def("addEntry", (void (Genten::PerfHistory::*)()) &Genten::PerfHistory::addEntry, R"(
+     Add an empty entry to the list.)");
+    cl.def("getEntry", (class Genten::PerfHistory::Entry & (Genten::PerfHistory::*)(const ttb_indx)) &Genten::PerfHistory::getEntry, R"(
+     Get entry i from the list.)", py::arg("i"));
+    cl.def("__getitem__", (class Genten::PerfHistory::Entry & (Genten::PerfHistory::*)(const ttb_indx)) &Genten::PerfHistory::getEntry, R"(
+     Get entry i from the list.)", py::arg("i"));
+    cl.def("lastEntry", (class Genten::PerfHistory::Entry & (Genten::PerfHistory::*)()) &Genten::PerfHistory::lastEntry, R"(
+     Get the last entry from the list.)");
+    cl.def("size", (ttb_indx (Genten::PerfHistory::*)()) &Genten::PerfHistory::size, R"(
+     Return the number of entries)");
+    cl.def("resize", (void (Genten::PerfHistory::*)(const ttb_indx)) &Genten::PerfHistory::resize, R"(
+     Resize the list to the given new size)", py::arg("new_size"));
     cl.def("__str__", [](Genten::PerfHistory const &o) -> std::string {
         std::ostringstream s;
         o.print(s);
         return s.str();
-      } ); 
+      }, R"(
+     Return a string representation of all entries.)"); 
   }
 }
 
@@ -185,7 +206,11 @@ void pygenten_algparams(py::module &m){
     .value("MaxOp", Genten::ProcessorMap::MpiOp::Max)
     .export_values();
   {
-    py::class_<Genten::AlgParams, std::shared_ptr<Genten::AlgParams>> cl(m, "AlgParams");
+    py::class_<Genten::AlgParams, std::shared_ptr<Genten::AlgParams>> cl(m, "AlgParams", R"(
+    Class for pass algorithm parameters to GenTen solvers.
+
+    This class is not intended to be used directly by users.  Instead users
+    should pass arguments as a JSON structure or a dict.)");
     cl.def( py::init( [](){ return new Genten::AlgParams(); } ) );
     cl.def_readwrite("exec_space", &Genten::AlgParams::exec_space);
     // Setting the processor grid this way appears to not work.  Use the
@@ -303,10 +328,18 @@ void pygenten_algparams(py::module &m){
 
 void pygenten_proc_map(py::module &m){
   {
-    py::class_<Genten::ProcessorMap, std::shared_ptr<Genten::ProcessorMap>> cl(m, "ProcessorMap");
-    cl.def("gridSize", (ttb_indx (Genten::ProcessorMap::*)()) &Genten::ProcessorMap::gridSize, "Return number of processors in grid");
-    cl.def("gridRank", (ttb_indx (Genten::ProcessorMap::*)()) &Genten::ProcessorMap::gridRank, "Return rank of this processor in grid");
-    cl.def("gridAllReduceArray", [](const Genten::ProcessorMap& pmap, py::buffer b, Genten::ProcessorMap::MpiOp op) {
+    py::class_<Genten::ProcessorMap, std::shared_ptr<Genten::ProcessorMap>> cl(m, "ProcessorMap", R"(
+    Class for managing MPI information related to distributed  parallel tensor
+    decompositions.)
+
+    GenTen uses a Cartesian grid decomposition approach where an N-way tensor
+    is partitioned along an N-way grid of MPI ranks.  Subcommunicators are
+    constructed along each dimension of the grid.)");
+    cl.def("gridSize", (ttb_indx (Genten::ProcessorMap::*)()) &Genten::ProcessorMap::gridSize, R"(
+    Return total number of processors in the grid)");
+    cl.def("gridRank", (ttb_indx (Genten::ProcessorMap::*)()) &Genten::ProcessorMap::gridRank, R"(
+    Return rank of this processor in the grid.)");
+    cl.def("gridAllReduceArray", [](const Genten::ProcessorMap& pmap, py::buffer b, Genten::ProcessorMap::MpiOp op = Genten::ProcessorMap::Sum) {
         py::buffer_info info = b.request();
         if (info.format != py::format_descriptor<ttb_real>::format())
           throw std::runtime_error("Incompatible format: expected a ttb_real array!");
@@ -315,30 +348,56 @@ void pygenten_proc_map(py::module &m){
         ttb_real *ptr = static_cast<ttb_real*>(info.ptr);
         ttb_indx n = info.shape[0];
         pmap.gridAllReduce(ptr, n, op);
-      });
-    cl.def("gridAllReduceArray", [](const Genten::ProcessorMap& pmap, py::buffer b) {
-        py::buffer_info info = b.request();
-        if (info.format != py::format_descriptor<ttb_real>::format())
-          throw std::runtime_error("Incompatible format: expected a ttb_real array!");
-        if (info.ndim != 1)
-          throw std::runtime_error("Incompatible buffer dimension!");
-        ttb_real *ptr = static_cast<ttb_real*>(info.ptr);
-        ttb_indx n = info.shape[0];
-        pmap.gridAllReduce(ptr, n);
-      });
+      }, R"(
+    Parallel reduce the given array across all processors in the grid.
+
+    The given array 'b' can by any 1-D array type that supports the buffer
+    protocol, such as a numpy.nparray.  The operation for combining elements
+    is given by 'op', which defaults to Sum.  The array 'b' is overwritten with
+    the result on each processor.)", py::arg("b"), py::arg("op") = Genten::ProcessorMap::Sum);
+    // cl.def("gridAllReduceArray", [](const Genten::ProcessorMap& pmap, py::buffer b) {
+    //     py::buffer_info info = b.request();
+    //     if (info.format != py::format_descriptor<ttb_real>::format())
+    //       throw std::runtime_error("Incompatible format: expected a ttb_real array!");
+    //     if (info.ndim != 1)
+    //       throw std::runtime_error("Incompatible buffer dimension!");
+    //     ttb_real *ptr = static_cast<ttb_real*>(info.ptr);
+    //     ttb_indx n = info.shape[0];
+    //     pmap.gridAllReduce(ptr, n);
+    //   });
     cl.def("gridAllReduce", [](const Genten::ProcessorMap& pmap, ttb_real x, Genten::ProcessorMap::MpiOp op) {
         return pmap.gridAllReduce(x, op);
-      });
-    cl.def("gridAllReduce", [](const Genten::ProcessorMap& pmap, ttb_real x) {
-        return pmap.gridAllReduce(x);
-      });
+      }, R"(
+    Parallel reduce the given scalar across all processors in the grid and
+    return the result.
+
+    The operation for combining elements across processors is given by 'op',
+    which defaults to Sum.)", py::arg("x"), py::arg("op") = Genten::ProcessorMap::Sum);
+    // cl.def("gridAllReduce", [](const Genten::ProcessorMap& pmap, ttb_real x) {
+    //     return pmap.gridAllReduce(x);
+    //   });
   }
 }
 
 void pygenten_ktensor(py::module &m){
   {
-    py::class_<Genten::Ktensor, std::shared_ptr<Genten::Ktensor>> cl(m, "Ktensor");
-    cl.def( py::init( [](){ return new Genten::Ktensor(); } ) );
+    py::class_<Genten::Ktensor, std::shared_ptr<Genten::Ktensor>> cl(m, "Ktensor",R"(
+    Class for Kruskal tensors in GenTen mirroring pyttb::ktensor.
+
+    Contains the following data members:
+      * weights: 1-D numpy.ndarray containing the weights of the rank-1
+        tensors defined by the outer products of the column vectors of the
+        factor_matrices (read/write).
+      * factor_matrices: tuple of 2-D numpy.ndarray. The length of the tuple is
+        equal to the number of dimensions of the tensor. The shape of the ith
+        element of the list is (n_i, r), where n_i is the length dimension i
+        and r is the rank of the tensor (as well as the length of the weights
+        vector) (read-only).)
+     Note that while factor_matrices, as a tuple is read-only, the
+     individual factor matrices within the tuple can be written to using slice
+     syntax.)");
+    cl.def(py::init([](){ return new Genten::Ktensor(); }),R"(
+     Constructor that returns an empty Ktensor.)");
     cl.def(py::init([](const py::array_t<ttb_real>& w, const py::list& f, const bool copy=true) {
           // Get weights
           py::buffer_info w_info = w.request();
@@ -396,7 +455,16 @@ void pygenten_ktensor(py::module &m){
           }
           Genten::Ktensor u(weights, factors);
           return u;
-        }),"constructor from weights and factor matrices", py::arg("weights"), py::arg("factor_matrices"), py::arg("copy") = true);
+        }),R"(
+    Constructor from given weights and factor matrices.
+
+    Parameters:
+      * weights: 1-D numpy.ndarray of weights of length r, where r is the rank
+        of the Ktensor.
+      * factor_matrices: list of 2-D numpy.ndarray matrices of length n where
+        n is the number of dimensions.  Each factor matrix must have r columns.
+      * copy: bool
+          Whether to copy weights and factor_matrices or alias the given ones.)", py::arg("weights"), py::arg("factor_matrices"), py::arg("copy") = true);
 
     cl.def("__getitem__", [](const Genten::Ktensor&u, ttb_indx dim) {
         const auto mat = u[dim];
@@ -407,22 +475,34 @@ void pygenten_ktensor(py::module &m){
         py::capsule capsule(new Genten::FacMatrix(mat), [](void *v) { delete reinterpret_cast<Genten::FacMatrix*>(v); });
         auto fac_mat = py::array_t<ttb_real>({m, n}, {s0, s1}, mat.view().data(), capsule);
         return fac_mat;
-      }, "Return a reference to the dim-th factor matrix", py::arg("dim"));
+      }, R"(
+    Return the n-th factor matrix as a numpy.ndarray.
+
+    The returned numpy.ndarray aliases the internal factor matrices and thus may
+    be used to change their values.)", py::arg("n"));
     cl.def("__str__", [](const Genten::Ktensor& u) {
         std::stringstream ss;
         Genten::print_ktensor(u, ss);
         return ss.str();
-      });
-    cl.def_property_readonly("pmap", &Genten::Ktensor::getProcessorMap, py::return_value_policy::reference);
-    cl.def_property_readonly("ndims", &Genten::Ktensor::ndims);
-    cl.def_property_readonly("ncomponents", &Genten::Ktensor::ncomponents);
+      }, R"(
+    Returns a string representation of the Ktensor.)");
+    cl.def_property_readonly("pmap", &Genten::Ktensor::getProcessorMap, py::return_value_policy::reference, R"(
+    Processor map for distributed memory parallelism.)");
+    cl.def_property_readonly("ndims", &Genten::Ktensor::ndims, R"(
+    Number of dimensions of the Ktensor as determined by the length of
+    the factor_matrices property.)");
+    cl.def_property_readonly("ncomponents", &Genten::Ktensor::ncomponents, R"(
+    The rank of the Ktensor as determined by the length of weights and the
+    number of columns of each factor matrix.)");
     cl.def_property_readonly("shape", [](const Genten::Ktensor& u) {
         const ttb_indx nd = u.ndims();
         auto sz = py::tuple(nd);
         for (ttb_indx i=0; i<nd; ++i)
           sz[i] = u[i].nRows();
         return sz;
-      });
+      }, R"(
+    The dimensions of the Ktensor as determined by the number of rows of each
+    factor matrix.)");
     cl.def_property("weights",[](const Genten::Ktensor& u) {
         const ttb_indx nc = u.ncomponents();
         // From https://github.com/pybind/pybind11/issues/1042, use a
@@ -443,7 +523,8 @@ void pygenten_ktensor(py::module &m){
           throw std::runtime_error("Incompatible buffer length!");
         Genten::Array weights(nc, static_cast<ttb_real *>(w_info.ptr), true);
         deep_copy(u.weights(), weights);
-      });
+      }, R"(
+    The weights array as a (read-write) numpy.ndarray.)");
     cl.def_property_readonly("factor_matrices",[](const Genten::Ktensor& u) {
         const ttb_indx nd = u.ndims();
         // Return u.factor_matrices as a tuple instead of a list to make it
@@ -465,14 +546,23 @@ void pygenten_ktensor(py::module &m){
           fac_mats[dim] = fac_mat;
         }
         return fac_mats;
-      });
+      }, R"(
+    The factor matrices returned as a (read-only) tuple of numpy.ndarray.
+
+    While the tuple is read-only, entries in each factor matrix may be changed
+    using index/slice syntax.)");
   }
 }
 
 void pygenten_tensor(py::module &m){
   {
-    py::class_<Genten::Tensor, std::shared_ptr<Genten::Tensor>> cl(m, "Tensor");
-    cl.def( py::init( [](){ return new Genten::Tensor(); } ), "Empty constructor" );
+    py::class_<Genten::Tensor, std::shared_ptr<Genten::Tensor>> cl(m, "Tensor",R"(
+    Class for dense tensors in GenTen mirroring pyttb::tensor.
+
+    Contains the following data members:
+      * data: n-D numpy.ndarray where n is the dimension of the tensor.)");
+    cl.def(py::init([](){ return new Genten::Tensor(); }),R"(
+     Constructor that returns an empty tensor.)");
     cl.def(py::init([](const py::array_t<ttb_real,py::array::c_style>& b) {
           // Initialize a Genten::Tensor from a numpy array using "C" layout,
           // which requires a transpose
@@ -511,7 +601,10 @@ void pygenten_tensor(py::module &m){
           }
           Genten::Tensor x(sz, vals);
           return x;
-        }));
+        }),R"(
+    Constructor from given numpy.ndarray using 'C' ordering.
+
+    Genten uses 'F' ordering, so the data must be copied.)");
     cl.def(py::init([](const py::array_t<ttb_real,py::array::f_style>& b) {
           // Initialize a Genten::Tensor from a numpy array using "F" layout,
           // which is the same as GenTen's layout, so no need to transpose
@@ -533,16 +626,22 @@ void pygenten_tensor(py::module &m){
           Genten::Array vals(numel, static_cast<ttb_real*>(info.ptr), true);
           Genten::Tensor x(sz, vals);
           return x;
-        }));
-    cl.def_property_readonly("pmap", &Genten::Tensor::getProcessorMap, py::return_value_policy::reference);
-    cl.def_property_readonly("ndims", &Genten::Tensor::ndims);
+        }),R"(
+    Constructor from given numpy.ndarray using 'F' ordering.
+
+    Since Genten uses 'F' ordering, the data will not be copied.)");
+    cl.def_property_readonly("pmap", &Genten::Tensor::getProcessorMap, py::return_value_policy::reference, R"(
+    Processor map for distributed memory parallelism.)");
+    cl.def_property_readonly("ndims", &Genten::Tensor::ndims, R"(
+    Number of dimensions of the tensor.)");
     cl.def_property_readonly("shape", [](const Genten::Tensor& X) {
         const ttb_indx nd = X.ndims();
         auto sz = py::tuple(nd);
         for (ttb_indx i=0; i<nd; ++i)
           sz[i] = X.size(i);
         return sz;
-      });
+      }, R"(
+    The dimensions of the tensor.)");
     cl.def_property_readonly("data",[](const Genten::Tensor& X) {
         Genten::Array vals = X.getValues();
         py::capsule capsule(new Genten::Array(vals), [](void *v) { delete reinterpret_cast<Genten::Array*>(v); });
@@ -551,20 +650,36 @@ void pygenten_tensor(py::module &m){
         for (ttb_indx i=0; i<nd; ++i)
           sz[i] = X.size(i);
         return py::array_t<ttb_real,py::array::f_style>(sz, vals.ptr(), capsule);
-      });
-    cl.def("nnz", (ttb_indx (Genten::Tensor::*)()) &Genten::Tensor::nnz, "Return the total number of elements in the tensor.");
+      }, R"(
+    The tensor data returned as a numpy.ndarray.
+
+    The property is read-only, meaning the ndarray cannot be changed, but values
+    may be changed using index/slice syntax.)");
+    cl.def("nnz", (ttb_indx (Genten::Tensor::*)()) &Genten::Tensor::nnz, R"(
+    Returns the total number of elements in the tensor.)");
     cl.def("__str__", [](const Genten::Tensor& X) {
         std::stringstream ss;
         Genten::print_tensor(X, ss);
         return ss.str();
-      });
+      }, R"(
+    Returns a string representation of the tensor.)");
   }
 }
 
 void pygenten_sptensor(py::module &m){
   {
-    py::class_<Genten::Sptensor, std::shared_ptr<Genten::Sptensor>> cl(m, "Sptensor");
-    cl.def( py::init( [](){ return new Genten::Sptensor(); } ), "Empty constructor" );
+    py::class_<Genten::Sptensor, std::shared_ptr<Genten::Sptensor>> cl(m, "Sptensor", "Tensor",R"(
+    Class for sparse tensors in GenTen mirroring pyttb::sptensor.
+
+    Contains the following data members:
+      * vals: 1-D numpy.ndarray of length nnz where nnz is the number of
+        nonzeros in the tensor.
+      * subs: 2-D numpy.ndarray of signed 64-bit integers with nnz rows and n
+        columns, where n is the number of dimensions.  Each row contains the
+        coordinates of the corresponding nonzero.
+)");
+    cl.def(py::init([](){ return new Genten::Sptensor(); }),R"(
+     Constructor that returns an empty sptensor.)");
     cl.def(py::init([](const py::tuple& sizes, const py::array_t<std::int64_t,py::array::c_style>& subs, const py::array_t<ttb_real,py::array::c_style>& vals) {
           // Sizes
           const ttb_indx nd = sizes.size();
@@ -598,16 +713,26 @@ void pygenten_sptensor(py::module &m){
 
           Genten::Sptensor x(sz, v, s);
           return x;
-        }));
-    cl.def_property_readonly("pmap", &Genten::Sptensor::getProcessorMap, py::return_value_policy::reference);
-    cl.def_property_readonly("ndims", &Genten::Sptensor::ndims);
+        }),R"(
+    Constructor from shape, subscripts, and value arrays.
+
+    Parameters:
+      * sizes: tuple containing the dimension of each mode of the tensor.
+      * subs: 2-D numpy.ndarray of signed 64-bit integers containing
+        coordinates of each nonzero.
+      * vals: 1-D numpy.ndarray containing values of each nonzero.)", py::arg("sizes"), py::arg("subs"), py::arg("vals"));
+    cl.def_property_readonly("pmap", &Genten::Sptensor::getProcessorMap, py::return_value_policy::reference, R"(
+    Processor map for distributed memory parallelism.)");
+    cl.def_property_readonly("ndims", &Genten::Sptensor::ndims, R"(
+    Number of dimensions of the sptensor.)");
     cl.def_property_readonly("shape", [](const Genten::Sptensor& X) {
         const ttb_indx nd = X.ndims();
         auto sz = py::tuple(nd);
         for (ttb_indx i=0; i<nd; ++i)
           sz[i] = X.size(i);
         return sz;
-      });
+      }, R"(
+    The dimensions of the sptensor.)");
     cl.def_property_readonly("subs",[](const Genten::Sptensor& X) {
         auto subs = X.getSubscripts();
         using subs_type = decltype(subs);
@@ -615,27 +740,36 @@ void pygenten_sptensor(py::module &m){
         const ttb_indx nd = X.ndims();
         const ttb_indx nz = X.nnz();
         return py::array_t<ttb_indx,py::array::c_style>({nz, nd}, subs.data(), capsule);
-      });
+      }, R"(
+    The 2-D numpy.ndarray of nonzero coordinates.)");
     cl.def_property_readonly("vals",[](const Genten::Sptensor& X) {
         Genten::Array vals = X.getValues();
         py::capsule capsule(new Genten::Array(vals), [](void *v) { delete reinterpret_cast<Genten::Array*>(v); });
         const ttb_indx nd = X.ndims();
         const ttb_indx nz = X.nnz();
         return py::array_t<ttb_real,py::array::c_style>({nz, nd}, vals.ptr(), capsule);
-      });
-    cl.def("nnz", (ttb_indx (Genten::Sptensor::*)()) &Genten::Sptensor::nnz, "Return the total number of elements in the tensor.");
+      }, R"(
+    The 1-D numpy.ndarray of nonzero values.)");
+    cl.def("nnz", (ttb_indx (Genten::Sptensor::*)()) &Genten::Sptensor::nnz, R"(
+    Returns the total number of elements in the sptensor.)");
     cl.def("__str__", [](const Genten::Sptensor& X) {
         std::stringstream ss;
         Genten::print_sptensor(X, ss);
         return ss.str();
-      });
+      }, R"(
+    Returns a string representation of the sptensor.)");
   }
   {
-    py::class_<Genten::DTC, std::shared_ptr<Genten::DTC>> cl(m, "DistTensorContext");
-    cl.def( py::init( [](){ return new Genten::DTC(); } ), "Empty constructor" );
+    py::class_<Genten::DTC, std::shared_ptr<Genten::DTC>> cl(m, "DistTensorContext", R"(
+    Class for creating and managing distributed sparse/dense tensors.
+    Parallel processor information is not setup until a tensor is distributed
+    in parallel by calling one of the 'distributeTensor' methods.)");
+    cl.def( py::init( [](){ return new Genten::DTC(); } ), R"(
+    Create an empty DistTensorContext.)" );
     cl.def("getProcessorMap", [](const Genten::DTC& dtc) {
         return dtc.pmap_ptr();
-      }, "Get parallel processor map");
+      }, R"(
+    Return the the parallel processor map.)");
     cl.def("distributeTensor",[](Genten::DTC& dtc, const std::string& file, const ttb_indx index_base, const bool compressed, const std::string& json, const Genten::AlgParams& algParams) {
         py::scoped_ostream_redirect stream(
           std::cout,                                // std::ostream&
@@ -652,22 +786,44 @@ void pygenten_sptensor(py::module &m){
         dtc.distributeTensor(file, index_base, compressed, tree,
                              algParams, X_sparse, X_dense);
         return std::make_tuple(X_sparse,X_dense);
-      }, "Read a tensor from a file and distribute it in parallel");
+      }, R"(
+    Read a tensor from a file and distribute it in parallel.
+
+    The type of tensor is determined by the file and a tuple of two tensor
+    objects is returned, the first a sparse tensor and the second a dense.
+    Which type of tensor was read can be determined by determing which of the
+    two returned is non-empty.
+
+    Parameters:
+      * file:  The name of the file to read.
+      * index_base: The starting index for coordinates in the file for sparse
+        tensors.  Tensors written by the Matlab Tensor Toolbox have a starting
+        index of 1.
+      * compressed: Whether the file is compressed or not.
+      * json:  A JSON string with optional parameter information.
+      * algParams:  Optional parmeter information stored as AlgParams.)", py::arg("file"), py::arg("index_base"), py::arg("compressed"), py::arg("json"), py::arg("algParams"));
     cl.def("distributeTensor", [](Genten::DTC& dtc, const Genten::Sptensor& X, const Genten::AlgParams& algParams) {
         return dtc.distributeTensor(X, algParams);
-      }, "Distribute a given sparse tensor in parallel");
+      }, R"(
+    Distribute a given sparse tensor in parallel and return the distributed
+    tensor.)");
     cl.def("distributeTensor", [](Genten::DTC& dtc, const Genten::Tensor& X, const Genten::AlgParams& algParams) {
         return dtc.distributeTensor(X, algParams);
-      }, "Distribute a given dense tensor in parallel");
+      }, R"(
+    Distribute a given dense tensor in parallel and return the distributed
+    tensor.)");
     cl.def("importToAll", [](const Genten::DTC& dtc, const Genten::Ktensor& u) {
         return dtc.importToAll<Genten::DefaultHostExecutionSpace>(u);
-      }, "Import a Ktensor to all processors");
+      }, R"(
+    Import a given Ktensor to all processors.)");
     cl.def("importToRoot", [](const Genten::DTC& dtc, const Genten::Ktensor& u) {
         return dtc.importToRoot<Genten::DefaultHostExecutionSpace>(u);
-      }, "Import a Ktensor to root processor");
+      }, R"(
+    Import a given Ktensor to the root processor.)");
     cl.def("exportFromRoot", [](const Genten::DTC& dtc, const Genten::Ktensor& u) {
         return dtc.exportFromRoot<Genten::DefaultHostExecutionSpace>(u);
-      }, "Export a Ktensor from the root processor to all");
+      }, R"(
+    Export a Ktensor from the root processor to all processors.)");
   }
 }
 
