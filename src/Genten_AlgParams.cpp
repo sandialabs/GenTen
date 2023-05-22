@@ -321,9 +321,11 @@ void Genten::AlgParams::parse(const ptree& input)
 
   // Generic options
   parse_ptree_enum<Execution_Space>(input, "exec-space", exec_space);
-  std::vector<ttb_real> grid;
-  parse_ptree_value(input, "proc-grid", grid, 1, INT_MAX);
-  proc_grid = IndxArray(grid.size(), grid.data());
+  if (input.contains("proc-grid")) {
+    std::vector<ttb_real> grid;
+    parse_ptree_value(input, "proc-grid", grid, 1, INT_MAX);
+    proc_grid = IndxArray(grid.size(), grid.data());
+  }
   parse_ptree_enum<Solver_Method>(input, "solver-method", method);
   parse_ptree_value(input, "debug", debug);
   parse_ptree_value(input, "timings", timings);
