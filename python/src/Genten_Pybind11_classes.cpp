@@ -721,6 +721,44 @@ void pygenten_sptensor(py::module &m){
       * subs: 2-D numpy.ndarray of signed 64-bit integers containing
         coordinates of each nonzero.
       * vals: 1-D numpy.ndarray containing values of each nonzero.)", py::arg("sizes"), py::arg("subs"), py::arg("vals"));
+    cl.def(py::init([](const py::tuple& sizes, const py::array_t<std::uint64_t,py::array::c_style>& subs, const py::array_t<ttb_real,py::array::c_style>& vals) {
+          // Sizes
+          const ttb_indx nd = sizes.size();
+          Genten::IndxArray sz(nd);
+          for (ttb_indx i=0; i<nd; ++i)
+            sz[i] = py::cast<ttb_indx>(sizes[i]);
+
+          // Subscripts
+          py::buffer_info subs_info = subs.request();
+          if (subs_info.ndim != 2)
+            throw std::runtime_error("Incompatible subs dimension!");
+          if (subs_info.shape[1] != nd)
+            throw std::runtime_error("Invalid number of subscript columns!");
+          const ttb_indx nnz = subs_info.shape[0];
+          std::uint64_t *subs_ptr = static_cast<std::uint64_t *>(subs_info.ptr);
+          typename Genten::Sptensor::subs_view_type s(subs_ptr, nnz, nd);
+
+          // Values.  TTB stores it as a 2-D array for some reason
+          py::buffer_info vals_info = vals.request();
+          if (vals_info.ndim != 1 && vals_info.ndim != 2)
+            throw std::runtime_error("Incompatible vals dimension!");
+          if (vals_info.shape[0] != nnz)
+            throw std::runtime_error("Invalid number of value rows!");
+          if (vals_info.ndim == 2 && vals_info.shape[1] != 1)
+            throw std::runtime_error("Invalid number of value columns!");
+          ttb_real *vals_ptr = static_cast<ttb_real *>(vals_info.ptr);
+          typename Genten::Sptensor::vals_view_type v(vals_ptr, nnz);
+
+          Genten::Sptensor x(sz, v, s);
+          return x;
+        }),R"(
+    Constructor from shape, subscripts, and value arrays.
+
+    Parameters:
+      * sizes: tuple containing the dimension of each mode of the tensor.
+      * subs: 2-D numpy.ndarray of unsigned 64-bit integers containing
+        coordinates of each nonzero.
+      * vals: 1-D numpy.ndarray containing values of each nonzero.)", py::arg("sizes"), py::arg("subs"), py::arg("vals"));
     cl.def_property_readonly("pmap", &Genten::Sptensor::getProcessorMap, py::return_value_policy::reference, R"(
     Processor map for distributed memory parallelism.)");
     cl.def_property_readonly("ndims", &Genten::Sptensor::ndims, R"(
@@ -745,9 +783,8 @@ void pygenten_sptensor(py::module &m){
     cl.def_property_readonly("vals",[](const Genten::Sptensor& X) {
         Genten::Array vals = X.getValues();
         py::capsule capsule(new Genten::Array(vals), [](void *v) { delete reinterpret_cast<Genten::Array*>(v); });
-        const ttb_indx nd = X.ndims();
-        const ttb_indx nz = X.nnz();
-        return py::array_t<ttb_real,py::array::c_style>({nz, nd}, vals.ptr(), capsule);
+        const pybind11::ssize_t nz = X.nnz();
+        return py::array_t<ttb_real,py::array::c_style>({nz}, vals.ptr(), capsule);
       }, R"(
     The 1-D numpy.ndarray of nonzero values.)");
     cl.def("nnz", (ttb_indx (Genten::Sptensor::*)()) &Genten::Sptensor::nnz, R"(

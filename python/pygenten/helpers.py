@@ -28,9 +28,9 @@ def make_ttb_sptensor(X, copy=True):
     Returns a pyttb.sptensor for X.
     """
     if copy:
-        return pyttb.sptensor.from_data(X.subs, X.vals, X.shape, copy=copy)
-    else:
         return pyttb.sptensor.from_data(X.subs.copy(), X.vals.copy(), X.shape)
+    else:
+        return pyttb.sptensor.from_data(X.subs, X.vals, X.shape)
 
 def make_ttb_ktensor(M, copy=True):
     """
