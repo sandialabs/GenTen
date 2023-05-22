@@ -41,10 +41,7 @@ def test_cpals_dense_ttb():
     del u, x
 
 def test_cpals_sparse_ttb():
-    # We don't use ttb's import_data() to read in the tensor because it doesn't
-    # handle 0-based index-base correctly
-    x_gt = gt.import_sptensor("data/aminoacid_data.txt")
-    x = gt.make_ttb_sptensor(x_gt, copy=False)
+    x = ttb.import_data("data/aminoacid_data.txt", index_base=0)
 
     u,perf = gt.cp_als(x, rank=16, maxiters=20, tol=1e-4, seed=12345)
     e = perf.lastEntry()
@@ -52,4 +49,4 @@ def test_cpals_sparse_ttb():
     assert pytest.approx(0.98, abs=0.1) == e.fit
     assert pytest.approx(8, abs=1) == e.iteration
 
-    del u, x_gt, x
+    del u, x
