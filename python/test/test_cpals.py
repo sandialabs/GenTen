@@ -30,23 +30,25 @@ def test_cpals_sparse():
     del u, x
 
 def test_cpals_dense_ttb():
-    x = ttb.import_data("data/aminoacid_data_dense.txt")
+    if have_ttb:
+        x = ttb.import_data("data/aminoacid_data_dense.txt")
 
-    u,perf = gt.cp_als(x, rank=16, maxiters=20, tol=1e-4, seed=12345)
-    e = perf.lastEntry()
+        u,perf = gt.cp_als(x, rank=16, maxiters=20, tol=1e-4, seed=12345)
+        e = perf.lastEntry()
 
-    assert pytest.approx(0.98, abs=0.1) == e.fit
-    assert pytest.approx(8, abs=1) == e.iteration
+        assert pytest.approx(0.98, abs=0.1) == e.fit
+        assert pytest.approx(8, abs=1) == e.iteration
 
-    del u, x
+        del u, x
 
 def test_cpals_sparse_ttb():
-    x = ttb.import_data("data/aminoacid_data.txt", index_base=0)
+    if have_ttb:
+        x = ttb.import_data("data/aminoacid_data.txt", index_base=0)
 
-    u,perf = gt.cp_als(x, rank=16, maxiters=20, tol=1e-4, seed=12345)
-    e = perf.lastEntry()
+        u,perf = gt.cp_als(x, rank=16, maxiters=20, tol=1e-4, seed=12345)
+        e = perf.lastEntry()
 
-    assert pytest.approx(0.98, abs=0.1) == e.fit
-    assert pytest.approx(8, abs=1) == e.iteration
+        assert pytest.approx(0.98, abs=0.1) == e.fit
+        assert pytest.approx(8, abs=1) == e.iteration
 
-    del u, x
+        del u, x
