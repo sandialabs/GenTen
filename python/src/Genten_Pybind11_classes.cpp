@@ -355,16 +355,6 @@ void pygenten_proc_map(py::module &m){
     protocol, such as a numpy.nparray.  The operation for combining elements
     is given by 'op', which defaults to Sum.  The array 'b' is overwritten with
     the result on each processor.)", py::arg("b"), py::arg("op") = Genten::ProcessorMap::Sum);
-    // cl.def("gridAllReduceArray", [](const Genten::ProcessorMap& pmap, py::buffer b) {
-    //     py::buffer_info info = b.request();
-    //     if (info.format != py::format_descriptor<ttb_real>::format())
-    //       throw std::runtime_error("Incompatible format: expected a ttb_real array!");
-    //     if (info.ndim != 1)
-    //       throw std::runtime_error("Incompatible buffer dimension!");
-    //     ttb_real *ptr = static_cast<ttb_real*>(info.ptr);
-    //     ttb_indx n = info.shape[0];
-    //     pmap.gridAllReduce(ptr, n);
-    //   });
     cl.def("gridAllReduce", [](const Genten::ProcessorMap& pmap, ttb_real x, Genten::ProcessorMap::MpiOp op) {
         return pmap.gridAllReduce(x, op);
       }, R"(
@@ -373,9 +363,6 @@ void pygenten_proc_map(py::module &m){
 
     The operation for combining elements across processors is given by 'op',
     which defaults to Sum.)", py::arg("x"), py::arg("op") = Genten::ProcessorMap::Sum);
-    // cl.def("gridAllReduce", [](const Genten::ProcessorMap& pmap, ttb_real x) {
-    //     return pmap.gridAllReduce(x);
-    //   });
   }
 }
 
@@ -410,8 +397,10 @@ void pygenten_ktensor(py::module &m){
           const ttb_indx nd = f.size();
           Genten::FacMatArray factors(nd);
           for (ttb_indx i=0; i<nd; ++i) {
-            auto mat = py::cast<py::array_t<ttb_real,py::array::c_style> >(f[i]);
+            auto mat = py::cast<py::buffer>(f[i]);
             py::buffer_info mat_info = mat.request();
+            if (mat_info.format != py::format_descriptor<ttb_real>::format())
+                throw std::runtime_error("Incompatible format: expected a ttb_real array!");
             if (mat_info.ndim != 2)
               throw std::runtime_error("Incompatible buffer dimension!");
             const ttb_indx nrow = mat_info.shape[0];
@@ -563,27 +552,37 @@ void pygenten_tensor(py::module &m){
       * data: n-D numpy.ndarray where n is the dimension of the tensor.)");
     cl.def(py::init([](){ return new Genten::Tensor(); }),R"(
      Constructor that returns an empty tensor.)");
-    cl.def(py::init([](const py::array_t<ttb_real,py::array::c_style>& b) {
-          // Initialize a Genten::Tensor from a numpy array using "C" layout,
-          // which requires a transpose
-          py::buffer_info info = b.request();
+    cl.def(py::init([](const py::buffer& b, const bool copy=true) {
+        // Initialize a Genten::Tensor from a numpy array
+        py::buffer_info info = b.request();
 
-          // Tensor size
-          const ttb_indx nd = info.ndim;
-          Genten::IndxArray sz(nd), szt(nd);
-          ttb_indx numel = 1;
-          for (ttb_indx i=0; i<nd; ++i) {
-            sz[i]  = info.shape[i];      // size of this tensor
-            szt[i] = info.shape[nd-i-1]; // size of transposed tensor
-            numel *= sz[i];
-          }
+        if (info.format != py::format_descriptor<ttb_real>::format())
+          throw std::runtime_error("Incompatible format: expected a ttb_real array!");
 
-          // Tensor values
+        // Tensor size
+        const ttb_indx nd = info.ndim;
+        Genten::IndxArray sz(nd);
+        ttb_indx numel = 1;
+        for (ttb_indx i=0; i<nd; ++i) {
+          sz[i]  = info.shape[i];      // size of this tensor
+          numel *= sz[i];
+        }
+
+        Genten::Tensor x;
+        if (info.strides[0]/sizeof(ttb_real) == 1) {
+          // The 'F' layout case
+          Genten::Array vals(numel, static_cast<ttb_real*>(info.ptr), !copy);
+          x = Genten::Tensor(sz, vals);
+        }
+        else if (info.strides[nd-1]/sizeof(ttb_real) == 1) {
+          // The 'C' layout case
           // To do:  make this parallel.  But we should combine that with
           // putting the tensor on the device.
           Genten::Array vals(numel);
-          Genten::IndxArray s(nd), st(nd);
+          Genten::IndxArray s(nd), st(nd), szt(nd);
           ttb_real *ptr = static_cast<ttb_real*>(info.ptr);
+          for (ttb_indx i=0; i<nd; ++i)
+            szt[i] = sz[nd-i-1];
           for (ttb_indx i=0; i<numel; ++i) {
 
             // Map linearized index to mult-index
@@ -599,37 +598,17 @@ void pygenten_tensor(py::module &m){
             // Copy corresponding values
             vals[i] = ptr[k];
           }
-          Genten::Tensor x(sz, vals);
-          return x;
-        }),R"(
-    Constructor from given numpy.ndarray using 'C' ordering.
+          x = Genten::Tensor(sz, vals);
+        }
+        else
+          throw std::runtime_error("Incompatible array layout.  Must be 'C' or 'F' layout!");
+        return x;
+      }),R"(
+    Constructor from the given buffer such as a numpy.ndarray.
 
-    Genten uses 'F' ordering, so the data must be copied.)");
-    cl.def(py::init([](const py::array_t<ttb_real,py::array::f_style>& b) {
-          // Initialize a Genten::Tensor from a numpy array using "F" layout,
-          // which is the same as GenTen's layout, so no need to transpose
-          py::buffer_info info = b.request();
+    Whether the data must be copied depends on the ordering of the input array.
+    Set copy=True to make it a copy, regardless.)", py::arg("b"), py::arg("copy") = true);
 
-          // Tensor size
-          const ttb_indx nd = info.ndim;
-          Genten::IndxArray sz(nd);
-          ttb_indx numel = 1;
-          for (ttb_indx i=0; i<nd; ++i) {
-            sz[i]  = info.shape[i];      // size of this tensor
-            numel *= sz[i];
-          }
-
-          // Tensor values.  We use a view to avoid the copy.  This should be
-          // safe because I believe we aren't alloying pybind to create a
-          // temporary because we did not include py::array::forcecast in the
-          // template parameters.
-          Genten::Array vals(numel, static_cast<ttb_real*>(info.ptr), true);
-          Genten::Tensor x(sz, vals);
-          return x;
-        }),R"(
-    Constructor from given numpy.ndarray using 'F' ordering.
-
-    Since Genten uses 'F' ordering, the data will not be copied.)");
     cl.def_property_readonly("pmap", &Genten::Tensor::getProcessorMap, py::return_value_policy::reference, R"(
     Processor map for distributed memory parallelism.)");
     cl.def_property_readonly("ndims", &Genten::Tensor::ndims, R"(
@@ -655,7 +634,9 @@ void pygenten_tensor(py::module &m){
 
     The property is read-only, meaning the ndarray cannot be changed, but values
     may be changed using index/slice syntax.)");
-    cl.def("nnz", (ttb_indx (Genten::Tensor::*)()) &Genten::Tensor::nnz, R"(
+    cl.def_property_readonly("nnz", [](const Genten::Tensor& X) {
+        return X.nnz();
+      }, R"(
     Returns the total number of elements in the tensor.)");
     cl.def("__str__", [](const Genten::Tensor& X) {
         std::stringstream ss;
@@ -680,25 +661,76 @@ void pygenten_sptensor(py::module &m){
 )");
     cl.def(py::init([](){ return new Genten::Sptensor(); }),R"(
      Constructor that returns an empty sptensor.)");
-    cl.def(py::init([](const py::tuple& sizes, const py::array_t<std::int64_t,py::array::c_style>& subs, const py::array_t<ttb_real,py::array::c_style>& vals) {
+    cl.def(py::init([](const py::tuple& sizes, const py::buffer& subs, const py::buffer& vals, const bool copy=true) {
           // Sizes
           const ttb_indx nd = sizes.size();
           Genten::IndxArray sz(nd);
           for (ttb_indx i=0; i<nd; ++i)
             sz[i] = py::cast<ttb_indx>(sizes[i]);
 
-          // Subscripts
+          // Subscripts.  We support nearly any type of ordinal, but only
+          // if it matches ttb_indx can we avoid the copy.
           py::buffer_info subs_info = subs.request();
           if (subs_info.ndim != 2)
             throw std::runtime_error("Incompatible subs dimension!");
           if (subs_info.shape[1] != nd)
             throw std::runtime_error("Invalid number of subscript columns!");
           const ttb_indx nnz = subs_info.shape[0];
-          std::int64_t *subs_ptr = static_cast<std::int64_t *>(subs_info.ptr);
-          typename Genten::Sptensor::subs_view_type s("subs", nnz, nd);
-          for (ttb_indx i=0; i<nnz; ++i)
-            for (ttb_indx j=0; j<nd; ++j)
-              s(i,j) = subs_ptr[i*nd+j];
+          typename Genten::Sptensor::subs_view_type s;
+          auto copy_subs = [=](const auto* subs_ptr) {
+            typename Genten::Sptensor::subs_view_type s("subs", nnz, nd);
+            for (ttb_indx i=0; i<nnz; ++i)
+              for (ttb_indx j=0; j<nd; ++j)
+                s(i,j) = subs_ptr[i*nd+j];
+            return s;
+          };
+
+          // Note: format_descriptor<> does not include long/unsigned long
+          // for some reason, so we need to check for them separately.
+          // Base on https://python.readthedocs.io/en/v2.7.2/library/struct.html#format-characters, and the format codes in pybind11/common.h,
+          // int/unsigned/long long/unsigned long long should map to the same
+          // format codes as the std::[u]int??_t types.  We assume ttb_indx
+          // is always unsigned though.
+          if (subs_info.format == py::format_descriptor<ttb_indx>::format() ||
+             (subs_info.format == "L" && sizeof(unsigned long) == sizeof(ttb_indx))) {
+            if (subs_info.strides[1] != sizeof(ttb_indx))
+              throw std::runtime_error("Subscript array must have 'C' layout!=");
+            ttb_indx* subs_ptr = static_cast<ttb_indx *>(subs_info.ptr);
+            if (copy) {
+              s = typename Genten::Sptensor::subs_view_type("subs", nnz, nd);
+              typename Genten::Sptensor::subs_view_type s2(subs_ptr, nnz, nd);
+              deep_copy(s, s2);
+            }
+            else
+              s = typename Genten::Sptensor::subs_view_type(subs_ptr, nnz, nd);
+          }
+          else if (subs_info.format == py::format_descriptor<std::uint64_t>::format()) {
+            if (subs_info.strides[1] != sizeof(std::uint64_t))
+              throw std::runtime_error("Subscript array must have 'C' layout!=");
+            s = copy_subs(static_cast<std::int64_t *>(subs_info.ptr));
+          }
+          else if (subs_info.format == py::format_descriptor<std::int64_t>::format()) {
+            if (subs_info.strides[1] != sizeof(std::int64_t))
+              throw std::runtime_error("Subscript array must have 'C' layout!=");
+            s = copy_subs(static_cast<std::int64_t *>(subs_info.ptr));
+          }
+          else if (subs_info.format == py::format_descriptor<std::uint32_t>::format()) {
+            if (subs_info.strides[1] != sizeof(std::uint32_t))
+              throw std::runtime_error("Subscript array must have 'C' layout!=");
+            s = copy_subs(static_cast<std::uint32_t *>(subs_info.ptr));
+          }
+          else if (subs_info.format == py::format_descriptor<std::int32_t>::format()) {
+            if (subs_info.strides[1] != sizeof(std::int32_t))
+              throw std::runtime_error("Subscript array must have 'C' layout!=");
+            s = copy_subs(static_cast<std::int32_t *>(subs_info.ptr));
+          }
+          else if (subs_info.format == "l") {
+            if (subs_info.strides[1] != sizeof(long))
+              throw std::runtime_error("Subscript array must have 'C' layout!=");
+            s = copy_subs(static_cast<long *>(subs_info.ptr));
+          }
+          else
+            throw std::runtime_error("Incompatible subscript format: expected a int32/int64 or uint32/uint64 array!  Format code is: " + std::string(subs_info.format));
 
           // Values.  TTB stores it as a 2-D array for some reason
           py::buffer_info vals_info = vals.request();
@@ -711,54 +743,23 @@ void pygenten_sptensor(py::module &m){
           ttb_real *vals_ptr = static_cast<ttb_real *>(vals_info.ptr);
           typename Genten::Sptensor::vals_view_type v(vals_ptr, nnz);
 
-          Genten::Sptensor x(sz, v, s);
+          Genten::Sptensor x;
+          if (copy) {
+            typename Genten::Sptensor::vals_view_type v2("vals", nnz);
+            deep_copy(v2,v);
+            x = Genten::Sptensor(sz, v2, s);
+          }
+          else
+            x = Genten::Sptensor(sz, v, s);
           return x;
         }),R"(
     Constructor from shape, subscripts, and value arrays.
 
     Parameters:
       * sizes: tuple containing the dimension of each mode of the tensor.
-      * subs: 2-D numpy.ndarray of signed 64-bit integers containing
-        coordinates of each nonzero.
-      * vals: 1-D numpy.ndarray containing values of each nonzero.)", py::arg("sizes"), py::arg("subs"), py::arg("vals"));
-    cl.def(py::init([](const py::tuple& sizes, const py::array_t<std::uint64_t,py::array::c_style>& subs, const py::array_t<ttb_real,py::array::c_style>& vals) {
-          // Sizes
-          const ttb_indx nd = sizes.size();
-          Genten::IndxArray sz(nd);
-          for (ttb_indx i=0; i<nd; ++i)
-            sz[i] = py::cast<ttb_indx>(sizes[i]);
-
-          // Subscripts
-          py::buffer_info subs_info = subs.request();
-          if (subs_info.ndim != 2)
-            throw std::runtime_error("Incompatible subs dimension!");
-          if (subs_info.shape[1] != nd)
-            throw std::runtime_error("Invalid number of subscript columns!");
-          const ttb_indx nnz = subs_info.shape[0];
-          std::uint64_t *subs_ptr = static_cast<std::uint64_t *>(subs_info.ptr);
-          typename Genten::Sptensor::subs_view_type s(subs_ptr, nnz, nd);
-
-          // Values.  TTB stores it as a 2-D array for some reason
-          py::buffer_info vals_info = vals.request();
-          if (vals_info.ndim != 1 && vals_info.ndim != 2)
-            throw std::runtime_error("Incompatible vals dimension!");
-          if (vals_info.shape[0] != nnz)
-            throw std::runtime_error("Invalid number of value rows!");
-          if (vals_info.ndim == 2 && vals_info.shape[1] != 1)
-            throw std::runtime_error("Invalid number of value columns!");
-          ttb_real *vals_ptr = static_cast<ttb_real *>(vals_info.ptr);
-          typename Genten::Sptensor::vals_view_type v(vals_ptr, nnz);
-
-          Genten::Sptensor x(sz, v, s);
-          return x;
-        }),R"(
-    Constructor from shape, subscripts, and value arrays.
-
-    Parameters:
-      * sizes: tuple containing the dimension of each mode of the tensor.
-      * subs: 2-D numpy.ndarray of unsigned 64-bit integers containing
-        coordinates of each nonzero.
-      * vals: 1-D numpy.ndarray containing values of each nonzero.)", py::arg("sizes"), py::arg("subs"), py::arg("vals"));
+      * subs: 2-D numpy.ndarray of signed or unsigned 32-bit or 64-bit integers
+        containing coordinates of each nonzero.
+      * vals: 1-D numpy.ndarray containing values of each nonzero.)", py::arg("sizes"), py::arg("subs"), py::arg("vals"), py::arg("copy") = true);
     cl.def_property_readonly("pmap", &Genten::Sptensor::getProcessorMap, py::return_value_policy::reference, R"(
     Processor map for distributed memory parallelism.)");
     cl.def_property_readonly("ndims", &Genten::Sptensor::ndims, R"(
@@ -787,7 +788,9 @@ void pygenten_sptensor(py::module &m){
         return py::array_t<ttb_real,py::array::c_style>({nz}, vals.ptr(), capsule);
       }, R"(
     The 1-D numpy.ndarray of nonzero values.)");
-    cl.def("nnz", (ttb_indx (Genten::Sptensor::*)()) &Genten::Sptensor::nnz, R"(
+    cl.def_property_readonly("nnz", [](const Genten::Sptensor& X) {
+        return X.nnz();
+      }, R"(
     Returns the total number of elements in the sptensor.)");
     cl.def("__str__", [](const Genten::Sptensor& X) {
         std::stringstream ss;

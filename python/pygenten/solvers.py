@@ -52,10 +52,10 @@ def driver(X, u, args, dtc=None):
     # Convert TTB tensor/sptensor to Genten Tensor/Sptensor
     is_ttb = False
     if have_ttb and isinstance(X, ttb.tensor):
-        X = gt.Tensor(X.data)
+        X = gt.Tensor(X.data, copy=False)
         is_ttb = True
     if have_ttb and isinstance(X, ttb.sptensor):
-        X = gt.Sptensor(X.shape, X.subs, X.vals)
+        X = gt.Sptensor(X.shape, X.subs, X.vals, copy=False)
         is_ttb = True
 
     # Convert TTB ktensor to Genten Ktensor
