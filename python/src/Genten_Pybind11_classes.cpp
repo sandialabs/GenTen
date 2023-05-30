@@ -826,11 +826,8 @@ void pygenten_sptensor(py::module &m){
           );
         Genten::ptree tree;
         tree.parse(json);
-        Genten::Sptensor X_sparse;
-        Genten::Tensor X_dense;
-        dtc.distributeTensor(file, index_base, compressed, tree,
-                             algParams, X_sparse, X_dense);
-        return std::make_tuple(X_sparse,X_dense);
+        return dtc.distributeTensor(file, index_base, compressed, tree,
+                                    algParams);
       }, R"(
     Read a tensor from a file and distribute it in parallel.
 
@@ -847,6 +844,29 @@ void pygenten_sptensor(py::module &m){
       * compressed: Whether the file is compressed or not.
       * json:  A JSON string with optional parameter information.
       * algParams:  Optional parmeter information stored as AlgParams.)", py::arg("file"), py::arg("index_base"), py::arg("compressed"), py::arg("json"), py::arg("algParams"));
+    cl.def("distributeTensor",[](Genten::DTC& dtc, const std::string& json, const Genten::AlgParams& algParams) {
+        py::scoped_ostream_redirect stream(
+          std::cout,                                // std::ostream&
+          py::module_::import("sys").attr("stdout") // Python output
+          );
+        py::scoped_ostream_redirect err_stream(
+          std::cerr,                                // std::ostream&
+          py::module_::import("sys").attr("stderr") // Python output
+          );
+        Genten::ptree tree;
+        tree.parse(json);
+        return dtc.distributeTensor(tree, algParams);
+      }, R"(
+    Read a tensor from a JSON file and distribute it in parallel.
+
+    The type of tensor is determined by the file and a tuple of two tensor
+    objects is returned, the first a sparse tensor and the second a dense.
+    Which type of tensor was read can be determined by determing which of the
+    two returned is non-empty.
+
+    Parameters:
+      * json:  A JSON string containing information about the tensor.
+      * algParams:  Optional parmeter information stored as AlgParams.)", py::arg("json"), py::arg("algParams"));
     cl.def("distributeTensor", [](Genten::DTC& dtc, const Genten::Sptensor& X, const Genten::AlgParams& algParams) {
         return dtc.distributeTensor(X, algParams);
       }, R"(

@@ -80,13 +80,15 @@ public:
   template <typename ExecSpaceSrc>
   DistTensorContext(const DistTensorContext<ExecSpaceSrc>& src);
 
-  void distributeTensor(const std::string& file,
-                        const ttb_indx index_base,
-                        const bool compressed,
-                        const ptree& tree,
-                        const AlgParams& algParams,
-                        SptensorT<ExecSpace>& X_sparse,
-                        TensorT<ExecSpace>& X_dense);
+  std::tuple< SptensorT<ExecSpace>, TensorT<ExecSpace> >
+  distributeTensor(const ptree& tree,
+                   const AlgParams& algParams);
+  std::tuple< SptensorT<ExecSpace>, TensorT<ExecSpace> >
+  distributeTensor(const std::string& file,
+                   const ttb_indx index_base,
+                   const bool compressed,
+                   const ptree& tree,
+                   const AlgParams& algParams);
   template <typename ExecSpaceSrc>
   SptensorT<ExecSpace> distributeTensor(const SptensorT<ExecSpaceSrc>& X,
                                         const AlgParams& algParams = AlgParams());
@@ -660,13 +662,15 @@ public:
     global_dims_(src.global_dims_),
     pmap_(src.pmap_) {}
 
-  void distributeTensor(const std::string& file,
-                        const ttb_indx index_base,
-                        const bool compressed,
-                        const ptree& tree,
-                        const AlgParams& algParams,
-                        SptensorT<ExecSpace>& X_sparse,
-                        TensorT<ExecSpace>& X_dense);
+  std::tuple< SptensorT<ExecSpace>, TensorT<ExecSpace> >
+  distributeTensor(const ptree& tree,
+                   const AlgParams& algParams);
+  std::tuple< SptensorT<ExecSpace>, TensorT<ExecSpace> >
+  distributeTensor(const std::string& file,
+                   const ttb_indx index_base,
+                   const bool compressed,
+                   const ptree& tree,
+                   const AlgParams& algParams);
   template <typename ExecSpaceSrc>
   SptensorT<ExecSpace> distributeTensor(const SptensorT<ExecSpaceSrc>& X,
                                         const AlgParams& algParams = AlgParams())

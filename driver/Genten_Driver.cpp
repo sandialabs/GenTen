@@ -140,8 +140,8 @@ int main_driver(Genten::AlgParams& algParams,
     if (inputfilename != "") {
       timer.start(0);
       auto tensor_input = json_input.get_child_optional("tensor");
-      dtc.distributeTensor(inputfilename, index_base, gz, tensor_input,
-                           algParams, x, xd);
+      std::tie(x,xd) = dtc.distributeTensor(
+        inputfilename, index_base, gz, tensor_input, algParams);
       timer.stop(0);
       DC::Barrier();
       if (dtc.gridRank() == 0)
@@ -216,8 +216,8 @@ int main_driver(Genten::AlgParams& algParams,
     if (inputfilename != "") {
       timer.start(0);
       auto tensor_input = json_input.get_child_optional("tensor");
-      dtc.distributeTensor(inputfilename, index_base, gz, tensor_input,
-                           algParams, xs, x);
+      std::tie(xs,x) = dtc.distributeTensor(
+        inputfilename, index_base, gz, tensor_input, algParams);
       timer.stop(0);
       if (dtc.gridRank() == 0)
         printf("  Data import took %6.3f seconds\n", timer.getTotalTime(0));

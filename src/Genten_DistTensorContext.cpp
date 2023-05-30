@@ -714,14 +714,14 @@ allReduce(KtensorT<ExecSpace>& u, const bool divide_by_grid_size) const
 }
 
 template <typename ExecSpace>
-void
+std::tuple< SptensorT<ExecSpace>, TensorT<ExecSpace> >
 DistTensorContext<ExecSpace>::
 distributeTensor(const std::string& file, const ttb_indx index_base,
                  const bool compressed, const ptree& tree,
-                 const AlgParams& algParams,
-                 SptensorT<ExecSpace>& X_sparse,
-                 TensorT<ExecSpace>& X_dense)
+                 const AlgParams& algParams)
 {
+  SptensorT<ExecSpace> X_sparse;
+  TensorT<ExecSpace> X_dense;
   TensorReader<Genten::DefaultHostExecutionSpace> reader(
     file, index_base, compressed, tree);
 
@@ -837,6 +837,7 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
   else
     X_sparse = distributeTensorData(Tvec_sparse, global_dims_, global_blocking_,
                                     *pmap_, algParams);
+  return std::make_tuple(X_sparse, X_dense);
 }
 
 template <typename ExecSpace>
@@ -1193,16 +1194,16 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
 #else
 
 template <typename ExecSpace>
-void
+std::tuple< SptensorT<ExecSpace>, TensorT<ExecSpace> >
 DistTensorContext<ExecSpace>::
 distributeTensor(const std::string& file,
                  const ttb_indx index_base,
                  const bool compressed,
                  const ptree& tree,
-                 const AlgParams& algParams,
-                 SptensorT<ExecSpace>& X_sparse,
-                 TensorT<ExecSpace>& X_dense)
+                 const AlgParams& algParams)
 {
+  SptensorT<ExecSpace> X_sparse;
+  TensorT<ExecSpace> X_dense;
   Genten::TensorReader<ExecSpace> reader(file, index_base, compressed, tree);
   reader.read();
   if (reader.isSparse()) {
@@ -1221,9 +1222,32 @@ distributeTensor(const std::string& file,
   }
   else
     Genten::error("Tensor is neither sparse nor dense, something is wrong!");
+  return std::make_tuple(X_sparse, X_dense);
 }
 
 #endif
+
+template <typename ExecSpace>
+std::tuple< SptensorT<ExecSpace>, TensorT<ExecSpace> >
+DistTensorContext<ExecSpace>::
+distributeTensor(const ptree& tree,
+                 const AlgParams& algParams)
+{
+  std::string inputfilename = "";
+  ttb_indx index_base = 0;
+  ttb_bool gz = false;
+  ttb_bool sparse = true;
+  std::string format = "sparse";
+  auto tensor_input_o = tree.get_child_optional("tensor");
+  if (tensor_input_o) {
+    auto& tensor_input = *tensor_input_o;
+    Genten::parse_ptree_value(tensor_input, "input-file", inputfilename);
+    Genten::parse_ptree_value(tensor_input, "index-base", index_base, 0, INT_MAX);
+    Genten::parse_ptree_value(tensor_input, "compressed", gz);
+  }
+  return distributeTensor(inputfilename, index_base, gz, tensor_input_o,
+                          algParams);
+}
 
 template <typename ExecSpace>
 void
