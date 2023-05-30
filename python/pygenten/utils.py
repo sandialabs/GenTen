@@ -16,6 +16,14 @@ def make_algparams(args):
             a.set_py_goal(value)
         elif key == "proc_grid":
             a.set_proc_grid(value)
+        elif key == "dict":
+            json_params = json.dumps(value)
+            a.parse_json(json_params)
+        elif key == "json":
+             with open(value,'r') as f:
+                 json_params = json.load(f)
+                 json_params = json.dumps(json_params)
+                 a.parse_json(json_params)
         elif hasattr(a, key):
             setattr(a, key, value)
         else:

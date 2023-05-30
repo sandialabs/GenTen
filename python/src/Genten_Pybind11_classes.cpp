@@ -323,6 +323,11 @@ void pygenten_algparams(py::module &m){
         a.python_object = po;
         a.goal_method = Genten::GCP_Goal_Method::PythonObject;
       });
+    cl.def("parse_json", [](Genten::AlgParams& a, const std::string& str) {
+        Genten::ptree tree;
+        tree.parse(str);
+        a.parse(tree);
+      });
   }
 }
 

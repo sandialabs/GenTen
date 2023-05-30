@@ -1,5 +1,6 @@
 import pygenten as gt
 import pytest
+import json
 
 try:
     import pyttb as ttb
@@ -26,6 +27,32 @@ def test_cpals_sparse():
 
     assert pytest.approx(0.98, abs=0.1) == e.fit
     assert pytest.approx(8, abs=1) == e.iteration
+
+    del u, x
+
+def test_cpals_dict():
+    x = gt.import_tensor("data/aminoacid_data_dense.txt")
+    with open("data/aminoacid-cpals-dense.json",'r') as f:
+        params = json.load(f);
+
+    u,perf = gt.cp_als(x, dict=params)
+    e = perf.lastEntry()
+
+    assert pytest.approx(params["testing"]["final-fit"]["value"], abs=params["testing"]["final-fit"]["absolute-tolerance"]) == e.fit
+    assert pytest.approx(params["testing"]["iterations"]["value"], abs=params["testing"]["iterations"]["absolute-tolerance"]) == e.iteration
+
+    del u, x
+
+def test_cpals_json():
+    x = gt.import_tensor("data/aminoacid_data_dense.txt")
+
+    u,perf = gt.cp_als(x, json="data/aminoacid-cpals-dense.json")
+    e = perf.lastEntry()
+
+    with open("data/aminoacid-cpals-dense.json",'r') as f:
+        params = json.load(f);
+    assert pytest.approx(params["testing"]["final-fit"]["value"], abs=params["testing"]["final-fit"]["absolute-tolerance"]) == e.fit
+    assert pytest.approx(params["testing"]["iterations"]["value"], abs=params["testing"]["iterations"]["absolute-tolerance"]) == e.iteration
 
     del u, x
 
