@@ -413,15 +413,8 @@ void pygenten_ktensor(py::module &m){
               throw std::runtime_error("Invalid number of columns!");
             const ttb_indx s0 = mat_info.strides[0]/sizeof(ttb_real);
             const ttb_indx s1 = mat_info.strides[1]/sizeof(ttb_real);
-            if (s1 != 1) {
-              std::string msg = "Buffer is not layout-right!  Dims = (" +
-                std::to_string(nrow) + ", " + std::to_string(nc) +
-                "), strides = (" + std::to_string(s0) + ", " +
-                std::to_string(s1) + ")";
-              throw std::runtime_error(msg);
-            }
             ttb_real *ptr = static_cast<ttb_real *>(mat_info.ptr);
-            if (s0 == nc) {
+            if (s0 == nc && s1 == 1) { // LayoutRight case
               Kokkos::View<ttb_real**, Kokkos::LayoutRight, Genten::DefaultHostExecutionSpace> v(ptr, nrow, nc);
               Genten::FacMatrix A;
               if (copy) {
@@ -433,15 +426,19 @@ void pygenten_ktensor(py::module &m){
               }
               factors.set_factor(i, A);
             }
-            else {
+            else if (s0 == 1 && s1 == nrow) { // LayoutLeft case
+              Kokkos::View<ttb_real**, Kokkos::LayoutLeft, Genten::DefaultHostExecutionSpace> v(ptr, nrow, nc);
+              Genten::FacMatrix A(nrow, nc);
+              deep_copy(A.view(), v);
+              factors.set_factor(i, A);
+            }
+            else { // General case
               Kokkos::LayoutStride layout;
               layout.dimension[0] = nrow;
               layout.dimension[1] = nc;
               layout.stride[0] = s0;
               layout.stride[1] = s1;
               Kokkos::View<ttb_real**, Kokkos::LayoutStride, Genten::DefaultHostExecutionSpace> v(ptr, layout);
-              // for strided, we always have to copy because FacMatrix must
-              // be contiguous
               Genten::FacMatrix A(nrow, nc);
               deep_copy(A.view(), v);
               factors.set_factor(i, A);
