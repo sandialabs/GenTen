@@ -61,7 +61,7 @@ def driver(X, u, args, dtc=None):
     # Convert TTB ktensor to Genten Ktensor
     if have_ttb and isinstance(u, ttb.ktensor):
         # This needs to be a copy for some reason I do not fully understand
-        u = gt.Ktensor(u.weights, u.factor_matrices, copy=True)
+        u = gt.Ktensor(u.weights, u.factor_matrices, copy=False)
         is_ttb = True
 
     # Call Genten
@@ -75,7 +75,7 @@ def driver(X, u, args, dtc=None):
     # reference counts for the original GenTen objects, but it appears
     # to not always work.
     if is_ttb:
-        M = ttb.ktensor.from_data(M.weights, M.factor_matrices, copy=True)
+        M = ttb.ktensor.from_data(M.weights, M.factor_matrices, copy=False)
 
     return M, info
 
