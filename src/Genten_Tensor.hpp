@@ -40,6 +40,9 @@
 
 #pragma once
 
+#include <memory>
+#include <any>
+
 #include "Genten_Array.hpp"
 #include "Genten_IndxArray.hpp"
 #include "Genten_Ktensor.hpp"
@@ -384,6 +387,31 @@ public:
     return std::sqrt(nrm_sqrd);
   }
 
+  // For passing extra data, like numpy arrays, through
+  template <typename T>
+  void set_extra_data(const T& a) {
+    extra_data = std::make_shared<std::any>(a);
+  }
+  bool has_extra_data() const {
+    return extra_data != nullptr;
+  }
+  template <typename T>
+  T get_extra_data() const {
+    gt_assert(extra_data != nullptr);
+    return *extra_data;
+  }
+  template <typename E>
+  void copy_extra_data(const TensorT<E>& x) {
+    // only copy extra data if this and x point to the same data
+    if (this->getValues().ptr() == x.getValues().ptr())
+      extra_data = x.extra_data;
+  }
+
+protected:
+
+  std::shared_ptr<std::any> extra_data;
+  template <typename E> friend class TensorT;
+
 };
 
 template <typename ExecSpace>
@@ -391,18 +419,22 @@ typename TensorT<ExecSpace>::HostMirror
 create_mirror_view(const TensorT<ExecSpace>& a)
 {
   typedef typename TensorT<ExecSpace>::HostMirror HostMirror;
-  return HostMirror( create_mirror_view(a.size()),
-                     create_mirror_view(a.getValues()) );
+  HostMirror hm( create_mirror_view(a.size()),
+                 create_mirror_view(a.getValues()) );
+  hm.copy_extra_data(a);
+  return hm;
 }
 
 template <typename Space, typename ExecSpace>
 TensorT<Space>
 create_mirror_view(const Space& s, const TensorT<ExecSpace>& a)
 {
-  return TensorT<Space>( create_mirror_view(s, a.size()),
-                         create_mirror_view(s, a.getValues()),
-                         create_mirror_view(s, a.getLowerBounds()),
-                         create_mirror_view(s, a.getUpperBounds()) );
+  TensorT<Space> t( create_mirror_view(s, a.size()),
+                    create_mirror_view(s, a.getValues()),
+                    create_mirror_view(s, a.getLowerBounds()),
+                    create_mirror_view(s, a.getUpperBounds()) );
+  t.copy_extra_data(a);
+  return t;
 }
 
 template <typename E1, typename E2>

@@ -578,6 +578,9 @@ void pygenten_tensor(py::module &m){
           // The 'F' layout case
           Genten::Array vals(numel, static_cast<ttb_real*>(info.ptr), !copy);
           x = Genten::Tensor(sz, vals);
+
+          if (!copy)
+            x.set_extra_data(b);
         }
         else if (info.strides[nd-1]/sizeof(ttb_real) == 1) {
           // The 'C' layout case
@@ -643,6 +646,11 @@ void pygenten_tensor(py::module &m){
         return X.nnz();
       }, R"(
     Returns the total number of elements in the tensor.)");
+    cl.def_property_readonly("is_array_view", [](const Genten::Tensor& X) {
+        return X.has_extra_data();
+      }, R"(
+    Return whether this tensor is a view of a numpy array (i.e., constructed
+    with copy=False).)");
     cl.def("__str__", [](const Genten::Tensor& X) {
         std::stringstream ss;
         Genten::print_tensor(X, ss);
