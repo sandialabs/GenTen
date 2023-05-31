@@ -20,6 +20,7 @@ if have_ttb:
 
         # Make a pygenten tensor from it as a copy, and verify it is a copy
         x_gt = gt.make_gt_tensor(x, copy=True)
+        assert x_gt.is_values_view == False
         with np.nditer(x.data, flags=['multi_index']) as it:
             assert x.data[it.multi_index] == x_gt.data[it.multi_index]
         x_gt.data[0,0,0] = -1.0;
@@ -28,6 +29,7 @@ if have_ttb:
 
         # Make a pygenten tensor from it as a view, and verify it is a view
         x_gt = gt.make_gt_tensor(x, copy=False)
+        assert x_gt.is_values_view == True
         with np.nditer(x.data, flags=['multi_index']) as it:
             assert x.data[it.multi_index] == x_gt.data[it.multi_index]
         x_gt.data[0,0,0] = -2.0;
@@ -45,6 +47,7 @@ if have_ttb:
 
         # Make a pygenten tensor from it as a copy, and verify it is a copy
         x_gt = gt.make_gt_tensor(x, copy=True)
+        assert x_gt.is_values_view == False
         with np.nditer(x.data, flags=['multi_index']) as it:
             assert x.data[it.multi_index] == x_gt.data[it.multi_index]
         x_gt.data[0,0,0] = -1.0;
@@ -53,6 +56,7 @@ if have_ttb:
 
         # Make a pygenten tensor from it requesting a view, but verify it is
         # actually a copy
+        assert x_gt.is_values_view == False
         x_gt = gt.make_gt_tensor(x, copy=False)
         with np.nditer(x.data, flags=['multi_index']) as it:
             assert x.data[it.multi_index] == x_gt.data[it.multi_index]
@@ -94,6 +98,8 @@ if have_ttb:
 
         # Make a pygenten sptensor from it as a copy, and verify it is a copy
         x_gt = gt.make_gt_sptensor(x, copy=True)
+        assert x_gt.is_values_view == False
+        assert x_gt.is_subs_view == False
         nnz = x_gt.nnz
         nd = x_gt.ndims
         for i in range(nnz):
@@ -109,6 +115,8 @@ if have_ttb:
 
         # Make a pygenten sptensor from it as a view, and verify it is a view
         x_gt = gt.make_gt_sptensor(x, copy=False)
+        assert x_gt.is_values_view == True
+        assert x_gt.is_subs_view == True
         nnz = x_gt.nnz
         nd = x_gt.ndims
         for i in range(nnz):
@@ -132,6 +140,8 @@ if have_ttb:
 
         # Make a pygenten sptensor from it as a copy, and verify it is a copy
         x_gt = gt.make_gt_sptensor(x, copy=True)
+        assert x_gt.is_values_view == False
+        assert x_gt.is_subs_view == False
         nnz = x_gt.nnz
         nd = x_gt.ndims
         for i in range(nnz):
@@ -148,6 +158,8 @@ if have_ttb:
         # Make a pygenten sptensor from it as a view, and vals is a view
         # but subs isn't since types do not match
         x_gt = gt.make_gt_sptensor(x, copy=False)
+        assert x_gt.is_values_view == True
+        assert x_gt.is_subs_view == False
         nnz = x_gt.nnz
         nd = x_gt.ndims
         for i in range(nnz):

@@ -40,15 +40,13 @@
 
 #pragma once
 
-#include <memory>
+#include <cassert>
 #include <any>
 
 #include "Genten_Array.hpp"
 #include "Genten_IndxArray.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_DistTensor.hpp"
-
-#include <cassert>
 
 namespace Genten {
 
@@ -390,15 +388,19 @@ public:
   // For passing extra data, like numpy arrays, through
   template <typename T>
   void set_extra_data(const T& a) {
-    extra_data = std::make_shared<std::any>(a);
+    extra_data = std::make_any<T>(a);
   }
   bool has_extra_data() const {
-    return extra_data != nullptr;
+    return extra_data.has_value();
+  }
+  template <typename T>
+  bool has_extra_data_type() const {
+    return extra_data.has_value() && (std::any_cast<T>(&extra_data) != nullptr);
   }
   template <typename T>
   T get_extra_data() const {
-    gt_assert(extra_data != nullptr);
-    return *extra_data;
+    gt_assert(extra_data.has_value());
+    return std::any_cast<T>(extra_data);
   }
   template <typename E>
   void copy_extra_data(const TensorT<E>& x) {
@@ -409,7 +411,7 @@ public:
 
 protected:
 
-  std::shared_ptr<std::any> extra_data;
+  std::any extra_data;
   template <typename E> friend class TensorT;
 
 };

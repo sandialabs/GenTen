@@ -643,7 +643,7 @@ void pygenten_tensor(py::module &m){
         return X.nnz();
       }, R"(
     Returns the total number of elements in the tensor.)");
-    cl.def_property_readonly("is_array_view", [](const Genten::Tensor& X) {
+    cl.def_property_readonly("is_values_view", [](const Genten::Tensor& X) {
         return X.has_extra_data();
       }, R"(
     Return whether this tensor is a view of a numpy array (i.e., constructed
@@ -701,6 +701,7 @@ void pygenten_sptensor(py::module &m){
           // int/unsigned/long long/unsigned long long should map to the same
           // format codes as the std::[u]int??_t types.  We assume ttb_indx
           // is always unsigned though.
+          bool copied_subs = true;
           if (subs_info.format == py::format_descriptor<ttb_indx>::format() ||
              (subs_info.format == "L" && sizeof(unsigned long) == sizeof(ttb_indx))) {
             if (subs_info.strides[1] != sizeof(ttb_indx))
@@ -711,8 +712,10 @@ void pygenten_sptensor(py::module &m){
               typename Genten::Sptensor::subs_view_type s2(subs_ptr, nnz, nd);
               deep_copy(s, s2);
             }
-            else
+            else {
               s = typename Genten::Sptensor::subs_view_type(subs_ptr, nnz, nd);
+              copied_subs = false;
+            }
           }
           else if (subs_info.format == py::format_descriptor<std::uint64_t>::format()) {
             if (subs_info.strides[1] != sizeof(std::uint64_t))
@@ -744,6 +747,8 @@ void pygenten_sptensor(py::module &m){
 
           // Values.  TTB stores it as a 2-D array for some reason
           py::buffer_info vals_info = vals.request();
+          if (vals_info.format != py::format_descriptor<ttb_real>::format())
+            throw std::runtime_error("Incompatible value format:  expected a ttb_real array!");
           if (vals_info.ndim != 1 && vals_info.ndim != 2)
             throw std::runtime_error("Incompatible vals dimension!");
           if (vals_info.shape[0] != nnz)
@@ -754,13 +759,25 @@ void pygenten_sptensor(py::module &m){
           typename Genten::Sptensor::vals_view_type v(vals_ptr, nnz);
 
           Genten::Sptensor x;
+          bool copied_vals = true;
           if (copy) {
             typename Genten::Sptensor::vals_view_type v2("vals", nnz);
             deep_copy(v2,v);
             x = Genten::Sptensor(sz, v2, s);
           }
-          else
+          else {
             x = Genten::Sptensor(sz, v, s);
+            copied_vals = false;
+          }
+
+          // Tie original subs/vals to x to prevent python from deleteing them
+          if (!copied_subs && !copied_vals)
+            x.set_extra_data(std::make_pair(subs, vals));
+          else if (!copied_subs)
+            x.set_extra_data(subs);
+          else if (!copied_vals)
+            x.set_extra_data(vals);
+
           return x;
         }),R"(
     Constructor from shape, subscripts, and value arrays.
@@ -802,6 +819,39 @@ void pygenten_sptensor(py::module &m){
         return X.nnz();
       }, R"(
     Returns the total number of elements in the sptensor.)");
+    cl.def_property_readonly("is_values_view", [](const Genten::Sptensor& X) {
+        // X has a values view if it has a pair of buffers for extra data,
+        // or one buffer that with ttb_real scalar type (can't use dimension
+        // since pyttb passes in values arrays that are 2-D sometimes).
+        if (X.has_extra_data()) {
+          if (X.has_extra_data_type< std::pair<py::buffer,py::buffer> >())
+            return true;
+          py::buffer b = X.get_extra_data<py::buffer>();
+          py::buffer_info info = b.request();
+          if (info.format == py::format_descriptor<ttb_real>::format())
+            return true;
+        }
+        return false;
+      }, R"(
+    Return whether whether the values array is a view of a numpy array (i.e.,
+    constructed with copy=False).)");
+    cl.def_property_readonly("is_subs_view", [](const Genten::Sptensor& X) {
+        // X has a subs view if it has a pair of buffers for extra data,
+        // or one buffer that with ttb_indx scalar type (can't use dimension
+        // since pyttb passes in values arrays that are 2-D sometimes).
+        if (X.has_extra_data()) {
+          if (X.has_extra_data_type< std::pair<py::buffer,py::buffer> >())
+            return true;
+          py::buffer b = X.get_extra_data<py::buffer>();
+          py::buffer_info info = b.request();
+          if (info.format == py::format_descriptor<ttb_indx>::format() ||
+              info.format == "L" && sizeof(unsigned long) == sizeof(ttb_indx))
+            return true;
+        }
+        return false;
+      }, R"(
+    Return whether whether the values array is a view of a numpy array (i.e.,
+    constructed with copy=False).)");
     cl.def("__str__", [](const Genten::Sptensor& X) {
         std::stringstream ss;
         Genten::print_sptensor(X, ss);
