@@ -639,6 +639,8 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
     if (nfails > max_fails || fest < tol*fest_init)
       break;
   }
+  u.set(u_best);
+  deep_copy(Kfac_, ut);
 
   timer.stop(timer_sgd);
   out << "Final f-est: "
