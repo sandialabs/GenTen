@@ -60,13 +60,13 @@ namespace Genten {
               typename ExecSpace, typename loss_type>
     void gcp_sgd_ss_grad_sv_kernel(
       const SptensorImpl<ExecSpace>& X,
-      const KtensorT<ExecSpace>& M,
+      const KtensorImpl<ExecSpace>& M,
       const loss_type& f,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
-      const KtensorT<ExecSpace>& G,
+      const KtensorImpl<ExecSpace>& G,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams,
       SystemTimer& timer,
@@ -257,13 +257,13 @@ namespace Genten {
               typename ExecSpace, typename loss_type>
     void gcp_sgd_ss_grad_atomic_kernel(
       const SptensorImpl<ExecSpace>& X,
-      const KtensorT<ExecSpace>& M,
+      const KtensorImpl<ExecSpace>& M,
       const loss_type& f,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
-      const KtensorT<ExecSpace>& G,
+      const KtensorImpl<ExecSpace>& G,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams,
       SystemTimer& timer,
@@ -429,7 +429,7 @@ namespace Genten {
     struct GCP_SS_Grad {
       typedef ExecSpace exec_space;
       typedef SptensorImpl<exec_space> tensor_type;
-      typedef KtensorT<exec_space> Ktensor_type;
+      typedef KtensorImpl<exec_space> Ktensor_type;
 
       const tensor_type X;
       const Ktensor_type M;
@@ -501,7 +501,7 @@ namespace Genten {
     struct GCP_SS_Grad<Kokkos_GPU_Space,loss_type> {
       typedef Kokkos_GPU_Space exec_space;
       typedef SptensorImpl<exec_space> tensor_type;
-      typedef KtensorT<exec_space> Ktensor_type;
+      typedef KtensorImpl<exec_space> Ktensor_type;
 
       const tensor_type X;
       const Ktensor_type M;
@@ -567,8 +567,8 @@ namespace Genten {
       const int timer_zs)
     {
       GCP_SS_Grad<ExecSpace,loss_type> kernel(
-        X.impl(),M,f,num_samples_nonzeros,num_samples_zeros,
-        weight_nonzeros,weight_zeros,G,rand_pool,algParams,
+        X.impl(),M.impl(),f,num_samples_nonzeros,num_samples_zeros,
+        weight_nonzeros,weight_zeros,G.impl(),rand_pool,algParams,
         timer,timer_nzs,timer_zs);
       run_row_simd_kernel(kernel, M.ncomponents());
 

@@ -96,7 +96,7 @@ namespace Genten {
       KOKKOS_INLINE_FUNCTION
       void update_u_async(const unsigned dim, const ttb_indx row,
                           const unsigned col, const ttb_real delta,
-                          const KtensorT<ExecSpace>& u) const
+                          const KtensorImpl<ExecSpace>& u) const
       {
         // Without bounds, do simple atomic update
         if (!LossFunction::has_lower_bound() &&
@@ -205,7 +205,7 @@ namespace Genten {
       KOKKOS_INLINE_FUNCTION
       void eval_async(const unsigned dim, const ttb_indx row,
                       const unsigned col, const ttb_real g,
-                      const KtensorT<ExecSpace>& u) const
+                      const KtensorImpl<ExecSpace>& u) const
       {
         // Update u incorporating bounds
         GCP_SGD_Step<ExecSpace,LossFunction>::update_u_async(
@@ -283,7 +283,7 @@ namespace Genten {
       KOKKOS_INLINE_FUNCTION
       void eval_async(const unsigned dim, const ttb_indx row,
                       const unsigned col, const ttb_real g,
-                      const KtensorT<ExecSpace>& u) const
+                      const KtensorImpl<ExecSpace>& u) const
       {
         Genten::error("SGDMomentumStep is not tested in aysnc code.");
       }
@@ -371,7 +371,7 @@ namespace Genten {
       KOKKOS_INLINE_FUNCTION
       void eval_async(const unsigned dim, const ttb_indx row,
                       const unsigned col, const ttb_real g,
-                      const KtensorT<ExecSpace>& u) const
+                      const KtensorImpl<ExecSpace>& u) const
       {
         Genten::error("SGDMomentumStep is not tested in aysnc code.");
       }
@@ -528,7 +528,7 @@ namespace Genten {
       KOKKOS_INLINE_FUNCTION
       void eval_async(const unsigned dim, const ttb_indx row,
                       const unsigned col, const ttb_real g,
-                      const KtensorT<ExecSpace>& u) const
+                      const KtensorImpl<ExecSpace>& u) const
       {
         using std::sqrt;
         using std::pow;
@@ -713,7 +713,7 @@ namespace Genten {
       KOKKOS_INLINE_FUNCTION
       void eval_async(const unsigned dim, const ttb_indx row,
                       const unsigned col, const ttb_real g,
-                      const KtensorT<ExecSpace>& u) const
+                      const KtensorImpl<ExecSpace>& u) const
       {
 #if defined(__SYCL_DEVICE_ONLY__)
         using sycl::pow;
@@ -909,7 +909,7 @@ namespace Genten {
       KOKKOS_INLINE_FUNCTION
       void eval_async(const unsigned dim, const ttb_indx row,
                       const unsigned col, const ttb_real g,
-                      const KtensorT<ExecSpace>& u) const
+                      const KtensorImpl<ExecSpace>& u) const
       {
 #if defined(__SYCL_DEVICE_ONLY__)
         using cl::sycl::pow;
@@ -1055,7 +1055,7 @@ namespace Genten {
       KOKKOS_INLINE_FUNCTION
       void eval_async(const unsigned dim, const ttb_indx row,
                       const unsigned col, const ttb_real g,
-                      const KtensorT<ExecSpace>& u) const
+                      const KtensorImpl<ExecSpace>& u) const
       {
         using std::sqrt;
 

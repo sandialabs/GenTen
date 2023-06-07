@@ -223,6 +223,7 @@ if have_ttb:
 
         # Make a pygenten ktensor from it as a copy, and verify it is a copy
         u_gt = gt.make_gt_ktensor(u, copy=True)
+        assert u_gt.is_values_view == False
         for j in range(rank):
             assert u.weights[j] == u_gt.weights[j]
         for k in range(len(factor_matrices)):
@@ -238,6 +239,7 @@ if have_ttb:
 
         # Make a pygenten ktensor from it as a view, and verify it is a view
         u_gt = gt.make_gt_ktensor(u, copy=False)
+        assert u_gt.is_values_view == True
         for j in range(rank):
             assert u.weights[j] == u_gt.weights[j]
         for k in range(len(factor_matrices)):

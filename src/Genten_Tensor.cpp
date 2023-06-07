@@ -35,7 +35,7 @@ void copyFromSptensor(const TensorImpl<ExecSpace,Layout>& x,
 
 template <typename ExecSpace, typename Layout>
 void copyFromKtensor(const TensorImpl<ExecSpace,Layout>& x,
-                     const KtensorT<ExecSpace>& src)
+                     const KtensorImpl<ExecSpace>& src)
 {
   typedef Kokkos::TeamPolicy<ExecSpace> Policy;
   typedef typename Policy::member_type TeamMember;
@@ -119,7 +119,7 @@ TensorImpl(const KtensorT<ExecSpace>& src) :
     siz_host[i] = src[i].nRows();
   deep_copy(siz, siz_host);
   values = ArrayT<ExecSpace>(siz_host.prod());
-  Impl::copyFromKtensor(*this, src);
+  Impl::copyFromKtensor(*this, src.impl());
   upper_bound = siz.clone();
 }
 

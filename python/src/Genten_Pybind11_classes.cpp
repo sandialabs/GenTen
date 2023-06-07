@@ -445,6 +445,14 @@ void pygenten_ktensor(py::module &m){
             }
           }
           Genten::Ktensor u(weights, factors);
+
+          // Tie w and f to u to prevent python from deleting them
+          // Because each matrix could have a different layout, we set the
+          // extra data if a view was requested, regardless of which matrices
+          // were/weren't copied
+          if (!copy)
+            u.set_extra_data(std::make_pair(w, f));
+
           return u;
         }),R"(
     Constructor from given weights and factor matrices.
@@ -471,6 +479,11 @@ void pygenten_ktensor(py::module &m){
 
     The returned numpy.ndarray aliases the internal factor matrices and thus may
     be used to change their values.)", py::arg("n"));
+    cl.def_property_readonly("is_values_view", [](const Genten::Ktensor& u) {
+        return u.has_extra_data();
+      }, R"(
+    Return whether this Ktensor is a view of numpy arrays for weights and
+    factor matrices (i.e., constructed with copy=False).)");
     cl.def("__str__", [](const Genten::Ktensor& u) {
         std::stringstream ss;
         Genten::print_ktensor(u, ss);

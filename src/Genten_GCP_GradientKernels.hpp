@@ -53,7 +53,7 @@ namespace Genten {
     template <typename ExecSpace, typename Layout, typename loss_type>
     struct GCP_Grad_Tensor {
       typedef TensorImpl<ExecSpace,Layout> tensor_type;
-      typedef KtensorT<ExecSpace> Ktensor_type;
+      typedef KtensorImpl<ExecSpace> Ktensor_type;
 
       const tensor_type XX;
       const Ktensor_type MM;
@@ -144,7 +144,7 @@ namespace Genten {
             Y = TensorT<ExecSpace>(X.size(),0.0,TensorLayout::Left);
 
           GCP_Grad_Tensor<ExecSpace,Impl::TensorLayoutLeft,loss_type> kernel(
-            X.left_impl(),M,w,f,Y.left_impl());
+            X.left_impl(),M.impl(),w,f,Y.left_impl());
           run_row_simd_kernel(kernel, M.ncomponents());
         }
         else {
@@ -153,7 +153,7 @@ namespace Genten {
             Y = TensorT<ExecSpace>(X.size(),0.0,TensorLayout::Right);
 
           GCP_Grad_Tensor<ExecSpace,Impl::TensorLayoutRight,loss_type> kernel(
-            X.right_impl(),M,w,f,Y.right_impl());
+            X.right_impl(),M.impl(),w,f,Y.right_impl());
           run_row_simd_kernel(kernel, M.ncomponents());
         }
       }

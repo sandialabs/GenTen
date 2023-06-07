@@ -49,7 +49,7 @@ namespace Genten {
     template <typename ExecSpace, typename loss_type>
     struct GCP_Value {
       typedef SptensorImpl<ExecSpace> tensor_type;
-      typedef KtensorT<ExecSpace> Ktensor_type;
+      typedef KtensorImpl<ExecSpace> Ktensor_type;
       typedef ArrayT<ExecSpace> weights_type;
 
       const tensor_type XX;
@@ -112,7 +112,7 @@ namespace Genten {
     template <typename ExecSpace, typename Layout, typename loss_type>
     struct GCP_Value_Dense {
       typedef TensorImpl<ExecSpace,Layout> tensor_type;
-      typedef KtensorT<ExecSpace> Ktensor_type;
+      typedef KtensorImpl<ExecSpace> Ktensor_type;
 
       const tensor_type XX;
       const Ktensor_type MM;
@@ -188,8 +188,8 @@ namespace Genten {
               unsigned TeamSize, unsigned VectorSize, unsigned FacBlockSize,
               unsigned RowBlockSize>
     struct GCP_ValueHistoryFunctor {
-      typedef SptensorT<ExecSpace> tensor_type;
-      typedef KtensorT<ExecSpace> Ktensor_type;
+      typedef SptensorImpl<ExecSpace> tensor_type;
+      typedef KtensorImpl<ExecSpace> Ktensor_type;
       typedef ArrayT<ExecSpace> array_type;
 
       typedef Kokkos::TeamPolicy<ExecSpace> Policy;
@@ -271,8 +271,8 @@ namespace Genten {
 
     template <typename ExecSpace, typename loss_type>
     struct GCP_ValueHistory {
-      typedef SptensorT<ExecSpace> tensor_type;
-      typedef KtensorT<ExecSpace> Ktensor_type;
+      typedef SptensorImpl<ExecSpace> tensor_type;
+      typedef KtensorImpl<ExecSpace> Ktensor_type;
       typedef ArrayT<ExecSpace> array_type;
 
       const tensor_type X;
@@ -348,13 +348,14 @@ namespace Genten {
 
     template <typename ExecSpace, typename loss_type>
     ttb_real gcp_value(const SptensorT<ExecSpace>& Xd,
-                       const KtensorT<ExecSpace>& M,
+                       const KtensorT<ExecSpace>& Md,
                        const ArrayT<ExecSpace>& w,
                        const loss_type& f)
     {
       GENTEN_START_TIMER("local objective");
       ttb_real val = 0.0;
       const auto X = Xd.impl();
+      const auto M = Md.impl();
 #if 1
       GCP_Value<ExecSpace,loss_type> kernel(X,M,w,f);
       run_row_simd_kernel(kernel, M.ncomponents());
@@ -394,9 +395,9 @@ namespace Genten {
     }
 
     template <typename ExecSpace, typename loss_type>
-    void gcp_value(const SptensorT<ExecSpace>& X,
-                   const KtensorT<ExecSpace>& M,
-                   const KtensorT<ExecSpace>& Mprev,
+    void gcp_value(const SptensorT<ExecSpace>& Xd,
+                   const KtensorT<ExecSpace>& Md,
+                   const KtensorT<ExecSpace>& Mprevd,
                    const ArrayT<ExecSpace>& window,
                    const ttb_real window_penalty,
                    const ArrayT<ExecSpace>& w,
@@ -404,6 +405,9 @@ namespace Genten {
                    ttb_real& val_ten,
                    ttb_real& val_his)
     {
+      const auto X = Xd.impl();
+      const auto M = Md.impl();
+      const auto Mprev = Mprevd.impl();
       if (Mprev.ndims() > 0 && Mprev.ncomponents() > 0) {
         GCP_ValueHistory<ExecSpace,loss_type> kernel(
           X,M,Mprev,window,window_penalty,w,f);
@@ -429,13 +433,13 @@ namespace Genten {
       ttb_real val = 0.0;
       if (X.has_left_impl()) {
         GCP_Value_Dense<ExecSpace,Impl::TensorLayoutLeft,loss_type> kernel(
-          X.left_impl(),M,w,f);
+          X.left_impl(),M.impl(),w,f);
         run_row_simd_kernel(kernel, M.ncomponents());
         val = kernel.value;
       }
       else {
         GCP_Value_Dense<ExecSpace,Impl::TensorLayoutRight,loss_type> kernel(
-          X.right_impl(),M,w,f);
+          X.right_impl(),M.impl(),w,f);
         run_row_simd_kernel(kernel, M.ncomponents());
         val = kernel.value;
       }

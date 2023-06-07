@@ -284,7 +284,7 @@ namespace {
       const Searcher& searcher,
       const ttb_indx num_samples,
       const ttb_real weight,
-      const KtensorT<ExecSpace>& u,
+      const KtensorT<ExecSpace>& ud,
       const LossFunction& loss_func,
       const bool compute_gradient,
       SptensorT<ExecSpace>& Yd,
@@ -298,6 +298,8 @@ namespace {
       typedef typename RandomPool::generator_type generator_type;
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
       typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+      const auto u = ud.impl();
 
       static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
       static const unsigned RowBlockSize = 1;
@@ -380,12 +382,12 @@ namespace {
       const Searcher& searcher,
       const ttb_indx num_samples,
       const ttb_real weight,
-      const KtensorT<ExecSpace>& u,
+      const KtensorT<ExecSpace>& ud,
       const LossFunction& loss_func,
       const bool compute_gradient,
       SptensorT<ExecSpace>& Yd,
       ArrayT<ExecSpace>& w,
-      KtensorT<ExecSpace>& u_overlap,
+      KtensorT<ExecSpace>& u_overlap_d,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams)
     {
@@ -396,6 +398,8 @@ namespace {
       typedef typename RandomPool::generator_type generator_type;
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
       typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+      const auto u = ud.impl();
 
       static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
       static const unsigned RowBlockSize = 1;
@@ -471,8 +475,9 @@ namespace {
       deep_copy(Y.size(), sz_host);
 
       // Import u to overlapped tensor map
-      u_overlap = import_ktensor_to_tensor_map(
-        u, Yd.getFactorMaps(), Yd.getTensorMaps(), Yd.getImporters());
+      u_overlap_d = import_ktensor_to_tensor_map(
+        ud, Yd.getFactorMaps(), Yd.getTensorMaps(), Yd.getImporters());
+      const auto u_overlap = u_overlap_d.impl();
 
       // Set gradient values in sampled tensor
       if (compute_gradient) {
@@ -516,7 +521,7 @@ namespace {
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
-      const KtensorT<ExecSpace>& u,
+      const KtensorT<ExecSpace>& ud,
       const Gradient& gradient,
       const bool compute_gradient,
       SptensorT<ExecSpace>& Yd,
@@ -539,6 +544,7 @@ namespace {
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
       const auto X = Xd.impl();
+      const auto u = ud.impl();
 
       /*const*/ ttb_indx nnz = X.nnz();
       /*const*/ unsigned nd = X.ndims();
@@ -679,12 +685,12 @@ namespace {
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
-      const KtensorT<ExecSpace>& u,
+      const KtensorT<ExecSpace>& ud,
       const Gradient& gradient,
       const bool compute_gradient,
       SptensorT<ExecSpace>& Yd,
       ArrayT<ExecSpace>& w,
-      KtensorT<ExecSpace>& u_overlap,
+      KtensorT<ExecSpace>& u_overlap_d,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams)
     {
@@ -704,6 +710,7 @@ namespace {
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
       const auto X = Xd.impl();
+      const auto u = ud.impl();
 
       /*const*/ ttb_indx nnz = X.nnz();
       /*const*/ unsigned nd = X.ndims();
@@ -821,8 +828,9 @@ namespace {
       deep_copy(Y.size(), sz_host);
 
       // Import u to overlapped tensor map
-      u_overlap = import_ktensor_to_tensor_map(
-        u, Yd.getFactorMaps(), Yd.getTensorMaps(), Yd.getImporters());
+      u_overlap_d = import_ktensor_to_tensor_map(
+        ud, Yd.getFactorMaps(), Yd.getTensorMaps(), Yd.getImporters());
+      const auto u_overlap = u_overlap_d.impl();
 
       // Set gradient values in sampled tensor
       if (compute_gradient) {
@@ -874,8 +882,8 @@ namespace {
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
-      const KtensorT<ExecSpace>& u,
-      const KtensorT<ExecSpace>& up,
+      const KtensorT<ExecSpace>& ud,
+      const KtensorT<ExecSpace>& upd,
       const ArrayT<ExecSpace>& window,
       const ttb_real window_penalty,
       const LossFunction& loss_func,
@@ -883,6 +891,8 @@ namespace {
       const AlgParams& algParams)
     {
       const auto X = Xd.impl();
+      const auto u = ud.impl();
+      const auto up = upd.impl();
 
       typedef Kokkos::TeamPolicy<ExecSpace> Policy;
       typedef typename Policy::member_type TeamMember;
@@ -980,8 +990,8 @@ namespace {
     void uniform_ktensor_grad(
       const ttb_indx num_samples,
       const ttb_real weight,
-      const KtensorT<ExecSpace>& u,
-      const KtensorT<ExecSpace>& up,
+      const KtensorT<ExecSpace>& ud,
+      const KtensorT<ExecSpace>& upd,
       const ArrayT<ExecSpace>& window,
       const ttb_real window_penalty,
       const LossFunction& loss_func,
@@ -995,6 +1005,9 @@ namespace {
       typedef typename RandomPool::generator_type generator_type;
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
       typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+      const auto u = ud.impl();
+      const auto up = upd.impl();
 
       static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
       static const unsigned RowBlockSize = 1;
