@@ -105,9 +105,9 @@ namespace Genten {
       const ttb_real lsz = X.numel_float();
       const ttb_real lnz = lsz - lnnz;
       const ttb_indx np = pmap != nullptr ? pmap->gridSize() : 1;
-      num_samples_nonzeros_value = global_num_samples_nonzeros_value / np;
-      num_samples_zeros_value = global_num_samples_zeros_value / np;
-      num_samples_grad = global_num_samples_grad / np;
+      num_samples_nonzeros_value = static_cast<ttb_indx>(global_num_samples_nonzeros_value * (static_cast<ttb_real>(lnnz)/static_cast<ttb_real>(nnz)));
+      num_samples_zeros_value = static_cast<ttb_indx>(global_num_samples_zeros_value * (lnz/nz));
+      num_samples_grad = static_cast<ttb_indx>(global_num_samples_grad * ((static_cast<ttb_real>(lnnz)+lnz)/(static_cast<ttb_real>(nnz)+nz)));
 
       // Adjust number of samples uniformly across procs to handle remainder.
       // This is not perfect as the number of samples is locally limited by the
