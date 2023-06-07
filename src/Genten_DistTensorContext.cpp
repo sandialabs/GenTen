@@ -418,6 +418,7 @@ redistributeTensor(const std::vector<ttb_real>& Tvec,
                    const ttb_indx global_nnz, const ttb_indx global_offset,
                    const std::vector<ttb_indx>& TDims,
                    const std::vector<small_vector<ttb_indx>>& blocking,
+                   const TensorLayout layout,
                    const ProcessorMap& pmap)
 {
   const ttb_indx nprocs = pmap.gridSize();
@@ -431,7 +432,10 @@ redistributeTensor(const std::vector<ttb_real>& Tvec,
   for (ttb_indx dim=0; dim<ndims; ++dim)
     siz[dim] = TDims[dim];
   for (ttb_indx i=0; i<local_nnz; ++i) {
-    Impl::ind2sub(sub, siz, global_nnz, i+global_offset);
+    if (layout == TensorLayout::Left)
+      Impl::TensorLayoutLeft::ind2sub(sub, siz, global_nnz, i+global_offset);
+    else
+      Impl::TensorLayoutRight::ind2sub(sub, siz, global_nnz, i+global_offset);
     ttb_indx elem_owner_rank =
       rankInGridThatOwns(sub.values().data(), grid_comm, blocking);
     elems_to_write[elem_owner_rank].push_back(Tvec[i]);
@@ -627,7 +631,7 @@ distributeTensorImpl(const Tensor& X, const AlgParams& algParams)
     pmap_->gridSize(), offset);
 
   return distributeTensorData(Tvec, nnz, offset, global_dims_, global_blocking_,
-                              *pmap_, algParams);
+                              X.getLayout(), *pmap_, algParams);
 }
 
 template <typename ExecSpace>
@@ -833,6 +837,7 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
   if (reader.isDense())
     X_dense = distributeTensorData(Tvec_dense, nnz, offset,
                                    global_dims_, global_blocking_,
+                                   TensorLayout::Left,
                                    *pmap_, algParams);
   else
     X_sparse = distributeTensorData(Tvec_sparse, global_dims_, global_blocking_,
@@ -1053,6 +1058,7 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
                      const ttb_indx global_nnz, const ttb_indx global_offset,
                      const std::vector<ttb_indx>& TensorDims,
                      const std::vector<small_vector<ttb_indx>>& blocking,
+                     const TensorLayout layout,
                      const ProcessorMap& pmap, const AlgParams& algParams)
 {
   const bool use_tpetra =
@@ -1064,7 +1070,7 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
   // Now redistribute to final format
   auto values =
     detail::redistributeTensor(Tvec, global_nnz, global_offset,
-                               global_dims_, global_blocking_, *pmap_);
+                               global_dims_, global_blocking_, layout, *pmap_);
 
   DistContext::Barrier();
   auto t5 = MPI_Wtime();
@@ -1094,7 +1100,8 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
   TensorT<ExecSpace> tensor;
   if (!use_tpetra) {
     Tensor tensor_host(IndxArray(ndims, indices.data()),
-                       Array(local_nnz, values.data(), false));
+                       Array(local_nnz, values.data(), false),
+                       layout);
     tensor = create_mirror_view(ExecSpace(), tensor_host);
     deep_copy(tensor, tensor_host);
   }
@@ -1133,7 +1140,8 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
 
     // Build dense tensor
     Tensor tensor_host(IndxArray(ndims, indices.data()),
-                       Array(local_nnz, values.data(), false));
+                       Array(local_nnz, values.data(), false),
+                       layout);
     IndxArray lower = tensor_host.getLowerBounds();
     IndxArray upper = tensor_host.getUpperBounds();
     for (ttb_indx dim=0; dim<ndims; ++dim) {

@@ -54,15 +54,14 @@ if have_ttb:
         assert x_gt.data[0,0,0] == -1.0
         assert x.data[0,0,0] != -1.0
 
-        # Make a pygenten tensor from it requesting a view, but verify it is
-        # actually a copy
+        # Make a pygenten tensor from it as a view, and verify it is a view
         assert x_gt.is_values_view == False
         x_gt = gt.make_gt_tensor(x, copy=False)
         with np.nditer(x.data, flags=['multi_index']) as it:
             assert x.data[it.multi_index] == x_gt.data[it.multi_index]
         x_gt.data[0,0,0] = -2.0;
         assert x_gt.data[0,0,0] == -2.0
-        assert x.data[0,0,0] != -2.0
+        assert x.data[0,0,0] == -2.0
 
     def test_gt_to_ttb_tensor():
 

@@ -109,9 +109,9 @@ namespace Genten {
       }
     };
 
-    template <typename ExecSpace, typename loss_type>
+    template <typename ExecSpace, typename Layout, typename loss_type>
     struct GCP_Value_Dense {
-      typedef TensorT<ExecSpace> tensor_type;
+      typedef TensorImpl<ExecSpace,Layout> tensor_type;
       typedef KtensorT<ExecSpace> Ktensor_type;
 
       const tensor_type XX;
@@ -133,7 +133,7 @@ namespace Genten {
         typedef typename Policy::member_type TeamMember;
         typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
-        const auto X = XX.impl();
+        const auto X = XX;
         const Ktensor_type M = MM;
         const ttb_real w = ww;
         const loss_type f = ff;
@@ -427,9 +427,18 @@ namespace Genten {
     {
       GENTEN_START_TIMER("local objective");
       ttb_real val = 0.0;
-      GCP_Value_Dense<ExecSpace,loss_type> kernel(X,M,w,f);
-      run_row_simd_kernel(kernel, M.ncomponents());
-      val = kernel.value;
+      if (X.has_left_impl()) {
+        GCP_Value_Dense<ExecSpace,Impl::TensorLayoutLeft,loss_type> kernel(
+          X.left_impl(),M,w,f);
+        run_row_simd_kernel(kernel, M.ncomponents());
+        val = kernel.value;
+      }
+      else {
+        GCP_Value_Dense<ExecSpace,Impl::TensorLayoutRight,loss_type> kernel(
+          X.right_impl(),M,w,f);
+        run_row_simd_kernel(kernel, M.ncomponents());
+        val = kernel.value;
+      }
       GENTEN_STOP_TIMER("local objective");
 
       if (M.getProcessorMap() != nullptr) {

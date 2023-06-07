@@ -72,12 +72,12 @@ TEST(TestTensor, ZerothOrderTensor) {
   ASSERT_EQ(t_b.ndims(), 0);
 }
 
-TEST(TestTensor, AccessingElements) {
+TEST(TestTensor, AccessingElementsLeft) {
   IndxArray dims(3);
   dims[0] = 4;
   dims[1] = 2;
   dims[2] = 3;
-  Tensor t(dims, 0.0);
+  Tensor t(dims, 0.0, TensorLayout::Left);
   t[0] = 1.0;
   t[23] = 2.0;
 
@@ -99,6 +99,152 @@ TEST(TestTensor, AccessingElements) {
   t[oSub] = 3.0;
 
   ASSERT_EQ(t[23], 3.0);
+
+  t[5] = 4.0;
+  oSub[0] = 1;
+  oSub[1] = 1;
+  oSub[2] = 0;
+
+  ASSERT_EQ(t[oSub], 4.0);
+}
+
+TEST(TestTensor, AccessingElementsRight) {
+  IndxArray dims(3);
+  dims[0] = 4;
+  dims[1] = 2;
+  dims[2] = 3;
+  Tensor t(dims, 0.0, TensorLayout::Right);
+  t[0] = 1.0;
+  t[23] = 2.0;
+
+  ASSERT_EQ(t.nnz(), 24);
+
+  IndxArray oSub(3);
+  oSub[0] = 0;
+  oSub[1] = 0;
+  oSub[2] = 0;
+
+  ASSERT_EQ(t[oSub], 1.0);
+
+  oSub[0] = 3;
+  oSub[1] = 1;
+  oSub[2] = 2;
+
+  ASSERT_EQ(t[oSub], 2.0);
+
+  t[oSub] = 3.0;
+
+  ASSERT_EQ(t[23], 3.0);
+
+  t[5] = 4.0;
+  oSub[0] = 0;
+  oSub[1] = 1;
+  oSub[2] = 2;
+
+  ASSERT_EQ(t[oSub], 4.0);
+}
+
+#define ASSERT_EQ_INDXARRAY(a, r, ae, re)       \
+  ASSERT_EQ(a[0], ae[0]);                       \
+  ASSERT_EQ(a[1], ae[1]);                       \
+  ASSERT_EQ(a[2], ae[2]);                       \
+  ASSERT_EQ(r, re)                              \
+
+TEST(TestTensor, IncrementSubsLeft) {
+  IndxArray dims = { 2, 2, 2 };
+  Tensor t(dims, 0.0, TensorLayout::Left);
+
+  IndxArray sub;
+  bool rem;
+
+  sub = { 0, 0, 0 };
+  rem = t.increment_sub(sub, 0);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({0,1,0}), true);
+  rem = t.increment_sub(sub, 0);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({0,0,1}), true);
+  rem = t.increment_sub(sub, 0);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({0,1,1}), true);
+  rem = t.increment_sub(sub, 0);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({0,0,2}), false);
+
+  sub = { 0, 0, 0 };
+  rem = t.increment_sub(sub, 1);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({1,0,0}), true);
+  rem = t.increment_sub(sub, 1);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({0,0,1}), true);
+  rem = t.increment_sub(sub, 1);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({1,0,1}), true);
+  rem = t.increment_sub(sub, 1);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({0,0,2}), false);
+
+  sub = { 0, 0, 0 };
+  rem = t.increment_sub(sub, 2);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({1,0,0}), true);
+  rem = t.increment_sub(sub, 2);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({0,1,0}), true);
+  rem = t.increment_sub(sub, 2);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({1,1,0}), true);
+  rem = t.increment_sub(sub, 2);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({0,2,0}), false);
+}
+
+TEST(TestTensor, IncrementSubsRight) {
+  IndxArray dims = { 2, 2, 2 };
+  Tensor t(dims, 0.0, TensorLayout::Right);
+
+  IndxArray sub;
+  bool rem;
+
+  sub = { 0, 0, 0 };
+  rem = t.increment_sub(sub, 0);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({0,0,1}), true);
+  rem = t.increment_sub(sub, 0);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({0,1,0}), true);
+  rem = t.increment_sub(sub, 0);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({0,1,1}), true);
+  rem = t.increment_sub(sub, 0);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({0,2,0}), false);
+
+  sub = { 0, 0, 0 };
+  rem = t.increment_sub(sub, 1);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({0,0,1}), true);
+  rem = t.increment_sub(sub, 1);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({1,0,0}), true);
+  rem = t.increment_sub(sub, 1);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({1,0,1}), true);
+  rem = t.increment_sub(sub, 1);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({2,0,0}), false);
+
+  sub = { 0, 0, 0 };
+  rem = t.increment_sub(sub, 2);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({0,1,0}), true);
+  rem = t.increment_sub(sub, 2);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({1,0,0}), true);
+  rem = t.increment_sub(sub, 2);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({1,1,0}), true);
+  rem = t.increment_sub(sub, 2);
+  ASSERT_EQ_INDXARRAY(sub, rem, IndxArray({2,0,0}), false);
+}
+
+TEST(TestTensor, SwitchLayout) {
+  IndxArray dims = {2, 3, 4};
+  Tensor t_left(dims, 0.0, TensorLayout::Left);
+  const ttb_indx ne = t_left.numel();
+  for (ttb_indx i=0; i<ne; ++i)
+    t_left[i] = i+1;
+
+  Tensor t_right = t_left.switch_layout(TensorLayout::Right);
+
+  const ttb_indx nd = t_left.ndims();
+  IndxArray sub(nd);
+  for (ttb_indx i=0; i<ne; ++i) {
+    t_left.ind2sub(sub, i);
+    const ttb_real val = t_left[i];
+    const ttb_real val_left = t_left[sub];
+    const ttb_real val_right = t_right[sub];
+    ASSERT_EQ(val_left, val);
+    ASSERT_EQ(val_right, val);
+  }
 }
 
 TEST(TestTensor, Norm) {

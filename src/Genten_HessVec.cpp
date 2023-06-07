@@ -428,15 +428,15 @@ struct HessVec_PermKernel {
 
 // This is a very poor implementation of hess_vec for dense tensors, using
 // the same (bad) parallelism strategy as for dense MTTKRP
-template <typename ExecSpace>
+template <typename ExecSpace, typename Layout>
 struct HessVec_Dense_Kernel {
-  const TensorImpl<ExecSpace> XX;
+  const TensorImpl<ExecSpace,Layout> XX;
   const KtensorT<ExecSpace> aa;
   const KtensorT<ExecSpace> vv;
   const KtensorT<ExecSpace> uu;
   const AlgParams algParams;
 
-  HessVec_Dense_Kernel(const TensorImpl<ExecSpace>& X_,
+  HessVec_Dense_Kernel(const TensorImpl<ExecSpace,Layout>& X_,
                        const KtensorT<ExecSpace>& a_,
                        const KtensorT<ExecSpace>& v_,
                        const KtensorT<ExecSpace>& u_,
@@ -445,7 +445,7 @@ struct HessVec_Dense_Kernel {
 
   template <unsigned FBS, unsigned VS>
   void run() const {
-    const TensorImpl<ExecSpace> X = XX;
+    const TensorImpl<ExecSpace,Layout> X = XX;
     const KtensorT<ExecSpace> a = aa;
     const KtensorT<ExecSpace> v = vv;
     const KtensorT<ExecSpace> u = uu;
@@ -490,7 +490,7 @@ struct HessVec_Dense_Kernel {
           // Work around internal-compiler errors in recent Intel compilers
           unsigned nd_ = nd;
           unsigned k_ = k;
-          TensorImpl<ExecSpace> X_ = X;
+          TensorImpl<ExecSpace,Layout> X_ = X;
 
           // Initialize our subscript array for row i of mode n
           Kokkos::single(Kokkos::PerThread(team), [&]()
@@ -742,8 +742,16 @@ void hess_vec(const TensorT<ExecSpace>& X,
   }
 
   // Compute first (tensor) term
-  Impl::HessVec_Dense_Kernel<ExecSpace> kernel(X.impl(),a,v,u,algParams);
-  Impl::run_row_simd_kernel(kernel, nc);
+  if (X.has_left_impl()) {
+    Impl::HessVec_Dense_Kernel<ExecSpace,Impl::TensorLayoutLeft> kernel(
+      X.left_impl(),a,v,u,algParams);
+    Impl::run_row_simd_kernel(kernel, nc);
+  }
+  else {
+    Impl::HessVec_Dense_Kernel<ExecSpace,Impl::TensorLayoutRight> kernel(
+      X.right_impl(),a,v,u,algParams);
+   Impl::run_row_simd_kernel(kernel, nc);
+  }
 
   // Combine local contributions across processors
   dku.doExport(u, u_overlap);

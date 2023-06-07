@@ -181,6 +181,7 @@ private:
     const ttb_indx global_nnz, const ttb_indx global_offset,
     const std::vector<ttb_indx>& TensorDims,
     const std::vector<small_vector<ttb_indx>>& blocking,
+    const TensorLayout layout,
     const ProcessorMap& pmap,
     const AlgParams& algParams);
 

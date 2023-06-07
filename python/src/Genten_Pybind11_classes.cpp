@@ -574,36 +574,18 @@ void pygenten_tensor(py::module &m){
         if (info.strides[0]/sizeof(ttb_real) == 1) {
           // The 'F' layout case
           Genten::Array vals(numel, static_cast<ttb_real*>(info.ptr), !copy);
-          x = Genten::Tensor(sz, vals);
+          x = Genten::Tensor(sz, vals, Genten::TensorLayout::Left);
 
           if (!copy)
             x.set_extra_data(b);
         }
         else if (info.strides[nd-1]/sizeof(ttb_real) == 1) {
           // The 'C' layout case
-          // To do:  make this parallel.  But we should combine that with
-          // putting the tensor on the device.
-          Genten::Array vals(numel);
-          Genten::IndxArray s(nd), st(nd), szt(nd);
-          ttb_real *ptr = static_cast<ttb_real*>(info.ptr);
-          for (ttb_indx i=0; i<nd; ++i)
-            szt[i] = sz[nd-i-1];
-          for (ttb_indx i=0; i<numel; ++i) {
+          Genten::Array vals(numel, static_cast<ttb_real*>(info.ptr), !copy);
+          x = Genten::Tensor(sz, vals, Genten::TensorLayout::Right);
 
-            // Map linearized index to mult-index
-            Genten::Impl::ind2sub(s, sz, numel, i);
-
-            // Compute multi-index of transposed tensor
-            for (ttb_indx j=0; j<nd; ++j)
-              st[j] = s[nd-j-1];
-
-            // Map transpose multi-index to transposed linearized index
-            const ttb_indx k = Genten::Impl::sub2ind(st, szt);
-
-            // Copy corresponding values
-            vals[i] = ptr[k];
-          }
-          x = Genten::Tensor(sz, vals);
+          if (!copy)
+            x.set_extra_data(b);
         }
         else
           throw std::runtime_error("Incompatible array layout.  Must be 'C' or 'F' layout!");
@@ -611,8 +593,7 @@ void pygenten_tensor(py::module &m){
       }),R"(
     Constructor from the given buffer such as a numpy.ndarray.
 
-    Whether the data must be copied depends on the ordering of the input array.
-    Set copy=True to make it a copy, regardless.)", py::arg("b"), py::arg("copy") = true);
+    Both 'F' and 'C' orderings are supported, but not a general strided ordering.)", py::arg("b"), py::arg("copy") = true);
 
     cl.def_property_readonly("pmap", &Genten::Tensor::getProcessorMap, py::return_value_policy::reference, R"(
     Processor map for distributed memory parallelism.)");
@@ -630,10 +611,20 @@ void pygenten_tensor(py::module &m){
         Genten::Array vals = X.getValues();
         py::capsule capsule(new Genten::Array(vals), [](void *v) { delete reinterpret_cast<Genten::Array*>(v); });
         const ttb_indx nd = X.ndims();
-        std::vector<ttb_indx> sz(nd);
+        std::vector<ttb_indx> shape(nd), strides(nd);
         for (ttb_indx i=0; i<nd; ++i)
-          sz[i] = X.size(i);
-        return py::array_t<ttb_real,py::array::f_style>(sz, vals.ptr(), capsule);
+          shape[i] = X.size(i);
+        if (X.has_left_impl()) {
+          strides[0] = sizeof(ttb_real);
+          for (ttb_indx i=1; i<nd; ++i)
+            strides[i] = strides[i-1]*shape[i-1];
+        }
+        else {
+          strides[nd-1] = sizeof(ttb_real);
+          for (ttb_indx i=nd-1; i>0; --i)
+            strides[i-1] = strides[i]*shape[i];
+        }
+        return py::array_t<ttb_real>(shape, strides, vals.ptr(), capsule);
       }, R"(
     The tensor data returned as a numpy.ndarray.
 
@@ -648,6 +639,12 @@ void pygenten_tensor(py::module &m){
       }, R"(
     Return whether this tensor is a view of a numpy array (i.e., constructed
     with copy=False).)");
+    cl.def_property_readonly("layout", [](const Genten::Tensor& X) {
+        if (X.has_left_impl())
+          return std::string("F");
+        return std::string("C");
+      }, R"(
+    Return memory layout of the tensor ('F' or 'C').)");
     cl.def("__str__", [](const Genten::Tensor& X) {
         std::stringstream ss;
         Genten::print_tensor(X, ss);

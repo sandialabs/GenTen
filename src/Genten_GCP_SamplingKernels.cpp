@@ -306,7 +306,7 @@ namespace {
       static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
-      const auto X = Xd.impl();
+      const IndxArrayT<ExecSpace> sz = Xd.size();
 
       /*const*/ unsigned nd = u.ndims();
       /*const*/ ttb_indx ns = num_samples;
@@ -316,7 +316,7 @@ namespace {
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples;
       if (Yd.nnz() < total_samples) {
-        Yd = SptensorT<ExecSpace>(X.size(), total_samples);
+        Yd = SptensorT<ExecSpace>(sz, total_samples);
         w = ArrayT<ExecSpace>(total_samples);
       }
       const auto Y = Yd.impl();
@@ -344,7 +344,7 @@ namespace {
           Kokkos::single( Kokkos::PerThread( team ), [&] (ttb_real& xv)
           {
             for (ttb_indx m=0; m<nd; ++m)
-              ind[m] = Rand::draw(gen,0,X.size(m));
+              ind[m] = Rand::draw(gen,0,sz[m]);
             xv = searcher.value(ind);
           }, x_val);
 
@@ -404,7 +404,9 @@ namespace {
       static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
-      const auto X = Xd.impl();
+      const IndxArrayT<ExecSpace> sz = Xd.size();
+      const IndxArrayT<ExecSpace> lb = Xd.getLowerBounds();
+      const IndxArrayT<ExecSpace> ub = Xd.getUpperBounds();
 
       /*const*/ unsigned nd = u.ndims();
       /*const*/ ttb_indx ns = num_samples;
@@ -414,10 +416,10 @@ namespace {
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples;
       if (Yd.nnz() < total_samples) {
-        Yd = SptensorT<ExecSpace>(X.size(), total_samples);// Correct size is set later
+        Yd = SptensorT<ExecSpace>(sz, total_samples);// Correct size is set later
         Yd.allocGlobalSubscripts();
-        deep_copy(Yd.getLowerBounds(), Xd.getLowerBounds());
-        deep_copy(Yd.getUpperBounds(), Xd.getUpperBounds());
+        deep_copy(Yd.getLowerBounds(), lb);
+        deep_copy(Yd.getUpperBounds(), ub);
         Yd.setProcessorMap(Xd.getProcessorMap());
         w = ArrayT<ExecSpace>(total_samples);
       }
@@ -445,7 +447,7 @@ namespace {
           Kokkos::single( Kokkos::PerThread( team ), [&] ()
           {
             for (ttb_indx m=0; m<nd; ++m)
-              ind[m] = Rand::draw(gen,X.lowerBound(m),X.upperBound(m));
+              ind[m] = Rand::draw(gen,lb[m],ub[m]);
             Y.value(idx) = searcher.value(ind);
             for (ttb_indx m=0; m<nd; ++m)
               Y.globalSubscript(idx,m) = ind[m];
@@ -1079,7 +1081,20 @@ namespace {
 #define LOSS_INST_MACRO(SPACE,LOSS)                                     \
   template void Impl::uniform_sample_tensor(                            \
     const TensorT<SPACE>& X,                                            \
-    const Impl::DenseSearcher<SPACE>& searcher,                         \
+    const Impl::DenseSearcher<SPACE,Impl::TensorLayoutLeft>& searcher,  \
+    const ttb_indx num_samples,                                         \
+    const ttb_real weight,                                              \
+    const KtensorT<SPACE>& u,                                           \
+    const LOSS& loss_func,                                              \
+    const bool compute_gradient,                                        \
+    SptensorT<SPACE>& Y,                                                \
+    ArrayT<SPACE>& w,                                                   \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template void Impl::uniform_sample_tensor(                            \
+    const TensorT<SPACE>& X,                                            \
+    const Impl::DenseSearcher<SPACE,Impl::TensorLayoutRight>& searcher, \
     const ttb_indx num_samples,                                         \
     const ttb_real weight,                                              \
     const KtensorT<SPACE>& u,                                           \
@@ -1118,7 +1133,21 @@ namespace {
                                                                         \
   template void Impl::uniform_sample_tensor_tpetra(                     \
     const TensorT<SPACE>& X,                                            \
-    const Impl::DenseSearcher<SPACE>& searcher,                         \
+    const Impl::DenseSearcher<SPACE,Impl::TensorLayoutLeft>& searcher,  \
+    const ttb_indx num_samples,                                         \
+    const ttb_real weight,                                              \
+    const KtensorT<SPACE>& u,                                           \
+    const LOSS& loss_func,                                              \
+    const bool compute_gradient,                                        \
+    SptensorT<SPACE>& Y,                                                \
+    ArrayT<SPACE>& w,                                                   \
+    KtensorT<SPACE>& u_overlap,                                         \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template void Impl::uniform_sample_tensor_tpetra(                     \
+    const TensorT<SPACE>& X,                                            \
+    const Impl::DenseSearcher<SPACE,Impl::TensorLayoutRight>& searcher, \
     const ttb_indx num_samples,                                         \
     const ttb_real weight,                                              \
     const KtensorT<SPACE>& u,                                           \

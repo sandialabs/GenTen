@@ -323,17 +323,14 @@ ttb_real Genten::innerprod(const Genten::SptensorT<ExecSpace>& s,
   return d;
 }
 
-template <typename ExecSpace>
-ttb_real Genten::innerprod(const Genten::TensorT<ExecSpace>& xd,
-                           const Genten::KtensorT<ExecSpace>& u,
-                           const Genten::ArrayT<ExecSpace>& lambda)
+namespace Genten {
+namespace Impl {
+
+  template <typename ExecSpace, typename Layout>
+  ttb_real innerprod_impl(const TensorImpl<ExecSpace,Layout>& x,
+                          const KtensorT<ExecSpace>& u,
+                          const ArrayT<ExecSpace>& lambda)
 {
-#ifdef HAVE_CALIPER
-  cali::Function cali_func("Genten::innerprod");
-#endif
-
-  const auto x = xd.impl();
-
   typedef Kokkos::TeamPolicy<ExecSpace> Policy;
   typedef typename Policy::member_type TeamMember;
   typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
@@ -409,18 +406,39 @@ ttb_real Genten::innerprod(const Genten::TensorT<ExecSpace>& xd,
   return d;
 }
 
+}
+}
+
+template <typename ExecSpace>
+ttb_real Genten::innerprod(const Genten::TensorT<ExecSpace>& x,
+                           const Genten::KtensorT<ExecSpace>& u,
+                           const Genten::ArrayT<ExecSpace>& lambda)
+{
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::innerprod");
+#endif
+
+  ttb_real d;
+  if (x.has_left_impl())
+    d = Genten::Impl::innerprod_impl(x.left_impl(), u, lambda);
+  else
+    d = Genten::Impl::innerprod_impl(x.right_impl(), u, lambda);
+
+  return d;
+}
+
 namespace Genten {
 namespace Impl {
 
-template <typename ExecSpace>
+template <typename ExecSpace, typename Layout>
 struct MTTKRP_Dense_Kernel {
-  const TensorImpl<ExecSpace> XX;
+  const TensorImpl<ExecSpace,Layout> XX;
   const KtensorT<ExecSpace> uu;
   const ttb_indx nn;
   const FacMatrixT<ExecSpace> vv;
   const AlgParams algParams;
 
-  MTTKRP_Dense_Kernel(const TensorImpl<ExecSpace>& X_,
+  MTTKRP_Dense_Kernel(const TensorImpl<ExecSpace,Layout>& X_,
                       const KtensorT<ExecSpace>& u_,
                       const ttb_indx n_,
                       const FacMatrixT<ExecSpace>& v_,
@@ -430,7 +448,7 @@ struct MTTKRP_Dense_Kernel {
   template <unsigned FBS, unsigned VS>
   void run() const
   {
-    const TensorImpl<ExecSpace> X = XX;
+    const TensorImpl<ExecSpace,Layout> X = XX;
     const KtensorT<ExecSpace> u = uu;
     const ttb_indx n = nn;
     const FacMatrixT<ExecSpace> v = vv;
@@ -473,7 +491,7 @@ struct MTTKRP_Dense_Kernel {
         // Work around internal-compiler errors in recent Intel compilers
         unsigned nd_ = nd;
         unsigned n_ = n;
-        TensorImpl<ExecSpace> X_ = X;
+        TensorImpl<ExecSpace,Layout> X_ = X;
 
         // Initialize our subscript array for row i of mode n
         Kokkos::single(Kokkos::PerThread(team), [&]()
@@ -551,8 +569,16 @@ void Genten::mttkrp(const Genten::TensorT<ExecSpace>& X,
   if (zero_v)
     v = ttb_real(0.0);
 
-  Genten::Impl::MTTKRP_Dense_Kernel<ExecSpace> kernel(X.impl(),u,n,v,algParams);
-  Genten::Impl::run_row_simd_kernel(kernel, nc);
+  if (X.has_left_impl()) {
+    Genten::Impl::MTTKRP_Dense_Kernel<ExecSpace,Impl::TensorLayoutLeft> kernel(
+      X.left_impl(),u,n,v,algParams);
+    Genten::Impl::run_row_simd_kernel(kernel, nc);
+  }
+  else {
+    Genten::Impl::MTTKRP_Dense_Kernel<ExecSpace,Impl::TensorLayoutRight> kernel(
+      X.right_impl(),u,n,v,algParams);
+    Genten::Impl::run_row_simd_kernel(kernel, nc);
+  }
 }
 
 #define INST_MACRO(SPACE)                                               \
