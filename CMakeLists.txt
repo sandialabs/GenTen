@@ -140,7 +140,7 @@ IF(ENABLE_TRILINOS)
   LINK_DIRECTORIES(${Trilinos_LIBRARY_DIRS} ${Trilinos_TPL_LIBRARY_DIRS} )
 
   # Look for Kokkos (optional)
-  LIST(FIND Trilinos_Target_List KokkosCore::all_libs Kokkos_List_ID)
+  LIST(FIND Trilinos_Target_List Kokkos::all_libs Kokkos_List_ID)
   IF(Kokkos_List_ID GREATER -1)
     MESSAGE(STATUS "  Looking for Kokkos: Found")
     MESSAGE(STATUS "    Enabled Kokkos devices: ${Kokkos_DEVICES}")
