@@ -387,8 +387,10 @@ TYPED_TEST(TestMixedFormatsT, LayoutRightTensorAminoAcid) {
   const ttb_indx nc = 5;
   const ttb_indx nd = Xl.ndims();
   KtensorT<exec_space> u(nc, nd, Xl.size());
-  u.setMatricesRand();
-  u.setWeights(1.0);
+  auto uh = create_mirror_view(u);
+  uh.setMatricesRand();
+  uh.setWeights(1.0);
+  deep_copy(u, uh);
 
   // Test MTTKRP for layout-right matches layout-left
   KtensorT<exec_space> vl(nc, nd, Xl.size()), vr(nc, nd, Xl.size());
