@@ -69,7 +69,7 @@ def read_and_distribute_tensor(filename, file_type=None, format=None, shape=None
     j = json.dumps(d)
     dtc = gt.DistTensorContext()
     Xs,Xd = dtc.distributeTensor(filename, index_base, compressed, j, a)
-    if Xs.nnz() > 0:
+    if Xs.nnz > 0:
         return Xs,dtc
     return Xd,dtc
 
