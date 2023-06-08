@@ -503,7 +503,7 @@ public:
   using host_mirror_space = typename impl_type::host_mirror_space;
   using HostMirror = SptensorT<host_mirror_space>;
 
-  SptensorT() = default;
+  SptensorT() {}
   SptensorT(const IndxArrayT<ExecSpace>& sz, ttb_indx nz) :
     impl_type(sz, nz), dist_type(sz.size()) {}
   SptensorT(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals,
@@ -547,7 +547,7 @@ public:
   SptensorT(const SptensorT&) = default;
   SptensorT& operator=(SptensorT&&) = default;
   SptensorT& operator=(const SptensorT&) = default;
-  ~SptensorT() = default;
+  ~SptensorT() {};
 
   impl_type& impl() { return *this; }
   const impl_type& impl() const { return *this; }

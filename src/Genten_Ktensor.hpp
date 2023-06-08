@@ -334,12 +334,12 @@ public:
 
   using impl_type::impl_type;
 
-  KtensorT() = default;
+  KtensorT() {}
   KtensorT(KtensorT&&) = default;
   KtensorT(const KtensorT&) = default;
   KtensorT& operator=(KtensorT&&) = default;
   KtensorT& operator=(const KtensorT&) = default;
-  ~KtensorT() = default;
+  ~KtensorT() {}
 
   impl_type& impl() { return *this; }
   const impl_type& impl() const { return *this; }
