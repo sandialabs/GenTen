@@ -41,6 +41,7 @@
 
 #pragma once
 #include <cassert>
+#include <any>
 
 #include "Genten_FacMatArray.hpp"
 #include "Genten_IndxArray.hpp"
@@ -57,44 +58,44 @@ template <typename ExecSpace> class KtensorT;
 typedef KtensorT<DefaultHostExecutionSpace> Ktensor;
 
 template <typename ExecSpace>
-class KtensorT
+class KtensorImpl
 {
 public:
 
   typedef ExecSpace exec_space;
   typedef typename ArrayT<ExecSpace>::host_mirror_space host_mirror_space;
-  typedef KtensorT<host_mirror_space> HostMirror;
+  typedef KtensorImpl<host_mirror_space> HostMirror;
 
   // ----- CREATE & DESTROY -----
   // Empty constructor
   KOKKOS_DEFAULTED_FUNCTION
-  KtensorT() = default;
+  KtensorImpl() = default;
 
   // Constructor with number of components and dimensions, but
   // factor matrix sizes are still undetermined.
-  KtensorT(ttb_indx nc, ttb_indx nd, const ProcessorMap* pmap_ = nullptr);
+  KtensorImpl(ttb_indx nc, ttb_indx nd, const ProcessorMap* pmap_ = nullptr);
 
   // Constructor with number of components, dimensions and factor matrix sizes
-  KtensorT(ttb_indx nc, ttb_indx nd, const IndxArrayT<ExecSpace> & sz,
+  KtensorImpl(ttb_indx nc, ttb_indx nd, const IndxArrayT<ExecSpace> & sz,
              const ProcessorMap* pmap_ = nullptr);
 
   // Create Ktensor from supplied weights and values
   KOKKOS_INLINE_FUNCTION
-  KtensorT(const ArrayT<ExecSpace>& w, const FacMatArrayT<ExecSpace>& vals,
+  KtensorImpl(const ArrayT<ExecSpace>& w, const FacMatArrayT<ExecSpace>& vals,
              const ProcessorMap* pmap_ = nullptr) :
     lambda(w), data(vals), pmap(pmap_) {}
 
   // Destructor
   KOKKOS_DEFAULTED_FUNCTION
-  ~KtensorT() = default;
+  ~KtensorImpl() = default;
 
   // Copy constructor
   KOKKOS_DEFAULTED_FUNCTION
-  KtensorT (const KtensorT & arg) = default;
+  KtensorImpl (const KtensorImpl & arg) = default;
 
   // Assignment operator
   KOKKOS_DEFAULTED_FUNCTION
-  KtensorT & operator= (const KtensorT & arg) = default;
+  KtensorImpl & operator= (const KtensorImpl & arg) = default;
 
   // ----- MODIFY & RESET -----
 
@@ -240,7 +241,7 @@ public:
   }
 
   KOKKOS_INLINE_FUNCTION
-  FacMatArrayT<ExecSpace> & factors() 
+  FacMatArrayT<ExecSpace> & factors()
   {
     return data;
   }
@@ -274,7 +275,7 @@ public:
            ---------------------------------   < TOL .
            max(1, fabs(a(i,j)), fabs(b(i,j))
   */
-  bool isEqual(const KtensorT & b, ttb_real tol) const;
+  bool isEqual(const KtensorImpl & b, ttb_real tol) const;
 
   // Return entry of constructed Ktensor.
   ttb_real entry(const IndxArrayT<ExecSpace> & subs) const;
@@ -322,22 +323,79 @@ private:
 };
 
 template <typename ExecSpace>
+class KtensorT : public KtensorImpl<ExecSpace>
+{
+public:
+
+  using impl_type = KtensorImpl<ExecSpace>;
+  using exec_space = typename impl_type::exec_space;
+  using host_mirror_space = typename impl_type::host_mirror_space;
+  using HostMirror = KtensorT<host_mirror_space>;
+
+  using impl_type::impl_type;
+
+  KtensorT() {}
+  KtensorT(KtensorT&&) = default;
+  KtensorT(const KtensorT&) = default;
+  KtensorT& operator=(KtensorT&&) = default;
+  KtensorT& operator=(const KtensorT&) = default;
+  ~KtensorT() {}
+
+  impl_type& impl() { return *this; }
+  const impl_type& impl() const { return *this; }
+
+  // For passing extra data, like numpy arrays, through
+  template <typename T>
+  void set_extra_data(const T& a) {
+    extra_data = std::make_any<T>(a);
+  }
+  bool has_extra_data() const {
+    return extra_data.has_value();
+  }
+  template <typename T>
+  bool has_extra_data_type() const {
+    return extra_data.has_value() && (std::any_cast<T>(&extra_data) != nullptr);
+  }
+  template <typename T>
+  T get_extra_data() const {
+    gt_assert(extra_data.has_value());
+    return std::any_cast<T>(extra_data);
+  }
+  template <typename E>
+  void copy_extra_data(const KtensorT<E>& x) {
+    // only copy extra data if this and x point to the same data
+    if (static_cast<void*>(this->factors().values().data()) ==
+        static_cast<void*>(x.factors().values().data()))
+      extra_data = x.extra_data;
+  }
+
+protected:
+
+  std::any extra_data;
+  template <typename E> friend class KtensorT;
+};
+
+template <typename ExecSpace>
 typename KtensorT<ExecSpace>::HostMirror
 create_mirror_view(const KtensorT<ExecSpace>& a)
 {
   typedef typename KtensorT<ExecSpace>::HostMirror HostMirror;
-  return HostMirror( create_mirror_view(a.weights()),
-                     create_mirror_view(a.factors()),
-                     a.getProcessorMap() );
+  HostMirror hm( create_mirror_view(a.weights()),
+                 create_mirror_view(a.factors()),
+                 a.getProcessorMap() );
+  hm.copy_extra_data(a);
+  return hm;
 }
 
 template <typename Space, typename ExecSpace>
 KtensorT<Space>
 create_mirror_view(const Space& s, const KtensorT<ExecSpace>& a)
 {
-  return KtensorT<Space>( create_mirror_view(s, a.weights()),
-                          create_mirror_view(s, a.factors()),
-                          a.getProcessorMap() );
+  KtensorT<Space> v( create_mirror_view(s, a.weights()),
+                     create_mirror_view(s, a.factors()),
+                     a.getProcessorMap() );
+  v.copy_extra_data(a);
+  return v;
 }
 
 template <typename E1, typename E2>
@@ -354,7 +412,7 @@ template <typename ExecSpace> class SptensorImpl;
 template <typename ExecSpace, unsigned Len, unsigned WarpOrWavefrontSize>
 KOKKOS_INLINE_FUNCTION
 ttb_real compute_Ktensor_value(const typename Kokkos::TeamPolicy<ExecSpace>::member_type& team,
-                               const KtensorT<ExecSpace>& M,
+                               const KtensorImpl<ExecSpace>& M,
                                const SptensorImpl<ExecSpace>& X,
                                const ttb_indx i) {
   typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, Len, Len, WarpOrWavefrontSize> TVM1;
@@ -395,7 +453,7 @@ template <typename ExecSpace, unsigned Len, unsigned WarpOrWavefrontSize,
           typename IndexArray>
 KOKKOS_INLINE_FUNCTION
 ttb_real compute_Ktensor_value(const typename Kokkos::TeamPolicy<ExecSpace>::member_type& team,
-                               const KtensorT<ExecSpace>& M,
+                               const KtensorImpl<ExecSpace>& M,
                                const IndexArray& ind) {
   typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, Len, Len, WarpOrWavefrontSize> TVM1;
 
@@ -432,7 +490,7 @@ ttb_real compute_Ktensor_value(const typename Kokkos::TeamPolicy<ExecSpace>::mem
 // Assumes flat parallelism
 template <typename ExecSpace, typename IndexArray>
 KOKKOS_INLINE_FUNCTION
-ttb_real compute_Ktensor_value(const KtensorT<ExecSpace>& M,
+ttb_real compute_Ktensor_value(const KtensorImpl<ExecSpace>& M,
                                const IndexArray& ind) {
   const unsigned nd = M.ndims();
   const unsigned nc = M.ncomponents();

@@ -284,7 +284,7 @@ namespace {
       const Searcher& searcher,
       const ttb_indx num_samples,
       const ttb_real weight,
-      const KtensorT<ExecSpace>& u,
+      const KtensorT<ExecSpace>& ud,
       const LossFunction& loss_func,
       const bool compute_gradient,
       SptensorT<ExecSpace>& Yd,
@@ -299,6 +299,8 @@ namespace {
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
       typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
+      const auto u = ud.impl();
+
       static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
       static const unsigned RowBlockSize = 1;
       static const unsigned FacBlockSize = 16; // FIXME
@@ -306,7 +308,7 @@ namespace {
       static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
-      const auto X = Xd.impl();
+      const IndxArrayT<ExecSpace> sz = Xd.size();
 
       /*const*/ unsigned nd = u.ndims();
       /*const*/ ttb_indx ns = num_samples;
@@ -316,7 +318,7 @@ namespace {
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples;
       if (Yd.nnz() < total_samples) {
-        Yd = SptensorT<ExecSpace>(X.size(), total_samples);
+        Yd = SptensorT<ExecSpace>(sz, total_samples);
         w = ArrayT<ExecSpace>(total_samples);
       }
       const auto Y = Yd.impl();
@@ -344,7 +346,7 @@ namespace {
           Kokkos::single( Kokkos::PerThread( team ), [&] (ttb_real& xv)
           {
             for (ttb_indx m=0; m<nd; ++m)
-              ind[m] = Rand::draw(gen,0,X.size(m));
+              ind[m] = Rand::draw(gen,0,sz[m]);
             xv = searcher.value(ind);
           }, x_val);
 
@@ -380,12 +382,12 @@ namespace {
       const Searcher& searcher,
       const ttb_indx num_samples,
       const ttb_real weight,
-      const KtensorT<ExecSpace>& u,
+      const KtensorT<ExecSpace>& ud,
       const LossFunction& loss_func,
       const bool compute_gradient,
       SptensorT<ExecSpace>& Yd,
       ArrayT<ExecSpace>& w,
-      KtensorT<ExecSpace>& u_overlap,
+      KtensorT<ExecSpace>& u_overlap_d,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams)
     {
@@ -397,6 +399,8 @@ namespace {
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
       typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
+      const auto u = ud.impl();
+
       static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
       static const unsigned RowBlockSize = 1;
       static const unsigned FacBlockSize = 16; // FIXME
@@ -404,7 +408,9 @@ namespace {
       static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
-      const auto X = Xd.impl();
+      const IndxArrayT<ExecSpace> sz = Xd.size();
+      const IndxArrayT<ExecSpace> lb = Xd.getLowerBounds();
+      const IndxArrayT<ExecSpace> ub = Xd.getUpperBounds();
 
       /*const*/ unsigned nd = u.ndims();
       /*const*/ ttb_indx ns = num_samples;
@@ -414,10 +420,10 @@ namespace {
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples;
       if (Yd.nnz() < total_samples) {
-        Yd = SptensorT<ExecSpace>(X.size(), total_samples);// Correct size is set later
+        Yd = SptensorT<ExecSpace>(sz, total_samples);// Correct size is set later
         Yd.allocGlobalSubscripts();
-        deep_copy(Yd.getLowerBounds(), Xd.getLowerBounds());
-        deep_copy(Yd.getUpperBounds(), Xd.getUpperBounds());
+        deep_copy(Yd.getLowerBounds(), lb);
+        deep_copy(Yd.getUpperBounds(), ub);
         Yd.setProcessorMap(Xd.getProcessorMap());
         w = ArrayT<ExecSpace>(total_samples);
       }
@@ -445,7 +451,7 @@ namespace {
           Kokkos::single( Kokkos::PerThread( team ), [&] ()
           {
             for (ttb_indx m=0; m<nd; ++m)
-              ind[m] = Rand::draw(gen,X.lowerBound(m),X.upperBound(m));
+              ind[m] = Rand::draw(gen,lb[m],ub[m]);
             Y.value(idx) = searcher.value(ind);
             for (ttb_indx m=0; m<nd; ++m)
               Y.globalSubscript(idx,m) = ind[m];
@@ -469,8 +475,9 @@ namespace {
       deep_copy(Y.size(), sz_host);
 
       // Import u to overlapped tensor map
-      u_overlap = import_ktensor_to_tensor_map(
-        u, Yd.getFactorMaps(), Yd.getTensorMaps(), Yd.getImporters());
+      u_overlap_d = import_ktensor_to_tensor_map(
+        ud, Yd.getFactorMaps(), Yd.getTensorMaps(), Yd.getImporters());
+      const auto u_overlap = u_overlap_d.impl();
 
       // Set gradient values in sampled tensor
       if (compute_gradient) {
@@ -514,7 +521,7 @@ namespace {
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
-      const KtensorT<ExecSpace>& u,
+      const KtensorT<ExecSpace>& ud,
       const Gradient& gradient,
       const bool compute_gradient,
       SptensorT<ExecSpace>& Yd,
@@ -537,6 +544,7 @@ namespace {
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
       const auto X = Xd.impl();
+      const auto u = ud.impl();
 
       /*const*/ ttb_indx nnz = X.nnz();
       /*const*/ unsigned nd = X.ndims();
@@ -677,12 +685,12 @@ namespace {
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
-      const KtensorT<ExecSpace>& u,
+      const KtensorT<ExecSpace>& ud,
       const Gradient& gradient,
       const bool compute_gradient,
       SptensorT<ExecSpace>& Yd,
       ArrayT<ExecSpace>& w,
-      KtensorT<ExecSpace>& u_overlap,
+      KtensorT<ExecSpace>& u_overlap_d,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams)
     {
@@ -702,6 +710,7 @@ namespace {
       static const unsigned RowsPerTeam = TeamSize * RowBlockSize;
 
       const auto X = Xd.impl();
+      const auto u = ud.impl();
 
       /*const*/ ttb_indx nnz = X.nnz();
       /*const*/ unsigned nd = X.ndims();
@@ -819,8 +828,9 @@ namespace {
       deep_copy(Y.size(), sz_host);
 
       // Import u to overlapped tensor map
-      u_overlap = import_ktensor_to_tensor_map(
-        u, Yd.getFactorMaps(), Yd.getTensorMaps(), Yd.getImporters());
+      u_overlap_d = import_ktensor_to_tensor_map(
+        ud, Yd.getFactorMaps(), Yd.getTensorMaps(), Yd.getImporters());
+      const auto u_overlap = u_overlap_d.impl();
 
       // Set gradient values in sampled tensor
       if (compute_gradient) {
@@ -872,8 +882,8 @@ namespace {
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
-      const KtensorT<ExecSpace>& u,
-      const KtensorT<ExecSpace>& up,
+      const KtensorT<ExecSpace>& ud,
+      const KtensorT<ExecSpace>& upd,
       const ArrayT<ExecSpace>& window,
       const ttb_real window_penalty,
       const LossFunction& loss_func,
@@ -881,6 +891,8 @@ namespace {
       const AlgParams& algParams)
     {
       const auto X = Xd.impl();
+      const auto u = ud.impl();
+      const auto up = upd.impl();
 
       typedef Kokkos::TeamPolicy<ExecSpace> Policy;
       typedef typename Policy::member_type TeamMember;
@@ -978,8 +990,8 @@ namespace {
     void uniform_ktensor_grad(
       const ttb_indx num_samples,
       const ttb_real weight,
-      const KtensorT<ExecSpace>& u,
-      const KtensorT<ExecSpace>& up,
+      const KtensorT<ExecSpace>& ud,
+      const KtensorT<ExecSpace>& upd,
       const ArrayT<ExecSpace>& window,
       const ttb_real window_penalty,
       const LossFunction& loss_func,
@@ -993,6 +1005,9 @@ namespace {
       typedef typename RandomPool::generator_type generator_type;
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
       typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+      const auto u = ud.impl();
+      const auto up = upd.impl();
 
       static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
       static const unsigned RowBlockSize = 1;
@@ -1079,7 +1094,20 @@ namespace {
 #define LOSS_INST_MACRO(SPACE,LOSS)                                     \
   template void Impl::uniform_sample_tensor(                            \
     const TensorT<SPACE>& X,                                            \
-    const Impl::DenseSearcher<SPACE>& searcher,                         \
+    const Impl::DenseSearcher<SPACE,Impl::TensorLayoutLeft>& searcher,  \
+    const ttb_indx num_samples,                                         \
+    const ttb_real weight,                                              \
+    const KtensorT<SPACE>& u,                                           \
+    const LOSS& loss_func,                                              \
+    const bool compute_gradient,                                        \
+    SptensorT<SPACE>& Y,                                                \
+    ArrayT<SPACE>& w,                                                   \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template void Impl::uniform_sample_tensor(                            \
+    const TensorT<SPACE>& X,                                            \
+    const Impl::DenseSearcher<SPACE,Impl::TensorLayoutRight>& searcher, \
     const ttb_indx num_samples,                                         \
     const ttb_real weight,                                              \
     const KtensorT<SPACE>& u,                                           \
@@ -1118,7 +1146,21 @@ namespace {
                                                                         \
   template void Impl::uniform_sample_tensor_tpetra(                     \
     const TensorT<SPACE>& X,                                            \
-    const Impl::DenseSearcher<SPACE>& searcher,                         \
+    const Impl::DenseSearcher<SPACE,Impl::TensorLayoutLeft>& searcher,  \
+    const ttb_indx num_samples,                                         \
+    const ttb_real weight,                                              \
+    const KtensorT<SPACE>& u,                                           \
+    const LOSS& loss_func,                                              \
+    const bool compute_gradient,                                        \
+    SptensorT<SPACE>& Y,                                                \
+    ArrayT<SPACE>& w,                                                   \
+    KtensorT<SPACE>& u_overlap,                                         \
+    Kokkos::Random_XorShift64_Pool<SPACE>& rand_pool,                   \
+    const AlgParams& algParams);                                        \
+                                                                        \
+  template void Impl::uniform_sample_tensor_tpetra(                     \
+    const TensorT<SPACE>& X,                                            \
+    const Impl::DenseSearcher<SPACE,Impl::TensorLayoutRight>& searcher, \
     const ttb_indx num_samples,                                         \
     const ttb_real weight,                                              \
     const KtensorT<SPACE>& u,                                           \

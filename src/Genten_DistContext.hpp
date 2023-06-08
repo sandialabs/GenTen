@@ -42,6 +42,7 @@
 
 namespace Genten {
 bool InitializeGenten(int *argc, char ***argv);
+bool InitializeGenten();
 bool FinalizeGenten();
 }
 
@@ -173,6 +174,7 @@ private:
   MPI_Comm commWorld_;
   ptree input_;
   friend bool InitializeGenten(int *argc, char ***argv);
+  friend bool InitializeGenten();
   friend bool FinalizeGenten();
   DistContext() = default;
   static std::unique_ptr<DistContext> instance_;

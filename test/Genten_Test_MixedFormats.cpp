@@ -46,6 +46,7 @@
 #include <Genten_Sptensor.hpp>
 #include <Genten_Util.hpp>
 #include <Genten_DistKtensorUpdate.hpp>
+#include <Genten_IOtext.hpp>
 
 #include "Genten_Test_Utils.hpp"
 
@@ -225,10 +226,11 @@ TYPED_TEST(TestMixedFormatsT, SptensorKtensorTimesDivide) {
   GENTEN_FLOAT_EQ(oTest.value(2), 1.0, "divide() element 2 OK");
 }
 
-TYPED_TEST(TestMixedFormatsT, TensorKtensorMTTKRP) {
+template <typename exec_space>
+void RunTensorKtensorMTTKRP(const TensorLayout layout, const char *label)
+{
   DistContext::Barrier();
 
-  using exec_space = typename TestFixture::exec_space;
   using host_exec_space = DefaultHostExecutionSpace;
 
   //----------------------------------------------------------------------
@@ -253,7 +255,7 @@ TYPED_TEST(TestMixedFormatsT, TensorKtensorMTTKRP) {
   dims[0] = 2;
   dims[1] = 3;
   dims[2] = 4;
-  TensorT<host_exec_space> t2(dims, 0.0);
+  TensorT<host_exec_space> t2(dims, 0.0, layout);
   t2(0, 0, 0) = 1.0;
   TensorT<exec_space> t2_dev = create_mirror_view(exec_space(), t2);
   deep_copy(t2_dev, t2);
@@ -359,6 +361,64 @@ TYPED_TEST(TestMixedFormatsT, TensorKtensorMTTKRP) {
   ASSERT_FLOAT_EQ(oFM.entry(0, 0), 120.0);
   ASSERT_FLOAT_EQ(oFM.entry(3, 0), 154.0);
   INFO_MSG("mttkrp result values correct for index [0], 2 sparse nnz");
+}
+
+TYPED_TEST(TestMixedFormatsT, TensorKtensorMTTKRP) {
+   using exec_space = typename TestFixture::exec_space;
+
+   RunTensorKtensorMTTKRP<exec_space>(TensorLayout::Left, "TensorLayout::Left");
+   RunTensorKtensorMTTKRP<exec_space>(TensorLayout::Right, "TensorLayout::Right");
+}
+
+TYPED_TEST(TestMixedFormatsT, LayoutRightTensorAminoAcid) {
+   using exec_space = typename TestFixture::exec_space;
+   DistContext::Barrier();
+
+  // Read layout-left amino acid tensor
+  Tensor Xlh;
+  import_tensor("./data/aminoacid_data_dense.txt", Xlh);
+  TensorT<exec_space> Xl = create_mirror_view(exec_space(), Xlh);
+  deep_copy(Xl, Xlh);
+
+  // Create layout-right version
+  TensorT<exec_space> Xr = Xl.switch_layout(TensorLayout::Right);
+
+  // Create matching ktensor
+  const ttb_indx nc = 5;
+  const ttb_indx nd = Xl.ndims();
+  KtensorT<exec_space> u(nc, nd, Xl.size());
+  auto uh = create_mirror_view(u);
+  uh.setMatricesRand();
+  uh.setWeights(1.0);
+  deep_copy(u, uh);
+
+  // Test MTTKRP for layout-right matches layout-left
+  KtensorT<exec_space> vl(nc, nd, Xl.size()), vr(nc, nd, Xl.size());
+  auto vlh = create_mirror_view(vl);
+  auto vrh = create_mirror_view(vr);
+  INFO_MSG("mttkrp result correct for LayoutRight tensor");
+  for (ttb_indx n=0; n<nd; ++n) {
+    mttkrp(Xl, u, n, vl[n]);
+    mttkrp(Xr, u, n, vr[n]);
+    deep_copy(vlh[n], vl[n]);
+    deep_copy(vrh[n], vr[n]);
+
+    for (ttb_indx i=0; i<Xl.size(n); ++i)
+      for (ttb_indx j=0; j<nc; ++j)
+        ASSERT_FLOAT_EQ(vlh[n](i,j), vrh[n](i,j));
+  }
+
+  // Test inner product for layout-right matches layout-left
+  const ttb_real ipl = innerprod(Xl, u);
+  const ttb_real ipr = innerprod(Xr, u);
+  INFO_MSG("innerprod result correct for LayoutRight tensor");
+  ASSERT_FLOAT_EQ(ipl, ipr);
+
+  // Test norm
+  const ttb_real nrml = Xl.norm();
+  const ttb_real nrmr = Xr.norm();
+  INFO_MSG("norm result correct for LayoutRight tensor");
+  ASSERT_FLOAT_EQ(nrml, nrmr);
 }
 
 template <typename exec_space>

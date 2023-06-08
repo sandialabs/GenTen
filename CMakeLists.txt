@@ -55,6 +55,7 @@ OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files and distri
 OPTION(ENABLE_MPI "Enable MPI distributed memory functionality" OFF)
 OPTION(ENABLE_CALIPER "Enable Caliper for application profiling" OFF)
 OPTION(ENABLE_MATLAB "Enable MATLAB linkage to Tensor Toolbox" OFF)
+OPTION(ENABLE_PYTHON "Enable PYTHON linkage to pyTTB" OFF)
 OPTION(FLOAT_TYPE "C++ data type used for floating-point values" OFF)
 OPTION(INDEX_TYPE "C++ data type used for tensor indices" OFF)
 OPTION(ENABLE_GCP "Enable experimental GCP code" ON)
@@ -140,7 +141,7 @@ IF(ENABLE_TRILINOS)
   LINK_DIRECTORIES(${Trilinos_LIBRARY_DIRS} ${Trilinos_TPL_LIBRARY_DIRS} )
 
   # Look for Kokkos (optional)
-  LIST(FIND Trilinos_Target_List KokkosCore::all_libs Kokkos_List_ID)
+  LIST(FIND Trilinos_Target_List Kokkos::all_libs Kokkos_List_ID)
   IF(Kokkos_List_ID GREATER -1)
     MESSAGE(STATUS "  Looking for Kokkos: Found")
     MESSAGE(STATUS "    Enabled Kokkos devices: ${Kokkos_DEVICES}")
@@ -409,6 +410,43 @@ IF(ENABLE_MATLAB)
   ELSE()
     MESSAGE(FATAL_ERROR "Could not find MATLAB!")
   ENDIF()
+ENDIF()
+
+IF(ENABLE_PYTHON)
+  IF(NOT BUILD_SHARED_LIBS)
+    MESSAGE(FATAL_ERROR "Must build shared libraries when enabling Python!")
+  ENDIF()
+  MESSAGE("-- PYTHON_EXECUTABLE:")
+  IF(NOT DEFINED PYTHON_EXECUTABLE)
+    find_program(PYTHON_EXECUTABLE
+        NAMES python3 python
+        )
+    MESSAGE("  -- CMake has set: PYTHON_EXECUTABLE = ${PYTHON_EXECUTABLE}")
+  ELSE()
+    MESSAGE("  -- User has set: PYTHON_EXECUTABLE = ${PYTHON_EXECUTABLE}")
+  ENDIF()
+  # Get the python version
+  EXECUTE_PROCESS(COMMAND ${PYTHON_EXECUTABLE} -c
+                          "import sys; print(sys.version_info.major)"
+    OUTPUT_VARIABLE PYTHON_MAJOR_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+
+  # Get the python version
+  EXECUTE_PROCESS(COMMAND ${PYTHON_EXECUTABLE} -c
+                          "import sys; print(sys.version_info.minor)"
+    OUTPUT_VARIABLE PYTHON_MINOR_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+
+  SET(PYTHON_VERSION ${PYTHON_MAJOR_VERSION}.${PYTHON_MINOR_VERSION})
+  MESSAGE("  -- PYTHON_VERSION = ${PYTHON_VERSION}")
+  MESSAGE("  -- PYTHON_MAJOR_VERSION = ${PYTHON_MAJOR_VERSION}")
+
+  SET(PYBIND11_PYTHON_VERSION ${PYTHON_VERSION})
+
+  ADD_SUBDIRECTORY(tpls/pybind11)
+  SET(HAVE_PYTHON ON)
 ENDIF()
 
 IF(Kokkos_ENABLE_CUDA OR GENTEN_ENABLE_SYCL_FOR_CUDA)
@@ -797,6 +835,9 @@ IF(HAVE_MPI)
     TARGET_LINK_LIBRARIES(gentenlib Boost::boost)
   ENDIF()
 ENDIF()
+IF(HAVE_PYTHON)
+  TARGET_LINK_LIBRARIES (gentenlib pybind11::embed)
+ENDIF()
 
 IF(Kokkos_ENABLE_HIP)
   IF(ROCM_SEARCH_PATH)
@@ -1021,6 +1062,18 @@ IF(HAVE_MATLAB AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
 
 ENDIF()
 
+IF(HAVE_PYTHON AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
+  # Determine the build and install directory
+  SET(pyGenten_BUILD_DIR
+    ${Genten_BINARY_DIR}/python/pygenten
+    )
+  SET(pyGenten_INSTALL_DIR
+    ${CMAKE_INSTALL_PREFIX}/lib/python${PYTHON_VERSION}/site-packages/pygenten
+    )
+  MESSAGE("-- pygenten installation path: ${pyGenten_INSTALL_DIR}")
+  add_subdirectory( python )
+ENDIF()
+
 add_subdirectory(tools)
 
 #------------------------------------------------------------
@@ -1161,6 +1214,11 @@ if (HAVE_GCP)
     # L-BFGS-B does not work with MPI (implements its own vector operations)
     add_genten_perf_tests(Genten_driver_aminoacid_gcpopt-lbfgsb "${Genten_BINARY_DIR}/bin/genten" "--json ${Genten_BINARY_DIR}/data/aminoacid-gcpopt-lbfgsb.json" "${kokkos_devices}")
   endif()
+endif()
+
+# python tests
+if (HAVE_PYTHON)
+  genten_add_test(NAME Genten_Test_Python COMMAND "pytest" ARGS "--disable-warnings;${CMAKE_SOURCE_DIR}/python/test")
 endif()
 
 #------------------------------------------------------------

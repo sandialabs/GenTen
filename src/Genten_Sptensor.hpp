@@ -41,6 +41,7 @@
 #pragma once
 
 #include <cassert>
+#include <any>
 
 #include "CMakeInclude.h"
 #include "Genten_Array.hpp"
@@ -502,7 +503,7 @@ public:
   using host_mirror_space = typename impl_type::host_mirror_space;
   using HostMirror = SptensorT<host_mirror_space>;
 
-  SptensorT() = default;
+  SptensorT() {}
   SptensorT(const IndxArrayT<ExecSpace>& sz, ttb_indx nz) :
     impl_type(sz, nz), dist_type(sz.size()) {}
   SptensorT(ttb_indx nd, ttb_indx *dims, ttb_indx nz, ttb_real *vals,
@@ -546,7 +547,7 @@ public:
   SptensorT(const SptensorT&) = default;
   SptensorT& operator=(SptensorT&&) = default;
   SptensorT& operator=(const SptensorT&) = default;
-  ~SptensorT() = default;
+  ~SptensorT() {};
 
   impl_type& impl() { return *this; }
   const impl_type& impl() const { return *this; }
@@ -582,6 +583,35 @@ public:
       nrm_sqrd = this->pmap->gridAllReduce(nrm_sqrd);
     return std::sqrt(nrm_sqrd);
   }
+
+  // For passing extra data, like numpy arrays, through
+  template <typename T>
+  void set_extra_data(const T& a) {
+    extra_data = std::make_any<T>(a);
+  }
+  bool has_extra_data() const {
+    return extra_data.has_value();
+  }
+  template <typename T>
+  bool has_extra_data_type() const {
+    return extra_data.has_value() && (std::any_cast<T>(&extra_data) != nullptr);
+  }
+  template <typename T>
+  T get_extra_data() const {
+    gt_assert(extra_data.has_value());
+    return std::any_cast<T>(extra_data);
+  }
+  template <typename E>
+  void copy_extra_data(const SptensorT<E>& x) {
+    // only copy extra data if this and x point to the same data
+    if (this->getValues().data() == x.getValues().data())
+      extra_data = x.extra_data;
+  }
+
+protected:
+
+  std::any extra_data;
+  template <typename E> friend class SptensorT;
 };
 
 template <typename ExecSpace>
@@ -589,11 +619,13 @@ typename SptensorT<ExecSpace>::HostMirror
 create_mirror_view(const SptensorT<ExecSpace>& a)
 {
   typedef typename SptensorT<ExecSpace>::HostMirror HostMirror;
-  return HostMirror( create_mirror_view(a.size()),
-                     create_mirror_view(a.getValues()),
-                     create_mirror_view(a.getSubscripts()),
-                     create_mirror_view(a.getPerm()),
-                     a.isSorted() );
+  HostMirror hm( create_mirror_view(a.size()),
+                 create_mirror_view(a.getValues()),
+                 create_mirror_view(a.getSubscripts()),
+                 create_mirror_view(a.getPerm()),
+                 a.isSorted() );
+  hm.copy_extra_data(a);
+  return hm;
 }
 
 template <typename Space, typename ExecSpace>
@@ -622,6 +654,7 @@ create_mirror_view(const Space& s, const SptensorT<ExecSpace>& a)
                           create_mirror_view(s, a.getGlobalSubscripts()),
                           create_mirror_view(s, a.getLowerBounds()),
                           create_mirror_view(s, a.getUpperBounds()) );
+  v.copy_extra_data(a);
   return v;
 }
 

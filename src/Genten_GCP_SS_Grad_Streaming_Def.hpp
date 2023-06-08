@@ -60,9 +60,9 @@ namespace Genten {
               typename ExecSpace, typename loss_type>
     void gcp_sgd_ss_grad_sv_kernel(
       const SptensorT<ExecSpace>& Xd,
-      const KtensorT<ExecSpace>& M,
-      const KtensorT<ExecSpace>& Mt,
-      const KtensorT<ExecSpace>& Mprev,
+      const KtensorT<ExecSpace>& Md,
+      const KtensorT<ExecSpace>& Mtd,
+      const KtensorT<ExecSpace>& Mprevd,
       const loss_type& f,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
@@ -71,7 +71,7 @@ namespace Genten {
       const ArrayT<ExecSpace>& window,
       const ttb_real window_penalty,
       const IndxArrayT<ExecSpace>& modes,
-      const KtensorT<ExecSpace>& G,
+      const KtensorT<ExecSpace>& Gd,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams,
       SystemTimer& timer,
@@ -79,6 +79,10 @@ namespace Genten {
       const int timer_zs)
     {
       const auto X = Xd.impl();
+      const auto M = Md.impl();
+      const auto Mt = Mtd.impl();
+      const auto Mprev = Mprevd.impl();
+      const auto G = Gd.impl();
 
       using Kokkos::Experimental::create_scatter_view;
       using Kokkos::Experimental::ScatterView;
@@ -379,9 +383,9 @@ namespace Genten {
               typename ExecSpace, typename loss_type>
     void gcp_sgd_ss_grad_atomic_kernel(
       const SptensorT<ExecSpace>& Xd,
-      const KtensorT<ExecSpace>& M,
-      const KtensorT<ExecSpace>& Mt,
-      const KtensorT<ExecSpace>& Mprev,
+      const KtensorT<ExecSpace>& Md,
+      const KtensorT<ExecSpace>& Mtd,
+      const KtensorT<ExecSpace>& Mprevd,
       const loss_type& f,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
@@ -390,7 +394,7 @@ namespace Genten {
       const ArrayT<ExecSpace>& window,
       const ttb_real window_penalty,
       const IndxArrayT<ExecSpace>& modes,
-      const KtensorT<ExecSpace>& G,
+      const KtensorT<ExecSpace>& Gd,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams,
       SystemTimer& timer,
@@ -398,6 +402,10 @@ namespace Genten {
       const int timer_zs)
     {
       const auto X = Xd.impl();
+      const auto M = Md.impl();
+      const auto Mt = Mtd.impl();
+      const auto Mprev = Mprevd.impl();
+      const auto G = Gd.impl();
 
       typedef Kokkos::TeamPolicy<ExecSpace> Policy;
       typedef typename Policy::member_type TeamMember;

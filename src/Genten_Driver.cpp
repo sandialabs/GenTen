@@ -75,6 +75,80 @@
 
 namespace Genten {
 
+template <typename ExecSpace>
+void print_environment(const SptensorT<ExecSpace>& x,
+                       const DistTensorContext<ExecSpace>& dtc,
+                       std::ostream& out)
+{
+  const ttb_indx nd = x.ndims();
+  const ttb_indx nnz = dtc.globalNNZ(x);
+  const ttb_real tsz = dtc.globalNumelFloat(x);
+  const ttb_real nz = tsz - nnz;
+  const ttb_real nrm = dtc.globalNorm(x);
+  if (DistContext::rank() == 0) {
+    out << std::endl
+        << "Sparse tensor: " << std::endl << "  ";
+    for (ttb_indx i=0; i<nd; ++i) {
+      out << dtc.dims()[i] << " ";
+      if (i<nd-1)
+        out << "x ";
+    }
+    out << "(" << tsz << " total entries)" << std::endl
+        << "  " << nnz << " ("
+        << std::setprecision(1) << std::fixed << 100.0*(nnz/tsz)
+        << "%) Nonzeros" << " and "
+        << std::setprecision(0) << std::fixed << nz << " ("
+        << std::setprecision(1) << std::fixed << 100.0*(nz/tsz)
+        << "%) Zeros" << std::endl
+        << "  " << std::setprecision(1) << std::scientific << nrm
+        << " Frobenius norm" << std::endl << std::endl
+        << "Execution environment:" << std::endl
+        << "  MPI grid: ";
+    for (ttb_indx i=0; i<nd; ++i) {
+      out << dtc.pmap().gridDim(i) << " ";
+      if (i<nd-1)
+        out << "x ";
+    }
+    out << "processes (" << dtc.nprocs() << " total)" << std::endl
+        << "  Execution space: "
+        << SpaceProperties<ExecSpace>::verbose_name()
+        << std::endl;
+  }
+}
+
+template <typename ExecSpace>
+void print_environment(const TensorT<ExecSpace>& x,
+                       const DistTensorContext<ExecSpace>& dtc,
+                       std::ostream& out)
+{
+  const ttb_indx nd = x.ndims();
+  const ttb_real tsz = dtc.globalNumelFloat(x);
+  const ttb_real nrm = dtc.globalNorm(x);
+  if (DistContext::rank() == 0) {
+    out << std::endl
+        << "Dense tensor: " << std::endl << "  ";
+    for (ttb_indx i=0; i<nd; ++i) {
+      out << dtc.dims()[i] << " ";
+      if (i<nd-1)
+        out << "x ";
+    }
+    out << "(" << tsz << " total entries)" << std::endl
+        << "  " << std::setprecision(1) << std::scientific << nrm
+        << " Frobenius norm" << std::endl << std::endl
+        << "Execution environment:" << std::endl
+        << "  MPI grid: ";
+    for (ttb_indx i=0; i<nd; ++i) {
+      out << dtc.pmap().gridDim(i) << " ";
+      if (i<nd-1)
+        out << "x ";
+    }
+    out << "processes (" << dtc.nprocs() << " total)" << std::endl
+        << "  Execution space: "
+        << SpaceProperties<ExecSpace>::verbose_name()
+        << std::endl;
+  }
+}
+
 template<typename ExecSpace>
 KtensorT<ExecSpace>
 driver(const DistTensorContext<ExecSpace>& dtc,
@@ -108,7 +182,7 @@ driver(const DistTensorContext<ExecSpace>& dtc,
                                algParams.dist_guess_method);
     timer.stop(0);
     if (algParams.timings)
-      out << "Creating random initial guess took " << timer.getTotalTime(0)
+      out << "\nCreating random initial guess took " << timer.getTotalTime(0)
           << " seconds\n";
   }
 
@@ -248,17 +322,19 @@ driver(const DistTensorContext<ExecSpace>& dtc,
   }
 
 #if defined(HAVE_TEUCHOS)
-  Teuchos::StackedTimer::OutputOptions options;
-  options.output_fraction = true;
-  options.output_minmax   = true;
-  options.align_columns   = true;
-  options.print_warnings  = false;
+  if (algParams.timings) {
+    Teuchos::StackedTimer::OutputOptions options;
+    options.output_fraction = true;
+    options.output_minmax   = true;
+    options.align_columns   = true;
+    options.print_warnings  = false;
 #ifdef HAVE_DIST
-  auto comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap->gridComm()));
+    auto comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap->gridComm()));
 #else
-  auto comm = Teuchos::createSerialComm<int>();
+    auto comm = Teuchos::createSerialComm<int>();
 #endif
-  Teuchos::TimeMonitor::getStackedTimer()->report(out, comm, options);
+    Teuchos::TimeMonitor::getStackedTimer()->report(out, comm, options);
+  }
 #endif
 
   x.setProcessorMap(nullptr);
@@ -299,7 +375,7 @@ driver(const DistTensorContext<ExecSpace>& dtc,
                                algParams.dist_guess_method);
     timer.stop(0);
     if (algParams.timings)
-      out << "Creating random initial guess took " << timer.getTotalTime(0)
+      out << "\nCreating random initial guess took " << timer.getTotalTime(0)
           << " seconds\n";
   }
 
@@ -339,7 +415,9 @@ driver(const DistTensorContext<ExecSpace>& dtc,
     timer.start(2);
     if (algParams.opt_method == Genten::Opt_Method::LBFGSB) {
 #ifdef HAVE_LBFGSB
-      // Run CP-OPT using L-BFGS-B
+      // Run CP-OPT using L-BFGS-B.  It does not support MPI parallelism
+      if (dtc.nprocs() > 1)
+        Genten::error("CP-OPT using L-BFGS-B does not support MPI parallelism with > 1 processor.  Try ROL instead.");
       cp_opt_lbfgsb(x, u, algParams, history);
 #else
       Genten::error("L-BFGS-B requested but not available!");
@@ -422,17 +500,19 @@ driver(const DistTensorContext<ExecSpace>& dtc,
   }
 
 #if defined(HAVE_TEUCHOS)
-  Teuchos::StackedTimer::OutputOptions options;
-  options.output_fraction = true;
-  options.output_minmax   = true;
-  options.align_columns   = true;
-  options.print_warnings  = false;
-// #ifdef HAVE_DIST
-//   auto comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap->gridComm()));
-// #else
-  auto comm = Teuchos::createSerialComm<int>();
-// #endif
-  Teuchos::TimeMonitor::getStackedTimer()->report(out, comm, options);
+  if (algParams.timings) {
+    Teuchos::StackedTimer::OutputOptions options;
+    options.output_fraction = true;
+    options.output_minmax   = true;
+    options.align_columns   = true;
+    options.print_warnings  = false;
+#ifdef HAVE_DIST
+    auto comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap->gridComm()));
+#else
+    auto comm = Teuchos::createSerialComm<int>();
+#endif
+    Teuchos::TimeMonitor::getStackedTimer()->report(out, comm, options);
+  }
 #endif
 
   x.setProcessorMap(nullptr);
@@ -444,6 +524,16 @@ driver(const DistTensorContext<ExecSpace>& dtc,
 }
 
 #define INST_MACRO(SPACE)                                               \
+  template void print_environment<SPACE>(                               \
+    const SptensorT<SPACE>& x,                                          \
+    const DistTensorContext<SPACE>& dtc,                                \
+    std::ostream& out);                                                 \
+                                                                        \
+  template void print_environment<SPACE>(                               \
+    const TensorT<SPACE>& x,                                            \
+    const DistTensorContext<SPACE>& dtc,                                \
+    std::ostream& out);                                                 \
+                                                                        \
   template KtensorT<SPACE>                                              \
   driver<SPACE>(                                                        \
     const DistTensorContext<SPACE>& dtc,                                \

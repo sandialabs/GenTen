@@ -328,10 +328,16 @@ void Genten::export_tensor (const std::string& fName,
 }
 
 void Genten::export_tensor (std::ostream & fOut,
-                            const Genten::Tensor& X,
+                            const Genten::Tensor& XX,
                             const bool bUseScientific,
                             const int nDecimalDigits)
 {
+  Genten::Tensor X;
+  if (X.has_left_impl())
+    X = XX;
+  else
+    X = XX.switch_layout(Genten::TensorLayout::Left);
+
   // Write the data type header.
   fOut << "tensor" << std::endl;
 

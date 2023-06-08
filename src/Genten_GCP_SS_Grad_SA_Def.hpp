@@ -60,13 +60,13 @@ namespace Genten {
               typename ExecSpace, typename loss_type>
     void gcp_sgd_ss_grad_sa_kernel(
       const SptensorImpl<ExecSpace>& X,
-      const KtensorT<ExecSpace>& M,
+      const KtensorImpl<ExecSpace>& M,
       const loss_type& f,
       const ttb_indx num_samples_nonzeros,
       const ttb_indx num_samples_zeros,
       const ttb_real weight_nonzeros,
       const ttb_real weight_zeros,
-      const KtensorT<ExecSpace>& G,
+      const KtensorImpl<ExecSpace>& G,
       const Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,ExecSpace>& Gind,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams,
@@ -163,7 +163,7 @@ namespace Genten {
           } // n
         } // i
         rand_pool.free_state(gen);
-      }); 
+      });
       timer.stop(timer_nzs);
 
       timer.start(timer_zs);
@@ -238,7 +238,7 @@ namespace Genten {
     struct GCP_SS_Grad_SA {
       typedef ExecSpace exec_space;
       typedef SptensorImpl<exec_space> tensor_type;
-      typedef KtensorT<exec_space> Ktensor_type;
+      typedef KtensorImpl<exec_space> Ktensor_type;
       typedef Kokkos::View<ttb_indx**,Kokkos::LayoutLeft,ExecSpace> grad_index_type;
 
       const tensor_type X;
@@ -318,8 +318,8 @@ namespace Genten {
       const int timer_step)
     {
       // Compute sparse gradient
-      KtensorT<ExecSpace> Mt = M.getKtensor();
-      KtensorT<ExecSpace> Gt = G.getKtensor();
+      KtensorImpl<ExecSpace> Mt = M.getKtensor().impl();
+      KtensorImpl<ExecSpace> Gt = G.getKtensor().impl();
       GCP_SS_Grad_SA<ExecSpace,loss_type> kernel(
         X.impl(),Mt,f,num_samples_nonzeros,num_samples_zeros,
         weight_nonzeros,weight_zeros,Gt,Gind,rand_pool,algParams,
@@ -335,8 +335,8 @@ namespace Genten {
 
       const ttb_indx ns = Gind.extent(0);
       const ttb_indx nd = Gind.extent(1);
-      KtensorT<ExecSpace> mt = adam_m.getKtensor();
-      KtensorT<ExecSpace> vt = adam_v.getKtensor();
+      KtensorImpl<ExecSpace> mt = adam_m.getKtensor().impl();
+      KtensorImpl<ExecSpace> vt = adam_v.getKtensor().impl();
       for (ttb_indx n=0; n<nd; ++n) {
         // Keys for dimension n
         Kokkos::View<ttb_indx*,Kokkos::LayoutLeft,ExecSpace> Gind_n =
