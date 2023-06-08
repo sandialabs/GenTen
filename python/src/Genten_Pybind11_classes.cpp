@@ -479,6 +479,10 @@ void pygenten_ktensor(py::module &m){
 
     The returned numpy.ndarray aliases the internal factor matrices and thus may
     be used to change their values.)", py::arg("n"));
+    cl.def("full", [](const Genten::Ktensor& u){ return new Genten::Tensor(u); },R"(
+     Constructor a dense tensor from this Ktensor u.
+
+     The Ktensor is multiplied out to reconstruct the full, dense tensor.)");
     cl.def_property_readonly("is_values_view", [](const Genten::Ktensor& u) {
         return u.has_extra_data();
       }, R"(
@@ -607,6 +611,12 @@ void pygenten_tensor(py::module &m){
     Constructor from the given buffer such as a numpy.ndarray.
 
     Both 'F' and 'C' orderings are supported, but not a general strided ordering.)", py::arg("b"), py::arg("copy") = true);
+    cl.def(py::init([](const Genten::Ktensor& u){ return new Genten::Tensor(u); }),R"(
+     Constructor that creates a dense tensor from the supplied Ktensor u.
+
+     The Ktensor is multiplied out to reconstruct the full, dense tensor.)", py::arg("u"));
+    cl.def(py::init([](const Genten::Sptensor& X){ return new Genten::Tensor(X); }),R"(
+     Constructor that creates a dense tensor from the supplied sparse tensor X.)", py::arg("X"));
 
     cl.def_property_readonly("pmap", &Genten::Tensor::getProcessorMap, py::return_value_policy::reference, R"(
     Processor map for distributed memory parallelism.)");
@@ -797,6 +807,16 @@ void pygenten_sptensor(py::module &m){
       * subs: 2-D numpy.ndarray of signed or unsigned 32-bit or 64-bit integers
         containing coordinates of each nonzero.
       * vals: 1-D numpy.ndarray containing values of each nonzero.)", py::arg("sizes"), py::arg("subs"), py::arg("vals"), py::arg("copy") = true);
+    cl.def(py::init([](const Genten::Ktensor& u){ return new Genten::Sptensor(Genten::Tensor(u)); }),R"(
+     Constructor that creates a sparse tensor from the supplied Ktensor u.
+
+     The Ktensor is multiplied out to reconstruct a full, dense tensor, which
+     is then scanned for zeros when producing the sparse tensor.)", py::arg("u"));
+    cl.def(py::init([](const Genten::Tensor& X){ return new Genten::Sptensor(X); }),R"(
+     Constructor that creates a sparse tensor from the supplied dense tensor X.
+
+     The dense tensor is scanned for zeros which are excluded from the resulting
+     sparse tensor.)", py::arg("X"));
     cl.def_property_readonly("pmap", &Genten::Sptensor::getProcessorMap, py::return_value_policy::reference, R"(
     Processor map for distributed memory parallelism.)");
     cl.def_property_readonly("ndims", &Genten::Sptensor::ndims, R"(

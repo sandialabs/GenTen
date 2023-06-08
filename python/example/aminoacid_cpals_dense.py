@@ -12,6 +12,7 @@ u,perf = pygenten.cp_als(x, rank=8, maxiters=20, tol=1e-4, timings=True)
 
 if pygenten.proc_rank() == 0:
     pygenten.export_ktensor("aminoacid.ktn", u)
+    pygenten.export_tensor("aminoacid_reconstruction.tns", u.full())
 
     if have_matplotlib:
         it = []

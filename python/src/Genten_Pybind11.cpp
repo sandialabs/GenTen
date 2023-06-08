@@ -343,6 +343,12 @@ PYBIND11_MODULE(_pygenten, m) {
     Returns a tuple of the Ktensor solution and PerfHistory containing
     information on the performance of the algorithm.)", pybind11::arg("dtc"), pybind11::arg("X"), pybind11::arg("u0"), pybind11::arg("algParams"));
 
+    m.def("import_ktensor", [](const std::string& fName) -> Genten::Ktensor {
+        Genten::Ktensor u;
+        Genten::import_ktensor(fName, u);
+        return u;
+    }, R"(
+    Read and return a Kruskal tensor from a given file.)", pybind11::arg("file"));
     m.def("import_tensor", [](const std::string& fName) -> Genten::Tensor {
         Genten::Tensor X;
         Genten::import_tensor(fName, X);
@@ -360,6 +366,14 @@ PYBIND11_MODULE(_pygenten, m) {
         Genten::export_ktensor(fName, u);
     }, R"(
     Write a given Ktensor to the given file.)", pybind11::arg("file"), pybind11::arg("u"));
+    m.def("export_tensor", [](const std::string& fName, const Genten::Tensor& X) -> void {
+        Genten::export_tensor(fName, X);
+    }, R"(
+    Write a given Tensor to the given file.)", pybind11::arg("file"), pybind11::arg("X"));
+    m.def("export_sptensor", [](const std::string& fName, const Genten::Sptensor& X) -> void {
+        Genten::export_sptensor(fName, X);
+    }, R"(
+    Write a given Tensor to the given file.)", pybind11::arg("file"), pybind11::arg("X"));
 
     m.def("proc_rank", []() -> int {
         gt_assert(Genten::DistContext::initialized());
