@@ -64,6 +64,7 @@ OPTION(ENABLE_TRILINOS "Enable use of Trilinos packages" OFF)
 OPTION(ENABLE_TEUCHOS "Enable Teuchos utilities" ON)
 OPTION(ENABLE_TPETRA "Enable Tpetra distributed parallelism" ON)
 OPTION(ENABLE_ROL "Enable ROL optimization package" ON)
+OPTION(ENABLE_CMAKE_TIMERS "Enable timers for each compile/link step" OFF)
 
 # Warn about some deprecated variables
 IF(DEFINED KOKKOS_PATH)
@@ -148,6 +149,16 @@ IF(ENABLE_TRILINOS)
     SET(HAVE_TRILINOS_KOKKOS ON)
   ELSE()
     MESSAGE(STATUS "  Looking for Kokkos: NOT Found")
+  ENDIF()
+
+  # Look for Kokkos-Kernels (optional)
+  LIST(FIND Trilinos_Target_List KokkosKernels::all_libs KokkosKernels_List_ID)
+  IF(KokkosKernels_List_ID GREATER -1)
+    MESSAGE(STATUS "  Looking for KokkosKernels: Found")
+    SET(HAVE_KOKKOS_KERNELS ON)
+    SET(HAVE_TRILINOS_KOKKOSKERNELS ON)
+  ELSE()
+    MESSAGE(STATUS "  Looking for KokkosKernels: NOT Found")
   ENDIF()
 
   # Look for Teuchos (optional)
@@ -240,7 +251,7 @@ ENDIF()
 
 # We support 3 options for Kokkos:
 #  - Inline build of bundled sources in tpls/kokkos.
-#  - Linking to external library determined by KOKKOS_ROOT.
+#  - Linking to external library determined by Kokkos_ROOT.
 #  - Linking to external library through Trilinos.
 # If Trilinos is enabled and it enables Kokkos, we must use it
 IF(Kokkos_ROOT OR HAVE_TRILINOS_KOKKOS)
@@ -249,6 +260,29 @@ ELSE()
   SET(KOKKOS_INLINE_BUILD ON)
 ENDIF()
 MESSAGE(STATUS "Inline Kokkos build is ${KOKKOS_INLINE_BUILD}")
+
+# We support 3 options for KokkosKernels:
+#  - Inline build of bundled sources in tpls/kokkos-kernels.
+#  - Linking to external library determined by KokkosKernels_ROOT.
+#  - Linking to external library through Trilinos.
+# If Trilinos is enabled and it enables KokkosKernels, we must use it
+IF(KokkosKernels_ROOT OR HAVE_TRILINOS_KOKKOSKERNELS)
+  SET(KOKKOSKERNELS_INLINE_BUILD OFF)
+ELSE()
+  SET(KOKKOSKERNELS_INLINE_BUILD ON)
+ENDIF()
+MESSAGE(STATUS "Inline Kokkos-Kernels build is ${KOKKOSKERNELS_INLINE_BUILD}")
+
+# Make sure kokkos and kokkos-kernels builds are consistent
+# IF(KOKKOS_INLINE_BUILD OR KOKKOSKERNELS_INLINE_BUILD)
+#   IF(NOT (KOKKOS_INLINE_BUILD EQUAL KOKKOSKERNELS_INLINE_BUILD))
+#     MESSAGE(FATAL_ERROR "Both Kokkos and KokkosKernels must use the inline build if either does!")
+#   ENDIF()
+# ELSEIF(HAVE_TRILINOS_KOKKOS OR HAVE_TRILINOS_KOKKOSKERNELS)
+#   IF(NOT (HAVE_TRILINOS_KOKKOS EQUAL HAVE_TRILINOS_KOKKOSKERNELS))
+#     MESSAGE(FATAL_ERROR "Both Kokkos and KokkosKernels must use the Trilinos build if either does!")
+#   ENDIF()
+# ENDIF()
 
 #---- Declaring the project name will define ${Genten_SOURCE_DIR} to be
 #---- the path to this source file, and ${Genten_BINARY_DIR} to be the path
@@ -489,6 +523,41 @@ IF(ENABLE_GCP)
   SET(HAVE_GCP ON)
 ENDIF()
 
+# If we are doing an inline build of Kokkos-Kernels
+IF(KOKKOSKERNELS_INLINE_BUILD)
+
+  # Configure kokkos-kernels
+  SET(KokkosKernels_ADD_DEFAULT_ETI OFF CACHE BOOL "")
+  #SET(KokkosKernels_INST_LAYOUTLEFT ON CACHE BOOL "")
+  #SET(KokkosKernels_INST_LAYOUTRIGHT ON CACHE BOOL "")
+  SET(KokkosKernels_ENABLE_ALL_COMPONENTS OFF CACHE BOOL "")
+  SET(KokkosKernels_ENABLE_COMPONENT_BLAS ON CACHE BOOL "")
+  SET(KokkosKernels_ENABLE_COMPONENT_BATCHED ON CACHE BOOL "")
+  IF(LAPACK_FOUND)
+    SET(KokkosKernels_ENABLE_TPL_BLAS ON CACHE BOOL "")
+  ENDIF()
+  IF(Kokkos_ENABLE_CUDA OR GENTEN_ENABLE_SYCL_FOR_CUDA)
+    IF(ENABLE_CUBLAS)
+      SET(KokkosKernels_ENABLE_TPL_CUBLAS ON CACHE BOOL "")
+    ENDIF()
+  ENDIF()
+  IF(Kokkos_ENABLE_HIP)
+    IF(ENABLE_ROCBLAS)
+      SET(KokkosKernels_ENABLE_TPL_ROCBLAS ON CACHE BOOL "")
+    ENDIF()
+  ENDIF()
+  ADD_SUBDIRECTORY(tpls/kokkos-kernels)
+  SET(HAVE_KOKKOS_KERNELS ON)
+
+ELSEIF(NOT HAVE_TRILINOS_KOKKOSKERNELS)
+
+  # Link against installed KokkosKernels
+  FIND_PACKAGE(KokkosKernels REQUIRED)
+  MESSAGE("-- Genten:  Using KokkosKernels:  ${KokkosKernels_CONFIG}")
+  SET(HAVE_KOKKOS_KERNELS ON)
+
+ENDIF()
+
 # Strip leading/trailing whitespace from GENTEN_LIBS
 STRING(STRIP "${GENTEN_LIBS}" GENTEN_LIBS)
 
@@ -539,6 +608,7 @@ INCLUDE_DIRECTORIES (
   ${Genten_SOURCE_DIR}/tpls/json/single_include/nlohmann/
   ${Genten_SOURCE_DIR}/tpls/json-validator/src/
   ${Genten_SOURCE_DIR}/tpls/json-validator/src/nlohmann/
+  ${Genten_SOURCE_DIR}/joint_moments/
   )
 FILE (GLOB genten_headers
   ${Genten_SOURCE_DIR}/src/*.h
@@ -548,6 +618,7 @@ FILE (GLOB genten_headers
   ${Genten_SOURCE_DIR}/src/rol/*.hpp
   ${Genten_SOURCE_DIR}/src/lbfgsb/*.hpp
   ${Genten_SOURCE_DIR}/tpls/lbfgsb/*.h
+  ${Genten_SOURCE_DIR}/joint_moments/Genten_HigherMoments.hpp
   )
 INSTALL (
   FILES ${genten_headers}
@@ -646,6 +717,12 @@ ENDIF()
 #---- Genten Library
 #------------------------------------------------------------
 
+# Add timers for each compile/link
+IF(ENABLE_CMAKE_TIMERS)
+  SET_PROPERTY(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CMAKE_COMMAND} -E time")
+  SET_PROPERTY(GLOBAL PROPERTY RULE_LAUNCH_LINK "${CMAKE_COMMAND} -E time")
+ENDIF()
+
 #---- List the source files to be built.
 SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_DistContext.cpp
@@ -672,6 +749,7 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_Sptensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Tensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_HessVec.cpp
+  ${Genten_SOURCE_DIR}/joint_moments/Genten_HigherMoments.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
   ${Genten_SOURCE_DIR}/src/Genten_CublasHandle.cpp
   ${Genten_SOURCE_DIR}/src/Genten_CusolverHandle.cpp
@@ -698,10 +776,14 @@ ENDIF()
 
 IF (ENABLE_GCP)
   SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SamplingKernels.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD_SA.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Gaussian.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Poisson.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Rayleigh.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Gamma.cpp
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Bernoulli.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_Gaussian.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_Poisson.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_Rayleigh.cpp
@@ -732,11 +814,15 @@ ENDIF()
 
 #---- Tell CMake to build the library.
 ADD_LIBRARY (gentenlib ${Genten_SOURCE_LIST})
+
 IF(HAVE_TRILINOS)
   TARGET_LINK_LIBRARIES(gentenlib Trilinos::all_libs)
 ENDIF()
 IF(NOT HAVE_TRILINOS_KOKKOS)
   TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkos)
+ENDIF()
+IF(NOT HAVE_TRILINOS_KOKKOSKERNELS)
+  TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkoskernels)
 ENDIF()
 TARGET_LINK_LIBRARIES(gentenlib nlohmann_json_schema_validator)
 TARGET_LINK_LIBRARIES(gentenlib nlohmann_json::nlohmann_json)

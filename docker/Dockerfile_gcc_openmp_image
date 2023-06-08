@@ -22,6 +22,7 @@ RUN \
     libomp-dev \
     gcc \
     g++ \
+    gfortran \
     libopenmpi-dev \
     && \
   rm -rf /var/lib/apt/lists/*
