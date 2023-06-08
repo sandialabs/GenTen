@@ -1244,8 +1244,6 @@ distributeTensor(const ptree& tree,
   std::string inputfilename = "";
   ttb_indx index_base = 0;
   ttb_bool gz = false;
-  ttb_bool sparse = true;
-  std::string format = "sparse";
   auto tensor_input_o = tree.get_child_optional("tensor");
   if (tensor_input_o) {
     auto& tensor_input = *tensor_input_o;
