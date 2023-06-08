@@ -230,6 +230,12 @@ protected:
     return src_dist_fac_mat->mat.nCols() == mat.nCols();
   }
 
+  // Bring in DistObject overloaded implementations to prevent warnings about
+  // partially overloaded functions
+  using dist_object_type::copyAndPermute;
+  using dist_object_type::packAndPrepare;
+  using dist_object_type::unpackAndCombine;
+
   virtual void
   copyAndPermute(
     const Tpetra::SrcDistObject& src,

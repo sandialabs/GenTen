@@ -511,6 +511,7 @@ public:
 
     auto row_n = rows[n];
     auto val_n = vals[n];
+    auto& u_n = u[n];
 
     // Gather contributions from each processor
     if (pmap != nullptr) {
@@ -524,7 +525,7 @@ public:
     // In the future, sort vals based on increasing indices in rows and do
     // a thread-local accumulation, which will drastically reduce atomic
     // throughput requirements.  Also use TinyVec.
-    u[n] = ttb_real(0.0);
+    u_n = ttb_real(0.0);
     const ttb_indx nrow = row_n.extent(0);
     const ttb_indx ncom = nc;
     typedef SpaceProperties<ExecSpace> space_prop;
@@ -535,7 +536,7 @@ public:
       {
         auto row = row_n[i];
         for (ttb_indx j=0; j<ncom; ++j) {
-          u[n].entry(row,j) += val_n(i,j);
+          u_n.entry(row,j) += val_n(i,j);
         }
       });
     }
@@ -545,7 +546,7 @@ public:
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         for (ttb_indx j=0; j<ncom; ++j) {
-          Kokkos::atomic_add(&(u[n].entry(row_n[i],j)), val_n(i,j));
+          Kokkos::atomic_add(&(u_n.entry(row_n[i],j)), val_n(i,j));
         }
       });
     }
@@ -569,6 +570,7 @@ public:
 
     auto row_n = rows[n];
     auto val_n = vals[n];
+    auto& u_n = u[n];
 
     // Gather contributions from each processor
     if (pmap != nullptr) {
@@ -583,7 +585,7 @@ public:
     // In the future, sort vals based on increasing indices in rows and do
     // a thread-local accumulation, which will drastically reduce atomic
     // throughput requirements.  Also use TinyVec.
-    u[n] = ttb_real(0.0);
+    u_n = ttb_real(0.0);
     const ttb_indx nrow = row_n.extent(0);
     const ttb_indx ncom = nc;
     typedef SpaceProperties<ExecSpace> space_prop;
@@ -594,7 +596,7 @@ public:
       {
         auto row = row_n[i];
         for (ttb_indx j=0; j<ncom; ++j) {
-          u[n].entry(row,j) += val_n(i,j);
+          u_n.entry(row,j) += val_n(i,j);
         }
       });
     }
@@ -604,7 +606,7 @@ public:
                            KOKKOS_LAMBDA(const ttb_indx i)
       {
         for (ttb_indx j=0; j<ncom; ++j) {
-          Kokkos::atomic_add(&(u[n].entry(row_n[i],j)), val_n(i,j));
+          Kokkos::atomic_add(&(u_n.entry(row_n[i],j)), val_n(i,j));
         }
       });
     }
