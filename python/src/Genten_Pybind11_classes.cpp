@@ -409,7 +409,7 @@ void pygenten_ktensor(py::module &m){
             if (mat_info.ndim != 2)
               throw std::runtime_error("Incompatible buffer dimension!");
             const ttb_indx nrow = mat_info.shape[0];
-            if (mat_info.shape[1] != nc)
+            if (static_cast<ttb_indx>(mat_info.shape[1]) != nc)
               throw std::runtime_error("Invalid number of columns!");
             const ttb_indx s0 = mat_info.strides[0]/sizeof(ttb_real);
             const ttb_indx s1 = mat_info.strides[1]/sizeof(ttb_real);
@@ -527,7 +527,7 @@ void pygenten_ktensor(py::module &m){
         if (w_info.ndim != 1)
           throw std::runtime_error("Incompatible buffer dimension!");
         const ttb_indx nc = u.ncomponents();
-        if (nc != w_info.shape[0])
+        if (nc != static_cast<ttb_indx>(w_info.shape[0]))
           throw std::runtime_error("Incompatible buffer length!");
         Genten::Array weights(nc, static_cast<ttb_real *>(w_info.ptr), true);
         deep_copy(u.weights(), weights);
@@ -703,7 +703,7 @@ void pygenten_sptensor(py::module &m){
           py::buffer_info subs_info = subs.request();
           if (subs_info.ndim != 2)
             throw std::runtime_error("Incompatible subs dimension!");
-          if (subs_info.shape[1] != nd)
+          if (static_cast<ttb_indx>(subs_info.shape[1]) != nd)
             throw std::runtime_error("Invalid number of subscript columns!");
           const ttb_indx nnz = subs_info.shape[0];
           typename Genten::Sptensor::subs_view_type s;
@@ -771,7 +771,7 @@ void pygenten_sptensor(py::module &m){
             throw std::runtime_error("Incompatible value format:  expected a ttb_real array!");
           if (vals_info.ndim != 1 && vals_info.ndim != 2)
             throw std::runtime_error("Incompatible vals dimension!");
-          if (vals_info.shape[0] != nnz)
+          if (static_cast<ttb_indx>(vals_info.shape[0]) != nnz)
             throw std::runtime_error("Invalid number of value rows!");
           if (vals_info.ndim == 2 && vals_info.shape[1] != 1)
             throw std::runtime_error("Invalid number of value columns!");
@@ -875,7 +875,7 @@ void pygenten_sptensor(py::module &m){
           py::buffer b = X.get_extra_data<py::buffer>();
           py::buffer_info info = b.request();
           if (info.format == py::format_descriptor<ttb_indx>::format() ||
-              info.format == "L" && sizeof(unsigned long) == sizeof(ttb_indx))
+              (info.format == "L" && sizeof(unsigned long) == sizeof(ttb_indx)))
             return true;
         }
         return false;

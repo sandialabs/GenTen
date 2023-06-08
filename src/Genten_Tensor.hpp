@@ -157,7 +157,7 @@ public:
                           const IndxArrayT<ExecSpace>& siz)
   {
     const ttb_indx nd = siz.size();
-    for (int i=0; i<nd; ++i)
+    for (ttb_indx i=0; i<nd; ++i)
       assert(sub[i] < siz[i]);
 
     ttb_indx idx = 0;
@@ -178,7 +178,7 @@ public:
   {
     const ttb_indx nd = siz.size();
     assert(lower.size() == nd);
-    for (int i=0; i<nd; ++i) {
+    for (ttb_indx i=0; i<nd; ++i) {
       assert(sub[i] >= lower[i]);
       assert(sub[i]-lower[i] < siz[i]);
     }
