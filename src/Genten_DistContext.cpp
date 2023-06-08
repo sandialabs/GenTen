@@ -152,7 +152,7 @@ bool InitializeGenten(int *argc, char ***argv) {
       if (std::string(real_argv[i]) == "--dump") {
         if(dc.input_.count("dump") == 0){
           dc.input_.add("dump", true);
-        } 
+        }
       }
     }
 
@@ -221,7 +221,7 @@ bool InitializeGenten(int *argc, char ***argv) {
 
 bool InitializeGenten() {
   if (!Kokkos::is_initialized()) {
-    Kokkos::InitArguments args;
+    Kokkos::InitializationSettings args;
     Kokkos::initialize(args);
   }
   return true;
