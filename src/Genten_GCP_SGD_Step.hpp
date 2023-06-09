@@ -96,7 +96,7 @@ namespace Genten {
       KOKKOS_INLINE_FUNCTION
       void update_u_async(const unsigned dim, const ttb_indx row,
                           const unsigned col, const ttb_real delta,
-                          const KtensorT<ExecSpace>& u) const
+                          const KtensorImpl<ExecSpace>& u) const
       {
         // Without bounds, do simple atomic update
         if (!LossFunction::has_lower_bound() &&
@@ -205,7 +205,7 @@ namespace Genten {
       KOKKOS_INLINE_FUNCTION
       void eval_async(const unsigned dim, const ttb_indx row,
                       const unsigned col, const ttb_real g,
-                      const KtensorT<ExecSpace>& u) const
+                      const KtensorImpl<ExecSpace>& u) const
       {
         // Update u incorporating bounds
         GCP_SGD_Step<ExecSpace,LossFunction>::update_u_async(
@@ -224,9 +224,9 @@ namespace Genten {
       typedef typename BaseType::VectorType VectorType;
 
       SGDMomentumStep(AlgParams const& algParams, VectorType const& u):
-        v_scale_(0.9), 
+        v_scale_(0.9),
         v_(u.clone()),
-        vt_(v_.getKtensor())
+        vt_(v_.getKtensor().impl())
       {
         v_.zero();
       }
@@ -283,7 +283,7 @@ namespace Genten {
       KOKKOS_INLINE_FUNCTION
       void eval_async(const unsigned dim, const ttb_indx row,
                       const unsigned col, const ttb_real g,
-                      const KtensorT<ExecSpace>& u) const
+                      const KtensorImpl<ExecSpace>& u) const
       {
         Genten::error("SGDMomentumStep is not tested in aysnc code.");
       }
@@ -292,7 +292,7 @@ namespace Genten {
       ttb_real v_scale_;
       ttb_real step_;
       VectorType v_;
-      KtensorT<ExecSpace> vt_;
+      KtensorImpl<ExecSpace> vt_;
     };
 
     template <typename ExecSpace, typename LossFunction>
@@ -305,7 +305,7 @@ namespace Genten {
         v_scale_(0.9), 
         max_iters_(algParams.maxiters),
         v_(u.clone()),
-        vt_(v_.getKtensor())
+        vt_(v_.getKtensor().impl())
       {
         v_.zero();
       }
@@ -371,7 +371,7 @@ namespace Genten {
       KOKKOS_INLINE_FUNCTION
       void eval_async(const unsigned dim, const ttb_indx row,
                       const unsigned col, const ttb_real g,
-                      const KtensorT<ExecSpace>& u) const
+                      const KtensorImpl<ExecSpace>& u) const
       {
         Genten::error("SGDMomentumStep is not tested in aysnc code.");
       }
@@ -382,7 +382,7 @@ namespace Genten {
       std::int32_t current_iter = 0;
       ttb_real step_;
       VectorType v_;
-      KtensorT<ExecSpace> vt_;
+      KtensorImpl<ExecSpace> vt_;
     };
 
 
@@ -428,8 +428,8 @@ namespace Genten {
         v(u.clone()),
         m_prev(u.clone()),
         v_prev(u.clone()),
-        mt(m.getKtensor()),
-        vt(v.getKtensor()),
+        mt(m.getKtensor().impl()),
+        vt(v.getKtensor().impl()),
         total_samples("total_samples")
       {
         m.zero();
@@ -528,7 +528,7 @@ namespace Genten {
       KOKKOS_INLINE_FUNCTION
       void eval_async(const unsigned dim, const ttb_indx row,
                       const unsigned col, const ttb_real g,
-                      const KtensorT<ExecSpace>& u) const
+                      const KtensorImpl<ExecSpace>& u) const
       {
         using std::sqrt;
         using std::pow;
@@ -584,8 +584,8 @@ namespace Genten {
       VectorType v;
       VectorType m_prev;
       VectorType v_prev;
-      KtensorT<ExecSpace> mt;
-      KtensorT<ExecSpace> vt;
+      KtensorImpl<ExecSpace> mt;
+      KtensorImpl<ExecSpace> vt;
 
       // Specifically using signed integer here to allow for negative
       Kokkos::View<ptrdiff_t,ExecSpace> total_samples;
@@ -620,9 +620,9 @@ namespace Genten {
         m_prev(u.clone()),
         v_prev(u.clone()),
         t_prev(u.clone()),
-        mt(m.getKtensor()),
-        vt(v.getKtensor()),
-        tt(t.getKtensor())
+        mt(m.getKtensor().impl()),
+        vt(v.getKtensor().impl()),
+        tt(t.getKtensor().impl())
       {
         m.zero();
         v.zero();
@@ -713,7 +713,7 @@ namespace Genten {
       KOKKOS_INLINE_FUNCTION
       void eval_async(const unsigned dim, const ttb_indx row,
                       const unsigned col, const ttb_real g,
-                      const KtensorT<ExecSpace>& u) const
+                      const KtensorImpl<ExecSpace>& u) const
       {
 #if defined(__SYCL_DEVICE_ONLY__)
         using sycl::pow;
@@ -771,9 +771,9 @@ namespace Genten {
       VectorType m_prev;
       VectorType v_prev;
       VectorType t_prev;
-      KtensorT<ExecSpace> mt;
-      KtensorT<ExecSpace> vt;
-      KtensorT<ExecSpace> tt;
+      KtensorImpl<ExecSpace> mt;
+      KtensorImpl<ExecSpace> vt;
+      KtensorImpl<ExecSpace> tt;
     };
 
 #endif
@@ -800,9 +800,9 @@ namespace Genten {
         m_prev(u.clone()),
         v_prev(u.clone()),
         w_prev(u.clone()),
-        mt(m.getKtensor()),
-        vt(v.getKtensor()),
-        wt(w.getKtensor()),
+        mt(m.getKtensor().impl()),
+        vt(v.getKtensor().impl()),
+        wt(w.getKtensor().impl()),
         total_samples("total_samples")
       {
         m.zero();
@@ -909,7 +909,7 @@ namespace Genten {
       KOKKOS_INLINE_FUNCTION
       void eval_async(const unsigned dim, const ttb_indx row,
                       const unsigned col, const ttb_real g,
-                      const KtensorT<ExecSpace>& u) const
+                      const KtensorImpl<ExecSpace>& u) const
       {
 #if defined(__SYCL_DEVICE_ONLY__)
         using cl::sycl::pow;
@@ -971,9 +971,9 @@ namespace Genten {
       VectorType m_prev;
       VectorType v_prev;
       VectorType w_prev;
-      KtensorT<ExecSpace> mt;
-      KtensorT<ExecSpace> vt;
-      KtensorT<ExecSpace> wt;
+      KtensorImpl<ExecSpace> mt;
+      KtensorImpl<ExecSpace> vt;
+      KtensorImpl<ExecSpace> wt;
 
       // Specifically using signed integer here to allow for negative
       Kokkos::View<ptrdiff_t,ExecSpace> total_samples;
@@ -990,7 +990,7 @@ namespace Genten {
         eps(algParams.adam_eps),
         s(u.clone()),
         s_prev(u.clone()),
-        st(s.getKtensor())
+        st(s.getKtensor().impl())
       {
         s.zero();
         s_prev.zero();
@@ -1055,7 +1055,7 @@ namespace Genten {
       KOKKOS_INLINE_FUNCTION
       void eval_async(const unsigned dim, const ttb_indx row,
                       const unsigned col, const ttb_real g,
-                      const KtensorT<ExecSpace>& u) const
+                      const KtensorImpl<ExecSpace>& u) const
       {
         using std::sqrt;
 
@@ -1076,7 +1076,7 @@ namespace Genten {
 
       VectorType s;
       VectorType s_prev;
-      KtensorT<ExecSpace> st;
+      KtensorImpl<ExecSpace> st;
     };
 
     template <typename ExecSpace, typename LossFunction>

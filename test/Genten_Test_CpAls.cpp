@@ -196,7 +196,8 @@ static void evaluateResult(const ttb_indx itersCompleted,
  */
 
 template <typename exec_space>
-void RunCpAlsTest(MTTKRP_Method::type mttkrp_method, const std::string &label) {
+void RunCpAlsTestSparse(MTTKRP_Method::type mttkrp_method,
+                        const std::string &label) {
   using host_exec_space = DefaultHostExecutionSpace;
 
   IndxArray dims(3);
@@ -378,7 +379,7 @@ void RunCpAlsTest(MTTKRP_Method::type mttkrp_method, const std::string &label) {
   }
 }
 
-TYPED_TEST(TestCpAlsT, CpAls) {
+TYPED_TEST(TestCpAlsT, CpAlsSparse) {
   using exec_space = typename TestFixture::exec_space;
 
   struct TestCase {
@@ -398,9 +399,134 @@ TYPED_TEST(TestCpAlsT, CpAls) {
 
   for (const auto &tc : test_cases) {
     if (tc.run) {
-      RunCpAlsTest<exec_space>(tc.mttkrp_method, tc.label);
+      RunCpAlsTestSparse<exec_space>(tc.mttkrp_method, tc.label);
     }
   }
+}
+
+template <typename exec_space>
+void RunCpAlsTestDense(const TensorLayout& layout, const std::string &label) {
+  using host_exec_space = DefaultHostExecutionSpace;
+
+  IndxArray dims = {2, 3, 4};
+  TensorT<host_exec_space> X(dims);
+  X(0, 0, 0) = 2.0;
+  X(1, 0, 0) = 1.0;
+  X(0, 1, 0) = 1.0;
+  X(1, 1, 0) = 1.0;
+  X(0, 2, 0) = 1.0;
+  X(0, 0, 1) = 1.0;
+  X(0, 2, 1) = 1.0;
+  X(0, 0, 3) = 1.0;
+  X(1, 0, 3) = 1.0;
+  X(0, 1, 3) = 1.0;
+  X(1, 1, 3) = 1.0;
+
+  Genten::DistTensorContext<exec_space> dtc;
+  SptensorT<exec_space> X_dev = dtc.distributeTensor(X);
+  const ProcessorMap *pmap = dtc.pmap_ptr().get();
+  X_dev.setProcessorMap(pmap);
+
+  INFO_MSG("Creating a ktensor with initial guess of lin indep basis vectors");
+  ttb_indx nNumComponents = 2;
+  Ktensor initialBasis(nNumComponents, dims.size(), dims);
+  initialBasis.setWeights(1.0);
+  initialBasis.setMatrices(0.0);
+  initialBasis[0].entry(0, 0) = 0.8;
+  initialBasis[0].entry(1, 0) = 0.2;
+  initialBasis[0].entry(0, 1) = 0.5;
+  initialBasis[0].entry(1, 1) = 0.5;
+  initialBasis[1].entry(0, 0) = 0.5;
+  initialBasis[1].entry(1, 0) = 0.1;
+  initialBasis[1].entry(2, 0) = 0.5;
+  initialBasis[1].entry(0, 1) = 0.5;
+  initialBasis[1].entry(1, 1) = 0.5;
+  initialBasis[1].entry(2, 1) = 0.1;
+  initialBasis[2].entry(0, 0) = 0.7;
+  initialBasis[2].entry(1, 0) = 0.7;
+  initialBasis[2].entry(2, 0) = 0.1;
+  initialBasis[2].entry(3, 0) = 0.1;
+  initialBasis[2].entry(0, 1) = 0.7;
+  initialBasis[2].entry(1, 1) = 0.1;
+  initialBasis[2].entry(2, 1) = 0.1;
+  initialBasis[2].entry(3, 1) = 0.7;
+  initialBasis.weights(0) = 2.0; // Test with weights different from one.
+
+  KtensorT<exec_space> initialBasis_dev = dtc.exportFromRoot(initialBasis);
+
+  // Factorize.
+  AlgParams algParams;
+  algParams.rank = nNumComponents;
+  algParams.tol = 1.0e-6;
+  algParams.maxiters = 100;
+  algParams.maxsecs = -1.0;
+  algParams.printitn = 1;
+  algParams.mttkrp_method = MTTKRP_Method::type::Atomic;
+  ttb_indx itersCompleted;
+  ttb_real resNorm;
+
+  std::ostream& out = pmap->gridRank() == 0 ? std::cout : Genten::bhcout;
+
+  {
+    KtensorT<exec_space> result_dev =
+        create_mirror_view(exec_space(), initialBasis_dev);
+
+    EXPECT_NO_THROW({
+      // Request performance information on every 3rd iteration.
+      // Allocation adds two more for start and stop states of the algorithm.
+      PerfHistory perfInfo;
+
+      deep_copy(result_dev, initialBasis_dev);
+      result_dev.setProcessorMap(pmap);
+
+      cpals_core(X_dev, result_dev, algParams, itersCompleted, resNorm, 3,
+                 perfInfo, out);
+      // Check performance information.
+      for (ttb_indx i = 0; i < perfInfo.size(); i++) {
+        if ((perfInfo[i].iteration > 0)) {
+          ASSERT_GE(perfInfo[i].fit, 0.99);
+          ASSERT_LE(perfInfo[i].fit, 1.00);
+          ASSERT_LE(perfInfo[i].residual, 0.03);
+          ASSERT_GE(perfInfo[i].cum_time, 0.0);
+        }
+      }
+
+      INFO_MSG("Performance info from cpals_core is reasonable.");
+    });
+
+    Ktensor result = dtc.template importToRoot<host_exec_space>(result_dev);
+    if (dtc.gridRank() == 0) {
+      evaluateResult(itersCompleted, algParams.tol, result);
+    }
+  }
+
+  {
+    // Test factorization from a bad initial guess.
+    INFO_MSG("Creating a ktensor with initial guess all zero");
+
+    Ktensor initialZero(nNumComponents, dims.size(), dims);
+    initialZero.setWeights(0.0);
+    initialZero.setMatrices(0.0);
+
+    KtensorT<exec_space> initialZero_dev =
+      dtc.exportFromRoot(initialZero);
+    KtensorT<exec_space> result_dev =
+        create_mirror_view(exec_space(), initialZero_dev);
+    deep_copy(result_dev, initialZero_dev);
+    result_dev.setProcessorMap(pmap);
+
+    INFO_MSG("Checking if linear solver detects singular guess");
+
+    PerfHistory history;
+    EXPECT_ANY_THROW(cpals_core(X_dev, result_dev, algParams, itersCompleted,
+                                resNorm, 0, history));
+  }
+}
+
+TYPED_TEST(TestCpAlsT, CpAlsDense) {
+  using exec_space = typename TestFixture::exec_space;
+  RunCpAlsTestDense<exec_space>(TensorLayout::Left, "LayoutLeft");
+  RunCpAlsTestDense<exec_space>(TensorLayout::Right, "Layoutright");
 }
 
 } // namespace UnitTests

@@ -68,24 +68,24 @@ namespace Impl {
 template <int Dupl, int Cont, typename ExecSpace>
 struct HessVec_Kernel {
   const SptensorImpl<ExecSpace> XX;
-  const KtensorT<ExecSpace> aa;
-  const KtensorT<ExecSpace> vv;
-  const KtensorT<ExecSpace> uu;
+  const KtensorImpl<ExecSpace> aa;
+  const KtensorImpl<ExecSpace> vv;
+  const KtensorImpl<ExecSpace> uu;
   const AlgParams algParams;
 
   HessVec_Kernel(const SptensorImpl<ExecSpace>& X_,
-                 const KtensorT<ExecSpace>& a_,
-                 const KtensorT<ExecSpace>& v_,
-                 const KtensorT<ExecSpace>& u_,
+                 const KtensorImpl<ExecSpace>& a_,
+                 const KtensorImpl<ExecSpace>& v_,
+                 const KtensorImpl<ExecSpace>& u_,
                  const AlgParams& algParams_) :
     XX(X_), aa(a_), vv(v_), uu(u_), algParams(algParams_) {}
 
   template <unsigned FBS, unsigned VS>
   void run() const {
     const SptensorImpl<ExecSpace> X = XX;
-    const KtensorT<ExecSpace> a = aa;
-    const KtensorT<ExecSpace> v = vv;
-    const KtensorT<ExecSpace> u = uu;
+    const KtensorImpl<ExecSpace> a = aa;
+    const KtensorImpl<ExecSpace> v = vv;
+    const KtensorImpl<ExecSpace> u = uu;
 
     u.setMatrices(0.0);
 
@@ -207,24 +207,24 @@ struct HessVec_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
   typedef Kokkos_GPU_Space ExecSpace;
 
   const SptensorImpl<ExecSpace> XX;
-  const KtensorT<ExecSpace> aa;
-  const KtensorT<ExecSpace> vv;
-  const KtensorT<ExecSpace> uu;
+  const KtensorImpl<ExecSpace> aa;
+  const KtensorImpl<ExecSpace> vv;
+  const KtensorImpl<ExecSpace> uu;
   const AlgParams algParams;
 
   HessVec_Kernel(const SptensorImpl<ExecSpace>& X_,
-                 const KtensorT<ExecSpace>& a_,
-                 const KtensorT<ExecSpace>& v_,
-                 const KtensorT<ExecSpace>& u_,
+                 const KtensorImpl<ExecSpace>& a_,
+                 const KtensorImpl<ExecSpace>& v_,
+                 const KtensorImpl<ExecSpace>& u_,
                  const AlgParams& algParams_) :
     XX(X_), aa(a_), vv(v_), uu(u_), algParams(algParams_) {}
 
   template <unsigned FBS, unsigned VS>
   void run() const {
     const SptensorImpl<ExecSpace> X = XX;
-    const KtensorT<ExecSpace> a = aa;
-    const KtensorT<ExecSpace> v = vv;
-    const KtensorT<ExecSpace> u = uu;
+    const KtensorImpl<ExecSpace> a = aa;
+    const KtensorImpl<ExecSpace> v = vv;
+    const KtensorImpl<ExecSpace> u = uu;
 
     if (algParams.mttkrp_all_method != MTTKRP_All_Method::Atomic)
       Genten::error("MTTKRP-All method must be atomic on Cuda, HIP or SYCL!");
@@ -305,24 +305,24 @@ struct HessVec_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
 template <typename ExecSpace>
 struct HessVec_PermKernel {
   const SptensorImpl<ExecSpace> XX;
-  const KtensorT<ExecSpace> aa;
-  const KtensorT<ExecSpace> vv;
-  const KtensorT<ExecSpace> uu;
+  const KtensorImpl<ExecSpace> aa;
+  const KtensorImpl<ExecSpace> vv;
+  const KtensorImpl<ExecSpace> uu;
   const AlgParams algParams;
 
   HessVec_PermKernel(const SptensorImpl<ExecSpace>& X_,
-                     const KtensorT<ExecSpace>& a_,
-                     const KtensorT<ExecSpace>& v_,
-                     const KtensorT<ExecSpace>& u_,
+                     const KtensorImpl<ExecSpace>& a_,
+                     const KtensorImpl<ExecSpace>& v_,
+                     const KtensorImpl<ExecSpace>& u_,
                      const AlgParams& algParams_) :
     XX(X_), aa(a_), vv(v_), uu(u_), algParams(algParams_) {}
 
   template <unsigned FBS, unsigned VS>
   void run() const {
     const SptensorImpl<ExecSpace> X = XX;
-    const KtensorT<ExecSpace> a = aa;
-    const KtensorT<ExecSpace> v = vv;
-    const KtensorT<ExecSpace> u = uu;
+    const KtensorImpl<ExecSpace> a = aa;
+    const KtensorImpl<ExecSpace> v = vv;
+    const KtensorImpl<ExecSpace> u = uu;
 
     u.setMatrices(0.0);
 
@@ -428,27 +428,27 @@ struct HessVec_PermKernel {
 
 // This is a very poor implementation of hess_vec for dense tensors, using
 // the same (bad) parallelism strategy as for dense MTTKRP
-template <typename ExecSpace>
+template <typename ExecSpace, typename Layout>
 struct HessVec_Dense_Kernel {
-  const TensorImpl<ExecSpace> XX;
-  const KtensorT<ExecSpace> aa;
-  const KtensorT<ExecSpace> vv;
-  const KtensorT<ExecSpace> uu;
+  const TensorImpl<ExecSpace,Layout> XX;
+  const KtensorImpl<ExecSpace> aa;
+  const KtensorImpl<ExecSpace> vv;
+  const KtensorImpl<ExecSpace> uu;
   const AlgParams algParams;
 
-  HessVec_Dense_Kernel(const TensorImpl<ExecSpace>& X_,
-                       const KtensorT<ExecSpace>& a_,
-                       const KtensorT<ExecSpace>& v_,
-                       const KtensorT<ExecSpace>& u_,
+  HessVec_Dense_Kernel(const TensorImpl<ExecSpace,Layout>& X_,
+                       const KtensorImpl<ExecSpace>& a_,
+                       const KtensorImpl<ExecSpace>& v_,
+                       const KtensorImpl<ExecSpace>& u_,
                        const AlgParams& algParams_) :
     XX(X_), aa(a_), vv(v_), uu(u_), algParams(algParams_) {}
 
   template <unsigned FBS, unsigned VS>
   void run() const {
-    const TensorImpl<ExecSpace> X = XX;
-    const KtensorT<ExecSpace> a = aa;
-    const KtensorT<ExecSpace> v = vv;
-    const KtensorT<ExecSpace> u = uu;
+    const TensorImpl<ExecSpace,Layout> X = XX;
+    const KtensorImpl<ExecSpace> a = aa;
+    const KtensorImpl<ExecSpace> v = vv;
+    const KtensorImpl<ExecSpace> u = uu;
 
     typedef Kokkos::TeamPolicy<ExecSpace> Policy;
     typedef typename Policy::member_type TeamMember;
@@ -490,7 +490,7 @@ struct HessVec_Dense_Kernel {
           // Work around internal-compiler errors in recent Intel compilers
           unsigned nd_ = nd;
           unsigned k_ = k;
-          TensorImpl<ExecSpace> X_ = X;
+          TensorImpl<ExecSpace,Layout> X_ = X;
 
           // Initialize our subscript array for row i of mode n
           Kokkos::single(Kokkos::PerThread(team), [&]()
@@ -546,9 +546,9 @@ struct HessVec_Dense_Kernel {
 // This computes the ktensor-only contribution to the Hessian, which
 // doesn't depend on the tensor
 template <typename ExecSpace>
-void hess_vec_ktensor_term(const KtensorT<ExecSpace>& a,
-                           const KtensorT<ExecSpace>& v,
-                           const KtensorT<ExecSpace>& u,
+void hess_vec_ktensor_term(const KtensorImpl<ExecSpace>& a,
+                           const KtensorImpl<ExecSpace>& v,
+                           const KtensorImpl<ExecSpace>& u,
                            const AlgParams& algParams)
 {
 #ifdef HAVE_CALIPER
@@ -674,21 +674,21 @@ void hess_vec(const SptensorT<ExecSpace>& X,
     Genten::error("Single and duplicated hess-vec tensor methods are invalid on Cuda and HIP!");
 
   if (method == Hess_Vec_Tensor_Method::Single) {
-    Impl::HessVec_Kernel<ScatterNonDuplicated,ScatterNonAtomic,ExecSpace> kernel(X.impl(),a_overlap,v_overlap,u_overlap,algParams);
+    Impl::HessVec_Kernel<ScatterNonDuplicated,ScatterNonAtomic,ExecSpace> kernel(X.impl(),a_overlap.impl(),v_overlap.impl(),u_overlap.impl(),algParams);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else if (method == Hess_Vec_Tensor_Method::Atomic) {
-    Impl::HessVec_Kernel<ScatterNonDuplicated,ScatterAtomic,ExecSpace> kernel(X.impl(),a_overlap,v_overlap,u_overlap,algParams);
+    Impl::HessVec_Kernel<ScatterNonDuplicated,ScatterAtomic,ExecSpace> kernel(X.impl(),a_overlap.impl(),v_overlap.impl(),u_overlap.impl(),algParams);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else if (method == Hess_Vec_Tensor_Method::Duplicated) {
-    Impl::HessVec_Kernel<ScatterDuplicated,ScatterNonAtomic,ExecSpace> kernel(X.impl(),a_overlap,v_overlap,u_overlap,algParams);
+    Impl::HessVec_Kernel<ScatterDuplicated,ScatterNonAtomic,ExecSpace> kernel(X.impl(),a_overlap.impl(),v_overlap.impl(),u_overlap.impl(),algParams);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else if (method == Hess_Vec_Tensor_Method::Perm) {
     if (!X.havePerm())
       Genten::error("Perm hess-vec tensor method selected, but permutation array not computed!");
-    Impl::HessVec_PermKernel<ExecSpace> kernel(X.impl(),a_overlap,v_overlap,u_overlap,algParams);
+    Impl::HessVec_PermKernel<ExecSpace> kernel(X.impl(),a_overlap.impl(),v_overlap.impl(),u_overlap.impl(),algParams);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else
@@ -703,7 +703,7 @@ void hess_vec(const SptensorT<ExecSpace>& X,
     u[n].times(-1.0);
 
   // Add in the second (ktensor) term
-  Impl::hess_vec_ktensor_term(a, v, u, algParams);
+  Impl::hess_vec_ktensor_term(a.impl(), v.impl(), u.impl(), algParams);
 }
 
 template <typename ExecSpace>
@@ -742,8 +742,16 @@ void hess_vec(const TensorT<ExecSpace>& X,
   }
 
   // Compute first (tensor) term
-  Impl::HessVec_Dense_Kernel<ExecSpace> kernel(X.impl(),a,v,u,algParams);
-  Impl::run_row_simd_kernel(kernel, nc);
+  if (X.has_left_impl()) {
+    Impl::HessVec_Dense_Kernel<ExecSpace,Impl::TensorLayoutLeft> kernel(
+      X.left_impl(),a.impl(),v.impl(),u.impl(),algParams);
+    Impl::run_row_simd_kernel(kernel, nc);
+  }
+  else {
+    Impl::HessVec_Dense_Kernel<ExecSpace,Impl::TensorLayoutRight> kernel(
+      X.right_impl(),a.impl(),v.impl(),u.impl(),algParams);
+   Impl::run_row_simd_kernel(kernel, nc);
+  }
 
   // Combine local contributions across processors
   dku.doExport(u, u_overlap);
@@ -753,17 +761,21 @@ void hess_vec(const TensorT<ExecSpace>& X,
     u[n].times(-1.0);
 
   // Add in the second (ktensor) term
-  Impl::hess_vec_ktensor_term(a, v, u, algParams);
+  Impl::hess_vec_ktensor_term(a.impl(), v.impl(), u.impl(), algParams);
 }
 
 template <typename TensorType>
 void gauss_newton_hess_vec(const TensorType& X,
-                           const KtensorT<typename TensorType::exec_space>& a,
-                           const KtensorT<typename TensorType::exec_space>& v,
-                           const KtensorT<typename TensorType::exec_space>& u,
+                           const KtensorT<typename TensorType::exec_space>& ad,
+                           const KtensorT<typename TensorType::exec_space>& vd,
+                           const KtensorT<typename TensorType::exec_space>& ud,
                            const AlgParams& algParams)
 {
   typedef typename TensorType::exec_space ExecSpace;
+
+  const auto a = ad.impl();
+  const auto v = vd.impl();
+  const auto u = ud.impl();
 
   const ProcessorMap *pmap = u.getProcessorMap();
   const ttb_indx nc = a.ncomponents();     // Number of components

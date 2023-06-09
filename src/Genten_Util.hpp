@@ -435,6 +435,23 @@ namespace Genten {
     };
     static constexpr type default_type = Ktensor_Fro;
   };
+
+  // Type of goal function for GCP
+  struct GCP_Goal_Method {
+    enum type {
+      None,
+      PythonModule,
+      PythonObject
+    };
+    static constexpr unsigned num_types = 3;
+    static constexpr type types[] = {
+      None, PythonModule, PythonObject
+    };
+    static constexpr const char* names[] = {
+      "none", "python-module", "python-object"
+    };
+    static constexpr type default_type = None;
+  };
 }
 
 /* ----- Utility Functions ----- */

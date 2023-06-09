@@ -50,16 +50,16 @@
 #endif
 
 template <typename ExecSpace>
-Genten::KtensorT<ExecSpace>::
-KtensorT(ttb_indx nc, ttb_indx nd, const ProcessorMap* pmap_):
+Genten::KtensorImpl<ExecSpace>::
+KtensorImpl(ttb_indx nc, ttb_indx nd, const ProcessorMap* pmap_):
   lambda(nc), data(nd), pmap(pmap_)
 {
   setWeights(1.0);
 }
 
 template <typename ExecSpace>
-Genten::KtensorT<ExecSpace>::
-KtensorT(ttb_indx nc, ttb_indx nd, const Genten::IndxArrayT<ExecSpace> & sz,
+Genten::KtensorImpl<ExecSpace>::
+KtensorImpl(ttb_indx nc, ttb_indx nd, const Genten::IndxArrayT<ExecSpace> & sz,
          const ProcessorMap* pmap_):
   lambda(nc), data(nd,sz,nc,pmap_), pmap(pmap_)
 {
@@ -67,21 +67,21 @@ KtensorT(ttb_indx nc, ttb_indx nd, const Genten::IndxArrayT<ExecSpace> & sz,
 }
 
 template <typename ExecSpace>
-void Genten::KtensorT<ExecSpace>::
+void Genten::KtensorImpl<ExecSpace>::
 setWeightsRand() const
 {
   lambda.rand();
 }
 
 template <typename ExecSpace>
-void Genten::KtensorT<ExecSpace>::
+void Genten::KtensorImpl<ExecSpace>::
 setWeights(ttb_real val) const
 {
   lambda = val;
 }
 
 template <typename ExecSpace>
-void Genten::KtensorT<ExecSpace>::
+void Genten::KtensorImpl<ExecSpace>::
 setWeights(const Genten::ArrayT<ExecSpace> &  newWeights) const
 {
   gt_assert(newWeights.size() == lambda.size());
@@ -90,7 +90,7 @@ setWeights(const Genten::ArrayT<ExecSpace> &  newWeights) const
 }
 
 template <typename ExecSpace>
-void Genten::KtensorT<ExecSpace>::
+void Genten::KtensorImpl<ExecSpace>::
 setMatricesRand() const
 {
   ttb_indx nd = data.size();
@@ -101,7 +101,7 @@ setMatricesRand() const
 }
 
 template <typename ExecSpace>
-void Genten::KtensorT<ExecSpace>::
+void Genten::KtensorImpl<ExecSpace>::
 setMatricesScatter(const bool bUseMatlabRNG,
                    const bool bUseParallelRNG,
                    Genten::RandomMT &   cRMT) const
@@ -114,7 +114,7 @@ setMatricesScatter(const bool bUseMatlabRNG,
 }
 
 template <typename ExecSpace>
-void Genten::KtensorT<ExecSpace>::
+void Genten::KtensorImpl<ExecSpace>::
 setRandomUniform (const bool bUseMatlabRNG,
                   Genten::RandomMT & cRMT) const
 {
@@ -175,7 +175,7 @@ setRandomUniform (const bool bUseMatlabRNG,
 // Only called by Ben Allan's parallel test code.
 #if !defined(_WIN32)
 template <typename ExecSpace>
-void Genten::KtensorT<ExecSpace>::
+void Genten::KtensorImpl<ExecSpace>::
 scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise) const
 {
   for (ttb_indx i =0; i< data.size(); i++) {
@@ -185,14 +185,14 @@ scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise) const
 #endif
 
 template <typename ExecSpace>
-void Genten::KtensorT<ExecSpace>::
+void Genten::KtensorImpl<ExecSpace>::
 setMatrices(ttb_real val) const
 {
   data = val;
 }
 
 template <typename ExecSpace>
-void Genten::KtensorT<ExecSpace>::
+void Genten::KtensorImpl<ExecSpace>::
 setProcessorMap(const ProcessorMap* pmap_)
 {
   pmap = pmap_;
@@ -202,7 +202,7 @@ setProcessorMap(const ProcessorMap* pmap_)
 }
 
 template <typename ExecSpace>
-bool Genten::KtensorT<ExecSpace>::
+bool Genten::KtensorImpl<ExecSpace>::
 isConsistent() const
 {
   ttb_indx nc = lambda.size();
@@ -217,7 +217,7 @@ isConsistent() const
 }
 
 template <typename ExecSpace>
-bool Genten::KtensorT<ExecSpace>::
+bool Genten::KtensorImpl<ExecSpace>::
 isConsistent(const Genten::IndxArrayT<ExecSpace> & sz) const
 {
   if (data.size() != sz.size())
@@ -239,7 +239,7 @@ isConsistent(const Genten::IndxArrayT<ExecSpace> & sz) const
 }
 
 template <typename ExecSpace>
-bool Genten::KtensorT<ExecSpace>::
+bool Genten::KtensorImpl<ExecSpace>::
 hasNonFinite(ttb_indx &bad) const
 {
   bad = 0;
@@ -258,7 +258,7 @@ hasNonFinite(ttb_indx &bad) const
 }
 
 template <typename ExecSpace>
-bool Genten::KtensorT<ExecSpace>::
+bool Genten::KtensorImpl<ExecSpace>::
 isNonnegative(bool bDisplayErrors) const
 {
   for (ttb_indx  n = 0; n < ndims(); n++)
@@ -298,8 +298,8 @@ isNonnegative(bool bDisplayErrors) const
 }
 
 template <typename ExecSpace>
-bool Genten::KtensorT<ExecSpace>::
-isEqual(const Genten::KtensorT<ExecSpace> & b, ttb_real tol) const
+bool Genten::KtensorImpl<ExecSpace>::
+isEqual(const Genten::KtensorImpl<ExecSpace> & b, ttb_real tol) const
 {
   // Check for equal sizes.
   if ((this->ndims() != b.ndims()) || (this->ncomponents() != b.ncomponents()))
@@ -325,7 +325,7 @@ isEqual(const Genten::KtensorT<ExecSpace> & b, ttb_real tol) const
 }
 
 template <typename ExecSpace>
-ttb_real Genten::KtensorT<ExecSpace>::
+ttb_real Genten::KtensorImpl<ExecSpace>::
 entry(const Genten::IndxArrayT<ExecSpace> & subs) const
 {
   ttb_indx nd = this->ndims();
@@ -353,7 +353,7 @@ entry(const Genten::IndxArrayT<ExecSpace> & subs) const
 }
 
 template <typename ExecSpace>
-ttb_real Genten::KtensorT<ExecSpace>::
+ttb_real Genten::KtensorImpl<ExecSpace>::
 entry(const Genten::IndxArrayT<ExecSpace> & subs,
       const Genten::ArrayT<ExecSpace> & altLambda) const
 {
@@ -384,7 +384,7 @@ entry(const Genten::IndxArrayT<ExecSpace> & subs,
 }
 
 template <typename ExecSpace>
-void Genten::KtensorT<ExecSpace>::
+void Genten::KtensorImpl<ExecSpace>::
 distribute() const
 {
   // Take nd^th root of each component of lambda
@@ -400,7 +400,7 @@ distribute() const
 }
 
 template <typename ExecSpace>
-void Genten::KtensorT<ExecSpace>::
+void Genten::KtensorImpl<ExecSpace>::
 distribute(ttb_indx i) const
 {
   data[i].colScale(lambda,false);
@@ -408,7 +408,7 @@ distribute(ttb_indx i) const
 }
 
 template <typename ExecSpace>
-void Genten::KtensorT<ExecSpace>::
+void Genten::KtensorImpl<ExecSpace>::
 normalize(Genten::NormType norm_type, ttb_indx i) const
 {
 #ifdef HAVE_CALIPER
@@ -480,7 +480,7 @@ normalize(Genten::NormType norm_type, ttb_indx i) const
 }
 
 template <typename ExecSpace>
-void Genten::KtensorT<ExecSpace>::
+void Genten::KtensorImpl<ExecSpace>::
 normalize(Genten::NormType norm_type) const
 {
 // could be much better vectorized instead of walking memory data.size times.
@@ -497,7 +497,7 @@ struct greater_than
 };
 
 template <typename ExecSpace>
-void Genten::KtensorT<ExecSpace>::
+void Genten::KtensorImpl<ExecSpace>::
 arrange() const
 {
   // sort lambda by value and keep track of sort index
@@ -519,7 +519,7 @@ arrange() const
 }
 
 template <typename ExecSpace>
-void Genten::KtensorT<ExecSpace>::
+void Genten::KtensorImpl<ExecSpace>::
 arrange(const Genten::IndxArray& permutation_indices) const
 {
   // permute factor matrices
@@ -537,7 +537,7 @@ arrange(const Genten::IndxArray& permutation_indices) const
 }
 
 template <typename ExecSpace>
-ttb_real Genten::KtensorT<ExecSpace>::
+ttb_real Genten::KtensorImpl<ExecSpace>::
 normFsq() const
 {
 #ifdef HAVE_CALIPER
@@ -584,7 +584,7 @@ normFsq() const
 }
 
 template <typename ExecSpace>
-ttb_real Genten::KtensorT<ExecSpace>::
+ttb_real Genten::KtensorImpl<ExecSpace>::
 normFsq(const Genten::ArrayT<ExecSpace>& l) const
 {
 #ifdef HAVE_CALIPER
@@ -629,5 +629,5 @@ normFsq(const Genten::ArrayT<ExecSpace>& l) const
   return dResult;
 }
 
-#define INST_MACRO(SPACE) template class Genten::KtensorT<SPACE>;
+#define INST_MACRO(SPACE) template class Genten::KtensorImpl<SPACE>;
 GENTEN_INST(INST_MACRO)

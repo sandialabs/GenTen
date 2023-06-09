@@ -70,7 +70,7 @@ namespace Impl {
 template <int Dupl, int Cont, unsigned FBS, unsigned VS, typename ExecSpace>
 void
 mttkrp_kernel(const SptensorImpl<ExecSpace>& X,
-              const KtensorT<ExecSpace>& u,
+              const KtensorImpl<ExecSpace>& u,
               const unsigned n,
               const FacMatrixT<ExecSpace>& v,
               const AlgParams& algParams,
@@ -173,7 +173,7 @@ mttkrp_kernel(const SptensorImpl<ExecSpace>& X,
 template <unsigned FBS, unsigned VS, typename ExecSpace>
 void
 mttkrp_kernel_perm(const SptensorImpl<ExecSpace>& X,
-                   const KtensorT<ExecSpace>& u,
+                   const KtensorImpl<ExecSpace>& u,
                    const unsigned n,
                    const FacMatrixT<ExecSpace>& v,
                    const AlgParams& algParams,
@@ -276,14 +276,14 @@ mttkrp_kernel_perm(const SptensorImpl<ExecSpace>& X,
 template <typename ExecSpace>
 struct MTTKRP_Kernel {
   const SptensorImpl<ExecSpace> X;
-  const KtensorT<ExecSpace> u;
+  const KtensorImpl<ExecSpace> u;
   const ttb_indx n;
   const FacMatrixT<ExecSpace> v;
   const AlgParams algParams;
   const bool zero_v;
 
   MTTKRP_Kernel(const SptensorImpl<ExecSpace>& X_,
-                const KtensorT<ExecSpace>& u_,
+                const KtensorImpl<ExecSpace>& u_,
                 const ttb_indx n_,
                 const FacMatrixT<ExecSpace>& v_,
                 const AlgParams& algParams_,
@@ -345,16 +345,16 @@ struct MTTKRP_Kernel {
 template <int Dupl, int Cont, typename ExecSpace>
 struct MTTKRP_All_Kernel {
   const SptensorImpl<ExecSpace> XX;
-  const KtensorT<ExecSpace> uu;
-  const KtensorT<ExecSpace> vv;
+  const KtensorImpl<ExecSpace> uu;
+  const KtensorImpl<ExecSpace> vv;
   const ttb_indx mode_beg;
   const ttb_indx mode_end;
   const AlgParams algParams;
   const bool zero_v;
 
   MTTKRP_All_Kernel(const SptensorImpl<ExecSpace>& X_,
-                    const KtensorT<ExecSpace>& u_,
-                    const KtensorT<ExecSpace>& v_,
+                    const KtensorImpl<ExecSpace>& u_,
+                    const KtensorImpl<ExecSpace>& v_,
                     const ttb_indx mode_beg_,
                     const ttb_indx mode_end_,
                     const AlgParams& algParams_,
@@ -365,8 +365,8 @@ struct MTTKRP_All_Kernel {
   template <unsigned FBS, unsigned VS>
   void run() const {
     const SptensorImpl<ExecSpace> X = XX;
-    const KtensorT<ExecSpace> u = uu;
-    const KtensorT<ExecSpace> v = vv;
+    const KtensorImpl<ExecSpace> u = uu;
+    const KtensorImpl<ExecSpace> v = vv;
     /*const*/ unsigned mb = mode_beg;
     /*const*/ unsigned me = mode_end;
     /*const*/ unsigned nm = me-mb;
@@ -486,16 +486,16 @@ struct MTTKRP_All_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
   typedef Kokkos_GPU_Space ExecSpace;
 
   const SptensorImpl<ExecSpace> XX;
-  const KtensorT<ExecSpace> uu;
-  const KtensorT<ExecSpace> vv;
+  const KtensorImpl<ExecSpace> uu;
+  const KtensorImpl<ExecSpace> vv;
   const ttb_indx mode_beg;
   const ttb_indx mode_end;
   const AlgParams algParams;
   const bool zero_v;
 
   MTTKRP_All_Kernel(const SptensorImpl<ExecSpace>& X_,
-                    const KtensorT<ExecSpace>& u_,
-                    const KtensorT<ExecSpace>& v_,
+                    const KtensorImpl<ExecSpace>& u_,
+                    const KtensorImpl<ExecSpace>& v_,
                     const ttb_indx mode_beg_,
                     const ttb_indx mode_end_,
                     const AlgParams& algParams_,
@@ -506,8 +506,8 @@ struct MTTKRP_All_Kernel<Dupl, Cont, Kokkos_GPU_Space> {
   template <unsigned FBS, unsigned VS>
   void run() const {
     const SptensorImpl<ExecSpace> X = XX;
-    const KtensorT<ExecSpace> u = uu;
-    const KtensorT<ExecSpace> v = vv;
+    const KtensorImpl<ExecSpace> u = uu;
+    const KtensorImpl<ExecSpace> v = vv;
     /*const*/ unsigned mb = mode_beg;
     /*const*/ unsigned me = mode_end;
     /*const*/ unsigned nm = me-mb;
@@ -590,7 +590,7 @@ struct MTTKRP_OrigKokkosKernelBlock {
   typedef Kokkos::View< ttb_real**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
   const SptensorImpl<ExecSpace>& X;
-  const KtensorT<ExecSpace>& u;
+  const KtensorImpl<ExecSpace>& u;
   const unsigned n;
   const unsigned nd;
   const FacMatrixT<ExecSpace>& v;
@@ -613,7 +613,7 @@ struct MTTKRP_OrigKokkosKernelBlock {
 
   KOKKOS_INLINE_FUNCTION
   MTTKRP_OrigKokkosKernelBlock(const SptensorImpl<ExecSpace>& X_,
-                               const KtensorT<ExecSpace>& u_,
+                               const KtensorImpl<ExecSpace>& u_,
                                const unsigned n_,
                                const FacMatrixT<ExecSpace>& v_,
                                const ttb_indx i_,
@@ -666,7 +666,7 @@ struct MTTKRP_OrigKokkosKernelBlock {
 
 template <typename ExecSpace, unsigned FacBlockSize>
 void orig_kokkos_mttkrp_kernel(const SptensorImpl<ExecSpace>& X,
-                               const KtensorT<ExecSpace>& u,
+                               const KtensorImpl<ExecSpace>& u,
                                const ttb_indx n,
                                const FacMatrixT<ExecSpace>& v)
 {
@@ -705,7 +705,7 @@ void orig_kokkos_mttkrp_kernel(const SptensorImpl<ExecSpace>& X,
 
 template <typename ExecSpace>
 void orig_kokkos_mttkrp(const SptensorImpl<ExecSpace>& X,
-                        const KtensorT<ExecSpace>& u,
+                        const KtensorImpl<ExecSpace>& u,
                         const ttb_indx n,
                         const FacMatrixT<ExecSpace>& v,
                         const bool zero_v)
@@ -778,10 +778,10 @@ void mttkrp(const SptensorT<ExecSpace>& X,
   gt_assert( v.nCols() == nc );
 
   if (algParams.mttkrp_method == MTTKRP_Method::OrigKokkos) {
-    Impl::orig_kokkos_mttkrp(X.impl(),u,n,v,zero_v);
+    Impl::orig_kokkos_mttkrp(X.impl(),u.impl(),n,v,zero_v);
   }
   else {
-    Impl::MTTKRP_Kernel<ExecSpace> kernel(X.impl(),u,n,v,algParams,zero_v);
+    Impl::MTTKRP_Kernel<ExecSpace> kernel(X.impl(),u.impl(),n,v,algParams,zero_v);
     Impl::run_row_simd_kernel(kernel, nc);
   }
 }
@@ -834,15 +834,15 @@ void mttkrp_all(const SptensorT<ExecSpace>& X,
       mttkrp(X, u, n, v[n-mode_beg], algParams, zero_v);
   }
   else if (method == MTTKRP_All_Method::Single) {
-    Impl::MTTKRP_All_Kernel<ScatterNonDuplicated,ScatterNonAtomic,ExecSpace> kernel(X.impl(),u,v,mode_beg,mode_end,algParams, zero_v);
+    Impl::MTTKRP_All_Kernel<ScatterNonDuplicated,ScatterNonAtomic,ExecSpace> kernel(X.impl(),u.impl(),v.impl(),mode_beg,mode_end,algParams, zero_v);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else if (method == MTTKRP_All_Method::Atomic) {
-    Impl::MTTKRP_All_Kernel<ScatterNonDuplicated,ScatterAtomic,ExecSpace> kernel(X.impl(),u,v,mode_beg,mode_end,algParams, zero_v);
+    Impl::MTTKRP_All_Kernel<ScatterNonDuplicated,ScatterAtomic,ExecSpace> kernel(X.impl(),u.impl(),v.impl(),mode_beg,mode_end,algParams, zero_v);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else if (method == MTTKRP_All_Method::Duplicated) {
-    Impl::MTTKRP_All_Kernel<ScatterDuplicated,ScatterNonAtomic,ExecSpace> kernel(X.impl(),u,v,mode_beg,mode_end,algParams, zero_v);
+    Impl::MTTKRP_All_Kernel<ScatterDuplicated,ScatterNonAtomic,ExecSpace> kernel(X.impl(),u.impl(),v.impl(),mode_beg,mode_end,algParams, zero_v);
     Impl::run_row_simd_kernel(kernel, nc);
   }
   else

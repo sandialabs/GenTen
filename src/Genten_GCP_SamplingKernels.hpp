@@ -114,10 +114,10 @@ namespace Genten {
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams);
 
-    template <typename ExecSpace>
+    template <typename ExecSpace, typename Layout>
     class DenseSearcher {
     public:
-      DenseSearcher(const TensorImpl<ExecSpace>& X_) : X(X_) {}
+      DenseSearcher(const TensorImpl<ExecSpace,Layout>& X_) : X(X_) {}
 
       template <typename IndexType>
       KOKKOS_INLINE_FUNCTION
@@ -132,8 +132,14 @@ namespace Genten {
         return X[i];
       }
     private:
-      const TensorImpl<ExecSpace> X;
+      const TensorImpl<ExecSpace,Layout> X;
     };
+
+    template <typename ExecSpace, typename Layout>
+    DenseSearcher<ExecSpace,Layout>
+    denseSearcher(const TensorImpl<ExecSpace,Layout>& X) {
+      return DenseSearcher<ExecSpace,Layout>(X);
+    }
 
     template <typename ExecSpace>
     class SortSearcher {

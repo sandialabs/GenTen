@@ -40,76 +40,203 @@
 
 #pragma once
 
+#include <cassert>
+#include <any>
+
 #include "Genten_Array.hpp"
 #include "Genten_IndxArray.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_DistTensor.hpp"
 
-#include <cassert>
-
 namespace Genten {
 
 namespace Impl {
 
-// Convert subscript to linear index
-template <typename SubType, typename ExecSpace>
-KOKKOS_INLINE_FUNCTION
-ttb_indx sub2ind(const SubType& sub,
-                 const IndxArrayT<ExecSpace>& siz)
-{
-  const ttb_indx nd = siz.size();
-  for (ttb_indx i=0; i<nd; ++i)
-    assert(/*(sub[i] >= 0) &&*/ (sub[i] < siz[i])); // pointless comparison
+// Class for tensor multi-dimensional indexing using "layout left" ordering,
+// i.e., "Fortran" ordering
+struct TensorLayoutLeft {
+public:
 
-  ttb_indx idx = 0;
-  ttb_indx cumprod = 1;
-  for (ttb_indx i=0; i<nd; ++i) {
-    idx += sub[i] * cumprod;
-    cumprod *= siz[i];
-  }
-  return idx;
-}
+  // Convert subscript to linear index
+  template <typename SubType, typename ExecSpace>
+  KOKKOS_INLINE_FUNCTION
+  static ttb_indx sub2ind(const SubType& sub,
+                          const IndxArrayT<ExecSpace>& siz)
+  {
+    const ttb_indx nd = siz.size();
+    for (ttb_indx i=0; i<nd; ++i)
+      assert(sub[i] < siz[i]);
 
-// Convert global_subscript to linear index
-template <typename SubType, typename ExecSpace>
-KOKKOS_INLINE_FUNCTION
-ttb_indx global_sub2ind(const SubType& sub,
-                        const IndxArrayT<ExecSpace>& siz,
-                        const IndxArrayT<ExecSpace>& lower)
-{
-  const ttb_indx nd = siz.size();
-  assert(lower.size() == nd);
-  for (ttb_indx i=0; i<nd; ++i) {
-    assert(sub[i] >= lower[i]);
-    assert(sub[i]-lower[i] < siz[i]);
+    ttb_indx idx = 0;
+    ttb_indx cumprod = 1;
+    for (ttb_indx i=0; i<nd; ++i) {
+      idx += sub[i] * cumprod;
+      cumprod *= siz[i];
+    }
+    return idx;
   }
 
-  ttb_indx idx = 0;
-  ttb_indx cumprod = 1;
-  for (ttb_indx i=0; i<nd; ++i) {
-    idx += (sub[i]-lower[i]) * cumprod;
-    cumprod *= siz[i];
-  }
-  return idx;
-}
+  // Convert global_subscript to linear index
+  template <typename SubType, typename ExecSpace>
+  KOKKOS_INLINE_FUNCTION
+  static ttb_indx global_sub2ind(const SubType& sub,
+                                 const IndxArrayT<ExecSpace>& siz,
+                                 const IndxArrayT<ExecSpace>& lower)
+  {
+    const ttb_indx nd = siz.size();
+    assert(lower.size() == nd);
+    for (ttb_indx i=0; i<nd; ++i) {
+      assert(sub[i] >= lower[i]);
+      assert(sub[i]-lower[i] < siz[i]);
+    }
 
-// Convert linear index to subscript
-template <typename SubType, typename ExecSpace>
-KOKKOS_INLINE_FUNCTION
-void ind2sub(SubType& sub, const IndxArrayT<ExecSpace>& siz,
-             ttb_indx cumprod, ttb_indx ind)
-{
-  const ttb_indx nd = siz.size();
-  assert(ind < cumprod);
-
-  ttb_indx sbs;
-  for (ttb_indx i=nd; i>0; --i) {
-    cumprod = cumprod / siz[i-1];
-    sbs = ind / cumprod;
-    sub[i-1] = sbs;
-    ind = ind - (sbs * cumprod);
+    ttb_indx idx = 0;
+    ttb_indx cumprod = 1;
+    for (ttb_indx i=0; i<nd; ++i) {
+      idx += (sub[i]-lower[i]) * cumprod;
+      cumprod *= siz[i];
+    }
+    return idx;
   }
-}
+
+  // Convert linear index to subscript
+  template <typename SubType, typename ExecSpace>
+  KOKKOS_INLINE_FUNCTION
+  static void ind2sub(SubType& sub, const IndxArrayT<ExecSpace>& siz,
+                      ttb_indx cumprod, ttb_indx ind)
+  {
+    const ttb_indx nd = siz.size();
+    assert(ind < cumprod);
+
+    ttb_indx sbs;
+    for (ttb_indx i=nd; i>0; --i) {
+      cumprod = cumprod / siz[i-1];
+      sbs = ind / cumprod;
+      sub[i-1] = sbs;
+      ind = ind - (sbs * cumprod);
+    }
+  }
+
+  template <typename SubType, typename ExecSpace>
+  KOKKOS_INLINE_FUNCTION
+  static bool increment_sub(SubType& sub, const IndxArrayT<ExecSpace>& siz,
+                            const ttb_indx n)
+  {
+    const ttb_indx nd = siz.size();
+    const ttb_indx first_mode = n == 0 ? 1 : 0;
+    const ttb_indx last_mode = n == nd-1 ? nd-1 : nd;
+    ++sub[first_mode];
+    for (ttb_indx i=first_mode; i<last_mode; ++i) {
+      if (i == n)
+        continue;
+      if (sub[i] != siz[i])
+        break;
+      else if (i < (last_mode-1)) {
+        sub[i] = 0;
+        if (i+1 != n)
+          ++sub[i+1];
+        else if (i < (last_mode-2))
+          ++sub[i+2];
+      }
+    }
+    if (sub[last_mode-1] == siz[last_mode-1])
+      return false;
+    return true;
+  }
+};
+
+// Class for tensor multi-dimensional indexing using "layout right" ordering,
+// i.e., "C" ordering
+struct TensorLayoutRight {
+public:
+
+  // Convert subscript to linear index
+  template <typename SubType, typename ExecSpace>
+  KOKKOS_INLINE_FUNCTION
+  static ttb_indx sub2ind(const SubType& sub,
+                          const IndxArrayT<ExecSpace>& siz)
+  {
+    const ttb_indx nd = siz.size();
+    for (ttb_indx i=0; i<nd; ++i)
+      assert(sub[i] < siz[i]);
+
+    ttb_indx idx = 0;
+    ttb_indx cumprod = 1;
+    for (ttb_indx i=nd; i>0; --i) {
+      idx += sub[i-1] * cumprod;
+      cumprod *= siz[i-1];
+    }
+    return idx;
+  }
+
+  // Convert global_subscript to linear index
+  template <typename SubType, typename ExecSpace>
+  KOKKOS_INLINE_FUNCTION
+  static ttb_indx global_sub2ind(const SubType& sub,
+                                 const IndxArrayT<ExecSpace>& siz,
+                                 const IndxArrayT<ExecSpace>& lower)
+  {
+    const ttb_indx nd = siz.size();
+    assert(lower.size() == nd);
+    for (ttb_indx i=0; i<nd; ++i) {
+      assert(sub[i] >= lower[i]);
+      assert(sub[i]-lower[i] < siz[i]);
+    }
+
+    ttb_indx idx = 0;
+    ttb_indx cumprod = 1;
+    for (ttb_indx i=nd; i>0; --i) {
+      idx += (sub[i-1]-lower[i-1]) * cumprod;
+      cumprod *= siz[i-1];
+    }
+    return idx;
+  }
+
+  // Convert linear index to subscript
+  template <typename SubType, typename ExecSpace>
+  KOKKOS_INLINE_FUNCTION
+  static void ind2sub(SubType& sub, const IndxArrayT<ExecSpace>& siz,
+                      ttb_indx cumprod, ttb_indx ind)
+  {
+    const ttb_indx nd = siz.size();
+    assert(ind < cumprod);
+
+    ttb_indx sbs;
+    for (ttb_indx i=0; i<nd; ++i) {
+      cumprod = cumprod / siz[i];
+      sbs = ind / cumprod;
+      sub[i] = sbs;
+      ind = ind - (sbs * cumprod);
+    }
+  }
+
+  template <typename SubType, typename ExecSpace>
+  KOKKOS_INLINE_FUNCTION
+  static bool increment_sub(SubType& sub, const IndxArrayT<ExecSpace>& siz,
+                            const ttb_indx n)
+  {
+    const ttb_indx nd = siz.size();
+    const ttb_indx first_mode = n == nd-1 ? nd-2 : nd-1;
+    const ttb_indx last_mode = n == 0 ? 1 : 0;
+    ++sub[first_mode];
+    for (ttb_indx i=first_mode+1; i>last_mode; --i) {
+      if (i-1 == n)
+        continue;
+      if (sub[i-1] != siz[i-1])
+        break;
+      else if (i-1 > last_mode) {
+        sub[i-1] = 0;
+        if (i-2 != n)
+          ++sub[i-2];
+        else if (i-1 > (last_mode+1))
+          ++sub[i-3];
+      }
+    }
+    if (sub[last_mode] == siz[last_mode])
+      return false;
+    return true;
+  }
+};
 
 }
 
@@ -122,7 +249,7 @@ template <typename ExecSpace> class SptensorT;
 template <typename ExecSpace> class TensorT;
 typedef TensorT<DefaultHostExecutionSpace> Tensor;
 
-template <typename ExecSpace>
+template <typename ExecSpace, typename Layout>
 class TensorImpl
 {
 
@@ -130,7 +257,8 @@ public:
 
   typedef ExecSpace exec_space;
   typedef typename ArrayT<ExecSpace>::host_mirror_space host_mirror_space;
-  typedef TensorImpl<host_mirror_space> HostMirror;
+  typedef TensorImpl<host_mirror_space,Layout> HostMirror;
+  typedef Layout layout_type;
 
   // Empty construtor.
   KOKKOS_DEFAULTED_FUNCTION
@@ -214,14 +342,14 @@ public:
   template <typename SubType>
   KOKKOS_INLINE_FUNCTION
   ttb_indx sub2ind(const SubType& sub) const {
-    return Impl::sub2ind(sub, siz);
+    return layout_type::sub2ind(sub, siz);
   }
 
   // Convert global subscript to linear index
   template <typename SubType>
   KOKKOS_INLINE_FUNCTION
   ttb_indx global_sub2ind(const SubType& sub) const {
-    return Impl::global_sub2ind(sub, siz, lower_bound);
+    return layout_type::global_sub2ind(sub, siz, lower_bound);
   }
 
    // Convert linear index to subscript
@@ -229,7 +357,7 @@ public:
   KOKKOS_INLINE_FUNCTION
   void ind2sub(SubType& sub, ttb_indx ind) const {
     ttb_indx cumprod = values.size();
-    return Impl::ind2sub(sub, siz, cumprod, ind);
+    return layout_type::ind2sub(sub, siz, cumprod, ind);
   }
 
   // Return the i-th linearly indexed element.
@@ -255,26 +383,7 @@ public:
   template <typename SubType>
   KOKKOS_INLINE_FUNCTION
   bool increment_sub(SubType& sub, const ttb_indx n) const {
-    const ttb_indx nd = siz.size();
-    const ttb_indx first_mode = n == 0 ? 1 : 0;
-    const ttb_indx last_mode = n == nd-1 ? nd-1 : nd;
-    ++sub[first_mode];
-    for (ttb_indx i=first_mode; i<last_mode; ++i) {
-      if (i == n)
-        continue;
-      if (sub[i] != siz[i])
-        break;
-      else if (i < (last_mode-1)) {
-        sub[i] = 0;
-        if (i+1 != n)
-          ++sub[i+1];
-        else if (i < (last_mode-2))
-          ++sub[i+2];
-      }
-    }
-    if (sub[last_mode-1] == siz[last_mode-1])
-      return false;
-    return true;
+    return layout_type::increment_sub(sub, siz, n);
   }
 
   // Return the number of elements with a nonzero value.
@@ -319,70 +428,235 @@ protected:
   IndxArrayT<ExecSpace> upper_bound;
 };
 
+enum class TensorLayout {
+  Left,
+  Right
+};
+
 template <typename ExecSpace>
-class TensorT : public TensorImpl<ExecSpace>, public DistTensor<ExecSpace>
+class TensorT : public DistTensor<ExecSpace>
 {
 public:
 
-  using impl_type = TensorImpl<ExecSpace>;
+  using left_impl_type = TensorImpl<ExecSpace,Impl::TensorLayoutLeft>;
+  using right_impl_type = TensorImpl<ExecSpace,Impl::TensorLayoutRight>;
   using dist_type = DistTensor<ExecSpace>;
-  using exec_space = typename impl_type::exec_space;
-  using host_mirror_space = typename impl_type::host_mirror_space;
+  using exec_space = typename left_impl_type::exec_space;
+  using host_mirror_space = typename left_impl_type::host_mirror_space;
   using HostMirror = TensorT<host_mirror_space>;
 
-  TensorT(const IndxArrayT<ExecSpace>& sz, ttb_real val = 0.0) :
-    impl_type(sz,val), dist_type(sz.size()) {}
-  TensorT(const IndxArrayT<ExecSpace>& sz, const ArrayT<ExecSpace>& vals) :
-    impl_type(sz,vals), dist_type(sz.size()) {}
-  TensorT(const IndxArrayT<ExecSpace>& sz, const ArrayT<ExecSpace>& vals,
-          const IndxArrayT<ExecSpace>& l, const IndxArrayT<ExecSpace>& u) :
-    impl_type(sz,vals,l,u), dist_type(sz.size()) {}
-  TensorT(const SptensorT<ExecSpace>& src) :
-    impl_type(src), dist_type(src.ndims()) {}
-  TensorT(const KtensorT<ExecSpace>& src) :
-    impl_type(src), dist_type(src.ndims()) {}
+  TensorT() : dist_type(), layout_(TensorLayout::Left) {}
 
-  TensorT() = default;
+  TensorT(const IndxArrayT<ExecSpace>& sz, ttb_real val = 0.0,
+          TensorLayout layout = TensorLayout::Left) :
+    dist_type(sz.size()), layout_(layout)
+  {
+    if (layout == TensorLayout::Left)
+      left_impl_ = left_impl_type(sz,val);
+    else
+      right_impl_ = right_impl_type(sz,val);
+  }
+  TensorT(const IndxArrayT<ExecSpace>& sz, const ArrayT<ExecSpace>& vals,
+          TensorLayout layout = TensorLayout::Left) :
+    dist_type(sz.size()), layout_(layout)
+  {
+    if (layout == TensorLayout::Left)
+      left_impl_ = left_impl_type(sz,vals);
+    else
+      right_impl_ = right_impl_type(sz,vals);
+  }
+  TensorT(const IndxArrayT<ExecSpace>& sz, const ArrayT<ExecSpace>& vals,
+          const IndxArrayT<ExecSpace>& l, const IndxArrayT<ExecSpace>& u,
+          TensorLayout layout = TensorLayout::Left) :
+    dist_type(sz.size()), layout_(layout)
+  {
+    if (layout == TensorLayout::Left)
+      left_impl_ = left_impl_type(sz,vals,l,u);
+    else
+      right_impl_ = right_impl_type(sz,vals,l,u);
+  }
+  TensorT(const SptensorT<ExecSpace>& src,
+          TensorLayout layout = TensorLayout::Left) :
+    dist_type(src.ndims()), layout_(layout)
+  {
+    if (layout == TensorLayout::Left)
+      left_impl_ = left_impl_type(src);
+    else
+      right_impl_ = right_impl_type(src);
+  }
+  TensorT(const KtensorT<ExecSpace>& src,
+          TensorLayout layout = TensorLayout::Left) :
+    dist_type(src.ndims()), layout_(layout)
+  {
+    if (layout == TensorLayout::Left)
+      left_impl_ = left_impl_type(src);
+    else
+      right_impl_ = right_impl_type(src);
+  }
+  TensorT(const left_impl_type& impl) :
+    dist_type(impl.ndims()), layout_(TensorLayout::Left), left_impl_(impl), right_impl_() {}
+  TensorT(const right_impl_type& impl) :
+    dist_type(impl.ndims()), layout_(TensorLayout::Right), left_impl_(), right_impl_(impl) {}
+
   TensorT(TensorT&&) = default;
   TensorT(const TensorT&) = default;
   TensorT& operator=(TensorT&&) = default;
   TensorT& operator=(const TensorT&) = default;
   ~TensorT() = default;
 
-  impl_type& impl() { return *this; }
-  const impl_type& impl() const { return *this; }
+  TensorLayout getLayout() const { return layout_; }
+  bool has_left_impl() const { return layout_ == TensorLayout::Left; }
+  bool has_right_impl() const { return layout_ == TensorLayout::Right; }
+  left_impl_type& left_impl() { return left_impl_; }
+  const left_impl_type& left_impl() const { return left_impl_; }
+  right_impl_type& right_impl() { return right_impl_; }
+  const right_impl_type& right_impl() const { return right_impl_; }
+
+  // Create a new tensor containing the transpose with the supplied layout
+  TensorT transpose(TensorLayout new_layout) const;
+
+  // Create a new tensor switching to the new layout
+  TensorT switch_layout(TensorLayout new_layout) const;
+
+  ttb_indx ndims() const {
+    return layout_ == TensorLayout::Left ? left_impl_.ndims() : right_impl_.ndims();
+  }
+
+  ttb_indx size(ttb_indx i) const {
+    return layout_ == TensorLayout::Left ? left_impl_.size(i) : right_impl_.size(i);
+  }
+  const IndxArrayT<ExecSpace>& size() const {
+    return layout_ == TensorLayout::Left ? left_impl_.size() : right_impl_.size();
+  }
+  const IndxArrayT<host_mirror_space>& size_host() const {
+    return layout_ == TensorLayout::Left ? left_impl_.size_host() : right_impl_.size_host();
+  }
+
+  ttb_indx numel() const {
+    return layout_ == TensorLayout::Left ? left_impl_.numel() : right_impl_.numel();
+  }
+  ttb_real numel_float() const {
+    return layout_ == TensorLayout::Left ? left_impl_.numel_float() : right_impl_.numel_float();
+  }
+
+  template <typename SubType>
+  ttb_indx sub2ind(const SubType& sub) const {
+    return layout_ == TensorLayout::Left ? left_impl_.sub2ind(sub) : right_impl_.sub2ind(sub);
+  }
+  template <typename SubType>
+  ttb_indx global_sub2ind(const SubType& sub) const {
+    return layout_ == TensorLayout::Left ? left_impl_.global_sub2ind(sub) : right_impl_.global_sub2ind(sub);
+  }
+  template <typename SubType>
+  void ind2sub(SubType& sub, ttb_indx ind) const {
+    layout_ == TensorLayout::Left ? left_impl_.ind2sub(sub,ind) : right_impl_.ind2sub(sub,ind);
+  }
+
+  ttb_real & operator[](ttb_indx i) const {
+    return layout_ == TensorLayout::Left ? left_impl_[i] : right_impl_[i];
+  }
+  ttb_real& operator[](const IndxArrayT<ExecSpace>& sub) const {
+    return layout_ == TensorLayout::Left ? left_impl_[sub] : right_impl_[sub];
+  }
+  template <typename...Args>
+  ttb_real& operator()(Args...args) const {
+    return layout_ == TensorLayout::Left ? left_impl_(args...) : right_impl_(args...);
+  }
+
+  template <typename SubType>
+  bool increment_sub(SubType& sub, const ttb_indx n) const {
+    return layout_ == TensorLayout::Left ? left_impl_.increment_sub(sub,n) : right_impl_.increment_sub(sub,n);
+  }
+
+  ttb_indx nnz() const {
+    return layout_ == TensorLayout::Left ? left_impl_.nnz() : right_impl_.nnz();
+  }
+  ttb_real norm() const {
+    return layout_ == TensorLayout::Left ? left_impl_.norm() : right_impl_.norm();
+  }
+  const ArrayT<ExecSpace>& getValues() const {
+    return layout_ == TensorLayout::Left ? left_impl_.getValues() : right_impl_.getValues();
+  }
+
+  ttb_indx lowerBound(const unsigned n) const {
+    return layout_ == TensorLayout::Left ? left_impl_.lowerBound(n) : right_impl_.lowerBound(n);
+  }
+  ttb_indx upperBound(const unsigned n) const {
+    return layout_ == TensorLayout::Left ? left_impl_.upperBound(n) : right_impl_.upperBound(n);
+  }
+  IndxArrayT<ExecSpace> getLowerBounds() const {
+    return layout_ == TensorLayout::Left ? left_impl_.getLowerBounds() : right_impl_.getLowerBounds();
+  }
+  IndxArrayT<ExecSpace> getUpperBounds() const {
+    return layout_ == TensorLayout::Left ? left_impl_.getUpperBounds() : right_impl_.getUpperBounds();
+  }
 
   ttb_indx global_numel() const
   {
-    ttb_indx numel = impl_type::numel();
-    if (this->pmap != nullptr)
-      numel = this->pmap->gridAllReduce(numel);
-    return numel;
+    ttb_indx my_numel = numel();
+    const ProcessorMap *pmap = this->getProcessorMap();
+    if (pmap != nullptr)
+      my_numel = pmap->gridAllReduce(my_numel);
+    return my_numel;
   }
-
   ttb_real global_numel_float() const
   {
-    ttb_real numel = impl_type::numel_float();
-    if (this->pmap != nullptr)
-      numel = this->pmap->gridAllReduce(numel);
-    return numel;
+    ttb_real my_numel = numel_float();
+    const ProcessorMap *pmap = this->getProcessorMap();
+    if (pmap != nullptr)
+      my_numel = pmap->gridAllReduce(my_numel);
+    return my_numel;
   }
-
   ttb_indx global_nnz() const
   {
-    ttb_indx nnz = impl_type::nnz();
-    if (this->pmap != nullptr)
-      nnz = this->pmap->gridAllReduce(nnz);
-    return nnz;
+    ttb_indx my_nnz = nnz();
+    const ProcessorMap *pmap = this->getProcessorMap();
+    if (pmap != nullptr)
+      my_nnz = pmap->gridAllReduce(my_nnz);
+    return my_nnz;
   }
-
   ttb_real global_norm() const
   {
-    ttb_real nrm_sqrd = this->values.dot(this->values);
-    if (this->pmap != nullptr)
-      nrm_sqrd = this->pmap->gridAllReduce(nrm_sqrd);
-    return std::sqrt(nrm_sqrd);
+    ttb_real nrm = norm();
+    nrm = nrm*nrm;
+    const ProcessorMap *pmap = this->getProcessorMap();
+    if (pmap != nullptr)
+      nrm = this->pmap->gridAllReduce(nrm);
+    return std::sqrt(nrm);
   }
+
+  // For passing extra data, like numpy arrays, through
+  template <typename T>
+  void set_extra_data(const T& a) {
+    extra_data = std::make_any<T>(a);
+  }
+  bool has_extra_data() const {
+    return extra_data.has_value();
+  }
+  template <typename T>
+  bool has_extra_data_type() const {
+    return extra_data.has_value() && (std::any_cast<T>(&extra_data) != nullptr);
+  }
+  template <typename T>
+  T get_extra_data() const {
+    gt_assert(extra_data.has_value());
+    return std::any_cast<T>(extra_data);
+  }
+  template <typename E>
+  void copy_extra_data(const TensorT<E>& x) {
+    // only copy extra data if this and x point to the same data
+    if (this->getValues().ptr() == x.getValues().ptr())
+      extra_data = x.extra_data;
+  }
+
+protected:
+
+  TensorLayout layout_;
+  left_impl_type left_impl_;
+  right_impl_type right_impl_;
+
+  std::any extra_data;
+  template <typename E> friend class TensorT;
 
 };
 
@@ -391,18 +665,24 @@ typename TensorT<ExecSpace>::HostMirror
 create_mirror_view(const TensorT<ExecSpace>& a)
 {
   typedef typename TensorT<ExecSpace>::HostMirror HostMirror;
-  return HostMirror( create_mirror_view(a.size()),
-                     create_mirror_view(a.getValues()) );
+  HostMirror hm( create_mirror_view(a.size()),
+                 create_mirror_view(a.getValues()),
+                 a.getLayout() );
+  hm.copy_extra_data(a);
+  return hm;
 }
 
 template <typename Space, typename ExecSpace>
 TensorT<Space>
 create_mirror_view(const Space& s, const TensorT<ExecSpace>& a)
 {
-  return TensorT<Space>( create_mirror_view(s, a.size()),
-                         create_mirror_view(s, a.getValues()),
-                         create_mirror_view(s, a.getLowerBounds()),
-                         create_mirror_view(s, a.getUpperBounds()) );
+  TensorT<Space> t( create_mirror_view(s, a.size()),
+                    create_mirror_view(s, a.getValues()),
+                    create_mirror_view(s, a.getLowerBounds()),
+                    create_mirror_view(s, a.getUpperBounds()),
+                    a.getLayout() );
+  t.copy_extra_data(a);
+  return t;
 }
 
 template <typename E1, typename E2>

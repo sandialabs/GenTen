@@ -50,10 +50,10 @@ namespace Genten {
 
   namespace Impl {
 
-    template <typename ExecSpace, typename loss_type>
+    template <typename ExecSpace, typename Layout, typename loss_type>
     struct GCP_Grad_Tensor {
-      typedef TensorT<ExecSpace> tensor_type;
-      typedef KtensorT<ExecSpace> Ktensor_type;
+      typedef TensorImpl<ExecSpace,Layout> tensor_type;
+      typedef KtensorImpl<ExecSpace> Ktensor_type;
 
       const tensor_type XX;
       const Ktensor_type MM;
@@ -74,11 +74,11 @@ namespace Genten {
         typedef typename Policy::member_type TeamMember;
         typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
-        const auto X = XX.impl();
+        const auto X = XX;
         const Ktensor_type M = MM;
         const ttb_real w = ww;
         const loss_type f = ff;
-        const auto Y = YY.impl();
+        const auto Y = YY;
 
         static const bool is_gpu = Genten::is_gpu_space<exec_space>::value;
         static const unsigned RowBlockSize = 128;
@@ -138,12 +138,24 @@ namespace Genten {
       {
         GENTEN_TIME_MONITOR("GCP_Gradient: Y eval");
 
-        // Resize Y if necessary
-        if (Y.numel() != X.numel())
-          Y = TensorT<ExecSpace>(X.size());
+        if (X.has_left_impl()) {
+          // Resize Y if necessary
+          if (Y.numel() != X.numel())
+            Y = TensorT<ExecSpace>(X.size(),0.0,TensorLayout::Left);
 
-        GCP_Grad_Tensor<ExecSpace,loss_type> kernel(X,M,w,f,Y);
-        run_row_simd_kernel(kernel, M.ncomponents());
+          GCP_Grad_Tensor<ExecSpace,Impl::TensorLayoutLeft,loss_type> kernel(
+            X.left_impl(),M.impl(),w,f,Y.left_impl());
+          run_row_simd_kernel(kernel, M.ncomponents());
+        }
+        else {
+          // Resize Y if necessary
+          if (Y.numel() != X.numel())
+            Y = TensorT<ExecSpace>(X.size(),0.0,TensorLayout::Right);
+
+          GCP_Grad_Tensor<ExecSpace,Impl::TensorLayoutRight,loss_type> kernel(
+            X.right_impl(),M.impl(),w,f,Y.right_impl());
+          run_row_simd_kernel(kernel, M.ncomponents());
+        }
       }
 
       // Compute gradient

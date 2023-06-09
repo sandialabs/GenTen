@@ -203,10 +203,23 @@ template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 plus(const Genten::FacMatrixT<ExecSpace> & y, const ttb_real s) const
 {
-  // TODO: check size compatibility, parallelize
-  auto data_1d = make_data_1d();
-  auto y_data_1d = y.make_data_1d();
-  data_1d.plus(y_data_1d, s);
+  if (data.span() == y.data.span()) { // matrices have the same padding
+    auto data_1d = make_data_1d();
+    auto y_data_1d = y.make_data_1d();
+    data_1d.plus(y_data_1d, s);
+  }
+  else { // matrices might not have the same padding
+    gt_assert(data.extent(0) == y.data.extent(0));
+    gt_assert(data.extent(1) == y.data.extent(1));
+    auto d = data;
+    Kokkos::parallel_for("FacMatrix::plus",
+                         Kokkos::RangePolicy<ExecSpace>(0,d.extent(0)),
+                         KOKKOS_LAMBDA(const ttb_indx i)
+    {
+      for (ttb_indx j=0; j<d.extent(1); ++j)
+        d(i,j) += s*y.data(i,j);
+    });
+  }
 }
 
 template <typename ExecSpace>

@@ -48,13 +48,18 @@
 #include "Genten_IndxArray.hpp"
 #include "Genten_Ptree.hpp"
 
+#ifdef HAVE_PYTHON
+#include "pybind11/pytypes.h"
+#endif
+
 namespace Genten {
 
   // Struct for passing various algorithmic parameters
-  struct AlgParams {
+  struct __attribute__((visibility("default"))) AlgParams {
 
     // Generic options
     Execution_Space::type exec_space; // Chosen execution space
+    IndxArray proc_grid; // User-defined processor grid
     Solver_Method::type method; // Solver method ("cp-als", "gcp-sgd", ...)
     ttb_indx rank;       // Rank of decomposition
     unsigned long seed;  // Random number seed for initial guess
@@ -103,6 +108,12 @@ namespace Genten {
     GCP_LossFunction::type loss_function_type; // Loss function for GCP
     ttb_real loss_eps;                         // Perturbation for GCP
     ttb_real gcp_tol;                          // Tolerance for GCP algorithm
+    GCP_Goal_Method::type goal_method;         // Way of supplying goal function
+    std::string python_module_name;      // Module name for python goal
+    std::string python_object_name;      // Object name for python module goal
+#ifdef HAVE_PYTHON
+    pybind11::object python_object;      // Python object for python goal
+#endif
 
     // GCP-SGD options
     GCP_Sampling::type sampling_type;    // Sampling type
@@ -157,7 +168,7 @@ namespace Genten {
     static void print_help(std::ostream& out);
 
     // Print parmeters
-    void print(std::ostream& out);
+    void print(std::ostream& out) const;
 
     // Fixup alg params to correct values
     template <typename ExecSpace>

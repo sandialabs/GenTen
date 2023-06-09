@@ -45,6 +45,7 @@
 
 Genten::AlgParams::AlgParams() :
   exec_space(Execution_Space::default_type),
+  proc_grid(),
   method(Solver_Method::default_type),
   rank(16),
   seed(12345),
@@ -85,7 +86,10 @@ Genten::AlgParams::AlgParams() :
   loss_function_type(Genten::GCP_LossFunction::default_type),
   loss_eps(1.0e-10),
   gcp_tol(-DOUBLE_MAX),
-  sampling_type(Genten::GCP_Sampling::default_type),
+  goal_method(GCP_Goal_Method::default_type),
+  python_module_name("__main__"),
+  python_object_name("goal"),
+  sampling_type(GCP_Sampling::default_type),
   rate(1.0e-3),
   decay(0.1),
   max_fails(10),
@@ -134,6 +138,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                               Genten::Execution_Space::num_types,
                               Genten::Execution_Space::types,
                               Genten::Execution_Space::names);
+  proc_grid = parse_ttb_indx_array(args, "--proc-grid", proc_grid, 1, INT_MAX);
   method = parse_ttb_enum(args, "--method", method,
                           Genten::Solver_Method::num_types,
                           Genten::Solver_Method::types,
@@ -224,6 +229,15 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                                       Genten::GCP_LossFunction::names);
   loss_eps = parse_ttb_real(args, "--eps", loss_eps, 0.0, 1.0);
   gcp_tol = parse_ttb_real(args, "--gcp-tol", gcp_tol, -DOUBLE_MAX, DOUBLE_MAX);
+  goal_method = parse_ttb_enum(args, "--gcp-goal-method", goal_method,
+                                      Genten::GCP_Goal_Method::num_types,
+                                      Genten::GCP_Goal_Method::types,
+                                      Genten::GCP_Goal_Method::names);
+  python_module_name = parse_string(args, "--gcp-goal-python-module-name", python_module_name.c_str());
+  python_object_name = parse_string(args, "--gcp-goal-python-object-name", python_object_name.c_str());
+  // Do not parse python_object as it is just for embedded python
+  if (goal_method == GCP_Goal_Method::PythonObject)
+    Genten::error("PythonObject goal method cannot be chosen from command line!");
 
   // GCP-SGD options
   sampling_type = parse_ttb_enum(args, "--sampling",
@@ -307,6 +321,11 @@ void Genten::AlgParams::parse(const ptree& input)
 
   // Generic options
   parse_ptree_enum<Execution_Space>(input, "exec-space", exec_space);
+  if (input.contains("proc-grid")) {
+    std::vector<ttb_real> grid;
+    parse_ptree_value(input, "proc-grid", grid, 1, INT_MAX);
+    proc_grid = IndxArray(grid.size(), grid.data());
+  }
   parse_ptree_enum<Solver_Method>(input, "solver-method", method);
   parse_ptree_value(input, "debug", debug);
   parse_ptree_value(input, "timings", timings);
@@ -395,6 +414,20 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_value(cpopt_input, "penalty", penalty, 0.0, DOUBLE_MAX);
   }
 
+  // Goals for GCP-OPT/GCP-SGD
+  auto parse_goal = [&](const ptree& input) {
+    auto goal_input_o = input.get_child_optional("goal");
+    if (goal_input_o) {
+      auto& goal_input = *goal_input_o;
+      parse_ptree_enum<GCP_Goal_Method>(goal_input, "method", goal_method);
+      parse_ptree_value(goal_input, "python-module-name", python_module_name);
+      parse_ptree_value(goal_input, "python-object-name", python_object_name);
+
+      if (goal_method == GCP_Goal_Method::PythonObject)
+        Genten::error("PythonObject goal method cannot be chosen from JSON!");
+    }
+  };
+
   // GCP-OPT
   auto gcpopt_input_o = input.get_child_optional("gcp-opt");
   if (gcpopt_input_o) {
@@ -403,6 +436,7 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_enum<GCP_LossFunction>(gcpopt_input, "type", loss_function_type);
     parse_ptree_value(gcpopt_input, "eps", loss_eps, 0.0, 1.0);
     parse_ptree_value(gcpopt_input, "fit", compute_fit);
+    parse_goal(gcpopt_input);
   }
 
   // GCP-SGD
@@ -413,6 +447,7 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_mttkrp(gcp_input);
     parse_ptree_enum<GCP_LossFunction>(gcp_input, "type", loss_function_type);
     parse_ptree_value(gcp_input, "eps", loss_eps, 0.0, 1.0);
+    parse_goal(gcp_input);
 
     // GCP-SGD
     parse_ptree_enum<GCP_Sampling>(gcp_input, "sampling", sampling_type);
@@ -472,6 +507,8 @@ void Genten::AlgParams::print_help(std::ostream& out)
       out << ", ";
   }
   out << std::endl;
+  out << "  --proc-grid <array>  number of MPI processors in each dimension"
+      << std::endl;
   out << "  --method <method>  decomposition method: ";
   for (unsigned i=0; i<Genten::Solver_Method::num_types; ++i) {
     out << Genten::Solver_Method::names[i];
@@ -583,6 +620,15 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << std::endl;
   out << "  --eps <float>      perturbation of loss functions for entries near 0" << std::endl;
   out << "  --gcp-tol <float> GCP solver tolerance" << std::endl;
+  out << "  --gcp-goal-method <type> goal function type GCP: ";
+  for (unsigned i=0; i<Genten::GCP_Goal_Method::num_types; ++i) {
+    out << Genten::GCP_Goal_Method::names[i];
+    if (i != Genten::GCP_Goal_Method::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
+  out << "  --gcp-goal-python-module-name <string> name of python module" << std::endl;
+  out << "  --gcp-goal-python-object-name <string> name of python object in python module" << std::endl;
 
   out << std::endl;
   out << "GCP-SGD options:" << std::endl;
@@ -662,10 +708,11 @@ void Genten::AlgParams::print_help(std::ostream& out)
       << std::endl;
 }
 
-void Genten::AlgParams::print(std::ostream& out)
+void Genten::AlgParams::print(std::ostream& out) const
 {
   out << "Generic options: " << std::endl;
   out << "  exec-space = " << Genten::Execution_Space::names[exec_space] << std::endl;
+  out << "  proc-grid = " << proc_grid << std::endl;
   out << "  method = " << Genten::Solver_Method::names[method] << std::endl;
   out << "  rank = " << rank << std::endl;
   out << "  seed = " << seed << std::endl;
@@ -724,6 +771,10 @@ void Genten::AlgParams::print(std::ostream& out)
       << std::endl;
   out << "  eps = " << loss_eps << std::endl;
   out << "  gcp-tol = " << gcp_tol << std::endl;
+  out << "  gcp-goal-method = " << Genten::GCP_Goal_Method::names[goal_method]
+      << std::endl;
+  out << "  gcp-goal-python-module-name = " << python_module_name << std::endl;
+  out << "  gcp-goal-python-object-name = " << python_object_name << std::endl;
 
   out << std::endl;
   out << "GCP-Opt options:" << std::endl;
