@@ -10,13 +10,13 @@ except:
 
 if have_ttb:
 
-    def test_ttb_to_gt_tensor_f():
+    def test_ttb_to_gt_tensor():
 
-        # Make a dense pyttb tensor with 'F' layout
+        # Make a dense pyttb tensor
         data = np.array([1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12.])
         shape = (2,3,2)
         data = np.reshape(data, np.array(shape), order='F')
-        x = ttb.tensor.from_data(data, shape, copy=False)
+        x = ttb.tensor.from_data(data, shape)
 
         # Make a pygenten tensor from it as a copy, and verify it is a copy
         x_gt = gt.make_gt_tensor(x, copy=True)
@@ -30,33 +30,6 @@ if have_ttb:
         # Make a pygenten tensor from it as a view, and verify it is a view
         x_gt = gt.make_gt_tensor(x, copy=False)
         assert x_gt.is_values_view == True
-        with np.nditer(x.data, flags=['multi_index']) as it:
-            assert x.data[it.multi_index] == x_gt.data[it.multi_index]
-        x_gt.data[0,0,0] = -2.0;
-        assert x_gt.data[0,0,0] == -2.0
-        assert x.data[0,0,0] == -2.0
-
-    def test_ttb_to_gt_tensor_c():
-
-        # Make a dense pyttb tensor with 'C' layout
-        # The copy when creating the tensor transforms it from 'F' to 'C'
-        data = np.array([1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12.])
-        shape = (2,3,2)
-        data = np.reshape(data, np.array(shape), order='F')
-        x = ttb.tensor.from_data(data, shape, copy=True)
-
-        # Make a pygenten tensor from it as a copy, and verify it is a copy
-        x_gt = gt.make_gt_tensor(x, copy=True)
-        assert x_gt.is_values_view == False
-        with np.nditer(x.data, flags=['multi_index']) as it:
-            assert x.data[it.multi_index] == x_gt.data[it.multi_index]
-        x_gt.data[0,0,0] = -1.0;
-        assert x_gt.data[0,0,0] == -1.0
-        assert x.data[0,0,0] != -1.0
-
-        # Make a pygenten tensor from it as a view, and verify it is a view
-        assert x_gt.is_values_view == False
-        x_gt = gt.make_gt_tensor(x, copy=False)
         with np.nditer(x.data, flags=['multi_index']) as it:
             assert x.data[it.multi_index] == x_gt.data[it.multi_index]
         x_gt.data[0,0,0] = -2.0;
@@ -85,7 +58,10 @@ if have_ttb:
             assert x.data[it.multi_index] == x_gt.data[it.multi_index]
         x.data[0,0,0] = -2.0;
         assert x.data[0,0,0] == -2.0
-        assert x_gt.data[0,0,0] == -2.0
+        if gt.ttb_tensor_supports_copy():
+            assert x_gt.data[0,0,0] == -2.0
+        else:
+            assert x_gt.data[0,0,0] != -2.0
 
     def test_ttb_to_gt_sptensor_unsigned():
 

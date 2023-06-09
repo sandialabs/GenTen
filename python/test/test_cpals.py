@@ -1,6 +1,7 @@
 import pygenten as gt
 import pytest
 import json
+from inspect import signature
 
 try:
     import pyttb as ttb
@@ -69,7 +70,13 @@ if have_ttb:
         del u, x
 
     def test_cpals_sparse_ttb():
-        x = ttb.import_data("data/aminoacid_data.txt", index_base=0)
+        # AminoAcid sparse tensor uses 0-based indexing, which pyttb may not
+        # (yet) support
+        sig = signature(ttb.import_data)
+        if 'index_base' in sig.parameters.keys():
+            x = ttb.import_data("data/aminoacid_data.txt", index_base=0)
+        else:
+            x = gt.make_ttb_sptensor(gt.import_sptensor("data/aminoacid_data.txt"))
 
         u,perf = gt.cp_als(x, rank=16, maxiters=20, tol=1e-4, seed=12345)
         e = perf.lastEntry()

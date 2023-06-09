@@ -5,6 +5,15 @@ Helper functions for converting between pygenten and pyttb data structures.
 import pygenten._pygenten as gt
 import pyttb
 import numpy
+from inspect import signature
+
+def ttb_tensor_supports_copy():
+    sig = signature(pyttb.tensor.from_data)
+    return 'copy' in sig.parameters.keys()
+
+def ttb_ktensor_supports_copy():
+    sig = signature(pyttb.ktensor.from_data)
+    return 'copy' in sig.parameters.keys()
 
 def make_ttb_tensor(X, copy=True):
     """
@@ -16,7 +25,10 @@ def make_ttb_tensor(X, copy=True):
 
     Returns a pyttb.tensor for X.
     """
-    return pyttb.tensor.from_data(X.data, X.shape, copy=copy)
+    if ttb_tensor_supports_copy():
+        return pyttb.tensor.from_data(X.data, X.shape, copy=copy)
+    else:
+        return pyttb.tensor.from_data(X.data, X.shape)
 
 def make_ttb_sptensor(X, copy=True):
     """
@@ -43,7 +55,10 @@ def make_ttb_ktensor(M, copy=True):
 
     Returns a pyttb.ktensor for M.
     """
-    return pyttb.ktensor.from_data(M.weights, M.factor_matrices, copy=copy)
+    if ttb_ktensor_supports_copy():
+        return  pyttb.ktensor.from_data(M.weights, M.factor_matrices, copy=copy)
+    else:
+        return pyttb.ktensor.from_data(M.weights, list(M.factor_matrices))
 
 def make_gt_tensor(X, copy=True):
     """
