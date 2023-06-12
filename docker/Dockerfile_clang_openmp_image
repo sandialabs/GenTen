@@ -16,7 +16,6 @@ SHELL ["/bin/bash", "-c"]
 RUN \
   apt-get update --yes && \
   apt-get install --yes \
-    gpgv2 \
     cmake \
     libblas-dev \
     liblapack-dev \
