@@ -4,6 +4,10 @@ Solver functions for computing CP decompositions using GenTen.
 
 import pygenten._pygenten as gt
 from pygenten.utils import make_algparams
+try:
+    from pygenten.helpers import make_ttb_ktensor, make_gt_tensor, make_gt_sptensor, make_gt_ktensor
+except:
+    pass
 
 def make_guess(args):
     """
@@ -49,19 +53,21 @@ def driver(X, u, args, dtc=None):
     except:
         have_ttb = False
 
+    if have_ttb:
+        import pygenten.helpers
+
     # Convert TTB tensor/sptensor to Genten Tensor/Sptensor
     is_ttb = False
     if have_ttb and isinstance(X, ttb.tensor):
-        X = gt.Tensor(X.data, copy=False)
+        X = make_gt_tensor(X, copy=False)
         is_ttb = True
     if have_ttb and isinstance(X, ttb.sptensor):
-        X = gt.Sptensor(X.shape, X.subs, X.vals, copy=False)
+        X = make_gt_sptensor(X, copy=False)
         is_ttb = True
 
     # Convert TTB ktensor to Genten Ktensor
     if have_ttb and isinstance(u, ttb.ktensor):
-        # This needs to be a copy for some reason I do not fully understand
-        u = gt.Ktensor(u.weights, u.factor_matrices, copy=False)
+        u = make_gt_ktensor(u, copy=False)
         is_ttb = True
 
     # Call Genten
@@ -71,11 +77,8 @@ def driver(X, u, args, dtc=None):
         M,info = gt.driver(X, u, args);
 
     # Convert result Ktensor to TTB ktensor if necessary
-    # Copying shouldn't be necessary since the python objects carry
-    # reference counts for the original GenTen objects, but it appears
-    # to not always work.
     if is_ttb:
-        M = ttb.ktensor.from_data(M.weights, M.factor_matrices, copy=False)
+        M = make_ttb_ktensor(M, copy=False)
 
     return M, info
 
