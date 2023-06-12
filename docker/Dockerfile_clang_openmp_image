@@ -5,7 +5,8 @@
 
 # Base image -- Need to using testing for newer CMake
 #FROM debian:testing
-FROM debian:stable
+#FROM debian:stable
+FROM ubuntu:20.04
 MAINTAINER Eric Phipps <etphipp@sandia.gov>
 
 # Change to bash so we have, e.g., -o pipefail
