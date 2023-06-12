@@ -14,7 +14,6 @@ SHELL ["/bin/bash", "-c"]
 # Install GenTen dependencies
 RUN \
   apt-get update --yes && \
-  apt-get dist-upgrade --yes && \
   apt-get install --yes \
     cmake \
     libblas-dev \
@@ -25,6 +24,8 @@ RUN \
     gfortran \
     && \
   rm -rf /var/lib/apt/lists/*
+
+#apt-get dist-upgrade --yes && \
 
 # Install useful utilities
 RUN \
