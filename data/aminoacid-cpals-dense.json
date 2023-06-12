@@ -13,7 +13,9 @@
         "initial-guess": "rand",
         "distributed-guess": "serial",
         "seed": 12345,
-        "prng": false
+        "prng": false,
+        "output-file": "aminoacid.ktn",
+        "dense-reconstruction": "aminoacid-reconstruction-dense.tns"
     },
     "cp-als":
     {

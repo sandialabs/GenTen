@@ -97,6 +97,8 @@ void usage(char **argv)
   std::cout << "  --save-tensor <string> filename to save the tensor (leave blank for no save)" << std::endl;
   std::cout << "  --initial-file <string>  file name for reading Ktensor initial guess (leave blank for random initial guess)" << std::endl;
   std::cout << "  --output-file <string>  output file name for saving Ktensor" << std::endl;
+  std::cout << "  --output-dense-reconstruction <string>  output file name for saving the tensor reconstruction as a dense tensor" << std::endl;
+  std::cout << "  --output-sparse-reconstruction <string>  output file name for saving the tensor reconstruction as a sparse tensor" << std::endl;
   std::cout << "  --vtune            connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
   std::cout << "  --history-file     file to save performance history" << std::endl;
   std::cout << std::endl;
@@ -115,6 +117,8 @@ int main_driver(Genten::AlgParams& algParams,
                 const Genten::IndxArray& facDims_h,
                 const ttb_indx nnz,
                 const std::string& tensor_outputfilename,
+                const std::string& dense_reconstruction,
+                const std::string& sparse_reconstruction,
                 const std::string& history_file)
 {
   int ret = 0;
@@ -272,6 +276,31 @@ int main_driver(Genten::AlgParams& algParams,
       printf("  Ktensor export took %6.3f seconds\n", timer.getTotalTime(1));
   }
 
+  // Save dense/sparse reconstructions
+  if (dense_reconstruction != "" || sparse_reconstruction != "") {
+    timer.start(1);
+    Genten::Ktensor u_root =
+      dtc.template importToRoot<Genten::DefaultHostExecutionSpace>(u);
+    if (dtc.gridRank() == 0) {
+      Genten::Tensor dense_recon(u_root);
+      if (dense_reconstruction != "") {
+        std::cout << "Writing ktensor dense reconstruction to "
+                  << dense_reconstruction << std::endl;
+        Genten::export_tensor(dense_reconstruction, dense_recon);
+      }
+      if (sparse_reconstruction != "") {
+        std::cout << "Writing ktensor sparse reconstruction to "
+                  << sparse_reconstruction << std::endl;
+        Genten::Sptensor sparse_recon(dense_recon);
+        Genten::export_sptensor(sparse_reconstruction, sparse_recon);
+      }
+    }
+    timer.stop(1);
+    DC::Barrier();
+    if (dtc.gridRank() == 0)
+      printf("  Writing reconstruction(s) took %6.3f seconds\n", timer.getTotalTime(1));
+  }
+
   // Save history to file
   if (history_file != "" && dtc.gridRank() == 0) {
     std::cout << "Saving performance history to file " << history_file
@@ -424,6 +453,8 @@ int main(int argc, char* argv[])
     ttb_bool gz = false;
     ttb_bool sparse = true;
     std::string tensor_outputfilename = "";
+    std::string dense_reconstruction = "";
+    std::string sparse_reconstruction = "";
     ttb_indx nnz = 1 * 1000 * 1000;
     Genten::IndxArray facDims_h = { 30, 40, 50 };
     std::string init = "";
@@ -467,6 +498,8 @@ int main(int argc, char* argv[])
         auto& ktensor_input = *ktensor_input_o;
         Genten::parse_ptree_value(ktensor_input, "initial-file", init);
         Genten::parse_ptree_value(ktensor_input, "output-file", outputfilename);
+        Genten::parse_ptree_value(ktensor_input, "dense-reconstruction", dense_reconstruction);
+        Genten::parse_ptree_value(ktensor_input, "sparse-reconstruction", sparse_reconstruction);
       }
 
       Genten::parse_ptree_value(json_input, "history-file", history_file);
@@ -484,6 +517,10 @@ int main(int argc, char* argv[])
       Genten::parse_ttb_bool(args, "--sparse", "--dense", sparse);
     tensor_outputfilename =
       Genten::parse_string(args, "--save-tensor", tensor_outputfilename);
+    dense_reconstruction =
+      Genten::parse_string(args, "--dense-reconstruction", dense_reconstruction);
+    sparse_reconstruction =
+      Genten::parse_string(args, "--sparse-reconstruction", sparse_reconstruction);
     nnz =
       Genten::parse_ttb_indx(args, "--nnz", nnz, 1, INT_MAX);
     facDims_h =
@@ -522,7 +559,11 @@ int main(int argc, char* argv[])
       if (init != "")
         std::cout << "  initial-file = " << init << std::endl;
       if (tensor_outputfilename != "")
-        std::cout << "  save_tensor = " << tensor_outputfilename << std::endl;
+        std::cout << "  save-tensor = " << tensor_outputfilename << std::endl;
+      if (dense_reconstruction != "")
+        std::cout << "  dense-reconstruction = " << dense_reconstruction << std::endl;
+      if (sparse_reconstruction != "")
+        std::cout << "  sparse-reconstruction = " << sparse_reconstruction << std::endl;
       std::cout << "  output-file = " << outputfilename << std::endl;
       std::cout << "  sparse = " << (sparse ? "true" : "false") << std::endl;
       std::cout << "  index_base = " << index_base << std::endl;
@@ -549,6 +590,8 @@ int main(int argc, char* argv[])
                                                        facDims_h,
                                                        nnz,
                                                        tensor_outputfilename,
+                                                       dense_reconstruction,
+                                                       sparse_reconstruction,
                                                        history_file);
 #ifdef HAVE_CUDA
     else if (algParams.exec_space == Genten::Execution_Space::Cuda)
@@ -563,6 +606,8 @@ int main(int argc, char* argv[])
                                       facDims_h,
                                       nnz,
                                       tensor_outputfilename,
+                                      dense_reconstruction,
+                                      sparse_reconstruction,
                                       history_file);
 #endif
 #ifdef HAVE_HIP
@@ -578,6 +623,8 @@ int main(int argc, char* argv[])
                                                    facDims_h,
                                                    nnz,
                                                    tensor_outputfilename,
+                                                   dense_reconstruction,
+                                                   sparse_reconstruction,
                                                    history_file);
 #endif
 #ifdef HAVE_SYCL
@@ -593,6 +640,8 @@ int main(int argc, char* argv[])
                                                     facDims_h,
                                                     nnz,
                                                     tensor_outputfilename,
+                                                    dense_reconstruction,
+                                                    sparse_reconstruction,
                                                     history_file);
 #endif
 #ifdef HAVE_OPENMP
@@ -608,6 +657,8 @@ int main(int argc, char* argv[])
                                         facDims_h,
                                         nnz,
                                         tensor_outputfilename,
+                                        dense_reconstruction,
+                                        sparse_reconstruction,
                                         history_file);
 #endif
 #ifdef HAVE_THREADS
@@ -623,6 +674,8 @@ int main(int argc, char* argv[])
                                          facDims_h,
                                          nnz,
                                          tensor_outputfilename,
+                                         dense_reconstruction,
+                                         sparse_reconstruction,
                                          history_file);
 #endif
 #ifdef HAVE_SERIAL
@@ -638,6 +691,8 @@ int main(int argc, char* argv[])
                                         facDims_h,
                                         nnz,
                                         tensor_outputfilename,
+                                        dense_reconstruction,
+                                        sparse_reconstruction,
                                         history_file);
 #endif
     else
