@@ -252,6 +252,14 @@ static nlohmann::json json_schema = R"(
                   "description": "Path to output K-tensor file",
                   "type": "string"
               },
+              "dense-reconstruction": {
+                  "description": "Path to output K-tensor reconstruction as a dense tensor",
+                  "type": "string"
+              },
+              "sparse-reconstruction": {
+                  "description": "Path to output K-tensor reconstruction as a sparse tensor",
+                  "type": "string"
+              },
               "initial-guess": {
                   "description": "Type of initial guess to use",
                   "enum": ["rand", "file"],
