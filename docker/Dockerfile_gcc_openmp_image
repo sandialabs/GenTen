@@ -4,7 +4,8 @@
 # This is intended to be run from the top-level genten source tree
 
 # Base image
-FROM debian:stable
+#FROM debian:stable
+FROM ubuntu:20.04
 MAINTAINER Eric Phipps <etphipp@sandia.gov>
 
 # Change to bash so we have, e.g., -o pipefail
@@ -13,7 +14,6 @@ SHELL ["/bin/bash", "-c"]
 # Install GenTen dependencies
 RUN \
   apt-get update --yes && \
-  apt-get dist-upgrade --yes && \
   apt-get install --yes \
     cmake \
     libblas-dev \
@@ -26,6 +26,8 @@ RUN \
     libopenmpi-dev \
     && \
   rm -rf /var/lib/apt/lists/*
+
+#apt-get dist-upgrade --yes && \
 
 # Install useful utilities
 RUN \
