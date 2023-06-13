@@ -11,6 +11,10 @@ MAINTAINER Eric Phipps <etphipp@sandia.gov>
 # Change to bash so we have, e.g., -o pipefail
 SHELL ["/bin/bash", "-c"]
 
+# Configure timezone to prevent installation of tzdata from hanging
+ENV TZ=America/Denver
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
 # Install GenTen dependencies
 RUN \
   apt-get update --yes && \
