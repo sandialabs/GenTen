@@ -195,3 +195,33 @@ def gcp_sgd(X, **kwargs):
 
     a.method = gt.GCP_SGD
     return driver(X, u, a, dtc)
+
+def gcp_fed_opt(X, **kwargs):
+    """
+    Compute Generalized CP decomposition using all-at-once stochastic gradient
+    descent-based optimization and federated learning.
+
+    Parameters:
+      * X: Tensor to compute decomposition from.  May be provided using
+        pyttb or pygenten tensor classes (pyttb.tensor/pygenten.Tensor and
+        pyttb.sptensor/pygenten.Sptensor).
+      * kwargs:  Keyword arguments for optional arguments including:
+        * initial guess (as a pyttb.ktensor or pygenten.Ktensor).
+        * distributed tensor context.
+        * algorithmic parameters as pygenten.AlgParams.
+        * any named parameters stored within pygenten.AlgParams.
+
+    Returns:
+      * u:  the ktensor solution (as either a pyttb.ktensor
+        or pygenten.ktensor, depending on what was passed in).
+      * perfInfo:  performance information as pygenten.PerfHistory.
+    """
+    rem = kwargs
+    u,rem = make_guess(rem)
+    a,rem = make_algparams(rem)
+    dtc,rem = make_dtc(rem)
+    check_invalid(rem)
+
+    a.method = gt.GCP_SGD_DIST
+    return driver(X, u, a, dtc)
+
