@@ -47,8 +47,6 @@
 #include "Genten_KokkosVector.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
 
-#include "impl/Kokkos_Atomic_Generic.hpp"
-
 namespace Genten {
 
   namespace Impl {
@@ -63,6 +61,11 @@ namespace Genten {
         if (LossFunction::has_upper_bound() && un > LossFunction::upper_bound())
           un = LossFunction::upper_bound();
         return un;
+      }
+
+      KOKKOS_INLINE_FUNCTION
+      ttb_real operator()(const ttb_real& u, const ttb_real& delta) const {
+        return apply(u,delta);
       }
     };
 
@@ -143,9 +146,9 @@ namespace Genten {
           // Probably even slower.  Apply bounds while updating
           if (LossFunction::has_lower_bound() ||
               LossFunction::has_upper_bound())
-            Kokkos::Impl::atomic_oper_fetch(BoundUpdate<LossFunction>(),
-                                            &u[dim].entry(row,col),
-                                            delta);
+            Genten::atomic_oper_fetch(BoundUpdate<LossFunction>(),
+                                      &u[dim].entry(row,col),
+                                      delta);
           else
             Kokkos::atomic_add(&u[dim].entry(row,col), delta);
 #endif
@@ -399,6 +402,11 @@ namespace Genten {
       ttb_real apply(const ttb_real& m, const ttb_real& g) const {
         return beta*m + (1.0-beta)*g;
       }
+
+      KOKKOS_INLINE_FUNCTION
+      ttb_real operator()(const ttb_real& m, const ttb_real& g) const {
+        return apply(m,g);
+      }
     };
 
 #if 0
@@ -548,13 +556,13 @@ namespace Genten {
 
         // Update moments
         const ttb_real mn =
-          Kokkos::Impl::atomic_oper_fetch(AdamOp(beta1),
-                                          &mt[dim].entry(row,col),
-                                          g);
+          Genten::atomic_oper_fetch(AdamOp(beta1),
+                                    &mt[dim].entry(row,col),
+                                    g);
         const ttb_real vn =
-          Kokkos::Impl::atomic_oper_fetch(AdamOp(beta2),
-                                          &vt[dim].entry(row,col),
-                                          g*g);
+          Genten::atomic_oper_fetch(AdamOp(beta2),
+                                    &vt[dim].entry(row,col),
+                                    g*g);
 
         // Update to u
         const ttb_real delta = -adam_step_*mn/(sqrt(abs(vn))+eps);
@@ -562,9 +570,9 @@ namespace Genten {
         // Update u incorporating bounds
         if (LossFunction::has_lower_bound() ||
             LossFunction::has_upper_bound())
-          Kokkos::Impl::atomic_oper_fetch(BoundUpdate<LossFunction>(),
-                                          &u[dim].entry(row,col),
-                                          delta);
+          Genten::atomic_oper_fetch(BoundUpdate<LossFunction>(),
+                                    &u[dim].entry(row,col),
+                                    delta);
         else
           Kokkos::atomic_add(&u[dim].entry(row,col), delta);
       }
@@ -733,13 +741,13 @@ namespace Genten {
 
         // Update moments
         const ttb_real mn =
-          Kokkos::Impl::atomic_oper_fetch(AdamOp(beta1),
-                                          &mt[dim].entry(row,col),
-                                          g);
+          Genten::atomic_oper_fetch(AdamOp(beta1),
+                                    &mt[dim].entry(row,col),
+                                    g);
         const ttb_real vn =
-          Kokkos::Impl::atomic_oper_fetch(AdamOp(beta2),
-                                          &vt[dim].entry(row,col),
-                                          g*g);
+          Genten::atomic_oper_fetch(AdamOp(beta2),
+                                    &vt[dim].entry(row,col),
+                                    g*g);
 
         // Update to u
         const ttb_real delta = -adam_step_*mn/(sqrt(abs(vn))+eps);
@@ -747,9 +755,9 @@ namespace Genten {
         // Update u incorporating bounds
         if (LossFunction::has_lower_bound() ||
             LossFunction::has_upper_bound())
-          Kokkos::Impl::atomic_oper_fetch(BoundUpdate<LossFunction>(),
-                                          &u[dim].entry(row,col),
-                                          delta);
+          Genten::atomic_oper_fetch(BoundUpdate<LossFunction>(),
+                                    &u[dim].entry(row,col),
+                                    delta);
         else
           Kokkos::atomic_add(&u[dim].entry(row,col), delta);
       }
@@ -931,13 +939,13 @@ namespace Genten {
 
         // Update moments
         const ttb_real mn =
-          Kokkos::Impl::atomic_oper_fetch(AdamOp(beta1),
-                                          &mt[dim].entry(row,col),
-                                          g);
+          Genten::atomic_oper_fetch(AdamOp(beta1),
+                                    &mt[dim].entry(row,col),
+                                    g);
         const ttb_real vn =
-          Kokkos::Impl::atomic_oper_fetch(AdamOp(beta2),
-                                          &vt[dim].entry(row,col),
-                                          g*g);
+          Genten::atomic_oper_fetch(AdamOp(beta2),
+                                    &vt[dim].entry(row,col),
+                                    g*g);
         const ttb_real wn =
           Kokkos::atomic_max_fetch(&wt[dim].entry(row,col), vn);
 
@@ -947,9 +955,9 @@ namespace Genten {
         // Update u incorporating bounds
         if (LossFunction::has_lower_bound() ||
             LossFunction::has_upper_bound())
-          Kokkos::Impl::atomic_oper_fetch(BoundUpdate<LossFunction>(),
-                                          &u[dim].entry(row,col),
-                                          delta);
+          Genten::atomic_oper_fetch(BoundUpdate<LossFunction>(),
+                                    &u[dim].entry(row,col),
+                                    delta);
         else
           Kokkos::atomic_add(&u[dim].entry(row,col), delta);
       }
