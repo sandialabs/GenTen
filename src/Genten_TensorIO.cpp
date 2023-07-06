@@ -423,7 +423,7 @@ void writeDataValue(std::ostream& outFile, const double value,
 
 double readDataValue(std::istream& inFile, const uint64_t size) {
   float fp32;
-  double fp64;
+  double fp64 = 0.0;
   switch (size) {
   case 16:
     Genten::error("fp16 support not yet implemented");
