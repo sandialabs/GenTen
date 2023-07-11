@@ -317,7 +317,7 @@ namespace {
 
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples;
-      if (Yd.nnz() < total_samples) {
+      if (Yd.ndims() == 0 || Yd.nnz() < total_samples) {
         Yd = SptensorT<ExecSpace>(sz, total_samples);
         w = ArrayT<ExecSpace>(total_samples);
       }
@@ -419,7 +419,7 @@ namespace {
 
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples;
-      if (Yd.nnz() < total_samples) {
+      if (Yd.ndims() == 0 || Yd.nnz() < total_samples) {
         Yd = SptensorT<ExecSpace>(sz, total_samples);// Correct size is set later
         Yd.allocGlobalSubscripts();
         deep_copy(Yd.getLowerBounds(), lb);
@@ -556,7 +556,7 @@ namespace {
 
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
-      if (Yd.nnz() < total_samples) {
+      if (Yd.ndims() == 0 || Yd.nnz() < total_samples) {
         Yd = SptensorT<ExecSpace>(X.size(), total_samples);
         w = ArrayT<ExecSpace>(total_samples);
       }
@@ -724,7 +724,7 @@ namespace {
 
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
-      if (Yd.nnz() < total_samples) {
+      if (Yd.ndims() == 0 || Yd.nnz() < total_samples) {
         Yd = SptensorT<ExecSpace>(Xd.size(), total_samples); // Correct size is set later
         Yd.allocGlobalSubscripts();
         deep_copy(Yd.getLowerBounds(), Xd.getLowerBounds());
@@ -919,7 +919,7 @@ namespace {
         Genten::error("stratified_ktensor_grad():  temporal mode size of ktensor up does not match given history window!");
 
       // Resize Y if necessary
-      if (Yd.nnz() < total_samples*nh) {
+      if (Yd.ndims() == 0 || Yd.nnz() < total_samples*nh) {
         IndxArrayT<ExecSpace> sz = X.size().clone();
         auto sz_host = create_mirror_view(sz);
         deep_copy(sz_host, sz);
@@ -1028,7 +1028,7 @@ namespace {
         Genten::error("uniform_ktensor_grad():  temporal mode size of ktensor up does not match given history window!");
 
       // Resize Y if necessary
-      if (Yd.nnz() < num_samples*nh) {
+      if (Yd.ndims() == 0 || Yd.nnz() < num_samples*nh) {
         IndxArrayT<ExecSpace> sz(nd);
         auto sz_host = create_mirror_view(sz);
         for (unsigned i=0; i<nd; ++i)
