@@ -65,8 +65,8 @@ class TraditionalAnnealer : public AnnealerBase {
 public:
   TraditionalAnnealer(ptree const &ptree)
     : AnnealerBase(ptree),
-      step_size_(ptree.get_child("learning-rate").get<ttb_real>("step", 3e-4)),
-      decay_(ptree.get_child("learning-rate").get<ttb_real>("decay", 0.1)) {}
+      step_size_(ptree.get_child_optional("learning-rate").get<ttb_real>("step", 3e-4)),
+      decay_(ptree.get_child_optional("learning-rate").get<ttb_real>("decay", 0.1)) {}
 
   ttb_real operator()(int epoch) override { return step_size_; }
   void failed() override { step_size_ *= decay_; }
@@ -89,9 +89,9 @@ class CosineAnnealer : public AnnealerBase {
 public:
   CosineAnnealer(ptree const &ptree)
     : AnnealerBase(ptree),
-      min_lr(ptree.get_child("learning-rate").get<ttb_real>("min", 1e-12)),
-      max_lr(ptree.get_child("learning-rate").get<ttb_real>("max", 1e-9)),
-      Ti(ptree.get_child("learning-rate").get<int>("Ti", 10)), Tcur(Ti) {}
+      min_lr(ptree.get_child_optional("learning-rate").get<ttb_real>("min", 1e-12)),
+      max_lr(ptree.get_child_optional("learning-rate").get<ttb_real>("max", 1e-9)),
+      Ti(ptree.get_child_optional("learning-rate").get<int>("Ti", 10)), Tcur(Ti) {}
 
   ttb_real operator()(int) override {
     return min_lr +

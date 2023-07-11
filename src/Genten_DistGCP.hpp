@@ -110,7 +110,7 @@ DistGCP<ExecSpace>::DistGCP(const DistTensorContext<ExecSpace>& dtc,
                             const ptree& tree,
                             PerfHistory& history) :
   dtc_(dtc), spTensor_(spTensor), Kfac_(kTensor),
-  input_(tree.get_child("gcp-sgd-dist")), history_(history),
+  input_(tree.get_child_optional("gcp-sgd-dist")), history_(history),
   dump_(tree.get<bool>("dump", false)),
   seed_(input_.get<unsigned int>("seed", std::random_device{}()))
 {
