@@ -143,8 +143,6 @@ namespace Genten {
       num_samples_zeros_grad = std::min(ttb_real(num_samples_zeros_grad),
                                         lnz);
 
-      std::cout << "rank: " << rank << " lnnz = " << lnnz << " nzf = " << num_samples_nonzeros_value << std::endl;
-
       // Compute global number of samples actually used
       if (pmap != nullptr) {
         global_num_samples_nonzeros_value =
