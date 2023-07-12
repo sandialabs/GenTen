@@ -11,10 +11,6 @@ def ttb_tensor_supports_copy():
     sig = signature(pyttb.tensor.from_data)
     return 'copy' in sig.parameters.keys()
 
-def ttb_ktensor_supports_copy():
-    sig = signature(pyttb.ktensor.from_data)
-    return 'copy' in sig.parameters.keys()
-
 def make_ttb_tensor(X, copy=True):
     """
     Convert the given tensor to a pyttb.tensor
@@ -55,10 +51,7 @@ def make_ttb_ktensor(M, copy=True):
 
     Returns a pyttb.ktensor for M.
     """
-    if ttb_ktensor_supports_copy():
-        return  pyttb.ktensor.from_data(M.weights, M.factor_matrices, copy=copy)
-    else:
-        return pyttb.ktensor.from_data(M.weights, list(M.factor_matrices))
+    return  pyttb.ktensor(list(M.factor_matrices), M.weights, copy=copy)
 
 def make_gt_tensor(X, copy=True):
     """

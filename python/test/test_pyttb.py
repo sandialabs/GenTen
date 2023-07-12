@@ -195,7 +195,7 @@ if have_ttb:
         fm1 = np.array([[5., 8.], [6., 9.], [7., 10.]])
         fm2 = np.array([[11., 15.], [12., 16.], [13., 17.], [14., 18.]])
         factor_matrices = [fm0, fm1, fm2]
-        u = ttb.ktensor.from_data(weights, factor_matrices)
+        u = ttb.ktensor(factor_matrices, weights)
 
         # Make a pygenten ktensor from it as a copy, and verify it is a copy
         u_gt = gt.make_gt_ktensor(u, copy=True)
