@@ -33,6 +33,8 @@ RUN \
   apt-get update --yes && \
   apt-get install --yes \
     vim \
+    libgpm2 \
+    libcanberra0 \
     && \
     rm -rf /var/lib/apt/lists/*
 
