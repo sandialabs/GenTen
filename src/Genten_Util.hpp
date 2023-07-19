@@ -159,15 +159,15 @@ namespace Genten {
       CP_ALS,
       CP_OPT,
       GCP_SGD,
-      GCP_SGD_DIST,
+      GCP_FED,
       GCP_OPT
     };
     static constexpr unsigned num_types = 5;
     static constexpr type types[] = {
-      CP_ALS, CP_OPT, GCP_SGD, GCP_SGD_DIST, GCP_OPT
+      CP_ALS, CP_OPT, GCP_SGD, GCP_FED, GCP_OPT
     };
     static constexpr const char* names[] = {
-      "cp-als", "cp-opt", "gcp-sgd", "gcp-sgd-dist", "gcp-opt"
+      "cp-als", "cp-opt", "gcp-sgd", "gcp-fed", "gcp-opt"
     };
     static constexpr type default_type = CP_ALS;
   };
@@ -366,7 +366,7 @@ namespace Genten {
     static constexpr type default_type = Stratified;
   };
 
-  // Sampling functions supported by GCP
+  // Step functions supported by GCP-SGD/Fed
   struct GCP_Step {
     enum type {
       SGD,
@@ -386,7 +386,39 @@ namespace Genten {
     static constexpr type default_type = ADAM;
   };
 
-  // Sampling functions supported by GCP
+  // Federated learning methods supported by GCP-Fed
+  struct GCP_FedMethod {
+    enum type {
+      FedOpt,
+      FedAvg
+    };
+    static constexpr unsigned num_types = 2;
+    static constexpr type types[] = {
+      FedOpt, FedAvg
+    };
+    static constexpr const char* names[] = {
+      "fed-opt", "fed-avg"
+    };
+    static constexpr type default_type = FedOpt;
+  };
+
+  // Annealer methods supported by GCP-Fed
+  struct GCP_AnnealerMethod {
+    enum type {
+      Traditional,
+      Cosine
+    };
+    static constexpr unsigned num_types = 2;
+    static constexpr type types[] = {
+      Traditional, Cosine
+    };
+    static constexpr const char* names[] = {
+      "traditional", "cosine"
+    };
+    static constexpr type default_type = Traditional;
+  };
+
+  // Streaming solver types supported by OnlineGCP
   struct GCP_Streaming_Solver {
     enum type {
       SGD,
@@ -403,7 +435,7 @@ namespace Genten {
     static constexpr type default_type = SGD;
   };
 
-  // Sampling functions supported by GCP
+  // Streaming window methods
   struct GCP_Streaming_Window_Method {
     enum type {
       Reservoir,
@@ -419,7 +451,7 @@ namespace Genten {
     static constexpr type default_type = Reservoir;
   };
 
-  // Sampling functions supported by GCP
+  // Streaming history methods
   struct GCP_Streaming_History_Method {
     enum type {
       Ktensor_Fro,

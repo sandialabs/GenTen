@@ -49,31 +49,37 @@
 #include "Genten_GCP_ValueKernels.hpp"
 
 #include "Genten_Annealer.hpp"
-#include "Genten_Ptree.hpp"
 #include "Genten_DistTensorContext.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_PerfHistory.hpp"
 
+// To do:
+//  * make this a function instead of a class?
+//  * use normal sampling setup
+//  * unify annealers with gcp-sgd
+//  * use normal dist-update methods
+//  * add MPI one-sided back in
+
 namespace Genten {
 
 template <typename ExecSpace>
-class DistGCP {
+class GCP_FedOpt {
 public:
-  DistGCP(const DistTensorContext<ExecSpace>& dtc,
-          const SptensorT<ExecSpace>& spTensor,
-          const KtensorT<ExecSpace>& kTensor,
-          const ptree& tree,
-          PerfHistory& history);
-  ~DistGCP() = default;
+  GCP_FedOpt(const DistTensorContext<ExecSpace>& dtc,
+             const SptensorT<ExecSpace>& spTensor,
+             const KtensorT<ExecSpace>& kTensor,
+             const AlgParams& algParams,
+             PerfHistory& history);
+  ~GCP_FedOpt() = default;
 
   // For now let's delete these so they aren't accidently used
   // Can come back and define them later if needed
-  DistGCP(DistGCP const &) = delete;
-  DistGCP &operator=(DistGCP const &) = delete;
+  GCP_FedOpt(GCP_FedOpt const &) = delete;
+  GCP_FedOpt &operator=(GCP_FedOpt const &) = delete;
 
-  DistGCP(DistGCP &&) = delete;
-  DistGCP &operator=(DistGCP &&) = delete;
+  GCP_FedOpt(GCP_FedOpt &&) = delete;
+  GCP_FedOpt &operator=(GCP_FedOpt &&) = delete;
 
   ttb_real compute();
 
@@ -81,18 +87,14 @@ private:
   std::int32_t ndims() const { return dtc_.ndims(); }
   ProcessorMap const &pmap() const { return dtc_.pmap(); }
 
-  template <typename Loss> ttb_real allReduceTrad(Loss const &loss);
   template <typename Loss> ttb_real fedOpt(Loss const &loss);
-  template <typename Loss> ttb_real pickMethod(Loss const &loss);
-  AlgParams setAlgParams();
 
   DistTensorContext<ExecSpace> dtc_;
   SptensorT<ExecSpace> spTensor_;
   KtensorT<ExecSpace> Kfac_;
-  ptree input_;
+  AlgParams algParams_;
   PerfHistory& history_;
 
-  bool dump_; // I don't love keeping this flag, but it's easy
   unsigned int seed_;
   MPI_Datatype mpiElemType_ = DistContext::toMpiType<ttb_real>();
 
@@ -104,138 +106,62 @@ private:
 };
 
 template <typename ExecSpace>
-DistGCP<ExecSpace>::DistGCP(const DistTensorContext<ExecSpace>& dtc,
-                            const SptensorT<ExecSpace>& spTensor,
-                            const KtensorT<ExecSpace>& kTensor,
-                            const ptree& tree,
-                            PerfHistory& history) :
-  dtc_(dtc), spTensor_(spTensor), Kfac_(kTensor),
-  input_(tree.get_child_optional("gcp-sgd-dist")), history_(history),
-  dump_(tree.get<bool>("dump", false)),
-  seed_(input_.get<unsigned int>("seed", std::random_device{}()))
+GCP_FedOpt<ExecSpace>::
+GCP_FedOpt(const DistTensorContext<ExecSpace>& dtc,
+           const SptensorT<ExecSpace>& spTensor,
+           const KtensorT<ExecSpace>& kTensor,
+           const AlgParams& algParams,
+           PerfHistory& history) :
+  dtc_(dtc), spTensor_(spTensor), Kfac_(kTensor), algParams_(algParams),
+  history_(history)
 {
-  if (dump_) {
-    if (DistContext::rank() == 0) {
-      std::cout
-          << "gcp:\n"
-             "\trank: rank at which to decompose the tensor\n"
-             "\tloss: Loss function options are {guassian, poisson, "
-             "bernoulli}\n"
-             "\tmethod: The SGD method to use (default: adam), options {adam, "
-             "fedopt, sgd, sgdm, adagrad, demon}\n"
-             "\tmax_epochs: the number of epochs to run.\n"
-             "\tbatch_size_nz: the number of non-zeros to sample per batch.\n"
-             "\tbatch_size_zero: the number of zeros to sample per batch.\n"
-             "\tepoch_size: the number of `epoch_iters` to run, defaults to "
-             "number of "
-             "non-zeros  divided by the number of non-zeros per batch.\n"
-             "\tseed: Random seed default(std::random_device{}()).\n";
-    }
-  }
-}
+  seed_ = algParams_.gcp_seed > 0 ? algParams_.gcp_seed : std::random_device{}();
 
-template <typename ExecSpace>
-template <typename Loss>
-ttb_real DistGCP<ExecSpace>::pickMethod(Loss const &loss) {
-  auto method = input_.get<std::string>("method", "sgd");
-  if (method == "fedopt" || method == "fedavg") {
-    return fedOpt(loss);
-  } else if (method == "sgd") {
-    return allReduceTrad(loss);
-  } else {
-    Genten::error("Your method for distributed SGD wasn't recognized.\n");
-  }
-  return -1.0;
-}
-
-template <typename ExecSpace>
-ttb_real DistGCP<ExecSpace>::compute() {
-  auto loss = input_.get<std::string>("loss", "gaussian");
-
-  // MAYBE one day decouple this so it's not N^2 but what ever
-  if (loss == "gaussian") {
-    return pickMethod(GaussianLossFunction(1e-10));
-  } else if (loss == "poisson") {
-    return pickMethod(PoissonLossFunction(1e-10));
-  } else if (loss == "bernoulli") {
-    return pickMethod(BernoulliLossFunction(1e-10));
-  }
-
-  Genten::error("Need to add more loss functions to distributed SGD.\n");
-  return -1.0;
-}
-
-template <typename ExecSpace>
-AlgParams DistGCP<ExecSpace>::setAlgParams() {
+  // GCP_FedOpt currently uses its own approach for dividing samples across
+  // processors
   const std::uint64_t np = dtc_.nprocs();
   const std::uint64_t lnz = spTensor_.nnz();
   const std::uint64_t gnz = dtc_.globalNNZ(spTensor_);
   const std::uint64_t lz = spTensor_.numel_float() - lnz;
 
-  AlgParams algParams;
-  algParams.maxiters = input_.get<int>("max-epochs", 1000);
-  algParams.max_fails = input_.get<int>("fails", 2);
-  algParams.gcp_tol = input_.get<double>("tol", 1e-4);
-
-  auto global_batch_size_nz = input_.get<int>("batch-size-nz", 128);
-  auto global_batch_size_z =
-      input_.get<int>("batch-size-zero", global_batch_size_nz);
-  auto global_value_size_nz =
-    input_.get<int>("value-size-nz", 100000);
-  auto global_value_size_z =
-      input_.get<int>("value-size-zero", global_value_size_nz);
+  auto global_batch_size_nz = algParams_.num_samples_nonzeros_grad;
+  auto global_batch_size_z = algParams_.num_samples_zeros_grad;
+  auto global_value_size_nz = algParams_.num_samples_nonzeros_value;
+  auto global_value_size_z = algParams_.num_samples_zeros_value;
 
   // If we have fewer nnz than the batch size don't over sample them
-  algParams.num_samples_nonzeros_grad =
+  algParams_.num_samples_nonzeros_grad =
     std::min(lnz, global_batch_size_nz / np);
-  algParams.num_samples_zeros_grad =
+  algParams_.num_samples_zeros_grad =
     std::min(lz, global_batch_size_z / np);
 
   // No point in sampling more nonzeros than we actually have
-  algParams.num_samples_nonzeros_value =
+  algParams_.num_samples_nonzeros_value =
     std::min(lnz, global_value_size_nz / np);
-  algParams.num_samples_zeros_value =
+  algParams_.num_samples_zeros_value =
     std::min(lz, global_value_size_z / np);
 
-  algParams.sampling_type = Genten::GCP_Sampling::SemiStratified;
-  algParams.mttkrp_method = Genten::MTTKRP_Method::Default;
-  if (ExecSpace::concurrency() > 1) {
-    algParams.mttkrp_all_method = Genten::MTTKRP_All_Method::Atomic;
-  } else {
-    algParams.mttkrp_all_method = Genten::MTTKRP_All_Method::Single;
-  }
-  algParams.fuse = true;
-
-  // If the epoch size isnt provided we should just try to hit every non-zero
-  // approximately 1 time
+  // Currently we require fused, semi-stratified sampling
+  gt_assert(algParams_.sampling_type == Genten::GCP_Sampling::SemiStratified);
+  gt_assert(algParams_.fuse == true);
 
   // Reset the global_batch_size_nz to the value that we will actually use
   global_batch_size_nz =
-      pmap().gridAllReduce(algParams.num_samples_nonzeros_grad);
-
-  if (input_.contains("epoch-size")) {
-    algParams.epoch_iters = input_.get<int>("epoch-size");
-  } else {
-    algParams.epoch_iters = gnz / global_batch_size_nz;
-  }
-
-  algParams.fixup<ExecSpace>(std::cout);
+      pmap().gridAllReduce(algParams_.num_samples_nonzeros_grad);
 
   const auto my_rank = pmap().gridRank();
 
-  const int local_batch_size = algParams.num_samples_nonzeros_grad;
-  const int local_batch_sizez = algParams.num_samples_zeros_grad;
-  const int local_value_size = algParams.num_samples_nonzeros_value;
-  const int local_value_sizez = algParams.num_samples_zeros_value;
+  const int local_batch_size = algParams_.num_samples_nonzeros_grad;
+  const int local_batch_sizez = algParams_.num_samples_zeros_grad;
+  const int local_value_size = algParams_.num_samples_nonzeros_value;
+  const int local_value_sizez = algParams_.num_samples_zeros_value;
   global_nzg = pmap().gridAllReduce(local_batch_size);
   global_nzf = pmap().gridAllReduce(local_value_size);
   global_zg = pmap().gridAllReduce(local_batch_sizez);
   global_zf = pmap().gridAllReduce(local_value_sizez);
 
-  // const auto percent_nz_batch =
-  //     double(global_batch_size_nz) / double(gnz) * 100.0;
   percent_nz_epoch =
-      double(algParams.epoch_iters * global_batch_size_nz) / double(gnz) *
+      double(algParams_.epoch_iters * global_batch_size_nz) / double(gnz) *
       100.0;
 
   // Collect info from the other ranks
@@ -264,64 +190,43 @@ AlgParams DistGCP<ExecSpace>::setAlgParams() {
                pmap().gridComm());
     MPI_Gather(&local_value_sizez, 1, MPI_INT, val_z.data(), 1, MPI_INT, 0,
                pmap().gridComm());
-
-    /*
-    std::cout << "Iters/epoch:           " << algParams.epoch_iters << "\n";
-    std::cout << "value size nz:         " << global_nzf << "\n";
-    std::cout << "value size zeros:      " << global_zf << "\n";
-    std::cout << "batch size nz:         " << global_nzg << "\n";
-    std::cout << "batch size zeros:      " << global_zg << "\n";
-    std::cout << "NZ percent per epoch : " << percent_nz_epoch << "\n";
-    std::cout << "MTTKRP_All_Method :    ";
-    if (algParams.mttkrp_all_method == MTTKRP_All_Method::Duplicated) {
-      std::cout << "Duplicated\n";
-    } else if (algParams.mttkrp_all_method == MTTKRP_All_Method::Single) {
-      std::cout << "Single\n";
-    } else if (algParams.mttkrp_all_method == MTTKRP_All_Method::Atomic) {
-      std::cout << "Atomic\n";
-    } else {
-      std::cout << "method(" << algParams.mttkrp_all_method << ")\n";
-    }
-    if (false && np < 41) {
-      std::cout << "Node Specific info: {local_nnz, local_value_size_nz, "
-                << "local_value_size_z, local_batch_size_nz, "
-                << "local_batch_size_z}\n";
-      for (auto i = 0; i < np; ++i) {
-        std::cout << "\tNode(" << i << "): "
-                  << lnzs[i] << ", "
-                  << val_nz[i] << ", "
-                  << val_z[i] << ", "
-                  << bs_nz[i] << ", "
-                  << bs_z[i] << "\n";
-      }
-    }
-    std::cout << std::endl;
-    */
   }
   pmap().gridBarrier();
+}
 
-  return algParams;
+template <typename ExecSpace>
+ttb_real
+GCP_FedOpt<ExecSpace>::
+compute() {
+  if (algParams_.loss_function_type == GCP_LossFunction::Gaussian)
+    return fedOpt(GaussianLossFunction(algParams_.loss_eps));
+  else if (algParams_.loss_function_type == GCP_LossFunction::Rayleigh)
+    return fedOpt(RayleighLossFunction(algParams_.loss_eps));
+  else if (algParams_.loss_function_type == GCP_LossFunction::Gamma)
+    return fedOpt(GammaLossFunction(algParams_.loss_eps));
+  else if (algParams_.loss_function_type == GCP_LossFunction::Bernoulli)
+    return fedOpt(BernoulliLossFunction(algParams_.loss_eps));
+  else if (algParams_.loss_function_type == GCP_LossFunction::Poisson)
+    return fedOpt(PoissonLossFunction(algParams_.loss_eps));
+  else
+    Genten::error("Genten::GCP_FedOpt - unknown loss function");
+  return -1.0;
 }
 
 template <typename ExecSpace>
 template <typename Loss>
-ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
+ttb_real
+GCP_FedOpt<ExecSpace>::
+fedOpt(Loss const &loss) {
   const ProcessorMap* pmap = &dtc_.pmap();
 
   const auto start_time = MPI_Wtime();
-  //const auto nprocs = dtc_.nprocs();
   const auto my_rank = pmap->gridRank();
 
   std::ostream& out = my_rank == 0 ? std::cout : Genten::bhcout;
 
-  auto algParams = setAlgParams();
-  if (input_.contains("eps")) {
-    algParams.adam_eps = input_.get<ttb_real>("eps");
-  }
-
   // Distribute the initial guess to have weights of one.
-  const bool normalize = input_.get<bool>("normalize", true);
-  if (normalize)
+  if (algParams_.normalize)
     Kfac_.normalize(NormTwo);
   Kfac_.distribute();
 
@@ -348,34 +253,34 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
   KtensorT<ExecSpace> Dfac = diff.getKtensor();
 
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(
-    spTensor_, ut, algParams, false);
+    spTensor_, ut, algParams_, false);
 
   // Create steppers
-  const std::string meta_step = input_.get<std::string>("meta-step","adam");
   Impl::GCP_SGD_Step<ExecSpace,Loss> *stepper =
-    Impl::createStepper<ExecSpace,Loss>(algParams, u);
+    Impl::createStepper<ExecSpace,Loss>(algParams_, u, algParams_.step_type);
   Impl::GCP_SGD_Step<ExecSpace,Loss> *meta_stepper =
-    Impl::createStepper<ExecSpace,Loss>(algParams, meta_u, meta_step);
+    Impl::createStepper<ExecSpace,Loss>(algParams_, meta_u, algParams_.meta_step_type);
 
-  const auto maxEpochs = algParams.maxiters;
-  const auto epochIters = algParams.epoch_iters;
-  const auto max_fails = algParams.max_fails;
-  const auto tol = algParams.gcp_tol;
-  const auto dp_iters = input_.get<int>("downpour-iters", 4);
+  const auto maxEpochs = algParams_.maxiters;
+  const auto epochIters = algParams_.epoch_iters;
+  const auto max_fails = algParams_.max_fails;
+  const auto tol = algParams_.gcp_tol;
+  const auto dp_iters = algParams_.downpour_iters;
 
-  auto annealer_ptr = getAnnealer(input_);
+  auto annealer_ptr = getAnnealer(algParams_);
   auto &annealer = *annealer_ptr;
 
-  bool fedavg = input_.get<std::string>("method") == "fedavg";
-  auto meta_lr = input_.get<ttb_real>("meta-lr", 1e-3);
+  bool fedavg = algParams_.fed_method == GCP_FedMethod::FedAvg;
+  auto meta_lr = algParams_.meta_rate;
 
   if (fedavg)
     out << "\nGCP-FedAvg:\n";
   else
     out << "\nGCP-FedOpt:\n";
   out << "  Generalized function type: " << loss.name() << std::endl
-      << "  Meta step method: " << meta_step << std::endl
-      << "  Local step method: " << GCP_Step::names[algParams.step_type]
+      << "  Meta step method: " << GCP_Step::names[algParams_.meta_step_type]
+      << std::endl
+      << "  Local step method: " << GCP_Step::names[algParams_.step_type]
       << std::endl
       << "  Max epochs: " << maxEpochs << std::endl
       << "  Iterations per epoch: " << epochIters << std::endl
@@ -399,7 +304,7 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
       << " (" << std::setprecision(1) << std::fixed << percent_nz_epoch << "%)"
       << std::endl;
   out << "  Gradient method: Fused sampling and "
-      << MTTKRP_All_Method::names[algParams.mttkrp_all_method]
+      << MTTKRP_All_Method::names[algParams_.mttkrp_all_method]
       << " MTTKRP\n";
   out << std::endl;
 
@@ -421,7 +326,7 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
   const int timer_step = num_timers++;
   const int timer_meta_step = num_timers++;
   const int timer_allreduce = num_timers++;
-  SystemTimer timer(num_timers, algParams.timings, pmap);
+  SystemTimer timer(num_timers, algParams_.timings, pmap);
 
   ttb_indx nd = ut.ndims();
 
@@ -668,237 +573,6 @@ ttb_real DistGCP<ExecSpace>::fedOpt(Loss const &loss) {
 
   delete stepper;
   delete meta_stepper;
-
-  return fest_prev;
-}
-
-template <typename ExecSpace>
-template <typename Loss>
-ttb_real DistGCP<ExecSpace>::allReduceTrad(Loss const &loss) {
-  if (dump_) {
-    std::cout
-        << "Methods that use AllReduce(sgd, sgdm, adam, adagrad, demon) "
-           "have the following options under `tensor`:\n"
-           "\tannealer: Choice of annealer default(traditional) options "
-           "{traditional, cosine}\n"
-           "\tlr: (object that controls the learning rate)\n"
-           "\t\tstep: IFF traditional annealer, is the value of the "
-           "learning rate\n"
-           "\t\tmin_lr: IFF cosine annealer, is the lower value reached.\n"
-           "\t\tmax_lr: IFF cosine annealer, is the higher value reached.\n"
-           "\t\tTi: IFF cosine annealer, is the cycle period default(10).\n";
-    return -1.0;
-  }
-  const auto nprocs = dtc_.nprocs();
-  const auto my_rank = pmap().gridRank();
-  const auto start_time = MPI_Wtime();
-
-  auto algParams = setAlgParams();
-
-  // Distribute the initial guess to have weights of one.
-  const bool normalize = input_.get<bool>("normalize", true);
-  if (normalize)
-    Kfac_.normalize(NormTwo);
-  Kfac_.distribute();
-
-  using VectorType = KokkosVector<ExecSpace>;
-  auto u = VectorType(Kfac_);
-  u.copyFromKtensor(Kfac_);
-  KtensorT<ExecSpace> ut = u.getKtensor();
-
-  VectorType u_best = u.clone();
-  u_best.set(u);
-
-  VectorType g = u.clone(); // Gradient Ktensor
-  g.zero();
-  decltype(Kfac_) GFac = g.getKtensor();
-
-  auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(
-    spTensor_, ut, algParams, false);
-
-  // Create stepper
-  Impl::GCP_SGD_Step<ExecSpace,Loss> *stepper =
-    Impl::createStepper<ExecSpace,Loss>(algParams, u);
-
-  Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed_);
-  std::stringstream ss;
-  sampler.initialize(rand_pool, true, ss);
-  if (my_rank == 0) {
-    std::cout << ss.str();
-  }
-
-
-  ttb_indx nd = ut.ndims();
-
-  sampler.sampleTensorF(ut, loss);
-
-  // Stuff for the timer that we can'g avoid providing
-  SystemTimer timer;
-  int tnzs = 0;
-  int tzs = 0;
-  int tinit = 0;
-  int tgm = 0;
-  int tgc = 0;
-  int tgu = 0;
-
-  // Fit stuff
-  ttb_real fest, ften;
-  StreamingHistory<ExecSpace> hist;
-  ttb_real penalty = 0.0;
-  sampler.value(ut, hist, penalty, loss, fest, ften);
-  fest = pmap().gridAllReduce(fest);
-  auto fest_best = fest;
-  if (my_rank == 0) {
-    std::cout << "Initial guess fest: " << fest << std::endl;
-  }
-  pmap().gridBarrier();
-
-  {
-    history_.addEmpty();
-    auto& p = history_.lastEntry();
-    p.iteration = 0;
-    p.residual = fest;
-    p.cum_time = MPI_Wtime()-start_time;
-  }
-
-  auto fest_prev = fest;
-  const auto maxEpochs = algParams.maxiters;
-  const auto epochIters = algParams.epoch_iters;
-
-  auto annealer_ptr = getAnnealer(input_);
-  auto &annealer = *annealer_ptr;
-  // For adam with all of the all reduces I am hopeful the barriers don't
-  // really matter for timeing
-
-  for (ttb_indx e = 0; e < maxEpochs; ++e) { // Epochs
-    pmap().gridBarrier();                // Makes times more accurate
-    double e_start = MPI_Wtime();
-    const auto epoch_lr = annealer(e);
-    stepper->setStep(epoch_lr);
-
-    auto allreduceCounter = 0;
-    double gradient_time = 0;
-    double allreduce_time = 0;
-    double eval_time = 0;
-    for (ttb_indx i = 0; i < epochIters; ++i) {
-      stepper->update();
-      //g.zero();
-      auto ze = MPI_Wtime();
-      sampler.gradient(ut, hist, penalty,
-                       loss, g, GFac, 0, nd,
-                       timer, tinit, tnzs, tzs, tgm, tgc, tgu);
-      auto ge = MPI_Wtime();
-      dtc_.allReduce(GFac, false /* don't average */);
-      auto are = MPI_Wtime();
-      stepper->eval(g, u);
-      auto ee = MPI_Wtime();
-      gradient_time += ge - ze;
-      allreduce_time += are - ge;
-      eval_time += ee - are;
-      ++allreduceCounter;
-    }
-
-    //double fest_start = MPI_Wtime();
-    sampler.value(ut, hist, penalty, loss, fest, ften);
-    fest = pmap().gridAllReduce(fest);
-    pmap().gridBarrier(); // Makes times more accurate
-    double e_end = MPI_Wtime();
-    //auto epoch_time = e_end - e_start;
-    //auto fest_time = e_end - fest_start;
-    const auto fest_diff = fest_prev - fest;
-
-    std::vector<double> gradient_times;
-    std::vector<double> all_reduce_times;
-    std::vector<double> eval_times;
-    if (my_rank == 0) {
-      gradient_times.resize(nprocs);
-      all_reduce_times.resize(nprocs);
-      eval_times.resize(nprocs);
-      MPI_Gather(&gradient_time, 1, mpiElemType_, &gradient_times[0], 1,
-                 mpiElemType_, 0, pmap().gridComm());
-      MPI_Gather(&allreduce_time, 1, mpiElemType_, &all_reduce_times[0], 1,
-                 mpiElemType_, 0, pmap().gridComm());
-      MPI_Gather(&eval_time, 1, mpiElemType_, &eval_times[0], 1, mpiElemType_, 0,
-                 pmap().gridComm());
-    } else {
-      MPI_Gather(&gradient_time, 1, mpiElemType_, nullptr, 1, mpiElemType_, 0,
-                 pmap().gridComm());
-      MPI_Gather(&allreduce_time, 1, mpiElemType_, nullptr, 1, mpiElemType_, 0,
-                 pmap().gridComm());
-      MPI_Gather(&eval_time, 1, mpiElemType_, nullptr, 1, mpiElemType_, 0,
-                 pmap().gridComm());
-    }
-
-    if (my_rank == 0) {
-      auto min_max_gradient =
-          std::minmax_element(gradient_times.begin(), gradient_times.end());
-      auto grad_avg =
-          std::accumulate(gradient_times.begin(), gradient_times.end(), 0.0) /
-          double(nprocs);
-
-      auto min_max_allreduce =
-          std::minmax_element(all_reduce_times.begin(), all_reduce_times.end());
-      auto ar_avg = std::accumulate(all_reduce_times.begin(),
-                                    all_reduce_times.end(), 0.0) /
-                    double(nprocs);
-
-      auto min_max_evals =
-          std::minmax_element(eval_times.begin(), eval_times.end());
-      auto eval_avg =
-          std::accumulate(eval_times.begin(), eval_times.end(), 0.0) /
-          double(nprocs);
-
-      std::cout << "Fit(" << e << "): " << fest
-                << "\n\tchange in fit: " << fest_diff
-                << "\n\tlr:            " << epoch_lr
-                << "\n\tallReduces:    " << allreduceCounter
-                << "\n\tSeconds:       " << (e_end - e_start)
-                << "\n\tElapsed Time:  " << (e_end - start_time)
-                << "\n\t\tGradient(avg, min, max):  " << grad_avg << ", "
-                << *min_max_gradient.first << ", " << *min_max_gradient.second
-                << "\n\t\tAllReduce(avg, min, max): " << ar_avg << ", "
-                << *min_max_allreduce.first << ", " << *min_max_allreduce.second
-                << "\n\t\tEval(avg, min, max):      " << eval_avg << ", "
-                << *min_max_evals.first << ", " << *min_max_evals.second
-                << "\n";
-
-      std::cout << std::flush;
-    }
-
-    {
-      history_.addEmpty();
-      auto& p = history_.lastEntry();
-      p.iteration = e+1;
-      p.residual = fest;
-      p.cum_time = e_end - start_time;
-    }
-
-    if (fest_diff > -0.001 * fest_best) {
-      stepper->setPassed();
-      fest_prev = fest;
-      annealer.success();
-      if (fest < fest_best) {
-        u_best.set(u);
-        fest_best = fest;
-      }
-    } else {
-      u.set(u_best);
-      fest = fest_prev;
-      stepper->setFailed();
-      annealer.failed();
-    }
-  }
-  u.set(u_best);
-  deep_copy(Kfac_, ut);
-
-  const auto end_time = MPI_Wtime();
-  if (my_rank == 0)
-    std::cout << std::endl << "GCP-SGD-Dist completed in "
-              << std::setw(8) << std::setprecision(2) << std::scientific
-              << end_time-start_time << " seconds"
-              << std::endl << std::endl;
-
-  delete stepper;
 
   return fest_prev;
 }

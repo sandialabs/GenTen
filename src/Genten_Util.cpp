@@ -130,6 +130,15 @@ constexpr const char*const Genten::GCP_Sampling::names[];
 constexpr const Genten::GCP_Step::type Genten::GCP_Step::types[];
 constexpr const char*const Genten::GCP_Step::names[];
 
+constexpr const Genten::GCP_FedMethod::type Genten::GCP_FedMethod::types[];
+constexpr const char*const Genten::GCP_FedMethod::names[];
+
+constexpr const Genten::GCP_FedMethod::type Genten::GCP_FedMethod::types[];
+constexpr const char*const Genten::GCP_FedMethod::names[];
+
+constexpr const Genten::GCP_AnnealerMethod::type Genten::GCP_AnnealerMethod::types[];
+constexpr const char*const Genten::GCP_AnnealerMethod::names[];
+
 constexpr const Genten::GCP_Streaming_Solver::type Genten::GCP_Streaming_Solver::types[];
 constexpr const char*const Genten::GCP_Streaming_Solver::names[];
 

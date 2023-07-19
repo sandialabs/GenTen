@@ -54,7 +54,6 @@
 #include "Genten_Tensor.hpp"
 #include "Genten_Ktensor.hpp"
 #include "Genten_AlgParams.hpp"
-#include "Genten_Ptree.hpp"
 #include "Genten_PerfHistory.hpp"
 
 namespace Genten {
@@ -75,7 +74,6 @@ namespace Genten {
          SptensorT<ExecSpace>& x,
          KtensorT<ExecSpace>& u_init,
          AlgParams& algParams,
-         const ptree& ptree,
          PerfHistory& history,
          std::ostream& out);
 
@@ -85,7 +83,6 @@ namespace Genten {
          TensorT<ExecSpace>& x,
          KtensorT<ExecSpace>& u_init,
          AlgParams& algParams,
-         const ptree& ptree,
          PerfHistory& history,
          std::ostream& out);
 

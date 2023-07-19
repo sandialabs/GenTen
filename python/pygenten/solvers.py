@@ -196,7 +196,7 @@ def gcp_sgd(X, **kwargs):
     a.method = gt.GCP_SGD
     return driver(X, u, a, dtc)
 
-def gcp_fed_opt(X, **kwargs):
+def gcp_fed(X, **kwargs):
     """
     Compute Generalized CP decomposition using all-at-once stochastic gradient
     descent-based optimization and federated learning.
@@ -222,6 +222,5 @@ def gcp_fed_opt(X, **kwargs):
     dtc,rem = make_dtc(rem)
     check_invalid(rem)
 
-    a.method = gt.GCP_SGD_DIST
+    a.method = gt.GCP_FED
     return driver(X, u, a, dtc)
-

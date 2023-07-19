@@ -96,7 +96,7 @@ void pygenten_perfhistory(py::module &m){
         o.print(s);
         return s.str();
       }, R"(
-     Return a string representation of all entries.)"); 
+     Return a string representation of all entries.)");
   }
 }
 
@@ -114,7 +114,7 @@ void pygenten_algparams(py::module &m){
     .value("CP_ALS", Genten::Solver_Method::type::CP_ALS)
     .value("CP_OPT", Genten::Solver_Method::type::CP_OPT)
     .value("GCP_SGD", Genten::Solver_Method::type::GCP_SGD)
-    .value("GCP_SGD_DIST", Genten::Solver_Method::type::GCP_SGD_DIST)
+    .value("GCP_FED", Genten::Solver_Method::type::GCP_FED)
     .value("GCP_OPT", Genten::Solver_Method::type::GCP_OPT)
     .export_values();
   py::enum_<Genten::Opt_Method::type>(m, "Opt_Method")
@@ -181,6 +181,14 @@ void pygenten_algparams(py::module &m){
     .value("AMSGrad", Genten::GCP_Step::type::AMSGrad)
     .value("SGDMomentum", Genten::GCP_Step::type::SGDMomentum)
     .value("DEMON", Genten::GCP_Step::type::DEMON)
+    .export_values();
+  py::enum_<Genten::GCP_FedMethod::type>(m, "GCP_FedMethod")
+    .value("FedOpt", Genten::GCP_FedMethod::type::FedOpt)
+    .value("FedAvg", Genten::GCP_FedMethod::type::FedAvg)
+    .export_values();
+  py::enum_<Genten::GCP_AnnealerMethod::type>(m, "GCP_AnnealerMethod")
+    .value("Traditional", Genten::GCP_AnnealerMethod::type::Traditional)
+    .value("Cosine", Genten::GCP_AnnealerMethod::type::Cosine)
     .export_values();
   py::enum_<Genten::GCP_Streaming_Solver::type>(m, "GCP_Streaming_Solver")
     .value("StreamingSGD", Genten::GCP_Streaming_Solver::type::SGD)
@@ -298,6 +306,12 @@ void pygenten_algparams(py::module &m){
     cl.def_readwrite("anneal", &Genten::AlgParams::anneal);
     cl.def_readwrite("anneal_min_lr", &Genten::AlgParams::anneal_min_lr);
     cl.def_readwrite("anneal_max_lr", &Genten::AlgParams::anneal_max_lr);
+
+    cl.def_readwrite("fed_method", &Genten::AlgParams::fed_method);
+    cl.def_readwrite("meta_step_type", &Genten::AlgParams::meta_step_type);
+    cl.def_readwrite("meta_rate", &Genten::AlgParams::meta_rate);
+    cl.def_readwrite("annealer", &Genten::AlgParams::annealer);
+    cl.def_readwrite("anneal_temp", &Genten::AlgParams::anneal_Ti);
 
     cl.def_readwrite("streaming_solver", &Genten::AlgParams::streaming_solver);
     cl.def_readwrite("history_method", &Genten::AlgParams::history_method);

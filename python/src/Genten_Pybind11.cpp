@@ -19,7 +19,6 @@ Genten::Ktensor
 driver_impl(const TensorType& x,
             const Genten::Ktensor& u,
             Genten::AlgParams& algParams,
-            const Genten::ptree& ptree,
             Genten::PerfHistory& history,
             std::ostream& out)
 {
@@ -47,7 +46,7 @@ driver_impl(const TensorType& x,
 
   Genten::print_environment(xd, dtc, out);
 
-  ud = Genten::driver(dtc, xd, ud, algParams, ptree, history, out);
+  ud = Genten::driver(dtc, xd, ud, algParams, history, out);
 
   Genten::Ktensor ret =
     dtc.template importToAll<Genten::DefaultHostExecutionSpace>(ud);
@@ -60,36 +59,35 @@ Genten::Ktensor
 driver_host(const TensorType& x,
             const Genten::Ktensor& u,
             Genten::AlgParams& algParams,
-            const Genten::ptree& ptree,
             Genten::PerfHistory& history,
             std::ostream& out)
 {
   Genten::Ktensor ret;
   if (algParams.exec_space == Genten::Execution_Space::Default)
-    ret = driver_impl<Genten::DefaultExecutionSpace>(x, u, algParams, ptree, history, out);
+    ret = driver_impl<Genten::DefaultExecutionSpace>(x, u, algParams, history, out);
 #ifdef HAVE_CUDA
   else if (algParams.exec_space == Genten::Execution_Space::Cuda)
-    ret = driver_impl<Kokkos::Cuda>(x, u, algParams, ptree, history, out);
+    ret = driver_impl<Kokkos::Cuda>(x, u, algParams, history, out);
 #endif
 #ifdef HAVE_HIP
   else if (algParams.exec_space == Genten::Execution_Space::HIP)
-    ret = driver_impl<Kokkos::Experimental::HIP>(x, u, algParams, ptree, history, out);
+    ret = driver_impl<Kokkos::Experimental::HIP>(x, u, algParams, history, out);
 #endif
 #ifdef HAVE_SYCL
   else if (algParams.exec_space == Genten::Execution_Space::SYCL)
-    ret = driver_impl<Kokkos::Experimental::SYCL>(x, u, algParams, ptree, history, out);
+    ret = driver_impl<Kokkos::Experimental::SYCL>(x, u, algParams, history, out);
 #endif
 #ifdef HAVE_OPENMP
   else if (algParams.exec_space == Genten::Execution_Space::OpenMP)
-    ret = driver_impl<Kokkos::OpenMP>(x, u, algParams, ptree, history, out);
+    ret = driver_impl<Kokkos::OpenMP>(x, u, algParams, history, out);
 #endif
 #ifdef HAVE_THREADS
   else if (algParams.exec_space == Genten::Execution_Space::Threads)
-    ret = driver_impl<Kokkos::Threads>(x, u, algParams, ptree, history, out);
+    ret = driver_impl<Kokkos::Threads>(x, u, algParams, history, out);
 #endif
 #ifdef HAVE_SERIAL
   else if (algParams.exec_space == Genten::Execution_Space::Serial)
-    ret = driver_impl<Kokkos::Serial>(x, u, algParams, ptree, history, out);
+    ret = driver_impl<Kokkos::Serial>(x, u, algParams, history, out);
 #endif
   else
     Genten::error("Invalid execution space: " + std::string(Genten::Execution_Space::names[algParams.exec_space]));
@@ -103,7 +101,6 @@ driver_impl(const Genten::DTC& dtc,
             const TensorType& x,
             const Genten::Ktensor& u,
             Genten::AlgParams& algParams,
-            const Genten::ptree& ptree,
             Genten::PerfHistory& history,
             std::ostream& out)
 {
@@ -128,7 +125,7 @@ driver_impl(const Genten::DTC& dtc,
 
   Genten::print_environment(xd, dtc2, out);
 
-  ud = Genten::driver(dtc2, xd, ud, algParams, ptree, history, out);
+  ud = Genten::driver(dtc2, xd, ud, algParams, history, out);
 
   Genten::Ktensor ret = create_mirror_view(ud);
   deep_copy(ret, ud);
@@ -142,36 +139,35 @@ driver_host(const Genten::DTC& dtc,
             const TensorType& x,
             const Genten::Ktensor& u,
             Genten::AlgParams& algParams,
-            const Genten::ptree& ptree,
             Genten::PerfHistory& history,
             std::ostream& out)
 {
   Genten::Ktensor ret;
   if (algParams.exec_space == Genten::Execution_Space::Default)
-    ret = driver_impl<Genten::DefaultExecutionSpace>(dtc, x, u, algParams, ptree, history, out);
+    ret = driver_impl<Genten::DefaultExecutionSpace>(dtc, x, u, algParams, history, out);
 #ifdef HAVE_CUDA
   else if (algParams.exec_space == Genten::Execution_Space::Cuda)
-    ret = driver_impl<Kokkos::Cuda>(dtc, x, u, algParams, ptree, history, out);
+    ret = driver_impl<Kokkos::Cuda>(dtc, x, u, algParams, history, out);
 #endif
 #ifdef HAVE_HIP
   else if (algParams.exec_space == Genten::Execution_Space::HIP)
-    ret = driver_impl<Kokkos::Experimental::HIP>(dtc, x, u, algParams, ptree, history, out);
+    ret = driver_impl<Kokkos::Experimental::HIP>(dtc, x, u, algParams, history, out);
 #endif
 #ifdef HAVE_SYCL
   else if (algParams.exec_space == Genten::Execution_Space::SYCL)
-    ret = driver_impl<Kokkos::Experimental::SYCL>(dtc, x, u, algParams, ptree, history, out);
+    ret = driver_impl<Kokkos::Experimental::SYCL>(dtc, x, u, algParams, history, out);
 #endif
 #ifdef HAVE_OPENMP
   else if (algParams.exec_space == Genten::Execution_Space::OpenMP)
-    ret = driver_impl<Kokkos::OpenMP>(dtc, x, u, algParams, ptree, history, out);
+    ret = driver_impl<Kokkos::OpenMP>(dtc, x, u, algParams, history, out);
 #endif
 #ifdef HAVE_THREADS
   else if (algParams.exec_space == Genten::Execution_Space::Threads)
-    ret = driver_impl<Kokkos::Threads>(dtc, x, u, algParams, ptree, history, out);
+    ret = driver_impl<Kokkos::Threads>(dtc, x, u, algParams, history, out);
 #endif
 #ifdef HAVE_SERIAL
   else if (algParams.exec_space == Genten::Execution_Space::Serial)
-    ret = driver_impl<Kokkos::Serial>(dtc, x, u, algParams, ptree, history, out);
+    ret = driver_impl<Kokkos::Serial>(dtc, x, u, algParams, history, out);
 #endif
   else
     Genten::error("Invalid execution space: " + std::string(Genten::Execution_Space::names[algParams.exec_space]));
@@ -234,9 +230,8 @@ PYBIND11_MODULE(_pygenten, m) {
         std::cerr,                                // std::ostream&
         py::module_::import("sys").attr("stderr") // Python output
        );
-      Genten::ptree ptree;
       Genten::PerfHistory perfInfo;
-      Genten::Ktensor u = driver_host(x, u0, algParams, ptree, perfInfo, std::cout);
+      Genten::Ktensor u = driver_host(x, u0, algParams, perfInfo, std::cout);
       return std::make_tuple(u, perfInfo);
     }, R"(
     Low-level driver for calling GenTen's solver methods on dense tensors.
@@ -262,9 +257,8 @@ PYBIND11_MODULE(_pygenten, m) {
           std::cerr,                                // std::ostream&
           py::module_::import("sys").attr("stderr") // Python output
           );
-        Genten::ptree ptree;
         Genten::PerfHistory perfInfo;
-        Genten::Ktensor u = driver_host(x, u0, algParams, ptree, perfInfo, std::cout);
+        Genten::Ktensor u = driver_host(x, u0, algParams, perfInfo, std::cout);
         return std::make_tuple(u, perfInfo);
       }, R"(
     Low-level driver for calling GenTen's solver methods on sparse tensors.
@@ -291,9 +285,8 @@ PYBIND11_MODULE(_pygenten, m) {
           std::cerr,                                // std::ostream&
           py::module_::import("sys").attr("stderr") // Python output
           );
-        Genten::ptree ptree;
         Genten::PerfHistory perfInfo;
-        Genten::Ktensor u = driver_host(dtc, x, u0, algParams, ptree, perfInfo, std::cout);
+        Genten::Ktensor u = driver_host(dtc, x, u0, algParams, perfInfo, std::cout);
         return std::make_tuple(u, perfInfo);
       }, R"(
     Low-level driver for calling GenTen's solver methods on dense tensors.
@@ -321,9 +314,8 @@ PYBIND11_MODULE(_pygenten, m) {
           std::cerr,                                // std::ostream&
           py::module_::import("sys").attr("stderr") // Python output
           );
-        Genten::ptree ptree;
         Genten::PerfHistory perfInfo;
-        Genten::Ktensor u = driver_host(dtc, x, u0, algParams, ptree, perfInfo, std::cout);
+        Genten::Ktensor u = driver_host(dtc, x, u0, algParams, perfInfo, std::cout);
         return std::make_tuple(u, perfInfo);
     }, R"(
     Low-level driver for calling GenTen's solver methods on sparsetensors.

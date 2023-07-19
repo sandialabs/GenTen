@@ -148,6 +148,14 @@ namespace Genten {
     ttb_real anneal_min_lr;
     ttb_real anneal_max_lr;
 
+    // GCP Federated learning options
+    GCP_FedMethod::type fed_method;      // Learning method (FedOpt or FedAvg)
+    GCP_Step::type meta_step_type;       // Meta step type
+    ttb_real meta_rate;                  // Initial meta step size
+    GCP_AnnealerMethod::type annealer;   // Annealer method
+    ttb_real anneal_Ti;                  // Temperature for traditional annealer
+    ttb_indx downpour_iters;             // Downpour iterations
+
     // Streaming GCP options
     GCP_Streaming_Solver::type streaming_solver;  // Streaming solver
     GCP_Streaming_History_Method::type history_method; // History method
