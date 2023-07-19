@@ -80,7 +80,7 @@ struct ComputeCokurtElems{
 
     //HK if(team_member.team_rank()==0){printf("Team %d j/k/l are: %d/%d/%d\n",team_member.league_rank(),j,k,l_);}
 
-    int nthreads = team_member.team_size();
+    // int nthreads = team_member.team_size();  // unused
 
     auto l_vec = Kokkos::subview(input_raw_data_, l_, Kokkos::ALL);
     auto k_vec = Kokkos::subview(input_raw_data_, k,  Kokkos::ALL);

@@ -77,15 +77,15 @@ void pygenten_perfhistory(py::module &m){
     decomposition method by storing a list of objects of type Entry.)");
     cl.def(py::init([](){ return new Genten::PerfHistory(); }), R"(
      Constructor that returns an empty PerfHistory.)");
-    cl.def("addEntry", (void (Genten::PerfHistory::*)(const class Genten::PerfHistory::Entry &)) &Genten::PerfHistory::addEntry, R"(
+    cl.def("addEntry", (void (Genten::PerfHistory::*)(const struct Genten::PerfHistory::Entry &)) &Genten::PerfHistory::addEntry, R"(
      Add the given entry to the end of the list.)", py::arg("entry"));
     cl.def("addEntry", (void (Genten::PerfHistory::*)()) &Genten::PerfHistory::addEntry, R"(
      Add an empty entry to the list.)");
-    cl.def("getEntry", (class Genten::PerfHistory::Entry & (Genten::PerfHistory::*)(const ttb_indx)) &Genten::PerfHistory::getEntry, R"(
+    cl.def("getEntry", (struct Genten::PerfHistory::Entry & (Genten::PerfHistory::*)(const ttb_indx)) &Genten::PerfHistory::getEntry, R"(
      Get entry i from the list.)", py::arg("i"));
-    cl.def("__getitem__", (class Genten::PerfHistory::Entry & (Genten::PerfHistory::*)(const ttb_indx)) &Genten::PerfHistory::getEntry, R"(
+    cl.def("__getitem__", (struct Genten::PerfHistory::Entry & (Genten::PerfHistory::*)(const ttb_indx)) &Genten::PerfHistory::getEntry, R"(
      Get entry i from the list.)", py::arg("i"));
-    cl.def("lastEntry", (class Genten::PerfHistory::Entry & (Genten::PerfHistory::*)()) &Genten::PerfHistory::lastEntry, R"(
+    cl.def("lastEntry", (struct Genten::PerfHistory::Entry & (Genten::PerfHistory::*)()) &Genten::PerfHistory::lastEntry, R"(
      Get the last entry from the list.)");
     cl.def("size", (ttb_indx (Genten::PerfHistory::*)()) &Genten::PerfHistory::size, R"(
      Return the number of entries)");
@@ -856,7 +856,7 @@ void pygenten_sptensor(py::module &m){
         Genten::Array vals = X.getValues();
         py::capsule capsule(new Genten::Array(vals), [](void *v) { delete reinterpret_cast<Genten::Array*>(v); });
         const pybind11::ssize_t nz = X.nnz();
-        return py::array_t<ttb_real,py::array::c_style>({nz}, vals.ptr(), capsule);
+        return py::array_t<ttb_real,py::array::c_style>(nz, vals.ptr(), capsule);
       }, R"(
     The 1-D numpy.ndarray of nonzero values.)");
     cl.def_property_readonly("nnz", [](const Genten::Sptensor& X) {
