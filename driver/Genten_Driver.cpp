@@ -197,8 +197,7 @@ int main_driver(Genten::AlgParams& algParams,
     }
 
     // Compute decomposition
-    u = Genten::driver(dtc, x, u_init, algParams, json_input, history,
-                       std::cout);
+    u = Genten::driver(dtc, x, u_init, algParams, history, std::cout);
 
     if (tensor_outputfilename != "") {
       if (dtc.nprocs() > 1)
@@ -252,8 +251,7 @@ int main_driver(Genten::AlgParams& algParams,
     }
 
     // Compute decomposition
-    u = Genten::driver(dtc, x, u_init, algParams, json_input, history,
-                       std::cout);
+    u = Genten::driver(dtc, x, u_init, algParams, history, std::cout);
 
     if (tensor_outputfilename != "") {
       timer.start(1);

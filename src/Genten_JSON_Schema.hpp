@@ -137,7 +137,7 @@ static nlohmann::json json_schema = R"(
       },
       "solver-method": {
           "description": "Decomposition method",
-          "enum": ["cp-als", "cp-opt", "gcp-sgd", "gcp-sgd-dist", "gcp-opt"]
+          "enum": ["cp-als", "cp-opt", "gcp-sgd", "gcp-fed", "gcp-opt"]
       },
       "debug": {
           "description": "Turn on debugging output",
@@ -732,25 +732,27 @@ static nlohmann::json json_schema = R"(
               }
           }
       },
-      "gcp-sgd-dist": {
+      "gcp-fed": {
           "type": "object",
-          "description": "Distributed GCP-SGD decomposition algorithm",
+          "description": "GCP decomposition algorithm based on federated learning",
           "additionalProperties": false,
           "properties": {
-              "dump": {
-                  "description": "Dump debugging info",
-                  "type": "boolean",
-                  "default": false
+            "maxiters": {
+                  "description": "Maximum iterations to perform",
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 100
               },
-              "seed": {
-                "description": "Seed for random number generator used in sampling",
-                "type": "integer",
-                "minimum": 1
+              "tol": {
+                  "description": "Stopping tolerance",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "default": 0.001
               },
               "mttkrp": {
                   "$ref": "#/definitions/mttkrp"
               },
-              "loss": {
+              "type": {
                   "description": "Loss function type for GCP",
                   "enum": ["gaussian", "rayleigh", "gamma", "bernoulli", "poisson"],
                   "default": "gaussian"
@@ -762,22 +764,15 @@ static nlohmann::json json_schema = R"(
                   "maximum": 1.0,
                   "default": 1e-10
               },
-              "method": {
-                  "description": "Optimization method",
-                  "enum": ["sgd", "fedopt", "fedavg"],
-                  "default": "sgd"
+              "sampling": {
+                  "description": "Sampling method",
+                  "enum": ["uniform", "stratified", "semi-stratified", "dense"],
+                  "default": "stratified"
               },
-              "max-epochs": {
-                  "description": "Maximum number of epochs to perform",
-                  "type": "integer",
-                  "minimum": 1,
-                  "default": 1000
-              },
-              "tol": {
-                  "description": "Stopping tolerance",
-                  "type": "number",
-                  "minimum": 0.0,
-                  "default": 0.001
+              "seed": {
+                "description": "Seed for random number generator used in sampling",
+                "type": "integer",
+                "minimum": 1
               },
               "fails": {
                   "description": "Maximum number of fails",
@@ -785,48 +780,83 @@ static nlohmann::json json_schema = R"(
                   "minimum": 0,
                   "default": 10
               },
-              "epoch-size": {
+              "epochiters": {
                   "description": "Iterations per epoch",
                   "type": "integer",
-                  "minimum": 1
+                  "minimum": 1,
+                  "default": 1000
               },
-              "value-size-nz": {
+              "fnzs": {
                   "description": "Nonzero samples for f-est",
                   "type": "integer",
                   "minimum": 0,
-                  "default": 100000
+                  "default": 0
               },
-              "value-size-zero": {
+              "fzs": {
                   "description": "Zero samples for f-est",
                   "type": "integer",
                   "minimum": 0,
-                  "default": 100000
+                  "default": 0
               },
-              "batch-size-nz": {
+              "gnzs": {
                   "description": "Nonzero samples for gradient",
                   "type": "integer",
                   "minimum": 0,
-                  "default": 128
+                  "default": 0
               },
-              "batch-size-zero": {
+              "gzs": {
                   "description": "Zero samples for gradient",
                   "type": "integer",
                   "minimum": 0,
-                  "default": 128
+                  "default": 0
+              },
+              "fnzw": {
+                  "description": "Nonzero sample weight for f-est",
+                  "type": "number",
+                  "minimum": -1.0,
+                  "default": -1.0
+              },
+              "fzw": {
+                  "description": "Zero sample weight for f-est",
+                  "type": "number",
+                  "minimum": -1.0,
+                  "default": -1.0
+              },
+              "gnzw": {
+                  "description": "Nonzero sample weight for gradient",
+                  "type": "number",
+                  "minimum": -1.0,
+                  "default": -1.0
+              },
+              "gzw": {
+                  "description": "Zero sample weight for gradient",
+                  "type": "number",
+                  "minimum": -1.0,
+                  "default": -1.0
               },
               "normalize": {
                   "description": "Normalize initial Ktensor",
                   "type": "boolean",
                   "default": true
               },
-              "step": {
-                  "description": "Local optimization step type",
-                  "enum": ["sgd", "adam", "adagrad", "amsgrad", "sgd-momentum", "demon"],
-                  "default": "adam"
+              "hash": {
+                  "description": "Compute hash map for zero sampling",
+                  "type": "boolean",
+                  "default": false
               },
-              "meta-step": {
-                  "description": "Meta optimization step type",
-                  "enum": ["sgd", "adam", "adagrad", "amsgrad", "sgd-momentum", "demon"],
+              "fuse": {
+                  "description": "Fuse gradient sampling and MTTKRP",
+                  "type": "boolean",
+                  "default": false
+              },
+              "fit": {
+                  "description": "Compute fit metric",
+                  "type": "boolean",
+                  "default": false
+              },
+              "step": {
+                  "description": "GCP-SGD optimization step type",
+                  "enum": ["sgd", "adam", "adagrad", "amsgrad", "sgd-momentum"],
                   "default": "adam"
               },
               "adam-beta1": {
@@ -850,13 +880,18 @@ static nlohmann::json json_schema = R"(
                   "maximum": 1.0,
                   "default": 1e-8
               },
-              "downpour-iters": {
-                  "description": "Number of downpour iterations",
-                  "type": "integer",
-                  "minimum": 1,
-                  "default": 4
+
+              "method": {
+                  "description": "Federated learning method",
+                  "enum": ["fedopt", "fedavg"],
+                  "default": "fedopt"
               },
-              "meta-lr": {
+              "meta-step": {
+                  "description": "Meta optimization step type",
+                  "enum": ["sgd", "adam", "adagrad", "amsgrad", "sgd-momentum", "demon"],
+                  "default": "adam"
+              },
+              "meta-rate": {
                   "description": "Overall learning rate",
                   "type": "number",
                   "minimum": 0.0,
@@ -897,13 +932,19 @@ static nlohmann::json json_schema = R"(
                           "minimum": 0.0,
                           "default": 1e-12
                       },
-                      "Ti": {
+                      "temp": {
                           "description": "Initial temperature",
                           "type": "number",
                           "minimum": 0.0,
                           "default": 10.0
                       }
                   }
+              },
+              "downpour-iters": {
+                  "description": "Number of downpour iterations",
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 4
               }
           }
       },

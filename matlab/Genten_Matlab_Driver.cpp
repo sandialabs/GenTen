@@ -96,13 +96,10 @@ void matlab_driver(int nlhs, mxArray *plhs[],
   // Call driver
   Genten::PerfHistory history;
   Genten::KtensorT<ExecSpace> u;
-  Genten::ptree tree;
   if (sparse)
-    u = Genten::driver(dtc, X_sparse, u_init, algParams, tree, history,
-                       std::cout);
+    u = Genten::driver(dtc, X_sparse, u_init, algParams, history, std::cout);
   else
-    u = Genten::driver(dtc, X_dense, u_init, algParams, tree, history,
-                       std::cout);
+    u = Genten::driver(dtc, X_dense, u_init, algParams, history, std::cout);
 
   // Return results
   if (nlhs >= 1)

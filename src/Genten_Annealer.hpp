@@ -43,12 +43,12 @@
 #include <cmath>
 #include <memory>
 
-#include "Genten_Ptree.hpp"
+#include "Genten_AlgParams.hpp"
 
 namespace Genten {
 class AnnealerBase {
 public:
-  AnnealerBase(ptree const &ptree) {}
+  AnnealerBase(const AlgParams&) {}
   virtual ~AnnealerBase() = default;
   virtual ttb_real operator()(int epoch) = 0;
   virtual void failed(){};
@@ -63,10 +63,10 @@ class TraditionalAnnealer : public AnnealerBase {
   ttb_real decay_;
 
 public:
-  TraditionalAnnealer(ptree const &ptree)
-    : AnnealerBase(ptree),
-      step_size_(ptree.get_child_optional("learning-rate").get<ttb_real>("step", 3e-4)),
-      decay_(ptree.get_child_optional("learning-rate").get<ttb_real>("decay", 0.1)) {}
+  TraditionalAnnealer(const AlgParams& algParams)
+    : AnnealerBase(algParams),
+      step_size_(algParams.rate),
+      decay_(algParams.decay) {}
 
   ttb_real operator()(int epoch) override { return step_size_; }
   void failed() override { step_size_ *= decay_; }
@@ -87,11 +87,12 @@ class CosineAnnealer : public AnnealerBase {
   int iter = 0;
 
 public:
-  CosineAnnealer(ptree const &ptree)
-    : AnnealerBase(ptree),
-      min_lr(ptree.get_child_optional("learning-rate").get<ttb_real>("min", 1e-12)),
-      max_lr(ptree.get_child_optional("learning-rate").get<ttb_real>("max", 1e-9)),
-      Ti(ptree.get_child_optional("learning-rate").get<int>("Ti", 10)), Tcur(Ti) {}
+  CosineAnnealer(const AlgParams& algParams)
+    : AnnealerBase(algParams),
+      min_lr(algParams.anneal_min_lr),
+      max_lr(algParams.anneal_max_lr),
+      Ti(algParams.anneal_Ti),
+      Tcur(Ti) {}
 
   ttb_real operator()(int) override {
     return min_lr +
@@ -126,15 +127,13 @@ public:
   }
 };
 
-inline std::unique_ptr<AnnealerBase> getAnnealer(ptree const& ptree){
-  auto annealer = ptree.get<std::string>("annealer", "traditional");
-  if(annealer == "traditional"){
-    return std::make_unique<TraditionalAnnealer>(TraditionalAnnealer(ptree));
-  } else if(annealer == "cosine"){
-    return std::make_unique<CosineAnnealer>(CosineAnnealer(ptree));
-  } else {
-    return std::make_unique<TraditionalAnnealer>(TraditionalAnnealer(ptree));
-  }
+inline std::unique_ptr<AnnealerBase> getAnnealer(const AlgParams& algParams){
+  if (algParams.annealer == GCP_AnnealerMethod::Traditional)
+    return std::make_unique<TraditionalAnnealer>(TraditionalAnnealer(algParams));
+  else if(algParams.annealer == GCP_AnnealerMethod::Cosine)
+    return std::make_unique<CosineAnnealer>(CosineAnnealer(algParams));
+  else
+    return std::make_unique<TraditionalAnnealer>(TraditionalAnnealer(algParams));
 }
 
 } // namespace Genten

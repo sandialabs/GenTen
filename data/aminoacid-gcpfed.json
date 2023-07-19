@@ -1,5 +1,5 @@
 {
-    "solver-method": "gcp-sgd-dist",
+    "solver-method": "gcp-fed",
     "tensor":
     {
         "input-file": "data/aminoacid_data.txt",
@@ -14,14 +14,24 @@
         "seed": 12345,
         "prng": false
     },
-    "gcp-sgd-dist":
+    "gcp-fed":
     {
-        "method": "sgd",
-        "step": "adam",
-        "loss": "gaussian",
-        "batch-size-nz": 1000,
-        "batch-size-zero": 0,
-        "max-epochs": 100,
+        "method": "fedopt",
+        "maxiters": 100,
+        "fails": 2,
+        "tol": 1e-4,
+        "mttkrp":
+        {
+            "all-method": "atomic"
+        },
+        "type": "gaussian",
+        "sampling": "semi-stratified",
+        "seed": 31415,
+        "fuse": true,
+        "gnzs": 100,
+        "gzs": 0,
+        "fnzs": 10000,
+        "fzs": 0,
         "learning-rate":
         {
             "step": 1e-3
@@ -36,7 +46,7 @@
         },
         "iterations":
         {
-            "value": 100,
+            "value": 12,
             "absolute-tolerance": 1
         }
     }

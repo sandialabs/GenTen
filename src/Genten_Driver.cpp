@@ -57,7 +57,7 @@
 #include "Genten_GCP_SGD.hpp"
 #include "Genten_GCP_SGD_SA.hpp"
 #ifdef HAVE_DIST
-#include "Genten_DistGCP.hpp"
+#include "Genten_GCP_FedOpt.hpp"
 #endif
 #ifdef HAVE_LBFGSB
 #include "Genten_GCP_Opt_Lbfgsb.hpp"
@@ -155,7 +155,6 @@ driver(const DistTensorContext<ExecSpace>& dtc,
        SptensorT<ExecSpace>& x,
        KtensorT<ExecSpace>& u,
        AlgParams& algParams,
-       const ptree& ptree,
        PerfHistory& history,
        std::ostream& out_in)
 {
@@ -284,15 +283,14 @@ driver(const DistTensorContext<ExecSpace>& dtc,
     ttb_real resNorm;
     gcp_sgd_sa(x, u, algParams, iter, resNorm, history, out);
   }
-  else if (algParams.method == Genten::Solver_Method::GCP_SGD_DIST) {
+  else if (algParams.method == Genten::Solver_Method::GCP_FED) {
 #ifdef HAVE_DIST
-    // Run Drew's distributed GCP-SGD implementation
-    x.setProcessorMap(nullptr); // DistGCP handles communication itself
+    x.setProcessorMap(nullptr); // GCP_FedOpt handles communication itself
     u.setProcessorMap(nullptr);
-    DistGCP<ExecSpace> dgcp(dtc, x, u, ptree, history);
+    GCP_FedOpt<ExecSpace> dgcp(dtc, x, u, algParams, history);
     dgcp.compute();
 #else
-    Genten::error("gcp-sgd-dist requires MPI support!");
+    Genten::error("gcp-fed requires MPI support!");
 #endif
   }
   else if (algParams.method == Genten::Solver_Method::GCP_OPT) {
@@ -349,7 +347,6 @@ driver(const DistTensorContext<ExecSpace>& dtc,
        TensorT<ExecSpace>& x,
        KtensorT<ExecSpace>& u,
        AlgParams& algParams,
-       const ptree& ptree,
        PerfHistory& history,
        std::ostream& out_in)
 {
@@ -540,7 +537,6 @@ driver(const DistTensorContext<ExecSpace>& dtc,
     SptensorT<SPACE>& x,                                                \
     KtensorT<SPACE>& u_init,                                            \
     AlgParams& algParams,                                               \
-    const ptree& ptree,                                                 \
     PerfHistory& history,                                               \
     std::ostream& os);                                                  \
                                                                         \
@@ -550,7 +546,6 @@ driver(const DistTensorContext<ExecSpace>& dtc,
     TensorT<SPACE>& x,                                                  \
     KtensorT<SPACE>& u_init,                                            \
     AlgParams& algParams,                                               \
-    const ptree& ptree,                                                 \
     PerfHistory& history,                                               \
     std::ostream& os);
 

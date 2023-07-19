@@ -1091,20 +1091,21 @@ namespace Genten {
     GCP_SGD_Step<ExecSpace,LossFunction>*
     createStepper(
       const AlgParams& algParams,
-      const typename GCP_SGD_Step<ExecSpace,LossFunction>::VectorType& u)
+      const typename GCP_SGD_Step<ExecSpace,LossFunction>::VectorType& u,
+      const GCP_Step::type step_type)
     {
       GCP_SGD_Step<ExecSpace,LossFunction> *stepper = nullptr;
-      if (algParams.step_type == GCP_Step::ADAM)
+      if (step_type == GCP_Step::ADAM)
         stepper = new AdamStep<ExecSpace,LossFunction>(algParams, u);
-      else if (algParams.step_type == GCP_Step::AdaGrad)
+      else if (step_type == GCP_Step::AdaGrad)
         stepper = new AdaGradStep<ExecSpace,LossFunction>(algParams, u);
-      else if (algParams.step_type == GCP_Step::AMSGrad)
+      else if (step_type == GCP_Step::AMSGrad)
         stepper = new AMSGradStep<ExecSpace,LossFunction>(algParams, u);
-      else if (algParams.step_type == GCP_Step::SGDMomentum)
+      else if (step_type == GCP_Step::SGDMomentum)
         stepper = new SGDMomentumStep<ExecSpace,LossFunction>(algParams, u);
-      else if (algParams.step_type == GCP_Step::DEMON)
+      else if (step_type == GCP_Step::DEMON)
         stepper = new DEMON<ExecSpace,LossFunction>(algParams, u);
-      else if (algParams.step_type == GCP_Step::SGD) {
+      else if (step_type == GCP_Step::SGD) {
         stepper = new SGDStep<ExecSpace,LossFunction>();
       }
       else
@@ -1116,26 +1117,9 @@ namespace Genten {
     GCP_SGD_Step<ExecSpace,LossFunction>*
     createStepper(
       const AlgParams& algParams,
-      const typename GCP_SGD_Step<ExecSpace,LossFunction>::VectorType& u,
-      const std::string name)
+      const typename GCP_SGD_Step<ExecSpace,LossFunction>::VectorType& u)
     {
-      GCP_SGD_Step<ExecSpace,LossFunction> *stepper = nullptr;
-      if (name == "adam")
-        stepper = new AdamStep<ExecSpace,LossFunction>(algParams, u);
-      else if (name == "adagrad")
-        stepper = new AdaGradStep<ExecSpace,LossFunction>(algParams, u);
-      else if (name == "amsgrad")
-        stepper = new AMSGradStep<ExecSpace,LossFunction>(algParams, u);
-      else if (name == "sgd-momentum")
-        stepper = new SGDMomentumStep<ExecSpace,LossFunction>(algParams, u);
-      else if (name == "demon")
-        stepper = new DEMON<ExecSpace,LossFunction>(algParams, u);
-      else if (name == "sgd") {
-        stepper = new SGDStep<ExecSpace,LossFunction>();
-      }
-      else
-        Genten::error("Invalid stepper name " + name);
-      return stepper;
+      return createStepper(algParams, u, algParams.step_type);
     }
 
   }

@@ -15,7 +15,7 @@ analyzing and manipulating tensor data.
 """
 
 from pygenten._pygenten import *
-from pygenten.solvers import cp_als, cp_opt, gcp_opt, gcp_sgd, gcp_fed_opt
+from pygenten.solvers import cp_als, cp_opt, gcp_opt, gcp_sgd, gcp_fed
 from pygenten.utils import read_and_distribute_tensor, distribute_tensor
 try:
     from pygenten.helpers import make_ttb_tensor, make_ttb_sptensor, make_ttb_ktensor, make_gt_tensor, make_gt_sptensor, make_gt_ktensor, ttb_tensor_supports_copy
