@@ -124,10 +124,10 @@ GCP_FedOpt(const DistTensorContext<ExecSpace>& dtc,
   const std::uint64_t gnz = dtc_.globalNNZ(spTensor_);
   const std::uint64_t lz = spTensor_.numel_float() - lnz;
 
-  auto global_batch_size_nz = algParams_.num_samples_nonzeros_grad;
-  auto global_batch_size_z = algParams_.num_samples_zeros_grad;
-  auto global_value_size_nz = algParams_.num_samples_nonzeros_value;
-  auto global_value_size_z = algParams_.num_samples_zeros_value;
+  std::uint64_t global_batch_size_nz = algParams_.num_samples_nonzeros_grad;
+  std::uint64_t global_batch_size_z = algParams_.num_samples_zeros_grad;
+  std::uint64_t global_value_size_nz = algParams_.num_samples_nonzeros_value;
+  std::uint64_t global_value_size_z = algParams_.num_samples_zeros_value;
 
   // If we have fewer nnz than the batch size don't over sample them
   algParams_.num_samples_nonzeros_grad =
