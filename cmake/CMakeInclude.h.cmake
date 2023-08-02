@@ -98,6 +98,7 @@
 #cmakedefine HAVE_DIST
 
 #include <cstddef>
+#include <cstdint>
 
 // Floating-point type
 typedef @GENTEN_FLOAT_TYPE@ ttb_real;
