@@ -287,8 +287,7 @@ driver(const DistTensorContext<ExecSpace>& dtc,
 #ifdef HAVE_DIST
     x.setProcessorMap(nullptr); // GCP_FedOpt handles communication itself
     u.setProcessorMap(nullptr);
-    GCP_FedOpt<ExecSpace> dgcp(dtc, x, u, algParams, history);
-    dgcp.compute();
+    gcp_fed(dtc, x, u, algParams, history);
 #else
     Genten::error("gcp-fed requires MPI support!");
 #endif

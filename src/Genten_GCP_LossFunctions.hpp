@@ -43,6 +43,7 @@
 #include <string>
 
 #include "Genten_Util.hpp"
+#include "Genten_AlgParams.hpp"
 
 // Use constrained versions of some loss function
 #define USE_CONSTRAINED_LOSS_FUNCTIONS 1
@@ -278,4 +279,28 @@ namespace Genten {
 
 #endif
 
+  template <typename Func>
+  void dispatch_loss(const AlgParams& algParams, Func& f)
+  {
+    if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
+      f(GaussianLossFunction(algParams.loss_eps));
+    else if (algParams.loss_function_type == GCP_LossFunction::Rayleigh)
+      f(RayleighLossFunction(algParams.loss_eps));
+    else if (algParams.loss_function_type == GCP_LossFunction::Gamma)
+      f(GammaLossFunction(algParams.loss_eps));
+    else if (algParams.loss_function_type == GCP_LossFunction::Bernoulli)
+      f(BernoulliLossFunction(algParams.loss_eps));
+    else if (algParams.loss_function_type == GCP_LossFunction::Poisson)
+      f(PoissonLossFunction(algParams.loss_eps));
+    else
+       Genten::error("Genten::gcp_sgd - unknown loss function");
+  }
+
 }
+
+#define GENTEN_INST_LOSS(SPACE,LOSS_INST_MACRO)                         \
+  LOSS_INST_MACRO(SPACE,Genten::GaussianLossFunction)                   \
+  LOSS_INST_MACRO(SPACE,Genten::RayleighLossFunction)                   \
+  LOSS_INST_MACRO(SPACE,Genten::GammaLossFunction)                      \
+  LOSS_INST_MACRO(SPACE,Genten::BernoulliLossFunction)                  \
+  LOSS_INST_MACRO(SPACE,Genten::PoissonLossFunction)

@@ -474,28 +474,32 @@ namespace Genten {
       delete dku_fit;
   }
 
-  template <typename TensorType, typename LossFunction>
-  void gcp_sgd_impl(TensorType& X,
-                    KtensorT<typename TensorType::exec_space>& u0,
-                    const LossFunction& loss_func,
-                    const AlgParams& algParams,
-                    ttb_indx& numEpochs,
-                    ttb_real& fest,
-                    PerfHistory& perfInfo,
-                    std::ostream& out)
-  {
-    // Distribute the initial guess to have weights of one.
-    u0.normalize(Genten::NormTwo);
-    u0.distribute();
+  template <typename TensorType>
+  struct gcp_sgd_impl {
+    TensorType& X;
+    KtensorT<typename TensorType::exec_space>& u0;
+    const AlgParams& algParams;
+    ttb_indx& numEpochs;
+    ttb_real& fest;
+    PerfHistory& perfInfo;
+    std::ostream& out;
 
-    GCPSGD<TensorType,LossFunction> gcpsgd(u0, loss_func, algParams);
-    gcpsgd.solve(X, u0, ttb_real(0.0),numEpochs, fest, perfInfo, out,
-                 true, true, algParams.printitn);
+    template <typename LossFunction>
+    void operator() (const LossFunction& loss_func)
+    {
+      // Distribute the initial guess to have weights of one.
+      u0.normalize(Genten::NormTwo);
+      u0.distribute();
 
-    // Normalize Ktensor u
-    u0.normalize(Genten::NormTwo);
-    u0.arrange();
-  }
+      GCPSGD<TensorType,LossFunction> gcpsgd(u0, loss_func, algParams);
+      gcpsgd.solve(X, u0, ttb_real(0.0),numEpochs, fest, perfInfo, out,
+                   true, true, algParams.printitn);
+
+      // Normalize Ktensor u
+      u0.normalize(Genten::NormTwo);
+      u0.arrange();
+    }
+  };
 
   template<typename TensorType>
   void gcp_sgd(TensorType& x,
@@ -518,23 +522,9 @@ namespace Genten {
       Genten::error("Genten::gcp_sgd - u and x have different num dims");
 
     // Dispatch implementation based on loss function type
-    if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
-      gcp_sgd_impl(x, u, GaussianLossFunction(algParams.loss_eps),
-                   algParams, numIters, resNorm, perfInfo, out);
-    else if (algParams.loss_function_type == GCP_LossFunction::Rayleigh)
-      gcp_sgd_impl(x, u, RayleighLossFunction(algParams.loss_eps),
-                   algParams, numIters, resNorm, perfInfo, out);
-    else if (algParams.loss_function_type == GCP_LossFunction::Gamma)
-      gcp_sgd_impl(x, u, GammaLossFunction(algParams.loss_eps),
-                   algParams, numIters, resNorm, perfInfo, out);
-    else if (algParams.loss_function_type == GCP_LossFunction::Bernoulli)
-      gcp_sgd_impl(x, u, BernoulliLossFunction(algParams.loss_eps),
-                   algParams, numIters, resNorm, perfInfo, out);
-    else if (algParams.loss_function_type == GCP_LossFunction::Poisson)
-      gcp_sgd_impl(x, u, PoissonLossFunction(algParams.loss_eps),
-                   algParams, numIters, resNorm, perfInfo, out);
-    else
-       Genten::error("Genten::gcp_sgd - unknown loss function");
+    gcp_sgd_impl<TensorType> f = {
+      x, u, algParams, numIters, resNorm, perfInfo, out };
+    dispatch_loss(algParams, f);
   }
 
 }
@@ -544,11 +534,7 @@ namespace Genten {
   template class Genten::GCPSGD<TensorT<SPACE>,LOSS>;
 
 #define INST_MACRO(SPACE)                                               \
-  LOSS_INST_MACRO(SPACE,GaussianLossFunction)                           \
-  LOSS_INST_MACRO(SPACE,RayleighLossFunction)                           \
-  LOSS_INST_MACRO(SPACE,GammaLossFunction)                              \
-  LOSS_INST_MACRO(SPACE,BernoulliLossFunction)                          \
-  LOSS_INST_MACRO(SPACE,PoissonLossFunction)                            \
+  GENTEN_INST_LOSS(SPACE,LOSS_INST_MACRO)                               \
                                                                         \
   template void gcp_sgd<SptensorT<SPACE> >(                             \
     SptensorT<SPACE>& x,                                                \
