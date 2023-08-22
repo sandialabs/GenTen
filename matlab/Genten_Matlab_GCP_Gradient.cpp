@@ -269,31 +269,31 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
       G = gcp_gradient_driver(method,X,num_samples_nonzeros,num_samples_zeros,
                               weight_nonzeros,weight_zeros,u,uprev,
                               window,window_penalty,
-                              Genten::GaussianLossFunction(algParams.loss_eps),
+                              Genten::GaussianLossFunction(algParams),
                               modes,penalty,rand_pool,algParams);
     else if (loss_type == "rayleigh")
       G = gcp_gradient_driver(method,X,num_samples_nonzeros,num_samples_zeros,
                               weight_nonzeros,weight_zeros,u,uprev,
                               window,window_penalty,
-                              Genten::RayleighLossFunction(algParams.loss_eps),
+                              Genten::RayleighLossFunction(algParams),
                               modes,penalty,rand_pool,algParams);
     else if (loss_type == "gamma")
       G = gcp_gradient_driver(method,X,num_samples_nonzeros,num_samples_zeros,
                               weight_nonzeros,weight_zeros,u,uprev,
                               window,window_penalty,
-                              Genten::GammaLossFunction(algParams.loss_eps),
+                              Genten::GammaLossFunction(algParams),
                               modes,penalty,rand_pool,algParams);
     else if (loss_type == "bernoulli" || loss_type == "binary")
       G = gcp_gradient_driver(method,X,num_samples_nonzeros,num_samples_zeros,
                               weight_nonzeros,weight_zeros,u,uprev,
                               window,window_penalty,
-                              Genten::BernoulliLossFunction(algParams.loss_eps),
+                              Genten::BernoulliLossFunction(algParams),
                               modes,penalty,rand_pool,algParams);
     else if (loss_type == "poisson" || loss_type == "count")
       G = gcp_gradient_driver(method,X,num_samples_nonzeros,num_samples_zeros,
                               weight_nonzeros,weight_zeros,u,uprev,
                               window,window_penalty,
-                              Genten::PoissonLossFunction(algParams.loss_eps),
+                              Genten::PoissonLossFunction(algParams),
                               modes,penalty,rand_pool,algParams);
     else {
       std::string err = "Unknown loss function " + loss_type;

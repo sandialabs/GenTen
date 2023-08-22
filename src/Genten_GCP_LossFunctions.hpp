@@ -52,7 +52,7 @@ namespace Genten {
 
   class GaussianLossFunction {
   public:
-    GaussianLossFunction(const ttb_real&) {}
+    GaussianLossFunction(const AlgParams&) {}
 
     std::string name() const { return "Gaussian (normal)"; }
 
@@ -76,8 +76,8 @@ namespace Genten {
 
   class RayleighLossFunction {
   public:
-    RayleighLossFunction(const ttb_real& epsilon) :
-      eps(epsilon), pi_over_4(std::atan(ttb_real(1.0))) {}
+    RayleighLossFunction(const AlgParams& algParams) :
+      eps(algParams.loss_eps), pi_over_4(std::atan(ttb_real(1.0))) {}
 
     std::string name() const { return "Rayleigh"; }
 
@@ -111,7 +111,7 @@ namespace Genten {
 
   class GammaLossFunction {
   public:
-    GammaLossFunction(const ttb_real& epsilon) : eps(epsilon) {}
+    GammaLossFunction(const AlgParams& algParams) : eps(algParams.loss_eps) {}
 
     std::string name() const { return "Gamma"; }
 
@@ -146,7 +146,7 @@ namespace Genten {
 
   class BernoulliLossFunction {
   public:
-    BernoulliLossFunction(const ttb_real& epsilon) : eps(epsilon) {}
+    BernoulliLossFunction(const AlgParams& algParams) : eps(algParams.loss_eps) {}
 
     std::string name() const { return "Bernoulli (binary)"; }
 
@@ -176,7 +176,7 @@ namespace Genten {
 
   class PoissonLossFunction {
   public:
-    PoissonLossFunction(const ttb_real& epsilon) : eps(epsilon) {}
+    PoissonLossFunction(const AlgParams& algParams) : eps(algParams.loss_eps) {}
 
     std::string name() const { return "Poisson (count)"; }
 
@@ -209,7 +209,7 @@ namespace Genten {
 
   class BernoulliLossFunction {
   public:
-    BernoulliLossFunction(const ttb_real&) {}
+    BernoulliLossFunction(const AlgParams&) {}
 
     std::string name() const { return "Bernoulli (binary)"; }
 
@@ -245,7 +245,7 @@ namespace Genten {
 
   class PoissonLossFunction {
   public:
-    PoissonLossFunction(const ttb_real&) {}
+    PoissonLossFunction(const AlgParams&) {}
 
     std::string name() const { return "Poisson (count)"; }
 
@@ -283,15 +283,15 @@ namespace Genten {
   void dispatch_loss(const AlgParams& algParams, Func& f)
   {
     if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
-      f(GaussianLossFunction(algParams.loss_eps));
+      f(GaussianLossFunction(algParams));
     else if (algParams.loss_function_type == GCP_LossFunction::Rayleigh)
-      f(RayleighLossFunction(algParams.loss_eps));
+      f(RayleighLossFunction(algParams));
     else if (algParams.loss_function_type == GCP_LossFunction::Gamma)
-      f(GammaLossFunction(algParams.loss_eps));
+      f(GammaLossFunction(algParams));
     else if (algParams.loss_function_type == GCP_LossFunction::Bernoulli)
-      f(BernoulliLossFunction(algParams.loss_eps));
+      f(BernoulliLossFunction(algParams));
     else if (algParams.loss_function_type == GCP_LossFunction::Poisson)
-      f(PoissonLossFunction(algParams.loss_eps));
+      f(PoissonLossFunction(algParams));
     else
        Genten::error("Genten::gcp_sgd - unknown loss function");
   }

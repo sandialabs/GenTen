@@ -92,7 +92,7 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
     // to do:  sort/hash
     Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(rand());
     Genten::KtensorT<ExecSpace> u; // not used
-    Genten::GaussianLossFunction loss_func(algParams.loss_eps); // not used
+    Genten::GaussianLossFunction loss_func(algParams); // not used
     Sptensor_type Xs;
     array_type w;
     if (method == "stratified") {

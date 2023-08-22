@@ -221,6 +221,24 @@ namespace Genten {
     return gcp_model.computeFit(u);
   }
 
+  namespace Impl {
+  template <typename ExecSpace>
+  struct gcp_create_rol_objective_impl {
+    const TensorT<ExecSpace>& x;
+    const KtensorT<ExecSpace>& m;
+    const AlgParams& algParams;
+    PerfHistory& h;
+    Teuchos::RCP< GCP_RolObjectiveBase<ExecSpace> > obj;
+
+    template <typename LossFunction>
+    void operator() (const LossFunction& loss_func)
+    {
+      obj = Teuchos::rcp(new GCP_RolObjective<ExecSpace,LossFunction>(
+        x, m, loss_func, algParams, h));
+    }
+  };
+  }
+
   template <typename ExecSpace>
   Teuchos::RCP< GCP_RolObjectiveBase<ExecSpace> >
   GCP_createRolObjective(const TensorT<ExecSpace>& x,
@@ -228,28 +246,10 @@ namespace Genten {
                          const AlgParams& algParams,
                          PerfHistory& h)
   {
-    using Teuchos::rcp;
-
-    Teuchos::RCP< GCP_RolObjectiveBase<ExecSpace> > obj;
-    if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
-      obj = rcp(new GCP_RolObjective<ExecSpace,GaussianLossFunction>(
-        x, m, GaussianLossFunction(algParams.loss_eps), algParams, h));
-    else if (algParams.loss_function_type == GCP_LossFunction::Rayleigh)
-      obj = rcp(new GCP_RolObjective<ExecSpace,RayleighLossFunction>(
-        x, m, RayleighLossFunction(algParams.loss_eps), algParams, h));
-    else if (algParams.loss_function_type == GCP_LossFunction::Gamma)
-      obj = rcp(new GCP_RolObjective<ExecSpace,GammaLossFunction>(
-        x, m, GammaLossFunction(algParams.loss_eps), algParams, h));
-    else if (algParams.loss_function_type == GCP_LossFunction::Bernoulli)
-      obj = rcp(new GCP_RolObjective<ExecSpace,BernoulliLossFunction>(
-        x, m, BernoulliLossFunction(algParams.loss_eps), algParams, h));
-    else if (algParams.loss_function_type == GCP_LossFunction::Poisson)
-      obj = rcp(new GCP_RolObjective<ExecSpace,PoissonLossFunction>(
-        x, m, PoissonLossFunction(algParams.loss_eps), algParams, h));
-    else
-      Genten::error("Genten::gcp_opt - unknown loss function");
-
-    return obj;
+    Impl::gcp_create_rol_objective_impl<ExecSpace> f = {
+      x, m, algParams, h };
+    dispatch_loss(algParams, f);
+    return f.obj;
   }
 
 }

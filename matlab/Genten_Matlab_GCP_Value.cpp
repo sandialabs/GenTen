@@ -90,23 +90,23 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
     if (loss_type == "gaussian" || loss_type == "normal")
       Genten::Impl::gcp_value(
         X, u, uprev, window, window_penalty, w,
-        Genten::GaussianLossFunction(algParams.loss_eps), ften, fhis);
+        Genten::GaussianLossFunction(algParams), ften, fhis);
     else if (loss_type == "rayleigh")
       Genten::Impl::gcp_value(
         X, u, uprev, window, window_penalty, w,
-        Genten::RayleighLossFunction(algParams.loss_eps), ften, fhis);
+        Genten::RayleighLossFunction(algParams), ften, fhis);
     else if (loss_type == "gamma")
       Genten::Impl::gcp_value(
         X, u, uprev, window, window_penalty, w,
-        Genten::GammaLossFunction(algParams.loss_eps), ften, fhis);
+        Genten::GammaLossFunction(algParams), ften, fhis);
     else if (loss_type == "bernoulli" || loss_type == "binary")
       Genten::Impl::gcp_value(
         X, u, uprev, window, window_penalty, w,
-        Genten::BernoulliLossFunction(algParams.loss_eps), ften, fhis);
+        Genten::BernoulliLossFunction(algParams), ften, fhis);
     else if (loss_type == "poisson" || loss_type == "count")
       Genten::Impl::gcp_value(
         X, u, uprev, window, window_penalty, w,
-        Genten::PoissonLossFunction(algParams.loss_eps), ften, fhis);
+        Genten::PoissonLossFunction(algParams), ften, fhis);
     else {
       std::string err = "Unknown loss function " + loss_type;
       throw err;
