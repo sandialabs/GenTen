@@ -540,7 +540,7 @@ static nlohmann::json json_schema = R"(
               },
               "type": {
                   "description": "Loss function type for GCP",
-                  "enum": ["gaussian", "rayleigh", "gamma", "bernoulli", "poisson"],
+                  "type": "string",
                   "default": "gaussian"
               },
               "eps": {
@@ -549,6 +549,11 @@ static nlohmann::json json_schema = R"(
                   "minimum": 0.0,
                   "maximum": 1.0,
                   "default": 1e-10
+              },
+              "param": {
+                  "description": "Generic parameter for use in some loss functions",
+                  "type": "number",
+                  "default": 0.0
               },
               "sampling": {
                   "description": "Sampling method",
@@ -759,7 +764,7 @@ static nlohmann::json json_schema = R"(
               },
               "type": {
                   "description": "Loss function type for GCP",
-                  "enum": ["gaussian", "rayleigh", "gamma", "bernoulli", "poisson"],
+                  "type": "string",
                   "default": "gaussian"
               },
               "eps": {
@@ -768,6 +773,11 @@ static nlohmann::json json_schema = R"(
                   "minimum": 0.0,
                   "maximum": 1.0,
                   "default": 1e-10
+              },
+              "param": {
+                  "description": "Generic parameter for use in some loss functions",
+                  "type": "number",
+                  "default": 0.0
               },
               "sampling": {
                   "description": "Sampling method",
