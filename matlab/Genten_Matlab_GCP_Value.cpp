@@ -84,33 +84,17 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
         throw err;
       }
     }
+    algParams.loss_function_type = loss_type;
 
+    // Dispatch implementation based on loss function type
     ttb_real ften = 0.0;
     ttb_real fhis = 0.0;
-    if (loss_type == "gaussian" || loss_type == "normal")
+    auto dispatch = [&](auto loss)
+    {
       Genten::Impl::gcp_value(
-        X, u, uprev, window, window_penalty, w,
-        Genten::GaussianLossFunction(algParams), ften, fhis);
-    else if (loss_type == "rayleigh")
-      Genten::Impl::gcp_value(
-        X, u, uprev, window, window_penalty, w,
-        Genten::RayleighLossFunction(algParams), ften, fhis);
-    else if (loss_type == "gamma")
-      Genten::Impl::gcp_value(
-        X, u, uprev, window, window_penalty, w,
-        Genten::GammaLossFunction(algParams), ften, fhis);
-    else if (loss_type == "bernoulli" || loss_type == "binary")
-      Genten::Impl::gcp_value(
-        X, u, uprev, window, window_penalty, w,
-        Genten::BernoulliLossFunction(algParams), ften, fhis);
-    else if (loss_type == "poisson" || loss_type == "count")
-      Genten::Impl::gcp_value(
-        X, u, uprev, window, window_penalty, w,
-        Genten::PoissonLossFunction(algParams), ften, fhis);
-    else {
-      std::string err = "Unknown loss function " + loss_type;
-      throw err;
-    }
+        X, u, uprev, window, window_penalty, w, loss, ften, fhis);
+    };
+    Genten::dispatch_loss(algParams, dispatch);
 
     // Set output
     mxArray *mat_ptr = mxCreateDoubleMatrix( (mwSize) 1, (mwSize) 1,  mxREAL );

@@ -161,13 +161,6 @@ void pygenten_algparams(py::module &m){
     .value("DGEMM", Genten::TTM_Method::type::DGEMM)
     .value("Parfor_DGEMM", Genten::TTM_Method::type::Parfor_DGEMM)
     .export_values();
-  py::enum_<Genten::GCP_LossFunction::type>(m, "GCP_LossFunction")
-    .value("Gaussian", Genten::GCP_LossFunction::type::Gaussian)
-    .value("Rayleigh", Genten::GCP_LossFunction::type::Rayleigh)
-    .value("Gamma", Genten::GCP_LossFunction::type::Gamma)
-    .value("Bernoulli", Genten::GCP_LossFunction::type::Bernoulli)
-    .value("Poisson", Genten::GCP_LossFunction::type::Poisson)
-    .export_values();
   py::enum_<Genten::GCP_Sampling::type>(m, "GCP_Sampling")
     .value("Uniform", Genten::GCP_Sampling::type::Uniform)
     .value("Stratified", Genten::GCP_Sampling::type::Stratified)

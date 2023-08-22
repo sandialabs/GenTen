@@ -83,8 +83,9 @@ Genten::AlgParams::AlgParams() :
   hess_vec_method(Hess_Vec_Method::default_type),
   hess_vec_tensor_method(Hess_Vec_Tensor_Method::default_type),
   hess_vec_prec_method(Hess_Vec_Prec_Method::default_type),
-  loss_function_type(Genten::GCP_LossFunction::default_type),
+  loss_function_type("gaussian"),
   loss_eps(1.0e-10),
+  loss_param(0.0),
   gcp_tol(-DOUBLE_MAX),
   goal_method(GCP_Goal_Method::default_type),
   python_module_name("__main__"),
@@ -229,11 +230,9 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
     Genten::Hess_Vec_Prec_Method::names);
 
   // GCP options
-  loss_function_type = parse_ttb_enum(args, "--type", loss_function_type,
-                                      Genten::GCP_LossFunction::num_types,
-                                      Genten::GCP_LossFunction::types,
-                                      Genten::GCP_LossFunction::names);
+  loss_function_type = parse_string(args, "--type", loss_function_type);
   loss_eps = parse_ttb_real(args, "--eps", loss_eps, 0.0, 1.0);
+  loss_param = parse_ttb_real(args, "--loss-param", loss_param, -DOUBLE_MAX, DOUBLE_MAX);
   gcp_tol = parse_ttb_real(args, "--gcp-tol", gcp_tol, -DOUBLE_MAX, DOUBLE_MAX);
   goal_method = parse_ttb_enum(args, "--gcp-goal-method", goal_method,
                                       Genten::GCP_Goal_Method::num_types,
@@ -457,8 +456,9 @@ void Genten::AlgParams::parse(const ptree& input)
   if (gcpopt_input_o) {
     auto& gcpopt_input = *gcpopt_input_o;
     parse_cpopt(gcpopt_input);
-    parse_ptree_enum<GCP_LossFunction>(gcpopt_input, "type", loss_function_type);
+    parse_ptree_value(gcpopt_input, "type", loss_function_type);
     parse_ptree_value(gcpopt_input, "eps", loss_eps, 0.0, 1.0);
+    parse_ptree_value(gcpopt_input, "param", loss_param, -DOUBLE_MAX, DOUBLE_MAX);
     parse_ptree_value(gcpopt_input, "fit", compute_fit);
     parse_goal(gcpopt_input);
   }
@@ -467,8 +467,9 @@ void Genten::AlgParams::parse(const ptree& input)
   auto parse_gcp_sgd = [&](const ptree& gcp_input) {
     parse_generic_solver_params(gcp_input);
     parse_mttkrp(gcp_input);
-    parse_ptree_enum<GCP_LossFunction>(gcp_input, "type", loss_function_type);
+    parse_ptree_value(gcp_input, "type", loss_function_type);
     parse_ptree_value(gcp_input, "eps", loss_eps, 0.0, 1.0);
+    parse_ptree_value(gcp_input, "param", loss_param, -DOUBLE_MAX, DOUBLE_MAX);
     parse_goal(gcp_input);
     parse_ptree_enum<GCP_Sampling>(gcp_input, "sampling", sampling_type);
     parse_ptree_value(gcp_input, "rate", rate, 0.0, DOUBLE_MAX);
@@ -649,14 +650,9 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --penalty <float>  Tikhonov regularization penalty multiplier" << std::endl;
   out << std::endl;
   out << "GCP options:" << std::endl;
-  out << "  --type <type>      loss function type for GCP: ";
-  for (unsigned i=0; i<Genten::GCP_LossFunction::num_types; ++i) {
-    out << Genten::GCP_LossFunction::names[i];
-    if (i != Genten::GCP_LossFunction::num_types-1)
-      out << ", ";
-  }
-  out << std::endl;
+  out << "  --type <type>      loss function type for GCP (e.g., gaussian, poisson, bernoulli, rayleigh, gamma, ...)" << std::endl;
   out << "  --eps <float>      perturbation of loss functions for entries near 0" << std::endl;
+  out << "  --loss-param <float> generic parameter used in some loss functions" << std::endl;
   out << "  --gcp-tol <float> GCP solver tolerance" << std::endl;
   out << "  --gcp-goal-method <type> goal function type GCP: ";
   for (unsigned i=0; i<Genten::GCP_Goal_Method::num_types; ++i) {
@@ -840,9 +836,9 @@ void Genten::AlgParams::print(std::ostream& out) const
 
   out << std::endl;
   out << "GCP options:" << std::endl;
-  out << "  type = " << Genten::GCP_LossFunction::names[loss_function_type]
-      << std::endl;
+  out << "  type = " << loss_function_type << std::endl;
   out << "  eps = " << loss_eps << std::endl;
+  out << "  loss-param = " << loss_param << std::endl;
   out << "  gcp-tol = " << gcp_tol << std::endl;
   out << "  gcp-goal-method = " << Genten::GCP_Goal_Method::names[goal_method]
       << std::endl;

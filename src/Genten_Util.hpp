@@ -329,25 +329,6 @@ namespace Genten {
     static constexpr type default_type = DGEMM;
   };
 
-  // Loss functions supported by GCP
-  struct GCP_LossFunction {
-    enum type {
-      Gaussian,
-      Rayleigh,
-      Gamma,
-      Bernoulli,
-      Poisson
-    };
-    static constexpr unsigned num_types = 5;
-    static constexpr type types[] = {
-      Gaussian, Rayleigh, Gamma, Bernoulli, Poisson
-    };
-    static constexpr const char* names[] = {
-      "gaussian", "rayleigh", "gamma", "bernoulli", "poisson"
-    };
-    static constexpr type default_type = Gaussian;
-  };
-
   // Sampling functions supported by GCP
   struct GCP_Sampling {
     enum type {

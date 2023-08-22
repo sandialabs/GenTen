@@ -51,7 +51,7 @@
 #include "Kokkos_Random.hpp"
 
 template <typename ExecSpace, typename LossFunction>
-Genten::KtensorT<ExecSpace>
+void
 gcp_gradient_driver(
   const std::string& method,
   Genten::SptensorT<ExecSpace>& X,
@@ -67,7 +67,8 @@ gcp_gradient_driver(
   const Genten::IndxArrayT<ExecSpace> modes,
   const ttb_real penalty,
   Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
-  const Genten::AlgParams& algParams)
+  const Genten::AlgParams& algParams,
+  Genten::KtensorT<ExecSpace>& G)
 {
   // to do:  call mttkrp-all
 
@@ -80,7 +81,7 @@ gcp_gradient_driver(
   deep_copy(modes_host, modes);
 
   // Initialize gradient
-  Genten::KtensorT<ExecSpace> G(nc,d); // length(modes), not u.ndims()
+  G = Genten::KtensorT<ExecSpace>(nc,d); // length(modes), not u.ndims()
   for (ttb_indx k=0; k<d; ++k) {
     const ttb_indx kk = modes_host[k];
     Genten::FacMatrixT<ExecSpace> v(u[kk].nRows(), nc); // initializes to zero
@@ -203,8 +204,6 @@ gcp_gradient_driver(
       G[k].plus(v);
     }
   }
-
-  return G;
 }
 
 extern "C" {
@@ -258,47 +257,22 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
         throw err;
       }
     }
-
-    Ktensor_type G;
+    algParams.loss_function_type = loss_type;
 
     // to do:  figure out how to reuse this across calls, as it is expensive
     // to recreate each time
     Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(rand());
 
-    if (loss_type == "gaussian" || loss_type == "normal")
-      G = gcp_gradient_driver(method,X,num_samples_nonzeros,num_samples_zeros,
-                              weight_nonzeros,weight_zeros,u,uprev,
-                              window,window_penalty,
-                              Genten::GaussianLossFunction(algParams),
-                              modes,penalty,rand_pool,algParams);
-    else if (loss_type == "rayleigh")
-      G = gcp_gradient_driver(method,X,num_samples_nonzeros,num_samples_zeros,
-                              weight_nonzeros,weight_zeros,u,uprev,
-                              window,window_penalty,
-                              Genten::RayleighLossFunction(algParams),
-                              modes,penalty,rand_pool,algParams);
-    else if (loss_type == "gamma")
-      G = gcp_gradient_driver(method,X,num_samples_nonzeros,num_samples_zeros,
-                              weight_nonzeros,weight_zeros,u,uprev,
-                              window,window_penalty,
-                              Genten::GammaLossFunction(algParams),
-                              modes,penalty,rand_pool,algParams);
-    else if (loss_type == "bernoulli" || loss_type == "binary")
-      G = gcp_gradient_driver(method,X,num_samples_nonzeros,num_samples_zeros,
-                              weight_nonzeros,weight_zeros,u,uprev,
-                              window,window_penalty,
-                              Genten::BernoulliLossFunction(algParams),
-                              modes,penalty,rand_pool,algParams);
-    else if (loss_type == "poisson" || loss_type == "count")
-      G = gcp_gradient_driver(method,X,num_samples_nonzeros,num_samples_zeros,
-                              weight_nonzeros,weight_zeros,u,uprev,
-                              window,window_penalty,
-                              Genten::PoissonLossFunction(algParams),
-                              modes,penalty,rand_pool,algParams);
-    else {
-      std::string err = "Unknown loss function " + loss_type;
-      throw err;
-    }
+    // Dispatch implementation based on loss function type
+    Ktensor_type G;
+    auto dispatch = [&](auto loss)
+    {
+      gcp_gradient_driver(method,X,num_samples_nonzeros,num_samples_zeros,
+                          weight_nonzeros,weight_zeros,u,uprev,
+                          window,window_penalty, loss,
+                          modes,penalty,rand_pool,algParams, G);
+    };
+    Genten::dispatch_loss(algParams, dispatch);
 
     // Set output
     plhs[0] = mxSetKtensor(G);

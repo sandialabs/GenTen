@@ -41,6 +41,7 @@
 #pragma once
 
 #include <string>
+#include <cctype>
 
 #include "Genten_Util.hpp"
 #include "Genten_AlgParams.hpp"
@@ -282,18 +283,23 @@ namespace Genten {
   template <typename Func>
   void dispatch_loss(const AlgParams& algParams, Func& f)
   {
-    if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
+    // convert to lower-case
+    std::string loss = algParams.loss_function_type;
+    std::transform(loss.begin(), loss.end(), loss.begin(),
+                   [](unsigned char c){return std::tolower(c);});
+
+    if (loss == "gaussian" || loss  == "normal")
       f(GaussianLossFunction(algParams));
-    else if (algParams.loss_function_type == GCP_LossFunction::Rayleigh)
+    else if (loss == "rayleigh")
       f(RayleighLossFunction(algParams));
-    else if (algParams.loss_function_type == GCP_LossFunction::Gamma)
+    else if (loss == "gamma")
       f(GammaLossFunction(algParams));
-    else if (algParams.loss_function_type == GCP_LossFunction::Bernoulli)
+    else if (loss == "bernoulli" || loss == "binary")
       f(BernoulliLossFunction(algParams));
-    else if (algParams.loss_function_type == GCP_LossFunction::Poisson)
+    else if (loss == "poisson" || loss == "count")
       f(PoissonLossFunction(algParams));
     else
-       Genten::error("Genten::gcp_sgd - unknown loss function");
+       Genten::error("Unknown loss function:  " + loss);
   }
 
 }
