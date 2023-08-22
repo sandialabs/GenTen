@@ -42,6 +42,7 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
+#include <type_traits>
 
 #include "Genten_GCP_SGD.hpp"
 #include "Genten_GCP_SamplerFactory.hpp"
@@ -474,33 +475,6 @@ namespace Genten {
       delete dku_fit;
   }
 
-  template <typename TensorType>
-  struct gcp_sgd_impl {
-    TensorType& X;
-    KtensorT<typename TensorType::exec_space>& u0;
-    const AlgParams& algParams;
-    ttb_indx& numEpochs;
-    ttb_real& fest;
-    PerfHistory& perfInfo;
-    std::ostream& out;
-
-    template <typename LossFunction>
-    void operator() (const LossFunction& loss_func)
-    {
-      // Distribute the initial guess to have weights of one.
-      u0.normalize(Genten::NormTwo);
-      u0.distribute();
-
-      GCPSGD<TensorType,LossFunction> gcpsgd(u0, loss_func, algParams);
-      gcpsgd.solve(X, u0, ttb_real(0.0),numEpochs, fest, perfInfo, out,
-                   true, true, algParams.printitn);
-
-      // Normalize Ktensor u
-      u0.normalize(Genten::NormTwo);
-      u0.arrange();
-    }
-  };
-
   template<typename TensorType>
   void gcp_sgd(TensorType& x,
                KtensorT<typename TensorType::exec_space>& u,
@@ -521,10 +495,23 @@ namespace Genten {
     if (x.ndims() != u.ndims())
       Genten::error("Genten::gcp_sgd - u and x have different num dims");
 
+    // Distribute the initial guess to have weights of one.
+    u.normalize(Genten::NormTwo);
+    u.distribute();
+
     // Dispatch implementation based on loss function type
-    gcp_sgd_impl<TensorType> f = {
-      x, u, algParams, numIters, resNorm, perfInfo, out };
-    dispatch_loss(algParams, f);
+    dispatch_loss(algParams, [&](const auto& loss)
+    {
+      using LossType =
+        std::remove_cv_t< std::remove_reference_t<decltype(loss)> >;
+      GCPSGD<TensorType,LossType> gcpsgd(u, loss, algParams);
+      gcpsgd.solve(x, u, ttb_real(0.0), numIters, resNorm, perfInfo, out,
+                   true, true, algParams.printitn);
+    });
+
+    // Normalize Ktensor u
+    u.normalize(Genten::NormTwo);
+    u.arrange();
   }
 
 }

@@ -89,12 +89,11 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
     // Dispatch implementation based on loss function type
     ttb_real ften = 0.0;
     ttb_real fhis = 0.0;
-    auto dispatch = [&](auto loss)
+    Genten::dispatch_loss(algParams, [&](const auto& loss)
     {
       Genten::Impl::gcp_value(
         X, u, uprev, window, window_penalty, w, loss, ften, fhis);
-    };
-    Genten::dispatch_loss(algParams, dispatch);
+    });
 
     // Set output
     mxArray *mat_ptr = mxCreateDoubleMatrix( (mwSize) 1, (mwSize) 1,  mxREAL );

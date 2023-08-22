@@ -51,7 +51,7 @@
 #include "Kokkos_Random.hpp"
 
 template <typename ExecSpace, typename LossFunction>
-void
+Genten::KtensorT<ExecSpace>
 gcp_gradient_driver(
   const std::string& method,
   Genten::SptensorT<ExecSpace>& X,
@@ -67,8 +67,7 @@ gcp_gradient_driver(
   const Genten::IndxArrayT<ExecSpace> modes,
   const ttb_real penalty,
   Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
-  const Genten::AlgParams& algParams,
-  Genten::KtensorT<ExecSpace>& G)
+  const Genten::AlgParams& algParams)
 {
   // to do:  call mttkrp-all
 
@@ -81,7 +80,7 @@ gcp_gradient_driver(
   deep_copy(modes_host, modes);
 
   // Initialize gradient
-  G = Genten::KtensorT<ExecSpace>(nc,d); // length(modes), not u.ndims()
+  Genten::KtensorT<ExecSpace> G(nc,d); // length(modes), not u.ndims()
   for (ttb_indx k=0; k<d; ++k) {
     const ttb_indx kk = modes_host[k];
     Genten::FacMatrixT<ExecSpace> v(u[kk].nRows(), nc); // initializes to zero
@@ -204,6 +203,8 @@ gcp_gradient_driver(
       G[k].plus(v);
     }
   }
+
+  return G;
 }
 
 extern "C" {
@@ -265,14 +266,14 @@ DLL_EXPORT_SYM void mexFunction(int nlhs, mxArray *plhs[],
 
     // Dispatch implementation based on loss function type
     Ktensor_type G;
-    auto dispatch = [&](auto loss)
+    Genten::dispatch_loss(algParams, [&](const auto& loss)
     {
-      gcp_gradient_driver(method,X,num_samples_nonzeros,num_samples_zeros,
-                          weight_nonzeros,weight_zeros,u,uprev,
-                          window,window_penalty, loss,
-                          modes,penalty,rand_pool,algParams, G);
-    };
-    Genten::dispatch_loss(algParams, dispatch);
+      G =
+        gcp_gradient_driver(method,X,num_samples_nonzeros,num_samples_zeros,
+                            weight_nonzeros,weight_zeros,u,uprev,
+                            window,window_penalty, loss,
+                            modes,penalty,rand_pool,algParams);
+    });
 
     // Set output
     plhs[0] = mxSetKtensor(G);

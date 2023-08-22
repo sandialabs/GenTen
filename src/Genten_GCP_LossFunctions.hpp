@@ -281,6 +281,28 @@ namespace Genten {
 #endif
 
   template <typename Func>
+  void dispatch_loss(const AlgParams& algParams, const Func& f)
+  {
+    // convert to lower-case
+    std::string loss = algParams.loss_function_type;
+    std::transform(loss.begin(), loss.end(), loss.begin(),
+                   [](unsigned char c){return std::tolower(c);});
+
+    if (loss == "gaussian" || loss  == "normal")
+      f(GaussianLossFunction(algParams));
+    else if (loss == "rayleigh")
+      f(RayleighLossFunction(algParams));
+    else if (loss == "gamma")
+      f(GammaLossFunction(algParams));
+    else if (loss == "bernoulli" || loss == "binary")
+      f(BernoulliLossFunction(algParams));
+    else if (loss == "poisson" || loss == "count")
+      f(PoissonLossFunction(algParams));
+    else
+       Genten::error("Unknown loss function:  " + loss);
+  }
+
+  template <typename Func>
   void dispatch_loss(const AlgParams& algParams, Func& f)
   {
     // convert to lower-case

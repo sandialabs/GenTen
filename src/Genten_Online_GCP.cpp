@@ -289,80 +289,76 @@ namespace Genten {
       out << "f = " << fest << std::endl;
   }
 
-  template <typename TensorT, typename ExecSpace>
-  struct online_gcp_impl {
-    std::vector<TensorT>& X;
-    TensorT& Xinit;
-    KtensorT<ExecSpace>& u;
-    const AlgParams& algParams;
-    const AlgParams& temporalAlgParams;
-    const AlgParams& spatialAlgParams;
-    std::ostream& out;
-    Array& fest;
-    Array& ften;
+  template <typename TensorT, typename ExecSpace, typename LossFunction>
+  void online_gcp_impl(std::vector<TensorT>& X,
+                       TensorT& Xinit,
+                       KtensorT<ExecSpace>& u,
+                       const LossFunction& loss_func,
+                       const AlgParams& algParams,
+                       const AlgParams& temporalAlgParams,
+                       const AlgParams& spatialAlgParams,
+                       std::ostream& out,
+                       Array& fest,
+                       Array& ften)
+  {
+    const ttb_indx nd = u.ndims();
+    const ttb_indx nc = u.ncomponents();
+    const ttb_indx num_slices = X.size();
 
-    template <typename LossFunction>
-    void operator() (const LossFunction& loss_func)
-    {
-      const ttb_indx nd = u.ndims();
-      const ttb_indx nc = u.ncomponents();
-      const ttb_indx num_slices = X.size();
+    if (num_slices == 0)
+      return;
 
-      if (num_slices == 0)
-        return;
+    OnlineGCP<TensorT,ExecSpace,LossFunction> ogcp(
+      Xinit, u, loss_func, algParams, temporalAlgParams, spatialAlgParams,
+      out);
 
-      OnlineGCP<TensorT,ExecSpace,LossFunction> ogcp(
-        Xinit, u, loss_func, algParams, temporalAlgParams, spatialAlgParams,
-        out);
-
-      // Compute total number of time slices
-      ttb_indx nt = 0;
-      for (ttb_indx i=0; i<num_slices; ++i) {
-        if (X[i].ndims() != u.ndims())
-          Genten::error("Genten::online_gcp - u and x have different num dims");
-        for (ttb_indx j=0; j<nd-1; ++j)
-        {
-          if (X[i].size(j) != u[j].nRows())
-            Genten::error("Genten::online_gcp - u and x have different size");
-        }
-        nt += X[i].size(nd-1);
+    // Compute total number of time slices
+    ttb_indx nt = 0;
+    for (ttb_indx i=0; i<num_slices; ++i) {
+      if (X[i].ndims() != u.ndims())
+        Genten::error("Genten::online_gcp - u and x have different num dims");
+      for (ttb_indx j=0; j<nd-1; ++j)
+      {
+        if (X[i].size(j) != u[j].nRows())
+          Genten::error("Genten::online_gcp - u and x have different size");
       }
-
-      // Allocate factor matrix for time mode
-      FacMatrixT<ExecSpace> time_mode(nt, nc);
-
-      // Loop over slices, processing one at a time
-      fest = Array(num_slices);
-      ften = Array(num_slices);
-      ttb_real row = 0;
-      for (ttb_indx i=0; i<num_slices; ++i) {
-        const bool print =
-          (algParams.printitn > 0) &&((i+1) % algParams.printitn == 0);
-
-        if (print)
-          out << "\nProcessing slice " << i+1 << " of " << num_slices
-              << std::endl;
-
-        if (i == 0) {
-          ogcp.init(X[i], u);
-        }
-
-        ogcp.processSlice(X[i], u, fest[i], ften[i], out, print);
-
-        // Copy time mode for this slice into time_mode
-        const ttb_indx nrow = X[i].size(nd-1);
-        auto tm_row = Kokkos::subview(
-          time_mode.view(),
-          std::pair<ttb_indx,ttb_indx>(row,row+nrow),
-          Kokkos::ALL);
-        deep_copy(tm_row, u[nd-1].view());
-        row += nrow;
-      }
-
-      // Set time mode of Ktensor
-      u.set_factor(nd-1, time_mode);
+      nt += X[i].size(nd-1);
     }
-  };
+
+    // Allocate factor matrix for time mode
+    FacMatrixT<ExecSpace> time_mode(nt, nc);
+
+    // Loop over slices, processing one at a time
+    fest = Array(num_slices);
+    ften = Array(num_slices);
+    ttb_real row = 0;
+    for (ttb_indx i=0; i<num_slices; ++i) {
+      const bool print =
+        (algParams.printitn > 0) &&((i+1) % algParams.printitn == 0);
+
+      if (print)
+        out << "\nProcessing slice " << i+1 << " of " << num_slices
+            << std::endl;
+
+      if (i == 0) {
+        ogcp.init(X[i], u);
+      }
+
+      ogcp.processSlice(X[i], u, fest[i], ften[i], out, print);
+
+      // Copy time mode for this slice into time_mode
+      const ttb_indx nrow = X[i].size(nd-1);
+      auto tm_row = Kokkos::subview(
+        time_mode.view(),
+        std::pair<ttb_indx,ttb_indx>(row,row+nrow),
+        Kokkos::ALL);
+      deep_copy(tm_row, u[nd-1].view());
+      row += nrow;
+    }
+
+    // Set time mode of Ktensor
+    u.set_factor(nd-1, time_mode);
+  }
 
   template<typename TensorT, typename ExecSpace>
   void online_gcp(std::vector<TensorT>& X,
@@ -384,10 +380,11 @@ namespace Genten {
       Genten::error("Genten::online_gcp - ktensor u is not consistent");
 
     // Dispatch implementation based on loss function type
-    online_gcp_impl<TensorT, ExecSpace> f = {
-      X, Xinit, u, algParams, temporalAlgParams, spatialAlgParams,
-      out, fest, ften };
-    dispatch_loss(algParams, f);
+    dispatch_loss(algParams, [&](const auto& loss)
+    {
+      online_gcp_impl(X, Xinit, u, loss, algParams, temporalAlgParams,
+                      spatialAlgParams, out, fest, ften);
+    });
   }
 
 }

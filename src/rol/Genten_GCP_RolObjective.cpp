@@ -221,24 +221,6 @@ namespace Genten {
     return gcp_model.computeFit(u);
   }
 
-  namespace Impl {
-  template <typename ExecSpace>
-  struct gcp_create_rol_objective_impl {
-    const TensorT<ExecSpace>& x;
-    const KtensorT<ExecSpace>& m;
-    const AlgParams& algParams;
-    PerfHistory& h;
-    Teuchos::RCP< GCP_RolObjectiveBase<ExecSpace> > obj;
-
-    template <typename LossFunction>
-    void operator() (const LossFunction& loss_func)
-    {
-      obj = Teuchos::rcp(new GCP_RolObjective<ExecSpace,LossFunction>(
-        x, m, loss_func, algParams, h));
-    }
-  };
-  }
-
   template <typename ExecSpace>
   Teuchos::RCP< GCP_RolObjectiveBase<ExecSpace> >
   GCP_createRolObjective(const TensorT<ExecSpace>& x,
@@ -246,10 +228,15 @@ namespace Genten {
                          const AlgParams& algParams,
                          PerfHistory& h)
   {
-    Impl::gcp_create_rol_objective_impl<ExecSpace> f = {
-      x, m, algParams, h };
-    dispatch_loss(algParams, f);
-    return f.obj;
+    Teuchos::RCP< GCP_RolObjectiveBase<ExecSpace> > obj;
+    dispatch_loss(algParams, [&](const auto& loss)
+    {
+      using LossType =
+        std::remove_cv_t< std::remove_reference_t<decltype(loss)> >;
+      obj = Teuchos::rcp(new GCP_RolObjective<ExecSpace,LossType>(
+        x, m, loss, algParams, h));
+    });
+    return obj;
   }
 
 }
