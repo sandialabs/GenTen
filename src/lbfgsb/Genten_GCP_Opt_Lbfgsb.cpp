@@ -68,7 +68,7 @@ namespace Impl {
 
 extern std::string findTaskString(integer task);
 
-template<typename ExecSpace, typename LossFunction>
+template <typename ExecSpace, typename LossFunction>
 void gcp_opt_lbfgsb_impl(const TensorT<ExecSpace>& X,
                          KtensorT<ExecSpace>& u,
                          const LossFunction& loss_func,
@@ -76,9 +76,6 @@ void gcp_opt_lbfgsb_impl(const TensorT<ExecSpace>& X,
                          PerfHistory& history)
 {
   typedef KokkosVector<ExecSpace> kokkos_vector;
-#ifdef HAVE_CALIPER
-  cali::Function cali_func("Genten::cp_opt_lbfgsb");
-#endif
 
   Genten::SystemTimer timer(1);
   timer.start(0);
@@ -286,23 +283,10 @@ void gcp_opt_lbfgsb(const TensorT<ExecSpace>& x, KtensorT<ExecSpace>& u,
   }
 
   // Dispatch implementation based on loss function type
-  if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
-    Impl::gcp_opt_lbfgsb_impl(x, u, GaussianLossFunction(algParams.loss_eps),
-                              algParams, history);
-  else if (algParams.loss_function_type == GCP_LossFunction::Rayleigh)
-    Impl::gcp_opt_lbfgsb_impl(x, u, RayleighLossFunction(algParams.loss_eps),
-                              algParams, history);
-  else if (algParams.loss_function_type == GCP_LossFunction::Gamma)
-    Impl::gcp_opt_lbfgsb_impl(x, u, GammaLossFunction(algParams.loss_eps),
-                              algParams, history);
-  else if (algParams.loss_function_type == GCP_LossFunction::Bernoulli)
-    Impl::gcp_opt_lbfgsb_impl(x, u, BernoulliLossFunction(algParams.loss_eps),
-                              algParams, history);
-  else if (algParams.loss_function_type == GCP_LossFunction::Poisson)
-    Impl::gcp_opt_lbfgsb_impl(x, u, PoissonLossFunction(algParams.loss_eps),
-                              algParams, history);
-  else
-    Genten::error("Genten::gcp_opt - unknown loss function");
+  dispatch_loss(algParams, [&](const auto& loss)
+  {
+    Impl::gcp_opt_lbfgsb_impl(x, u, loss, algParams, history);
+  });
 }
 
 }

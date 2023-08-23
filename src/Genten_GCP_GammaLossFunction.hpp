@@ -38,11 +38,46 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_GCP_SS_Grad_SA_Def.hpp"
-#include "Genten_GCP_LossFunctions.hpp"
+#pragma once
+
+#include <string>
+
 #include "Genten_Util.hpp"
+#include "Genten_AlgParams.hpp"
 
-#define INST_MACRO(SPACE)                                               \
-  LOSS_INST_MACRO(SPACE,GammaLossFunction)
+namespace Genten {
 
-GENTEN_INST(INST_MACRO)
+  class GammaLossFunction {
+  public:
+    GammaLossFunction(const AlgParams& algParams) : eps(algParams.loss_eps) {}
+
+    std::string name() const { return "Gamma"; }
+
+    KOKKOS_INLINE_FUNCTION
+    ttb_real value(const ttb_real& x, const ttb_real& m) const {
+#if defined(__SYCL_DEVICE_ONLY__)
+      using sycl::log;
+#else
+      using std::log;
+#endif
+
+      const ttb_real me = m + eps;
+      return x/me + log(me);
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    ttb_real deriv(const ttb_real& x, const ttb_real& m) const {
+      const ttb_real me = m + eps;
+      return -x/(me*me) + 1.0/me;
+    }
+
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_lower_bound() { return true; }
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_upper_bound() { return false; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real lower_bound() { return 0.0; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real upper_bound() { return DOUBLE_MAX; }
+
+  private:
+    ttb_real eps;
+  };
+
+}

@@ -105,10 +105,11 @@ namespace Genten {
     Hess_Vec_Prec_Method::type hess_vec_prec_method; // Preconditoning method for hessian-vector product
 
     // GCP options
-    GCP_LossFunction::type loss_function_type; // Loss function for GCP
-    ttb_real loss_eps;                         // Perturbation for GCP
-    ttb_real gcp_tol;                          // Tolerance for GCP algorithm
-    GCP_Goal_Method::type goal_method;         // Way of supplying goal function
+    std::string loss_function_type;      // Loss function for GCP
+    ttb_real loss_eps;                   // Perturbation for GCP
+    ttb_real loss_param;                 // Generic parameter for loss functions
+    ttb_real gcp_tol;                    // Tolerance for GCP algorithm
+    GCP_Goal_Method::type goal_method;   // Way of supplying goal function
     std::string python_module_name;      // Module name for python goal
     std::string python_object_name;      // Object name for python module goal
 #ifdef HAVE_PYTHON

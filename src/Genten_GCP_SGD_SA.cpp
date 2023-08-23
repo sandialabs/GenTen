@@ -66,7 +66,8 @@ namespace Genten {
     // the gradient without atomics
 
     template <typename TensorT, typename ExecSpace, typename LossFunction>
-    void gcp_sgd_sa_impl(TensorT& X, KtensorT<ExecSpace>& u0,
+    void gcp_sgd_sa_impl(TensorT& X,
+                         KtensorT<ExecSpace>& u0,
                          const LossFunction& loss_func,
                          const AlgParams& algParams,
                          ttb_indx& numEpochs,
@@ -113,7 +114,8 @@ namespace Genten {
 
       if (printIter > 0) {
         out << "\nGCP-SGD (Generalized CP Tensor Decomposition):\n"
-            << "  Generalized function type: " << loss_func.name() << std::endl
+            << "  Generalized function type: " << loss_func.name()
+            << std::endl
             << "  Optimization method: " << (use_adam ? "adam\n" : "sgd\n")
             << "  Max iterations (epochs): " << maxEpochs << std::endl
             << "  Iterations per epoch: " << epoch_iters << std::endl
@@ -267,7 +269,7 @@ namespace Genten {
           }
 
           for (ttb_indx giter=0; giter<frozen_iters; ++giter) {
-             ++total_iters;
+            ++total_iters;
 
             // compute gradient
             timer.start(timer_grad);
@@ -299,7 +301,7 @@ namespace Genten {
         if (failed_epoch)
           ++nfails;
 
-         // Print progress of the current iteration.
+        // Print progress of the current iteration.
         if ((printIter > 0) && (((numEpochs + 1) % printIter) == 0)) {
           out << "Epoch " << std::setw(3) << numEpochs + 1 << ": f-est = "
               << std::setw(13) << std::setprecision(6) << std::scientific
@@ -431,23 +433,11 @@ namespace Genten {
     }
 
     // Dispatch implementation based on loss function type
-    if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
-      Impl::gcp_sgd_sa_impl(x, u, GaussianLossFunction(algParams.loss_eps),
-                            algParams, numIters, resNorm, perfInfo, out);
-    else if (algParams.loss_function_type == GCP_LossFunction::Rayleigh)
-      Impl::gcp_sgd_sa_impl(x, u, RayleighLossFunction(algParams.loss_eps),
-                            algParams, numIters, resNorm, perfInfo, out);
-    else if (algParams.loss_function_type == GCP_LossFunction::Gamma)
-      Impl::gcp_sgd_sa_impl(x, u, GammaLossFunction(algParams.loss_eps),
-                            algParams, numIters, resNorm, perfInfo, out);
-    else if (algParams.loss_function_type == GCP_LossFunction::Bernoulli)
-      Impl::gcp_sgd_sa_impl(x, u, BernoulliLossFunction(algParams.loss_eps),
-                            algParams, numIters, resNorm, perfInfo, out);
-    else if (algParams.loss_function_type == GCP_LossFunction::Poisson)
-      Impl::gcp_sgd_sa_impl(x, u, PoissonLossFunction(algParams.loss_eps),
-                           algParams, numIters, resNorm, perfInfo, out);
-    else
-       Genten::error("Genten::gcp_sgd - unknown loss function");
+    dispatch_loss(algParams, [&](const auto& loss)
+    {
+      Impl::gcp_sgd_sa_impl(x, u, loss, algParams, numIters, resNorm, perfInfo,
+                            out);
+    });
   }
 
 }

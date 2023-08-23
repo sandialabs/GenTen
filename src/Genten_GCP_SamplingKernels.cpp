@@ -1320,10 +1320,6 @@ namespace {
     const AlgParams& algParams);
 
 #define INST_MACRO(SPACE)                                               \
-  LOSS_INST_MACRO(SPACE,GaussianLossFunction)                           \
-  LOSS_INST_MACRO(SPACE,RayleighLossFunction)                           \
-  LOSS_INST_MACRO(SPACE,GammaLossFunction)                              \
-  LOSS_INST_MACRO(SPACE,BernoulliLossFunction)                          \
-  LOSS_INST_MACRO(SPACE,PoissonLossFunction)
+  GENTEN_INST_LOSS(SPACE,LOSS_INST_MACRO)
 
 GENTEN_INST(INST_MACRO)

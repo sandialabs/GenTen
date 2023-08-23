@@ -38,11 +38,10 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_GCP_SS_Grad_SA_Def.hpp"
+#include "Genten_GCP_ValueKernels_Def.hpp"
 #include "Genten_GCP_LossFunctions.hpp"
-#include "Genten_Util.hpp"
 
 #define INST_MACRO(SPACE)                                               \
-  LOSS_INST_MACRO(SPACE,RayleighLossFunction)
+  LOSS_INST_MACRO(SPACE,@LOSS@LossFunction)
 
 GENTEN_INST(INST_MACRO)

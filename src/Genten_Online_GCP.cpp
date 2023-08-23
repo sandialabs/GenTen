@@ -309,7 +309,8 @@ namespace Genten {
       return;
 
     OnlineGCP<TensorT,ExecSpace,LossFunction> ogcp(
-      Xinit, u, loss_func, algParams, temporalAlgParams, spatialAlgParams, out);
+      Xinit, u, loss_func, algParams, temporalAlgParams, spatialAlgParams,
+      out);
 
     // Compute total number of time slices
     ttb_indx nt = 0;
@@ -347,9 +348,10 @@ namespace Genten {
 
       // Copy time mode for this slice into time_mode
       const ttb_indx nrow = X[i].size(nd-1);
-      auto tm_row = Kokkos::subview(time_mode.view(),
-                                    std::pair<ttb_indx,ttb_indx>(row,row+nrow),
-                                    Kokkos::ALL);
+      auto tm_row = Kokkos::subview(
+        time_mode.view(),
+        std::pair<ttb_indx,ttb_indx>(row,row+nrow),
+        Kokkos::ALL);
       deep_copy(tm_row, u[nd-1].view());
       row += nrow;
     }
@@ -378,28 +380,11 @@ namespace Genten {
       Genten::error("Genten::online_gcp - ktensor u is not consistent");
 
     // Dispatch implementation based on loss function type
-    if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
-      online_gcp_impl(X, Xinit, u, GaussianLossFunction(algParams.loss_eps),
-                      algParams, temporalAlgParams, spatialAlgParams,
-                      out, fest, ften);
-    else if (algParams.loss_function_type == GCP_LossFunction::Rayleigh)
-      online_gcp_impl(X, Xinit, u, RayleighLossFunction(algParams.loss_eps),
-                      algParams, temporalAlgParams, spatialAlgParams,
-                      out, fest, ften);
-    else if (algParams.loss_function_type == GCP_LossFunction::Gamma)
-      online_gcp_impl(X, Xinit, u, GammaLossFunction(algParams.loss_eps),
-                      algParams, temporalAlgParams, spatialAlgParams,
-                      out, fest, ften);
-    else if (algParams.loss_function_type == GCP_LossFunction::Bernoulli)
-      online_gcp_impl(X, Xinit, u, BernoulliLossFunction(algParams.loss_eps),
-                      algParams, temporalAlgParams, spatialAlgParams,
-                      out, fest, ften);
-    else if (algParams.loss_function_type == GCP_LossFunction::Poisson)
-      online_gcp_impl(X, Xinit, u, PoissonLossFunction(algParams.loss_eps),
-                      algParams, temporalAlgParams, spatialAlgParams,
-                      out, fest, ften);
-    else
-       Genten::error("Genten::gcp_sgd - unknown loss function");
+    dispatch_loss(algParams, [&](const auto& loss)
+    {
+      online_gcp_impl(X, Xinit, u, loss, algParams, temporalAlgParams,
+                      spatialAlgParams, out, fest, ften);
+    });
   }
 
 }
@@ -408,11 +393,7 @@ namespace Genten {
   template class Genten::OnlineGCP<SptensorT<SPACE>,SPACE,LOSS>;
 
 #define INST_MACRO(SPACE)                                               \
-  LOSS_INST_MACRO(SPACE,GaussianLossFunction)                           \
-  LOSS_INST_MACRO(SPACE,RayleighLossFunction)                           \
-  LOSS_INST_MACRO(SPACE,GammaLossFunction)                              \
-  LOSS_INST_MACRO(SPACE,BernoulliLossFunction)                          \
-  LOSS_INST_MACRO(SPACE,PoissonLossFunction)                            \
+  GENTEN_INST_LOSS(SPACE,LOSS_INST_MACRO)                               \
                                                                         \
   template void online_gcp<SptensorT<SPACE>,SPACE>(                     \
     std::vector<SptensorT<SPACE>>& x,                                   \

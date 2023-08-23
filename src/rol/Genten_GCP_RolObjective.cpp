@@ -228,27 +228,14 @@ namespace Genten {
                          const AlgParams& algParams,
                          PerfHistory& h)
   {
-    using Teuchos::rcp;
-
     Teuchos::RCP< GCP_RolObjectiveBase<ExecSpace> > obj;
-    if (algParams.loss_function_type == GCP_LossFunction::Gaussian)
-      obj = rcp(new GCP_RolObjective<ExecSpace,GaussianLossFunction>(
-        x, m, GaussianLossFunction(algParams.loss_eps), algParams, h));
-    else if (algParams.loss_function_type == GCP_LossFunction::Rayleigh)
-      obj = rcp(new GCP_RolObjective<ExecSpace,RayleighLossFunction>(
-        x, m, RayleighLossFunction(algParams.loss_eps), algParams, h));
-    else if (algParams.loss_function_type == GCP_LossFunction::Gamma)
-      obj = rcp(new GCP_RolObjective<ExecSpace,GammaLossFunction>(
-        x, m, GammaLossFunction(algParams.loss_eps), algParams, h));
-    else if (algParams.loss_function_type == GCP_LossFunction::Bernoulli)
-      obj = rcp(new GCP_RolObjective<ExecSpace,BernoulliLossFunction>(
-        x, m, BernoulliLossFunction(algParams.loss_eps), algParams, h));
-    else if (algParams.loss_function_type == GCP_LossFunction::Poisson)
-      obj = rcp(new GCP_RolObjective<ExecSpace,PoissonLossFunction>(
-        x, m, PoissonLossFunction(algParams.loss_eps), algParams, h));
-    else
-      Genten::error("Genten::gcp_opt - unknown loss function");
-
+    dispatch_loss(algParams, [&](const auto& loss)
+    {
+      using LossType =
+        std::remove_cv_t< std::remove_reference_t<decltype(loss)> >;
+      obj = Teuchos::rcp(new GCP_RolObjective<ExecSpace,LossType>(
+        x, m, loss, algParams, h));
+    });
     return obj;
   }
 

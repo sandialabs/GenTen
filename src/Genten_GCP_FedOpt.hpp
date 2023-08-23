@@ -55,7 +55,6 @@
 #include "Genten_PerfHistory.hpp"
 
 // To do:
-//  * make this a function instead of a class?
 //  * use normal sampling setup
 //  * unify annealers with gcp-sgd
 //  * use normal dist-update methods
@@ -81,7 +80,8 @@ public:
   GCP_FedOpt(GCP_FedOpt &&) = delete;
   GCP_FedOpt &operator=(GCP_FedOpt &&) = delete;
 
-  ttb_real compute();
+  template <typename Loss>
+  void operator() (const Loss& loss_func);
 
 private:
   std::int32_t ndims() const { return dtc_.ndims(); }
@@ -195,29 +195,10 @@ GCP_FedOpt(const DistTensorContext<ExecSpace>& dtc,
 }
 
 template <typename ExecSpace>
-ttb_real
-GCP_FedOpt<ExecSpace>::
-compute() {
-  if (algParams_.loss_function_type == GCP_LossFunction::Gaussian)
-    return fedOpt(GaussianLossFunction(algParams_.loss_eps));
-  else if (algParams_.loss_function_type == GCP_LossFunction::Rayleigh)
-    return fedOpt(RayleighLossFunction(algParams_.loss_eps));
-  else if (algParams_.loss_function_type == GCP_LossFunction::Gamma)
-    return fedOpt(GammaLossFunction(algParams_.loss_eps));
-  else if (algParams_.loss_function_type == GCP_LossFunction::Bernoulli)
-    return fedOpt(BernoulliLossFunction(algParams_.loss_eps));
-  else if (algParams_.loss_function_type == GCP_LossFunction::Poisson)
-    return fedOpt(PoissonLossFunction(algParams_.loss_eps));
-  else
-    Genten::error("Genten::GCP_FedOpt - unknown loss function");
-  return -1.0;
-}
-
-template <typename ExecSpace>
 template <typename Loss>
-ttb_real
+void
 GCP_FedOpt<ExecSpace>::
-fedOpt(Loss const &loss) {
+operator() (const Loss& loss) {
   const ProcessorMap* pmap = &dtc_.pmap();
 
   const auto start_time = MPI_Wtime();
@@ -574,7 +555,25 @@ fedOpt(Loss const &loss) {
   delete stepper;
   delete meta_stepper;
 
-  return fest_prev;
+  //return fest_prev;
+}
+
+template <typename ExecSpace>
+void
+gcp_fed(const DistTensorContext<ExecSpace>& dtc,
+        const SptensorT<ExecSpace>& spTensor,
+        const KtensorT<ExecSpace>& kTensor,
+        const AlgParams& algParams,
+        PerfHistory& history)
+{
+  GENTEN_TIME_MONITOR("GCP-Fed-Opt");
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::gcp_fed_opt");
+#endif
+
+  // Dispatch implementation based on loss function type
+  GCP_FedOpt<ExecSpace> f(dtc, spTensor, kTensor, algParams, history);
+  dispatch_loss(algParams, f);
 }
 
 } // namespace Genten

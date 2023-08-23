@@ -73,7 +73,7 @@ template <typename exec_space>
 void RunGcpSgdTest(const std::string &label, GCP_Sampling::type sampling_type,
                    MTTKRP_All_Method::type mttkrp_all_method,
                    MTTKRP_Method::type mttkrp_method, const bool fuse,
-                   const bool fuse_sa, const GCP_LossFunction::type loss_type) {
+                   const bool fuse_sa, const std::string& loss_type) {
   using host_exec_space = DefaultHostExecutionSpace;
 
   INFO_MSG("Creating a sparse tensor with data to model");
@@ -205,7 +205,7 @@ TYPED_TEST(TestGcpSgdT, GCP_SGD) {
     TestCase(const char *label, const GCP_Sampling::type sampling_type,
              const MTTKRP_All_Method::type mttkrp_all_method,
              const MTTKRP_Method::type mttkrp_method, const bool fuse,
-             const bool fuse_sa, const GCP_LossFunction::type loss_type)
+             const bool fuse_sa, const std::string& loss_type)
         : label{label}, sampling_type{sampling_type},
           mttkrp_all_method{mttkrp_all_method}, mttkrp_method{mttkrp_method},
           fuse{fuse}, fuse_sa{fuse_sa}, loss_type{loss_type} {}
@@ -216,7 +216,7 @@ TYPED_TEST(TestGcpSgdT, GCP_SGD) {
     const MTTKRP_Method::type mttkrp_method;
     const bool fuse;
     const bool fuse_sa;
-    const GCP_LossFunction::type loss_type;
+    const std::string loss_type;
 
     const bool run{not SpaceProperties<exec_space>::is_gpu ||
                    mttkrp_method != MTTKRP_Method::type::Duplicated};
@@ -225,14 +225,14 @@ TYPED_TEST(TestGcpSgdT, GCP_SGD) {
   TestCase test_cases[]{
       TestCase{"Stratified, Atomic (iterated), Gaussian",
                GCP_Sampling::Stratified, MTTKRP_All_Method::Iterated,
-               MTTKRP_Method::Atomic, false, false, GCP_LossFunction::Gaussian},
+               MTTKRP_Method::Atomic, false, false, "gaussian"},
       TestCase{"Stratified, Atomic (all), Gaussian", GCP_Sampling::Stratified,
                MTTKRP_All_Method::Atomic, MTTKRP_Method::Atomic, false, false,
-               GCP_LossFunction::Gaussian},
+              "gaussian"},
       TestCase{"Stratified, Duplicated (all), Gaussian",
                GCP_Sampling::Stratified, MTTKRP_All_Method::Duplicated,
                MTTKRP_Method::Duplicated, false, false,
-               GCP_LossFunction::Gaussian}};
+               "gaussian"}};
 
   for (const auto &tc : test_cases) {
     if (tc.run) {
