@@ -610,7 +610,7 @@ ENDIF (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
 #---- and copy to the build directory.
 CONFIGURE_FILE (
   ${Genten_SOURCE_DIR}/cmake/CMakeInclude.h.cmake
-  ${Genten_BINARY_DIR}/CMakeInclude/CMakeInclude.h
+  ${Genten_BINARY_DIR}/cmake/CMakeInclude.h
   )
 
 
@@ -623,28 +623,13 @@ INCLUDE_DIRECTORIES (
   ${Genten_SOURCE_DIR}/src/mathlib/
   ${Genten_SOURCE_DIR}/src/rol/
   ${Genten_SOURCE_DIR}/src/lbfgsb/
-  ${Genten_BINARY_DIR}/CMakeInclude/
+  ${Genten_BINARY_DIR}/cmake/
   ${Genten_SOURCE_DIR}/driver/
   ${Genten_SOURCE_DIR}/tpls/lbfgsb/
   ${Genten_SOURCE_DIR}/tpls/json/single_include/nlohmann/
   ${Genten_SOURCE_DIR}/tpls/json-validator/src/
   ${Genten_SOURCE_DIR}/tpls/json-validator/src/nlohmann/
   ${Genten_SOURCE_DIR}/joint_moments/
-  )
-FILE (GLOB genten_headers
-  ${Genten_SOURCE_DIR}/src/*.h
-  ${Genten_SOURCE_DIR}/src/*.hpp
-  ${Genten_SOURCE_DIR}/src/mathlib/*.h
-  ${Genten_SOURCE_DIR}/src/mathlib/*.hpp
-  ${Genten_SOURCE_DIR}/src/rol/*.hpp
-  ${Genten_SOURCE_DIR}/src/lbfgsb/*.hpp
-  ${Genten_SOURCE_DIR}/tpls/lbfgsb/*.h
-  ${Genten_SOURCE_DIR}/joint_moments/Genten_HigherMoments.hpp
-  )
-INSTALL (
-  FILES ${genten_headers}
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/genten
-  PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
   )
 
 
@@ -796,25 +781,63 @@ IF (ENABLE_ROL)
 ENDIF()
 
 IF (ENABLE_GCP)
+  # Default loss types if not specified by the user
+  IF(NOT GCP_LOSS_TYPES)
+    SET(GCP_LOSS_TYPES "Gaussian;Rayleigh;Gamma;Bernoulli;Poisson")
+  ENDIF()
+
+  # Ensure Gaussian is included since tests use it
+  LIST(FIND GCP_LOSS_TYPES "Gaussian" GAUSSIAN_INDEX)
+  IF (GAUSSIAN_INDEX EQUAL -1)
+    MESSAGE(ERROR "Gaussian must be an included GCP loss type!")
+  ENDIF()
+  MESSAGE(STATUS "Genten: Enabled GCP loss functions:  ${GCP_LOSS_TYPES}")
+
+  # Construct Genten_GCP_LossFunctions.hpp from src/Genten_GCP_LossFunctions.tmpl
+  SET(GCP_INC "")
+  SET(GCP_DIS "")
+  SET(GCP_INS "")
+  SET(FIRST TRUE)
+  FOREACH(LOSS ${GCP_LOSS_TYPES})
+    SET(LOSS_FILE_NAME "Genten_GCP_${LOSS}LossFunction.hpp")
+    SET(LOSS_INC "#include \"${LOSS_FILE_NAME}\"")
+    STRING(TOLOWER "${LOSS}" LOSS_NAME)
+    IF (FIRST)
+      SET(LOSS_DIS "    if (loss == \"${LOSS_NAME}\")\n      f(${LOSS}LossFunction(algParams));")
+      SET(FIRST FALSE)
+    ELSE()
+      SET(LOSS_DIS "    else if (loss == \"${LOSS_NAME}\")\n      f(${LOSS}LossFunction(algParams));")
+    ENDIF()
+    SET(LOSS_INS "  LOSS_INST_MACRO(SPACE,Genten::${LOSS}LossFunction) \\")
+    STRING(APPEND GCP_INC "${LOSS_INC}\n")
+    STRING(APPEND GCP_DIS "${LOSS_DIS}\n")
+    STRING(APPEND GCP_INS "${LOSS_INS}\n")
+  ENDFOREACH()
+  CONFIGURE_FILE(
+    ${Genten_SOURCE_DIR}/src/Genten_GCP_LossFunctions.tmpl
+    ${Genten_BINARY_DIR}/cmake/Genten_GCP_LossFunctions.hpp)
+
+  # Construct ETI files for those that use a different file for each loss
+  FOREACH(LOSS ${GCP_LOSS_TYPES})
+    CONFIGURE_FILE(
+      ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels.tmpl
+      ${Genten_BINARY_DIR}/cmake/Genten_GCP_ValueKernels_${LOSS}.cpp)
+    CONFIGURE_FILE(
+      ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad.tmpl
+      ${Genten_BINARY_DIR}/cmake/Genten_GCP_SS_Grad_${LOSS}.cpp)
+    CONFIGURE_FILE(
+      ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA.tmpl
+      ${Genten_BINARY_DIR}/cmake/Genten_GCP_SS_Grad_SA_${LOSS}.cpp)
+    SET(Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
+      ${Genten_BINARY_DIR}/cmake/Genten_GCP_ValueKernels_${LOSS}.cpp
+      ${Genten_BINARY_DIR}/cmake/Genten_GCP_SS_Grad_${LOSS}.cpp
+      ${Genten_BINARY_DIR}/cmake/Genten_GCP_SS_Grad_SA_${LOSS}.cpp)
+  ENDFOREACH()
+
   SET (Genten_SOURCE_LIST ${Genten_SOURCE_LIST}
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SamplingKernels.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_SGD_SA.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Gaussian.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Poisson.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Rayleigh.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Gamma.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_ValueKernels_Bernoulli.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_Gaussian.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_Poisson.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_Rayleigh.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_Gamma.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_Bernoulli.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Gaussian.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Poisson.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Rayleigh.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Gamma.cpp
-    ${Genten_SOURCE_DIR}/src/Genten_GCP_SS_Grad_SA_Bernoulli.cpp
     ${Genten_SOURCE_DIR}/src/Genten_GCP_StreamingHistory.cpp
     ${Genten_SOURCE_DIR}/src/Genten_Online_GCP.cpp
     )
@@ -906,6 +929,27 @@ INSTALL (
 #---- Adding the higher moment interface to the Library sources
 #---- Must be a better way to do this. Inside an IF??
 ADD_SUBDIRECTORY(joint_moments)
+
+#------------------------------------------------------------
+#---- Performance Test Executables (not installed)
+#------------------------------------------------------------
+FILE (GLOB genten_headers
+  ${Genten_SOURCE_DIR}/src/*.h
+  ${Genten_SOURCE_DIR}/src/*.hpp
+  ${Genten_SOURCE_DIR}/src/mathlib/*.h
+  ${Genten_SOURCE_DIR}/src/mathlib/*.hpp
+  ${Genten_SOURCE_DIR}/src/rol/*.hpp
+  ${Genten_SOURCE_DIR}/src/lbfgsb/*.hpp
+  ${Genten_BINARY_DIR}/cmake/*.h
+  ${Genten_BINARY_DIR}/cmake/*.hpp
+  ${Genten_SOURCE_DIR}/tpls/lbfgsb/*.h
+  ${Genten_SOURCE_DIR}/joint_moments/Genten_HigherMoments.hpp
+  )
+INSTALL (
+  FILES ${genten_headers}
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/genten
+  PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
+  )
 
 #------------------------------------------------------------
 #---- Performance Test Executables (not installed)

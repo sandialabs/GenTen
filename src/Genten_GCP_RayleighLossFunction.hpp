@@ -38,10 +38,48 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_GCP_ValueKernels_Def.hpp"
-#include "Genten_GCP_LossFunctions.hpp"
+#pragma once
 
-#define INST_MACRO(SPACE)                                               \
-  LOSS_INST_MACRO(SPACE,GammaLossFunction)
+#include <string>
 
-GENTEN_INST(INST_MACRO)
+#include "Genten_Util.hpp"
+#include "Genten_AlgParams.hpp"
+
+namespace Genten {
+
+  class RayleighLossFunction {
+  public:
+    RayleighLossFunction(const AlgParams& algParams) :
+      eps(algParams.loss_eps), pi_over_4(std::atan(ttb_real(1.0))) {}
+
+    std::string name() const { return "Rayleigh"; }
+
+    KOKKOS_INLINE_FUNCTION
+    ttb_real value(const ttb_real& x, const ttb_real& m) const {
+#if defined(__SYCL_DEVICE_ONLY__)
+      using sycl::log;
+#else
+      using std::log;
+#endif
+
+      const ttb_real me = m + eps;
+      return ttb_real(2.0)*log(me) + pi_over_4*(x/me)*(x/me);
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    ttb_real deriv(const ttb_real& x, const ttb_real& m) const {
+      const ttb_real me = m + eps;
+      return ttb_real(2.0)*(ttb_real(1.0)/me - pi_over_4*(x/me)*(x/(me*me)));
+    }
+
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_lower_bound() { return true; }
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_upper_bound() { return false; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real lower_bound() { return 0.0; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real upper_bound() { return DOUBLE_MAX; }
+
+  private:
+    ttb_real eps;
+    ttb_real pi_over_4;
+  };
+
+}

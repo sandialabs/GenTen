@@ -38,11 +38,37 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_GCP_SS_Grad_Def.hpp"
-#include "Genten_GCP_LossFunctions.hpp"
+#pragma once
+
+#include <string>
+
 #include "Genten_Util.hpp"
+#include "Genten_AlgParams.hpp"
 
-#define INST_MACRO(SPACE)                                               \
-  LOSS_INST_MACRO(SPACE,BernoulliLossFunction)
+namespace Genten {
 
-GENTEN_INST(INST_MACRO)
+  class GaussianLossFunction {
+  public:
+    GaussianLossFunction(const AlgParams&) {}
+
+    std::string name() const { return "Gaussian (normal)"; }
+
+    KOKKOS_INLINE_FUNCTION
+    ttb_real value(const ttb_real& x, const ttb_real& m) const {
+      ttb_real d = x - m;
+      return d*d;
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    ttb_real deriv(const ttb_real& x, const ttb_real& m) const {
+      ttb_real d = x - m;
+      return ttb_real(-2.0)*d;
+    }
+
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_lower_bound() { return false; }
+    KOKKOS_INLINE_FUNCTION static constexpr bool has_upper_bound() { return false; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real lower_bound() { return -DOUBLE_MAX; }
+    KOKKOS_INLINE_FUNCTION static constexpr ttb_real upper_bound() { return  DOUBLE_MAX; }
+  };
+
+}

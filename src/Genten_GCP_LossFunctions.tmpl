@@ -38,11 +38,44 @@
 // ************************************************************************
 //@HEADER
 
-#include "Genten_GCP_SS_Grad_Def.hpp"
-#include "Genten_GCP_LossFunctions.hpp"
-#include "Genten_Util.hpp"
+#pragma once
 
-#define INST_MACRO(SPACE)                                               \
-  LOSS_INST_MACRO(SPACE,GammaLossFunction)
+#include <cctype>
 
-GENTEN_INST(INST_MACRO)
+// Use constrained versions of some loss function
+#define USE_CONSTRAINED_LOSS_FUNCTIONS 1
+
+@GCP_INC@
+
+namespace Genten {
+
+  template <typename Func>
+  void dispatch_loss(const AlgParams& algParams, const Func& f)
+  {
+    // convert to lower-case
+    std::string loss = algParams.loss_function_type;
+    std::transform(loss.begin(), loss.end(), loss.begin(),
+                   [](unsigned char c){return std::tolower(c);});
+
+@GCP_DIS@
+    else
+       Genten::error("Unknown loss function:  " + loss);
+  }
+
+  template <typename Func>
+  void dispatch_loss(const AlgParams& algParams, Func& f)
+  {
+    // convert to lower-case
+    std::string loss = algParams.loss_function_type;
+    std::transform(loss.begin(), loss.end(), loss.begin(),
+                   [](unsigned char c){return std::tolower(c);});
+
+@GCP_DIS@
+    else
+       Genten::error("Unknown loss function:  " + loss);
+  }
+
+}
+
+#define GENTEN_INST_LOSS(SPACE,LOSS_INST_MACRO) \
+@GCP_INS@
