@@ -565,8 +565,8 @@ void mttkrp_phan(const Genten::TensorImpl<ExecSpace,Impl::TensorLayoutLeft>& X,
   gt_assert( v.nCols() == nc );
 
   const ttb_real beta = zero_v ? 0.0 : 1.0;
-  const ttb_indx szl = X.size().prod_less(n);
-  const ttb_indx szr = X.size().prod_greater(n);
+  const ttb_indx szl = X.size_host().prod_less(n);
+  const ttb_indx szr = X.size_host().prod_greater(n);
   const ttb_indx szn = X.size(n);
 
   if (n == 0) {

@@ -201,7 +201,6 @@ public:
   ttb_indx prod_less(ttb_indx n, ttb_real dflt = 0) const
   {
     const ttb_indx sz = data.extent(0);
-    gt_assert(n <= sz);
 
     if (sz == 0)
     {
@@ -222,7 +221,6 @@ public:
   ttb_indx prod_greater(ttb_indx n, ttb_real dflt = 0) const
   {
     const ttb_indx sz = data.extent(0);
-    gt_assert(n <= sz);
 
     if (sz == 0)
     {
