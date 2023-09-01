@@ -49,6 +49,10 @@
 #include "Genten_MPI_IO.hpp"
 #endif
 
+#ifdef HAVE_SEACAS
+#include <exodusII.h>
+#endif
+
 namespace {
 
 uint64_t smallestBuiltinThatHolds(uint64_t val) {
@@ -532,6 +536,113 @@ Genten::Sptensor read_binary_dense_tensor(const std::string& filename,
   return x;
 }
 
+Genten::Sptensor read_exodus_dense_tensor(const std::string& filename)
+{
+#ifdef HAVE_SEACAS
+  float version;
+  int CPU_word_size = 8;
+  int IO_word_size  = 0;
+
+  // open EXODUS II file
+  int exoid = ex_open(filename.c_str(),  /* filename path */
+                      EX_READ,           /* access mode = READ */
+                      &CPU_word_size,    /* CPU word size */
+                      &IO_word_size,     /* IO word size */
+                      &version);         /* ExodusII library version */
+  if (exoid < 0)
+    Genten::error("Exodus error opeing file " + filename);
+
+  // determine how many nodes, variables, and timesteps there are
+  int   error;
+  int   int_data;
+  float float_data;
+  char  char_data;
+  error = ex_inquire(exoid, EX_INQ_NODES, &int_data, &float_data, &char_data);
+  if (error != 0)
+    Genten::error("Exodus error " + error);
+  int num_nodes = int_data;
+  error = ex_inquire(exoid, EX_INQ_NUM_NODE_VAR, &int_data, &float_data, &char_data);
+  if (error != 0)
+    Genten::error("Exodus error " + error);
+  int num_nodal_vars = int_data;
+  error = ex_inquire(exoid, EX_INQ_TIME, &int_data, &float_data, &char_data);
+  if (error != 0)
+    Genten::error("Exodus error " + error);
+  int num_time_steps = int_data;
+  // TODO: add support for element variables
+  
+  // collect and print the variable names
+  std::vector<std::string> var_names(num_nodal_vars);
+  {
+    std::vector<char> temp_name(MAX_STR_LENGTH + 1);
+    for(int ivar=0; ivar<num_nodal_vars; ivar++)
+    {
+      error = ex_get_variable_name(exoid, EX_NODAL, ivar+1, &temp_name[0]);
+      if (error != 0)
+        Genten::error("Exodus error " + error);
+      var_names[ivar] = std::string(&temp_name[0]);
+    }
+    if (Genten::DistContext::rank() == 0)
+    {
+      std::cout << "  exodus file contains the nodal variables:";
+      for(int ivar=0; ivar<num_nodal_vars; ivar++)
+        std::cout << "\n    " << var_names[ivar];
+      std::cout << "\n  over " << num_time_steps << " time steps\n";
+      std::cout << "  on " << num_nodes << " nodes\n";
+    }
+  }
+
+  // allocate tensor
+  // TODO: add option to decompose into x, y, z for structured meshes
+  //       add option to restrict to a plane
+  Genten::IndxArray sz(3);
+  sz[0] = num_nodes;
+  sz[1] = num_nodal_vars;
+  sz[2] = num_time_steps;
+  Genten::Tensor x(sz);
+
+  // read data into tensor
+  if(CPU_word_size==4)
+  {
+    std::vector<float> values(num_nodes);
+    for(int itime=0; itime<num_time_steps; itime++)
+      for(int ivar=0; ivar<num_nodal_vars; ivar++)
+      {
+        error = ex_get_var(exoid, itime+1, EX_NODAL, ivar+1, 0 /*obj_id*/, num_nodes, &values[0]);
+        if (error != 0)
+          Genten::error("Exodus error " + error);
+        for(int inode=0; inode<num_nodes; inode++)
+        {
+     	  int index = itime*num_nodal_vars*num_nodes + ivar*num_nodes + inode;
+          x[index] = values[inode];
+        }
+      }
+  }
+  else
+  {
+    std::vector<double> values(num_nodes);
+    for(int itime=0; itime<num_time_steps; itime++)
+      for(int ivar=0; ivar<num_nodal_vars; ivar++)
+      {
+        error = ex_get_var(exoid, itime+1, EX_NODAL, ivar+1, 0 /*obj_id*/, num_nodes, &values[0]);
+        if (error != 0)
+          Genten::error("Exodus error " + error);
+        for(int inode=0; inode<num_nodes; inode++)
+        {
+     	  int index = itime*num_nodal_vars*num_nodes + ivar*num_nodes + inode;
+          x[index] = values[inode];
+        }
+      }
+  }
+
+  return x;
+
+#else
+  Genten::error("Cannot read exodus files without SEACAS enabled");
+  return Genten::Tensor(0);
+#endif
+}
+
 void write_binary_sparse_tensor(const std::string filename,
                                 const Genten::Sptensor& x,
                                 const bool write_header = true,
@@ -605,7 +716,7 @@ TensorReader(const std::string& fn,
              const bool comp,
              const ptree& tree) :
   filename(fn), index_base(ib), compressed(comp),
-  is_sparse(false), is_dense(false), is_binary(false), is_text(false),
+  is_sparse(false), is_dense(false), is_binary(false), is_text(false), is_exodus(false),
   user_header(false)
 {
   if (tree.contains("format")) {
@@ -624,6 +735,8 @@ TensorReader(const std::string& fn,
       is_binary = true;
     else if (type == "text")
       is_text = true;
+    else if (type == "exodus")
+      is_exodus = true;
     else
       Genten::error("Invalid tensor file type \"" + type + "\".  Must be \"binary\" or \"text\"");
   }
@@ -646,7 +759,7 @@ TensorReader(const std::string& fn,
                   << denseHeader;
     }
   }
-  else
+  else if (!is_exodus)
     queryFile();
 
   if (is_binary && is_sparse && index_base != 0)
@@ -687,6 +800,12 @@ read()
   else if (is_text && is_dense) {
     Tensor X;
     Genten::import_tensor(filename, X, compressed);
+    X_dense = create_mirror_view(ExecSpace(), X);
+    deep_copy(X_dense, X);
+  }
+  else if (is_exodus && is_dense) {
+    Tensor X;
+    X = read_exodus_dense_tensor(filename);
     X_dense = create_mirror_view(ExecSpace(), X);
     deep_copy(X_dense, X);
   }
