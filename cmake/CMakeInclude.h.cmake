@@ -85,6 +85,9 @@
 //---- DEFINED IF ROL IS ENABLED.
 #cmakedefine HAVE_ROL
 
+//---- DEFINED IF SEACAS IS ENABLED.
+#cmakedefine HAVE_SEACAS
+
 //---- DEFINED IF GCP IS ENABLED.
 #cmakedefine HAVE_GCP
 

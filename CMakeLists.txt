@@ -64,6 +64,7 @@ OPTION(ENABLE_TRILINOS "Enable use of Trilinos packages" OFF)
 OPTION(ENABLE_TEUCHOS "Enable Teuchos utilities" ON)
 OPTION(ENABLE_TPETRA "Enable Tpetra distributed parallelism" ON)
 OPTION(ENABLE_ROL "Enable ROL optimization package" ON)
+OPTION(ENABLE_SEACAS "Enable SEACAS tools" ON)
 OPTION(ENABLE_CMAKE_TIMERS "Enable timers for each compile/link step" OFF)
 
 # Warn about some deprecated variables
@@ -194,6 +195,17 @@ IF(ENABLE_TRILINOS)
     ENDIF()
   ENDIF()
 
+  # Look for SEACAS (optional)
+  IF(ENABLE_SEACAS)
+    LIST(FIND Trilinos_Target_List SEACASExodus::all_libs SEACAS_List_ID)
+    IF(SEACAS_List_ID GREATER -1)
+      MESSAGE(STATUS "  Looking for SEACAS: Found")
+      SET(HAVE_SEACAS ON)
+    ELSE()
+      MESSAGE(STATUS "  Looking for SEACAS: NOT Found")
+    ENDIF()
+  ENDIF()
+
   # Look for BLAS/LAPACK TPL
   LIST(FIND Trilinos_Target_List LAPACK::all_libs LAPACK_List_ID)
   LIST(FIND Trilinos_Target_List BLAS::all_libs BLAS_List_ID)
@@ -247,6 +259,7 @@ ELSE()
   SET(ENABLE_TEUCHOS OFF)
   SET(ENABLE_TPETRA OFF)
   SET(ENABLE_ROL OFF)
+  SET(ENABLE_SEACAS OFF)
 ENDIF()
 
 # We support 3 options for Kokkos:
