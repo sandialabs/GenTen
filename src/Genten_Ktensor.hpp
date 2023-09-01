@@ -309,6 +309,9 @@ public:
   // using specified weights array w
   ttb_real normFsq(const ArrayT<ExecSpace> & w) const;
 
+  // Compute the Khatri-Rao product of the factors given by modes
+  FacMatrixT<ExecSpace> khatrirao(const std::vector<ttb_indx>& modes) const;
+
 private:
 
   // Weights array

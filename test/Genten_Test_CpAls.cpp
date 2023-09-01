@@ -367,6 +367,7 @@ void RunCpAlsTestSparse(MTTKRP_Method::type mttkrp_method,
       EXPECT_NO_THROW({
         deep_copy(result_dev, initialBasis_dev);
         PerfHistory history;
+        algParams.mttkrp_method = MTTKRP_Method::RowBased;
         cpals_core(Xd_dev, result_dev, algParams, itersCompleted, resNorm, 0,
                    history, out);
       });

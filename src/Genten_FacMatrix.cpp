@@ -52,42 +52,35 @@
 #include <algorithm>     // for std::max with MSVC compiler
 #include <cstring>
 
-#if defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)
-#include "Genten_CublasHandle.hpp"
-#include "Genten_CusolverHandle.hpp"
-#endif
-
-#if defined(KOKKOS_ENABLE_HIP)
-
-#if defined(HAVE_ROCBLAS)
-#include "Genten_RocblasHandle.hpp"
-#include "rocblas.h"
-#endif
-
-#if defined(HAVE_ROCSOLVER)
-#include "Genten_RocblasHandle.hpp"
-#include "rocsolver.h"
-#endif
-
-#endif
-
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
 #endif
 
 template <typename ExecSpace>
 Genten::FacMatrixT<ExecSpace>::
-FacMatrixT(ttb_indx m, ttb_indx n, const ProcessorMap::FacMap* pmap_) :
+FacMatrixT(ttb_indx m, ttb_indx n, const ProcessorMap::FacMap* pmap_,
+           const bool zero) :
   pmap(pmap_)
 {
   // Don't use padding if Cuda, HIP or SYCL is the default execution space, so factor
   // matrices allocated on the host have the same shape.  We really need a
   // better way to do this.
-  if (Genten::is_gpu_space<DefaultExecutionSpace>::value)
-    data = view_type("Genten::FacMatrix::data",m,n);
-  else
-    data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
-                                        Kokkos::AllowPadding),m,n);
+  if (Genten::is_gpu_space<DefaultExecutionSpace>::value) {
+    if (zero)
+      data = view_type("Genten::FacMatrix::data",m,n);
+    else
+      data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
+                                          Kokkos::WithoutInitializing),m,n);
+  }
+  else {
+    if (zero)
+      data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
+                                          Kokkos::AllowPadding),m,n);
+    else
+      data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
+                                          Kokkos::WithoutInitializing,
+                                          Kokkos::AllowPadding),m,n);
+  }
 }
 
 template <typename ExecSpace>
@@ -1662,186 +1655,6 @@ multByVector(bool bTranspose,
   return;
 }
 
-namespace Genten {
-namespace Impl {
-
-template <typename ExecSpace,
-          typename AT, typename ... AP,
-          typename BT, typename ... BP,
-          typename CT, typename ... CP>
-typename std::enable_if< is_host_space<ExecSpace>::value >::type
-gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
-         const Kokkos::View<AT,AP...>& A, const Kokkos::View<BT,BP...>& B,
-         const ttb_real beta, const Kokkos::View<CT,CP...>& C)
-{
-  // gemm() assumes LayoutLeft for A, B, and C, but they are stored
-  // LayoutRight, so we compute C' = alpha * op(B') * op(A') + beta * C'.
-  const char ta = trans_a ? 'T' : 'N';
-  const char tb = trans_b ? 'T' : 'N';
-  const ttb_indx m = C.extent(1);
-  const ttb_indx n = C.extent(0);
-  const ttb_indx k = trans_b ? B.extent(1) : B.extent(0);
-  const ttb_indx lda = A.stride(0);
-  const ttb_indx ldb = B.stride(0);
-  const ttb_indx ldc = C.stride(0);
-  Genten::gemm(tb, ta, m, n, k, alpha, B.data(), ldb, A.data(), lda, beta,
-               C.data(), ldc);
-}
-
-#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) && defined(HAVE_CUBLAS)
-template <typename ExecSpace,
-          typename AT, typename ... AP,
-          typename BT, typename ... BP,
-          typename CT, typename ... CP>
-std::enable_if_t<
-  (is_cuda_space<ExecSpace>::value || is_sycl_space<ExecSpace>::value) &&
-  std::is_same<typename Kokkos::View<AT, AP...>::non_const_value_type, double>::value
->
-gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
-         const Kokkos::View<AT,AP...>& A, const Kokkos::View<BT,BP...>& B,
-         const ttb_real beta, const Kokkos::View<CT,CP...>& C)
-{
-  // gemm() assumes LayoutLeft for A, B, and C, but they are stored
-  // LayoutRight, so we compute C' = alpha * op(B') * op(A') + beta * C'.
-  const cublasOperation_t ta = trans_a ? CUBLAS_OP_T : CUBLAS_OP_N;
-  const cublasOperation_t tb = trans_b ? CUBLAS_OP_T : CUBLAS_OP_N;
-  const ttb_indx m = C.extent(1);
-  const ttb_indx n = C.extent(0);
-  const ttb_indx k = trans_b ? B.extent(1) : B.extent(0);
-  const ttb_indx lda = A.stride(0);
-  const ttb_indx ldb = B.stride(0);
-  const ttb_indx ldc = C.stride(0);
-
-  cublasStatus_t status;
-
-  status = cublasDgemm(
-    CublasHandle::get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
-    &beta, C.data(), ldc);
-  if (status != CUBLAS_STATUS_SUCCESS) {
-    std::stringstream ss;
-    ss << "Error!  cublasDgemm() failed with status "
-       << status;
-    std::cerr << ss.str() << std::endl;
-    throw ss.str();
-  }
-}
-
-template <typename ExecSpace,
-          typename AT, typename ... AP,
-          typename BT, typename ... BP,
-          typename CT, typename ... CP>
-std::enable_if_t<
-  (is_cuda_space<ExecSpace>::value || is_sycl_space<ExecSpace>::value) &&
-  std::is_same<typename Kokkos::View<AT, AP...>::non_const_value_type, float>::value
->
-gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
-         const Kokkos::View<AT,AP...>& A, const Kokkos::View<BT,BP...>& B,
-         const ttb_real beta, const Kokkos::View<CT,CP...>& C)
-{
-  // gemm() assumes LayoutLeft for A, B, and C, but they are stored
-  // LayoutRight, so we compute C' = alpha * op(B') * op(A') + beta * C'.
-  const cublasOperation_t ta = trans_a ? CUBLAS_OP_T : CUBLAS_OP_N;
-  const cublasOperation_t tb = trans_b ? CUBLAS_OP_T : CUBLAS_OP_N;
-  const ttb_indx m = C.extent(1);
-  const ttb_indx n = C.extent(0);
-  const ttb_indx k = trans_b ? B.extent(1) : B.extent(0);
-  const ttb_indx lda = A.stride(0);
-  const ttb_indx ldb = B.stride(0);
-  const ttb_indx ldc = C.stride(0);
-
-  cublasStatus_t status;
-
-  status = cublasSgemm(
-    CublasHandle::get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
-    &beta, C.data(), ldc);
-  if (status != CUBLAS_STATUS_SUCCESS) {
-    std::stringstream ss;
-    ss << "Error!  cublasDgemm() failed with status "
-       << status;
-    std::cerr << ss.str() << std::endl;
-    throw ss.str();
-  }
-}
-
-#endif
-
-#if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
-
-template <typename ExecSpace,
-          typename AT, typename ... AP,
-          typename BT, typename ... BP,
-          typename CT, typename ... CP>
-std::enable_if_t<
-  is_hip_space<ExecSpace>::value &&
-  std::is_same<typename Kokkos::View<AT, AP...>::non_const_value_type, double>::value
->
-gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
-         const Kokkos::View<AT, AP...>& A, const Kokkos::View<BT, BP...>& B,
-         const ttb_real beta, const Kokkos::View<CT, CP...>& C)
-{
-  // gemm() assumes LayoutLeft for A, B, and C, but they are stored
-  // LayoutRight, so we compute C' = alpha * op(B') * op(A') + beta * C'.
-  const rocblas_operation ta = trans_a ? rocblas_operation_transpose : rocblas_operation_none;
-  const rocblas_operation tb = trans_b ? rocblas_operation_transpose : rocblas_operation_none;
-  const ttb_indx m = C.extent(1);
-  const ttb_indx n = C.extent(0);
-  const ttb_indx k = trans_b ? B.extent(1) : B.extent(0);
-  const ttb_indx lda = A.stride(0);
-  const ttb_indx ldb = B.stride(0);
-  const ttb_indx ldc = C.stride(0);
-
-  rocblas_status status = rocblas_dgemm(
-    RocblasHandle::get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
-    &beta, C.data(), ldc);
-  if (status != rocblas_status_success) {
-    std::stringstream ss;
-    ss << "Error!  rocblas_dgemm() failed with status "
-       << status;
-    std::cerr << ss.str() << std::endl;
-    throw ss.str();
-  }
-}
-
-template <typename ExecSpace,
-          typename AT, typename ... AP,
-          typename BT, typename ... BP,
-          typename CT, typename ... CP>
-std::enable_if_t<
-  is_hip_space<ExecSpace>::value &&
-  std::is_same<typename Kokkos::View<AT, AP...>::non_const_value_type, float>::value
->
-gemmImpl(const bool trans_a, const bool trans_b, const ttb_real alpha,
-         const Kokkos::View<AT, AP...>& A, const Kokkos::View<BT, BP...>& B,
-         const ttb_real beta, const Kokkos::View<CT, CP...>& C)
-{
-  // gemm() assumes LayoutLeft for A, B, and C, but they are stored
-  // LayoutRight, so we compute C' = alpha * op(B') * op(A') + beta * C'.
-  const rocblas_operation ta = trans_a ? rocblas_operation_transpose : rocblas_operation_none;
-  const rocblas_operation tb = trans_b ? rocblas_operation_transpose : rocblas_operation_none;
-  const ttb_indx m = C.extent(1);
-  const ttb_indx n = C.extent(0);
-  const ttb_indx k = trans_b ? B.extent(1) : B.extent(0);
-  const ttb_indx lda = A.stride(0);
-  const ttb_indx ldb = B.stride(0);
-  const ttb_indx ldc = C.stride(0);
-
-  rocblas_status status = rocblas_sgemm(
-    RocblasHandle::get(), tb, ta, m, n, k, &alpha, B.data(), ldb, A.data(), lda,
-    &beta, C.data(), ldc);
-  if (status != rocblas_status_success) {
-    std::stringstream ss;
-    ss << "Error!  rocblas_sgemm() failed with status "
-       << status;
-    std::cerr << ss.str() << std::endl;
-    throw ss.str();
-  }
-}
-
-#endif
-
-}
-}
-
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 gemm(const bool trans_a, const bool trans_b, const ttb_real alpha,
@@ -1863,8 +1676,7 @@ gemm(const bool trans_a, const bool trans_b, const ttb_real alpha,
   gt_assert(cols_op_a == rows_op_b);
   gt_assert(cols_op_b == n);
 
-  Genten::Impl::gemmImpl<ExecSpace>(
-    trans_a,trans_b,alpha,A.data,B.data,beta,data);
+  Genten::gemm(trans_a,trans_b,alpha,A.data,B.data,beta,data);
 }
 
 namespace Genten {
@@ -2989,6 +2801,40 @@ diagonalShift(const ttb_real shift) const
   {
     d(i,i) += shift;
   });
+}
+
+template <typename ExecSpace>
+Genten::FacMatrixT<ExecSpace> Genten::FacMatrixT<ExecSpace>::
+khatrirao(const FacMatrixT& B) const
+{
+  const ttb_indx A_ncols = data.extent(1);
+  const ttb_indx B_ncols = B.data.extent(1);
+  gt_assert(A_ncols == B_ncols);
+
+  const ttb_indx A_nrows = data.extent(0);
+  const ttb_indx B_nrows = B.data.extent(0);
+  const ttb_indx P_nrows = A_nrows*B_nrows;
+
+  FacMatrixT P(P_nrows, A_ncols, nullptr, false);
+  auto A_data = data;
+  auto B_data = B.data;
+  auto P_data = P.data;
+  using PolicyType = Kokkos::TeamPolicy<ExecSpace>;
+  Kokkos::parallel_for(
+    PolicyType(P_nrows, 1, Kokkos::AUTO),
+    KOKKOS_LAMBDA(const typename PolicyType::member_type& team)
+  {
+    const ttb_indx P_row = team.league_rank();
+    const ttb_indx A_row = P_row / B_nrows;
+    const ttb_indx B_row = P_row - B_nrows*A_row;
+    Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,A_ncols),
+                         [&](const ttb_indx col)
+    {
+      P_data(P_row,col) = A_data(A_row,col)*B_data(B_row,col);
+    });
+  });
+
+  return P;
 }
 
 #define INST_MACRO(SPACE) template class Genten::FacMatrixT<SPACE>;

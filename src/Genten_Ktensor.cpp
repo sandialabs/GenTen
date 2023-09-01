@@ -629,5 +629,23 @@ normFsq(const Genten::ArrayT<ExecSpace>& l) const
   return dResult;
 }
 
+template <typename ExecSpace>
+Genten::FacMatrixT<ExecSpace> Genten::KtensorImpl<ExecSpace>::
+khatrirao(const std::vector<ttb_indx>& modes) const
+{
+  GENTEN_TIME_MONITOR("Khatri-Rao");
+  const ttb_indx nmodes = modes.size();
+  gt_assert(nmodes >= 1);
+
+  FacMatrixT<ExecSpace> P = data[modes[0]];
+  for (ttb_indx i=1; i<nmodes; ++i) {
+    FacMatrixT<ExecSpace> Q = P.khatrirao(data[modes[i]]);
+    P = Q;
+  }
+
+  Kokkos::fence();
+  return P;
+}
+
 #define INST_MACRO(SPACE) template class Genten::KtensorImpl<SPACE>;
 GENTEN_INST(INST_MACRO)

@@ -46,6 +46,7 @@
 Genten::AlgParams::AlgParams() :
   exec_space(Execution_Space::default_type),
   proc_grid(),
+  sparse(true),
   method(Solver_Method::default_type),
   rank(16),
   seed(12345),
@@ -146,6 +147,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                               Genten::Execution_Space::types,
                               Genten::Execution_Space::names);
   proc_grid = parse_ttb_indx_array(args, "--proc-grid", proc_grid, 1, INT_MAX);
+  sparse = Genten::parse_ttb_bool(args, "--sparse", "--dense", sparse);
   method = parse_ttb_enum(args, "--method", method,
                           Genten::Solver_Method::num_types,
                           Genten::Solver_Method::types,
@@ -353,6 +355,16 @@ void Genten::AlgParams::parse(const ptree& input)
   parse_ptree_value(input, "debug", debug);
   parse_ptree_value(input, "timings", timings);
 
+   auto tensor_input_o = input.get_child_optional("tensor");
+   if (tensor_input_o) {
+     auto& tensor_input = *tensor_input_o;
+     std::string format = "sparse";
+     Genten::parse_ptree_value(tensor_input, "format", format);
+     if (format != "sparse" && format != "dense")
+       Genten::error("Invalid tensor format \"" + format + "\".  Must be \"sparse\" or \"dense\"");
+     sparse = (format == "sparse");
+   }
+
   // generic solver params may appear in multiple places, so make a lambda to
   // parse them
   auto parse_generic_solver_params = [&](const ptree& tree) {
@@ -548,6 +560,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << std::endl;
   out << "  --proc-grid <array>  number of MPI processors in each dimension"
       << std::endl;
+  out << "  --sparse           whether tensor is sparse or dense" << std::endl;
   out << "  --method <method>  decomposition method: ";
   for (unsigned i=0; i<Genten::Solver_Method::num_types; ++i) {
     out << Genten::Solver_Method::names[i];
@@ -782,6 +795,7 @@ void Genten::AlgParams::print(std::ostream& out) const
   out << "Generic options: " << std::endl;
   out << "  exec-space = " << Genten::Execution_Space::names[exec_space] << std::endl;
   out << "  proc-grid = " << proc_grid << std::endl;
+  out << "  sparse = " << (sparse ? "true" : "false") << std::endl;
   out << "  method = " << Genten::Solver_Method::names[method] << std::endl;
   out << "  rank = " << rank << std::endl;
   out << "  seed = " << seed << std::endl;

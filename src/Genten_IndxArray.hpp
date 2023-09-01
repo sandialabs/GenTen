@@ -195,6 +195,46 @@ public:
     return p;
   }
 
+  // Returns product of all the entries up to given dimension (not inclusive).
+  /* Returns dflt for an emtpy array. */
+  KOKKOS_INLINE_FUNCTION
+  ttb_indx prod_less(ttb_indx n, ttb_real dflt = 0) const
+  {
+    const ttb_indx sz = data.extent(0);
+
+    if (sz == 0)
+    {
+      return dflt;
+    }
+
+    ttb_indx p = 1;
+    for (ttb_indx i = 0; i < n; i ++)
+    {
+      p = p * data[i];
+    }
+    return p;
+  }
+
+  // Returns product of all the entries starting from the given dimension (not inclusive).
+  /* Returns dflt for an emtpy array. */
+  KOKKOS_INLINE_FUNCTION
+  ttb_indx prod_greater(ttb_indx n, ttb_real dflt = 0) const
+  {
+    const ttb_indx sz = data.extent(0);
+
+    if (sz == 0)
+    {
+      return dflt;
+    }
+
+    ttb_indx p = 1;
+    for (ttb_indx i = n+1; i < sz; i ++)
+    {
+      p = p * data[i];
+    }
+    return p;
+  }
+
   // Returns product of all the entries (total size).
   /* Returns dflt for an emtpy array. */
   KOKKOS_INLINE_FUNCTION

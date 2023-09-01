@@ -107,7 +107,7 @@ public:
      *  @param[in] n  Number of columns, should equal the number of components
      *                in the Ktensor.
      */
-    FacMatrixT(ttb_indx m, ttb_indx n, const ProcessorMap::FacMap* pmap_ = nullptr);
+    FacMatrixT(ttb_indx m, ttb_indx n, const ProcessorMap::FacMap* pmap_ = nullptr, const bool zero = true);
 
     //! Constructor to create a Factor Matrix of Size M x N using the
     // given view
@@ -458,6 +458,9 @@ public:
 
     //! apply diagonal shift to matrix
     void diagonalShift(const ttb_real shift) const;
+
+    //! compute Khatri-Rao product with given matrix and return result
+    FacMatrixT khatrirao(const FacMatrixT& B) const;
 
     /** @} */
 

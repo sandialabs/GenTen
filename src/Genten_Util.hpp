@@ -196,19 +196,24 @@ namespace Genten {
       Atomic,      // Use atomics factor matrix update
       Duplicated,  // Duplicate factor matrix then inter-thread reduce
       Single,      // Single-thread algorithm (no atomics or duplication)
-      Perm         // Permutation-based algorithm
+      Perm,        // Permutation-based algorithm
+      RowBased,    // Row-based algorithm (dense)
+      Phan         // Phan "fast" MTTKRP algorithm (dense)
     };
-    static constexpr unsigned num_types = 6;
+    static constexpr unsigned num_types = 8;
     static constexpr type types[] = {
       Default,
       OrigKokkos,
       Atomic,
       Duplicated,
       Single,
-      Perm
+      Perm,
+      RowBased,
+      Phan
     };
     static constexpr const char* names[] = {
-      "default", "orig-kokkos", "atomic", "duplicated", "single", "perm"
+      "default", "orig-kokkos", "atomic", "duplicated", "single", "perm",
+      "row-based", "phan"
     };
     static constexpr type default_type = Default;
   };

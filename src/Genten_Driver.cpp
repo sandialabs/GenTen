@@ -192,6 +192,7 @@ driver(const DistTensorContext<ExecSpace>& dtc,
   }
 
   // Fixup algorithmic choices
+  algParams.sparse = true;
   algParams.fixup<ExecSpace>(out);
 
   // Set parallel maps
@@ -382,6 +383,7 @@ driver(const DistTensorContext<ExecSpace>& dtc,
   }
 
   // Fixup algorithmic choices
+  algParams.sparse = false;
   algParams.fixup<ExecSpace>(out);
 
   // Set parallel maps

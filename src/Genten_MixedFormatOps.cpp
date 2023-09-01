@@ -53,6 +53,7 @@
 #include "Genten_Sptensor.hpp"
 
 #include "Genten_MTTKRP.hpp"
+#include "Genten_MathLibs_Wpr.hpp"
 
 #ifdef HAVE_CALIPER
 #include <caliper/cali.h>
@@ -431,18 +432,18 @@ namespace Genten {
 namespace Impl {
 
 template <typename ExecSpace, typename Layout>
-struct MTTKRP_Dense_Kernel {
+struct MTTKRP_Dense_Row_Kernel {
   const TensorImpl<ExecSpace,Layout> XX;
   const KtensorImpl<ExecSpace> uu;
   const ttb_indx nn;
   const FacMatrixT<ExecSpace> vv;
   const AlgParams algParams;
 
-  MTTKRP_Dense_Kernel(const TensorImpl<ExecSpace,Layout>& X_,
-                      const KtensorImpl<ExecSpace>& u_,
-                      const ttb_indx n_,
-                      const FacMatrixT<ExecSpace>& v_,
-                      const AlgParams& algParams_) :
+  MTTKRP_Dense_Row_Kernel(const TensorImpl<ExecSpace,Layout>& X_,
+                          const KtensorImpl<ExecSpace>& u_,
+                          const ttb_indx n_,
+                          const FacMatrixT<ExecSpace>& v_,
+                          const AlgParams& algParams_) :
     XX(X_), uu(u_), nn(n_), vv(v_), algParams(algParams_) {}
 
   template <unsigned FBS, unsigned VS>
@@ -538,6 +539,179 @@ struct MTTKRP_Dense_Kernel {
 
 };
 
+template <typename ExecSpace>
+void mttkrp_phan(const Genten::TensorImpl<ExecSpace,Impl::TensorLayoutLeft>& X,
+                 const Genten::KtensorT<ExecSpace>& u,
+                 const ttb_indx n,
+                 const Genten::FacMatrixT<ExecSpace>& v,
+                 const Genten::AlgParams& algParams,
+                 const bool zero_v)
+{
+  using fac_mat = FacMatrixT<ExecSpace>;
+  using matricization_view_type =
+    Kokkos::View<ttb_real**, Kokkos::LayoutLeft, ExecSpace>;
+
+  const ttb_indx nc = u.ncomponents();     // Number of components
+  const ttb_indx nd = u.ndims();           // Number of dimensions
+
+  gt_assert(X.ndims() == nd);
+  gt_assert(u.isConsistent());
+  for (ttb_indx i = 0; i < nd; i++)
+  {
+    if (i != n)
+      gt_assert(u[i].nRows() == X.size(i));
+  }
+  gt_assert( v.nRows() == X.size(n) );
+  gt_assert( v.nCols() == nc );
+
+  const ttb_real beta = zero_v ? 0.0 : 1.0;
+  const ttb_indx szl = X.size_host().prod_less(n);
+  const ttb_indx szr = X.size_host().prod_greater(n);
+  const ttb_indx szn = X.size(n);
+
+  if (n == 0) {
+    std::vector<ttb_indx> modes(nd-1);
+    for (ttb_indx i=0; i<nd-1; ++i)
+      modes[i] = nd-1-i;
+    fac_mat U = u.khatrirao(modes);
+    matricization_view_type Y(X.getValues().ptr(), szn, szr);
+    gemm(false, false, 1.0, Y, U.view(), beta, v.view()); // v = Y*U
+  }
+  else if (n == nd-1) {
+    std::vector<ttb_indx> modes(nd-1);
+    for (ttb_indx i=0; i<nd-1; ++i)
+      modes[i] = nd-2-i;
+    fac_mat U = u.khatrirao(modes);
+    matricization_view_type Y(X.getValues().ptr(), szl, szn);
+    gemm(true, false, 1.0, Y, U.view(), beta, v.view()); // v = Y'*U
+  }
+  else {
+    std::vector<ttb_indx> modesl(nd-n-1);
+    std::vector<ttb_indx> modesr(n);
+    for (ttb_indx i=0; i<nd-n-1; ++i)
+      modesl[i] = nd-1-i;
+    for (ttb_indx i=0; i<n; ++i)
+      modesr[i] = n-1-i;
+
+    fac_mat Ul = u.khatrirao(modesl);
+    fac_mat Ur = u.khatrirao(modesr);
+    fac_mat tmp(szl*szn, nc, nullptr, false);
+    matricization_view_type Y(X.getValues().ptr(), szl*szn, szr);
+    gemm(false, false, 1.0, Y, Ul.view(), ttb_real(0.0), tmp.view()); // tmp = Y*Ul
+
+    if (zero_v) {
+      GENTEN_TIME_MONITOR("Zero-v");
+      v = ttb_real(0.0);
+    }
+    {
+      GENTEN_TIME_MONITOR("Multiply");
+      using PolicyType = Kokkos::TeamPolicy<ExecSpace>;
+      Kokkos::parallel_for(
+        PolicyType(szn, 1, Kokkos::AUTO),
+        KOKKOS_LAMBDA(const typename PolicyType::member_type& team)
+      {
+        const ttb_indx row = team.league_rank();
+        for (ttb_indx s=0; s<szl; ++s) {
+          Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,nc),
+                               [&](const ttb_indx col)
+          {
+            v.entry(row,col) += tmp(row*szl+s,col)*Ur.entry(s,col);
+          });
+        }
+      });
+    }
+  }
+}
+
+template <typename ExecSpace>
+void mttkrp_phan(const Genten::TensorImpl<ExecSpace,Impl::TensorLayoutRight>& X,
+                 const Genten::KtensorT<ExecSpace>& u,
+                 const ttb_indx n,
+                 const Genten::FacMatrixT<ExecSpace>& v,
+                 const Genten::AlgParams& algParams,
+                 const bool zero_v)
+{
+  using fac_mat = FacMatrixT<ExecSpace>;
+  using matricization_view_type =
+    Kokkos::View<ttb_real**, Kokkos::LayoutLeft, ExecSpace>;
+
+  const ttb_indx nc = u.ncomponents();     // Number of components
+  const ttb_indx nd = u.ndims();           // Number of dimensions
+
+  gt_assert(X.ndims() == nd);
+  gt_assert(u.isConsistent());
+  for (ttb_indx i = 0; i < nd; i++)
+  {
+    if (i != n)
+      gt_assert(u[i].nRows() == X.size(i));
+  }
+  gt_assert( v.nRows() == X.size(n) );
+  gt_assert( v.nCols() == nc );
+
+  const ttb_real beta = zero_v ? 0.0 : 1.0;
+  const ttb_indx szl = X.size_host().prod_less(n);
+  const ttb_indx szr = X.size_host().prod_greater(n);
+  const ttb_indx szn = X.size(n);
+
+  // LayoutRight tensor is the same as a LayoutLeft tensor with the
+  // modes reversed, so the strategy here is to map the LayoutLeft algorithm
+  // n -> nd-n-1 and the modes reversed.  However, I left the definitions of
+  // szl and szr the same, so interchange szl and szr.
+
+  if (n == 0) {
+    std::vector<ttb_indx> modes(nd-1);
+    for (ttb_indx i=0; i<nd-1; ++i)
+      modes[i] = i+1;
+    fac_mat U = u.khatrirao(modes);
+    matricization_view_type Y(X.getValues().ptr(), szr, szn);
+    gemm(true, false, 1.0, Y, U.view(), beta, v.view()); // v = Y'*U
+  }
+  else if (n == nd-1) {
+    std::vector<ttb_indx> modes(nd-1);
+    for (ttb_indx i=0; i<nd-1; ++i)
+      modes[i] = i;
+    fac_mat U = u.khatrirao(modes);
+    matricization_view_type Y(X.getValues().ptr(), szn, szl);
+    gemm(false, false, 1.0, Y, U.view(), beta, v.view()); // v = Y*U
+  }
+  else {
+    std::vector<ttb_indx> modesl(n);
+    std::vector<ttb_indx> modesr(nd-n-1);
+    for (ttb_indx i=0; i<n; ++i)
+      modesl[i] = i;
+    for (ttb_indx i=0; i<nd-n-1; ++i)
+      modesr[i] = n+i+1;
+
+    fac_mat Ul = u.khatrirao(modesl);
+    fac_mat Ur = u.khatrirao(modesr);
+    fac_mat tmp(szr*szn, nc, nullptr, false);
+    matricization_view_type Y(X.getValues().ptr(), szr*szn, szl);
+    gemm(false, false, 1.0, Y, Ul.view(), ttb_real(0.0), tmp.view()); // tmp = Y*Ul
+
+    if (zero_v) {
+      GENTEN_TIME_MONITOR("Zero-v");
+      v = ttb_real(0.0);
+    }
+    {
+      GENTEN_TIME_MONITOR("Multiply");
+      using PolicyType = Kokkos::TeamPolicy<ExecSpace>;
+      Kokkos::parallel_for(
+        PolicyType(szn, 1, Kokkos::AUTO),
+        KOKKOS_LAMBDA(const typename PolicyType::member_type& team)
+      {
+        const ttb_indx row = team.league_rank();
+        for (ttb_indx s=0; s<szr; ++s) {
+          Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,nc),
+                               [&](const ttb_indx col)
+          {
+            v.entry(row,col) += tmp(row*szr+s,col)*Ur.entry(s,col);
+          });
+        }
+      });
+    }
+  }
+}
+
 }
 }
 
@@ -549,6 +723,7 @@ void Genten::mttkrp(const Genten::TensorT<ExecSpace>& X,
                     const Genten::AlgParams& algParams,
                     const bool zero_v)
 {
+  GENTEN_TIME_MONITOR("MTTKRP");
 #ifdef HAVE_CALIPER
   cali::Function cali_func("Genten::mttkrp");
 #endif
@@ -566,19 +741,47 @@ void Genten::mttkrp(const Genten::TensorT<ExecSpace>& X,
   gt_assert( v.nRows() == X.size(n) );
   gt_assert( v.nCols() == nc );
 
-  if (zero_v)
-    v = ttb_real(0.0);
+  if (algParams.mttkrp_method == MTTKRP_Method::Default ||
+      algParams.mttkrp_method == MTTKRP_Method::RowBased) {
+    if (zero_v)
+      v = ttb_real(0.0);
 
-  if (X.has_left_impl()) {
-    Genten::Impl::MTTKRP_Dense_Kernel<ExecSpace,Impl::TensorLayoutLeft> kernel(
-      X.left_impl(),u.impl(),n,v,algParams);
-    Genten::Impl::run_row_simd_kernel(kernel, nc);
+    if (X.has_left_impl()) {
+      Genten::Impl::MTTKRP_Dense_Row_Kernel<ExecSpace,Impl::TensorLayoutLeft> kernel(
+        X.left_impl(),u.impl(),n,v,algParams);
+      Genten::Impl::run_row_simd_kernel(kernel, nc);
+    }
+    else {
+      Genten::Impl::MTTKRP_Dense_Row_Kernel<ExecSpace,Impl::TensorLayoutRight> kernel(
+        X.right_impl(),u.impl(),n,v,algParams);
+      Genten::Impl::run_row_simd_kernel(kernel, nc);
+    }
   }
-  else {
-    Genten::Impl::MTTKRP_Dense_Kernel<ExecSpace,Impl::TensorLayoutRight> kernel(
-      X.right_impl(),u.impl(),n,v,algParams);
-    Genten::Impl::run_row_simd_kernel(kernel, nc);
+  else if (algParams.mttkrp_method == MTTKRP_Method::Phan) {
+    if (X.has_left_impl())
+      Impl::mttkrp_phan(X.left_impl(), u, n, v, algParams, zero_v);
+    else {
+      Impl::mttkrp_phan(X.right_impl(), u, n, v, algParams, zero_v);
+      // LayoutRight tensor is the same as a LayoutLeft tensor with the
+      // modes reversed, so call the LayoutLeft algorithm mapping n -> nd-n-1
+      // and reversing the modes.
+
+      // KtensorT<ExecSpace> ul(nc, nd);
+      // IndxArray szh(nd);
+      // for (ttb_indx i=0; i<nd; ++i) {
+      //   szh[i] = X.size(nd-i-1);
+      //   ul.set_factor(i, u[nd-i-1]);
+      // }
+      // ul.setWeights(u.weights());
+      // IndxArrayT<ExecSpace> sz = create_mirror_view(ExecSpace(), szh);
+      // deep_copy(sz, szh);
+      // TensorImpl<ExecSpace,Impl::TensorLayoutLeft> Xl(sz, X.getValues());
+      // Impl::mttkrp_phan(Xl, ul, nd-n-1, v, algParams, zero_v);
+    }
   }
+  else
+    Genten::error(std::string("Unknown MTTKRP method:  ") +
+                  std::string(MTTKRP_Method::names[algParams.mttkrp_method]));
 }
 
 #define INST_MACRO(SPACE)                                               \
