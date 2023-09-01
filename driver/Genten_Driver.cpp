@@ -93,7 +93,6 @@ void usage(char **argv)
   std::cout << "  --nnz <int>        approximate number of random tensor nonzeros" << std::endl;
   std::cout << "  --index-base <int> starting index for tensor nonzeros" << std::endl;
   std::cout << "  --gz               read tensor in gzip compressed format" << std::endl;
-  std::cout << "  --sparse           whether tensor is sparse or dense" << std::endl;
   std::cout << "  --save-tensor <string> filename to save the tensor (leave blank for no save)" << std::endl;
   std::cout << "  --initial-file <string>  file name for reading Ktensor initial guess (leave blank for random initial guess)" << std::endl;
   std::cout << "  --output-file <string>  output file name for saving Ktensor" << std::endl;
@@ -110,7 +109,6 @@ int main_driver(Genten::AlgParams& algParams,
                 const Genten::ptree& json_input,
                 const std::string& inputfilename,
                 const std::string& outputfilename,
-                const ttb_bool sparse,
                 const std::string& initfilename,
                 const ttb_indx index_base,
                 const ttb_bool gz,
@@ -136,7 +134,7 @@ int main_driver(Genten::AlgParams& algParams,
 
   Ktensor_type u;
   Genten::PerfHistory history;
-  if (sparse) {
+  if (algParams.sparse) {
     Sptensor_host_type x_host;
     Sptensor_type x;
     Tensor_type xd;
@@ -449,7 +447,6 @@ int main(int argc, char* argv[])
     std::string inputfilename = "";
     ttb_indx index_base = 0;
     ttb_bool gz = false;
-    ttb_bool sparse = true;
     std::string tensor_outputfilename = "";
     std::string dense_reconstruction = "";
     std::string sparse_reconstruction = "";
@@ -476,11 +473,6 @@ int main(int argc, char* argv[])
         Genten::parse_ptree_value(tensor_input, "input-file", inputfilename);
         Genten::parse_ptree_value(tensor_input, "index-base", index_base, 0, INT_MAX);
         Genten::parse_ptree_value(tensor_input, "compressed", gz);
-        std::string format = "sparse";
-        Genten::parse_ptree_value(tensor_input, "format", format);
-        if (format != "sparse" && format != "dense")
-          Genten::error("Invalid tensor format \"" + format + "\".  Must be \"sparse\" or \"dense\"");
-        sparse = (format == "sparse");
         Genten::parse_ptree_value(tensor_input, "tensor-output-file", tensor_outputfilename);
         Genten::parse_ptree_value(tensor_input, "rand-nnz", nnz, 1, INT_MAX);
         if (tensor_input.get_child_optional("rand-dims")) {
@@ -511,8 +503,6 @@ int main(int argc, char* argv[])
       Genten::parse_ttb_indx(args, "--index-base", index_base, 0, INT_MAX);
     gz =
       Genten::parse_ttb_bool(args, "--gz", "--no-gz", gz);
-    sparse =
-      Genten::parse_ttb_bool(args, "--sparse", "--dense", sparse);
     tensor_outputfilename =
       Genten::parse_string(args, "--save-tensor", tensor_outputfilename);
     dense_reconstruction =
@@ -563,7 +553,6 @@ int main(int argc, char* argv[])
       if (sparse_reconstruction != "")
         std::cout << "  sparse-reconstruction = " << sparse_reconstruction << std::endl;
       std::cout << "  output-file = " << outputfilename << std::endl;
-      std::cout << "  sparse = " << (sparse ? "true" : "false") << std::endl;
       std::cout << "  index_base = " << index_base << std::endl;
       std::cout << "  gz = " << (gz ? "true" : "false") << std::endl;
       std::cout << "  vtune = " << (vtune ? "true" : "false") << std::endl;
@@ -581,7 +570,6 @@ int main(int argc, char* argv[])
                                                        json_input,
                                                        inputfilename,
                                                        outputfilename,
-                                                       sparse,
                                                        init,
                                                        index_base,
                                                        gz,
@@ -597,7 +585,6 @@ int main(int argc, char* argv[])
                                       json_input,
                                       inputfilename,
                                       outputfilename,
-                                      sparse,
                                       init,
                                       index_base,
                                       gz,
@@ -614,7 +601,6 @@ int main(int argc, char* argv[])
                                                    json_input,
                                                    inputfilename,
                                                    outputfilename,
-                                                   sparse,
                                                    init,
                                                    index_base,
                                                    gz,
@@ -631,7 +617,6 @@ int main(int argc, char* argv[])
                                                     json_input,
                                                     inputfilename,
                                                     outputfilename,
-                                                    sparse,
                                                     init,
                                                     index_base,
                                                     gz,
@@ -648,7 +633,6 @@ int main(int argc, char* argv[])
                                         json_input,
                                         inputfilename,
                                         outputfilename,
-                                        sparse,
                                         init,
                                         index_base,
                                         gz,
@@ -665,7 +649,6 @@ int main(int argc, char* argv[])
                                          json_input,
                                          inputfilename,
                                          outputfilename,
-                                         sparse,
                                          init,
                                          index_base,
                                          gz,
@@ -682,7 +665,6 @@ int main(int argc, char* argv[])
                                         json_input,
                                         inputfilename,
                                         outputfilename,
-                                        sparse,
                                         init,
                                         index_base,
                                         gz,

@@ -128,6 +128,8 @@ void pygenten_algparams(py::module &m){
     .value("MttkrpDuplicated", Genten::MTTKRP_Method::type::Duplicated)
     .value("MttkrpSingle", Genten::MTTKRP_Method::type::Single)
     .value("MttkrpPerm", Genten::MTTKRP_Method::type::Perm)
+    .value("MttkrpRowBased", Genten::MTTKRP_Method::type::RowBased)
+    .value("MttkrpPhan", Genten::MTTKRP_Method::type::Phan)
     .export_values();
   py::enum_<Genten::MTTKRP_All_Method::type>(m, "MTTKRP_All_Method")
     .value("MttkrpAllDefault", Genten::MTTKRP_All_Method::type::Default)

@@ -261,37 +261,44 @@ void RunTensorKtensorMTTKRP(const TensorLayout layout, const char *label)
   deep_copy(t2_dev, t2);
 
   INFO_MSG("Resizing Ktensor of matching shape");
-  ttb_indx nc = 1;
+  ttb_indx nc = 5;
   KtensorT<host_exec_space> oKtens(nc, 3, dims);
   oKtens.setWeights(1.0);
   GENTEN_TRUE(oKtens.isConsistent(), "Ktensor resized consistently");
 
   // Set elements in the factors to unique values.
-  oKtens[0](0, 0) = 10.0;
-  oKtens[0](1, 0) = 11.0;
-  oKtens[1](0, 0) = 12.0;
-  oKtens[1](1, 0) = 13.0;
-  oKtens[1](2, 0) = 14.0;
-  oKtens[2](0, 0) = 15.0;
-  oKtens[2](1, 0) = 16.0;
-  oKtens[2](2, 0) = 17.0;
-  oKtens[2](3, 0) = 18.0;
+  for (ttb_indx j=0; j<nc; ++j) {
+    oKtens[0](0, j) = 10.0*(j+1);
+    oKtens[0](1, j) = 11.0*(j+1);
+    oKtens[1](0, j) = 12.0*(j+1);
+    oKtens[1](1, j) = 13.0*(j+1);
+    oKtens[1](2, j) = 14.0*(j+1);
+    oKtens[2](0, j) = 15.0*(j+1);
+    oKtens[2](1, j) = 16.0*(j+1);
+    oKtens[2](2, j) = 17.0*(j+1);
+    oKtens[2](3, j) = 18.0*(j+1);
+  }
   KtensorT<exec_space> oKtens_dev = create_mirror_view(exec_space(), oKtens);
   deep_copy(oKtens_dev, oKtens);
+
+  Genten::AlgParams algParams;
+  //algParams.mttkrp_method = Genten::MTTKRP_Method::Phan;
 
   // Matricizing on index 0 has result 12*15 = 180.
   FacMatrix oFM(t2.size(0), oKtens.ncomponents());
   FacMatrixT<exec_space> oFM_dev = create_mirror_view(exec_space(), oFM);
   deep_copy(oFM_dev, oFM);
-  mttkrp(t2_dev, oKtens_dev, 0, oFM_dev);
+  mttkrp(t2_dev, oKtens_dev, 0, oFM_dev, algParams);
   deep_copy(oFM, oFM_dev);
 
   ASSERT_EQ(oFM.nRows(), 2);
-  ASSERT_EQ(oFM.nCols(), 1);
+  ASSERT_EQ(oFM.nCols(), nc);
   INFO_MSG("mttkrp result shape correct for index [0]");
 
-  ASSERT_FLOAT_EQ(oFM.entry(0, 0), 180.0);
-  ASSERT_FLOAT_EQ(oFM.entry(1, 0), 0.0);
+  for (ttb_indx j=0; j<nc; ++j) {
+    ASSERT_FLOAT_EQ(oFM.entry(0, j), 180.0*(j+1)*(j+1));
+    ASSERT_FLOAT_EQ(oFM.entry(1, j), 0.0);
+  }
   INFO_MSG("mttkrp result values correct for index [0]");
 
   // Uncomment to manually check what the answer should be.
@@ -303,30 +310,34 @@ void RunTensorKtensorMTTKRP(const TensorLayout layout, const char *label)
   oFM = FacMatrix(t2.size(1), oKtens.ncomponents());
   oFM_dev = create_mirror_view(exec_space(), oFM);
   deep_copy(oFM_dev, oFM);
-  mttkrp(t2_dev, oKtens_dev, 1, oFM_dev);
+  mttkrp(t2_dev, oKtens_dev, 1, oFM_dev, algParams);
   deep_copy(oFM, oFM_dev);
 
   ASSERT_EQ(oFM.nRows(), 3);
-  ASSERT_EQ(oFM.nCols(), 1);
+  ASSERT_EQ(oFM.nCols(), nc);
   INFO_MSG("mttkrp result shape correct for index [1]");
 
-  ASSERT_FLOAT_EQ(oFM.entry(0, 0), 150.0);
-  ASSERT_FLOAT_EQ(oFM.entry(1, 0), 0.0);
+  for (ttb_indx j=0; j<nc; ++j) {
+    ASSERT_FLOAT_EQ(oFM.entry(0, j), 150.0*(j+1)*(j+1));
+    ASSERT_FLOAT_EQ(oFM.entry(1, j), 0.0);
+  }
   INFO_MSG("mttkrp result values correct for index [1]");
 
   // Matricizing on index 2 has result 10*12 = 120.
   oFM = FacMatrix(t2.size(2), oKtens.ncomponents());
   oFM_dev = create_mirror_view(exec_space(), oFM);
   deep_copy(oFM_dev, oFM);
-  mttkrp(t2_dev, oKtens_dev, 2, oFM_dev);
+  mttkrp(t2_dev, oKtens_dev, 2, oFM_dev, algParams);
   deep_copy(oFM, oFM_dev);
 
   ASSERT_EQ(oFM.nRows(), 4);
-  ASSERT_EQ(oFM.nCols(), 1);
+  ASSERT_EQ(oFM.nCols(), nc);
   INFO_MSG("mttkrp result shape correct for index [2]");
 
-  ASSERT_FLOAT_EQ(oFM.entry(0, 0), 120.0);
-  ASSERT_FLOAT_EQ(oFM.entry(1, 0), 0.0);
+  for (ttb_indx j=0; j<nc; ++j) {
+    ASSERT_FLOAT_EQ(oFM.entry(0, j), 120.0*(j+1)*(j+1));
+    ASSERT_FLOAT_EQ(oFM.entry(1, j), 0.0);
+  }
   INFO_MSG("mttkrp result values correct for index [2]");
 
   // Add another nonzero and repeat the three tests.
@@ -335,32 +346,38 @@ void RunTensorKtensorMTTKRP(const TensorLayout layout, const char *label)
   oFM = FacMatrix(t2.size(0), oKtens.ncomponents());
   oFM_dev = create_mirror_view(exec_space(), oFM);
   deep_copy(oFM_dev, oFM);
-  mttkrp(t2_dev, oKtens_dev, 0, oFM_dev);
+  mttkrp(t2_dev, oKtens_dev, 0, oFM_dev, algParams);
   deep_copy(oFM, oFM_dev);
 
-  ASSERT_FLOAT_EQ(oFM.entry(0, 0), 180.0);
-  ASSERT_FLOAT_EQ(oFM.entry(1, 0), 252.0);
+  for (ttb_indx j=0; j<nc; ++j) {
+    ASSERT_FLOAT_EQ(oFM.entry(0, j), 180.0*(j+1)*(j+1));
+    ASSERT_FLOAT_EQ(oFM.entry(1, j), 252.0*(j+1)*(j+1));
+  }
   INFO_MSG("mttkrp result values correct for index [0], 2 sparse nnz");
 
   oFM = FacMatrix(t2.size(1), oKtens.ncomponents());
   oFM_dev = create_mirror_view(exec_space(), oFM);
   deep_copy(oFM_dev, oFM);
-  mttkrp(t2_dev, oKtens_dev, 1, oFM_dev);
+  mttkrp(t2_dev, oKtens_dev, 1, oFM_dev, algParams);
   deep_copy(oFM, oFM_dev);
 
-  ASSERT_FLOAT_EQ(oFM.entry(0, 0), 150.0);
-  ASSERT_FLOAT_EQ(oFM.entry(2, 0), 198.0);
-  INFO_MSG("mttkrp result values correct for index [0], 2 sparse nnz");
+  for (ttb_indx j=0; j<nc; ++j) {
+    ASSERT_FLOAT_EQ(oFM.entry(0, j), 150.0*(j+1)*(j+1));
+    ASSERT_FLOAT_EQ(oFM.entry(2, j), 198.0*(j+1)*(j+1));
+  }
+  INFO_MSG("mttkrp result values correct for index [1], 2 sparse nnz");
 
   oFM = FacMatrix(t2.size(2), oKtens.ncomponents());
   oFM_dev = create_mirror_view(exec_space(), oFM);
   deep_copy(oFM_dev, oFM);
-  mttkrp(t2_dev, oKtens_dev, 2, oFM_dev);
+  mttkrp(t2_dev, oKtens_dev, 2, oFM_dev, algParams);
   deep_copy(oFM, oFM_dev);
 
-  ASSERT_FLOAT_EQ(oFM.entry(0, 0), 120.0);
-  ASSERT_FLOAT_EQ(oFM.entry(3, 0), 154.0);
-  INFO_MSG("mttkrp result values correct for index [0], 2 sparse nnz");
+  for (ttb_indx j=0; j<nc; ++j) {
+    ASSERT_FLOAT_EQ(oFM.entry(0, j), 120.0*(j+1)*(j+1));
+    ASSERT_FLOAT_EQ(oFM.entry(3, j), 154.0*(j+1)*(j+1));
+  }
+  INFO_MSG("mttkrp result values correct for index [3], 2 sparse nnz");
 }
 
 TYPED_TEST(TestMixedFormatsT, TensorKtensorMTTKRP) {
@@ -368,6 +385,65 @@ TYPED_TEST(TestMixedFormatsT, TensorKtensorMTTKRP) {
 
    RunTensorKtensorMTTKRP<exec_space>(TensorLayout::Left, "TensorLayout::Left");
    RunTensorKtensorMTTKRP<exec_space>(TensorLayout::Right, "TensorLayout::Right");
+}
+
+TYPED_TEST(TestMixedFormatsT, TensorPhanAminoAcid) {
+   using exec_space = typename TestFixture::exec_space;
+   DistContext::Barrier();
+
+  // Read layout-left amino acid tensor
+  Tensor Xlh;
+  import_tensor("./data/aminoacid_data_dense.txt", Xlh);
+  TensorT<exec_space> Xl = create_mirror_view(exec_space(), Xlh);
+  deep_copy(Xl, Xlh);
+
+  // Create matching ktensor
+  //const ttb_indx nc = 5;
+  const ttb_indx nc = 3;
+  const ttb_indx nd = Xl.ndims();
+  KtensorT<exec_space> u(nc, nd, Xl.size());
+  auto uh = create_mirror_view(u);
+  RandomMT rng(12345);
+  uh.setMatricesScatter(true, false, rng);
+  uh.setWeights(1.0);
+  deep_copy(u, uh);
+
+  // Test Phan MTTKRP algorithm for layout-left matches Row-based algorithm
+  KtensorT<exec_space> vr(nc, nd, Xl.size()), vp(nc, nd, Xl.size());
+  auto vrh = create_mirror_view(vr);
+  auto vph = create_mirror_view(vp);
+  AlgParams algParams;
+  INFO_MSG("mttkrp result correct for Phan algorihtm with LayoutLeft tensor");
+  for (ttb_indx n=0; n<nd; ++n) {
+    algParams.mttkrp_method = MTTKRP_Method::RowBased;
+    mttkrp(Xl, u, n, vr[n], algParams);
+    algParams.mttkrp_method = MTTKRP_Method::Phan;
+    mttkrp(Xl, u, n, vp[n], algParams);
+    deep_copy(vrh[n], vr[n]);
+    deep_copy(vph[n], vp[n]);
+
+    for (ttb_indx i=0; i<Xl.size(n); ++i)
+      for (ttb_indx j=0; j<nc; ++j)
+        ASSERT_FLOAT_EQ(vrh[n](i,j), vph[n](i,j));
+  }
+
+  // Test Phan MTTKRP algorithm for layout-right matches Row-based algorithm
+  TensorT<exec_space> Xr = Xl.switch_layout(TensorLayout::Right);
+  INFO_MSG("mttkrp result correct for Phan algorihtm with LayoutRight tensor");
+  vr.setMatrices(0.0);
+  vp.setMatrices(0.0);
+  for (ttb_indx n=0; n<nd; ++n) {
+    algParams.mttkrp_method = MTTKRP_Method::RowBased;
+    mttkrp(Xr, u, n, vr[n], algParams);
+    algParams.mttkrp_method = MTTKRP_Method::Phan;
+    mttkrp(Xr, u, n, vp[n], algParams);
+    deep_copy(vrh[n], vr[n]);
+    deep_copy(vph[n], vp[n]);
+
+    for (ttb_indx i=0; i<Xl.size(n); ++i)
+      for (ttb_indx j=0; j<nc; ++j)
+        ASSERT_FLOAT_EQ(vrh[n](i,j), vph[n](i,j));
+  }
 }
 
 TYPED_TEST(TestMixedFormatsT, LayoutRightTensorAminoAcid) {

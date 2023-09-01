@@ -60,6 +60,7 @@ namespace Genten {
     // Generic options
     Execution_Space::type exec_space; // Chosen execution space
     IndxArray proc_grid; // User-defined processor grid
+    bool sparse;         // Sparse (or dense) tensor
     Solver_Method::type method; // Solver method ("cp-als", "gcp-sgd", ...)
     ttb_indx rank;       // Rank of decomposition
     unsigned long seed;  // Random number seed for initial guess
@@ -317,8 +318,12 @@ namespace Genten {
   void AlgParams::fixup(std::ostream& out) {
     typedef SpaceProperties<ExecSpace> space_prop;
 
+    // Even for dense tensors we use sparse mttkrp for GCP-SGD/GCP-FED
+    const bool use_sparse = sparse || method == Solver_Method::GCP_SGD ||
+      method == Solver_Method::GCP_FED;
+
     // Compute default MTTKRP method
-    if (mttkrp_method == MTTKRP_Method::Default) {
+    if (mttkrp_method == MTTKRP_Method::Default && use_sparse) {
 
       // Always use Single if there is only a single thread
       if (space_prop::concurrency() == 1)
@@ -348,9 +353,12 @@ namespace Genten {
           mttkrp_method = MTTKRP_Method::Perm;
       }
     }
+    else if (mttkrp_method == MTTKRP_Method::Default && !use_sparse) {
+      mttkrp_method = MTTKRP_Method::RowBased;
+    }
 
     // Compute default MTTKRP-All method
-    if (mttkrp_all_method == MTTKRP_All_Method::Default) {
+    if (mttkrp_all_method == MTTKRP_All_Method::Default && use_sparse) {
 
       // Always use Single if there is only a single thread
       if (space_prop::concurrency() == 1)
@@ -385,6 +393,9 @@ namespace Genten {
         else
           mttkrp_all_method = MTTKRP_All_Method::Iterated;
       }
+    }
+    else if (mttkrp_all_method == MTTKRP_All_Method::Default && !use_sparse) {
+      mttkrp_all_method = MTTKRP_All_Method::Iterated;
     }
 
     // Compute default hess-vec-tensor method

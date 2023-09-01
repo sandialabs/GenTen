@@ -53,6 +53,22 @@
 
 #include "Genten_Util.hpp"
 
+#if defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)
+#include "Genten_CublasHandle.hpp"
+#include "Genten_CusolverHandle.hpp"
+#endif
+
+#if defined(KOKKOS_ENABLE_HIP)
+#if defined(HAVE_ROCBLAS)
+#include "Genten_RocblasHandle.hpp"
+#include "rocblas.h"
+#endif
+#if defined(HAVE_ROCSOLVER)
+#include "Genten_RocblasHandle.hpp"
+#include "rocsolver.h"
+#endif
+#endif
+
 
 namespace Genten
 {
@@ -343,4 +359,288 @@ namespace Genten
     returns the effective rank of A.
   */
   ttb_indx gelsy(ttb_indx m, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb, float rcond);
+}
+
+// Implementations of GEMM for various architectures
+
+namespace Genten {
+namespace Impl {
+
+template <typename ExecSpace, typename Scalar, typename Enabled = void>
+struct GemmImpl {};
+
+template <typename ExecSpace, typename Scalar>
+struct GemmImpl<ExecSpace, Scalar,
+                std::enable_if_t< is_host_space<ExecSpace>::value > >
+{
+  static void apply(const bool trans_a, const bool trans_b,
+                    const ttb_indx m, const ttb_indx n, const ttb_indx k,
+                    const Scalar alpha, const Scalar *A, const ttb_indx lda,
+                    const Scalar *B, const ttb_indx ldb,
+                    const Scalar beta, Scalar *C, const ttb_indx ldc)
+  {
+    const char ta = trans_a ? 'T' : 'N';
+    const char tb = trans_b ? 'T' : 'N';
+    Genten::gemm(ta, tb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+  }
+};
+
+#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) && defined(HAVE_CUBLAS)
+
+template <typename ExecSpace>
+struct GemmImpl<
+  ExecSpace, double,
+  std::enable_if_t<
+    (is_cuda_space<ExecSpace>::value || is_sycl_space<ExecSpace>::value) > >
+{
+  using Scalar = double;
+  static void apply(const bool trans_a, const bool trans_b,
+                    const ttb_indx m, const ttb_indx n, const ttb_indx k,
+                    const Scalar alpha, const Scalar *A, const ttb_indx lda,
+                    const Scalar *B, const ttb_indx ldb,
+                    const Scalar beta, Scalar *C, const ttb_indx ldc)
+  {
+    const cublasOperation_t ta = trans_a ? CUBLAS_OP_T : CUBLAS_OP_N;
+    const cublasOperation_t tb = trans_b ? CUBLAS_OP_T : CUBLAS_OP_N;
+    cublasStatus_t status = cublasDgemm(
+      CublasHandle::get(), ta, tb, m, n, k, &alpha, A, lda, B, ldb, &beta,
+      C, ldc);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+      std::stringstream ss;
+      ss << "Error!  cublasDgemm() failed with status "
+         << status;
+      Genten::error(ss.str());
+    }
+  }
+};
+
+template <typename ExecSpace>
+struct GemmImpl<
+  ExecSpace, float,
+  std::enable_if_t<
+    (is_cuda_space<ExecSpace>::value || is_sycl_space<ExecSpace>::value) > >
+{
+  using Scalar = float;
+  static void apply(const bool trans_a, const bool trans_b,
+                    const ttb_indx m, const ttb_indx n, const ttb_indx k,
+                    const Scalar alpha, const Scalar *A, const ttb_indx lda,
+                    const Scalar *B, const ttb_indx ldb,
+                    const Scalar beta, Scalar *C, const ttb_indx ldc)
+  {
+    const cublasOperation_t ta = trans_a ? CUBLAS_OP_T : CUBLAS_OP_N;
+    const cublasOperation_t tb = trans_b ? CUBLAS_OP_T : CUBLAS_OP_N;
+    cublasStatus_t status = cublasSgemm(
+      CublasHandle::get(), ta, tb, m, n, k, &alpha, A, lda, B, ldb, &beta,
+      C, ldc);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+      std::stringstream ss;
+      ss << "Error!  cublasSgemm() failed with status "
+         << status;
+      Genten::error(ss.str());
+    }
+  }
+};
+
+#endif
+
+#if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
+
+template <typename ExecSpace>
+struct GemmImpl<
+  ExecSpace, double,
+  std::enable_if_t< is_hip_space<ExecSpace>::value > >
+{
+  using Scalar = double;
+  static void apply(const bool trans_a, const bool trans_b,
+                    const ttb_indx m, const ttb_indx n, const ttb_indx k,
+                    const Scalar alpha, const Scalar *A, const ttb_indx lda,
+                    const Scalar *B, const ttb_indx ldb,
+                    const Scalar beta, Scalar *C, const ttb_indx ldc)
+  {
+    const rocblas_operation ta = trans_a ? rocblas_operation_transpose : rocblas_operation_none;
+    const rocblas_operation tb = trans_b ? rocblas_operation_transpose : rocblas_operation_none;
+    rocblas_status status = rocblas_dgemm(
+      RocblasHandle::get(), ta, tb, m, n, k, &alpha, A, lda, B, ldb, &beta,
+      C, ldc);
+     if (status != rocblas_status_success) {
+       std::stringstream ss;
+       ss << "Error!  rocblas_dgemm() failed with status "
+          << status;
+       Genten::error(ss.str());
+    }
+  }
+};
+
+template <typename ExecSpace>
+struct GemmImpl<
+  ExecSpace, float,
+  std::enable_if_t< is_hip_space<ExecSpace>::value > >
+{
+  using Scalar = float;
+  static void apply(const bool trans_a, const bool trans_b,
+                    const ttb_indx m, const ttb_indx n, const ttb_indx k,
+                    const Scalar alpha, const Scalar *A, const ttb_indx lda,
+                    const Scalar *B, const ttb_indx ldb,
+                    const Scalar beta, Scalar *C, const ttb_indx ldc)
+  {
+    const rocblas_operation ta = trans_a ? rocblas_operation_transpose : rocblas_operation_none;
+    const rocblas_operation tb = trans_b ? rocblas_operation_transpose : rocblas_operation_none;
+    rocblas_status status = rocblas_sgemm(
+      RocblasHandle::get(), ta, tb, m, n, k, &alpha, A, lda, B, ldb, &beta,
+      C, ldc);
+     if (status != rocblas_status_success) {
+       std::stringstream ss;
+       ss << "Error!  rocblas_sgemm() failed with status "
+          << status;
+       Genten::error(ss.str());
+    }
+  }
+};
+
+#endif
+
+}
+
+template <typename ViewA, typename ViewB, typename ViewC>
+void
+gemm(const bool trans_a, const bool trans_b, const ttb_real alpha,
+     const ViewA& A, const ViewB& B,
+     const ttb_real beta, const ViewC& C)
+{
+  GENTEN_TIME_MONITOR("GEMM");
+
+  // Ensure execution spaces match
+  static_assert(std::is_same_v<typename ViewA::execution_space,
+                               typename ViewB::execution_space>);
+  static_assert(std::is_same_v<typename ViewA::execution_space,
+                               typename ViewC::execution_space>);
+
+  // Ensure all views are rank-2
+  static_assert(unsigned(ViewA::rank) == 2u);
+  static_assert(unsigned(ViewB::rank) == 2u);
+  static_assert(unsigned(ViewC::rank) == 2u);
+
+  using ExecSpace = typename ViewA::execution_space;
+  using LayoutA = typename ViewA::array_layout;
+  using LayoutB = typename ViewB::array_layout;
+  using LayoutC = typename ViewC::array_layout;
+
+  if constexpr(std::is_same_v<LayoutA, Kokkos::LayoutLeft> &&
+               std::is_same_v<LayoutB, Kokkos::LayoutLeft> &&
+               std::is_same_v<LayoutC, Kokkos::LayoutLeft>) {
+    // C = alpha * op(A) * op(B) + beta * C
+    const ttb_indx m = C.extent(0);
+    const ttb_indx n = C.extent(1);
+    const ttb_indx k = trans_a ? A.extent(0) : A.extent(1);
+    const ttb_indx lda = A.stride(1);
+    const ttb_indx ldb = B.stride(1);
+    const ttb_indx ldc = C.stride(1);
+    Impl::GemmImpl<ExecSpace,ttb_real>::apply(
+      trans_a, trans_b, m, n, k, alpha, A.data(), lda, B.data(), ldb, beta,
+      C.data(), ldc);
+  }
+  else if constexpr(std::is_same_v<LayoutA, Kokkos::LayoutRight> &&
+                    std::is_same_v<LayoutB, Kokkos::LayoutLeft> &&
+                    std::is_same_v<LayoutC, Kokkos::LayoutLeft>) {
+    // C = alpha * op'(A) * op(B) + beta * C
+    const ttb_indx m = C.extent(0);
+    const ttb_indx n = C.extent(1);
+    const ttb_indx k = trans_a ? A.extent(1) : A.extent(0);
+    const ttb_indx lda = A.stride(0);
+    const ttb_indx ldb = B.stride(1);
+    const ttb_indx ldc = C.stride(1);
+    Impl::GemmImpl<ExecSpace,ttb_real>::apply(
+      !trans_a, trans_b, m, n, k, alpha, A.data(), lda, B.data(), ldb, beta,
+      C.data(), ldc);
+  }
+  else if constexpr(std::is_same_v<LayoutA, Kokkos::LayoutLeft> &&
+                    std::is_same_v<LayoutB, Kokkos::LayoutRight> &&
+                    std::is_same_v<LayoutC, Kokkos::LayoutLeft>) {
+    // C = alpha * op(A) * op'(B) + beta * C
+    const ttb_indx m = C.extent(0);
+    const ttb_indx n = C.extent(1);
+    const ttb_indx k = trans_a ? A.extent(0) : A.extent(1);
+    const ttb_indx lda = A.stride(1);
+    const ttb_indx ldb = B.stride(0);
+    const ttb_indx ldc = C.stride(1);
+    Impl::GemmImpl<ExecSpace,ttb_real>::apply(
+      trans_a, !trans_b, m, n, k, alpha, A.data(), lda, B.data(), ldb, beta,
+      C.data(), ldc);
+  }
+  else if constexpr(std::is_same_v<LayoutA, Kokkos::LayoutRight> &&
+                    std::is_same_v<LayoutB, Kokkos::LayoutRight> &&
+                    std::is_same_v<LayoutC, Kokkos::LayoutLeft>) {
+    // C = alpha * op'(A) * op'(B) + beta * C
+    const ttb_indx m = C.extent(0);
+    const ttb_indx n = C.extent(1);
+    const ttb_indx k = trans_a ? A.extent(1) : A.extent(0);
+    const ttb_indx lda = A.stride(0);
+    const ttb_indx ldb = B.stride(0);
+    const ttb_indx ldc = C.stride(1);
+    Impl::GemmImpl<ExecSpace,ttb_real>::apply(
+      !trans_a, !trans_b, m, n, k, alpha, A.data(), lda, B.data(), ldb, beta,
+      C.data(), ldc);
+  }
+  else if constexpr(std::is_same_v<LayoutA, Kokkos::LayoutRight> &&
+                    std::is_same_v<LayoutB, Kokkos::LayoutRight> &&
+                    std::is_same_v<LayoutC, Kokkos::LayoutRight>) {
+    // C' = alpha * op(B') * op(A') + beta * C'
+    const ttb_indx m = C.extent(1);
+    const ttb_indx n = C.extent(0);
+    const ttb_indx k = trans_b ? B.extent(1) : B.extent(0);
+    const ttb_indx lda = A.stride(0);
+    const ttb_indx ldb = B.stride(0);
+    const ttb_indx ldc = C.stride(0);
+    Impl::GemmImpl<ExecSpace,ttb_real>::apply(
+      trans_b, trans_a, m, n, k, alpha, B.data(), ldb, A.data(), lda, beta,
+      C.data(), ldc);
+  }
+  else if constexpr(std::is_same_v<LayoutA, Kokkos::LayoutLeft> &&
+                    std::is_same_v<LayoutB, Kokkos::LayoutRight> &&
+                    std::is_same_v<LayoutC, Kokkos::LayoutRight>) {
+    // C' = alpha * op(B') * op'(A) + beta * C'
+    const ttb_indx m = C.extent(1);
+    const ttb_indx n = C.extent(0);
+    const ttb_indx k = trans_b ? B.extent(1) : B.extent(0);
+    const ttb_indx lda = A.stride(1);
+    const ttb_indx ldb = B.stride(0);
+    const ttb_indx ldc = C.stride(0);
+    Impl::GemmImpl<ExecSpace,ttb_real>::apply(
+      trans_b, !trans_a, m, n, k, alpha, B.data(), ldb, A.data(), lda, beta,
+      C.data(), ldc);
+  }
+  else if constexpr(std::is_same_v<LayoutA, Kokkos::LayoutLeft> &&
+                    std::is_same_v<LayoutB, Kokkos::LayoutLeft> &&
+                    std::is_same_v<LayoutC, Kokkos::LayoutRight>) {
+    // C' = alpha * op'(B) * op'(A) + beta * C'
+    const ttb_indx m = C.extent(1);
+    const ttb_indx n = C.extent(0);
+    const ttb_indx k = trans_b ? B.extent(0) : B.extent(1);
+    const ttb_indx lda = A.stride(1);
+    const ttb_indx ldb = B.stride(1);
+    const ttb_indx ldc = C.stride(0);
+    Impl::GemmImpl<ExecSpace,ttb_real>::apply(
+      !trans_b, !trans_a, m, n, k, alpha, B.data(), ldb, A.data(), lda, beta,
+      C.data(), ldc);
+  }
+  else if constexpr(std::is_same_v<LayoutA, Kokkos::LayoutRight> &&
+                    std::is_same_v<LayoutB, Kokkos::LayoutLeft> &&
+                    std::is_same_v<LayoutC, Kokkos::LayoutRight>) {
+    // C' = alpha * op'(B) * op(A') + beta * C'
+    const ttb_indx m = C.extent(1);
+    const ttb_indx n = C.extent(0);
+    const ttb_indx k = trans_b ? B.extent(1) : B.extent(0);
+    const ttb_indx lda = A.stride(0);
+    const ttb_indx ldb = B.stride(1);
+    const ttb_indx ldc = C.stride(0);
+    Impl::GemmImpl<ExecSpace,ttb_real>::apply(
+      !trans_b, trans_a, m, n, k, alpha, B.data(), ldb, A.data(), lda, beta,
+      C.data(), ldc);
+  }
+  else
+    Genten::error("Unhandled layout combination in GEMM");
+
+  Kokkos::fence();
+}
+
 }
