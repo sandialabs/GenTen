@@ -149,6 +149,7 @@ public:
   bool isDense() const { return is_dense; }
   bool isBinary() const { return is_binary; }
   bool isText() const { return is_text; }
+  bool isExodus() const { return is_exodus; }
   SptensorT<ExecSpace> getSparseTensor() { return X_sparse; }
   TensorT<ExecSpace> getDenseTensor() { return X_dense; }
 
@@ -164,6 +165,7 @@ private:
   bool is_dense;
   bool is_binary;
   bool is_text;
+  bool is_exodus;
 
   SptensorT<ExecSpace> X_sparse;
   TensorT<ExecSpace> X_dense;
