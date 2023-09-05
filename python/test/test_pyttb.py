@@ -16,7 +16,7 @@ if have_ttb:
         data = np.array([1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12.])
         shape = (2,3,2)
         data = np.reshape(data, np.array(shape), order='F')
-        x = ttb.tensor.from_data(data, shape)
+        x = ttb.tensor(data, shape)
 
         # Make a pygenten tensor from it as a copy, and verify it is a copy
         x_gt = gt.make_gt_tensor(x, copy=True)
@@ -58,10 +58,7 @@ if have_ttb:
             assert x.data[it.multi_index] == x_gt.data[it.multi_index]
         x.data[0,0,0] = -2.0;
         assert x.data[0,0,0] == -2.0
-        if gt.ttb_tensor_supports_copy():
-            assert x_gt.data[0,0,0] == -2.0
-        else:
-            assert x_gt.data[0,0,0] != -2.0
+        assert x_gt.data[0,0,0] == -2.0
 
     def test_ttb_to_gt_sptensor_unsigned():
 
@@ -69,7 +66,7 @@ if have_ttb:
         subs = np.array([[1, 1, 1], [1, 1, 3], [2, 2, 2], [3, 3, 3]], dtype='uint64')
         vals = np.array([[0.5], [1.5], [2.5], [3.5]])
         shape = (4, 4, 4)
-        x = ttb.sptensor.from_data(subs, vals, shape)
+        x = ttb.sptensor(subs, vals, shape)
 
         # Make a pygenten sptensor from it as a copy, and verify it is a copy
         x_gt = gt.make_gt_sptensor(x, copy=True)
@@ -111,7 +108,7 @@ if have_ttb:
         subs = np.array([[1, 1, 1], [1, 1, 3], [2, 2, 2], [3, 3, 3]], dtype='int64')
         vals = np.array([[0.5], [1.5], [2.5], [3.5]])
         shape = (4, 4, 4)
-        x = ttb.sptensor.from_data(subs, vals, shape)
+        x = ttb.sptensor(subs, vals, shape)
 
         # Make a pygenten sptensor from it as a copy, and verify it is a copy
         x_gt = gt.make_gt_sptensor(x, copy=True)
