@@ -59,7 +59,7 @@ static nlohmann::json json_schema = R"(
           "properties": {
               "method": {
                   "description": "MTTKRP algorithm",
-                  "enum": ["default", "orig-kokkos", "atomic", "duplicated", "single", "perm"],
+                  "enum": ["default", "orig-kokkos", "atomic", "duplicated", "single", "perm", "row-based", "phan"],
                   "default": "default"
               },
               "all-method": {
