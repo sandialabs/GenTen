@@ -271,7 +271,7 @@ struct DuplicatedDataType<T*, Kokkos::LayoutLeft> {
    subview where the index specified is the largest-stride one. */
 template <typename Layout, int rank, typename V, typename ... Args>
 struct Slice {
-  typedef Slice<Layout, rank - 1, V, Kokkos::Impl::ALL_t, Args...> next;
+  typedef Slice<Layout, rank - 1, V, Kokkos::ALL_t, Args...> next;
   typedef typename next::value_type value_type;
 
   static
