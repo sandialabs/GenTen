@@ -659,6 +659,40 @@ void gramianImpl(const ViewC& C, const ViewA& A,
 
 #endif
 
+#if defined(KOKKOS_ENABLE_SYCL)
+
+  // Gramian implementation for CUDA and double precision using cuBLAS
+  template <typename ExecSpace,
+            typename CT, typename ... CP,
+            typename AT, typename ... AP>
+  std::enable_if_t< is_sycl_space<ExecSpace>::value >
+  gramianImpl(const Kokkos::View<CT,CP...>& C, const Kokkos::View<AT,AP...>& A,
+              const bool full, const UploType uplo)
+  {
+    if (full)
+      Genten::gemm(true, false, 1.0, A, A, 0.0, C);
+    else {
+      // We compute C = A'*A.  But since A is LayoutRight, and GEMM/SYRK
+      // assumes layout left we compute this as C = A*A'.  Since SYRK writes
+      // C', uplo == Upper means we call SYRK with 'L', and vice versa.
+      const std::int64_t m = A.extent(0);
+      const std::int64_t n = A.extent(1);
+      const std::int64_t lda = A.stride_0();
+      const std::int64_t ldc = C.stride_0();
+      const ttb_real alpha = 1.0;
+      const ttb_real beta = 0.0;
+      oneapi::mkl::uplo mkl_uplo =
+        uplo == Upper ? oneapi::mkl::uplo::lower : oneapi::mkl::uplo::upper;
+      ExecSpace space;
+      sycl::queue& q = space.sycl_queue();
+      oneapi::mkl::blas::column_major::syrk(
+        q, mkl_uplo, oneapi::mkl::transpose::nontrans, n, m, alpha,
+        A.data(), lda, beta, C.data(), ldc);
+    }
+  }
+
+#endif
+
 }
 }
 
@@ -1527,22 +1561,6 @@ normFsq() const
 }
 
 template <typename ExecSpace>
-bool Genten::FacMatrixT<ExecSpace>::
-hasNonFinite(ttb_indx &retval) const
-{
-  const ttb_real * mptr = ptr();
-  ttb_indx imax = data.size();
-  retval = 0;
-  for (ttb_indx i = 0; i < imax; i ++) {
-    if (isRealValid(mptr[i]) == false) {
-      retval = i;
-      return true;
-    }
-  }
-  return false;
-}
-
-template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 permute(const Genten::IndxArray& perm_indices) const
 {
@@ -1623,36 +1641,6 @@ permute(const Genten::IndxArray& perm_indices) const
       curr_indices[loc] = k;
     }
   }
-}
-
-template <typename ExecSpace>
-void Genten::FacMatrixT<ExecSpace>::
-multByVector(bool bTranspose,
-             const Genten::ArrayT<ExecSpace> &  x,
-             Genten::ArrayT<ExecSpace> &  y) const
-{
-  const ttb_indx nrows = data.extent(0);
-  const ttb_indx ncols = data.extent(1);
-
-  if (bTranspose == false)
-  {
-    gt_assert(x.size() == ncols);
-    gt_assert(y.size() == nrows);
-    // Data for the matrix is stored in row-major order but gemv expects
-    // column-major, so tell it transpose dimensions.
-    Genten::gemv('T', ncols, nrows, 1.0, ptr(), data.stride_0(),
-              x.ptr(), 1, 0.0, y.ptr(), 1);
-  }
-  else
-  {
-    gt_assert(x.size() == nrows);
-    gt_assert(y.size() == ncols);
-    // Data for the matrix is stored in row-major order but gemv expects
-    // column-major, so tell it transpose dimensions.
-    Genten::gemv('N', ncols, nrows, 1.0, ptr(), data.stride_0(),
-              x.ptr(), 1, 0.0, y.ptr(), 1);
-  }
-  return;
 }
 
 template <typename ExecSpace>
@@ -2508,6 +2496,258 @@ namespace Genten {
 
 #endif
 
+#if defined(KOKKOS_ENABLE_SYCL)
+
+    template <typename AT, typename ... AP,
+              typename BT, typename ... BP>
+    std::enable_if_t<
+      is_sycl_space<typename Kokkos::View<AT, AP...>::execution_space>::value &&
+      is_sycl_space<typename Kokkos::View<BT, BP...>::execution_space>::value,
+      bool
+    >
+    solveTransposeRHSImpl_SPD(const Kokkos::View<AT,AP...>& A,
+                              const Kokkos::View<BT,BP...>& B,
+                              const UploType ul)
+    {
+      using view_type_A = Kokkos::View<AT, AP...>;
+      using view_type_B = Kokkos::View<BT, BP...>;
+      static_assert(std::is_same_v<typename view_type_A::value_type,
+                                   typename view_type_B::value_type>);
+      using value_type = typename view_type_A::value_type;
+
+      const std::int64_t m = B.extent(0);
+      const std::int64_t n = B.extent(1);
+      const std::int64_t lda = A.stride_0();
+      const std::int64_t ldb = B.stride_0();
+      oneapi::mkl::uplo mkl_uplo =
+        ul == Upper ? oneapi::mkl::uplo::lower : oneapi::mkl::uplo::upper;
+
+      using ExecSpace = typename view_type_A::execution_space;
+      ExecSpace space;
+      sycl::queue& q = space.sycl_queue();
+
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
+
+      // Allocate potrf scratchpad
+      std::int64_t potrf_lwork =
+        oneapi::mkl::lapack::potrf_scratchpad_size<value_type>(
+          q, mkl_uplo, n, lda);
+      Kokkos::View<value_type*, ExecSpace> potrf_scratch("potrf_scratchpad",
+                                                         potrf_lwork);
+
+      // Perform Cholesky factorization
+      try {
+        oneapi::mkl::lapack::potrf(
+          q, mkl_uplo, n, A.data(), lda, potrf_scratch.data(), potrf_lwork);
+      }
+      catch(oneapi::mkl::lapack::exception& e) {
+        if (e.info() > 0 && e.detail() == 0)
+          return false; // Matrix is not SPD
+        else if (e.info() < 0)
+          Genten::error("Error in call to potrf.  Entry " + std::to_string(e.info()) + " had an illegal value!");
+        else if (e.info() == potrf_lwork && e.detail() != 0)
+          Genten::error("Error in call to potrf.  Scratchpad size (" + std::to_string(potrf_lwork) + ") < required size (" + std::to_string(e.detail()) + ")!");
+        else
+          Genten::error ("Unknown error in potrf.");
+      }
+
+      // Allocate potrs scratchpad
+      std::int64_t potrs_lwork =
+        oneapi::mkl::lapack::potrs_scratchpad_size<value_type>(
+          q, mkl_uplo, n, m, lda, ldb);
+      Kokkos::View<value_type*, ExecSpace> potrs_scratch("potrs_scratchpad",
+                                                         potrs_lwork);
+
+      // Perform triangular factorization
+      try {
+        oneapi::mkl::lapack::potrs(
+          q, mkl_uplo, n, m, A.data(), lda, B.data(), ldb, potrs_scratch.data(),
+          potrs_lwork);
+      }
+      catch(oneapi::mkl::lapack::exception& e) {
+        if (e.info() > 0 && e.detail() == 0)
+          return false; // Matrix is not SPD
+        else if (e.info() < 0)
+          Genten::error("Error in call to potrs.  Entry " + std::to_string(e.info()) + " had an illegal value!");
+        else if (e.info() == potrs_lwork && e.detail() != 0)
+          Genten::error("Error in call to potrs.  Scratchpad size (" + std::to_string(potrs_lwork) + ") < required size (" + std::to_string(e.detail()) + ")!");
+        else
+          Genten::error ("Unknown error in potrs.");
+      }
+
+      return true;
+    }
+
+    template <typename AT, typename ... AP,
+              typename BT, typename ... BP>
+    std::enable_if_t<
+      is_sycl_space<typename Kokkos::View<AT, AP...>::execution_space>::value &&
+      is_sycl_space<typename Kokkos::View<BT, BP...>::execution_space>::value
+      >
+    solveTransposeRHSImpl_SID(const Kokkos::View<AT,AP...>& A,
+                              const Kokkos::View<BT,BP...>& B,
+                              const UploType ul)
+    {
+      Genten::error("Symmetric, indefinite solve with SYCL is not fully implemented in DPC++ MKL.  Instead you must use the option '--full-gram' to enable the non-symmetric solver.");
+
+      using view_type_A = Kokkos::View<AT, AP...>;
+      using view_type_B = Kokkos::View<BT, BP...>;
+      static_assert(std::is_same_v<typename view_type_A::value_type,
+                                   typename view_type_B::value_type>);
+      using value_type = typename view_type_A::value_type;
+
+      const std::int64_t m = B.extent(0);
+      const std::int64_t n = B.extent(1);
+      const std::int64_t lda = A.stride_0();
+      const std::int64_t ldb = B.stride_0();
+      oneapi::mkl::uplo mkl_uplo =
+        ul == Upper ? oneapi::mkl::uplo::lower : oneapi::mkl::uplo::upper;
+
+      using ExecSpace = typename view_type_A::execution_space;
+      ExecSpace space;
+      sycl::queue& q = space.sycl_queue();
+
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
+
+      // Allocate sytrf scratchpad
+      std::int64_t sytrf_lwork =
+        oneapi::mkl::lapack::sytrf_scratchpad_size<value_type>(
+          q, mkl_uplo, n, lda);
+      Kokkos::View<value_type*, ExecSpace> sytrf_scratch("sytrf_scratchpad",
+                                                         sytrf_lwork);
+
+      // Perform factorization
+      Kokkos::View<std::int64_t*,ExecSpace> ipiv("sytrf_ipiv", n);
+      try {
+        oneapi::mkl::lapack::sytrf(
+          q, mkl_uplo, n, A.data(), lda, ipiv.data(), sytrf_scratch.data(),
+          sytrf_lwork);
+      }
+      catch(oneapi::mkl::lapack::exception& e) {
+        if (e.info() > 0)
+          Genten::error("Error in call to sytrf.  Gram matrix is singular.");
+        else if (e.info() < 0)
+          Genten::error("Error in call to sytrf.  Entry " + std::to_string(e.info()) + " had an illegal value!");
+        else if (e.info() == sytrf_lwork && e.detail() != 0)
+          Genten::error("Error in call to sytrf.  Scratchpad size (" + std::to_string(sytrf_lwork) + ") < required size (" + std::to_string(e.detail()) + ")!");
+        else
+          Genten::error ("Unknown error in potrf.");
+      }
+
+      // There appears to not be sytrs in dpc++ mkl
+#if 0
+      // Allocate sytrs scratchpad
+      std::int64_t sytrs_lwork =
+        oneapi::mkl::lapack::sytrs_scratchpad_size<value_type>(
+          q, mkl_uplo, n, m, lda, ldb);
+      Kokkos::View<value_type*, ExecSpace> sytrs_scratch("sytrs_scratchpad",
+                                                         sytrs_lwork);
+
+      // Perform triangular solve
+      try {
+        oneapi::mkl::lapack::sytrs(
+          q, mkl_uplo, n, m, A.data(), lda, ipiv.data(), B.data(), ldb,
+          sytrs_scratch.data(), sytrs_lwork);
+      }
+      catch(oneapi::mkl::lapack::exception& e) {
+        if (e.info() > 0)
+          Genten::error("Error in call to sytrs.  Gram matrix is singular.");
+        else if (e.info() < 0)
+          Genten::error("Error in call to sytrs.  Entry " + std::to_string(e.info()) + " had an illegal value!");
+        else if (e.info() == sytrs_lwork && e.detail() != 0)
+          Genten::error("Error in call to sytrs.  Scratchpad size (" + std::to_string(sytrfs_lwork) + ") < required size (" + std::to_string(e.detail()) + ")!");
+        else
+          Genten::error ("Unknown error in potrs.");
+      }
+#endif
+    }
+
+    template <typename AT, typename ... AP,
+              typename BT, typename ... BP>
+    std::enable_if_t<
+      is_sycl_space<typename Kokkos::View<AT,AP...>::execution_space>::value &&
+      is_sycl_space<typename Kokkos::View<BT,BP...>::execution_space>::value
+      >
+    solveTransposeRHSImpl(const Kokkos::View<AT,AP...>& A,
+                          const Kokkos::View<BT,BP...>& B,
+                          const UploType uplo,
+                          const AlgParams& algParams)
+    {
+      if (algParams.rank_def_solver)
+        throw std::string("Rank-deficient solver not supported on the GPU!");
+
+      using view_type_A = Kokkos::View<AT, AP...>;
+      using view_type_B = Kokkos::View<BT, BP...>;
+      static_assert(std::is_same_v<typename view_type_A::value_type,
+                                   typename view_type_B::value_type>);
+      using value_type = typename view_type_A::value_type;
+
+      const std::int64_t m = B.extent(0);
+      const std::int64_t n = B.extent(1);
+      const std::int64_t lda = A.stride_0();
+      const std::int64_t ldb = B.stride_0();
+
+      using ExecSpace = typename view_type_A::execution_space;
+      ExecSpace space;
+      sycl::queue& q = space.sycl_queue();
+
+      gt_assert(int(A.extent(0)) == n);
+      gt_assert(int(A.extent(1)) == n);
+
+      // Allocate getrf scratchpad
+      std::int64_t getrf_lwork =
+        oneapi::mkl::lapack::getrf_scratchpad_size<value_type>(
+          q, n, n, lda);
+      Kokkos::View<value_type*, ExecSpace> getrf_scratch("getrf_scratchpad",
+                                                         getrf_lwork);
+
+      // Perform LU factorization
+      Kokkos::View<std::int64_t*,ExecSpace> ipiv("getrf_ipiv", n);
+      try {
+        oneapi::mkl::lapack::getrf(
+          q, n, n, A.data(), lda, ipiv.data(), getrf_scratch.data(),
+          getrf_lwork);
+      }
+      catch(oneapi::mkl::lapack::exception& e) {
+        if (e.info() > 0)
+          Genten::error("Error in call to getrf.  Gram matrix is singular.");
+        else if (e.info() < 0)
+          Genten::error("Error in call to getrf.  Entry " + std::to_string(e.info()) + " had an illegal value!");
+        else if (e.info() == getrf_lwork && e.detail() != 0)
+          Genten::error("Error in call to getrf.  Scratchpad size (" + std::to_string(getrf_lwork) + ") < required size (" + std::to_string(e.detail()) + ")!");
+        else
+          Genten::error ("Unknown error in getrf.");
+      }
+
+      // Allocate getrs scratchpad
+      std::int64_t getrs_lwork =
+        oneapi::mkl::lapack::getrs_scratchpad_size<value_type>(
+          q, oneapi::mkl::transpose::nontrans, n, m, lda, ldb);
+      Kokkos::View<value_type*, ExecSpace> getrs_scratch("getrs_scratchpad",
+                                                         getrs_lwork);
+
+      // Perform triangular solve
+      try {
+        oneapi::mkl::lapack::getrs(
+          q, oneapi::mkl::transpose::nontrans, n, m, A.data(), lda, ipiv.data(),
+          B.data(), ldb, getrs_scratch.data(), getrs_lwork);
+      }
+      catch(oneapi::mkl::lapack::exception& e) {
+        if (e.info() > 0 && e.detail() == 0)
+          Genten::error("Error in call to getrf.  Gram matrix is singular.");
+        else if (e.info() < 0)
+          Genten::error("Error in call to getrs.  Entry " + std::to_string(e.info()) + " had an illegal value!");
+        else if (e.info() == getrs_lwork && e.detail() != 0)
+          Genten::error("Error in call to getrs.  Scratchpad size (" + std::to_string(getrs_lwork) + ") < required size (" + std::to_string(e.detail()) + ")!");
+        else
+          Genten::error ("Unknown error in getrs.");
+      }
+    }
+
+#endif
+
   }
 }
 
@@ -2545,37 +2785,6 @@ solveTransposeRHS (const Genten::FacMatrixT<ExecSpace> & A,
      is_spd = false;
   }
   return is_spd;
-}
-
-template <typename ExecSpace>
-void Genten::FacMatrixT<ExecSpace>::
-rowTimes(Genten::ArrayT<ExecSpace> & x,
-         const ttb_indx nRow) const
-{
-  gt_assert(x.size() == data.extent(1));
-
-  const ttb_real * rptr = this->rowptr(nRow);
-  ttb_real * xptr = x.ptr();
-
-  vmul(data.extent(1),xptr,rptr);
-
-  return;
-}
-
-template <typename ExecSpace>
-void Genten::FacMatrixT<ExecSpace>::
-rowTimes(const ttb_indx         nRow,
-         const Genten::FacMatrixT<ExecSpace> & other,
-         const ttb_indx         nRowOther) const
-{
-  gt_assert(other.nCols() == data.extent(1));
-
-  ttb_real * rowPtr1 = this->rowptr(nRow);
-  const ttb_real * rowPtr2 = other.rowptr(nRowOther);
-
-  vmul(data.extent(1), rowPtr1, rowPtr2);
-
-  return;
 }
 
 template <typename ExecSpace>

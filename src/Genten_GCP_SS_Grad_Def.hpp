@@ -494,7 +494,7 @@ namespace Genten {
       }
     };
 
-#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || defined(ENABLE_SYCL_FOR_CUDA)
+#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || defined(KOKKOS_ENABLE_SYCL)
     // Specialization for Cuda, HIP and SYCL that always uses atomics and doesn't call
     // gcp_sgd_ss_grad_sv_kernel, which won't run on the GPU
     template <typename loss_type>

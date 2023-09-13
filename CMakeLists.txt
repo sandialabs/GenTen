@@ -391,6 +391,9 @@ endif()
 IF(NOT LAPACK_FOUND)
   INCLUDE (cmake/ConfigureLapack.cmake)
 ENDIF()
+IF (LAPACK_FOUND)
+  ADD_DEFINITIONS (-DLAPACK_FOUND)
+ENDIF()
 
 IF (ENABLE_CALIPER)
   OPTION(CALIPER_PATH "Path to Caliper installation")
@@ -502,6 +505,12 @@ IF(Kokkos_ENABLE_CUDA OR GENTEN_ENABLE_SYCL_FOR_CUDA)
   ENDIF()
 ENDIF()
 
+IF(Kokkos_ENABLE_SYCL AND NOT GENTEN_ENABLE_SYCL_FOR_CUDA)
+  SET(GENTEN_LIBS "${GENTEN_LIBS}  ${SYCL_MKL_LIBDIRS} -lmkl_sycl -lmkl_intel_ilp64 -lmkl_tbb_thread -lmkl_core -ltbb -lsycl -lOpenCL -lpthread -lm -ldl")
+  INCLUDE_DIRECTORIES(SYSTEM ${SYCL_MKL_INCDIRS})
+  MESSAGE (STATUS "GenTen: Using SYCL MKL")
+ENDIF()
+
 # Determine which execution spaces are enabled in executables (these are not
 # use to determine what is enabled in the code itself).  This prevents the use
 # of host-side execution spaces when LAPACK was not found (which will fail).
@@ -558,7 +567,7 @@ IF(KOKKOSKERNELS_INLINE_BUILD)
       # to pass to KokkosKernels
       SET(blas_libs "")
       SET(blas_dirs "")
-      FOREACH(libvar ${LAPACK_LIBS} ${LAPACK_ADD_LIBS})
+      FOREACH(libvar ${LAPACK_LIBS})
         GET_FILENAME_COMPONENT(varname ${libvar} NAME)
         GET_FILENAME_COMPONENT(dirname ${libvar} DIRECTORY)
         LIST(APPEND blas_libs ${varname})
@@ -675,40 +684,6 @@ INSTALL (
 #---- causes strange compiler errors on Windows.
 #---- ADD_DEFINITIONS (-DDATADIR=\"${Genten_SOURCE_DIR}/data/\")
 
-
-#------------------------------------------------------------
-#---- LAPACK Math Library
-# Separate pure c code from c++ code so CMake doesn't add Kokkos CXX flags
-# to compile of c code (since the c code can't depend on kokkos)
-#------------------------------------------------------------
-IF (LAPACK_FOUND)
-  ADD_DEFINITIONS (-DLAPACK_FOUND)
-  ADD_LIBRARY (genten_mathlibs_c
-    ${Genten_SOURCE_DIR}/src/mathlib/Genten_Default_VML.c
-    )
-ELSE (LAPACK_FOUND)
-  #---- Tell CMake to build with default BLAS implementation.
-  ADD_LIBRARY (genten_mathlibs_c
-    ${Genten_SOURCE_DIR}/src/mathlib/Genten_Default_Blas.c
-    ${Genten_SOURCE_DIR}/src/mathlib/Genten_Default_VML.c
-    )
-ENDIF (LAPACK_FOUND)
-TARGET_LINK_LIBRARIES(
-  genten_mathlibs_c
-  ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
-  )
-INSTALL (
-  TARGETS genten_mathlibs_c
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  EXPORT genten
-  )
-SET(GENTEN_MATHLIBS
-  genten_mathlibs_c
-  )
-TARGET_LINK_LIBRARIES(
-  ${GENTEN_MATHLIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
-  )
-
 #------------------------------------------------------------
 #---- L-BFGS-B library
 #------------------------------------------------------------
@@ -730,9 +705,6 @@ IF (ENABLE_LBFGSB)
     TARGETS genten_lbfgsb_c
     DESTINATION ${CMAKE_INSTALL_LIBDIR}
     EXPORT genten
-    )
-  SET(GENTEN_MATHLIBS ${GENTEN_MATHLIBS}
-    genten_lbfgsb_c
     )
 ENDIF()
 
@@ -766,7 +738,8 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_TensorIO.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Ktensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_MixedFormatOps.cpp
-  ${Genten_SOURCE_DIR}/src/Genten_TTM.cpp
+  # Disabling TTM for now.  Will remove later
+  #${Genten_SOURCE_DIR}/src/Genten_TTM.cpp
   ${Genten_SOURCE_DIR}/src/Genten_MathLibs_Wpr.cpp
   ${Genten_SOURCE_DIR}/src/Genten_portability.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Sptensor.cpp
@@ -885,6 +858,9 @@ ENDIF()
 IF(NOT HAVE_TRILINOS_KOKKOSKERNELS)
   TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkoskernels)
 ENDIF()
+IF(ENABLE_LBFGSB)
+  TARGET_LINK_LIBRARIES (gentenlib genten_lbfgsb_c)
+ENDIF()
 TARGET_LINK_LIBRARIES(gentenlib nlohmann_json_schema_validator)
 TARGET_LINK_LIBRARIES(gentenlib nlohmann_json::nlohmann_json)
 IF(HAVE_BOOST)
@@ -934,8 +910,8 @@ IF(GENTEN_ENABLE_SYCL_FOR_CUDA)
   TARGET_COMPILE_DEFINITIONS(gentenlib PUBLIC ENABLE_SYCL_FOR_CUDA)
 ENDIF()
 
-#SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${Trilinos_LIBRARIES} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
-SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
+#SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_LIBS} ${Trilinos_LIBRARIES} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
+SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_LIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
 TARGET_LINK_LIBRARIES(${GENTEN_LINK_LIBS})
 INSTALL (
   TARGETS gentenlib nlohmann_json_schema_validator nlohmann_json

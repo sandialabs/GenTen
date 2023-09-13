@@ -53,32 +53,6 @@ void Genten::error(std::string s)
   throw std::runtime_error(s);
 }
 
-bool  Genten::isEqualToTol(ttb_real  d1,
-                           ttb_real  d2,
-                           ttb_real  dTol)
-{
-  // Numerator = fabs(d1 - d2).
-  ttb_real  dDiff = fabs(d1 - d2);
-
-  // Denominator  = max(1, fabs(d1), fabs(d2).
-  ttb_real  dAbs1 = fabs(d1);
-  ttb_real  dAbs2 = fabs(d2);
-  ttb_real  dD = 1.0;
-  if ((dAbs1 > 1.0) || (dAbs2 > 1.0))
-  {
-    if (dAbs1 > dAbs2)
-      dD = dAbs1;
-    else
-      dD = dAbs2;
-  }
-
-  // Relative difference.
-  ttb_real  dRelDiff = dDiff / dD;
-
-  // Compare the relative difference to the tolerance.
-  return( dRelDiff < dTol );
-}
-
 char *  Genten::getGentenVersion(void)
 {
   return( (char *)("Genten Tensor Toolbox 0.0.0") );

@@ -59,7 +59,7 @@
 #define KOKKOS_DEFAULTED_DEVICE_FUNCTION __device__ inline
 #endif
 
-#if defined(ENABLE_SYCL_FOR_CUDA)
+#if defined(KOKKOS_ENABLE_SYCL)
 #include "SYCL/Kokkos_SYCL_Team.hpp"
 // According to SYCL documentation no qualifiers are needed for SYCL.
 #define KOKKOS_DEFAULTED_DEVICE_FUNCTION inline
@@ -87,7 +87,7 @@ namespace Genten {
     }
 #endif
 
-#if defined(ENABLE_SYCL_FOR_CUDA) && defined(__SYCL_DEVICE_ONLY__)
+#if defined(KOKKOS_ENABLE_SYCL) && defined(__SYCL_DEVICE_ONLY__)
     using SYCL_team_policy_member_type =
       Kokkos::TeamPolicy<Kokkos::Experimental::SYCL>::member_type;
 
@@ -1616,7 +1616,7 @@ namespace Genten {
 
 #endif
 
-#if defined(ENABLE_SYCL_FOR_CUDA) && defined(__SYCL_DEVICE_ONLY__)
+#if defined(KOKKOS_ENABLE_SYCL) && defined(__SYCL_DEVICE_ONLY__)
 
   // Specialization for SYCL where Length / Warp == 1.  Store the vector
   // components in register space since SYCL may store them in global memory
@@ -2940,7 +2940,7 @@ namespace Genten {
     }
   };
 
-#if defined(ENABLE_SYCL_FOR_CUDA) && defined(__SYCL_DEVICE_ONLY__)
+#if defined(KOKKOS_ENABLE_SYCL) && defined(__SYCL_DEVICE_ONLY__)
   template <typename Scalar, typename Ordinal,
             unsigned Length, unsigned Size, unsigned Warp>
   struct TinyVecMaker<Kokkos::Experimental::SYCL, Scalar, Ordinal, Length, Size, Warp> {

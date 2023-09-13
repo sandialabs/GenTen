@@ -240,25 +240,6 @@ isConsistent(const Genten::IndxArrayT<ExecSpace> & sz) const
 
 template <typename ExecSpace>
 bool Genten::KtensorImpl<ExecSpace>::
-hasNonFinite(ttb_indx &bad) const
-{
-  bad = 0;
-  if (lambda.hasNonFinite(bad)) {
-    std::cout << "Genten::Ktensor::hasNonFinite lambda.data["<<bad<<"] nonfinite " << std::endl;
-    return true;
-  }
-  for (ttb_indx i = 0; i < data.size(); i++) {
-    if (data[i].hasNonFinite(bad)) {
-      std::cout << "Genten::Ktensor::hasNonFinite data["<<i<<"] nonfinite element " << bad << std::endl;
-      return true;
-    }
-  }
-
-  return false;
-}
-
-template <typename ExecSpace>
-bool Genten::KtensorImpl<ExecSpace>::
 isNonnegative(bool bDisplayErrors) const
 {
   for (ttb_indx  n = 0; n < ndims(); n++)
@@ -331,56 +312,7 @@ entry(const Genten::IndxArrayT<ExecSpace> & subs) const
   ttb_indx nd = this->ndims();
   gt_assert(subs.size() == nd);
 
-  // This vector product is fundamental to many big computations; hence,
-  // stride should be one.  Since FacMatrix stores by row, the factor vectors
-  // are columns so that rowTimes() is across a row.
-
-  // Copy lambda array to temp array.
-  Genten::ArrayT<ExecSpace> x(lambda.size());
-  deep_copy(x,lambda);
-
-  // Compute a vector of elementwise products of corresponding rows
-  // of factor matrices.
-  for (ttb_indx i = 0; i < nd; i ++)
-  {
-    // Update temp array with elementwise product.
-    // If a subscript is out of bounds, it will be caught by rowTimes().
-    data[i].rowTimes(x, subs[i]);
-  }
-
-  // Return sum of elementwise products stored in temp array.
-  return(x.sum());
-}
-
-template <typename ExecSpace>
-ttb_real Genten::KtensorImpl<ExecSpace>::
-entry(const Genten::IndxArrayT<ExecSpace> & subs,
-      const Genten::ArrayT<ExecSpace> & altLambda) const
-{
-  ttb_indx nd = this->ndims();
-  gt_assert(subs.size() == nd);
-  gt_assert(altLambda.size() == lambda.size());
-
-  // This vector product is fundamental to many big computations; hence,
-  // stride across lambda should be one.  Since FacMatrix stores by row,
-  // the factor vectors are columns so that rowTimes() is across a row.
-
-  // Copy lambda array to temp array.
-  Genten::ArrayT<ExecSpace> lambdaForEntry(lambda.size());
-  for (ttb_indx  i = 0; i < lambdaForEntry.size(); i++)
-    lambdaForEntry[i] = altLambda[i];
-
-  // Compute a vector of elementwise products of corresponding rows
-  // of factor matrices.
-  for (ttb_indx i = 0; i < nd; i ++)
-  {
-    // Update temp array with elementwise product.
-    // If a subscript is out of bounds, it will be caught by rowTimes().
-    data[i].rowTimes (lambdaForEntry, subs[i]);
-  }
-
-  // Return sum of elementwise products stored in temp array.
-  return( lambdaForEntry.sum() );
+  return compute_Ktensor_value(*this, subs);
 }
 
 template <typename ExecSpace>
@@ -415,33 +347,9 @@ normalize(Genten::NormType norm_type, ttb_indx i) const
   cali::Function cali_func("Genten::Ktensor::normalize");
 #endif
 
-#ifndef _GENTEN_CK_FINITE
-#define CKFINITE 0 // set to 1 to turn on inf/nan checking.
-#else
-#define CKFINITE 1
-#endif
   const ttb_indx n = lambda.size();
   Genten::ArrayT<ExecSpace> norms(n);
-
-#if CKFINITE
-  ttb_indx bad= 0;
-  if (norms.hasNonFinite(bad)) {
-    std::cout << " Genten::Ktensor::normalize bad norms element "<< bad << " at line " << __LINE__ << std::endl;
-  }
-  if (data[i].hasNonFinite(bad)) {
-    std::cout << " Genten::Ktensor::normalize bad data["<<i<<"] element "<< bad << " at line " << __LINE__ << std::endl;
-  }
-#endif
-
   data[i].colNorms(norm_type, norms, 0.0);
-
-  // for (ttb_indx k = 0; k < n; k++)
-  // {
-  //   if (norms[k] == 0)
-  //   {
-  //     norms[k] = 1;
-  //   }
-  // }
   Kokkos::parallel_for("Genten::Ktensor::normalize_init_kernel",
                        Kokkos::RangePolicy<ExecSpace>(0,n),
                        KOKKOS_LAMBDA(const ttb_indx k)
@@ -449,34 +357,8 @@ normalize(Genten::NormType norm_type, ttb_indx i) const
     if (norms[k] == ttb_real(0))
       norms[k] = ttb_real(1);
   });
-
-#if CKFINITE
-  if (data[i].hasNonFinite(bad)) {
-    std::cout << " Genten::Ktensor::normalize bad data["<<i<<"] element "<< bad << " at line " << __LINE__ << std::endl;
-  }
-  if (norms.hasNonFinite(bad)) {
-    std::cout << " Genten::Ktensor::normalize bad norms element "<< bad << " at line " << __LINE__ << std::endl;
-  }
-#endif
-
   data[i].colScale(norms, true);
-
-#if CKFINITE
-  if (data[i].hasNonFinite(bad)) {
-    std::cout << " Genten::Ktensor::normalize bad data["<<i<<"] element "<< bad << " at line " << __LINE__ << std::endl;
-  }
-  if (norms.hasNonFinite(bad)) {
-    std::cout << " Genten::Ktensor::normalize bad norms element "<< bad << " at line " << __LINE__ << std::endl;
-  }
-#endif
-
   lambda.times(norms);
-
-#if CKFINITE
-  if (lambda.hasNonFinite(bad)) {
-    std::cout << " Genten::Ktensor::normalize bad lambda element "<< bad << " at line " << __LINE__ << std::endl;
-  }
-#endif
 }
 
 template <typename ExecSpace>

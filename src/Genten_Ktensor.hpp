@@ -202,8 +202,6 @@ public:
   // number of rows in each matrix matches the specified size.
   bool isConsistent(const IndxArrayT<ExecSpace> & sz) const;
 
-  bool hasNonFinite(ttb_indx &bad) const;
-
   // Return true if the ktensor is nonnegative: no negative entries and
   // no negative weights.  Optionally print the first error found.
   bool isNonnegative(bool bDisplayErrors) const;
@@ -279,10 +277,6 @@ public:
 
   // Return entry of constructed Ktensor.
   ttb_real entry(const IndxArrayT<ExecSpace> & subs) const;
-
-  // Return entry of constructed Ktensor, substituting altLambda for lambda.
-  ttb_real entry(const IndxArrayT<ExecSpace> & subs,
-                 const ArrayT<ExecSpace> & altLambda) const;
 
   // Distribute weights uniformly across factor matrices (set lambda to vector of ones)
   void distribute() const;

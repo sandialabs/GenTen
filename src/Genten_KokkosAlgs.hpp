@@ -61,9 +61,9 @@
 #include <caliper/cali.h>
 #endif
 
-#if defined(ENABLE_SYCL_FOR_CUDA)
-#include <execution>
-#endif
+//#if defined(KOKKOS_ENABLE_SYCL)
+//#include <execution>
+//#endif
 
 // Various utility algorithms using Kokkos
 
@@ -104,11 +104,11 @@ void perm_sort_op(const PermType& perm, const Op& op)
   else
 #endif
 
-#if defined(ENABLE_SYCL_FOR_CUDA)
+#if defined(KOKKOS_ENABLE_SYCL)
   if (is_sycl_space<exec_space>::value) {
     auto perm_mir = create_mirror_view(perm);
     deep_copy(perm_mir, perm);
-    std::stable_sort(std::execution::par, perm_mir.data(), perm_mir.data()+sz, op);
+    std::stable_sort(/*std::execution::par,*/ perm_mir.data(), perm_mir.data()+sz, op);
     deep_copy(perm, perm_mir);
   }
   else
@@ -133,7 +133,7 @@ void perm_sort(const PermType& perm, const ViewType& v)
   // We see a massive slowdown on the CPU if this lambda does capture-by-value,
   // which is what KOKKOS_LAMBDA always does. It seems that the view is
   // copied each time the op is executed!
-#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || defined(ENABLE_SYCL_FOR_CUDA)
+#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || defined(KOKKOS_ENABLE_SYCL)
   perm_sort_op(perm, KOKKOS_LAMBDA(const size_type& a, const size_type& b)
 #else
   perm_sort_op(perm, [&](const size_type& a, const size_type& b)

@@ -178,9 +178,6 @@ namespace Genten {
       return (data.extent(0)==0);
     }
 
-    //! @brief Tell where the inf/nan is first seen.
-    bool hasNonFinite(ttb_indx &where) const;
-
     //! @brief Return nnz
     ttb_indx nnz() const;
 
@@ -195,9 +192,6 @@ namespace Genten {
 
     //! @name Element Access
     //@{
-
-    //! @brief Return reference to value at position i (out-of-bounds checked).
-    ttb_real & at(ttb_indx i) const;
 
     //! @brief Return reference to value at position i (no out-of-bounds check).
     KOKKOS_INLINE_FUNCTION
@@ -261,9 +255,6 @@ namespace Genten {
 
     //! @brief x = a*y + b*x
     void update(const ttb_real a, const ArrayT & y, const ttb_real b) const;
-
-    //! @brief x = x + sum(y[i])
-    void plusVec(std::vector< const ArrayT * > y) const;
 
     //! @brief x = y + z
     void plus(const ArrayT & y, const ArrayT & z) const;

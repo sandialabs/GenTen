@@ -65,10 +65,7 @@ namespace Genten
  *  in the Ktensor.
  *
  *  Matrix elements are stored in row major order, meaning the (i,j) entry
- *  is stored at [i * ncols + j].  Grey Ballard did some analysis to justify
- *  row major instead of column major.  It optimizes computations in
- *  rowTimes(), which is called during the innermost loop of an mttkrp
- *  computation.  The ordering is mostly hidden from other classes.
+ *  is stored at [i * ncols + j].
  */
 
 template <typename ExecSpace> class FacMatArrayT;   // Forward declaration to avoid circular referencing
@@ -342,27 +339,10 @@ public:
     // Compute Frobenius norm-squared of matrix
     ttb_real normFsq() const;
 
-    // tell location of first nonfinite number (Inf or NaN) where will  be 0 if result is false,
-    bool hasNonFinite(ttb_indx &where) const;
-
     // Permute columns in place using given column indices.
     // On return, column 0 will contain data moved from the column indicated
     // by indices[0], column 1 teh data indicated by indices[1], etc.
     void permute(const IndxArray& indices) const;
-
-    //! Perform a matrix-vector multiply.
-    /*!
-     *  The vector can be treated as a column vector (bTranspose = false),
-     *  in which case it post-multiplies the factor matrix, or as a row vector
-     *  (bTranspose = true), in which case it pre-multiplies.
-     *
-     *  @param[in] bTranspose  True means compute x = A'x, false means x = Ax.
-     *  @param[in] x  Vector of values to multiply A by.
-     *  @param[out] y  Vector of result.
-     */
-    void multByVector(bool                bTranspose,
-                      const ArrayT<ExecSpace> &  x,
-                            ArrayT<ExecSpace> &  y) const;
 
     //! Perform matrix-matrix multiply
     /*!
@@ -397,31 +377,6 @@ public:
                             const UploType uplo = Upper,
                             const bool spd = true,
                             const AlgParams& algParams = AlgParams()) const;
-
-    //! Multiply x elementwise by the ith row of the factor matrix, overwriting x.
-    /*!
-     *  Compute x = x .* A(i,:), the elementwise product of the vector x
-     *  and row i.
-     *
-     *  @param[in,out] x  Dense vector with length matching nCols().
-     *  @param[in] nRow  Row number in the factor matrix to multiply by.
-     */
-    void rowTimes(      ArrayT<ExecSpace> &  x,
-                  const ttb_indx      nRow) const;
-
-    //! Multiply rows from two factor matrices elementwise.
-    /*!
-     *  Compute A(i,:) = A(i,:) .* B(j,:), the elementwise product of
-     *  row i and row j from another factor matrix.  The result overwrites
-     *  the row of this object.
-     *
-     *  @param[in] nRow  Row number in this factor matrix.
-     *  @param[in] other  Factor matrix providing other rows.
-     *  @param[in] nRowOther  Row number in the other factor matrix.
-     */
-    void rowTimes(const ttb_indx         nRow,
-                  const FacMatrixT & other,
-                  const ttb_indx         nRowOther) const;
 
     //! Multiply rows from two factor matrices to get the dot product.
     /*!

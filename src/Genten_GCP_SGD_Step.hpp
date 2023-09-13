@@ -920,7 +920,7 @@ namespace Genten {
                       const KtensorImpl<ExecSpace>& u) const
       {
 #if defined(__SYCL_DEVICE_ONLY__)
-        using cl::sycl::pow;
+        using sycl::pow;
 #else
         using std::pow;
 #endif

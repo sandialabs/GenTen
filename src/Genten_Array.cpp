@@ -47,8 +47,6 @@
 #include <limits>
 
 #include "Genten_Array.hpp"
-#include "Genten_MathLibs_Wpr.hpp"
-#include "Genten_portability.hpp"
 #include "Genten_RandomMT.hpp"
 #include "Genten_Util.hpp"
 #include "Genten_Kokkos.hpp"
@@ -140,13 +138,8 @@ template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 rand() const
 {
-  RandomMT  cRNG(0);
-  const ttb_indx sz = data.extent(0);
-  for (ttb_indx  i = 0; i < sz; i++)
-  {
-    data[i] = cRNG.genrnd_double();
-  }
-  return;
+  RandomMT cRNG(0);
+  scatter(false, false, cRNG);
 }
 
 template <typename ExecSpace>
@@ -175,12 +168,6 @@ scatter (const bool bUseMatlabRNG,
       else
         dNextRan = cRMT.genrnd_double();
       d[i] = dNextRan;
-      /*TBD...legacy randomization
-        data[i]= 0;
-        while (data[i] == 0.0) {
-        data[i] = drand48();
-        }
-      */
     }
     deep_copy(data, d);
   }
@@ -191,48 +178,26 @@ template <typename ExecSpace>
 bool Genten::ArrayT<ExecSpace>::
 operator==(const Genten::ArrayT<ExecSpace> & a) const
 {
+  // Check for equal sizes.
   const ttb_indx sz = data.extent(0);
   if (sz != a.data.extent(0))
   {
-    return(false);
+    return false;
   }
 
-  for (ttb_indx i = 0; i < sz; i ++)
+  // Check that elements are equal
+  view_type d = data;
+  ttb_indx value = 0;
+  Kokkos::parallel_reduce("Genten::Array::equal_kernel",
+                          Kokkos::RangePolicy<ExecSpace>(0,sz),
+                          KOKKOS_LAMBDA(const ttb_indx i, ttb_indx& t)
   {
-    if (data[i] != a.data[i])
-    {
-      return(false);
-    }
-  }
+    if (d[i] != a.data[i])
+      ++t;
+  }, value);
+  Kokkos::fence();
 
-  return(true);
-}
-
-template <typename ExecSpace>
-bool Genten::ArrayT<ExecSpace>::
-hasNonFinite(ttb_indx &where) const
-{
-  const ttb_indx sz = data.extent(0);
-  for  (ttb_indx i = 0; i < sz; i ++)
-  {
-    if (isRealValid(data[i]) == false) {
-      where = i;
-      return true;
-    }
-  }
-  return false;
-}
-
-template <typename ExecSpace>
-ttb_real & Genten::ArrayT<ExecSpace>::
-at(ttb_indx i) const
-{
-  const ttb_indx sz = data.extent(0);
-  if ( i < sz) {
-    return(data[i]);
-  }
-  Genten::error("Genten::ArrayT::at - out-of-bounds error");
-  return data[0]; // not reached
+  return value == 0;
 }
 
 template <typename ExecSpace>
@@ -251,7 +216,6 @@ norm(Genten::NormType ntype) const
   {
   case NormOne:
   {
-    //nrm = Genten::nrm1(sz, data.data(), 1);
     Kokkos::parallel_reduce("Genten::Array::norm_1_kernel",
                             policy,
                             KOKKOS_LAMBDA(const ttb_indx i, ttb_real& t)
@@ -264,7 +228,6 @@ norm(Genten::NormType ntype) const
   }
   case NormTwo:
   {
-    //nrm = Genten::nrm2(sz, data.data(), 1);
     Kokkos::parallel_reduce("Genten::Array::norm_2_kernel",
                             policy,
                             KOKKOS_LAMBDA(const ttb_indx i, ttb_real& t)
@@ -277,8 +240,15 @@ norm(Genten::NormType ntype) const
   }
   case NormInf:
   {
-    ttb_indx idx = Genten::imax(sz, data.data(), 1);
-    nrm = fabs(data[idx]);
+    Kokkos::parallel_reduce("Genten::Array::norm_inf_kernel",
+                            policy,
+                            KOKKOS_LAMBDA(const ttb_indx i, ttb_real& t)
+    {
+      const ttb_real u = std::fabs(my_data(i));
+      if (u > t)
+        t = u;
+    }, Kokkos::Max<ttb_real>(nrm));
+    Kokkos::fence();
     break;
   }
   default:
@@ -294,15 +264,18 @@ ttb_indx Genten::ArrayT<ExecSpace>::
 nnz() const
 {
   const ttb_indx sz = data.extent(0);
-  ttb_indx cnt = 0;
-  for (ttb_indx i = 0; i < sz; i ++)
+  view_type d = data;
+  ttb_indx value = 0;
+  Kokkos::parallel_reduce("Genten::Array::nnz_kernel",
+                          Kokkos::RangePolicy<ExecSpace>(0,sz),
+                          KOKKOS_LAMBDA(const ttb_indx i, ttb_indx& t)
   {
-    if (data[i] != 0)
-    {
-      cnt ++;
-    }
-  }
-  return(cnt);
+    if (d[i] != 0)
+      ++t;
+  }, value);
+  Kokkos::fence();
+
+  return value;
 }
 
 template <typename ExecSpace>
@@ -315,19 +288,17 @@ dot(const Genten::ArrayT<ExecSpace> & y) const
     Genten::error("Genten::ArrayT::dot - Size mismatch");
   }
 
-  //return(Genten::dot(sz, data.data(), 1, y.data.data(), 1));
-
-  auto my_data = data; // can't capture *this by value
-  ttb_real d = 0.0;
+  view_type d = data;
+  ttb_real value = 0.0;
   Kokkos::parallel_reduce("Genten::Array::dot_kernel",
                           Kokkos::RangePolicy<ExecSpace>(0,sz),
                           KOKKOS_LAMBDA(const ttb_indx i, ttb_real& t)
   {
-    t += my_data(i)*y.data(i);
-  }, d);
+    t += d(i)*y.data(i);
+  }, value);
   Kokkos::fence();
 
-  return d;
+  return value;
 }
 
 template <typename ExecSpace>
@@ -338,17 +309,22 @@ isEqual(const Genten::ArrayT<ExecSpace> & y, ttb_real tol) const
   const ttb_indx sz = data.extent(0);
   if (sz != y.data.extent(0))
   {
-    return( false );
+    return false;
   }
 
-  // Check that elements are equal.
-  for (ttb_indx  i = 0; i < sz; i++)
+  // Check that elements are equal
+  view_type d = data;
+  ttb_indx value = 0;
+  Kokkos::parallel_reduce("Genten::Array::isEqual_kernel",
+                          Kokkos::RangePolicy<ExecSpace>(0,sz),
+                          KOKKOS_LAMBDA(const ttb_indx i, ttb_indx& t)
   {
-    if (Genten::isEqualToTol(data[i], y.data[i], tol) == false)
-      return( false );
-  }
+    if (Genten::isEqualToTol(d[i], y.data[i], tol) == false)
+      ++t;
+  }, value);
+  Kokkos::fence();
 
-  return(true);
+  return value == 0;
 }
 
 template <typename ExecSpace>
@@ -356,9 +332,8 @@ void Genten::ArrayT<ExecSpace>::
 times(ttb_real a) const
 {
   const ttb_indx sz = data.extent(0);
-  //Genten::scal(sz, a, data.data(), 1);
   view_type d = data;
-  Kokkos::parallel_for("Genten::Array::scalar_times_kernel",
+  Kokkos::parallel_for("Genten::Array::times_kernel_1",
                        Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
@@ -371,12 +346,15 @@ void Genten::ArrayT<ExecSpace>::
 times(ttb_real a, const Genten::ArrayT<ExecSpace> & y) const
 {
   const ttb_indx sz = data.extent(0);
-  if (sz != y.data.extent(0))
+  gt_assert(sz == y.data.extent(0));
+
+  view_type d = data;
+  Kokkos::parallel_for("Genten::Array::times_kernel_2",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
   {
-    Genten::error("Genten::ArrayT::dot - Size mismatch");
-  }
-  Genten::copy(sz, y.data.data(), 1, data.data(), 1);
-  Genten::scal(sz, a, data.data(), 1);
+    d[i] = a*y.data[i];
+  });
 }
 
 template <typename ExecSpace>
@@ -384,10 +362,13 @@ void Genten::ArrayT<ExecSpace>::
 invert(ttb_real a) const
 {
   const ttb_indx sz = data.extent(0);
-  for (ttb_indx i = 0; i < sz; i ++)
+  view_type d = data;
+  Kokkos::parallel_for("Genten::Array::invert_kernel_1",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
   {
-    data[i] = a / data[i];
-  }
+    d[i] = a / data[i];
+  });
 }
 
 template <typename ExecSpace>
@@ -395,14 +376,15 @@ void Genten::ArrayT<ExecSpace>::
 invert(ttb_real a, const Genten::ArrayT<ExecSpace> & y) const
 {
   const ttb_indx sz = data.extent(0);
-  if (sz != y.data.extent(0))
+  gt_assert(sz == y.data.extent(0));
+
+  view_type d = data;
+  Kokkos::parallel_for("Genten::Array::invert_kernel_2",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
   {
-    Genten::error("Genten::ArrayT::dot - Size mismatch");
-  }
-  for (ttb_indx i = 0; i < data.extent(0); i ++)
-  {
-    data[i] = a / y.data[i];
-  }
+    d[i] = a / y.data[i];
+  });
 }
 
 template <typename ExecSpace>
@@ -411,7 +393,7 @@ power(ttb_real a) const
 {
   view_type d = data;
   const ttb_indx sz = data.extent(0);
-  Kokkos::parallel_for("Genten::Array::power_kernel",
+  Kokkos::parallel_for("Genten::Array::power_kernel_1",
                        Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
@@ -430,14 +412,21 @@ void Genten::ArrayT<ExecSpace>::
 power(ttb_real a, const Genten::ArrayT<ExecSpace> & y) const
 {
   const ttb_indx sz = data.extent(0);
-  if (sz != y.data.extent(0))
+  gt_assert(sz == y.data.extent(0));
+
+  view_type d = data;
+  Kokkos::parallel_for("Genten::Array::power_kernel_2",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
   {
-    Genten::error("Genten::ArrayT::power - Size mismatch");
-  }
-  for (ttb_indx i = 0; i < sz; i ++)
-  {
-    data[i] = pow(y.data[i], a);
-  }
+#if defined(__SYCL_DEVICE_ONLY__)
+    using sycl::pow;
+#else
+    using std::pow;
+#endif
+
+    d[i] = pow(y.data[i], a);
+  });
 }
 
 template <typename ExecSpace>
@@ -446,7 +435,7 @@ shift(ttb_real a) const
 {
   const ttb_indx sz = data.extent(0);
   view_type d = data;
-  Kokkos::parallel_for("Genten::Array::scalar_shift_kernel",
+  Kokkos::parallel_for("Genten::Array::scalar_shift_kernel_1",
                        Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
@@ -459,14 +448,15 @@ void Genten::ArrayT<ExecSpace>::
 shift(ttb_real a, const Genten::ArrayT<ExecSpace> & y) const
 {
   const ttb_indx sz = data.extent(0);
-  if (sz != y.data.extent(0))
+  gt_assert(sz == y.data.extent(0));
+
+  view_type d = data;
+  Kokkos::parallel_for("Genten::Array::shift_kernel_2",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
   {
-    Genten::error("Genten::ArrayT::dot - Size mismatch");
-  }
-  for (ttb_indx i = 0; i < sz; i ++)
-  {
-    data[i] = y.data[i] + a;
-  }
+    d[i] = y.data[i] + a;
+  });
 }
 
 template <typename ExecSpace>
@@ -475,18 +465,14 @@ update(const ttb_real a, const Genten::ArrayT<ExecSpace> & y,
        const ttb_real b) const
 {
   const ttb_indx sz = data.extent(0);
-  if (sz != y.data.extent(0))
-  {
-    Genten::error("Genten::ArrayT::update - size mismatch");
-  }
+  gt_assert(sz == y.data.extent(0));
 
   view_type d = data;
-  view_type yd = y.data;
   Kokkos::parallel_for("Genten::Array::update_kernel",
                        Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
  {
-   d[i] = a*yd[i] + b*d[i];
+   d[i] = a*y.data[i] + b*d[i];
  });
 }
 
@@ -495,50 +481,15 @@ void Genten::ArrayT<ExecSpace>::
 plus(const Genten::ArrayT<ExecSpace> & y, const ttb_real s) const
 {
   const ttb_indx sz = data.extent(0);
-  if (sz != y.data.extent(0))
-  {
-    Genten::error("Genten::ArrayT::plus (one input) - size mismatch");
-  }
+  gt_assert(sz == y.data.extent(0));
 
-  //Genten::axpy(sz, s, y.data.data(), 1, data.data(), 1);
   view_type d = data;
-  view_type yd = y.data;
-  Kokkos::parallel_for("Genten::Array::plus_kernel",
+  Kokkos::parallel_for("Genten::Array::plus_kernel_1",
                        Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
-    d[i] += s*yd[i];
+    d[i] += s*y.data[i];
   });
-}
-
-// x = x + sum(y[i] )
-template <typename ExecSpace>
-void Genten::ArrayT<ExecSpace>::
-plusVec(std::vector< const ArrayT<ExecSpace> * > y) const
-{
-  const ttb_indx sz = data.extent(0);
-  typename std::vector< const ArrayT * >::iterator it;
-  for (it = y.begin(); it < y.end(); it++) {
-    if (sz != (*it)->data.extent(0))
-    {
-      Genten::error("Genten::ArrayT::plusVec - size mismatch");
-    }
-  }
-  size_t nptrs = y.size();
-  const ttb_real ** dptr = new const ttb_real *[nptrs];
-  ttb_real * RESTRICT atmp = data.data();
-  for (size_t i=0; i< nptrs; i++) {
-    dptr[i] = y[i]->data.data();
-  }
-  for (ttb_indx i=0;i< sz; i++)
-  {
-    ttb_real stmp = 0.0;
-    for (size_t j=0; j< nptrs; j++) {
-      stmp += dptr[j][i];
-    }
-    atmp[i] += stmp;
-  }
-  delete [] dptr;
 }
 
 template <typename ExecSpace>
@@ -546,13 +497,16 @@ void Genten::ArrayT<ExecSpace>::
 plus(const Genten::ArrayT<ExecSpace> & y, const Genten::ArrayT<ExecSpace> & z) const
 {
   const ttb_indx sz = data.extent(0);
-  if (y.data.extent(0) != z.data.extent(0))
-  {
-    Genten::error("Genten::ArrayT::plus (two inputs) - size mismatch");
-  }
+  gt_assert(sz == y.data.extent(0));
+  gt_assert(y.data.extent(0) == z.data.extent(0));
 
-  deep_copy(*this, y);
-  Genten::axpy(sz, 1.0, z.data.data(), 1, data.data(), 1);
+  view_type d = data;
+  Kokkos::parallel_for("Genten::Array::plus_kernel_2",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
+  {
+    d[i] = y.data[i] + z.data[i];
+  });
 }
 
 template <typename ExecSpace>
@@ -560,12 +514,15 @@ void Genten::ArrayT<ExecSpace>::
 minus(const Genten::ArrayT<ExecSpace> & y) const
 {
   const ttb_indx sz = data.extent(0);
-  if (sz != y.data.extent(0))
-  {
-    Genten::error("Genten::ArrayT::minus (one input) - size mismatch");
-  }
+  gt_assert(sz == y.data.extent(0));
 
-  Genten::axpy(sz, -1.0, y.data.data(), 1, data.data(), 1);
+  view_type d = data;
+  Kokkos::parallel_for("Genten::Array::minus_kernel_1",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
+  {
+    d[i] -= y.data[i];
+  });
 }
 
 template <typename ExecSpace>
@@ -573,13 +530,16 @@ void Genten::ArrayT<ExecSpace>::
 minus(const Genten::ArrayT<ExecSpace> & y, const Genten::ArrayT<ExecSpace> & z) const
 {
   const ttb_indx sz = data.extent(0);
-  if (y.data.extent(0) != z.data.extent(0))
-  {
-    Genten::error("Genten::ArrayT::minus (two inputs) - size mismatch");
-  }
+  gt_assert(sz == y.data.extent(0));
+  gt_assert(y.data.extent(0) == z.data.extent(0));
 
-  deep_copy(*this, y);
-  Genten::axpy(sz, -1.0, z.data.data(), 1, data.data(), 1);
+  view_type d = data;
+  Kokkos::parallel_for("Genten::Array::minus_kernel_2",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
+  {
+    d[i] = y.data[i] - z.data[i];
+  });
 }
 
 template <typename ExecSpace>
@@ -591,19 +551,14 @@ times(const Genten::ArrayT<ExecSpace> & y) const
 #endif
 
   const ttb_indx sz = data.extent(0);
-  if (sz != y.data.extent(0))
-  {
-    Genten::error("Genten::ArrayT::times (one input) - size mismatch");
-  }
+  gt_assert(sz == y.data.extent(0));
 
-  //vmul(sz, data.data(), y.data.data());
   view_type d = data;
-  view_type yd = y.data;
-  Kokkos::parallel_for("Genten::Array::times_kernel",
+  Kokkos::parallel_for("Genten::Array::times_kernel_1",
                        Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
-    d[i] *= yd[i];
+    d[i] *= y.data[i];
   });
 }
 
@@ -612,15 +567,15 @@ void Genten::ArrayT<ExecSpace>::
 times(const Genten::ArrayT<ExecSpace> & y, const Genten::ArrayT<ExecSpace> & z) const
 {
   const ttb_indx sz = data.extent(0);
-  if (y.data.extent(0) != z.data.extent(0))
-  {
-    Genten::error("Genten::ArrayT::times (two inputs) - size mismatch");
-  }
+  gt_assert(y.data.extent(0) == z.data.extent(0));
 
-  for (ttb_indx i = 0; i < sz; i ++)
+  view_type d = data;
+  Kokkos::parallel_for("Genten::Array::times_kernel_2",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
   {
-    data[i] = y.data[i] * z.data[i];
-  }
+    d[i] = y.data[i] * z.data[i];
+  });
 }
 
 template <typename ExecSpace>
@@ -628,15 +583,15 @@ void Genten::ArrayT<ExecSpace>::
 divide(const Genten::ArrayT<ExecSpace> & y) const
 {
   const ttb_indx sz = data.extent(0);
-  if (sz != y.data.extent(0))
-  {
-    Genten::error("Genten::ArrayT::divide (one input) - size mismatch");
-  }
+  gt_assert(sz == y.data.extent(0));
 
-  for (ttb_indx i = 0; i < sz; i ++)
+  view_type d = data;
+  Kokkos::parallel_for("Genten::Array::divide_kernel_1",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
   {
-    data[i] /= y.data[i];
-  }
+    d[i] /= y.data[i];
+  });
 }
 
 template <typename ExecSpace>
@@ -644,15 +599,15 @@ void Genten::ArrayT<ExecSpace>::
 divide(const Genten::ArrayT<ExecSpace> & y, const Genten::ArrayT<ExecSpace> & z) const
 {
   const ttb_indx sz = data.extent(0);
-  if (y.data.extent(0) != z.data.extent(0))
-  {
-    Genten::error("Genten::ArrayT::divide (two inputs) - size mismatch");
-  }
+  gt_assert(y.data.extent(0) == z.data.extent(0));
 
-  for (ttb_indx i = 0; i < sz; i ++)
+  view_type d = data;
+  Kokkos::parallel_for("Genten::Array::divide_kernel_2",
+                       Kokkos::RangePolicy<ExecSpace>(0,sz),
+                       KOKKOS_LAMBDA(const ttb_indx i)
   {
-    data[i] = y.data[i] / z.data[i];
-  }
+    d[i] = y.data[i] / z.data[i];
+  });
 }
 
 template <typename ExecSpace>
@@ -660,11 +615,17 @@ ttb_real Genten::ArrayT<ExecSpace>::
 sum() const
 {
   const ttb_indx sz = data.extent(0);
+
+  view_type d = data;
   ttb_real value = 0;
-  for (ttb_indx i = 0; i < sz; i ++)
+  Kokkos::parallel_reduce("Genten::Array::sum_kernel",
+                          Kokkos::RangePolicy<ExecSpace>(0,sz),
+                          KOKKOS_LAMBDA(const ttb_indx i, ttb_real& t)
   {
-    value += data[i];
-  }
+    t += data[i];
+  }, value);
+  Kokkos::fence();
+
   return value;
 }
 

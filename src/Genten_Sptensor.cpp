@@ -56,9 +56,9 @@
 #include <caliper/cali.h>
 #endif
 
-#if defined(ENABLE_SYCL_FOR_CUDA)
-#include <execution>
-#endif
+//#if defined(KOKKOS_ENABLE_SYCL)
+//#include <execution>
+//#endif
 
 namespace Genten {
 namespace Impl {
@@ -399,7 +399,7 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
     else
 #endif
 
-#if defined(ENABLE_SYCL_FOR_CUDA)
+#if defined(KOKKOS_ENABLE_SYCL)
   if (is_sycl_space<ExecSpace>::value) {
     auto subs_mir = create_mirror_view(subs);
     deep_copy(subs_mir, subs);
@@ -408,7 +408,7 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
     deep_copy(tmp_mir, tmp);
 
     std::stable_sort(
-      std::execution::par, tmp_mir.data(), tmp_mir.data() + sz,
+      /*std::execution::par,*/ tmp_mir.data(), tmp_mir.data() + sz,
       KOKKOS_LAMBDA(const ttb_indx& a, const ttb_indx& b) {
         return (subs_mir(a,n) < subs_mir(b,n));
       }
@@ -508,7 +508,7 @@ sortImpl(vals_type& vals, subs_type& subs, subs_type& subs_gids)
   else
 #endif
 
-#if defined(ENABLE_SYCL_FOR_CUDA)
+#if defined(KOKKOS_ENABLE_SYCL)
   if (is_sycl_space<ExecSpace>::value) {
     auto subs_gids_mir = create_mirror_view(subs_gids);
     deep_copy(subs_gids_mir, subs_gids);
@@ -517,7 +517,7 @@ sortImpl(vals_type& vals, subs_type& subs, subs_type& subs_gids)
     deep_copy(tmp_mir, tmp);
 
     std::stable_sort(
-      std::execution::par, tmp_mir.data(), tmp_mir.data() + sz,
+      /*std::execution::par,*/ tmp_mir.data(), tmp_mir.data() + sz,
       KOKKOS_LAMBDA(const ttb_indx& a, const ttb_indx& b) {
         unsigned n = 0;
         while ((n < nd) && (subs_gids_mir(a,n) == subs_gids_mir(b,n))) ++n;
