@@ -64,12 +64,6 @@
 //---- DEFINED IF KOKKOS IS ENABLED.
 #cmakedefine HAVE_KOKKOS
 
-//---- DEFINED IF cuBLAS IS ENABLED.
-#cmakedefine HAVE_CUBLAS
-
-//---- DEFINED IF cuSOLVER IS ENABLED.
-#cmakedefine HAVE_CUSOLVER
-
 //---- DEFINED IF BOOST IS ENABLED.
 #cmakedefine HAVE_BOOST
 

@@ -41,8 +41,7 @@
 
 #include "Genten_CublasHandle.hpp"
 
-#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) &&          \
-    defined(HAVE_CUBLAS)
+#if defined(KOKKOS_ENABLE_CUDA)
 
 #include <iostream>
 #include <sstream>

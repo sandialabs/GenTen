@@ -53,20 +53,16 @@
 
 #include "Genten_Util.hpp"
 
-#if defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)
+#if defined(KOKKOS_ENABLE_CUDA)
 #include "Genten_CublasHandle.hpp"
 #include "Genten_CusolverHandle.hpp"
 #endif
 
 #if defined(KOKKOS_ENABLE_HIP)
-#if defined(HAVE_ROCBLAS)
+#include "Genten_RocblasHandle.hpp"
 #include "Genten_RocblasHandle.hpp"
 #include "rocblas.h"
-#endif
-#if defined(HAVE_ROCSOLVER)
-#include "Genten_RocblasHandle.hpp"
 #include "rocsolver.h"
-#endif
 #endif
 
 #if defined(KOKKOS_ENABLE_SYCL)
@@ -285,7 +281,7 @@ struct GemmImpl<ExecSpace, Scalar,
   }
 };
 
-#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) && defined(HAVE_CUBLAS)
+#if defined(KOKKOS_ENABLE_CUDA)
 
 template <typename ExecSpace>
 struct GemmImpl<
@@ -343,7 +339,7 @@ struct GemmImpl<
 
 #endif
 
-#if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
+#if defined(KOKKOS_ENABLE_HIP)
 
 template <typename ExecSpace>
 struct GemmImpl<

@@ -47,7 +47,7 @@
 #include "parallel_stable_sort.hpp"
 #endif
 
-#if defined(KOKKOS_ENABLE_CUDA) || (defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCTHRUST))
+#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP)
 #include <thrust/sort.h>
 #include <thrust/device_ptr.h>
 #endif
@@ -387,7 +387,7 @@ createPermutationImpl(const subs_view_type& perm, const subs_view_type& subs,
       tmp(i) = i;
     });
 
-#if defined(KOKKOS_ENABLE_CUDA) || (defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCTHRUST))
+#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP)
     if (is_gpu_space<ExecSpace>::value) {
       thrust::stable_sort(thrust::device_ptr<ttb_indx>(tmp.data()),
                           thrust::device_ptr<ttb_indx>(tmp.data()+sz),
@@ -499,7 +499,7 @@ sortImpl(vals_type& vals, subs_type& subs, subs_type& subs_gids)
       return true;
     };
 
-#if defined(KOKKOS_ENABLE_CUDA) || (defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCTHRUST))
+#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP)
   if (is_gpu_space<ExecSpace>::value) {
     thrust::stable_sort(thrust::device_ptr<ttb_indx>(tmp.data()),
                         thrust::device_ptr<ttb_indx>(tmp.data()+sz),

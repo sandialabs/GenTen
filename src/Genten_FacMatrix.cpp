@@ -477,7 +477,7 @@ void gramianImpl(const ViewC& C, const ViewA& A,
 
 #endif
 
-#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) && defined(HAVE_CUBLAS)
+#if defined(KOKKOS_ENABLE_CUDA)
 
   // Gramian implementation for CUDA and double precision using cuBLAS
   template <typename ExecSpace,
@@ -567,7 +567,7 @@ void gramianImpl(const ViewC& C, const ViewA& A,
 
 #endif
 
-#if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
+#if defined(KOKKOS_ENABLE_HIP)
 
   // Gramian implementation for HIP and double precision using rocBLAS
   template <typename ExecSpace,
@@ -1722,7 +1722,7 @@ namespace Genten {
       }
     }
 
-#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) && defined(HAVE_CUSOLVER)
+#if defined(KOKKOS_ENABLE_CUDA)
 
     template <typename AT, typename ... AP,
               typename BT, typename ... BP>
@@ -2230,7 +2230,7 @@ namespace Genten {
 
 #endif
 
-#if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCSOLVER)
+#if defined(KOKKOS_ENABLE_HIP)
 
     template <typename AT, typename ... AP,
               typename BT, typename ... BP>
