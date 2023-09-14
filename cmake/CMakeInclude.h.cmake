@@ -94,6 +94,9 @@
 //---- DEFINED IF DISTRIBUTED CODE IS ENABLED.
 #cmakedefine HAVE_DIST
 
+//---- DEFINED IF WE ARE USING MKL.
+#cmakedefine HAVE_MKL
+
 #include <cstddef>
 #include <cstdint>
 

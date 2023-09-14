@@ -384,6 +384,17 @@ if(MPI_FOUND)
   set(HAVE_DIST ON)
 endif()
 
+IF(Kokkos_ENABLE_SYCL)
+  FIND_PACKAGE(MKL CONFIG REQUIRED)
+  MESSAGE(STATUS "GenTen: Using SYCL MKL")
+  IF (LAPACK_LIBS)
+    MESSAGE(WARNING "GenTen:  Enabling the SYCL execution space requires MKL for host-side linking.  Overriding LAPACK_LIBS with MKL.")
+    SET(LAPACK_LIBS "")
+  ENDIF()
+  SET(HAVE_MKL ON)
+  SET(LAPACK_FOUND ON)
+ENDIF()
+
 IF(NOT LAPACK_FOUND)
   INCLUDE (cmake/ConfigureLapack.cmake)
 ENDIF()
@@ -488,12 +499,6 @@ IF(Kokkos_ENABLE_CUDA)
   ENDIF()
 ENDIF()
 
-IF(Kokkos_ENABLE_SYCL)
-  SET(GENTEN_LIBS "${GENTEN_LIBS}  ${SYCL_MKL_LIBDIRS} -lmkl_sycl -lmkl_intel_ilp64 -lmkl_tbb_thread -lmkl_core -ltbb -lsycl -lOpenCL -lpthread -lm -ldl")
-  INCLUDE_DIRECTORIES(SYSTEM ${SYCL_MKL_INCDIRS})
-  MESSAGE (STATUS "GenTen: Using SYCL MKL")
-ENDIF()
-
 # Determine which execution spaces are enabled in executables (these are not
 # use to determine what is enabled in the code itself).  This prevents the use
 # of host-side execution spaces when LAPACK was not found (which will fail).
@@ -545,7 +550,7 @@ IF(KOKKOSKERNELS_INLINE_BUILD)
   IF(LAPACK_FOUND)
     SET(KokkosKernels_ENABLE_TPL_BLAS ON CACHE BOOL "")
     SET(KokkosKernels_ENABLE_TPL_LAPACK ON CACHE BOOL "")
-    IF(NOT BLAS_LIBRARIES OR NOT LAPACK_LIBRARIES)
+    IF(LAPACK_LIBS AND (NOT BLAS_LIBRARIES OR NOT LAPACK_LIBRARIES))
       # extract list of libraries and paths from LAPACK_LIBS, LAPACK_ADD_LIBS
       # to pass to KokkosKernels
       SET(blas_libs "")
@@ -566,7 +571,7 @@ IF(KOKKOSKERNELS_INLINE_BUILD)
       ENDIF()
     ENDIF()
   ENDIF()
-  IF(Kokkos_ENABLE_CUDA OR GENTEN_ENABLE_SYCL_FOR_CUDA)
+  IF(Kokkos_ENABLE_CUDA)
     SET(KokkosKernels_ENABLE_TPL_CUBLAS ON CACHE BOOL "")
   ENDIF()
   IF(Kokkos_ENABLE_HIP)
@@ -860,23 +865,27 @@ IF(Kokkos_ENABLE_HIP)
     LIST(APPEND CMAKE_PREFIX_PATH ${ROCM_SEARCH_PATH})
   ENDIF()
 
-  FIND_PACKAGE(rocblas)
+  FIND_PACKAGE(rocblas REQUIRED)
   TARGET_LINK_LIBRARIES(gentenlib roc::rocblas)
-  TARGET_COMPILE_DEFINITIONS(gentenlib PUBLIC HAVE_ROCBLAS)
   MESSAGE(STATUS "GenTen: Using rocBLAS")
 
-  FIND_PACKAGE(rocsolver)
+  FIND_PACKAGE(rocsolver REQUIRED)
   TARGET_LINK_LIBRARIES(gentenlib roc::rocsolver)
-  TARGET_COMPILE_DEFINITIONS(gentenlib PUBLIC HAVE_ROCSOLVER)
   MESSAGE(STATUS "GenTen: Using rocSOLVER")
 
-  FIND_PACKAGE(rocthrust)
+  FIND_PACKAGE(rocthrust REQUIRED)
   TARGET_LINK_LIBRARIES(gentenlib roc::rocthrust)
-  TARGET_COMPILE_DEFINITIONS(gentenlib PUBLIC HAVE_ROCTHRUST)
   MESSAGE(STATUS "GenTen: Using rocTHRUST")
 ENDIF()
 
-#SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_LIBS} ${Trilinos_LIBRARIES} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
+IF(Kokkos_ENABLE_SYCL)
+  # We require the DPC++ variant of MKL for SYCL, and to avoid all
+  # kinds of issues with inconsistent BLAS/LAPACK libraries, we also
+  # then require the regular MKL for host-side linking
+  TARGET_LINK_LIBRARIES(gentenlib $<LINK_ONLY:MKL::MKL>)
+  TARGET_LINK_LIBRARIES(gentenlib $<LINK_ONLY:MKL::MKL_DPCPP>)
+ENDIF()
+
 SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_LIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
 TARGET_LINK_LIBRARIES(${GENTEN_LINK_LIBS})
 INSTALL (
