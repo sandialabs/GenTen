@@ -51,7 +51,8 @@ add_genten_mpi_test(Genten_Test_MixedFormats)
 add_genten_test(Genten_Test_MomentTensor)
 add_genten_mpi_test(Genten_Test_Sptensor)
 add_genten_test(Genten_Test_Tensor)
-add_genten_test(Genten_Test_TTM)
+# TTM is disabled for now until it is removed
+#add_genten_test(Genten_Test_TTM)
 
 IF(ENABLE_LBFGSB)
 add_genten_test(Genten_Test_CpOptLbfgsb)

@@ -43,8 +43,7 @@
 #include "CMakeInclude.h"
 #include "Kokkos_Core.hpp"
 
-#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) &&          \
-    defined(HAVE_CUBLAS)
+#if defined(KOKKOS_ENABLE_CUDA)
 
 #include <cublas_v2.h>
 

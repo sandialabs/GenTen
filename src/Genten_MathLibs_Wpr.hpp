@@ -53,22 +53,21 @@
 
 #include "Genten_Util.hpp"
 
-#if defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)
+#if defined(KOKKOS_ENABLE_CUDA)
 #include "Genten_CublasHandle.hpp"
 #include "Genten_CusolverHandle.hpp"
 #endif
 
 #if defined(KOKKOS_ENABLE_HIP)
-#if defined(HAVE_ROCBLAS)
+#include "Genten_RocblasHandle.hpp"
 #include "Genten_RocblasHandle.hpp"
 #include "rocblas.h"
-#endif
-#if defined(HAVE_ROCSOLVER)
-#include "Genten_RocblasHandle.hpp"
 #include "rocsolver.h"
 #endif
-#endif
 
+#if defined(KOKKOS_ENABLE_SYCL)
+#include "oneapi/mkl.hpp"
+#endif
 
 namespace Genten
 {
@@ -76,39 +75,6 @@ namespace Genten
   //
   // Double precision
   //
-  // COPY Y = X
-  void copy(ttb_indx n, const double * x, ttb_indx incx, double * y, ttb_indx incy);
-
-  // SCAL - Scale the vector x by alpha
-  void scal(ttb_indx n, double alpha, double * x, ttb_indx incx);
-
-  // NRM2 - Compute the 2-norm of a vector.
-  double nrm2(ttb_indx len, const double * vec, ttb_indx stride);
-
-  // NRM1 - Compute the 1-norm of a vector.
-  double nrm1(ttb_indx len, const double * vec, ttb_indx stride);
-
-  // IMAX - Compute index of first entry with the largest absolute value
-  ttb_indx imax(ttb_indx len, const double * vec, ttb_indx stride);
-
-  // DOT - Compute the dot product of 2 vectors.
-  double dot(ttb_indx len, const double * x, ttb_indx incx, const double * y, ttb_indx incy);
-
-  // AXPY y = a*x + y
-  void axpy(ttb_indx n, double a, const double * x, ttb_indx incx, double * y, ttb_indx incy);
-
-  /*
-   * GEMV - Compute y = alpha A*x  + beta y , if trans='N'
-   *                y = alpha A'*x + beta y , if trans='T'
-   *
-   * Where A is m x n and is stored in column major form.
-   */
-  void gemv(char trans, ttb_indx m, ttb_indx n, double alpha, const double * A, ttb_indx LDA,
-            const double * x, ttb_indx incx, double beta, double *y, ttb_indx incy);
-
-  // GER - Compute A = alpha * x * y' + A
-  void ger(ttb_indx m, ttb_indx n, double alpha, const double * x, ttb_indx incx,
-           const double * y, ttb_indx incy, double * a, ttb_indx lda);
 
   // GEMM - Compute C = alpha * A*B + beta * C
   /* C is always m x n.
@@ -134,27 +100,6 @@ namespace Genten
   void syrk(char uplo, char trans, ttb_indx n, ttb_indx k, double alpha,
             const double * a, ttb_indx ldaa,
             double beta, double * c, ttb_indx ldac);
-
-  // VMUL - Compute A = A .* B (Hadamard or elementwise product)
-  void vmul(const ttb_indx n, double * a, const double * b);
-
-  // GESV - Compute solution to linear system AX = B.
-  /*
-    Solve AX = B where A is an n x n matrix, B is an n x nrhs matrix,
-    and X is the n x nrhs matrix to be computed. It is assumed that
-    the matrices are stored columnwise so that the (i,j) entry is in
-    position (i + n*j) in the one-dimensional array.
-
-    a    - On entry, the n x n matrix A stored columnwise.
-    On exit, the factors L and U stored in the lower and upper halves
-    of the matrix (the unit diagonal of L is not stored).
-    b    - On entry, the n x nrhs matrix B (of right-hand-sides) stored
-    columnwise.
-    On exit, the n x nrhs solution matrix X stored columnwise.
-
-    throws string exception if the solve failed.
-  */
-  void gesv(ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb);
 
   // POSV - Compute solution to linear system AX = B for SPD A.
   /*
@@ -216,43 +161,13 @@ namespace Genten
   */
   ttb_indx gelsy(ttb_indx m, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb, double rcond);
 
+  // SYEV - Compute all eigenvalues and eigenvectors of a symmetric matrix
+  void syev(char jobz, char uplo, ttb_indx n, double *a, ttb_indx lda,
+            double *w);
+
   //
   // Single precision
   //
-
-  // COPY Y = X
-  void copy(ttb_indx n, const float * x, ttb_indx incx, float * y, ttb_indx incy);
-
-  // SCAL - Scale the vector x by alpha
-  void scal(ttb_indx n, float alpha, float * x, ttb_indx incx);
-
-  // NRM2 - Compute the 2-norm of a vector.
-  float nrm2(ttb_indx len, const float * vec, ttb_indx stride);
-
-  // NRM1 - Compute the 1-norm of a vector.
-  float nrm1(ttb_indx len, const float * vec, ttb_indx stride);
-
-  // IMAX - Compute index of first entry with the largest absolute value
-  ttb_indx imax(ttb_indx len, const float * vec, ttb_indx stride);
-
-  // DOT - Compute the dot product of 2 vectors.
-  float dot(ttb_indx len, const float * x, ttb_indx incx, const float * y, ttb_indx incy);
-
-  // AXPY y = a*x + y
-  void axpy(ttb_indx n, float a, const float * x, ttb_indx incx, float * y, ttb_indx incy);
-
-  /*
-   * GEMV - Compute y = alpha A*x  + beta y , if trans='N'
-   *                y = alpha A'*x + beta y , if trans='T'
-   *
-   * Where A is m x n and is stored in column major form.
-   */
-  void gemv(char trans, ttb_indx m, ttb_indx n, float alpha, const float * A, ttb_indx LDA,
-            const float * x, ttb_indx incx, float beta, float *y, ttb_indx incy);
-
-  // GER - Compute A = alpha * x * y' + A
-  void ger(ttb_indx m, ttb_indx n, float alpha, const float * x, ttb_indx incx,
-           const float * y, ttb_indx incy, float * a, ttb_indx lda);
 
   // GEMM - Compute C = alpha * A*B + beta * C
   /* C is always m x n.
@@ -278,27 +193,6 @@ namespace Genten
   void syrk(char uplo, char trans, ttb_indx n, ttb_indx k, float alpha,
             const float * a, ttb_indx ldaa,
             float beta, float * c, ttb_indx ldac);
-
-  // VMUL - Compute A = A .* B (Hadamard or elementwise product)
-  void vmul(const ttb_indx n, float * a, const float * b);
-
-  // GESV - Compute solution to linear system AX = B.
-  /*
-    Solve AX = B where A is an n x n matrix, B is an n x nrhs matrix,
-    and X is the n x nrhs matrix to be computed. It is assumed that
-    the matrices are stored columnwise so that the (i,j) entry is in
-    position (i + n*j) in the one-dimensional array.
-
-    a    - On entry, the n x n matrix A stored columnwise.
-    On exit, the factors L and U stored in the lower and upper halves
-    of the matrix (the unit diagonal of L is not stored).
-    b    - On entry, the n x nrhs matrix B (of right-hand-sides) stored
-    columnwise.
-    On exit, the n x nrhs solution matrix X stored columnwise.
-
-    throws string exception if the solve failed
-  */
-  void gesv(ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb);
 
   // POSV - Compute solution to linear system AX = B for SPD A.
   /*
@@ -359,6 +253,10 @@ namespace Genten
     returns the effective rank of A.
   */
   ttb_indx gelsy(ttb_indx m, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb, float rcond);
+
+  // SYEV - Compute all eigenvalues and eigenvectors of a symmetric matrix
+  void syev(char jobz, char uplo, ttb_indx n, float *a, ttb_indx lda,
+            float *w);
 }
 
 // Implementations of GEMM for various architectures
@@ -385,7 +283,7 @@ struct GemmImpl<ExecSpace, Scalar,
   }
 };
 
-#if (defined(KOKKOS_ENABLE_CUDA) || defined(ENABLE_SYCL_FOR_CUDA)) && defined(HAVE_CUBLAS)
+#if defined(KOKKOS_ENABLE_CUDA)
 
 template <typename ExecSpace>
 struct GemmImpl<
@@ -443,7 +341,7 @@ struct GemmImpl<
 
 #endif
 
-#if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
+#if defined(KOKKOS_ENABLE_HIP)
 
 template <typename ExecSpace>
 struct GemmImpl<
@@ -494,6 +392,33 @@ struct GemmImpl<
           << status;
        Genten::error(ss.str());
     }
+  }
+};
+
+#endif
+
+#if defined(KOKKOS_ENABLE_SYCL)
+
+template <typename ExecSpace, typename Scalar>
+struct GemmImpl<ExecSpace, Scalar,
+                std::enable_if_t< is_sycl_space<ExecSpace>::value > >
+{
+  static void apply(const bool trans_a, const bool trans_b,
+                    const ttb_indx m, const ttb_indx n, const ttb_indx k,
+                    const Scalar alpha, const Scalar *A, const ttb_indx lda,
+                    const Scalar *B, const ttb_indx ldb,
+                    const Scalar beta, Scalar *C, const ttb_indx ldc)
+  {
+    const oneapi::mkl::transpose ta =
+      trans_a ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans;
+    const oneapi::mkl::transpose tb =
+      trans_b ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans;
+
+    ExecSpace space;
+    sycl::queue& q = space.sycl_queue();
+
+    oneapi::mkl::blas::column_major::gemm(
+      q, ta, tb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
   }
 };
 

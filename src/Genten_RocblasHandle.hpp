@@ -43,7 +43,7 @@
 #include "CMakeInclude.h"
 #include "Kokkos_Core.hpp"
 
-#if defined(KOKKOS_ENABLE_HIP) && (defined(HAVE_ROCBLAS) || defined(HAVE_ROCSOLVER))
+#if defined(KOKKOS_ENABLE_HIP)
 
 #include <rocblas.h>
 

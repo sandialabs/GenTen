@@ -38,130 +38,239 @@
 // ************************************************************************
 //@HEADER
 
-
-#include "Genten_MathLibs.hpp"
 #include "Genten_MathLibs_Wpr.hpp"
+
+#ifdef HAVE_MKL
+
+typedef MKL_INT ttb_blas_int;
+
+#else
+
+typedef ptrdiff_t ttb_blas_int;
+
+#if defined(LAPACK_FOUND)
+
+#if defined(HAVE_BLAS_F2C)
+#define dgemm f2c_dgemm
+#define dsyrk f2c_dsyrk
+
+#define sgemm f2c_sgemm
+#define ssyrk f2c_ssyrk
+
+#define dposv dposv_
+#define dsysv dsysv_
+#define dgelsy dgelsy_
+#define dsyev dsyev_
+
+#define sposv sposv_
+#define ssysv ssysv_
+#define sgelsy sgelsy_
+#define ssyev ssyev_
+
+#elif defined (__IBMCPP__)
+#define dgemm dgemm
+#define dsyrk dsyrk
+
+#define sgemm sgemm
+#define ssyrk ssyrk
+
+#define dposv dposv
+#define dsysv dsysv
+#define dgelsy dgelsy
+#define dsyev dsyev
+
+#define sposv sposv
+#define ssysv ssysv
+#define sgelsy sgelsy
+#define ssyev ssyev
+
+#else
+#define dgemm dgemm_
+#define dsyrk dsyrk_
+
+#define sgemm sgemm_
+#define ssyrk ssyrk_
+
+#define dposv dposv_
+#define dsysv dsysv_
+#define dgelsy dgelsy_
+#define dsyev dsyev_
+
+#define sposv sposv_
+#define ssysv ssysv_
+#define sgelsy sgelsy_
+#define ssyev ssyev_
+#endif
+
+// Declare external LAPACK functions supplied by LAPACK libraries.
+extern "C"
+{
+
+  //
+  // Double precision
+  //
+
+  void dgemm (char *transaptr,
+              char *transbptr,
+              ttb_blas_int *mptr,
+              ttb_blas_int *nptr,
+              ttb_blas_int *kptr,
+              double *alphaptr,
+              double *a,
+              ttb_blas_int *ldaptr,
+              double *b,
+              ttb_blas_int *ldbptr,
+              double *betaptr,
+              double *c,
+              ttb_blas_int *ldcptr);
+
+  void dposv (char * uplo,
+              ttb_blas_int * n,
+              ttb_blas_int * nrhs,
+              double * a,
+              ttb_blas_int * lda,
+              double * b,
+              ttb_blas_int * ldb,
+              ttb_blas_int * info);
+
+  void dsysv (char * uplo,
+              ttb_blas_int * n,
+              ttb_blas_int * nrhs,
+              double * a,
+              ttb_blas_int * lda,
+              ttb_blas_int * ipiv,
+              double * b,
+              ttb_blas_int * ldb,
+              double * work,
+              ttb_blas_int * lwork,
+              ttb_blas_int * info);
+
+  void dgelsy (ttb_blas_int * m,
+               ttb_blas_int * n,
+               ttb_blas_int * nrhs,
+               double * a,
+               ttb_blas_int * lda,
+               double * b,
+               ttb_blas_int * ldb,
+               ttb_blas_int * ipiv,
+               double * rcond,
+               ttb_blas_int * rank,
+               double * work,
+               ttb_blas_int * lwork,
+               ttb_blas_int * info);
+
+  void dsyrk (char *uplo,
+              char *trans,
+              ttb_blas_int *nptr,
+              ttb_blas_int *kptr,
+              double *alphaptr,
+              double *a,
+              ttb_blas_int *ldaptr,
+              double *betaptr,
+              double *c,
+              ttb_blas_int *ldcptr);
+
+  void dsyev (char *jobz,
+              char *uplo,
+              ttb_blas_int *n,
+              double *a,
+              ttb_blas_int *lda,
+              double *w,
+              double *work,
+              ttb_blas_int *lwork,
+              ttb_blas_int *info);
+
+  //
+  // Single precision
+  //
+
+  void sgemm (char *transaptr,
+              char *transbptr,
+              ttb_blas_int *mptr,
+              ttb_blas_int *nptr,
+              ttb_blas_int *kptr,
+              float *alphaptr,
+              float *a,
+              ttb_blas_int *ldaptr,
+              float *b,
+              ttb_blas_int *ldbptr,
+              float *betaptr,
+              float *c,
+              ttb_blas_int *ldcptr);
+
+  void sposv (char * uplo,
+              ttb_blas_int * n,
+              ttb_blas_int * nrhs,
+              float * a,
+              ttb_blas_int * lda,
+              float * b,
+              ttb_blas_int * ldb,
+              ttb_blas_int * info);
+
+  void ssysv (char * uplo,
+              ttb_blas_int * n,
+              ttb_blas_int * nrhs,
+              float * a,
+              ttb_blas_int * lda,
+              ttb_blas_int * ipiv,
+              float * b,
+              ttb_blas_int * ldb,
+              float * work,
+              ttb_blas_int * lwork,
+              ttb_blas_int * info);
+
+  void sgelsy (ttb_blas_int * m,
+               ttb_blas_int * n,
+               ttb_blas_int * nrhs,
+               float * a,
+               ttb_blas_int * lda,
+               float * b,
+               ttb_blas_int * ldb,
+               ttb_blas_int * ipiv,
+               float * rcond,
+               ttb_blas_int * rank,
+               float * work,
+               ttb_blas_int * lwork,
+               ttb_blas_int * info);
+
+  void ssyrk (char *uplo,
+              char *trans,
+              ttb_blas_int *nptr,
+              ttb_blas_int *kptr,
+              float *alphaptr,
+              float *a,
+              ttb_blas_int *ldaptr,
+              float *betaptr,
+              float *c,
+              ttb_blas_int *ldcptr);
+
+  void ssyev (char *jobz,
+              char *uplo,
+              ttb_blas_int *n,
+              float *a,
+              ttb_blas_int *lda,
+              float *w,
+              float *work,
+              ttb_blas_int *lwork,
+              ttb_blas_int *info);
+
+}
+
+#endif
+#endif
+
 
 //
 // Double precision
 //
 
-void Genten::copy(ttb_indx n, const double * x, ttb_indx incx, double * y, ttb_indx incy)
-{
-  // Casting, possibly to different type
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  ttb_blas_int incx_ml = (ttb_blas_int) incx;
-  ttb_blas_int incy_ml = (ttb_blas_int) incy;
-
-  // Just removing const
-  double * x_ml = (double *) x;
-
-  ::dcopy(&n_ml, x_ml, &incx_ml, y, &incy_ml);
-}
-
-void Genten::scal(ttb_indx n, double alpha, double * x, ttb_indx incx)
-{
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  ttb_blas_int incx_ml = (ttb_blas_int) incx;
-  ::dscal(&n_ml, &alpha, x, &incx_ml);
-}
-
-double Genten::nrm2(ttb_indx n, const double * x, ttb_indx incx)
-{
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  double * x_ml = (double *) x; // remove const
-  ttb_blas_int incx_ml = (ttb_blas_int) incx;
-
-  return(::dnrm2(&n_ml, x_ml, &incx_ml));
-}
-
-double Genten::nrm1(ttb_indx n, const double * x, ttb_indx incx)
-{
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  double * x_ml = (double *) x; // remove const
-  ttb_blas_int incx_ml = (ttb_blas_int) incx;
-
-  return(::dasum(&n_ml, x_ml, &incx_ml));
-}
-
-ttb_indx Genten::imax(ttb_indx n, const double * x, ttb_indx incx)
-{
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  double * x_ml = (double *) x; // remove const
-  ttb_blas_int incx_ml = (ttb_blas_int) incx;
-  ttb_blas_int idx = ::idamax(&n_ml, x_ml, &incx_ml);
-
-  // idamax returns index between 1 and n (Fortran 1-indexing),
-  // so subtract 1 to return index between 0 and n-1 (0-indexing)
-  return((ttb_indx) idx-1);
-}
-
-
-double Genten::dot(ttb_indx n, const double * x, ttb_indx incx, const double * y, ttb_indx incy)
-{
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  double * x_ml = (double *) x; // remove const
-  ttb_blas_int incx_ml = (ttb_blas_int) incx;
-  double * y_ml = (double *) y; // remove const
-  ttb_blas_int incy_ml = (ttb_blas_int) incy;
-
-  return(::ddot(&n_ml, x_ml, &incx_ml, y_ml, &incy_ml));
-}
-
-void Genten::axpy(ttb_indx n, double a, const double * x, ttb_indx incx, double * y, ttb_indx incy)
-{
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  double a_ml = (double) a;
-  double * x_ml = (double *) x; // remove const, don't change type
-  ttb_blas_int incx_ml = (ttb_blas_int) incx;
-  double * y_ml = (double *) y; // remove const, don't change type
-  ttb_blas_int incy_ml = (ttb_blas_int) incy;
-
-  ::daxpy(&n_ml, &a_ml, x_ml, &incx_ml, y_ml, &incy_ml);
-}
-
-void Genten::gemv(char trans, ttb_indx m, ttb_indx n, double alpha, const double * a, ttb_indx lda,
-                  const double * x, ttb_indx incx, double beta, double *y, ttb_indx incy)
-{
-  // casting
-  ttb_blas_int m_ml = (ttb_blas_int) m;
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  double alpha_ml = (double) alpha;
-  ttb_blas_int lda_ml = (ttb_blas_int) lda;
-  ttb_blas_int incx_ml = (ttb_blas_int) incx;
-  double beta_ml = (double) beta;
-  ttb_blas_int incy_ml = (ttb_blas_int) incy;
-
-  // Just remove const; don't change type
-  double * a_ml = (double *) a;
-  double * x_ml = (double *) x;
-
-  ::dgemv(&trans, &m_ml, &n_ml, &alpha_ml, a_ml, &lda_ml, x_ml, &incx_ml, &beta_ml, y, &incy_ml);
-}
-
-void Genten::ger(ttb_indx m, ttb_indx n, double alpha, const double * x, ttb_indx incx,
-                 const double * y, ttb_indx incy, double * a, ttb_indx lda)
-
-{
-  // casting
-  ttb_blas_int m_ml = (ttb_blas_int) m;
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  double alpha_ml = (double) alpha;
-  ttb_blas_int incx_ml = (ttb_blas_int) incx;
-  ttb_blas_int incy_ml = (ttb_blas_int) incy;
-  ttb_blas_int lda_ml = (ttb_blas_int) lda;
-
-  // Just remove const; don't change type
-  double * x_ml = (double *) x;
-  double * y_ml = (double *) y;
-
-  ::dger(&m_ml, &n_ml, &alpha_ml, x_ml, &incx_ml, y_ml, &incy_ml, a, &lda_ml);
-}
-
 void Genten::gemm(char transa, char transb, ttb_indx m, ttb_indx n, ttb_indx k, double alpha,
                   const double * a, ttb_indx ldaa, const double * b, ttb_indx ldab,
                   double beta, double * c, ttb_indx ldac)
 {
+#if !defined(LAPACK_FOUND)
+  Genten::error("Genten::gemm - not found, must link with an LAPACK library.");
+#else
   ttb_blas_int m_ml = (ttb_blas_int) m;
   ttb_blas_int n_ml = (ttb_blas_int) n;
   ttb_blas_int k_ml = (ttb_blas_int) k;
@@ -174,12 +283,16 @@ void Genten::gemm(char transa, char transb, ttb_indx m, ttb_indx n, ttb_indx k, 
   double * b_ml = (double *) b;
 
   ::dgemm(&transa, &transb, &m_ml, &n_ml, &k_ml, &alpha, a_ml, &ldaa_ml, b_ml, &ldab_ml, &beta, c, &ldac_ml);
+#endif
 }
 
 void Genten::syrk(char uplo, char trans, ttb_indx n, ttb_indx k, double alpha,
                   const double * a, ttb_indx ldaa,
                   double beta, double * c, ttb_indx ldac)
 {
+#if !defined(LAPACK_FOUND)
+  Genten::error("Genten::syrk - not found, must link with an LAPACK library.");
+#else
   ttb_blas_int n_ml = (ttb_blas_int) n;
   ttb_blas_int k_ml = (ttb_blas_int) k;
   ttb_blas_int ldaa_ml = (ttb_blas_int) ldaa;
@@ -189,32 +302,7 @@ void Genten::syrk(char uplo, char trans, ttb_indx n, ttb_indx k, double alpha,
   double * a_ml = (double *) a;
 
   ::dsyrk(&uplo, &trans, &n_ml, &k_ml, &alpha, a_ml, &ldaa_ml, &beta, c, &ldac_ml);
-}
-
-void Genten::gesv(ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb)
-{
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  ttb_blas_int nrhs_ml = (ttb_blas_int) nrhs;
-  ttb_blas_int lda_ml = (ttb_blas_int) lda;
-  ttb_blas_int ldb_ml = (ttb_blas_int) ldb;
-
-  // Initialize output info and create pivot array
-  ttb_blas_int info_ml = 0;
-  ttb_blas_int * ipiv_ml = new ttb_blas_int[ n ];
-
-  ::dgesv(&n_ml, &nrhs_ml, a, &lda_ml, ipiv_ml, b, &ldb_ml, &info_ml);
-
-  delete[] ipiv_ml;
-
-  // Check output info and free pivot array
-  if (info_ml < 0)
-  {
-    Genten::error("Genten::gesv - argument error in call to dgesv");
-  }
-  if (info_ml > 0)
-  {
-    Genten::error("Genten::gesv - dgesv failed because matrix is singular");
-  }
+#endif
 }
 
 void Genten::sysv(char uplo, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb)
@@ -254,16 +342,6 @@ void Genten::sysv(char uplo, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda
   }
 #endif
 }
-
-void Genten::vmul(const ttb_indx n, double * a, const double * b)
-{
-  // Casting, possibly to different type
-  const ttb_vml_int n_ml = (ttb_vml_int) n;
-
-  ::vdmul(n_ml,a,b);
-
-}
-
 
 bool Genten::posv (char uplo, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb)
 {
@@ -331,126 +409,46 @@ ttb_indx Genten::gelsy(ttb_indx m, ttb_indx n, ttb_indx nrhs, double * a, ttb_in
 #endif
 }
 
+void Genten::syev(char jobz, char uplo, ttb_indx n, double *a, ttb_indx lda,
+                  double *w)
+{
+#if !defined(LAPACK_FOUND)
+  Genten::error("Genten::syev - not found, must link with an LAPACK library.");
+#else
+  ttb_blas_int n_ml = (ttb_blas_int) n;
+  ttb_blas_int lda_ml = (ttb_blas_int) lda;
+
+  // Workspace query
+  ttb_blas_int lwork = -1;
+  double work_tmp = 0;
+  ttb_blas_int info_ml = 0;
+  ::dsyev(&jobz, &uplo, &n_ml, a, &lda_ml, w, &work_tmp, &lwork, &info_ml);
+
+  lwork = ttb_blas_int(work_tmp);
+  double * work = new double[lwork];
+  ::dsyev(&jobz, &uplo, &n_ml, a, &lda_ml, w, &work_tmp, &lwork, &info_ml);
+
+  delete[] work;
+
+  // Check output info and free pivot array
+  if (info_ml < 0)
+  {
+    Genten::error("Genten::syev - argument error in call to dsyev");
+  }
+#endif
+}
+
 //
 // Single precision
 //
-
-void Genten::copy(ttb_indx n, const float * x, ttb_indx incx, float * y, ttb_indx incy)
-{
-  // Casting, possibly to different type
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  ttb_blas_int incx_ml = (ttb_blas_int) incx;
-  ttb_blas_int incy_ml = (ttb_blas_int) incy;
-
-  // Just removing const
-  float * x_ml = (float *) x;
-
-  ::scopy(&n_ml, x_ml, &incx_ml, y, &incy_ml);
-}
-
-void Genten::scal(ttb_indx n, float alpha, float * x, ttb_indx incx)
-{
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  ttb_blas_int incx_ml = (ttb_blas_int) incx;
-  ::sscal(&n_ml, &alpha, x, &incx_ml);
-}
-
-float Genten::nrm2(ttb_indx n, const float * x, ttb_indx incx)
-{
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  float * x_ml = (float *) x; // remove const
-  ttb_blas_int incx_ml = (ttb_blas_int) incx;
-
-  return(::snrm2(&n_ml, x_ml, &incx_ml));
-}
-
-float Genten::nrm1(ttb_indx n, const float * x, ttb_indx incx)
-{
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  float * x_ml = (float *) x; // remove const
-  ttb_blas_int incx_ml = (ttb_blas_int) incx;
-
-  return(::sasum(&n_ml, x_ml, &incx_ml));
-}
-
-ttb_indx Genten::imax(ttb_indx n, const float * x, ttb_indx incx)
-{
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  float * x_ml = (float *) x; // remove const
-  ttb_blas_int incx_ml = (ttb_blas_int) incx;
-  ttb_blas_int idx = ::isamax(&n_ml, x_ml, &incx_ml);
-
-  // idamax returns index between 1 and n (Fortran 1-indexing),
-  // so subtract 1 to return index between 0 and n-1 (0-indexing)
-  return((ttb_indx) idx-1);
-}
-
-
-float Genten::dot(ttb_indx n, const float * x, ttb_indx incx, const float * y, ttb_indx incy)
-{
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  float * x_ml = (float *) x; // remove const
-  ttb_blas_int incx_ml = (ttb_blas_int) incx;
-  float * y_ml = (float *) y; // remove const
-  ttb_blas_int incy_ml = (ttb_blas_int) incy;
-
-  return(::sdot(&n_ml, x_ml, &incx_ml, y_ml, &incy_ml));
-}
-
-void Genten::axpy(ttb_indx n, float a, const float * x, ttb_indx incx, float * y, ttb_indx incy)
-{
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  float a_ml = (float) a;
-  float * x_ml = (float *) x; // remove const, don't change type
-  ttb_blas_int incx_ml = (ttb_blas_int) incx;
-  float * y_ml = (float *) y; // remove const, don't change type
-  ttb_blas_int incy_ml = (ttb_blas_int) incy;
-
-  ::saxpy(&n_ml, &a_ml, x_ml, &incx_ml, y_ml, &incy_ml);
-}
-
-void Genten::gemv(char trans, ttb_indx m, ttb_indx n, float alpha, const float * a, ttb_indx lda,
-                  const float * x, ttb_indx incx, float beta, float *y, ttb_indx incy)
-{
-  // casting
-  ttb_blas_int m_ml = (ttb_blas_int) m;
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  float alpha_ml = (float) alpha;
-  ttb_blas_int lda_ml = (ttb_blas_int) lda;
-  ttb_blas_int incx_ml = (ttb_blas_int) incx;
-  float beta_ml = (float) beta;
-  ttb_blas_int incy_ml = (ttb_blas_int) incy;
-
-  // Just remove const; don't change type
-  float * a_ml = (float *) a;
-  float * x_ml = (float *) x;
-
-  ::sgemv(&trans, &m_ml, &n_ml, &alpha_ml, a_ml, &lda_ml, x_ml, &incx_ml, &beta_ml, y, &incy_ml);
-}
-
-void Genten::ger(ttb_indx m, ttb_indx n, float alpha, const float * x, ttb_indx incx,
-                 const float * y, ttb_indx incy, float * a, ttb_indx lda)
-
-{
-  // casting
-  ttb_blas_int m_ml = (ttb_blas_int) m;
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  float alpha_ml = (float) alpha;
-  ttb_blas_int incx_ml = (ttb_blas_int) incx;
-  ttb_blas_int incy_ml = (ttb_blas_int) incy;
-  ttb_blas_int lda_ml = (ttb_blas_int) lda;
-
-  // Just remove const; don't change type
-  float * x_ml = (float *) x;
-  float * y_ml = (float *) y;
-
-  ::sger(&m_ml, &n_ml, &alpha_ml, x_ml, &incx_ml, y_ml, &incy_ml, a, &lda_ml);
-}
 
 void Genten::gemm(char transa, char transb, ttb_indx m, ttb_indx n, ttb_indx k, float alpha,
                   const float * a, ttb_indx ldaa, const float * b, ttb_indx ldab,
                   float beta, float * c, ttb_indx ldac)
 {
+#if !defined(LAPACK_FOUND)
+  Genten::error("Genten::gemm - not found, must link with an LAPACK library.");
+#else
   ttb_blas_int m_ml = (ttb_blas_int) m;
   ttb_blas_int n_ml = (ttb_blas_int) n;
   ttb_blas_int k_ml = (ttb_blas_int) k;
@@ -463,12 +461,16 @@ void Genten::gemm(char transa, char transb, ttb_indx m, ttb_indx n, ttb_indx k, 
   float * b_ml = (float *) b;
 
   ::sgemm(&transa, &transb, &m_ml, &n_ml, &k_ml, &alpha, a_ml, &ldaa_ml, b_ml, &ldab_ml, &beta, c, &ldac_ml);
+#endif
 }
 
 void Genten::syrk(char uplo, char trans, ttb_indx n, ttb_indx k, float alpha,
                   const float * a, ttb_indx ldaa,
                   float beta, float * c, ttb_indx ldac)
 {
+#if !defined(LAPACK_FOUND)
+  Genten::error("Genten::syrk - not found, must link with an LAPACK library.");
+#else
   ttb_blas_int n_ml = (ttb_blas_int) n;
   ttb_blas_int k_ml = (ttb_blas_int) k;
   ttb_blas_int ldaa_ml = (ttb_blas_int) ldaa;
@@ -478,32 +480,7 @@ void Genten::syrk(char uplo, char trans, ttb_indx n, ttb_indx k, float alpha,
   float * a_ml = (float *) a;
 
   ::ssyrk(&uplo, &trans, &n_ml, &k_ml, &alpha, a_ml, &ldaa_ml, &beta, c, &ldac_ml);
-}
-
-void Genten::gesv(ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb)
-{
-  ttb_blas_int n_ml = (ttb_blas_int) n;
-  ttb_blas_int nrhs_ml = (ttb_blas_int) nrhs;
-  ttb_blas_int lda_ml = (ttb_blas_int) lda;
-  ttb_blas_int ldb_ml = (ttb_blas_int) ldb;
-
-  // Initialize output info and create pivot array
-  ttb_blas_int info_ml = 0;
-  ttb_blas_int * ipiv_ml = new ttb_blas_int[ n ];
-
-  ::sgesv(&n_ml, &nrhs_ml, a, &lda_ml, ipiv_ml, b, &ldb_ml, &info_ml);
-
-  delete[] ipiv_ml;
-
-  // Check output info and free pivot array
-  if (info_ml < 0)
-  {
-    Genten::error("Genten::gesv - argument error in call to dgesv");
-  }
-  if (info_ml > 0)
-  {
-    Genten::error("Genten::gesv - dgesv failed because matrix is singular");
-  }
+#endif
 }
 
 void Genten::sysv(char uplo, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb)
@@ -544,16 +521,6 @@ void Genten::sysv(char uplo, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda,
 #endif
 }
 
-void Genten::vmul(const ttb_indx n, float * a, const float * b)
-{
-  // Casting, possibly to different type
-  const ttb_vml_int n_ml = (ttb_vml_int) n;
-
-  ::vsmul(n_ml,a,b);
-
-}
-
-
 bool Genten::posv (char uplo, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb)
 {
 #if !defined(LAPACK_FOUND)
@@ -572,7 +539,7 @@ bool Genten::posv (char uplo, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda
   // Check output info
   if (info_ml < 0)
   {
-    Genten::error("Genten::posv - argument error in call to dposv");
+    Genten::error("Genten::posv - argument error in call to sposv");
   }
   if (info_ml > 0)
     return false;
@@ -612,10 +579,39 @@ ttb_indx Genten::gelsy(ttb_indx m, ttb_indx n, ttb_indx nrhs, float * a, ttb_ind
   // Check output info and free pivot array
   if (info_ml < 0)
   {
-    Genten::error("Genten::gelsy - argument error in call to dgelsy");
+    Genten::error("Genten::gelsy - argument error in call to sgelsy");
   }
 
   ttb_indx rank = (ttb_indx) rank_ml;
   return rank;
+#endif
+}
+
+void Genten::syev(char jobz, char uplo, ttb_indx n, float *a, ttb_indx lda,
+                  float *w)
+{
+#if !defined(LAPACK_FOUND)
+  Genten::error("Genten::syev - not found, must link with an LAPACK library.");
+#else
+  ttb_blas_int n_ml = (ttb_blas_int) n;
+  ttb_blas_int lda_ml = (ttb_blas_int) lda;
+
+  // Workspace query
+  ttb_blas_int lwork = -1;
+  float work_tmp = 0;
+  ttb_blas_int info_ml = 0;
+  ::ssyev(&jobz, &uplo, &n_ml, a, &lda_ml, w, &work_tmp, &lwork, &info_ml);
+
+  lwork = ttb_blas_int(work_tmp);
+  float * work = new float[lwork];
+  ::ssyev(&jobz, &uplo, &n_ml, a, &lda_ml, w, &work_tmp, &lwork, &info_ml);
+
+  delete[] work;
+
+  // Check output info and free pivot array
+  if (info_ml < 0)
+  {
+    Genten::error("Genten::syev - argument error in call to ssyev");
+  }
 #endif
 }

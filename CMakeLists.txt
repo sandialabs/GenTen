@@ -317,10 +317,6 @@ IF(KOKKOS_INLINE_BUILD)
     SET(Kokkos_ENABLE_CUDA_LAMBDA ON CACHE BOOL "Enable lambdas for CUDA.")
   ENDIF()
 
-  IF(GENTEN_ENABLE_SYCL_FOR_CUDA)
-    SET(Kokkos_ENABLE_SYCL ON CACHE BOOL "Enable SYCL for CUDA.")
-  ENDIF()
-
   # Configure kokkos
   ADD_SUBDIRECTORY(tpls/kokkos)
   SET(HAVE_KOKKOS ON)
@@ -388,8 +384,22 @@ if(MPI_FOUND)
   set(HAVE_DIST ON)
 endif()
 
+IF(Kokkos_ENABLE_SYCL)
+  FIND_PACKAGE(MKL CONFIG REQUIRED)
+  MESSAGE(STATUS "GenTen: Using SYCL MKL")
+  IF (LAPACK_LIBS)
+    MESSAGE(WARNING "GenTen:  Enabling the SYCL execution space requires MKL for host-side linking.  Overriding LAPACK_LIBS with MKL.")
+    SET(LAPACK_LIBS "")
+  ENDIF()
+  SET(HAVE_MKL ON)
+  SET(LAPACK_FOUND ON)
+ENDIF()
+
 IF(NOT LAPACK_FOUND)
   INCLUDE (cmake/ConfigureLapack.cmake)
+ENDIF()
+IF (LAPACK_FOUND)
+  ADD_DEFINITIONS (-DLAPACK_FOUND)
 ENDIF()
 
 IF (ENABLE_CALIPER)
@@ -466,39 +476,26 @@ IF(ENABLE_PYTHON)
   SET(HAVE_PYTHON ON)
 ENDIF()
 
-IF(Kokkos_ENABLE_CUDA OR GENTEN_ENABLE_SYCL_FOR_CUDA)
-  OPTION(ENABLE_CUBLAS "Flag to enable cuBLAS for Kokkos with Cuda (do not turn this off unless you know what you are doing)" ON)
-  OPTION(ENABLE_CUSOLVER "Flag to enable cuSolver for Kokkos with Cuda (do not turn this off unless you know what you are doing)" ON)
-
-  IF(ENABLE_CUBLAS)
-    IF(LIBCUBLAS_PATH)
-      SET(GENTEN_LIBS "${GENTEN_LIBS} -L${LIBCUBLAS_PATH} -lcublas")
-    ELSE()
-      SET(GENTEN_LIBS "${GENTEN_LIBS} -lcublas")
-    ENDIF()
-
-    SET(HAVE_CUBLAS ${ENABLE_CUBLAS})
-    MESSAGE(STATUS "GenTen: Using cuBLAS")
+IF(Kokkos_ENABLE_CUDA)
+  IF(LIBCUBLAS_PATH)
+    SET(GENTEN_LIBS "${GENTEN_LIBS} -L${LIBCUBLAS_PATH} -lcublas")
+  ELSE()
+    SET(GENTEN_LIBS "${GENTEN_LIBS} -lcublas")
   ENDIF()
+  MESSAGE(STATUS "GenTen: Using cuBLAS")
 
-  IF(ENABLE_CUSOLVER)
-    IF(LIBCUSOLVER_PATH)
-      SET(GENTEN_LIBS "${GENTEN_LIBS} -L${LIBCUSOLVER_PATH} -lcusolver")
-    ELSE()
-      SET(GENTEN_LIBS "${GENTEN_LIBS} -lcusolver")
-    ENDIF()
-
-    SET(HAVE_CUSOLVER ${ENABLE_CUSOLVER})
-    MESSAGE (STATUS "GenTen: Using cuSolver")
+  IF(LIBCUSOLVER_PATH)
+    SET(GENTEN_LIBS "${GENTEN_LIBS} -L${LIBCUSOLVER_PATH} -lcusolver")
+  ELSE()
+    SET(GENTEN_LIBS "${GENTEN_LIBS} -lcusolver")
   ENDIF()
+  MESSAGE (STATUS "GenTen: Using cuSolver")
 
-  IF(Kokkos_ENABLE_CUDA)
-    # Add useful CXX flags when building with Cuda
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --expt-relaxed-constexpr")
-    IF (KOKKOS_CXX_COMPILER_ID STREQUAL NVIDIA)
-      SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Xcudafe --diag_suppress=code_is_unreachable")
-      #message("CMAKE_CXX_FLAGS = ${CMAKE_CXX_FLAGS}")
-    ENDIF()
+  # Add useful CXX flags when building with Cuda
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --expt-relaxed-constexpr")
+  IF (KOKKOS_CXX_COMPILER_ID STREQUAL NVIDIA)
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Xcudafe --diag_suppress=code_is_unreachable")
+    #message("CMAKE_CXX_FLAGS = ${CMAKE_CXX_FLAGS}")
   ENDIF()
 ENDIF()
 
@@ -553,12 +550,12 @@ IF(KOKKOSKERNELS_INLINE_BUILD)
   IF(LAPACK_FOUND)
     SET(KokkosKernels_ENABLE_TPL_BLAS ON CACHE BOOL "")
     SET(KokkosKernels_ENABLE_TPL_LAPACK ON CACHE BOOL "")
-    IF(NOT BLAS_LIBRARIES OR NOT LAPACK_LIBRARIES)
+    IF(LAPACK_LIBS AND (NOT BLAS_LIBRARIES OR NOT LAPACK_LIBRARIES))
       # extract list of libraries and paths from LAPACK_LIBS, LAPACK_ADD_LIBS
       # to pass to KokkosKernels
       SET(blas_libs "")
       SET(blas_dirs "")
-      FOREACH(libvar ${LAPACK_LIBS} ${LAPACK_ADD_LIBS})
+      FOREACH(libvar ${LAPACK_LIBS})
         GET_FILENAME_COMPONENT(varname ${libvar} NAME)
         GET_FILENAME_COMPONENT(dirname ${libvar} DIRECTORY)
         LIST(APPEND blas_libs ${varname})
@@ -574,15 +571,11 @@ IF(KOKKOSKERNELS_INLINE_BUILD)
       ENDIF()
     ENDIF()
   ENDIF()
-  IF(Kokkos_ENABLE_CUDA OR GENTEN_ENABLE_SYCL_FOR_CUDA)
-    IF(ENABLE_CUBLAS)
-      SET(KokkosKernels_ENABLE_TPL_CUBLAS ON CACHE BOOL "")
-    ENDIF()
+  IF(Kokkos_ENABLE_CUDA)
+    SET(KokkosKernels_ENABLE_TPL_CUBLAS ON CACHE BOOL "")
   ENDIF()
   IF(Kokkos_ENABLE_HIP)
-    IF(ENABLE_ROCBLAS)
-      SET(KokkosKernels_ENABLE_TPL_ROCBLAS ON CACHE BOOL "")
-    ENDIF()
+    SET(KokkosKernels_ENABLE_TPL_ROCBLAS ON CACHE BOOL "")
   ENDIF()
   ADD_SUBDIRECTORY(tpls/kokkos-kernels)
   SET(HAVE_KOKKOS_KERNELS ON)
@@ -675,40 +668,6 @@ INSTALL (
 #---- causes strange compiler errors on Windows.
 #---- ADD_DEFINITIONS (-DDATADIR=\"${Genten_SOURCE_DIR}/data/\")
 
-
-#------------------------------------------------------------
-#---- LAPACK Math Library
-# Separate pure c code from c++ code so CMake doesn't add Kokkos CXX flags
-# to compile of c code (since the c code can't depend on kokkos)
-#------------------------------------------------------------
-IF (LAPACK_FOUND)
-  ADD_DEFINITIONS (-DLAPACK_FOUND)
-  ADD_LIBRARY (genten_mathlibs_c
-    ${Genten_SOURCE_DIR}/src/mathlib/Genten_Default_VML.c
-    )
-ELSE (LAPACK_FOUND)
-  #---- Tell CMake to build with default BLAS implementation.
-  ADD_LIBRARY (genten_mathlibs_c
-    ${Genten_SOURCE_DIR}/src/mathlib/Genten_Default_Blas.c
-    ${Genten_SOURCE_DIR}/src/mathlib/Genten_Default_VML.c
-    )
-ENDIF (LAPACK_FOUND)
-TARGET_LINK_LIBRARIES(
-  genten_mathlibs_c
-  ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
-  )
-INSTALL (
-  TARGETS genten_mathlibs_c
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  EXPORT genten
-  )
-SET(GENTEN_MATHLIBS
-  genten_mathlibs_c
-  )
-TARGET_LINK_LIBRARIES(
-  ${GENTEN_MATHLIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS}
-  )
-
 #------------------------------------------------------------
 #---- L-BFGS-B library
 #------------------------------------------------------------
@@ -730,9 +689,6 @@ IF (ENABLE_LBFGSB)
     TARGETS genten_lbfgsb_c
     DESTINATION ${CMAKE_INSTALL_LIBDIR}
     EXPORT genten
-    )
-  SET(GENTEN_MATHLIBS ${GENTEN_MATHLIBS}
-    genten_lbfgsb_c
     )
 ENDIF()
 
@@ -766,7 +722,8 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_TensorIO.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Ktensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_MixedFormatOps.cpp
-  ${Genten_SOURCE_DIR}/src/Genten_TTM.cpp
+  # Disabling TTM for now.  Will remove later
+  #${Genten_SOURCE_DIR}/src/Genten_TTM.cpp
   ${Genten_SOURCE_DIR}/src/Genten_MathLibs_Wpr.cpp
   ${Genten_SOURCE_DIR}/src/Genten_portability.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Sptensor.cpp
@@ -885,6 +842,9 @@ ENDIF()
 IF(NOT HAVE_TRILINOS_KOKKOSKERNELS)
   TARGET_LINK_LIBRARIES(gentenlib Kokkos::kokkoskernels)
 ENDIF()
+IF(ENABLE_LBFGSB)
+  TARGET_LINK_LIBRARIES (gentenlib genten_lbfgsb_c)
+ENDIF()
 TARGET_LINK_LIBRARIES(gentenlib nlohmann_json_schema_validator)
 TARGET_LINK_LIBRARIES(gentenlib nlohmann_json::nlohmann_json)
 IF(HAVE_BOOST)
@@ -905,37 +865,28 @@ IF(Kokkos_ENABLE_HIP)
     LIST(APPEND CMAKE_PREFIX_PATH ${ROCM_SEARCH_PATH})
   ENDIF()
 
-  OPTION(ENABLE_ROCBLAS "Flag to enable rocBLAS for Kokkos with HIP" ON)
-  IF(ENABLE_ROCBLAS)
-    FIND_PACKAGE(rocblas)
-    TARGET_LINK_LIBRARIES(gentenlib roc::rocblas)
-    TARGET_COMPILE_DEFINITIONS(gentenlib PUBLIC HAVE_ROCBLAS)
-    MESSAGE(STATUS "GenTen: Using rocBLAS")
-  ENDIF()
+  FIND_PACKAGE(rocblas REQUIRED)
+  TARGET_LINK_LIBRARIES(gentenlib roc::rocblas)
+  MESSAGE(STATUS "GenTen: Using rocBLAS")
 
-  OPTION(ENABLE_ROCSOLVER "Flag to enable rocSOLVER for Kokkos with HIP" ON)
-  IF(ENABLE_ROCSOLVER)
-    FIND_PACKAGE(rocsolver)
-    TARGET_LINK_LIBRARIES(gentenlib roc::rocsolver)
-    TARGET_COMPILE_DEFINITIONS(gentenlib PUBLIC HAVE_ROCSOLVER)
-    MESSAGE(STATUS "GenTen: Using rocSOLVER")
-  ENDIF()
+  FIND_PACKAGE(rocsolver REQUIRED)
+  TARGET_LINK_LIBRARIES(gentenlib roc::rocsolver)
+  MESSAGE(STATUS "GenTen: Using rocSOLVER")
 
-  OPTION(ENABLE_ROCTHRUST "Flag to enable rocTHRUST for Kokkos with HIP" ON)
-  IF(ENABLE_ROCTHRUST)
-    FIND_PACKAGE(rocthrust)
-    TARGET_LINK_LIBRARIES(gentenlib roc::rocthrust)
-    TARGET_COMPILE_DEFINITIONS(gentenlib PUBLIC HAVE_ROCTHRUST)
-    MESSAGE(STATUS "GenTen: Using rocTHRUST")
-  ENDIF()
+  FIND_PACKAGE(rocthrust REQUIRED)
+  TARGET_LINK_LIBRARIES(gentenlib roc::rocthrust)
+  MESSAGE(STATUS "GenTen: Using rocTHRUST")
 ENDIF()
 
-IF(GENTEN_ENABLE_SYCL_FOR_CUDA)
-  TARGET_COMPILE_DEFINITIONS(gentenlib PUBLIC ENABLE_SYCL_FOR_CUDA)
+IF(Kokkos_ENABLE_SYCL)
+  # We require the DPC++ variant of MKL for SYCL, and to avoid all
+  # kinds of issues with inconsistent BLAS/LAPACK libraries, we also
+  # then require the regular MKL for host-side linking
+  TARGET_LINK_LIBRARIES(gentenlib $<LINK_ONLY:MKL::MKL>)
+  TARGET_LINK_LIBRARIES(gentenlib $<LINK_ONLY:MKL::MKL_DPCPP>)
 ENDIF()
 
-#SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${Trilinos_LIBRARIES} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
-SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_MATHLIBS} ${GENTEN_LIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
+SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_LIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
 TARGET_LINK_LIBRARIES(${GENTEN_LINK_LIBS})
 INSTALL (
   TARGETS gentenlib nlohmann_json_schema_validator nlohmann_json

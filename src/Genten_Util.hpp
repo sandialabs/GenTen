@@ -72,7 +72,7 @@ namespace Genten {
 #define GENTEN_INST_HIP(INSTMACRO) /* */
 #endif
 
-#ifdef ENABLE_SYCL_FOR_CUDA
+#ifdef KOKKOS_ENABLE_SYCL
 #define GENTEN_INST_SYCL(INSTMACRO) \
   INSTMACRO(Kokkos::Experimental::SYCL)
 #else
@@ -493,9 +493,32 @@ namespace Genten {
    *  @param dTol  Relative tolerance, must be >= 0
    *  @return      true if d1 and d2 are within dTol
    */
+  KOKKOS_INLINE_FUNCTION
   bool  isEqualToTol(ttb_real  d1,
                      ttb_real  d2,
-                     ttb_real  dTol);
+                     ttb_real  dTol)
+  {
+    // Numerator = fabs(d1 - d2).
+    ttb_real  dDiff = std::fabs(d1 - d2);
+
+    // Denominator  = max(1, fabs(d1), fabs(d2).
+    ttb_real  dAbs1 = std::fabs(d1);
+    ttb_real  dAbs2 = std::fabs(d2);
+    ttb_real  dD = 1.0;
+    if ((dAbs1 > 1.0) || (dAbs2 > 1.0))
+    {
+      if (dAbs1 > dAbs2)
+        dD = dAbs1;
+      else
+        dD = dAbs2;
+    }
+
+    // Relative difference.
+    ttb_real  dRelDiff = dDiff / dD;
+
+    // Compare the relative difference to the tolerance.
+    return dRelDiff < dTol;
+  }
 
   // Return the offcial version for this release of the Tensor Toolbox.
   char *  getGentenVersion(void);

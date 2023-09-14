@@ -64,12 +64,6 @@
 //---- DEFINED IF KOKKOS IS ENABLED.
 #cmakedefine HAVE_KOKKOS
 
-//---- DEFINED IF cuBLAS IS ENABLED.
-#cmakedefine HAVE_CUBLAS
-
-//---- DEFINED IF cuSOLVER IS ENABLED.
-#cmakedefine HAVE_CUSOLVER
-
 //---- DEFINED IF BOOST IS ENABLED.
 #cmakedefine HAVE_BOOST
 
@@ -99,6 +93,9 @@
 
 //---- DEFINED IF DISTRIBUTED CODE IS ENABLED.
 #cmakedefine HAVE_DIST
+
+//---- DEFINED IF WE ARE USING MKL.
+#cmakedefine HAVE_MKL
 
 #include <cstddef>
 #include <cstdint>

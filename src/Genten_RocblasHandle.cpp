@@ -41,7 +41,7 @@
 
 #include "Genten_RocblasHandle.hpp"
 
-#if defined(KOKKOS_ENABLE_HIP) && (defined(HAVE_ROCBLAS) || defined(HAVE_ROCSOLVER))
+#if defined(KOKKOS_ENABLE_HIP)
 
 #include <iostream>
 #include <sstream>
