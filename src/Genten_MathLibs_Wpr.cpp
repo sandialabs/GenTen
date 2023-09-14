@@ -40,12 +40,8 @@
 
 #include "Genten_MathLibs_Wpr.hpp"
 
-#include "CMakeInclude.h"
-#include "Genten_Util.hpp"
+#ifdef HAVE_MKL
 
-#ifdef KOKKOS_ENABLE_SYCL
-
-#include "mkl.hpp"
 typedef MKL_INT ttb_blas_int;
 
 #else
@@ -64,10 +60,12 @@ typedef ptrdiff_t ttb_blas_int;
 #define dposv dposv_
 #define dsysv dsysv_
 #define dgelsy dgelsy_
+#define dsyev dsyev_
 
 #define sposv sposv_
 #define ssysv ssysv_
 #define sgelsy sgelsy_
+#define ssyev ssyev_
 
 #elif defined (__IBMCPP__)
 #define dgemm dgemm
@@ -79,10 +77,12 @@ typedef ptrdiff_t ttb_blas_int;
 #define dposv dposv
 #define dsysv dsysv
 #define dgelsy dgelsy
+#define dsyev dsyev
 
 #define sposv sposv
 #define ssysv ssysv
 #define sgelsy sgelsy
+#define ssyev ssyev
 
 #else
 #define dgemm dgemm_
@@ -94,10 +94,12 @@ typedef ptrdiff_t ttb_blas_int;
 #define dposv dposv_
 #define dsysv dsysv_
 #define dgelsy dgelsy_
+#define dsyev dsyev_
 
 #define sposv sposv_
 #define ssysv ssysv_
 #define sgelsy sgelsy_
+#define ssyev ssyev_
 #endif
 
 // Declare external LAPACK functions supplied by LAPACK libraries.
@@ -168,6 +170,16 @@ extern "C"
               double *c,
               ttb_blas_int *ldcptr);
 
+  void dsyev (char *jobz,
+              char *uplo,
+              ttb_blas_int *n,
+              double *a,
+              ttb_blas_int *lda,
+              double *w,
+              double *work,
+              ttb_blas_int *lwork,
+              ttb_blas_int *info);
+
   //
   // Single precision
   //
@@ -231,6 +243,16 @@ extern "C"
               float *betaptr,
               float *c,
               ttb_blas_int *ldcptr);
+
+  void ssyev (char *jobz,
+              char *uplo,
+              ttb_blas_int *n,
+              double *a,
+              ttb_blas_int *lda,
+              double *w,
+              double *work,
+              ttb_blas_int *lwork,
+              ttb_blas_int *info);
 
 }
 
@@ -387,6 +409,35 @@ ttb_indx Genten::gelsy(ttb_indx m, ttb_indx n, ttb_indx nrhs, double * a, ttb_in
 #endif
 }
 
+void Genten::syev(char jobz, char uplo, ttb_indx n, double *a, ttb_indx lda,
+                  double *w)
+{
+#if !defined(LAPACK_FOUND)
+  Genten::error("Genten::syev - not found, must link with an LAPACK library.");
+#else
+  ttb_blas_int n_ml = (ttb_blas_int) n;
+  ttb_blas_int lda_ml = (ttb_blas_int) lda;
+
+  // Workspace query
+  ttb_blas_int lwork = -1;
+  double work_tmp = 0;
+  ttb_blas_int info_ml = 0;
+  ::dsyev(&jobz, &uplo, &n_ml, a, &lda_ml, w, &work_tmp, &lwork, &info_ml);
+
+  lwork = ttb_blas_int(work_tmp);
+  double * work = new double[lwork];
+  ::dsyev(&jobz, &uplo, &n_ml, a, &lda_ml, w, &work_tmp, &lwork, &info_ml);
+
+  delete[] work;
+
+  // Check output info and free pivot array
+  if (info_ml < 0)
+  {
+    Genten::error("Genten::syev - argument error in call to dsyev");
+  }
+#endif
+}
+
 //
 // Single precision
 //
@@ -488,7 +539,7 @@ bool Genten::posv (char uplo, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda
   // Check output info
   if (info_ml < 0)
   {
-    Genten::error("Genten::posv - argument error in call to dposv");
+    Genten::error("Genten::posv - argument error in call to sposv");
   }
   if (info_ml > 0)
     return false;
@@ -528,10 +579,39 @@ ttb_indx Genten::gelsy(ttb_indx m, ttb_indx n, ttb_indx nrhs, float * a, ttb_ind
   // Check output info and free pivot array
   if (info_ml < 0)
   {
-    Genten::error("Genten::gelsy - argument error in call to dgelsy");
+    Genten::error("Genten::gelsy - argument error in call to sgelsy");
   }
 
   ttb_indx rank = (ttb_indx) rank_ml;
   return rank;
+#endif
+}
+
+void Genten::syev(char jobz, char uplo, ttb_indx n, float *a, ttb_indx lda,
+                  float *w)
+{
+#if !defined(LAPACK_FOUND)
+  Genten::error("Genten::syev - not found, must link with an LAPACK library.");
+#else
+  ttb_blas_int n_ml = (ttb_blas_int) n;
+  ttb_blas_int lda_ml = (ttb_blas_int) lda;
+
+  // Workspace query
+  ttb_blas_int lwork = -1;
+  float work_tmp = 0;
+  ttb_blas_int info_ml = 0;
+  ::ssyev(&jobz, &uplo, &n_ml, a, &lda_ml, w, &work_tmp, &lwork, &info_ml);
+
+  lwork = ttb_blas_int(work_tmp);
+  float * work = new float[lwork];
+  ::ssyev(&jobz, &uplo, &n_ml, a, &lda_ml, w, &work_tmp, &lwork, &info_ml);
+
+  delete[] work;
+
+  // Check output info and free pivot array
+  if (info_ml < 0)
+  {
+    Genten::error("Genten::syev - argument error in call to ssyev");
+  }
 #endif
 }

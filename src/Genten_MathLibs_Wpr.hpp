@@ -66,7 +66,7 @@
 #endif
 
 #if defined(KOKKOS_ENABLE_SYCL)
-#include "mkl.hpp"
+#include "oneapi/mkl.hpp"
 #endif
 
 namespace Genten
@@ -100,9 +100,6 @@ namespace Genten
   void syrk(char uplo, char trans, ttb_indx n, ttb_indx k, double alpha,
             const double * a, ttb_indx ldaa,
             double beta, double * c, ttb_indx ldac);
-
-  // VMUL - Compute A = A .* B (Hadamard or elementwise product)
-  void vmul(const ttb_indx n, double * a, const double * b);
 
   // POSV - Compute solution to linear system AX = B for SPD A.
   /*
@@ -164,6 +161,10 @@ namespace Genten
   */
   ttb_indx gelsy(ttb_indx m, ttb_indx n, ttb_indx nrhs, double * a, ttb_indx lda, double * b, ttb_indx ldb, double rcond);
 
+  // SYEV - Compute all eigenvalues and eigenvectors of a symmetric matrix
+  void syev(char jobz, char uplo, ttb_indx n, double *a, ttb_indx lda,
+            double *w);
+
   //
   // Single precision
   //
@@ -192,9 +193,6 @@ namespace Genten
   void syrk(char uplo, char trans, ttb_indx n, ttb_indx k, float alpha,
             const float * a, ttb_indx ldaa,
             float beta, float * c, ttb_indx ldac);
-
-  // VMUL - Compute A = A .* B (Hadamard or elementwise product)
-  void vmul(const ttb_indx n, float * a, const float * b);
 
   // POSV - Compute solution to linear system AX = B for SPD A.
   /*
@@ -255,6 +253,10 @@ namespace Genten
     returns the effective rank of A.
   */
   ttb_indx gelsy(ttb_indx m, ttb_indx n, ttb_indx nrhs, float * a, ttb_indx lda, float * b, ttb_indx ldb, float rcond);
+
+  // SYEV - Compute all eigenvalues and eigenvectors of a symmetric matrix
+  void syev(char jobz, char uplo, ttb_indx n, float *a, ttb_indx lda,
+            float *w);
 }
 
 // Implementations of GEMM for various architectures

@@ -1,17 +1,13 @@
-#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+#if defined(KOKKOS_ENABLE_CUDA)
 #include <cuda_runtime.h>
 #include "cublas_v2.h"
+#include "cusolverDn.h"
 #endif
-#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUSOLVER)
-#include <cusolverDn.h>
-#endif
-#if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCBLAS)
+#if defined(KOKKOS_ENABLE_HIP)
 #include "rocblas.h"
-#endif
-#if defined(KOKKOS_ENABLE_HIP) && defined(HAVE_ROCSOLVER)
 #include "rocsolver.h"
 #endif
-#include "Genten_MathLibs.hpp"
+#include "Genten_MathLibs_Wpr.hpp"
 
 typedef typename Kokkos::View<double**, Kokkos::LayoutLeft, Kokkos::DefaultExecutionSpace> gram_view_type;
 typedef typename Kokkos::View<double*,  Kokkos::DefaultExecutionSpace> eig_view_type;
@@ -19,7 +15,7 @@ typedef typename Kokkos::View<double*,  Kokkos::DefaultExecutionSpace> eig_view_
 void perform_eigen_decomp(int nRows, gram_view_type& gram_matrix, eig_view_type& eig_vals)
 {
 
-#if defined(KOKKOS_ENABLE_CUDA) && defined(HAVE_CUBLAS)
+#if defined(KOKKOS_ENABLE_CUDA)
     cusolverDnHandle_t cusolverH = NULL;
     cusolverStatus_t cusolver_status = CUSOLVER_STATUS_SUCCESS;
     cudaError_t cudaStat = cudaSuccess;
@@ -62,22 +58,6 @@ void perform_eigen_decomp(int nRows, gram_view_type& gram_matrix, eig_view_type&
     gt_assert(CUSOLVER_STATUS_SUCCESS == cusolver_status);
     gt_assert(cudaSuccess == cudaStat);
 #elif defined (LAPACK_FOUND)
-
-    ttb_blas_int lwork = 0; 
-    ttb_blas_int info_ml=0;
-    //double *d_work = NULL;
-
-    ttb_blas_int n_ml = (ttb_blas_int) nRows;
-    ttb_blas_int lda_ml = (ttb_blas_int) nRows;
-
-    // First perform a workspace query
-    lwork = -1;
-    double best_lwork_val;
-    dsyev("V", "U", &n_ml, gram_matrix.data(), &lda_ml, eig_vals.data(), &best_lwork_val, &lwork, &info_ml);
-    lwork = (ttb_blas_int)best_lwork_val;
-    double * d_work = new double[lwork];//(double*)malloc(lwork*sizeof(double));
-
-    // Call for actual eigensolve
-    dsyev("V", "U", &n_ml, gram_matrix.data(), &lda_ml, eig_vals.data(), d_work, &lwork, &info_ml);
+    Genten::syev('V', 'U', nRows, gram_matrix.data(), nRows, eig_vals.data());
 #endif
 }
