@@ -340,10 +340,12 @@ namespace Impl {
   /*const*/ unsigned nd = u.ndims();
   /*const*/ unsigned nc = u.ncomponents();
 
-  // Make VectorSize*TeamSize ~= 256 on Cuda, HIP or SYCL
+  // Make VectorSize*TeamSize ~= 256 on Cuda, HIP
+  // For SYCL, we sometimes get the wrong answer if TeamSize > 1
   static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+  static const bool is_sycl = Genten::is_sycl_space<ExecSpace>::value;
   const unsigned VectorSize = is_gpu ? nc : 1;
-  const unsigned TeamSize = is_gpu ? (256+nc-1)/nc : 1;
+  const unsigned TeamSize = is_gpu && !is_sycl ? (256+nc-1)/nc : 1;
   const ttb_indx N = (ne+TeamSize-1)/TeamSize;
 
   // Check on sizes
