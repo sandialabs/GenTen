@@ -247,10 +247,10 @@ extern "C"
   void ssyev (char *jobz,
               char *uplo,
               ttb_blas_int *n,
-              double *a,
+              float *a,
               ttb_blas_int *lda,
-              double *w,
-              double *work,
+              float *w,
+              float *work,
               ttb_blas_int *lwork,
               ttb_blas_int *info);
 
