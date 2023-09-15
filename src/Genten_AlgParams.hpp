@@ -340,7 +340,7 @@ namespace Genten {
         mttkrp_method = MTTKRP_Method::Perm;
 
       else if (space_prop::is_hip)
-        mttkrp_method = MTTKRP_Method::Perm;
+        mttkrp_method = MTTKRP_Method::Atomic;
 
       else if (space_prop::is_sycl)
         mttkrp_method = MTTKRP_Method::Atomic;
@@ -381,7 +381,7 @@ namespace Genten {
         mttkrp_all_method = MTTKRP_All_Method::Iterated;
 
       else if (space_prop::is_hip)
-        mttkrp_all_method = MTTKRP_All_Method::Iterated;
+        mttkrp_all_method = MTTKRP_All_Method::Atomic;
 
       else if (space_prop::is_sycl)
         mttkrp_all_method = MTTKRP_All_Method::Atomic;
@@ -467,7 +467,7 @@ namespace Genten {
           mttkrp_method == MTTKRP_Method::Duplicated) {
         out << "MTTKRP method " << MTTKRP_Method::names[mttkrp_method]
             << " is invalid for HIP, changing to ";
-        mttkrp_method = MTTKRP_Method::Perm;
+        mttkrp_method = MTTKRP_Method::Atomic;
         out << MTTKRP_Method::names[mttkrp_method] << "." << std::endl;
       }
       if (mttkrp_all_method == MTTKRP_All_Method::Single ||
@@ -475,7 +475,7 @@ namespace Genten {
         out << "MTTKRP-All method "
             << MTTKRP_All_Method::names[mttkrp_all_method]
             << " is invalid for HIP, changing to ";
-        mttkrp_all_method = MTTKRP_All_Method::Iterated;
+        mttkrp_all_method = MTTKRP_All_Method::Atomic;
         out << MTTKRP_All_Method::names[mttkrp_all_method] << "." << std::endl;
       }
       if (method == Solver_Method::GCP_SGD &&
