@@ -367,7 +367,7 @@ invert(ttb_real a) const
                        Kokkos::RangePolicy<ExecSpace>(0,sz),
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
-    d[i] = a / data[i];
+    d[i] = a / d[i];
   });
 }
 
@@ -622,7 +622,7 @@ sum() const
                           Kokkos::RangePolicy<ExecSpace>(0,sz),
                           KOKKOS_LAMBDA(const ttb_indx i, ttb_real& t)
   {
-    t += data[i];
+    t += d[i];
   }, value);
   Kokkos::fence();
 
