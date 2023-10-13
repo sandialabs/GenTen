@@ -117,6 +117,7 @@ int main_driver(Genten::AlgParams& algParams,
                 const std::string& tensor_outputfilename,
                 const std::string& dense_reconstruction,
                 const std::string& sparse_reconstruction,
+                const ttb_real sparse_reconstruction_tol,
                 const std::string& history_file)
 {
   int ret = 0;
@@ -287,7 +288,7 @@ int main_driver(Genten::AlgParams& algParams,
       if (sparse_reconstruction != "") {
         std::cout << "Writing ktensor sparse reconstruction to "
                   << sparse_reconstruction << std::endl;
-        Genten::Sptensor sparse_recon(dense_recon);
+        Genten::Sptensor sparse_recon(dense_recon, sparse_reconstruction_tol);
         Genten::export_sptensor(sparse_reconstruction, sparse_recon);
       }
     }
@@ -450,6 +451,7 @@ int main(int argc, char* argv[])
     std::string tensor_outputfilename = "";
     std::string dense_reconstruction = "";
     std::string sparse_reconstruction = "";
+    ttb_real sparse_reconstruction_tol = 0.0;
     ttb_indx nnz = 1 * 1000 * 1000;
     Genten::IndxArray facDims_h = { 30, 40, 50 };
     std::string init = "";
@@ -490,6 +492,7 @@ int main(int argc, char* argv[])
         Genten::parse_ptree_value(ktensor_input, "output-file", outputfilename);
         Genten::parse_ptree_value(ktensor_input, "dense-reconstruction", dense_reconstruction);
         Genten::parse_ptree_value(ktensor_input, "sparse-reconstruction", sparse_reconstruction);
+        Genten::parse_ptree_value(ktensor_input, "sparse-reconstruction-tolerance", sparse_reconstruction_tol, 0.0, DBL_MAX);
       }
 
       Genten::parse_ptree_value(json_input, "history-file", history_file);
@@ -509,6 +512,8 @@ int main(int argc, char* argv[])
       Genten::parse_string(args, "--dense-reconstruction", dense_reconstruction);
     sparse_reconstruction =
       Genten::parse_string(args, "--sparse-reconstruction", sparse_reconstruction);
+    sparse_reconstruction_tol =
+      Genten::parse_ttb_real(args, "--sparse-reconstruction-tolerance", sparse_reconstruction_tol, 0.0, DBL_MAX);
     nnz =
       Genten::parse_ttb_indx(args, "--nnz", nnz, 1, INT_MAX);
     facDims_h =
@@ -578,6 +583,7 @@ int main(int argc, char* argv[])
                                                        tensor_outputfilename,
                                                        dense_reconstruction,
                                                        sparse_reconstruction,
+                                                       sparse_reconstruction_tol,
                                                        history_file);
 #ifdef HAVE_CUDA
     else if (algParams.exec_space == Genten::Execution_Space::Cuda)
@@ -593,6 +599,7 @@ int main(int argc, char* argv[])
                                       tensor_outputfilename,
                                       dense_reconstruction,
                                       sparse_reconstruction,
+                                      sparse_reconstruction_tol,
                                       history_file);
 #endif
 #ifdef HAVE_HIP
@@ -609,6 +616,7 @@ int main(int argc, char* argv[])
                                                    tensor_outputfilename,
                                                    dense_reconstruction,
                                                    sparse_reconstruction,
+                                                   sparse_reconstruction_tol,
                                                    history_file);
 #endif
 #ifdef HAVE_SYCL
@@ -625,6 +633,7 @@ int main(int argc, char* argv[])
                                                     tensor_outputfilename,
                                                     dense_reconstruction,
                                                     sparse_reconstruction,
+                                                    sparse_reconstruction_tol,
                                                     history_file);
 #endif
 #ifdef HAVE_OPENMP
@@ -641,6 +650,7 @@ int main(int argc, char* argv[])
                                         tensor_outputfilename,
                                         dense_reconstruction,
                                         sparse_reconstruction,
+                                        sparse_reconstruction_tol,
                                         history_file);
 #endif
 #ifdef HAVE_THREADS
@@ -657,6 +667,7 @@ int main(int argc, char* argv[])
                                          tensor_outputfilename,
                                          dense_reconstruction,
                                          sparse_reconstruction,
+                                         sparse_reconstruction_tol,
                                          history_file);
 #endif
 #ifdef HAVE_SERIAL
@@ -673,6 +684,7 @@ int main(int argc, char* argv[])
                                         tensor_outputfilename,
                                         dense_reconstruction,
                                         sparse_reconstruction,
+                                        sparse_reconstruction_tol,
                                         history_file);
 #endif
     else
