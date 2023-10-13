@@ -170,7 +170,9 @@ public:
   }
 
   // Create tensor from dense tensor
-  SptensorImpl(const TensorT<ExecSpace>& x);
+  // tol is a tolerance for deciding whether values are "zero" or not.  Only values
+  // with a magnitude larger than tol are included as non-zeros.
+  SptensorImpl(const TensorT<ExecSpace>& x, const ttb_real tol = 0.0);
 
   // Copy constructor.
   KOKKOS_DEFAULTED_FUNCTION
@@ -540,8 +542,8 @@ public:
     impl_type(d,vals,s,p,sorted,s_g,l,u), dist_type(d.size()) {}
   SptensorT(const IndxArrayT<ExecSpace>& d, const subs_view_type& s) :
     impl_type(d,s), dist_type(d.size()) {}
-  SptensorT(const TensorT<ExecSpace>& x) :
-    impl_type(x), dist_type(x.ndims()) {}
+  SptensorT(const TensorT<ExecSpace>& x, const ttb_real tol = 0.0) :
+    impl_type(x, tol), dist_type(x.ndims()) {}
 
   SptensorT(SptensorT&&) = default;
   SptensorT(const SptensorT&) = default;

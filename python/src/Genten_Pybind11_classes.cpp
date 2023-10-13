@@ -821,11 +821,12 @@ void pygenten_sptensor(py::module &m){
 
      The Ktensor is multiplied out to reconstruct a full, dense tensor, which
      is then scanned for zeros when producing the sparse tensor.)", py::arg("u"));
-    cl.def(py::init([](const Genten::Tensor& X){ return new Genten::Sptensor(X); }),R"(
+    cl.def(py::init([](const Genten::Tensor& X, const ttb_real tol=0.0){ return new Genten::Sptensor(X,tol); }),R"(
      Constructor that creates a sparse tensor from the supplied dense tensor X.
 
      The dense tensor is scanned for zeros which are excluded from the resulting
-     sparse tensor.)", py::arg("X"));
+     sparse tensor.  Values are considered to be non-zero if they are larger in
+     magnitude than the supplied tolerance.)", py::arg("X"), py::arg("tol") = 0.0);
     cl.def_property_readonly("pmap", &Genten::Sptensor::getProcessorMap, py::return_value_policy::reference, R"(
     Processor map for distributed memory parallelism.)");
     cl.def_property_readonly("ndims", &Genten::Sptensor::ndims, R"(

@@ -38,6 +38,8 @@
 // ************************************************************************
 //@HEADER
 
+#include <cmath>
+
 #include "Genten_Sptensor.hpp"
 #include "Genten_Tensor.hpp"
 
@@ -80,7 +82,7 @@ void init_subs(const SubsViewType& subs, const T* sbs, const ttb_indx shift)
 }
 
 template <typename ExecSpace, typename Layout>
-ttb_indx countNonzeros(const TensorImpl<ExecSpace,Layout>& x)
+ttb_indx countNonzeros(const TensorImpl<ExecSpace,Layout>& x, const ttb_real tol)
 {
   const ttb_indx ne = x.numel();
   ttb_indx nz = 0;
@@ -88,14 +90,15 @@ ttb_indx countNonzeros(const TensorImpl<ExecSpace,Layout>& x)
                          Kokkos::RangePolicy<ExecSpace>(0,ne),
                          KOKKOS_LAMBDA(const ttb_indx i, ttb_indx& n)
   {
-    if (x[i] != ttb_real(0.0)) ++n;
+    if (std::abs(x[i]) > tol) ++n;
   }, nz);
   return nz;
 }
 
 template <typename ExecSpace, typename Layout, typename SubsViewType, typename ValsViewType>
 void copyFromTensor(const TensorImpl<ExecSpace,Layout>& x,
-                    const SubsViewType& subs, const ValsViewType& vals)
+                    const SubsViewType& subs, const ValsViewType& vals,
+                    const ttb_real tol)
 {
   Kokkos::View<ttb_indx,ExecSpace> nonzero_index("nonzero_index");
   const ttb_indx ne = x.numel();
@@ -104,7 +107,7 @@ void copyFromTensor(const TensorImpl<ExecSpace,Layout>& x,
                        KOKKOS_LAMBDA(const ttb_indx i)
   {
     const ttb_real xv = x[i];
-    if (xv != ttb_real(0.0)) {
+    if (std::abs(xv) > tol) {
       const ttb_indx ind = Kokkos::atomic_fetch_add(&(nonzero_index()), 1);
       vals[ind] = xv;
       auto sub = Kokkos::subview(subs, ind, Kokkos::ALL);
@@ -221,7 +224,8 @@ SptensorImpl(const std::vector<ttb_indx>& dims,
 
 template <typename ExecSpace>
 Genten::SptensorImpl<ExecSpace>::
-SptensorImpl(const TensorT<ExecSpace>& x) :
+SptensorImpl(const TensorT<ExecSpace>& x,
+             const ttb_real tol) :
   siz(x.size().clone()), nNumDims(x.ndims()), values(),
   subs(), subs_gids(), perm(),
   is_sorted(false),
@@ -232,20 +236,20 @@ SptensorImpl(const TensorT<ExecSpace>& x) :
 
   // Compute number of nonzeros
   if (x.has_left_impl()) {
-    const ttb_indx nz = Impl::countNonzeros(x.left_impl());
+    const ttb_indx nz = Impl::countNonzeros(x.left_impl(), tol);
 
     // Compute nonzero subscripts and copy values
     subs = subs_view_type("Genten::Sptensor::subs",nz,siz.size());
     values = ArrayT<ExecSpace>(nz);
-    Impl::copyFromTensor(x.left_impl(), subs, values.values());
+    Impl::copyFromTensor(x.left_impl(), subs, values.values(), tol);
   }
   else {
-    const ttb_indx nz = Impl::countNonzeros(x.right_impl());
+    const ttb_indx nz = Impl::countNonzeros(x.right_impl(), tol);
 
     // Compute nonzero subscripts and copy values
     subs = subs_view_type("Genten::Sptensor::subs",nz,siz.size());
     values = ArrayT<ExecSpace>(nz);
-    Impl::copyFromTensor(x.right_impl(), subs, values.values());
+    Impl::copyFromTensor(x.right_impl(), subs, values.values(), tol);
   }
   subs_gids = subs;
 }
