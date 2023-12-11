@@ -89,6 +89,9 @@ constexpr const char*const Genten::MTTKRP_Method::names[];
 constexpr const Genten::MTTKRP_All_Method::type Genten::MTTKRP_All_Method::types[];
 constexpr const char*const Genten::MTTKRP_All_Method::names[];
 
+constexpr const Genten::Dist_Update_Method::type Genten::Dist_Update_Method::types[];
+constexpr const char*const Genten::Dist_Update_Method::names[];
+
 constexpr const Genten::Hess_Vec_Method::type Genten::Hess_Vec_Method::types[];
 constexpr const char*const Genten::Hess_Vec_Method::names[];
 

@@ -739,6 +739,179 @@ public:
 
 #endif
 
+template <typename ExecSpace>
+class KtensorBroadcastUpdate : public DistKtensorUpdate<ExecSpace> {
+private:
+  const ProcessorMap *pmap;
+  std::vector< std::vector<int> > offsets;
+  std::vector< std::vector<int> > sizes;
+
+  std::vector< std::vector<int> > offsets_r;
+  std::vector< std::vector<int> > sizes_r;
+
+public:
+  KtensorBroadcastUpdate(const KtensorT<ExecSpace>& u) :
+    pmap(u.getProcessorMap())
+  {
+    const unsigned nd = u.ndims();
+    sizes.resize(nd);
+    sizes_r.resize(nd);
+    offsets.resize(nd);
+    offsets_r.resize(nd);
+    for (unsigned n=0; n<nd; ++n) {
+      if (pmap != nullptr) {
+        const unsigned np = pmap->subCommSize(n);
+
+        // Get number of rows on each processor
+        sizes[n].resize(np);
+        sizes[n][pmap->subCommRank(n)] = u[n].nRows();
+        pmap->subGridAllGather(n, sizes[n].data(), 1);
+
+        // Get span on each processor
+        sizes_r[n].resize(np);
+        sizes_r[n][pmap->subCommRank(n)] = u[n].view().span();
+        pmap->subGridAllGather(n, sizes_r[n].data(), 1);
+
+        // Get starting offsets for each processor
+        offsets[n].resize(np);
+        offsets_r[n].resize(np);
+        offsets[n][0] = 0;
+        offsets_r[n][0] = 0;
+        for (unsigned p=1; p<np; ++p) {
+          offsets[n][p] = offsets[n][p-1] + sizes[n][p-1];
+          offsets_r[n][p] = offsets_r[n][p-1] + sizes_r[n][p-1];
+        }
+      }
+      else {
+        sizes[n].resize(1);
+        sizes_r[n].resize(1);
+        offsets[n].resize(1);
+        offsets_r[n].resize(1);
+        sizes[n][0] = u[n].nRows();
+        sizes_r[n][0] = u[n].view().span();
+        offsets[n][0] = 0;
+        offsets_r[n][0] = 0;
+      }
+    }
+  }
+  virtual ~KtensorBroadcastUpdate() {}
+
+  KtensorBroadcastUpdate(KtensorBroadcastUpdate&&) = default;
+  KtensorBroadcastUpdate(const KtensorBroadcastUpdate&) = default;
+  KtensorBroadcastUpdate& operator=(KtensorBroadcastUpdate&&) = default;
+  KtensorBroadcastUpdate& operator=(const KtensorBroadcastUpdate&) = default;
+
+  virtual KtensorT<ExecSpace>
+  createOverlapKtensor(const KtensorT<ExecSpace>& u) const override
+  {
+    GENTEN_TIME_MONITOR("create overlapped k-tensor");
+
+    const unsigned nd = u.ndims();
+    const unsigned nc = u.ncomponents();
+    KtensorT<ExecSpace> u_overlapped = KtensorT<ExecSpace>(nc, nd);
+    for (unsigned n=0; n<nd; ++n) {
+      const unsigned np = offsets[n].size();
+      const ttb_indx nrows = offsets[n][np-1]+sizes[n][np-1];
+      FacMatrixT<ExecSpace> mat(nrows, nc);
+      u_overlapped.set_factor(n, mat);
+    }
+    u_overlapped.setProcessorMap(u.getProcessorMap());
+    return u_overlapped;
+  };
+
+  virtual bool overlapAliasesArg() const override { return false; }
+
+  virtual bool isReplicated() const override { return false; }
+
+  using DistKtensorUpdate<ExecSpace>::doImport;
+
+  virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
+                        const KtensorT<ExecSpace>& u) const override
+  {
+    if (pmap != nullptr) {
+      const unsigned nd = u.ndims();
+      for (unsigned n=0; n<nd; ++n) {
+        auto uov = u_overlapped[n].view();
+        unsigned rank = pmap->subCommRank(n);
+        gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
+        Kokkos::fence();
+        pmap->subGridAllGather(n, u[n].view(), uov,
+                               sizes_r[n].data(), offsets_r[n].data());
+      }
+    }
+    else
+      deep_copy(u_overlapped, u); // no-op if u and u_overlapped are the same
+  }
+
+  virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
+                        const KtensorT<ExecSpace>& u,
+                        const ttb_indx n) const override
+  {
+    if (pmap != nullptr) {
+      auto uov = u_overlapped[n].view();
+      unsigned rank = pmap->subCommRank(n);
+      gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
+      Kokkos::fence();
+      pmap->subGridAllGather(n, u[n].view(), uov,
+                             sizes_r[n].data(), offsets_r[n].data());
+    }
+    else
+      deep_copy(u_overlapped[n], u[n]); // no-op if u and u_overlapped are the same
+  }
+
+  using DistKtensorUpdate<ExecSpace>::doExport;
+
+  virtual void doExport(const KtensorT<ExecSpace>& u,
+                        const KtensorT<ExecSpace>& u_overlapped) const override
+  {
+    GENTEN_TIME_MONITOR("k-tensor export");
+
+    if (pmap != nullptr) {
+      const unsigned nd = u.ndims();
+      for (unsigned n=0; n<nd; ++n) {
+        auto uv = u[n].view();
+        const unsigned np = pmap->subCommSize(n);
+        for (unsigned p=0; p<np; ++p) {
+          auto sub = Kokkos::subview(
+            u_overlapped[n].view(),
+            std::make_pair(offsets[n][p], offsets[n][p]+sizes[n][p]), Kokkos::ALL);
+          Kokkos::fence();
+          if (pmap->subCommRank(n) == p)
+            gt_assert(sub.span() == uv.span());
+          pmap->subGridReduce(n, sub, uv, p);
+        }
+      }
+    }
+    else
+      deep_copy(u, u_overlapped); // no-op if u and u_overlapped are the same
+  }
+
+  virtual void doExport(const KtensorT<ExecSpace>& u,
+                        const KtensorT<ExecSpace>& u_overlapped,
+                        const ttb_indx n) const override
+  {
+    GENTEN_TIME_MONITOR("k-tensor export");
+
+    if (pmap != nullptr) {
+      auto uv = u[n].view();
+      const unsigned np = pmap->subCommSize(n);
+      for (unsigned p=0; p<np; ++p) {
+        auto sub = Kokkos::subview(
+          u_overlapped[n].view(),
+          std::make_pair(offsets[n][p], offsets[n][p]+sizes[n][p]), Kokkos::ALL);
+        Kokkos::fence();
+        if (pmap->subCommRank(n) == p && sub.span() != uv.span()) {
+          Genten::error("Spans do not match!");
+        }
+        pmap->subGridReduce(n, sub, uv, p);
+      }
+    }
+    else
+      deep_copy(u[n], u_overlapped[n]); // no-op if u and u_overlapped are the same
+  }
+
+};
+
 template <typename TensorType>
 DistKtensorUpdate<typename TensorType::exec_space>*
 createKtensorUpdate(const TensorType& X,
@@ -755,6 +928,8 @@ createKtensorUpdate(const TensorType& X,
   else if (algParams.dist_update_method == Dist_Update_Method::Tpetra)
     dku = new KtensorTpetraUpdate<exec_space>(X, u);
 #endif
+   else if (algParams.dist_update_method == Dist_Update_Method::Broadcast)
+    dku = new KtensorBroadcastUpdate<exec_space>(u);
   else
     Genten::error("Unknown distributed Ktensor update method");
   return dku;
@@ -777,6 +952,8 @@ createKtensorUpdate(const TensorType& X,
   else if (algParams.dist_update_method == Dist_Update_Method::Tpetra)
     dku = new KtensorTpetraUpdate<exec_space>(X, u);
 #endif
+  else if (algParams.dist_update_method == Dist_Update_Method::Broadcast)
+    dku = new KtensorBroadcastUpdate<exec_space>(u);
   else
     Genten::error("Unknown distributed Ktensor update method");
   return dku;

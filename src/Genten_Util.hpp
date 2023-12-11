@@ -246,16 +246,18 @@ namespace Genten {
     enum type {
       AllReduce,
       AllGather,
-      Tpetra
+      Tpetra,
+      Broadcast
     };
-    static constexpr unsigned num_types = 3;
+    static constexpr unsigned num_types = 4;
     static constexpr type types[] = {
       AllReduce,
       AllGather,
-      Tpetra
+      Tpetra,
+      Broadcast
     };
     static constexpr const char* names[] = {
-      "all-reduce", "all-gather", "tpetra"
+      "all-reduce", "all-gather", "tpetra", "broadcast"
     };
     static constexpr type default_type = AllReduce;
   };

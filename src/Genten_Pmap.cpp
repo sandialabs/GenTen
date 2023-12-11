@@ -158,7 +158,7 @@ CartGrid(ttb_indx nprocs, std::vector<ttb_indx> const &tensor_dims) {
 
 ProcessorMap::ProcessorMap(std::vector<ttb_indx> const &tensor_dims,
                            small_vector<ttb_indx> const &predetermined_grid,
-                           const bool use_tpetra)
+                           const Dist_Update_Method::type dist_method)
     : dimension_sizes_(predetermined_grid) {
   const ttb_indx ndims = dimension_sizes_.size();
 
@@ -194,12 +194,15 @@ ProcessorMap::ProcessorMap(std::vector<ttb_indx> const &tensor_dims,
   small_vector<int> dim_filter2(ndims, 0);
   fac_maps_.resize(ndims);
 
-  // For Tpetra approach, factor matrices are distributed across all procs
-  if (use_tpetra) {
+  // For Tpetra and Broadcast approaches, factor matrices are distributed
+  // across all procs
+  if (dist_method == Dist_Update_Method::Tpetra ||
+      dist_method == Dist_Update_Method::Broadcast) {
     for (ttb_indx i = 0; i < ndims; ++i)
       fac_maps_[i] = FacMap(cart_comm_);
   }
-  else {
+  else if (dist_method == Dist_Update_Method::AllReduce ||
+           dist_method == Dist_Update_Method::AllGather){
     // Get information for the MPI Subgrid for each Dimension
     for (ttb_indx i = 0; i < ndims; ++i) {
       dim_filter2[i] = 1; // Get only this dim
@@ -212,10 +215,10 @@ ProcessorMap::ProcessorMap(std::vector<ttb_indx> const &tensor_dims,
 }
 
 ProcessorMap::ProcessorMap(std::vector<ttb_indx> const &tensor_dims,
-                           const bool use_tpetra)
+                           const Dist_Update_Method::type dist_method)
     : ProcessorMap(tensor_dims,
                    CartGrid(DistContext::nranks(), tensor_dims),
-                   use_tpetra) {}
+                   dist_method) {}
 
 void ProcessorMap::gridBarrier() const {
   if (grid_nprocs_ > 1) {

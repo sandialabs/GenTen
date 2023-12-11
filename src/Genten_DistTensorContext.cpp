@@ -549,8 +549,6 @@ distributeTensorImpl(const Sptensor& X, const AlgParams& algParams)
     for (ttb_indx i=0; i<ndims; ++i)
       global_dims_[i] = X.size(i);
 
-    const bool use_tpetra =
-      algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
     if (algParams.proc_grid.size() > 0) {
       gt_assert(algParams.proc_grid.size() == ndims);
       small_vector<ttb_indx> grid(ndims);
@@ -558,11 +556,11 @@ distributeTensorImpl(const Sptensor& X, const AlgParams& algParams)
         grid[i] = algParams.proc_grid[i];
       pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
                                                              grid,
-                                                             use_tpetra));
+                                                             dist_method));
     }
     else
       pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
-                                                             use_tpetra));
+                                                             dist_method));
     detail::printGrids(*pmap_);
 
     global_blocking_ =
@@ -600,8 +598,6 @@ distributeTensorImpl(const Tensor& X, const AlgParams& algParams)
     for (ttb_indx i=0; i<ndims; ++i)
       global_dims_[i] = X.size(i);
 
-    const bool use_tpetra =
-      algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
     if (algParams.proc_grid.size() > 0) {
       gt_assert(algParams.proc_grid.size() == ndims);
       small_vector<ttb_indx> grid(ndims);
@@ -609,11 +605,11 @@ distributeTensorImpl(const Tensor& X, const AlgParams& algParams)
         grid[i] = algParams.proc_grid[i];
       pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
                                                              grid,
-                                                             use_tpetra));
+                                                             dist_method));
     }
     else
       pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
-                                                           use_tpetra));
+                                                             dist_method));
 
     detail::printGrids(*pmap_);
 
@@ -724,6 +720,8 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
                  const bool compressed, const ptree& tree,
                  const AlgParams& algParams)
 {
+  dist_method = algParams.dist_update_method;
+
   SptensorT<ExecSpace> X_sparse;
   TensorT<ExecSpace> X_dense;
   TensorReader<Genten::DefaultHostExecutionSpace> reader(
@@ -812,9 +810,6 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
   else {
     global_dims_ = global_dims;
 
-    const bool use_tpetra =
-      algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
-
     if (algParams.proc_grid.size() > 0) {
       gt_assert(algParams.proc_grid.size() == ndims);
       small_vector<ttb_indx> grid(ndims);
@@ -822,11 +817,11 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
         grid[i] = algParams.proc_grid[i];
       pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
                                                              grid,
-                                                             use_tpetra));
+                                                             dist_method));
     }
     else
       pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
-                                                             use_tpetra));
+                                                             dist_method));
     detail::printGrids(*pmap_);
 
     global_blocking_ =
@@ -1210,6 +1205,8 @@ distributeTensor(const std::string& file,
                  const ptree& tree,
                  const AlgParams& algParams)
 {
+  dist_method = algParams.dist_update_method;
+
   SptensorT<ExecSpace> X_sparse;
   TensorT<ExecSpace> X_dense;
   Genten::TensorReader<ExecSpace> reader(file, index_base, compressed, tree);
@@ -1291,7 +1288,7 @@ randomInitialGuess(const SptensorT<ExecSpace>& X,
                    const ttb_indx seed,
                    const bool prng,
                    const bool scale_guess_by_norm_x,
-                   const std::string& dist_method) const
+                   const std::string& dist_guess_method) const
 {
   const ttb_indx nd = X.ndims();
   const ttb_real norm_x = globalNorm(X);
@@ -1299,7 +1296,7 @@ randomInitialGuess(const SptensorT<ExecSpace>& X,
 
   Genten::KtensorT<ExecSpace> u;
 
-  if (dist_method == "serial") {
+  if (dist_guess_method == "serial") {
     // Compute random ktensor on rank 0 and broadcast to all proc's
     IndxArrayT<ExecSpace> sz(nd);
     auto hsz = create_mirror_view(sz);
@@ -1313,7 +1310,8 @@ randomInitialGuess(const SptensorT<ExecSpace>& X,
     }
     u = exportFromRoot(u0);
   }
-  else if (dist_method == "parallel" || dist_method == "parallel-drew") {
+  else if (dist_guess_method == "parallel" ||
+           dist_guess_method == "parallel-drew") {
 #ifdef HAVE_TPETRA
     if (tpetra_comm != Teuchos::null) {
       const ttb_indx nd = X.ndims();
@@ -1330,17 +1328,43 @@ randomInitialGuess(const SptensorT<ExecSpace>& X,
     else
 #endif
     {
-      u = KtensorT<ExecSpace>(rank, nd, X.size());
-      u.setWeights(1.0);
-      u.setMatricesScatter(false, prng, cRMT);
-      u.setProcessorMap(&pmap());
-      allReduce(u, true); // make replicated proc's consistent
+      if (dist_method == Dist_Update_Method::AllReduce ||
+          dist_method == Dist_Update_Method::AllGather) {
+        u = KtensorT<ExecSpace>(rank, nd, X.size());
+        u.setWeights(1.0);
+        u.setMatricesScatter(false, prng, cRMT);
+        u.setProcessorMap(&pmap());
+        allReduce(u, true); // make replicated proc's consistent
+      }
+      else if (this->dist_method == Dist_Update_Method::Broadcast) {
+        const ttb_indx nd = X.ndims();
+        IndxArrayT<ExecSpace> sz(nd);
+        auto hsz = create_mirror_view(sz);
+        for (ttb_indx n=0; n<nd; ++n) {
+          const ttb_indx procs_in_layer = pmap_->subCommSize(n);
+          const ttb_indx my_proc = pmap_->subCommRank(n);
+          const ttb_indx rows_in_layer = local_dims_[n];
+          ttb_indx num_my_rows = rows_in_layer / procs_in_layer;
+          const ttb_indx rem = rows_in_layer - num_my_rows*procs_in_layer;
+
+          // Distribute remainder across the first rem procs
+          if (my_proc < rem)
+            ++num_my_rows;
+
+          hsz[n] = num_my_rows;
+        }
+        deep_copy(sz,hsz);
+        u = KtensorT<ExecSpace>(rank, nd, sz);
+        u.setWeights(1.0);
+        u.setMatricesScatter(false, prng, cRMT);
+        u.setProcessorMap(&pmap());
+      }
     }
   }
   else
-    Genten::error("Unknown distributed-guess method: " + dist_method);
+    Genten::error("Unknown distributed-guess method: " + dist_guess_method);
 
-  if (dist_method == "parallel-drew")
+  if (dist_guess_method == "parallel-drew")
     u.weights().times(1.0 / norm_x); // don't understand this
   else {
     const ttb_real norm_u = globalNorm(u);
@@ -1360,7 +1384,7 @@ randomInitialGuess(const TensorT<ExecSpace>& X,
                    const ttb_indx seed,
                    const bool prng,
                    const bool scale_guess_by_norm_x,
-                   const std::string& dist_method) const
+                   const std::string& dist_guess_method) const
 {
   const ttb_indx nd = X.ndims();
   const ttb_real norm_x = globalNorm(X);
@@ -1368,7 +1392,7 @@ randomInitialGuess(const TensorT<ExecSpace>& X,
 
   Genten::KtensorT<ExecSpace> u;
 
-  if (dist_method == "serial") {
+  if (dist_guess_method == "serial") {
     // Compute random ktensor on rank 0 and broadcast to all proc's
     IndxArrayT<ExecSpace> sz(nd);
     auto hsz = create_mirror_view(sz);
@@ -1382,7 +1406,8 @@ randomInitialGuess(const TensorT<ExecSpace>& X,
     }
     u = exportFromRoot(u0);
   }
-  else if (dist_method == "parallel" || dist_method == "parallel-drew") {
+  else if (dist_guess_method == "parallel" ||
+           dist_guess_method == "parallel-drew") {
 #ifdef HAVE_TPETRA
     if (tpetra_comm != Teuchos::null) {
       const ttb_indx nd = X.ndims();
@@ -1399,17 +1424,43 @@ randomInitialGuess(const TensorT<ExecSpace>& X,
     else
 #endif
     {
-      u = KtensorT<ExecSpace>(rank, nd, X.size());
-      u.setWeights(1.0);
-      u.setMatricesScatter(false, prng, cRMT);
-      u.setProcessorMap(&pmap());
-      allReduce(u, true); // make replicated proc's consistent
+      if (dist_method == Dist_Update_Method::AllReduce ||
+          dist_method == Dist_Update_Method::AllGather) {
+        u = KtensorT<ExecSpace>(rank, nd, X.size());
+        u.setWeights(1.0);
+        u.setMatricesScatter(false, prng, cRMT);
+        u.setProcessorMap(&pmap());
+        allReduce(u, true); // make replicated proc's consistent
+      }
+      else if (this->dist_method == Dist_Update_Method::Broadcast) {
+        const ttb_indx nd = X.ndims();
+        IndxArrayT<ExecSpace> sz(nd);
+        auto hsz = create_mirror_view(sz);
+        for (ttb_indx n=0; n<nd; ++n) {
+          const ttb_indx procs_in_layer = pmap_->subCommSize(n);
+          const ttb_indx my_proc = pmap_->subCommRank(n);
+          const ttb_indx rows_in_layer = local_dims_[n];
+          ttb_indx num_my_rows = rows_in_layer / procs_in_layer;
+          const ttb_indx rem = rows_in_layer - num_my_rows*procs_in_layer;
+
+          // Distribute remainder across the first rem procs
+          if (my_proc < rem)
+            ++num_my_rows;
+
+          hsz[n] = num_my_rows;
+        }
+        deep_copy(sz,hsz);
+        u = KtensorT<ExecSpace>(rank, nd, sz);
+        u.setWeights(1.0);
+        u.setMatricesScatter(false, prng, cRMT);
+        u.setProcessorMap(&pmap());
+      }
     }
   }
   else
-    Genten::error("Unknown distributed-guess method: " + dist_method);
+    Genten::error("Unknown distributed-guess method: " + dist_guess_method);
 
-  if (dist_method == "parallel-drew")
+  if (dist_guess_method == "parallel-drew")
     u.weights().times(1.0 / norm_x); // don't understand this
   else {
     const ttb_real norm_u = globalNorm(u);
