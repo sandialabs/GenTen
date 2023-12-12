@@ -1005,26 +1005,6 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
           Teuchos::rcp(new tpetra_import_type<ExecSpace>(
                          factorMap[dim], overlapFactorMap[dim]));
     }
-
-    // Build maps and importers for importing factor matrices to/from root
-    rootMap.resize(ndims);
-    rootImporter.resize(ndims);
-    for (ttb_indx dim=0; dim<ndims; ++dim) {
-      const Tpetra::global_size_t numGlobalElements = global_dims_[dim];
-      const size_t numLocalElements =
-        (gridRank() == 0) ? global_dims_[dim] : 0;
-      rootMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(numGlobalElements, numLocalElements, indexBase, tpetra_comm));
-      rootImporter[dim] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(factorMap[dim], rootMap[dim]));
-    }
-
-    // Build maps and importers for importing factor matrices to all procs
-    replicatedMap.resize(ndims);
-    replicatedImporter.resize(ndims);
-    for (ttb_indx dim=0; dim<ndims; ++dim) {
-      const Tpetra::global_size_t numGlobalElements = global_dims_[dim];
-      replicatedMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(numGlobalElements, indexBase, tpetra_comm, Tpetra::LocallyReplicated));
-      replicatedImporter[dim] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(factorMap[dim], replicatedMap[dim]));
-    }
   }
 #else
   if (use_tpetra)
@@ -1204,26 +1184,6 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
         tensor.importer(dim) =
           Teuchos::rcp(new tpetra_import_type<ExecSpace>(
                          factorMap[dim], overlapFactorMap[dim]));
-    }
-
-    // Build maps and importers for importing factor matrices to/from root
-    rootMap.resize(ndims);
-    rootImporter.resize(ndims);
-    for (ttb_indx dim=0; dim<ndims; ++dim) {
-      const Tpetra::global_size_t numGlobalElements = global_dims_[dim];
-      const size_t numLocalElements =
-        (gridRank() == 0) ? global_dims_[dim] : 0;
-      rootMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(numGlobalElements, numLocalElements, indexBase, tpetra_comm));
-      rootImporter[dim] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(factorMap[dim], rootMap[dim]));
-    }
-
-    // Build maps and importers for importing factor matrices to all procs
-    replicatedMap.resize(ndims);
-    replicatedImporter.resize(ndims);
-    for (ttb_indx dim=0; dim<ndims; ++dim) {
-      const Tpetra::global_size_t numGlobalElements = global_dims_[dim];
-      replicatedMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(numGlobalElements, indexBase, tpetra_comm, Tpetra::LocallyReplicated));
-      replicatedImporter[dim] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(factorMap[dim], replicatedMap[dim]));
     }
   }
 #else
