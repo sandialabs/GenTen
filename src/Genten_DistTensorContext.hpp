@@ -284,79 +284,26 @@ exportFromRoot(const KtensorT<ExecSpaceSrc>& u) const
   const ttb_indx nc = u.ncomponents();
   gt_assert(ttb_indx(global_dims_.size()) == nd);
 
-  Genten::KtensorT<ExecSpace> exp;
-  IndxArrayT<ExecSpace> sz(nd);
-  auto hsz = create_mirror_view(sz);
+  Genten::KtensorT<ExecSpace> exp = Genten::KtensorT<ExecSpace>(nc, nd);
+  deep_copy(exp.weights(), u.weights());
 
-#ifdef HAVE_TPETRA
-  if (tpetra_comm != Teuchos::null) {
-    for (ttb_indx i=0; i<nd; ++i)
-      hsz[i] = factorMap[i]->getLocalNumElements();
-    deep_copy(sz,hsz);
-    exp = Genten::KtensorT<ExecSpace>(nc, nd, sz);
-    exp.setMatrices(0.0);
-    deep_copy(exp.weights(), u.weights());
-    for (ttb_indx i=0; i<nd; ++i) {
-      if (rootImporter[i] != Teuchos::null) {
-        FacMatrixT<ExecSpace> ui = create_mirror_view(ExecSpace(), u[i]);
-        deep_copy(ui, u[i]);
-        DistFacMatrix<ExecSpace> dist_u(ui, rootMap[i]);
-        DistFacMatrix<ExecSpace> dist_exp(exp[i], factorMap[i]);
-        dist_exp.doExport(dist_u, *(rootImporter[i]), Tpetra::INSERT);
-      }
-      else
-        deep_copy(exp[i], u[i]);
-    }
-  }
-  else
-#endif
-  {
-    if (dist_method == Dist_Update_Method::AllReduce ||
-        dist_method == Dist_Update_Method::AllGather) {
-      // Broadcast ktensor values from 0 to all procs
-      for (ttb_indx i=0; i<nd; ++i)
-        pmap_->gridBcast(u[i].view().data(), u[i].view().span(), 0);
-      pmap_->gridBcast(
-        u.weights().values().data(), u.weights().values().span(),0);
-      pmap_->gridBarrier();
+  // Broadcast ktensor values from 0 to all procs
+  for (ttb_indx i=0; i<nd; ++i)
+    pmap_->gridBcast(u[i].view().data(), u[i].view().span(), 0);
+  pmap_->gridBcast(
+    u.weights().values().data(), u.weights().values().span(),0);
+  pmap_->gridBarrier();
 
-      // Copy our portion from u into ktensor_
-      for (ttb_indx i=0; i<nd; ++i)
-        hsz[i] = local_dims_[i];
-      deep_copy(sz,hsz);
-      exp = Genten::KtensorT<ExecSpace>(nc, nd, sz);
-      exp.setMatrices(0.0);
-      deep_copy(exp.weights(), u.weights());
-      for (ttb_indx i=0; i<nd; ++i) {
-        ttb_indx coord = pmap_->gridCoord(i);
-        auto rng = std::make_pair(global_blocking_[i][coord],
-                                  global_blocking_[i][coord + 1]);
-        auto sub = Kokkos::subview(u[i].view(), rng, Kokkos::ALL);
-        deep_copy(exp[i].view(), sub);
-      }
-    }
-    else if (dist_method == Dist_Update_Method::Broadcast) {
-      // Broadcast ktensor values from 0 to all procs
-      for (ttb_indx i=0; i<nd; ++i)
-        pmap_->gridBcast(u[i].view().data(), u[i].view().span(), 0);
-      pmap_->gridBcast(
-        u.weights().values().data(), u.weights().values().span(),0);
-      pmap_->gridBarrier();
+  for (ttb_indx n=0; n<nd; ++n) {
+    const ttb_indx num_my_rows = ktensor_local_dims_[n];
+    const ttb_indx my_offset = ktensor_local_offsets_[n];
 
-      exp = Genten::KtensorT<ExecSpace>(nc, nd);
-      deep_copy(exp.weights(), u.weights());
-      for (ttb_indx n=0; n<nd; ++n) {
-        const ttb_indx num_my_rows = ktensor_local_dims_[n];
-        const ttb_indx my_offset = ktensor_local_offsets_[n];
-
-        // Copy our portion of u into exp
-        FacMatrixT<ExecSpace> mat(num_my_rows, nc);
-        auto rng = std::make_pair(my_offset, my_offset+num_my_rows);
-        auto sub = Kokkos::subview(u[n].view(), rng, Kokkos::ALL);
-        Kokkos::deep_copy(mat.view(), sub);
-        exp.set_factor(n, mat);
-      }
-    }
+    // Copy our portion of u into exp
+    FacMatrixT<ExecSpace> mat(num_my_rows, nc);
+    auto rng = std::make_pair(my_offset, my_offset+num_my_rows);
+    auto sub = Kokkos::subview(u[n].view(), rng, Kokkos::ALL);
+    Kokkos::deep_copy(mat.view(), sub);
+    exp.set_factor(n, mat);
   }
 
   exp.setProcessorMap(&pmap());
@@ -425,102 +372,29 @@ importToRoot(const KtensorT<ExecSpace>& u) const
   }
   deep_copy(out.weights(), u.weights());
 
-#ifdef HAVE_TPETRA
-  if (tpetra_comm != Teuchos::null) {
-    for (ttb_indx i=0; i<nd; ++i) {
-      if (rootImporter[i] != Teuchos::null) {
-        FacMatrixT<ExecSpace> oi = create_mirror_view(ExecSpace(), out[i]);
-        DistFacMatrix<ExecSpace> dist_u(u[i], factorMap[i]);
-        DistFacMatrix<ExecSpace> dist_out(oi, rootMap[i]);
-        dist_out.doImport(dist_u, *(rootImporter[i]), Tpetra::INSERT);
-        deep_copy(out[i], oi);
-      }
-      else
-        deep_copy(out[i], u[i]);
-    }
-  }
-  else
-#endif
-  {
-    if (dist_method == Dist_Update_Method::AllReduce ||
-        dist_method == Dist_Update_Method::AllGather) {
-      if (print)
-        std::cout << "Blocking:\n";
+  std::vector<int> recvcounts(pmap_->gridSize(), 0);
+  std::vector<int> displs(pmap_->gridSize(), 0);
+  for (ttb_indx n=0; n<nd; ++n) {
+    const ttb_indx num_my_rows = ktensor_local_dims_[n];
+    const ttb_indx my_offset = ktensor_local_offsets_[n];
+    gt_assert(num_my_rows == u[n].nRows());
 
-      small_vector<int> grid_pos(nd, 0);
-      for (ttb_indx d=0; d<nd; ++d) {
-        std::vector<int> recvcounts(pmap_->gridSize(), 0);
-        std::vector<int> displs(pmap_->gridSize(), 0);
-        const ttb_indx nblocks = global_blocking_[d].size() - 1;
-        if (print)
-          std::cout << "\tDim(" << d << ")\n";
-        for (ttb_indx b = 0; b < nblocks; ++b) {
-          if (print)
-            std::cout << "\t\t{" << global_blocking_[d][b]
-                      << ", " << global_blocking_[d][b + 1]
-                      << "} owned by ";
-          grid_pos[d] = b;
-          int owner = 0;
-          MPI_Cart_rank(pmap_->gridComm(), grid_pos.data(), &owner);
-          if (print)
-            std::cout << owner << "\n";
-          recvcounts[owner] =
-            u[d].view().stride(0)*(global_blocking_[d][b+1]-global_blocking_[d][b]);
-          displs[owner] = out[d].view().stride(0)*global_blocking_[d][b];
-          grid_pos[d] = 0;
-        }
+    // Send sizes and offsets to proc 0
+    int my_send_size = num_my_rows*u[n].view().stride(0);
+    int my_send_offset = my_offset*u[n].view().stride(0);
+    MPI_Gather(&my_send_size, 1, MPI_INT, recvcounts.data(), 1, MPI_INT, 0,
+               pmap_->gridComm());
+    MPI_Gather(&my_send_offset, 1, MPI_INT, displs.data(), 1, MPI_INT, 0,
+               pmap_->gridComm());
 
-        const bool is_sub_root = pmap_->subCommRank(d) == 0;
-        std::size_t send_size = is_sub_root ? u[d].view().span() : 0;
-        MPI_Gatherv(u[d].view().data(), send_size,
-                    DistContext::toMpiType<ttb_real>(),
-                    out[d].view().data(), recvcounts.data(), displs.data(),
-                    DistContext::toMpiType<ttb_real>(), 0,
-                    pmap_->gridComm());
-        pmap_->gridBarrier();
-      }
+    // Now send the data
+    MPI_Gatherv(u[n].view().data(), my_send_size,
+                DistContext::toMpiType<ttb_real>(),
+                out[n].view().data(), recvcounts.data(), displs.data(),
+                DistContext::toMpiType<ttb_real>(), 0,
+                pmap_->gridComm());
+    pmap_->gridBarrier();
 
-      if (print) {
-        std::cout << std::endl;
-        std::cout << "Subcomm sizes: ";
-        for (auto s : pmap_->subCommSizes()) {
-          std::cout << s << " ";
-        }
-        std::cout << std::endl;
-      }
-    }
-    else if (dist_method == Dist_Update_Method::Broadcast) {
-      // Get coordinates of this proc in the grid
-      small_vector<int> grid_pos(nd, 0);
-      MPI_Cart_coords(
-        pmap_->gridComm(), pmap_->gridRank(), nd, grid_pos.data());
-
-      std::vector<int> recvcounts(pmap_->gridSize(), 0);
-      std::vector<int> displs(pmap_->gridSize(), 0);
-
-      for (ttb_indx n=0; n<nd; ++n) {
-        const ttb_indx num_my_rows = ktensor_local_dims_[n];
-        const ttb_indx my_offset = ktensor_local_offsets_[n];
-        gt_assert(num_my_rows == u[n].nRows());
-
-        // Send sizes and offsets to proc 0
-        int my_send_size = num_my_rows*u[n].view().stride(0);
-        int my_send_offset = my_offset*u[n].view().stride(0);
-        MPI_Gather(&my_send_size, 1, MPI_INT, recvcounts.data(), 1, MPI_INT, 0,
-                   pmap_->gridComm());
-        MPI_Gather(&my_send_offset, 1, MPI_INT, displs.data(), 1, MPI_INT, 0,
-                   pmap_->gridComm());
-
-        // Now send the data
-        MPI_Gatherv(u[n].view().data(), my_send_size,
-                    DistContext::toMpiType<ttb_real>(),
-                    out[n].view().data(), recvcounts.data(), displs.data(),
-                    DistContext::toMpiType<ttb_real>(), 0,
-                    pmap_->gridComm());
-        pmap_->gridBarrier();
-
-      }
-    }
   }
 
   return out;
@@ -555,96 +429,29 @@ importToAll(const KtensorT<ExecSpace>& u) const
   }
   deep_copy(out.weights(), u.weights());
 
-#ifdef HAVE_TPETRA
-  if (tpetra_comm != Teuchos::null) {
-    for (ttb_indx i=0; i<nd; ++i) {
-      if (rootImporter[i] != Teuchos::null) {
-        FacMatrixT<ExecSpace> oi = create_mirror_view(ExecSpace(), out[i]);
-        DistFacMatrix<ExecSpace> dist_u(u[i], factorMap[i]);
-        DistFacMatrix<ExecSpace> dist_out(oi, replicatedMap[i]);
-        dist_out.doImport(dist_u, *(replicatedImporter[i]), Tpetra::INSERT);
-        deep_copy(out[i], oi);
-      }
-      else
-        deep_copy(out[i], u[i]);
-    }
-  }
-  else
-#endif
-  {
-    if (dist_method == Dist_Update_Method::AllReduce ||
-        dist_method == Dist_Update_Method::AllGather) {
-      if (print)
-        std::cout << "Blocking:\n";
 
-      small_vector<int> grid_pos(nd, 0);
-      for (ttb_indx d=0; d<nd; ++d) {
-        std::vector<int> recvcounts(pmap_->gridSize(), 0);
-        std::vector<int> displs(pmap_->gridSize(), 0);
-        const ttb_indx nblocks = global_blocking_[d].size() - 1;
-        if (print)
-          std::cout << "\tDim(" << d << ")\n";
-        for (ttb_indx b = 0; b < nblocks; ++b) {
-          if (print)
-            std::cout << "\t\t{" << global_blocking_[d][b]
-                      << ", " << global_blocking_[d][b + 1]
-                      << "} owned by ";
-          grid_pos[d] = b;
-          int owner = 0;
-          MPI_Cart_rank(pmap_->gridComm(), grid_pos.data(), &owner);
-          if (print)
-            std::cout << owner << "\n";
-          recvcounts[owner] =
-            u[d].view().stride(0)*(global_blocking_[d][b+1]-global_blocking_[d][b]);
-          displs[owner] = out[d].view().stride(0)*global_blocking_[d][b];
-          grid_pos[d] = 0;
-        }
+  std::vector<int> recvcounts(pmap_->gridSize(), 0);
+  std::vector<int> displs(pmap_->gridSize(), 0);
+  for (ttb_indx n=0; n<nd; ++n) {
+    const ttb_indx num_my_rows = ktensor_local_dims_[n];
+    const ttb_indx my_offset = ktensor_local_offsets_[n];
+    gt_assert(num_my_rows == u[n].nRows());
 
-        const bool is_sub_root = pmap_->subCommRank(d) == 0;
-        std::size_t send_size = is_sub_root ? u[d].view().span() : 0;
-        MPI_Allgatherv(u[d].view().data(), send_size,
-                       DistContext::toMpiType<ttb_real>(),
-                       out[d].view().data(), recvcounts.data(), displs.data(),
-                       DistContext::toMpiType<ttb_real>(),
-                       pmap_->gridComm());
-        pmap_->gridBarrier();
-      }
+    // Send sizes and offsets to all procs
+    int my_send_size = num_my_rows*u[n].view().stride(0);
+    int my_send_offset = my_offset*u[n].view().stride(0);
+    MPI_Allgather(&my_send_size, 1, MPI_INT, recvcounts.data(), 1, MPI_INT,
+                  pmap_->gridComm());
+    MPI_Allgather(&my_send_offset, 1, MPI_INT, displs.data(), 1, MPI_INT,
+                  pmap_->gridComm());
 
-      if (print) {
-        std::cout << std::endl;
-        std::cout << "Subcomm sizes: ";
-        for (auto s : pmap_->subCommSizes()) {
-          std::cout << s << " ";
-        }
-        std::cout << std::endl;
-      }
-    }
-    else if (dist_method == Dist_Update_Method::Broadcast) {
-      std::vector<int> recvcounts(pmap_->gridSize(), 0);
-      std::vector<int> displs(pmap_->gridSize(), 0);
-
-      for (ttb_indx n=0; n<nd; ++n) {
-        const ttb_indx num_my_rows = ktensor_local_dims_[n];
-        const ttb_indx my_offset = ktensor_local_offsets_[n];
-        gt_assert(num_my_rows == u[n].nRows());
-
-        // Send sizes and offsets to all procs
-        int my_send_size = num_my_rows*u[n].view().stride(0);
-        int my_send_offset = my_offset*u[n].view().stride(0);
-        MPI_Allgather(&my_send_size, 1, MPI_INT, recvcounts.data(), 1, MPI_INT,
-                      pmap_->gridComm());
-        MPI_Allgather(&my_send_offset, 1, MPI_INT, displs.data(), 1, MPI_INT,
-                      pmap_->gridComm());
-
-        // Now send the data
-        MPI_Allgatherv(u[n].view().data(), my_send_size,
-                       DistContext::toMpiType<ttb_real>(),
-                       out[n].view().data(), recvcounts.data(), displs.data(),
-                       DistContext::toMpiType<ttb_real>(),
-                       pmap_->gridComm());
-        pmap_->gridBarrier();
-      }
-    }
+    // Now send the data
+    MPI_Allgatherv(u[n].view().data(), my_send_size,
+                   DistContext::toMpiType<ttb_real>(),
+                   out[n].view().data(), recvcounts.data(), displs.data(),
+                   DistContext::toMpiType<ttb_real>(),
+                   pmap_->gridComm());
+    pmap_->gridBarrier();
   }
 
   return out;
@@ -656,53 +463,17 @@ FacMatrixT<ExecSpace>
 DistTensorContext<ExecSpace>::
 exportFromRoot(const ttb_indx dim, const FacMatrixT<ExecSpaceSrc>& u) const
 {
-  FacMatrixT<ExecSpace> exp;
+  // Broadcast factor matrix values from 0 to all procs
+  pmap_->gridBcast(u.view().data(), u.view().span(), 0);
+  pmap_->gridBarrier();
 
-#ifdef HAVE_TPETRA
-  if (tpetra_comm != Teuchos::null) {
-     exp = FacMatrixT<ExecSpace>(factorMap[dim]->getLocalNumElements(),
-                                 u.nCols());
-     if (rootImporter[dim] != Teuchos::null) {
-       FacMatrixT<ExecSpace> v = create_mirror_view(ExecSpace(), u);
-       deep_copy(v, u);
-       DistFacMatrix<ExecSpace> dist_u(v, rootMap[dim]);
-       DistFacMatrix<ExecSpace> dist_exp(exp, factorMap[dim]);
-       dist_exp.doExport(dist_u, *(rootImporter[dim]), Tpetra::INSERT);
-     }
-     else
-       deep_copy(exp, u);
-  }
-  else
-#endif
-  {
-    if (dist_method == Dist_Update_Method::AllReduce ||
-        dist_method == Dist_Update_Method::AllGather) {
-      // Broadcast factor matrix values from 0 to all procs
-      pmap_->gridBcast(u.view().data(), u.view().span(), 0);
-      pmap_->gridBarrier();
-
-      // Copy our portion
-      exp = FacMatrixT<ExecSpace>(local_dims_[dim], u.nCols());
-      ttb_indx coord = pmap_->gridCoord(dim);
-      auto rng = std::make_pair(global_blocking_[dim][coord],
-                                global_blocking_[dim][coord + 1]);
-      auto sub = Kokkos::subview(u.view(), rng, Kokkos::ALL);
-      deep_copy(exp.view(), sub);
-    }
-    else if (dist_method == Dist_Update_Method::Broadcast) {
-      // Broadcast factor matrix values from 0 to all procs
-      pmap_->gridBcast(u.view().data(), u.view().span(), 0);
-      pmap_->gridBarrier();
-
-      // Copy our portion of u into exp
-      const ttb_indx num_my_rows = ktensor_local_dims_[dim];
-      const ttb_indx my_offset = ktensor_local_offsets_[dim];
-      exp = FacMatrixT<ExecSpace>(num_my_rows, u.nCols());
-      auto rng = std::make_pair(my_offset, my_offset+num_my_rows);
-      auto sub = Kokkos::subview(u.view(), rng, Kokkos::ALL);
-      Kokkos::deep_copy(exp.view(), sub);
-    }
-  }
+  // Copy our portion of u into exp
+  const ttb_indx num_my_rows = ktensor_local_dims_[dim];
+  const ttb_indx my_offset = ktensor_local_offsets_[dim];
+  FacMatrixT<ExecSpace> exp = FacMatrixT<ExecSpace>(num_my_rows, u.nCols());
+  auto rng = std::make_pair(my_offset, my_offset+num_my_rows);
+  auto sub = Kokkos::subview(u.view(), rng, Kokkos::ALL);
+  Kokkos::deep_copy(exp.view(), sub);
 
   return exp;
 }
@@ -715,70 +486,28 @@ importToRoot(const ttb_indx dim, const FacMatrixT<ExecSpace>& u) const
 {
   FacMatrixT<ExecSpaceDst> out(global_dims_[dim], u.nCols());
 
-#ifdef HAVE_TPETRA
-  if (tpetra_comm != Teuchos::null) {
-    if (rootImporter[dim] != Teuchos::null) {
-      FacMatrixT<ExecSpace> o = create_mirror_view(ExecSpace(), out);
-      DistFacMatrix<ExecSpace> dist_u(u, factorMap[dim]);
-      DistFacMatrix<ExecSpace> dist_o(o, rootMap[dim]);
-      dist_o.doImport(dist_u, *(rootImporter[dim]), Tpetra::INSERT);
-      deep_copy(out, o);
-    }
-    else
-      deep_copy(out, u);
-  }
-  else
-#endif
-  {
-    if (dist_method == Dist_Update_Method::AllReduce ||
-        dist_method == Dist_Update_Method::AllGather) {
-      small_vector<int> grid_pos(global_dims_.size(), 0);
-      std::vector<int> recvcounts(pmap_->gridSize(), 0);
-      std::vector<int> displs(pmap_->gridSize(), 0);
-      const ttb_indx nblocks = global_blocking_[dim].size() - 1;
-      for (ttb_indx b = 0; b < nblocks; ++b) {
-        grid_pos[dim] = b;
-        int owner = 0;
-        MPI_Cart_rank(pmap_->gridComm(), grid_pos.data(), &owner);
-        recvcounts[owner] =
-          u.view().stride(0)*(global_blocking_[dim][b+1]-global_blocking_[dim][b]);
-        displs[owner] = out.view().stride(0)*global_blocking_[dim][b];
-      }
+  const ttb_indx nd = ndims();
+  const ttb_indx num_my_rows = ktensor_local_dims_[dim];
+  const ttb_indx my_offset = ktensor_local_offsets_[dim];
+  gt_assert(num_my_rows == u.nRows());
 
-      const bool is_sub_root = pmap_->subCommRank(dim) == 0;
-      std::size_t send_size = is_sub_root ? u.view().span() : 0;
-      MPI_Gatherv(u.view().data(), send_size,
-                  DistContext::toMpiType<ttb_real>(),
-                  out.view().data(), recvcounts.data(), displs.data(),
-                  DistContext::toMpiType<ttb_real>(), 0,
-                  pmap_->gridComm());
-      pmap_->gridBarrier();
-    }
-    else if (dist_method == Dist_Update_Method::Broadcast) {
-      const ttb_indx nd = ndims();
-      const ttb_indx num_my_rows = ktensor_local_dims_[dim];
-      const ttb_indx my_offset = ktensor_local_offsets_[dim];
-      gt_assert(num_my_rows == u.nRows());
+  // Send sizes and offsets to proc 0
+  std::vector<int> recvcounts(pmap_->gridSize(), 0);
+  std::vector<int> displs(pmap_->gridSize(), 0);
+  int my_send_size = num_my_rows*u.view().stride(0);
+  int my_send_offset = my_offset*u.view().stride(0);
+  MPI_Gather(&my_send_size, 1, MPI_INT, recvcounts.data(), 1, MPI_INT, 0,
+             pmap_->gridComm());
+  MPI_Gather(&my_send_offset, 1, MPI_INT, displs.data(), 1, MPI_INT, 0,
+             pmap_->gridComm());
 
-      // Send sizes and offsets to proc 0
-      std::vector<int> recvcounts(pmap_->gridSize(), 0);
-      std::vector<int> displs(pmap_->gridSize(), 0);
-      int my_send_size = num_my_rows*u.view().stride(0);
-      int my_send_offset = my_offset*u.view().stride(0);
-      MPI_Gather(&my_send_size, 1, MPI_INT, recvcounts.data(), 1, MPI_INT, 0,
-                 pmap_->gridComm());
-      MPI_Gather(&my_send_offset, 1, MPI_INT, displs.data(), 1, MPI_INT, 0,
-                 pmap_->gridComm());
-
-      // Now send the data
-      MPI_Gatherv(u.view().data(), my_send_size,
-                  DistContext::toMpiType<ttb_real>(),
-                  out.view().data(), recvcounts.data(), displs.data(),
-                  DistContext::toMpiType<ttb_real>(), 0,
-                  pmap_->gridComm());
-      pmap_->gridBarrier();
-    }
-  }
+  // Now send the data
+  MPI_Gatherv(u.view().data(), my_send_size,
+              DistContext::toMpiType<ttb_real>(),
+              out.view().data(), recvcounts.data(), displs.data(),
+              DistContext::toMpiType<ttb_real>(), 0,
+              pmap_->gridComm());
+  pmap_->gridBarrier();
 
   return out;
 }
