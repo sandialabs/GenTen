@@ -188,6 +188,7 @@ private:
   std::vector<ttb_indx> local_dims_;
   std::vector<ttb_indx> global_dims_;
   std::vector<ttb_indx> ktensor_local_dims_;
+  std::vector<ttb_indx> ktensor_local_offsets_;
   std::shared_ptr<ProcessorMap> pmap_;
   std::vector<small_vector<ttb_indx>> global_blocking_;
 
@@ -216,6 +217,7 @@ DistTensorContext(const DistTensorContext<ExecSpaceSrc>& src) :
   local_dims_(src.local_dims_),
   global_dims_(src.global_dims_),
   ktensor_local_dims_(src.ktensor_local_dims_),
+  ktensor_local_offsets_(src.ktensor_local_offsets_),
   pmap_(src.pmap_),
   global_blocking_(src.global_blocking_)
 {
@@ -341,29 +343,11 @@ exportFromRoot(const KtensorT<ExecSpaceSrc>& u) const
         u.weights().values().data(), u.weights().values().span(),0);
       pmap_->gridBarrier();
 
-      // Distributed ktensor in blocks across subgrid layers, then
-      // distribute each block uniformly across procs in the layer
       exp = Genten::KtensorT<ExecSpace>(nc, nd);
       deep_copy(exp.weights(), u.weights());
       for (ttb_indx n=0; n<nd; ++n) {
-        const ttb_indx procs_in_layer = pmap_->subCommSize(n);
-        const ttb_indx my_proc = pmap_->subCommRank(n);
-        const ttb_indx rows_in_layer = local_dims_[n];
-        ttb_indx num_my_rows = rows_in_layer / procs_in_layer;
-        ttb_indx my_offset = num_my_rows * my_proc;
-        const ttb_indx rem = rows_in_layer - num_my_rows*procs_in_layer;
-
-        // Distribute remainder across the first rem procs
-        if (my_proc < rem) {
-          ++num_my_rows;
-          my_offset += my_proc;
-        }
-        else
-          my_offset += rem;
-
-        // Add offset from other layers
-        const ttb_indx coord = pmap_->gridCoord(n);
-        my_offset += global_blocking_[n][coord];
+        const ttb_indx num_my_rows = ktensor_local_dims_[n];
+        const ttb_indx my_offset = ktensor_local_offsets_[n];
 
         // Copy our portion of u into exp
         FacMatrixT<ExecSpace> mat(num_my_rows, nc);
@@ -515,24 +499,9 @@ importToRoot(const KtensorT<ExecSpace>& u) const
       std::vector<int> displs(pmap_->gridSize(), 0);
 
       for (ttb_indx n=0; n<nd; ++n) {
-        const ttb_indx procs_in_layer = pmap_->subCommSize(n);
-        const ttb_indx my_proc = pmap_->subCommRank(n);
-        const ttb_indx rows_in_layer = local_dims_[n];
-        ttb_indx num_my_rows = rows_in_layer / procs_in_layer;
-        ttb_indx my_offset = num_my_rows * my_proc;
-        const ttb_indx rem = rows_in_layer - num_my_rows*procs_in_layer;
-
-        // Distribute remainder across the first rem procs
-        if (my_proc < rem) {
-          ++num_my_rows;
-          my_offset += my_proc;
-        }
-        else
-          my_offset += rem;
+        const ttb_indx num_my_rows = ktensor_local_dims_[n];
+        const ttb_indx my_offset = ktensor_local_offsets_[n];
         gt_assert(num_my_rows == u[n].nRows());
-
-        // Compute offset in global grid
-        my_offset += global_blocking_[n][grid_pos[n]];
 
         // Send sizes and offsets to proc 0
         int my_send_size = num_my_rows*u[n].view().stride(0);
@@ -651,33 +620,13 @@ importToAll(const KtensorT<ExecSpace>& u) const
       }
     }
     else if (dist_method == Dist_Update_Method::Broadcast) {
-      // Get coordinates of this proc in the grid
-      small_vector<int> grid_pos(nd, 0);
-      MPI_Cart_coords(
-        pmap_->gridComm(), pmap_->gridRank(), nd, grid_pos.data());
-
       std::vector<int> recvcounts(pmap_->gridSize(), 0);
       std::vector<int> displs(pmap_->gridSize(), 0);
 
       for (ttb_indx n=0; n<nd; ++n) {
-        const ttb_indx procs_in_layer = pmap_->subCommSize(n);
-        const ttb_indx my_proc = pmap_->subCommRank(n);
-        const ttb_indx rows_in_layer = local_dims_[n];
-        ttb_indx num_my_rows = rows_in_layer / procs_in_layer;
-        ttb_indx my_offset = num_my_rows * my_proc;
-        const ttb_indx rem = rows_in_layer - num_my_rows*procs_in_layer;
-
-        // Distribute remainder across the first rem procs
-        if (my_proc < rem) {
-          ++num_my_rows;
-          my_offset += my_proc;
-        }
-        else
-          my_offset += rem;
+        const ttb_indx num_my_rows = ktensor_local_dims_[n];
+        const ttb_indx my_offset = ktensor_local_offsets_[n];
         gt_assert(num_my_rows == u[n].nRows());
-
-        // Compute offset in global grid
-        my_offset += global_blocking_[n][grid_pos[n]];
 
         // Send sizes and offsets to all procs
         int my_send_size = num_my_rows*u[n].view().stride(0);
@@ -745,24 +694,9 @@ exportFromRoot(const ttb_indx dim, const FacMatrixT<ExecSpaceSrc>& u) const
       pmap_->gridBcast(u.view().data(), u.view().span(), 0);
       pmap_->gridBarrier();
 
-      // Distributed factor matrix in blocks across subgrid layers, then
-      // distribute each block uniformly across procs in the layer
-      const ttb_indx procs_in_layer = pmap_->subCommSize(dim);
-      const ttb_indx my_proc = pmap_->subCommRank(dim);
-      const ttb_indx rows_in_layer = local_dims_[dim];
-      ttb_indx num_my_rows = rows_in_layer / procs_in_layer;
-      ttb_indx my_offset = num_my_rows * my_proc;
-      const ttb_indx rem = rows_in_layer - num_my_rows*procs_in_layer;
-
-      // Distribute remainder across the first rem procs
-      if (my_proc < rem) {
-        ++num_my_rows;
-        my_offset += my_proc;
-      }
-      else
-        my_offset += rem;
-
       // Copy our portion of u into exp
+      const ttb_indx num_my_rows = ktensor_local_dims_[dim];
+      const ttb_indx my_offset = ktensor_local_offsets_[dim];
       exp = FacMatrixT<ExecSpace>(num_my_rows, u.nCols());
       auto rng = std::make_pair(my_offset, my_offset+num_my_rows);
       auto sub = Kokkos::subview(u.view(), rng, Kokkos::ALL);
@@ -821,34 +755,14 @@ importToRoot(const ttb_indx dim, const FacMatrixT<ExecSpace>& u) const
       pmap_->gridBarrier();
     }
     else if (dist_method == Dist_Update_Method::Broadcast) {
-      // Get coordinates of this proc in the grid
       const ttb_indx nd = ndims();
-      small_vector<int> grid_pos(nd, 0);
-      MPI_Cart_coords(pmap_->gridComm(), pmap_->gridRank(), nd, grid_pos.data());
-
-      std::vector<int> recvcounts(pmap_->gridSize(), 0);
-      std::vector<int> displs(pmap_->gridSize(), 0);
-
-      const ttb_indx procs_in_layer = pmap_->subCommSize(dim);
-      const ttb_indx my_proc = pmap_->subCommRank(dim);
-      const ttb_indx rows_in_layer = local_dims_[dim];
-      ttb_indx num_my_rows = rows_in_layer / procs_in_layer;
-      ttb_indx my_offset = num_my_rows * my_proc;
-      const ttb_indx rem = rows_in_layer - num_my_rows*procs_in_layer;
-
-      // Distribute remainder across the first rem procs
-      if (my_proc < rem) {
-        ++num_my_rows;
-        my_offset += my_proc;
-      }
-      else
-        my_offset += rem;
+      const ttb_indx num_my_rows = ktensor_local_dims_[dim];
+      const ttb_indx my_offset = ktensor_local_offsets_[dim];
       gt_assert(num_my_rows == u.nRows());
 
-      // Compute offset in global grid
-      my_offset += global_blocking_[dim][grid_pos[dim]];
-
       // Send sizes and offsets to proc 0
+      std::vector<int> recvcounts(pmap_->gridSize(), 0);
+      std::vector<int> displs(pmap_->gridSize(), 0);
       int my_send_size = num_my_rows*u.view().stride(0);
       int my_send_offset = my_offset*u.view().stride(0);
       MPI_Gather(&my_send_size, 1, MPI_INT, recvcounts.data(), 1, MPI_INT, 0,
@@ -885,7 +799,8 @@ public:
   template <typename ExecSpaceSrc>
   DistTensorContext(const DistTensorContext<ExecSpaceSrc>& src) :
     global_dims_(src.global_dims_),
-    pmap_(src.pmap_) {}
+    pmap_(src.pmap_),
+    ktensor_local_dims_(src.ktensor_local_dims_) {}
 
   std::tuple< SptensorT<ExecSpace>, TensorT<ExecSpace> >
   distributeTensor(const ptree& tree,
@@ -900,10 +815,14 @@ public:
   SptensorT<ExecSpace> distributeTensor(const SptensorT<ExecSpaceSrc>& X,
                                         const AlgParams& algParams = AlgParams())
   {
+    dist_method = algParams.dist_update_method;
     const ttb_indx ndims = X.ndims();
     global_dims_.resize(ndims);
-    for (ttb_indx i=0; i<ndims; ++i)
+    ktensor_local_dims_.resize(ndims);
+    for (ttb_indx i=0; i<ndims; ++i) {
       global_dims_[i] = X.size(i);
+      ktensor_local_dims_[i] = X.size(i);
+    }
     SptensorT<ExecSpace> X_dst = create_mirror_view(ExecSpace(), X);
     deep_copy(X_dst, X);
     return X_dst;
@@ -912,10 +831,14 @@ public:
   TensorT<ExecSpace> distributeTensor(const TensorT<ExecSpaceSrc>& X,
                                       const AlgParams& algParams = AlgParams())
   {
+    dist_method = algParams.dist_update_method;
     const ttb_indx ndims = X.ndims();
     global_dims_.resize(ndims);
-    for (ttb_indx i=0; i<ndims; ++i)
+    ktensor_local_dims_.resize(ndims);
+    for (ttb_indx i=0; i<ndims; ++i) {
       global_dims_[i] = X.size(i);
+      ktensor_local_dims_[i] = X.size(i);
+    }
     TensorT<ExecSpace> X_dst = create_mirror_view(ExecSpace(), X);
     deep_copy(X_dst, X);
     return X_dst;
@@ -999,6 +922,7 @@ public:
 private:
   std::vector<ttb_indx> global_dims_;
   std::shared_ptr<ProcessorMap> pmap_;
+  std::vector<ttb_indx> ktensor_local_dims_;
 
   Dist_Update_Method::type dist_method;
 

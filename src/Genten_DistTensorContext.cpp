@@ -1031,6 +1031,59 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
     Genten::error("Cannot use tpetra distribution approach without enabling Tpetra!");
 #endif
 
+  // Compute local dimensions of compatible factor matrices
+  ktensor_local_dims_.resize(ndims);
+  ktensor_local_offsets_.resize(ndims);
+  for (ttb_indx n=0; n<ndims; ++n) {
+    if (algParams.dist_update_method == Dist_Update_Method::AllReduce ||
+        algParams.dist_update_method == Dist_Update_Method::AllGather)
+    {
+      ktensor_local_dims_[n] = local_dims_[n];
+    }
+    else if (algParams.dist_update_method == Dist_Update_Method::Broadcast)
+    {
+      // Distributed ktensor in blocks across subgrid layers, then
+      // distribute each block uniformly across procs in the layer
+      const ttb_indx procs_in_layer = pmap_->subCommSize(n);
+      const ttb_indx my_proc = pmap_->subCommRank(n);
+      const ttb_indx rows_in_layer = local_dims_[n];
+      ttb_indx num_my_rows = rows_in_layer / procs_in_layer;
+      const ttb_indx rem = rows_in_layer - num_my_rows*procs_in_layer;
+
+      // Distribute remainder across the first rem procs
+      if (my_proc < rem)
+        ++num_my_rows;
+
+      ktensor_local_dims_[n] = num_my_rows;
+    }
+#ifdef HAVE_TPETRA
+    else if (algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra)
+    {
+      ktensor_local_dims_[n] = factorMap[n]->getLocalNumElements();
+    }
+#endif
+    else
+      Genten::error("Unknown distributed-guess method: " +
+                    algParams.dist_update_method);
+
+    // Compute local offset
+    // FIXME - this is not right for all-reduce, nor tpetra
+    const unsigned np = pmap_->subCommSize(n);
+    const unsigned my_proc = pmap_->subCommRank(n);
+    std::vector<ttb_indx> local_sizes(np);
+    local_sizes[my_proc] = ktensor_local_dims_[n];
+    pmap_->subGridAllGather(n, local_sizes.data(), 1);
+    ttb_indx my_offset = 0;
+    for (unsigned proc=0; proc<my_proc; ++proc)
+      my_offset += local_sizes[proc];
+
+    // Add offset from other layers
+    const ttb_indx coord = pmap_->gridCoord(n);
+    my_offset += global_blocking_[n][coord];
+
+    ktensor_local_offsets_[n] = my_offset;
+  }
+
   if (DistContext::isDebug()) {
     if (gridRank() == 0) {
       std::cout << "MPI Ranks in each dimension: ";
@@ -1179,6 +1232,57 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
     Genten::error("Cannot use tpetra distribution approach without enabling Tpetra!");
 #endif
 
+  // Compute local dimensions of compatible factor matrices
+  ktensor_local_dims_.resize(ndims);
+  ktensor_local_offsets_.resize(ndims);
+  for (ttb_indx n=0; n<ndims; ++n) {
+    if (algParams.dist_update_method == Dist_Update_Method::AllReduce ||
+        algParams.dist_update_method == Dist_Update_Method::AllGather)
+    {
+      ktensor_local_dims_[n] = local_dims_[n];
+    }
+    else if (algParams.dist_update_method == Dist_Update_Method::Broadcast)
+    {
+      const ttb_indx procs_in_layer = pmap_->subCommSize(n);
+      const ttb_indx my_proc = pmap_->subCommRank(n);
+      const ttb_indx rows_in_layer = local_dims_[n];
+      ttb_indx num_my_rows = rows_in_layer / procs_in_layer;
+      const ttb_indx rem = rows_in_layer - num_my_rows*procs_in_layer;
+
+      // Distribute remainder across the first rem procs
+      if (my_proc < rem)
+        ++num_my_rows;
+
+      ktensor_local_dims_[n] = num_my_rows;
+    }
+#ifdef HAVE_TPETRA
+    else if (algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra)
+    {
+      ktensor_local_dims_[n] = factorMap[n]->getLocalNumElements();
+    }
+#endif
+    else
+      Genten::error("Unknown distributed ktensor method: " +
+                    algParams.dist_update_method);
+
+    // Compute local offset
+    // FIXME - this is not right for all-reduce, nor tpetra
+    const unsigned np = pmap_->subCommSize(n);
+    const unsigned my_proc = pmap_->subCommRank(n);
+    std::vector<ttb_indx> local_sizes(np);
+    local_sizes[my_proc] = ktensor_local_dims_[n];
+    pmap_->subGridAllGather(n, local_sizes.data(), 1);
+    ttb_indx my_offset = 0;
+    for (unsigned proc=0; proc<my_proc; ++proc)
+      my_offset += local_sizes[proc];
+
+    // Add offset from other layers
+    const ttb_indx coord = pmap_->gridCoord(n);
+    my_offset += global_blocking_[n][coord];
+
+    ktensor_local_offsets_[n] = my_offset;
+  }
+
   if (DistContext::isDebug()) {
     if (gridRank() == 0) {
       std::cout << "MPI Ranks in each dimension: ";
@@ -1215,15 +1319,21 @@ distributeTensor(const std::string& file,
     X_sparse = reader.getSparseTensor();
     const ttb_indx nd = X_sparse.ndims();
     global_dims_.resize(nd);
-    for (ttb_indx i=0; i<nd; ++i)
+    ktensor_local_dims_.resize(nd);
+    for (ttb_indx i=0; i<nd; ++i) {
       global_dims_[i] = X_sparse.size(i);
+      ktensor_local_dims_[i] = X_sparse.size(i);
+    }
   }
   else if (reader.isDense()) {
     X_dense = reader.getDenseTensor();
     const ttb_indx nd = X_dense.ndims();
     global_dims_.resize(nd);
-    for (ttb_indx i=0; i<nd; ++i)
+    ktensor_local_dims_.resize(nd);
+    for (ttb_indx i=0; i<nd; ++i) {
       global_dims_[i] = X_dense.size(i);
+      ktensor_local_dims_[i] = X_dense.size(i);
+    }
   }
   else
     Genten::error("Tensor is neither sparse nor dense, something is wrong!");
@@ -1312,53 +1422,19 @@ randomInitialGuess(const SptensorT<ExecSpace>& X,
   }
   else if (dist_guess_method == "parallel" ||
            dist_guess_method == "parallel-drew") {
-#ifdef HAVE_TPETRA
-    if (tpetra_comm != Teuchos::null) {
-      const ttb_indx nd = X.ndims();
-      IndxArrayT<ExecSpace> sz(nd);
-      auto hsz = create_mirror_view(sz);
-      for (ttb_indx i=0; i<nd; ++i)
-        hsz[i] = factorMap[i]->getLocalNumElements();
-      deep_copy(sz,hsz);
-      u = KtensorT<ExecSpace>(rank, nd, sz);
-      u.setWeights(1.0);
-      u.setMatricesScatter(false, prng, cRMT);
-      u.setProcessorMap(&pmap());
-    }
-    else
-#endif
-    {
-      if (dist_method == Dist_Update_Method::AllReduce ||
-          dist_method == Dist_Update_Method::AllGather) {
-        u = KtensorT<ExecSpace>(rank, nd, X.size());
-        u.setWeights(1.0);
-        u.setMatricesScatter(false, prng, cRMT);
-        u.setProcessorMap(&pmap());
-        allReduce(u, true); // make replicated proc's consistent
-      }
-      else if (this->dist_method == Dist_Update_Method::Broadcast) {
-        const ttb_indx nd = X.ndims();
-        IndxArrayT<ExecSpace> sz(nd);
-        auto hsz = create_mirror_view(sz);
-        for (ttb_indx n=0; n<nd; ++n) {
-          const ttb_indx procs_in_layer = pmap_->subCommSize(n);
-          const ttb_indx my_proc = pmap_->subCommRank(n);
-          const ttb_indx rows_in_layer = local_dims_[n];
-          ttb_indx num_my_rows = rows_in_layer / procs_in_layer;
-          const ttb_indx rem = rows_in_layer - num_my_rows*procs_in_layer;
-
-          // Distribute remainder across the first rem procs
-          if (my_proc < rem)
-            ++num_my_rows;
-
-          hsz[n] = num_my_rows;
-        }
-        deep_copy(sz,hsz);
-        u = KtensorT<ExecSpace>(rank, nd, sz);
-        u.setWeights(1.0);
-        u.setMatricesScatter(false, prng, cRMT);
-        u.setProcessorMap(&pmap());
-      }
+    const ttb_indx nd = X.ndims();
+    IndxArrayT<ExecSpace> sz(nd);
+    auto hsz = create_mirror_view(sz);
+    for (ttb_indx i=0; i<nd; ++i)
+      hsz[i] = ktensor_local_dims_[i];
+    deep_copy(sz,hsz);
+    u = KtensorT<ExecSpace>(rank, nd, sz);
+    u.setWeights(1.0);
+    u.setMatricesScatter(false, prng, cRMT);
+    u.setProcessorMap(&pmap());
+    if (dist_method == Dist_Update_Method::AllReduce ||
+        dist_method == Dist_Update_Method::AllGather) {
+      allReduce(u, true); // make replicated proc's consistent
     }
   }
   else
@@ -1408,53 +1484,19 @@ randomInitialGuess(const TensorT<ExecSpace>& X,
   }
   else if (dist_guess_method == "parallel" ||
            dist_guess_method == "parallel-drew") {
-#ifdef HAVE_TPETRA
-    if (tpetra_comm != Teuchos::null) {
-      const ttb_indx nd = X.ndims();
-      IndxArrayT<ExecSpace> sz(nd);
-      auto hsz = create_mirror_view(sz);
-      for (ttb_indx i=0; i<nd; ++i)
-        hsz[i] = factorMap[i]->getLocalNumElements();
-      deep_copy(sz,hsz);
-      u = KtensorT<ExecSpace>(rank, nd, sz);
-      u.setWeights(1.0);
-      u.setMatricesScatter(false, prng, cRMT);
-      u.setProcessorMap(&pmap());
-    }
-    else
-#endif
-    {
-      if (dist_method == Dist_Update_Method::AllReduce ||
-          dist_method == Dist_Update_Method::AllGather) {
-        u = KtensorT<ExecSpace>(rank, nd, X.size());
-        u.setWeights(1.0);
-        u.setMatricesScatter(false, prng, cRMT);
-        u.setProcessorMap(&pmap());
-        allReduce(u, true); // make replicated proc's consistent
-      }
-      else if (this->dist_method == Dist_Update_Method::Broadcast) {
-        const ttb_indx nd = X.ndims();
-        IndxArrayT<ExecSpace> sz(nd);
-        auto hsz = create_mirror_view(sz);
-        for (ttb_indx n=0; n<nd; ++n) {
-          const ttb_indx procs_in_layer = pmap_->subCommSize(n);
-          const ttb_indx my_proc = pmap_->subCommRank(n);
-          const ttb_indx rows_in_layer = local_dims_[n];
-          ttb_indx num_my_rows = rows_in_layer / procs_in_layer;
-          const ttb_indx rem = rows_in_layer - num_my_rows*procs_in_layer;
-
-          // Distribute remainder across the first rem procs
-          if (my_proc < rem)
-            ++num_my_rows;
-
-          hsz[n] = num_my_rows;
-        }
-        deep_copy(sz,hsz);
-        u = KtensorT<ExecSpace>(rank, nd, sz);
-        u.setWeights(1.0);
-        u.setMatricesScatter(false, prng, cRMT);
-        u.setProcessorMap(&pmap());
-      }
+    const ttb_indx nd = X.ndims();
+    IndxArrayT<ExecSpace> sz(nd);
+    auto hsz = create_mirror_view(sz);
+    for (ttb_indx i=0; i<nd; ++i)
+      hsz[i] = ktensor_local_dims_[i];
+    deep_copy(sz,hsz);
+    u = KtensorT<ExecSpace>(rank, nd, sz);
+    u.setWeights(1.0);
+    u.setMatricesScatter(false, prng, cRMT);
+    u.setProcessorMap(&pmap());
+    if (dist_method == Dist_Update_Method::AllReduce ||
+        dist_method == Dist_Update_Method::AllGather) {
+      allReduce(u, true); // make replicated proc's consistent
     }
   }
   else
