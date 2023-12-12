@@ -1039,6 +1039,8 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
         algParams.dist_update_method == Dist_Update_Method::AllGather)
     {
       ktensor_local_dims_[n] = local_dims_[n];
+      const ttb_indx coord = pmap_->gridCoord(n);
+      ktensor_local_offsets_[n] = global_blocking_[n][coord];
     }
     else if (algParams.dist_update_method == Dist_Update_Method::Broadcast)
     {
@@ -1054,34 +1056,31 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
       if (my_proc < rem)
         ++num_my_rows;
 
+      // Compute local offset
+      std::vector<ttb_indx> local_sizes(procs_in_layer);
+      local_sizes[my_proc] = num_my_rows;
+      pmap_->subGridAllGather(n, local_sizes.data(), 1);
+      ttb_indx my_offset = 0;
+      for (unsigned proc=0; proc<my_proc; ++proc)
+        my_offset += local_sizes[proc];
+
+      // Add offset from other layers
+      const ttb_indx coord = pmap_->gridCoord(n);
+      my_offset += global_blocking_[n][coord];
+
       ktensor_local_dims_[n] = num_my_rows;
+      ktensor_local_offsets_[n] = my_offset;
     }
 #ifdef HAVE_TPETRA
     else if (algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra)
     {
       ktensor_local_dims_[n] = factorMap[n]->getLocalNumElements();
+      ktensor_local_offsets_[n] = factorMap[n]->getGlobalElement(0);
     }
 #endif
     else
       Genten::error("Unknown distributed-guess method: " +
                     algParams.dist_update_method);
-
-    // Compute local offset
-    // FIXME - this is not right for all-reduce, nor tpetra
-    const unsigned np = pmap_->subCommSize(n);
-    const unsigned my_proc = pmap_->subCommRank(n);
-    std::vector<ttb_indx> local_sizes(np);
-    local_sizes[my_proc] = ktensor_local_dims_[n];
-    pmap_->subGridAllGather(n, local_sizes.data(), 1);
-    ttb_indx my_offset = 0;
-    for (unsigned proc=0; proc<my_proc; ++proc)
-      my_offset += local_sizes[proc];
-
-    // Add offset from other layers
-    const ttb_indx coord = pmap_->gridCoord(n);
-    my_offset += global_blocking_[n][coord];
-
-    ktensor_local_offsets_[n] = my_offset;
   }
 
   if (DistContext::isDebug()) {
@@ -1240,6 +1239,8 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
         algParams.dist_update_method == Dist_Update_Method::AllGather)
     {
       ktensor_local_dims_[n] = local_dims_[n];
+      const ttb_indx coord = pmap_->gridCoord(n);
+      ktensor_local_offsets_[n] = global_blocking_[n][coord];
     }
     else if (algParams.dist_update_method == Dist_Update_Method::Broadcast)
     {
@@ -1253,34 +1254,31 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
       if (my_proc < rem)
         ++num_my_rows;
 
+      // Compute local offset
+      std::vector<ttb_indx> local_sizes(procs_in_layer);
+      local_sizes[my_proc] = num_my_rows;
+      pmap_->subGridAllGather(n, local_sizes.data(), 1);
+      ttb_indx my_offset = 0;
+      for (unsigned proc=0; proc<my_proc; ++proc)
+        my_offset += local_sizes[proc];
+
+      // Add offset from other layers
+      const ttb_indx coord = pmap_->gridCoord(n);
+      my_offset += global_blocking_[n][coord];
+
       ktensor_local_dims_[n] = num_my_rows;
+      ktensor_local_offsets_[n] = my_offset;
     }
 #ifdef HAVE_TPETRA
     else if (algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra)
     {
       ktensor_local_dims_[n] = factorMap[n]->getLocalNumElements();
+      ktensor_local_offsets_[n] = factorMap[n]->getGlobalElement(0);
     }
 #endif
     else
       Genten::error("Unknown distributed ktensor method: " +
                     algParams.dist_update_method);
-
-    // Compute local offset
-    // FIXME - this is not right for all-reduce, nor tpetra
-    const unsigned np = pmap_->subCommSize(n);
-    const unsigned my_proc = pmap_->subCommRank(n);
-    std::vector<ttb_indx> local_sizes(np);
-    local_sizes[my_proc] = ktensor_local_dims_[n];
-    pmap_->subGridAllGather(n, local_sizes.data(), 1);
-    ttb_indx my_offset = 0;
-    for (unsigned proc=0; proc<my_proc; ++proc)
-      my_offset += local_sizes[proc];
-
-    // Add offset from other layers
-    const ttb_indx coord = pmap_->gridCoord(n);
-    my_offset += global_blocking_[n][coord];
-
-    ktensor_local_offsets_[n] = my_offset;
   }
 
   if (DistContext::isDebug()) {
