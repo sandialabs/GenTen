@@ -571,13 +571,6 @@ namespace Genten {
         weight_nonzeros,weight_zeros,G.impl(),rand_pool,algParams,
         timer,timer_nzs,timer_zs);
       run_row_simd_kernel(kernel, M.ncomponents());
-
-      if (M.getProcessorMap() != nullptr) {
-        Kokkos::fence();
-        for (ttb_indx n=0; n<M.ndims(); ++n)
-          M.getProcessorMap()->subGridAllReduce(n, G[n].view().data(),
-                                                G[n].view().span());
-      }
     }
 
   }
