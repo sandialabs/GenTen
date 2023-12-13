@@ -832,8 +832,10 @@ public:
       const unsigned nd = u.ndims();
       for (unsigned n=0; n<nd; ++n) {
         auto uov = u_overlapped[n].view();
-        unsigned rank = pmap->subCommRank(n);
+        const unsigned rank = pmap->subCommRank(n);
+        const unsigned np = pmap->subCommSize(n);
         gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
+        gt_assert(uov.span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
         Kokkos::fence();
         pmap->subGridAllGather(n, u[n].view(), uov,
                                sizes_r[n].data(), offsets_r[n].data());
@@ -849,8 +851,10 @@ public:
   {
     if (pmap != nullptr) {
       auto uov = u_overlapped[n].view();
-      unsigned rank = pmap->subCommRank(n);
+      const unsigned rank = pmap->subCommRank(n);
+      const unsigned np = pmap->subCommSize(n);
       gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
+      gt_assert(uov.span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
       Kokkos::fence();
       pmap->subGridAllGather(n, u[n].view(), uov,
                              sizes_r[n].data(), offsets_r[n].data());
