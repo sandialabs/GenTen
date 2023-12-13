@@ -746,6 +746,13 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
     else
       Tvec_dense = reader.parallelReadBinaryDense(global_dims, nnz, offset);
   }
+  else if (parallel_read && reader.isExodus()) {
+#if defined(HAVE_TPETRA) && defined(HAVE_SEACAS)
+      Tvec_dense = reader.parallelReadExodusDense(global_dims, nnz, offset);
+#else
+      Genten::error("parallel exodus read available only with tpetra enabled");
+#endif
+  }
   else {
     // For non-binary, read on rank 0 and broadcast dimensions.
     // We do this instead of reading the header because we want to support
@@ -831,6 +838,7 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
 
     global_blocking_ =
       detail::generateUniformBlocking(global_dims_, pmap_->gridDims());
+
     detail::printBlocking(*pmap_, global_blocking_);
   }
 
@@ -838,7 +846,8 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
     X_dense = distributeTensorData(Tvec_dense, nnz, offset,
                                    global_dims_, global_blocking_,
                                    TensorLayout::Left,
-                                   *pmap_, algParams);
+                                   *pmap_, algParams,
+				   !reader.isExodus());
   else
     X_sparse = distributeTensorData(Tvec_sparse, global_dims_, global_blocking_,
                                     *pmap_, algParams);
@@ -1059,7 +1068,8 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
                      const std::vector<ttb_indx>& TensorDims,
                      const std::vector<small_vector<ttb_indx>>& blocking,
                      const TensorLayout layout,
-                     const ProcessorMap& pmap, const AlgParams& algParams)
+                     const ProcessorMap& pmap, const AlgParams& algParams,
+		     bool redistribute_needed)
 {
   const bool use_tpetra =
     algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
@@ -1068,9 +1078,14 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
   auto t4 = MPI_Wtime();
 
   // Now redistribute to final format
-  auto values =
-    detail::redistributeTensor(Tvec, global_nnz, global_offset,
-                               global_dims_, global_blocking_, layout, *pmap_);
+  // exodus reads already follow a uniform nodal distribution
+  std::vector<ttb_real> values;
+  if(redistribute_needed)
+    values =
+      detail::redistributeTensor(Tvec, global_nnz, global_offset,
+                                 global_dims_, global_blocking_, layout, *pmap_);
+  else
+    values = Tvec;
 
   DistContext::Barrier();
   auto t5 = MPI_Wtime();
