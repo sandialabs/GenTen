@@ -334,9 +334,6 @@ KtensorT<ExecSpaceDst>
 DistTensorContext<ExecSpace>::
 importToRoot(const KtensorT<ExecSpace>& u) const
 {
-  const bool print =
-    DistContext::isDebug() && (pmap_->gridRank() == 0);
-
   const ttb_indx nd = u.ndims();
   const ttb_indx nc = u.ncomponents();
   gt_assert(ttb_indx(global_dims_.size()) == nd);
@@ -471,7 +468,6 @@ importToRoot(const ttb_indx dim, const FacMatrixT<ExecSpace>& u) const
 {
   FacMatrixT<ExecSpaceDst> out(global_dims_[dim], u.nCols());
 
-  const ttb_indx nd = ndims();
   const ttb_indx num_my_rows = ktensor_local_dims_[dim];
   const ttb_indx my_offset = ktensor_local_offsets_[dim];
   gt_assert(num_my_rows == u.nRows());
