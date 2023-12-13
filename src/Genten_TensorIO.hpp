@@ -145,6 +145,13 @@ public:
                           ttb_indx& offset) const;
 #endif
 
+#if defined(HAVE_TPETRA) && defined(HAVE_SEACAS)
+  std::vector<ttb_real>
+  parallelReadExodusDense(std::vector<ttb_indx>& global_dims,
+                          ttb_indx& nnz,
+                          ttb_indx& offset) const;
+#endif
+
   bool isSparse() const { return is_sparse; }
   bool isDense() const { return is_dense; }
   bool isBinary() const { return is_binary; }

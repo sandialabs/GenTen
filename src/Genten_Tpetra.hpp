@@ -44,6 +44,7 @@
 #ifdef HAVE_TPETRA
 
 #include "Tpetra_Map.hpp"
+#include "Tpetra_MultiVector.hpp"
 #include "Tpetra_Import.hpp"
 #include "Tpetra_DistObject.hpp"
 #include "Tpetra_Details_makeOptimizedColMap.hpp"
@@ -59,6 +60,9 @@ using tpetra_go_type = long long;
 
 template <typename ExecSpace>
 using tpetra_map_type = Tpetra::Map<tpetra_lo_type, tpetra_go_type, tpetra_node_type<ExecSpace> >;
+
+template <typename ExecSpace>
+using tpetra_multivector_type = Tpetra::MultiVector<ttb_real, tpetra_lo_type, tpetra_go_type, tpetra_node_type<ExecSpace> >;
 
 template <typename ExecSpace>
 using tpetra_import_type = Tpetra::Import<tpetra_lo_type, tpetra_go_type, tpetra_node_type<ExecSpace> >;

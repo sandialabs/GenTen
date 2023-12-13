@@ -63,7 +63,7 @@ add_genten_mpi_test(Genten_Test_CpOptRol)
 ENDIF()
 
 IF(ENABLE_SEACAS)
-add_genten_test(Genten_Test_Exodus)
+add_genten_mpi_test(Genten_Test_Exodus)
 ENDIF()
 
 IF(ENABLE_GCP)

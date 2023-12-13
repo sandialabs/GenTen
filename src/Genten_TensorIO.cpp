@@ -44,6 +44,7 @@
 #include "Genten_IOtext.hpp"
 #include "Genten_AlgParams.hpp"
 #include "Genten_DistContext.hpp"
+#include "Genten_Tpetra.hpp"
 
 #ifdef HAVE_DIST
 #include "Genten_MPI_IO.hpp"
@@ -850,8 +851,124 @@ parallelReadBinaryDense(std::vector<ttb_indx>& global_dims,
   global_dims = header.getGlobalDims();
   nnz = header.getGlobalNnz();
   offset = header.getGlobalElementOffset(DistContext::rank(), DistContext::nranks());
+
   return G_MPI_IO::parallelReadElements(DistContext::commWorld(),
                                         mpi_file, header);
+}
+#endif
+
+#if defined(HAVE_TPETRA) && defined(HAVE_SEACAS)
+template <typename ExecSpace>
+std::vector<ttb_real>
+TensorReader<ExecSpace>::
+parallelReadExodusDense(std::vector<ttb_indx>& global_dims,
+                        ttb_indx& nnz,
+                        ttb_indx& offset) const
+{
+  Teuchos::RCP<Teuchos::Comm<int>> comm = Teuchos::rcp(new Teuchos::MpiComm<int>(DistContext::commWorld()));
+  int num_ranks = comm->getSize();
+  int rank = comm->getRank();
+  std::string this_filename = filename + "." + std::to_string(num_ranks) + "." + std::to_string(rank);
+
+  float version;
+  int CPU_word_size = 8;
+  int IO_word_size  = 0;
+
+  // open EXODUS II file
+  int exoid = ex_open(this_filename.c_str(), /* filename path */
+                      EX_READ,               /* access mode = READ */
+                      &CPU_word_size,        /* CPU word size */
+                      &IO_word_size,         /* IO word size */
+                      &version);             /* ExodusII library version */
+  if (exoid < 0)
+    Genten::error("Exodus error opeing file " + filename);
+
+  // determine how many nodes, variables, and timesteps there are
+  int   error;
+  int   int_data;
+  float float_data;
+  char  char_data;
+  error = ex_inquire(exoid, EX_INQ_NODES, &int_data, &float_data, &char_data);
+  if (error != 0)
+    Genten::error("Exodus error " + error);
+  int num_local_nodes = int_data;
+  error = ex_inquire(exoid, EX_INQ_NUM_NODE_VAR, &int_data, &float_data, &char_data);
+  if (error != 0)
+    Genten::error("Exodus error " + error);
+  int num_nodal_vars = int_data;
+  error = ex_inquire(exoid, EX_INQ_TIME, &int_data, &float_data, &char_data);
+  if (error != 0)
+    Genten::error("Exodus error " + error);
+  int num_time_steps = int_data;
+  //error = ex_inquire(exoid, EX_INQ_NODE_MAP, &int_data, &float_data, &char_data);
+  //if (error != 0)
+  //  Genten::error("Exodus error " + error);
+  //int num_node_maps = int_data;
+
+  // get the LID to GID map from the exodus file
+  std::vector<int> node_map_int(num_local_nodes,-1);
+  error = ex_get_id_map(exoid, EX_NODE_MAP, &node_map_int[0]);
+
+  // convert GIDs to Tpetra global type
+  std::vector<tpetra_go_type> node_map(num_local_nodes,-1);
+  for(std::size_t i = 0; i < node_map.size(); i++)
+    node_map[i] = node_map_int[i]; 
+
+  // build a Tpetra map
+  // this includes nodes shared between ranks
+  ttb_indx num_global_nodes = Teuchos::OrdinalTraits<Tpetra::global_size_t>::invalid();
+  auto ghosted_map = Teuchos::rcp(new const tpetra_map_type<ExecSpace>(num_global_nodes, &node_map[0], num_local_nodes, 0 /*index_base*/, comm));
+  num_global_nodes = ghosted_map->getMaxAllGlobalIndex() + 1;
+
+  // create a Tpetra map that divides nodes evenly between all ranks
+  // this is designed to have the same distribution as the binary read
+  tpetra_lo_type num_owned_nodes = num_global_nodes/comm->getSize();
+  tpetra_lo_type remainder = num_global_nodes%comm->getSize();
+  tpetra_go_type node_offset = rank*num_owned_nodes + std::min(rank,remainder);
+  num_owned_nodes += (rank < remainder) ? 1 : 0;
+  std::vector<tpetra_go_type> owned_node_map(num_owned_nodes,-1);
+  for(tpetra_lo_type i = 0; i < num_owned_nodes; i++)
+    owned_node_map[i] = node_offset + i;
+  auto owned_map = Teuchos::rcp(new const tpetra_map_type<ExecSpace>(num_global_nodes, &owned_node_map[0], num_owned_nodes, 0 /*index_base*/, comm));
+
+  // fill a multivector with the (owned and shared) values on this rank
+  tpetra_multivector_type<ExecSpace> ghosted_multivector(ghosted_map, num_time_steps*num_nodal_vars);
+  auto ghosted_data = ghosted_multivector.getLocalViewDevice(Tpetra::Access::ReadWrite);
+  auto host_ghosted_data = Kokkos::create_mirror_view(DefaultHostExecutionSpace::memory_space{}, ghosted_data);
+  std::vector<double> var_data(num_local_nodes);
+  for(int itime = 0; itime < num_time_steps; itime++)
+    for(int ivar = 0; ivar < num_nodal_vars; ivar++)
+    {
+      error = ex_get_var(exoid, itime+1, EX_NODAL, ivar+1, 0 /*obj_id*/, num_local_nodes, &var_data[0]);
+      if (error != 0)
+        Genten::error("Exodus error " + error);
+      for(int inode = 0; inode < num_local_nodes; inode++)
+        host_ghosted_data(inode, itime*num_nodal_vars + ivar) = var_data[inode];
+    }
+  Kokkos::deep_copy(ghosted_data, host_ghosted_data);
+
+  // redistribute the data across ranks into the non-ghosted distribution
+  tpetra_multivector_type<ExecSpace> owned_multivector(owned_map, num_time_steps*num_nodal_vars);
+  tpetra_import_type<ExecSpace> importer(ghosted_map, owned_map);
+  owned_multivector.doImport(ghosted_multivector, importer, Tpetra::INSERT);
+
+  // set the data to return
+  global_dims = std::vector<ttb_indx>(3,0);
+  global_dims[2] = num_time_steps;
+  global_dims[1] = num_nodal_vars;
+  global_dims[0] = num_global_nodes;
+  nnz = num_time_steps*num_nodal_vars*num_global_nodes;
+  offset = num_time_steps*num_nodal_vars*node_offset;
+
+  std::vector<ttb_real> result(num_owned_nodes*num_nodal_vars*num_time_steps);
+  auto owned_data = owned_multivector.getLocalViewDevice(Tpetra::Access::ReadOnly);
+  auto host_owned_data = Kokkos::create_mirror_view(DefaultHostExecutionSpace::memory_space{}, owned_data);
+  for(int itime = 0; itime < num_time_steps; itime++)
+    for(int ivar = 0; ivar < num_nodal_vars; ivar++)
+      for(int inode = 0; inode < num_owned_nodes; inode++)
+        result[itime*num_nodal_vars*num_owned_nodes + ivar*num_owned_nodes + inode] = host_owned_data(inode, itime*num_nodal_vars + ivar);
+
+  return result;
 }
 #endif
 
