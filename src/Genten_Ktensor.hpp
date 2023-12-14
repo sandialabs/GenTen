@@ -194,6 +194,12 @@ public:
     return(data.size());
   }
 
+  // Return if ktensor is empty
+  KOKKOS_INLINE_FUNCTION
+  bool isEmpty() const {
+    return ncomponents() == 0 || ndims() == 0;
+  }
+
   // Consistency check on sizes, i.e., the number of columns in each matrix
   // is equal to the length of lambda
   bool isConsistent() const;
