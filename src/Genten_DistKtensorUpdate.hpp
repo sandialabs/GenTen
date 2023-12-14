@@ -74,6 +74,8 @@ public:
 
   virtual bool isReplicated() const { return true; }
 
+  virtual bool overlapDependsOnTensor() const { return false; }
+
   virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
                         const KtensorT<ExecSpace>& u) const
   {
@@ -636,6 +638,8 @@ public:
   KtensorTpetraUpdate(const KtensorTpetraUpdate&) = default;
   KtensorTpetraUpdate& operator=(KtensorTpetraUpdate&&) = default;
   KtensorTpetraUpdate& operator=(const KtensorTpetraUpdate&) = default;
+
+  virtual bool overlapDependsOnTensor() const override { return true; }
 
   virtual void updateTensor(DistTensor<ExecSpace>& X_) override
   {

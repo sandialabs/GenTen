@@ -106,7 +106,8 @@ namespace Genten {
 
     virtual void prepareGradient(const KtensorT<exec_space>& g) override
     {
-      g_overlap = dku->createOverlapKtensor(g);
+      if (g_overlap.isEmpty())
+        g_overlap = dku->createOverlapKtensor(g);
     }
 
     virtual void value(const KtensorT<exec_space>& u,

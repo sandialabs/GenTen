@@ -310,7 +310,8 @@ namespace Genten {
         if (Yh.nnz() > 0)
           Yh.createPermutation();
       }
-      gt_overlap = dku_G->createOverlapKtensor(gt);
+      if (gt_overlap.isEmpty() || dku_G->overlapDependsOnTensor())
+        gt_overlap = dku_G->createOverlapKtensor(gt);
     }
 
     virtual void value(const KtensorT<ExecSpace>& u,
