@@ -828,6 +828,8 @@ public:
   virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
                         const KtensorT<ExecSpace>& u) const override
   {
+    GENTEN_TIME_MONITOR("k-tensor import");
+
     if (pmap != nullptr) {
       const unsigned nd = u.ndims();
       for (unsigned n=0; n<nd; ++n) {
@@ -849,6 +851,8 @@ public:
                         const KtensorT<ExecSpace>& u,
                         const ttb_indx n) const override
   {
+    GENTEN_TIME_MONITOR("k-tensor import");
+
     if (pmap != nullptr) {
       auto uov = u_overlapped[n].view();
       const unsigned rank = pmap->subCommRank(n);
