@@ -248,7 +248,7 @@ namespace Genten {
       Tpetra,
       AllGatherReduce
     };
-    static constexpr unsigned num_types = 4;
+    static constexpr unsigned num_types = 3;
     static constexpr type types[] = {
       AllReduce,
       Tpetra,
