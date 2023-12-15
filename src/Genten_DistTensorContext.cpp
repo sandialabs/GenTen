@@ -1015,14 +1015,13 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
   ktensor_local_dims_.resize(ndims);
   ktensor_local_offsets_.resize(ndims);
   for (ttb_indx n=0; n<ndims; ++n) {
-    if (algParams.dist_update_method == Dist_Update_Method::AllReduce ||
-        algParams.dist_update_method == Dist_Update_Method::AllGather)
+    if (algParams.dist_update_method == Dist_Update_Method::AllReduce)
     {
       ktensor_local_dims_[n] = local_dims_[n];
       const ttb_indx coord = pmap_->gridCoord(n);
       ktensor_local_offsets_[n] = global_blocking_[n][coord];
     }
-    else if (algParams.dist_update_method == Dist_Update_Method::Broadcast)
+    else if (algParams.dist_update_method == Dist_Update_Method::AllGatherReduce)
     {
       // Distributed ktensor in blocks across subgrid layers, then
       // distribute each block uniformly across procs in the layer
@@ -1195,14 +1194,13 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
   ktensor_local_dims_.resize(ndims);
   ktensor_local_offsets_.resize(ndims);
   for (ttb_indx n=0; n<ndims; ++n) {
-    if (algParams.dist_update_method == Dist_Update_Method::AllReduce ||
-        algParams.dist_update_method == Dist_Update_Method::AllGather)
+    if (algParams.dist_update_method == Dist_Update_Method::AllReduce)
     {
       ktensor_local_dims_[n] = local_dims_[n];
       const ttb_indx coord = pmap_->gridCoord(n);
       ktensor_local_offsets_[n] = global_blocking_[n][coord];
     }
-    else if (algParams.dist_update_method == Dist_Update_Method::Broadcast)
+    else if (algParams.dist_update_method == Dist_Update_Method::AllGatherReduce)
     {
       const ttb_indx procs_in_layer = pmap_->subCommSize(n);
       const ttb_indx my_proc = pmap_->subCommRank(n);
@@ -1390,8 +1388,7 @@ randomInitialGuess(const SptensorT<ExecSpace>& X,
     u.setWeights(1.0);
     u.setMatricesScatter(false, prng, cRMT);
     u.setProcessorMap(&pmap());
-    if (dist_method == Dist_Update_Method::AllReduce ||
-        dist_method == Dist_Update_Method::AllGather) {
+    if (dist_method == Dist_Update_Method::AllReduce) {
       allReduce(u, true); // make replicated proc's consistent
     }
   }
@@ -1452,8 +1449,7 @@ randomInitialGuess(const TensorT<ExecSpace>& X,
     u.setWeights(1.0);
     u.setMatricesScatter(false, prng, cRMT);
     u.setProcessorMap(&pmap());
-    if (dist_method == Dist_Update_Method::AllReduce ||
-        dist_method == Dist_Update_Method::AllGather) {
+    if (dist_method == Dist_Update_Method::AllReduce) {
       allReduce(u, true); // make replicated proc's consistent
     }
   }

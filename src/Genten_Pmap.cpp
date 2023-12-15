@@ -194,15 +194,14 @@ ProcessorMap::ProcessorMap(std::vector<ttb_indx> const &tensor_dims,
   small_vector<int> dim_filter2(ndims, 0);
   fac_maps_.resize(ndims);
 
-  // For Tpetra and Broadcast approaches, factor matrices are distributed
+  // For Tpetra and AllGatherReduce approaches, factor matrices are distributed
   // across all procs
   if (dist_method == Dist_Update_Method::Tpetra ||
-      dist_method == Dist_Update_Method::Broadcast) {
+      dist_method == Dist_Update_Method::AllGatherReduce) {
     for (ttb_indx i = 0; i < ndims; ++i)
       fac_maps_[i] = FacMap(cart_comm_);
   }
-  else if (dist_method == Dist_Update_Method::AllReduce ||
-           dist_method == Dist_Update_Method::AllGather){
+  else if (dist_method == Dist_Update_Method::AllReduce){
     // Get information for the MPI Subgrid for each Dimension
     for (ttb_indx i = 0; i < ndims; ++i) {
       dim_filter2[i] = 1; // Get only this dim
