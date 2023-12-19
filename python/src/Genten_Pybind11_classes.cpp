@@ -142,6 +142,7 @@ void pygenten_algparams(py::module &m){
     .value("AllReduce", Genten::Dist_Update_Method::type::AllReduce)
     .value("Tpetra", Genten::Dist_Update_Method::type::Tpetra)
     .value("AllGatherReduce", Genten::Dist_Update_Method::type::AllGatherReduce)
+    .value("OneSidedAllGatherReduce", Genten::Dist_Update_Method::type::OneSidedAllGatherReduce)
     .export_values();
   py::enum_<Genten::Hess_Vec_Method::type>(m, "Hess_Vec_Method")
     .value("Full", Genten::Hess_Vec_Method::type::Full)
