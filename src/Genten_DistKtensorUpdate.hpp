@@ -744,28 +744,4 @@ createKtensorUpdate(const TensorType& X,
   return dku;
 }
 
-template <typename TensorType>
-DistKtensorUpdate<typename TensorType::exec_space>*
-createKtensorUpdate(const TensorType& X,
-                    const KtensorT<typename TensorType::exec_space>& u,
-                    const ttb_indx nnz,
-                    const AlgParams& algParams)
-{
-  using exec_space = typename TensorType::exec_space;
-  DistKtensorUpdate<exec_space>* dku = nullptr;
-  if (algParams.dist_update_method == Dist_Update_Method::AllReduce)
-    dku = new KtensorAllReduceUpdate<exec_space>(u);
-#ifdef HAVE_TPETRA
-  else if (algParams.dist_update_method == Dist_Update_Method::Tpetra)
-    dku = new KtensorTpetraUpdate<exec_space>(X, u);
-#endif
-  else if (algParams.dist_update_method == Dist_Update_Method::AllGatherReduce)
-    dku = new KtensorAllGatherReduceUpdate<exec_space>(u);
-  else if (algParams.dist_update_method == Dist_Update_Method::OneSidedAllGatherReduce)
-    dku = new KtensorOneSidedAllGatherReduceUpdate<exec_space>(u);
-  else
-    Genten::error("Unknown distributed Ktensor update method");
-  return dku;
-}
-
 }
