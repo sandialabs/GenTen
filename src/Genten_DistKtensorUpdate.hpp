@@ -512,7 +512,7 @@ private:
   std::vector< std::vector<int> > sizes_r;
 
 #ifdef HAVE_DIST
-  using umv_type = Kokkos::View<ttb_real**, Kokkos::LayoutRight, ExecSpace, Kokkos::MemoryUnmanaged>;
+  using umv_type = Kokkos::View<ttb_real**, Kokkos::LayoutStride, ExecSpace, Kokkos::MemoryUnmanaged>;
   std::vector<MPI_Win> windows;
   std::vector<umv_type> bufs;
 #endif
@@ -570,14 +570,15 @@ public:
     windows.resize(nd);
     bufs.resize(nd);
     for (unsigned n=0; n<nd; ++n) {
-      const unsigned np = offsets[n].size();
-      const ttb_indx nr = offsets[n][np-1]+sizes[n][np-1];
-      const ttb_indx nc = (offsets_r[n][np-1]+sizes_r[n][np-1])/nr;
-      const MPI_Aint sz = nr*nc*sizeof(ttb_real);
+      const ttb_indx nr = u[n].nRows();
+      const ttb_indx nc = u[n].nCols();
+      const ttb_indx st = u[n].view().span()/nr;
+      const MPI_Aint sz = u[n].view().span()*sizeof(ttb_real);
       ttb_real *buf;
       MPI_Win_allocate(sz, int(sizeof(ttb_real)), MPI_INFO_NULL,
                        pmap->subComm(n), &buf, &windows[n]);
-      bufs[n] = umv_type(buf, nr, nc);
+      Kokkos::LayoutStride layout(nr, st, nc, 1);
+      bufs[n] = umv_type(buf, layout);
     }
 #endif
   }
@@ -644,12 +645,7 @@ public:
 
       // Copy u into our window
       MPI_Win_fence(0, windows[n]);
-      const int my_beg = offsets[n][rank];
-      const int my_end = offsets[n][rank]+sizes[n][rank];
-      const unsigned nc = u.ncomponents();
-      auto sub_buf = Kokkos::subview(bufs[n], std::make_pair(my_beg, my_end),
-                                     std::make_pair(0u,nc));
-      Kokkos::deep_copy(sub_buf, u[n].view());
+      Kokkos::deep_copy(bufs[n], u[n].view());
       Kokkos::fence();
       MPI_Win_fence(0, windows[n]);
 
@@ -658,7 +654,7 @@ public:
       for (unsigned p=0; p<np; ++p) {
         ttb_real *ptr = u_overlapped[n].view().data()+offsets_r[n][p];
         const int cnt = sizes_r[n][p];
-        const MPI_Aint beg = offsets_r[n][p];
+        const MPI_Aint beg = 0;
         MPI_Get(ptr, cnt, DistContext::toMpiType<ttb_real>(), p,
                 beg, cnt, DistContext::toMpiType<ttb_real>(), windows[n]);
       }
@@ -705,7 +701,7 @@ public:
       for (unsigned p=0; p<np; ++p) {
         const ttb_real *ptr = u_overlapped[n].view().data()+offsets_r[n][p];
         const int cnt = sizes_r[n][p];
-        const MPI_Aint beg = offsets_r[n][p];
+        const MPI_Aint beg = 0;
         MPI_Accumulate(ptr, cnt, DistContext::toMpiType<ttb_real>(), p,
                        beg, cnt, DistContext::toMpiType<ttb_real>(), MPI_SUM,
                        windows[n]);
@@ -714,12 +710,7 @@ public:
 
       // Copy window data into u
       MPI_Win_fence(0, windows[n]);
-      const int my_beg = offsets[n][rank];
-      const int my_end = offsets[n][rank]+sizes[n][rank];
-      const unsigned nc = u.ncomponents();
-      auto sub_buf = Kokkos::subview(bufs[n], std::make_pair(my_beg, my_end),
-                                     std::make_pair(0u,nc));
-      Kokkos::deep_copy(u[n].view(), sub_buf);
+      Kokkos::deep_copy(u[n].view(), bufs[n]);
     }
     else
       deep_copy(u[n], u_overlapped[n]); // no-op if u and u_overlapped are the same
