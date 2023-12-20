@@ -642,20 +642,19 @@ public:
       gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
       gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
 
-      MPI_Win_fence(0, windows[n]);
-
       // Copy u into our window
+      MPI_Win_fence(0, windows[n]);
       const int my_beg = offsets[n][rank];
       const int my_end = offsets[n][rank]+sizes[n][rank];
       const unsigned nc = u.ncomponents();
       auto sub_buf = Kokkos::subview(bufs[n], std::make_pair(my_beg, my_end),
                                      std::make_pair(0u,nc));
       Kokkos::deep_copy(sub_buf, u[n].view());
-
       Kokkos::fence();
       MPI_Win_fence(0, windows[n]);
 
       // Get data from all ranks
+      MPI_Win_lock_all(0, windows[n]);
       for (unsigned p=0; p<np; ++p) {
         ttb_real *ptr = u_overlapped[n].view().data()+offsets_r[n][p];
         const int cnt = sizes_r[n][p];
@@ -663,8 +662,7 @@ public:
         MPI_Get(ptr, cnt, DistContext::toMpiType<ttb_real>(), p,
                 beg, cnt, DistContext::toMpiType<ttb_real>(), windows[n]);
       }
-
-      MPI_Win_fence(0, windows[n]);
+      MPI_Win_unlock_all(windows[n]);
     }
     else
       deep_copy(u_overlapped[n], u[n]); // no-op if u and u_overlapped are the same
@@ -696,14 +694,14 @@ public:
       gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
       gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
 
-      MPI_Win_fence(0, windows[n]);
-
       // Zero out window
+      MPI_Win_fence(0, windows[n]);
       Kokkos::deep_copy(bufs[n], ttb_real(0.0));
       Kokkos::fence();
       MPI_Win_fence(0, windows[n]);
 
       // Accumulate data to all ranks
+      MPI_Win_lock_all(0, windows[n]);
       for (unsigned p=0; p<np; ++p) {
         const ttb_real *ptr = u_overlapped[n].view().data()+offsets_r[n][p];
         const int cnt = sizes_r[n][p];
@@ -712,10 +710,10 @@ public:
                        beg, cnt, DistContext::toMpiType<ttb_real>(), MPI_SUM,
                        windows[n]);
       }
-
-      MPI_Win_fence(0, windows[n]);
+      MPI_Win_unlock_all(windows[n]);
 
       // Copy window data into u
+      MPI_Win_fence(0, windows[n]);
       const int my_beg = offsets[n][rank];
       const int my_end = offsets[n][rank]+sizes[n][rank];
       const unsigned nc = u.ncomponents();
