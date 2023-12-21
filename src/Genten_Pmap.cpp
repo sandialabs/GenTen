@@ -198,7 +198,7 @@ ProcessorMap::ProcessorMap(std::vector<ttb_indx> const &tensor_dims,
   // across all procs
   if (dist_method == Dist_Update_Method::Tpetra ||
       dist_method == Dist_Update_Method::AllGatherReduce ||
-      dist_method == Dist_Update_Method::OneSidedAllGatherReduce) {
+      dist_method == Dist_Update_Method::OneSided) {
     for (ttb_indx i = 0; i < ndims; ++i)
       fac_maps_[i] = FacMap(cart_comm_);
   }

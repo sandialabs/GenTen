@@ -247,17 +247,17 @@ namespace Genten {
       AllReduce,
       Tpetra,
       AllGatherReduce,
-      OneSidedAllGatherReduce
+      OneSided
     };
     static constexpr unsigned num_types = 4;
     static constexpr type types[] = {
       AllReduce,
       Tpetra,
       AllGatherReduce,
-      OneSidedAllGatherReduce
+      OneSided
     };
     static constexpr const char* names[] = {
-      "all-reduce", "tpetra", "all-gather-reduce", "one-sided-all-gather-reduce"
+      "all-reduce", "tpetra", "all-gather-reduce", "one-sided"
     };
     static constexpr type default_type = AllReduce;
   };

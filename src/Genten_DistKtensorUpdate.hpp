@@ -502,7 +502,7 @@ public:
 };
 
 template <typename ExecSpace>
-class KtensorOneSidedAllGatherReduceUpdate :
+class KtensorOneSidedUpdate :
     public DistKtensorUpdate<ExecSpace> {
 private:
   const ProcessorMap *pmap;
@@ -526,14 +526,14 @@ private:
 #endif
 
 public:
-  KtensorOneSidedAllGatherReduceUpdate(const DistTensor<ExecSpace>& X,
+  KtensorOneSidedUpdate(const DistTensor<ExecSpace>& X,
                                        const KtensorT<ExecSpace>& u);
-  virtual ~KtensorOneSidedAllGatherReduceUpdate();
+  virtual ~KtensorOneSidedUpdate();
 
-  KtensorOneSidedAllGatherReduceUpdate(KtensorOneSidedAllGatherReduceUpdate&&) = default;
-  KtensorOneSidedAllGatherReduceUpdate(const KtensorOneSidedAllGatherReduceUpdate&) = default;
-  KtensorOneSidedAllGatherReduceUpdate& operator=(KtensorOneSidedAllGatherReduceUpdate&&) = default;
-  KtensorOneSidedAllGatherReduceUpdate& operator=(const KtensorOneSidedAllGatherReduceUpdate&) = default;
+  KtensorOneSidedUpdate(KtensorOneSidedUpdate&&) = default;
+  KtensorOneSidedUpdate(const KtensorOneSidedUpdate&) = default;
+  KtensorOneSidedUpdate& operator=(KtensorOneSidedUpdate&&) = default;
+  KtensorOneSidedUpdate& operator=(const KtensorOneSidedUpdate&) = default;
 
   virtual void updateTensor(const DistTensor<ExecSpace>& X) override;
 
@@ -612,8 +612,8 @@ createKtensorUpdate(const TensorType& X,
 #endif
    else if (algParams.dist_update_method == Dist_Update_Method::AllGatherReduce)
     dku = new KtensorAllGatherReduceUpdate<exec_space>(u);
-  else if (algParams.dist_update_method == Dist_Update_Method::OneSidedAllGatherReduce)
-    dku = new KtensorOneSidedAllGatherReduceUpdate<exec_space>(X, u);
+  else if (algParams.dist_update_method == Dist_Update_Method::OneSided)
+    dku = new KtensorOneSidedUpdate<exec_space>(X, u);
   else
     Genten::error("Unknown distributed Ktensor update method");
   return dku;

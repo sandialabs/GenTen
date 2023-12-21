@@ -44,9 +44,9 @@
 namespace Genten {
 
 template <typename ExecSpace>
-KtensorOneSidedAllGatherReduceUpdate<ExecSpace>::
-KtensorOneSidedAllGatherReduceUpdate(const DistTensor<ExecSpace>& X,
-                                     const KtensorT<ExecSpace>& u) :
+KtensorOneSidedUpdate<ExecSpace>::
+KtensorOneSidedUpdate(const DistTensor<ExecSpace>& X,
+                      const KtensorT<ExecSpace>& u) :
   pmap(u.getProcessorMap())
 {
   parallel = pmap != nullptr && pmap->gridSize() > 1;
@@ -104,8 +104,8 @@ KtensorOneSidedAllGatherReduceUpdate(const DistTensor<ExecSpace>& X,
 }
 
 template <typename ExecSpace>
-KtensorOneSidedAllGatherReduceUpdate<ExecSpace>::
-~KtensorOneSidedAllGatherReduceUpdate()
+KtensorOneSidedUpdate<ExecSpace>::
+~KtensorOneSidedUpdate()
 {
 #ifdef HAVE_DIST
   if (parallel) {
@@ -118,7 +118,7 @@ KtensorOneSidedAllGatherReduceUpdate<ExecSpace>::
 
 template <typename ExecSpace>
 void
-KtensorOneSidedAllGatherReduceUpdate<ExecSpace>::
+KtensorOneSidedUpdate<ExecSpace>::
 updateTensor(const DistTensor<ExecSpace>& X)
 {
   GENTEN_TIME_MONITOR("update tensor");
@@ -157,7 +157,7 @@ updateTensor(const DistTensor<ExecSpace>& X)
 
 template <typename ExecSpace>
 KtensorT<ExecSpace>
-KtensorOneSidedAllGatherReduceUpdate<ExecSpace>::
+KtensorOneSidedUpdate<ExecSpace>::
 createOverlapKtensor(const KtensorT<ExecSpace>& u) const
 {
   GENTEN_TIME_MONITOR("create overlapped k-tensor");
@@ -179,7 +179,7 @@ createOverlapKtensor(const KtensorT<ExecSpace>& u) const
 
 template <typename ExecSpace>
 void
-KtensorOneSidedAllGatherReduceUpdate<ExecSpace>::
+KtensorOneSidedUpdate<ExecSpace>::
 doImport(const KtensorT<ExecSpace>& u_overlapped,
          const KtensorT<ExecSpace>& u) const
 {
@@ -196,7 +196,7 @@ doImport(const KtensorT<ExecSpace>& u_overlapped,
 
 template <typename ExecSpace>
 void
-KtensorOneSidedAllGatherReduceUpdate<ExecSpace>::
+KtensorOneSidedUpdate<ExecSpace>::
 doImport(const KtensorT<ExecSpace>& u_overlapped,
          const KtensorT<ExecSpace>& u,
          const ttb_indx n) const
@@ -214,7 +214,7 @@ doImport(const KtensorT<ExecSpace>& u_overlapped,
 
 template <typename ExecSpace>
 void
-KtensorOneSidedAllGatherReduceUpdate<ExecSpace>::
+KtensorOneSidedUpdate<ExecSpace>::
 doExport(const KtensorT<ExecSpace>& u,
          const KtensorT<ExecSpace>& u_overlapped) const
 {
@@ -231,7 +231,7 @@ doExport(const KtensorT<ExecSpace>& u,
 
 template <typename ExecSpace>
 void
-KtensorOneSidedAllGatherReduceUpdate<ExecSpace>::
+KtensorOneSidedUpdate<ExecSpace>::
 doExport(const KtensorT<ExecSpace>& u,
          const KtensorT<ExecSpace>& u_overlapped,
          const ttb_indx n) const
@@ -249,7 +249,7 @@ doExport(const KtensorT<ExecSpace>& u,
 
 template <typename ExecSpace>
 void
-KtensorOneSidedAllGatherReduceUpdate<ExecSpace>::
+KtensorOneSidedUpdate<ExecSpace>::
 doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
                const KtensorT<ExecSpace>& u) const
 {
@@ -299,7 +299,7 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
 
 template <typename ExecSpace>
 void
-KtensorOneSidedAllGatherReduceUpdate<ExecSpace>::
+KtensorOneSidedUpdate<ExecSpace>::
 doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
                const KtensorT<ExecSpace>& u,
                const ttb_indx n) const
@@ -341,7 +341,7 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
 
 template <typename ExecSpace>
 void
-KtensorOneSidedAllGatherReduceUpdate<ExecSpace>::
+KtensorOneSidedUpdate<ExecSpace>::
 doImportDense(const KtensorT<ExecSpace>& u_overlapped,
               const KtensorT<ExecSpace>& u) const
 {
@@ -381,7 +381,7 @@ doImportDense(const KtensorT<ExecSpace>& u_overlapped,
 
 template <typename ExecSpace>
 void
-KtensorOneSidedAllGatherReduceUpdate<ExecSpace>::
+KtensorOneSidedUpdate<ExecSpace>::
 doImportDense(const KtensorT<ExecSpace>& u_overlapped,
               const KtensorT<ExecSpace>& u,
               const ttb_indx n) const
@@ -412,7 +412,7 @@ doImportDense(const KtensorT<ExecSpace>& u_overlapped,
 
 template <typename ExecSpace>
 void
-KtensorOneSidedAllGatherReduceUpdate<ExecSpace>::
+KtensorOneSidedUpdate<ExecSpace>::
 doExportSparse(const KtensorT<ExecSpace>& u,
                const KtensorT<ExecSpace>& u_overlapped) const
 {
@@ -467,7 +467,7 @@ doExportSparse(const KtensorT<ExecSpace>& u,
 
 template <typename ExecSpace>
 void
-KtensorOneSidedAllGatherReduceUpdate<ExecSpace>::
+KtensorOneSidedUpdate<ExecSpace>::
 doExportSparse(const KtensorT<ExecSpace>& u,
                const KtensorT<ExecSpace>& u_overlapped,
                const ttb_indx n) const
@@ -512,7 +512,7 @@ doExportSparse(const KtensorT<ExecSpace>& u,
 
 template <typename ExecSpace>
 void
-KtensorOneSidedAllGatherReduceUpdate<ExecSpace>::
+KtensorOneSidedUpdate<ExecSpace>::
 doExportDense(const KtensorT<ExecSpace>& u,
               const KtensorT<ExecSpace>& u_overlapped) const
 {
@@ -559,7 +559,7 @@ doExportDense(const KtensorT<ExecSpace>& u,
 
 template <typename ExecSpace>
 void
-KtensorOneSidedAllGatherReduceUpdate<ExecSpace>::
+KtensorOneSidedUpdate<ExecSpace>::
 doExportDense(const KtensorT<ExecSpace>& u,
               const KtensorT<ExecSpace>& u_overlapped,
               const ttb_indx n) const
@@ -595,5 +595,5 @@ doExportDense(const KtensorT<ExecSpace>& u,
 
 }
 
-#define INST_MACRO(SPACE) template class Genten::KtensorOneSidedAllGatherReduceUpdate<SPACE>;
+#define INST_MACRO(SPACE) template class Genten::KtensorOneSidedUpdate<SPACE>;
 GENTEN_INST(INST_MACRO)
