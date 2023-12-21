@@ -48,6 +48,8 @@
 #include "Genten_DistFacMatrix.hpp"
 #include "Genten_SystemTimer.hpp"
 
+#include "Kokkos_UnorderedMap.hpp"
+
 namespace Genten {
 
 template <typename ExecSpace>
@@ -62,7 +64,7 @@ public:
   DistKtensorUpdate& operator=(DistKtensorUpdate&&) = default;
   DistKtensorUpdate& operator=(const DistKtensorUpdate&) = default;
 
-  virtual void updateTensor(DistTensor<ExecSpace>& X) {}
+  virtual void updateTensor(const DistTensor<ExecSpace>& X) {}
 
   virtual KtensorT<ExecSpace>
   createOverlapKtensor(const KtensorT<ExecSpace>& u) const
@@ -216,7 +218,7 @@ public:
 
   virtual bool overlapDependsOnTensor() const override { return true; }
 
-  virtual void updateTensor(DistTensor<ExecSpace>& X_) override
+  virtual void updateTensor(const DistTensor<ExecSpace>& X_) override
   {
     X = X_;
   }
@@ -511,6 +513,12 @@ private:
   std::vector< std::vector<int> > offsets_r;
   std::vector< std::vector<int> > sizes_r;
 
+  bool sparse;
+  SptensorT<ExecSpace> X_sparse;
+  using unordered_map_type =
+    Kokkos::UnorderedMap<ttb_indx,unsigned,Kokkos::HostSpace>;
+  std::vector<unordered_map_type> maps;
+
 #ifdef HAVE_DIST
   using umv_type = Kokkos::View<ttb_real**, Kokkos::LayoutStride, ExecSpace, Kokkos::MemoryUnmanaged>;
   std::vector<MPI_Win> windows;
@@ -518,103 +526,21 @@ private:
 #endif
 
 public:
-  KtensorOneSidedAllGatherReduceUpdate(const KtensorT<ExecSpace>& u) :
-    pmap(u.getProcessorMap())
-  {
-    parallel = pmap != nullptr && pmap->gridSize() > 1;
-    if (!parallel)
-      return;
-
-    const unsigned nd = u.ndims();
-    sizes.resize(nd);
-    sizes_r.resize(nd);
-    offsets.resize(nd);
-    offsets_r.resize(nd);
-    for (unsigned n=0; n<nd; ++n) {
-      if (pmap != nullptr) {
-        const unsigned np = pmap->subCommSize(n);
-
-        // Get number of rows on each processor
-        sizes[n].resize(np);
-        sizes[n][pmap->subCommRank(n)] = u[n].nRows();
-        pmap->subGridAllGather(n, sizes[n].data(), 1);
-
-        // Get span on each processor
-        sizes_r[n].resize(np);
-        sizes_r[n][pmap->subCommRank(n)] = u[n].view().span();
-        pmap->subGridAllGather(n, sizes_r[n].data(), 1);
-
-        // Get starting offsets for each processor
-        offsets[n].resize(np);
-        offsets_r[n].resize(np);
-        offsets[n][0] = 0;
-        offsets_r[n][0] = 0;
-        for (unsigned p=1; p<np; ++p) {
-          offsets[n][p] = offsets[n][p-1] + sizes[n][p-1];
-          offsets_r[n][p] = offsets_r[n][p-1] + sizes_r[n][p-1];
-        }
-      }
-      else {
-        sizes[n].resize(1);
-        sizes_r[n].resize(1);
-        offsets[n].resize(1);
-        offsets_r[n].resize(1);
-        sizes[n][0] = u[n].nRows();
-        sizes_r[n][0] = u[n].view().span();
-        offsets[n][0] = 0;
-        offsets_r[n][0] = 0;
-      }
-    }
-
-#ifdef HAVE_DIST
-    windows.resize(nd);
-    bufs.resize(nd);
-    for (unsigned n=0; n<nd; ++n) {
-      const ttb_indx nr = u[n].nRows();
-      const ttb_indx nc = u[n].nCols();
-      const ttb_indx st = u[n].view().span()/nr;
-      const MPI_Aint sz = u[n].view().span()*sizeof(ttb_real);
-      ttb_real *buf;
-      MPI_Win_allocate(sz, int(sizeof(ttb_real)), MPI_INFO_NULL,
-                       pmap->subComm(n), &buf, &windows[n]);
-      Kokkos::LayoutStride layout(nr, st, nc, 1);
-      bufs[n] = umv_type(buf, layout);
-    }
-#endif
-  }
-  virtual ~KtensorOneSidedAllGatherReduceUpdate()
-  {
-#ifdef HAVE_DIST
-    unsigned nd = windows.size();
-    for (unsigned n=0; n<nd; ++n)
-      MPI_Win_free(&windows[n]);
-#endif
-  }
+  KtensorOneSidedAllGatherReduceUpdate(const DistTensor<ExecSpace>& X,
+                                       const KtensorT<ExecSpace>& u);
+  virtual ~KtensorOneSidedAllGatherReduceUpdate();
 
   KtensorOneSidedAllGatherReduceUpdate(KtensorOneSidedAllGatherReduceUpdate&&) = default;
   KtensorOneSidedAllGatherReduceUpdate(const KtensorOneSidedAllGatherReduceUpdate&) = default;
   KtensorOneSidedAllGatherReduceUpdate& operator=(KtensorOneSidedAllGatherReduceUpdate&&) = default;
   KtensorOneSidedAllGatherReduceUpdate& operator=(const KtensorOneSidedAllGatherReduceUpdate&) = default;
 
-  virtual KtensorT<ExecSpace>
-  createOverlapKtensor(const KtensorT<ExecSpace>& u) const override
-  {
-    GENTEN_TIME_MONITOR("create overlapped k-tensor");
-    if (!parallel)
-      return u;
+  virtual void updateTensor(const DistTensor<ExecSpace>& X) override;
 
-    const unsigned nd = u.ndims();
-    const unsigned nc = u.ncomponents();
-    KtensorT<ExecSpace> u_overlapped = KtensorT<ExecSpace>(nc, nd);
-    for (unsigned n=0; n<nd; ++n) {
-      const unsigned np = offsets[n].size();
-      const ttb_indx nrows = offsets[n][np-1]+sizes[n][np-1];
-      FacMatrixT<ExecSpace> mat(nrows, nc);
-      u_overlapped.set_factor(n, mat);
-    }
-    u_overlapped.setProcessorMap(u.getProcessorMap());
-    return u_overlapped;
-  };
+  virtual bool overlapDependsOnTensor() const override { return false; }
+
+  virtual KtensorT<ExecSpace>
+  createOverlapKtensor(const KtensorT<ExecSpace>& u) const override;
 
   virtual bool overlapAliasesArg() const override { return !parallel; }
 
@@ -623,101 +549,50 @@ public:
   using DistKtensorUpdate<ExecSpace>::doImport;
 
   virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
-                        const KtensorT<ExecSpace>& u) const override
-  {
-    const unsigned nd = u.ndims();
-    for (unsigned n=0; n<nd; ++n)
-      this->doImport(u_overlapped, u, n);
-  }
+                        const KtensorT<ExecSpace>& u) const override;
 
   virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
                         const KtensorT<ExecSpace>& u,
-                        const ttb_indx n) const override
-  {
-    GENTEN_TIME_MONITOR("k-tensor import");
-
-#ifdef HAVE_DIST
-    if (parallel) {
-      const unsigned rank = pmap->subCommRank(n);
-      const unsigned np = pmap->subCommSize(n);
-      gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
-      gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
-
-      // Copy u into our window
-      MPI_Win_fence(0, windows[n]);
-      Kokkos::deep_copy(bufs[n], u[n].view());
-      Kokkos::fence();
-      MPI_Win_fence(0, windows[n]);
-
-      // Get data from all ranks
-      MPI_Win_lock_all(0, windows[n]);
-      for (unsigned p=0; p<np; ++p) {
-        ttb_real *ptr = u_overlapped[n].view().data()+offsets_r[n][p];
-        const int cnt = sizes_r[n][p];
-        const MPI_Aint beg = 0;
-        MPI_Get(ptr, cnt, DistContext::toMpiType<ttb_real>(), p,
-                beg, cnt, DistContext::toMpiType<ttb_real>(), windows[n]);
-      }
-      MPI_Win_unlock_all(windows[n]);
-    }
-    else
-      deep_copy(u_overlapped[n], u[n]); // no-op if u and u_overlapped are the same
-#else
-    deep_copy(u_overlapped[n], u[n]); // no-op if u and u_overlapped are the same
-#endif
-  }
+                        const ttb_indx n) const override;
 
   using DistKtensorUpdate<ExecSpace>::doExport;
 
   virtual void doExport(const KtensorT<ExecSpace>& u,
-                        const KtensorT<ExecSpace>& u_overlapped) const override
-  {
-    const unsigned nd = u.ndims();
-    for (unsigned n=0; n<nd; ++n)
-      this->doExport(u, u_overlapped, n);
-  }
+                        const KtensorT<ExecSpace>& u_overlapped) const override;
 
   virtual void doExport(const KtensorT<ExecSpace>& u,
                         const KtensorT<ExecSpace>& u_overlapped,
-                        const ttb_indx n) const override
-  {
-    GENTEN_TIME_MONITOR("k-tensor export");
+                        const ttb_indx n) const override;
 
-#ifdef HAVE_DIST
-    if (parallel) {
-      const unsigned rank = pmap->subCommRank(n);
-      const unsigned np = pmap->subCommSize(n);
-      gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
-      gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
+private:
 
-      // Zero out window
-      MPI_Win_fence(0, windows[n]);
-      Kokkos::deep_copy(bufs[n], ttb_real(0.0));
-      Kokkos::fence();
-      MPI_Win_fence(0, windows[n]);
+  void doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
+                      const KtensorT<ExecSpace>& u) const;
 
-      // Accumulate data to all ranks
-      MPI_Win_lock_all(0, windows[n]);
-      for (unsigned p=0; p<np; ++p) {
-        const ttb_real *ptr = u_overlapped[n].view().data()+offsets_r[n][p];
-        const int cnt = sizes_r[n][p];
-        const MPI_Aint beg = 0;
-        MPI_Accumulate(ptr, cnt, DistContext::toMpiType<ttb_real>(), p,
-                       beg, cnt, DistContext::toMpiType<ttb_real>(), MPI_SUM,
-                       windows[n]);
-      }
-      MPI_Win_unlock_all(windows[n]);
+  void doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
+                      const KtensorT<ExecSpace>& u,
+                      const ttb_indx n) const;
 
-      // Copy window data into u
-      MPI_Win_fence(0, windows[n]);
-      Kokkos::deep_copy(u[n].view(), bufs[n]);
-    }
-    else
-      deep_copy(u[n], u_overlapped[n]); // no-op if u and u_overlapped are the same
-#else
-    deep_copy(u[n], u_overlapped[n]); // no-op if u and u_overlapped are the same
-#endif
-  }
+  void doImportDense(const KtensorT<ExecSpace>& u_overlapped,
+                     const KtensorT<ExecSpace>& u) const;
+
+  void doImportDense(const KtensorT<ExecSpace>& u_overlapped,
+                     const KtensorT<ExecSpace>& u,
+                     const ttb_indx n) const;
+
+  void doExportSparse(const KtensorT<ExecSpace>& u,
+                      const KtensorT<ExecSpace>& u_overlapped) const;
+
+  void doExportSparse(const KtensorT<ExecSpace>& u,
+                      const KtensorT<ExecSpace>& u_overlapped,
+                      const ttb_indx n) const;
+
+  void doExportDense(const KtensorT<ExecSpace>& u,
+                     const KtensorT<ExecSpace>& u_overlapped) const;
+
+  void doExportDense(const KtensorT<ExecSpace>& u,
+                     const KtensorT<ExecSpace>& u_overlapped,
+                     const ttb_indx n) const;
 
 };
 
@@ -738,7 +613,7 @@ createKtensorUpdate(const TensorType& X,
    else if (algParams.dist_update_method == Dist_Update_Method::AllGatherReduce)
     dku = new KtensorAllGatherReduceUpdate<exec_space>(u);
   else if (algParams.dist_update_method == Dist_Update_Method::OneSidedAllGatherReduce)
-    dku = new KtensorOneSidedAllGatherReduceUpdate<exec_space>(u);
+    dku = new KtensorOneSidedAllGatherReduceUpdate<exec_space>(X, u);
   else
     Genten::error("Unknown distributed Ktensor update method");
   return dku;

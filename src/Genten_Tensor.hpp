@@ -649,6 +649,14 @@ public:
       extra_data = x.extra_data;
   }
 
+  // DistTensor methods
+  virtual bool isSparse() const override { return false; }
+  virtual bool isDense() const override { return true; }
+  virtual SptensorT<ExecSpace> getSptensor() const override {
+    return SptensorT<ExecSpace>();
+  }
+  virtual TensorT<ExecSpace> getTensor() const override { return *this; }
+
 protected:
 
   TensorLayout layout_;

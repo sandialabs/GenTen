@@ -729,6 +729,7 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_Sptensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Tensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_HessVec.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_DistKtensorUpdate.cpp
   ${Genten_SOURCE_DIR}/joint_moments/Genten_HigherMoments.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
   ${Genten_SOURCE_DIR}/src/Genten_CublasHandle.cpp

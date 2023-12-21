@@ -46,6 +46,9 @@
 
 namespace Genten {
 
+template <typename ExecSpace> class SptensorT;
+template <typename ExecSpace> class TensorT;
+
 template <typename ExecSpace>
 class DistTensor {
 public:
@@ -65,10 +68,15 @@ public:
   DistTensor(const DistTensor&) = default;
   DistTensor& operator=(DistTensor&&) = default;
   DistTensor& operator=(const DistTensor&) = default;
-  ~DistTensor() = default;
+  virtual ~DistTensor() = default;
 
   void setProcessorMap(const ProcessorMap* pmap_) { pmap = pmap_; }
   const ProcessorMap* getProcessorMap() const { return pmap; }
+
+  virtual bool isSparse() const { return false; }
+  virtual bool isDense() const { return false; }
+  virtual SptensorT<ExecSpace> getSptensor() const;
+  virtual TensorT<ExecSpace> getTensor() const;
 
 #ifdef HAVE_TPETRA
   Teuchos::RCP<const tpetra_map_type<ExecSpace> >
@@ -127,5 +135,20 @@ protected:
 #endif
 
 };
+
+}
+
+#include "Genten_Sptensor.hpp"
+#include "Genten_Tensor.hpp"
+
+namespace Genten {
+
+template <typename ExecSpace>
+SptensorT<ExecSpace>
+DistTensor<ExecSpace>::getSptensor() const { return SptensorT<ExecSpace>(); }
+
+template <typename ExecSpace>
+TensorT<ExecSpace>
+DistTensor<ExecSpace>::getTensor() const { return TensorT<ExecSpace>(); }
 
 }
