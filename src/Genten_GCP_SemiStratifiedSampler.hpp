@@ -254,6 +254,22 @@ namespace Genten {
             u, Impl::StratifiedGradient<LossFunction>(loss_func), false,
             Yf, wf, u_overlap_F, rand_pool, algParams);
       }
+      else if (algParams.dist_update_method == Dist_Update_Method::OneSided) {
+        if (algParams.hash)
+          Impl::stratified_sample_tensor_onesided(
+            X, Impl::HashSearcher<ExecSpace>(this->X.impl(), hash_map),
+            num_samples_nonzeros_value, num_samples_zeros_value,
+            weight_nonzeros_value, weight_zeros_value,
+            u, Impl::StratifiedGradient<LossFunction>(loss_func), false,
+            Yf, wf, *dku_F, u_overlap_F, rand_pool, algParams);
+        else
+          Impl::stratified_sample_tensor_onesided(
+            X, Impl::SortSearcher<ExecSpace>(this->X.impl()),
+            num_samples_nonzeros_value, num_samples_zeros_value,
+            weight_nonzeros_value, weight_zeros_value,
+            u, Impl::StratifiedGradient<LossFunction>(loss_func), false,
+            Yf, wf, *dku_F, u_overlap_F, rand_pool, algParams);
+      }
       else {
         dku_F->doImport(u_overlap_F, u);
         if (algParams.hash)
@@ -287,6 +303,14 @@ namespace Genten {
             weight_nonzeros_grad, weight_zeros_grad,
             u, Impl::SemiStratifiedGradient<LossFunction>(loss_func), true,
             Yg, wg, u_overlap_G, rand_pool, algParams);
+        }
+        else if (algParams.dist_update_method == Dist_Update_Method::OneSided) {
+          Impl::stratified_sample_tensor_onesided(
+            X, Impl::SemiStratifiedSearcher<ExecSpace>(),
+            num_samples_nonzeros_grad, num_samples_zeros_grad,
+            weight_nonzeros_grad, weight_zeros_grad,
+            u, Impl::SemiStratifiedGradient<LossFunction>(loss_func), true,
+            Yg, wg, *dku_G, u_overlap_G, rand_pool, algParams);
         }
         else {
           dku_G->doImport(u_overlap_G, u);
