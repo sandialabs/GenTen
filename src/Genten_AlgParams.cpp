@@ -57,6 +57,7 @@ Genten::AlgParams::AlgParams() :
   printitn(1),
   debug(false),
   timings(false),
+  timings_xml(""),
   full_gram(FacMatrixT<DefaultExecutionSpace>::full_gram_default),
   rank_def_solver(false),
   rcond(1e-8),
@@ -161,6 +162,7 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   printitn = parse_ttb_indx(args, "--printitn", printitn, 0, INT_MAX);
   debug = parse_ttb_bool(args, "--debug", "--no-debug", debug);
   timings = parse_ttb_bool(args, "--timings", "--no-timings", timings);
+  timings_xml = parse_string(args, "--timings-xml", timings_xml);
   full_gram = parse_ttb_bool(args, "--full-gram", "--sym-gram", full_gram);
   rank_def_solver = parse_ttb_bool(args, "--rank-def-solver",
                                    "--no-rank-def-solver", rank_def_solver);
@@ -354,6 +356,7 @@ void Genten::AlgParams::parse(const ptree& input)
   parse_ptree_enum<Solver_Method>(input, "solver-method", method);
   parse_ptree_value(input, "debug", debug);
   parse_ptree_value(input, "timings", timings);
+  parse_ptree_value(input, "timings-xml", timings_xml);
 
    auto tensor_input_o = input.get_child_optional("tensor");
    if (tensor_input_o) {
@@ -577,6 +580,7 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --printitn <int>   print every <int>th iteration; 0 for no printing" << std::endl;
   out << "  --debug            turn on debugging output" << std::endl;
   out << "  --timings          print accurate kernel timing info (but may increase total run time by adding fences)" << std::endl;
+  out << "  --timings-xml      file to save timing info in xml format (requires Trilinos)" << std::endl;
   out << "  --full-gram        use full Gram matrix formulation (which may be faster than the symmetric formulation on some architectures)" << std::endl;
   out << "  --rank-def-solver  use rank-deficient least-squares solver (GELSY) with full-gram formluation (useful when gram matrix is singular)" << std::endl;
   out << "  --rcond <float>    truncation parameter for rank-deficient solver" << std::endl;
@@ -806,6 +810,7 @@ void Genten::AlgParams::print(std::ostream& out) const
   out << "  printitn = " << printitn << std::endl;
   out << "  debug = " << (debug ? "true" : "false") << std::endl;
   out << "  timings = " << (timings ? "true" : "false") << std::endl;
+  out << "  timings-xml = " << timings_xml << std::endl;
   out << "  full-gram = " << (full_gram ? "true" : "false") << std::endl;
   out << "  rank-def-solver = " << (rank_def_solver ? "true" : "false") << std::endl;
   out << "  rcond = " << rcond << std::endl;

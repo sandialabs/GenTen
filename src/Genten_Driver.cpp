@@ -335,6 +335,22 @@ driver(const DistTensorContext<ExecSpace>& dtc,
   }
 #endif
 
+  if (algParams.timings_xml != "") {
+#if defined(HAVE_TEUCHOS)
+#ifdef HAVE_DIST
+    auto comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap->gridComm()));
+#else
+    auto comm = Teuchos::createSerialComm<int>();
+#endif
+    out << "Saving timings to " << algParams.timings_xml << std::endl;
+    std::ofstream timings(algParams.timings_xml);
+    Teuchos::TimeMonitor::getStackedTimer()->reportXML(timings, "", "", comm);
+    timings.close();
+#else
+    Genten::error("Saving timings to XML file requires Trilinos!");
+#endif
+    }
+
   x.setProcessorMap(nullptr);
   u.setProcessorMap(nullptr);
 
@@ -512,6 +528,22 @@ driver(const DistTensorContext<ExecSpace>& dtc,
     Teuchos::TimeMonitor::getStackedTimer()->report(out, comm, options);
   }
 #endif
+
+  if (algParams.timings_xml != "") {
+#if defined(HAVE_TEUCHOS)
+#ifdef HAVE_DIST
+    auto comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap->gridComm()));
+#else
+    auto comm = Teuchos::createSerialComm<int>();
+#endif
+    out << "Saving timings to " << algParams.timings_xml << std::endl;
+    std::ofstream timings(algParams.timings_xml);
+    Teuchos::TimeMonitor::getStackedTimer()->reportXML(timings, "", "", comm);
+    timings.close();
+#else
+    Genten::error("Saving timings to XML file requires Trilinos!");
+#endif
+    }
 
   x.setProcessorMap(nullptr);
   u.setProcessorMap(nullptr);
