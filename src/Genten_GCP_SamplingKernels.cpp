@@ -263,13 +263,13 @@ namespace {
     u_overlap.setProcessorMap(u.getProcessorMap());
     GENTEN_STOP_TIMER("create overlapped k-tensor");
 
-    GENTEN_START_TIMER("ktensor import");
+    GENTEN_START_TIMER("k-tensor import");
     for (unsigned n=0; n<nd; ++n) {
       DistFacMatrix<ExecSpace> src(u[n], factorMaps[n]);
       DistFacMatrix<ExecSpace> dst(u_overlap[n], tensorMaps[n]);
       dst.doImport(src, *(importers[n]), Tpetra::INSERT);
     }
-    GENTEN_STOP_TIMER("ktensor import");
+    GENTEN_STOP_TIMER("k-tensor import");
 
     return u_overlap;
   }
