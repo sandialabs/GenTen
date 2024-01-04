@@ -724,11 +724,101 @@ namespace Genten {
       const KtensorT<ExecSpace>& G_overlap,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool)
     {
-      Impl::stratified_sample_tensor_onesided(
-        X, searcher, num_samples_nonzeros, num_samples_zeros,
-        weight_nonzeros, weight_zeros,
-        u, gradient, true,
-        Y, w, *dku_ptr, u_overlap, rand_pool, algParams);
+      typedef Kokkos::Random_XorShift64_Pool<ExecSpace> RandomPool;
+      typedef typename RandomPool::generator_type generator_type;
+      typedef Kokkos::rand<generator_type, ttb_indx> Rand;
+
+      // Cast to one-sided k-tensor update
+      KtensorOneSidedUpdate<ExecSpace> *dku =
+        dynamic_cast<KtensorOneSidedUpdate<ExecSpace>*>(dku_ptr);
+      if (dku == nullptr)
+        Genten::error("Cast to KtensorOneSidedUpdate failed!");
+
+      // Resize Y if necessary
+      const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
+      if (Y.ndims() == 0 || Y.nnz() < total_samples) {
+        Y = SptensorT<ExecSpace>(X.size(), total_samples);
+        Y.allocGlobalSubscripts();
+        deep_copy(Y.getLowerBounds(), X.getLowerBounds());
+        deep_copy(Y.getUpperBounds(), X.getUpperBounds());
+        Y.setProcessorMap(X.getProcessorMap());
+      }
+
+      // auto X = create_mirror_view(Xd);
+      // auto u = create_mirror_view(ud);
+      // auto Y = create_mirror_view(Yd);
+      // auto u_overlapped = create_mirror_view(u_overlappedd);
+      // deep_copy(X, Xd);
+      // deep_copy(u, ud);
+
+      const unsigned nd = X.ndims();
+      const unsigned nc = u.ncomponents();
+
+      GENTEN_START_TIMER("sample tensor");
+      dku->copyToWindows(u);
+      dku->lockWindows();
+
+      // Generate samples of nonzeros
+      for (ttb_indx idx=0; idx<num_samples_zeros; ++idx) {
+        generator_type gen = rand_pool.get_state();
+        const ttb_indx i = Rand::draw(gen,0,X.nnz());
+        for (ttb_indx m=0; m<nd; ++m) {
+          const ttb_indx row = X.globalSubscript(i,m);
+          Y.globalSubscript(idx,m) = row;
+          dku->importRow(m, row, u, u_overlap);
+        }
+        Y.value(idx) = X.value(i); // We need x_val later in gradient
+        rand_pool.free_state(gen);
+      }
+
+      // Generate samples of zeros
+      IndxArray ind(nd);
+      for (ttb_indx idx=0; idx<num_samples_zeros; ++idx) {
+        generator_type gen = rand_pool.get_state();
+        // Keep generating samples until we get one not in the tensor
+        bool found = true;
+        while (found) {
+          // Generate index
+          for (ttb_indx m=0; m<nd; ++m)
+            ind[m] = Rand::draw(gen,X.lowerBound(m),X.upperBound(m));
+
+          // Search for index
+          found = searcher.search(ind);
+        }
+
+        // Add new nonzero
+        for (ttb_indx m=0; m<nd; ++m) {
+          Y.globalSubscript(num_samples_nonzeros+idx,m) = ind[m];
+          dku->importRow(m, ind[m], u, u_overlap);
+        }
+        rand_pool.free_state(gen);
+      }
+
+      dku->unlockWindows();
+      GENTEN_STOP_TIMER("sample tensor");
+
+      // Update tensor in DKU
+      dku->updateTensor(Y);
+
+      // Import u to overlapped tensor map
+      dku->doImport(u_overlap, u);
+
+      const ttb_indx nnz = Y.nnz();
+      for (ttb_indx idx=0; idx<nnz; ++idx) {
+
+        auto ind = Y.getSubscripts(idx);
+
+        // Compute Ktensor value
+        const ttb_real m_val = compute_Ktensor_value(u_overlap, ind);
+
+        // Compute gradient tensor value
+        const ttb_real y_val = idx < num_samples_nonzeros ?
+          gradient.evalNonZero(Y.value(idx), m_val, weight_nonzeros) :
+          gradient.evalZero(m_val, weight_zeros);
+
+        Y.value(idx) = y_val;
+      }
+
       mttkrp_all(Y, u_overlap, G_overlap, algParams);
       dku_ptr->doExport(G, G_overlap);
     }
