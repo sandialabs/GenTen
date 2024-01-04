@@ -569,6 +569,7 @@ public:
   void zeroOutWindows();
   void lockWindows();
   void unlockWindows();
+  void fenceWindows();
   void importRow(const unsigned n, const ttb_indx row,
                  const KtensorT<ExecSpace>& u,
                  const KtensorT<ExecSpace>& u_overlap);

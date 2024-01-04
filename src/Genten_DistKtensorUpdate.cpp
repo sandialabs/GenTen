@@ -318,6 +318,18 @@ unlockWindows()
 template <typename ExecSpace>
 void
 KtensorOneSidedUpdate<ExecSpace>::
+fenceWindows()
+{
+  if (parallel) {
+    const unsigned nd = windows.size();
+    for (unsigned n=0; n<nd; ++n)
+      MPI_Win_fence(0, windows[n]);
+  }
+}
+
+template <typename ExecSpace>
+void
+KtensorOneSidedUpdate<ExecSpace>::
 importRow(const unsigned n, const ttb_indx row, const KtensorT<ExecSpace>& u,
           const KtensorT<ExecSpace>& u_overlap)
 {

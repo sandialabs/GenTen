@@ -795,6 +795,7 @@ namespace Genten {
       }
 
       dku->unlockWindows();
+      dku->fenceWindows();
       GENTEN_STOP_TIMER("sample tensor");
 
       // Update tensor in DKU
