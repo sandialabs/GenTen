@@ -403,19 +403,30 @@ namespace Genten {
         gt.setMatrices(0.0);
         timer.stop(timer_init);
 
-        dku_G->doImport(u_overlap_G, ut);
-
         if (!hist.do_gcp_loss()) {
-          Impl::gcp_sgd_ss_grad(
-            X, u_overlap_G, loss_func,
-            num_samples_nonzeros_grad, num_samples_zeros_grad,
-            weight_nonzeros_grad, weight_zeros_grad,
-            gt_overlap, rand_pool, algParams,
-            timer, timer_nzs, timer_zs);
-          dku_G->doExport(gt, gt_overlap);
+          if (algParams.dist_update_method == Dist_Update_Method::OneSided) {
+            Impl::gcp_sgd_ss_grad_onesided(
+              X, ut, Impl::SemiStratifiedSearcher<ExecSpace>(),
+              num_samples_nonzeros_grad, num_samples_zeros_grad,
+              weight_nonzeros_grad, weight_zeros_grad,
+              Impl::SemiStratifiedGradient<LossFunction>(loss_func), algParams,
+              dku_G, Yg, u_overlap_G, gt, rand_pool);
+          }
+          else {
+            dku_G->doImport(u_overlap_G, ut);
+            Impl::gcp_sgd_ss_grad(
+              X, u_overlap_G, loss_func,
+              num_samples_nonzeros_grad, num_samples_zeros_grad,
+              weight_nonzeros_grad, weight_zeros_grad,
+              gt_overlap, rand_pool, algParams,
+              timer, timer_nzs, timer_zs);
+            dku_G->doExport(gt, gt_overlap);
+          }
           hist.gradient(ut, mode_beg, mode_end, gt);
         }
         else {
+          dku_G->doImport(u_overlap_G, ut);
+ 
           // Create modes array
           IndxArrayT<ExecSpace> modes(mode_end-mode_beg);
           auto modes_host = create_mirror_view(modes);

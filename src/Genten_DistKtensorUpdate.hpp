@@ -564,7 +564,20 @@ public:
                         const KtensorT<ExecSpace>& u_overlapped,
                         const ttb_indx n) const override;
 
+  void copyToWindows(const KtensorT<ExecSpace>& u);
+  void copyFromWindows(const KtensorT<ExecSpace>& u);
+  void zeroOutWindows();
+  void lockWindows();
+  void unlockWindows();
+  void importRow(const unsigned n, const ttb_indx row,
+                 const KtensorT<ExecSpace>& u,
+                 const KtensorT<ExecSpace>& u_overlap);
+  void exportRow(const unsigned n, const ttb_indx row,
+                 const ArrayT<ExecSpace>& grad, const KtensorT<ExecSpace>& g);
+
 private:
+
+  unsigned find_proc_for_row(unsigned n, unsigned row) const;
 
   void doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
                       const KtensorT<ExecSpace>& u) const;
