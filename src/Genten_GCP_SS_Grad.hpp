@@ -103,8 +103,10 @@ namespace Genten {
       const AlgParams& algParams,
       DistKtensorUpdate<ExecSpace> *dku_ptr,
       SptensorT<ExecSpace>& Yd,
-      const KtensorT<ExecSpace>& u_overlappedd,
+      ArrayT<ExecSpace>& w,
+      KtensorT<ExecSpace>& ud_overlapped,
       const KtensorT<ExecSpace>& Gd,
+      const KtensorT<ExecSpace>& Gd_overlap,
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool);
 
   }

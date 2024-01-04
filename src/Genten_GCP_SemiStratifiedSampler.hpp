@@ -410,7 +410,7 @@ namespace Genten {
               num_samples_nonzeros_grad, num_samples_zeros_grad,
               weight_nonzeros_grad, weight_zeros_grad,
               Impl::SemiStratifiedGradient<LossFunction>(loss_func), algParams,
-              dku_G, Yg, u_overlap_G, gt, rand_pool);
+              dku_G, Yg, wg, u_overlap_G, gt, gt_overlap, rand_pool);
           }
           else {
             dku_G->doImport(u_overlap_G, ut);
