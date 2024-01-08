@@ -754,6 +754,12 @@ namespace Genten {
       const unsigned nd = X.ndims();
       const unsigned nc = u.ncomponents();
 
+      using unordered_map_type =
+        Kokkos::UnorderedMap<ttb_indx,unsigned,Kokkos::HostSpace>;
+      std::vector<unordered_map_type> maps;
+      for (unsigned n=0; n<nd; ++n)
+        maps[n] = unordered_map_type(u_overlap[n].nRows());
+
       GENTEN_START_TIMER("sample tensor");
       dku->copyToWindows(u);
       dku->lockWindows();
@@ -765,7 +771,10 @@ namespace Genten {
         for (ttb_indx m=0; m<nd; ++m) {
           const ttb_indx row = X.globalSubscript(i,m);
           Y.globalSubscript(idx,m) = row;
-          dku->importRow(m, row, u, u_overlap);
+          if (!maps[m].exists(row)) {
+            dku->importRow(m, row, u, u_overlap);
+            gt_assert(!maps[m].insert(row,1).failed());
+          }
         }
         Y.value(idx) = X.value(i); // We need x_val later in gradient
         rand_pool.free_state(gen);
@@ -788,8 +797,12 @@ namespace Genten {
 
         // Add new nonzero
         for (ttb_indx m=0; m<nd; ++m) {
-          Y.globalSubscript(num_samples_nonzeros+idx,m) = ind[m];
-          dku->importRow(m, ind[m], u, u_overlap);
+          const ttb_indx row = ind[m];
+          Y.globalSubscript(num_samples_nonzeros+idx,m) = row;
+          if (!maps[m].exists(row)) {
+            dku->importRow(m, row, u, u_overlap);
+            gt_assert(!maps[m].insert(row,1).failed());
+          }
         }
         rand_pool.free_state(gen);
       }
