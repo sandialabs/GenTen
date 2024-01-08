@@ -756,7 +756,7 @@ namespace Genten {
 
       using unordered_map_type =
         Kokkos::UnorderedMap<ttb_indx,unsigned,Kokkos::HostSpace>;
-      std::vector<unordered_map_type> maps;
+      std::vector<unordered_map_type> maps(nd);
       for (unsigned n=0; n<nd; ++n)
         maps[n] = unordered_map_type(u_overlap[n].nRows());
 
