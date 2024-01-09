@@ -329,6 +329,10 @@ importRow(const unsigned n, const ttb_indx row, const KtensorT<ExecSpace>& u,
           const KtensorT<ExecSpace>& u_overlap) const
 {
   if (parallel) {
+    const unsigned rank = pmap->subCommRank(n);
+    const unsigned np = pmap->subCommSize(n);
+    gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
+    gt_assert(u_overlap[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
     const ttb_indx stride_u = u_overlap[n].view().stride(0);
     const ttb_indx stride_b = bufs[n].stride(0);
     const unsigned p = find_proc_for_row(n, row);
