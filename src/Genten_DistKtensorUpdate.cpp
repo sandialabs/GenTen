@@ -142,12 +142,7 @@ updateTensor(const DistTensor<ExecSpace>& X)
       for (unsigned n=0; n<nd; ++n) {
         const ttb_indx row = subs[n];
         if (!maps[n].exists(row)) {
-          // Find processor given row lives on by finding processor where
-          // the first row is bigger than the given row, then move back one
-          const unsigned np = pmap->subCommSize(n);
-          unsigned p = 0;
-          while (p < np && row >= ttb_indx(offsets[n][p])) ++p;
-          --p;
+          unsigned p = find_proc_for_row(n, row);
           gt_assert(!maps[n].insert(row,p).failed());
         }
       }
