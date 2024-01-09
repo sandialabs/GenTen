@@ -515,9 +515,13 @@ private:
 
   bool sparse;
   SptensorT<ExecSpace> X_sparse;
+
+public:
   using unordered_map_type =
     Kokkos::UnorderedMap<ttb_indx,unsigned,Kokkos::HostSpace>;
   std::vector<unordered_map_type> maps;
+
+private:
 
 #ifdef HAVE_DIST
   using umv_type = Kokkos::View<ttb_real**, Kokkos::LayoutStride, ExecSpace, Kokkos::MemoryUnmanaged>;
@@ -577,9 +581,9 @@ public:
                  const ArrayT<ExecSpace>& grad,
                  const KtensorT<ExecSpace>& g) const;
 
-private:
-
   unsigned find_proc_for_row(unsigned n, unsigned row) const;
+
+private:
 
   void doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
                       const KtensorT<ExecSpace>& u) const;

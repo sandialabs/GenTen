@@ -729,8 +729,8 @@ namespace Genten {
       typedef Kokkos::rand<generator_type, ttb_indx> Rand;
 
       // Cast to one-sided k-tensor update
-      KtensorOneSidedUpdate<ExecSpace> *dku =
-        dynamic_cast<KtensorOneSidedUpdate<ExecSpace>*>(dku_ptr);
+      typedef KtensorOneSidedUpdate<ExecSpace> dku_type;
+      dku_type *dku = dynamic_cast<dku_type*>(dku_ptr);
       if (dku == nullptr)
         Genten::error("Cast to KtensorOneSidedUpdate failed!");
 
@@ -754,11 +754,10 @@ namespace Genten {
       const unsigned nd = X.ndims();
       const unsigned nc = u.ncomponents();
 
-      using unordered_map_type =
-        Kokkos::UnorderedMap<ttb_indx,unsigned,Kokkos::HostSpace>;
-      std::vector<unordered_map_type> maps(nd);
+      using unordered_map_type = typename dku_type::unordered_map_type;
+      dku->maps.resize(nd);
       for (unsigned n=0; n<nd; ++n)
-        maps[n] = unordered_map_type(u_overlap[n].nRows());
+        dku->maps[n] = unordered_map_type(u_overlap[n].nRows());
 
       GENTEN_START_TIMER("sample tensor");
       dku->copyToWindows(u);
@@ -771,9 +770,10 @@ namespace Genten {
         for (ttb_indx m=0; m<nd; ++m) {
           const ttb_indx row = X.globalSubscript(i,m);
           Y.globalSubscript(idx,m) = row;
-          if (!maps[m].exists(row)) {
+          if (!dku->maps[m].exists(row)) {
             dku->importRow(m, row, u, u_overlap);
-            gt_assert(!maps[m].insert(row,1).failed());
+            unsigned p = dku->find_proc_for_row(m, row);
+            gt_assert(!dku->maps[m].insert(row,p).failed());
           }
         }
         Y.value(idx) = X.value(i); // We need x_val later in gradient
@@ -799,9 +799,10 @@ namespace Genten {
         for (ttb_indx m=0; m<nd; ++m) {
           const ttb_indx row = ind[m];
           Y.globalSubscript(num_samples_nonzeros+idx,m) = row;
-          if (!maps[m].exists(row)) {
+          if (!dku->maps[m].exists(row)) {
             dku->importRow(m, row, u, u_overlap);
-            gt_assert(!maps[m].insert(row,1).failed());
+            unsigned p = dku->find_proc_for_row(m, row);
+            gt_assert(!dku->maps[m].insert(row,p).failed());
           }
         }
         rand_pool.free_state(gen);
@@ -812,7 +813,7 @@ namespace Genten {
       GENTEN_STOP_TIMER("sample tensor");
 
       // Update tensor in DKU
-      dku->updateTensor(Y);
+      //dku->updateTensor(Y);
 
       // Import u to overlapped tensor map
       dku->doImport(u_overlap, u);
