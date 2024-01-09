@@ -752,7 +752,6 @@ namespace Genten {
       // deep_copy(u, ud);
 
       const unsigned nd = X.ndims();
-      const unsigned nc = u.ncomponents();
 
       using unordered_map_type = typename dku_type::unordered_map_type;
       dku->maps.resize(nd);
@@ -764,7 +763,7 @@ namespace Genten {
       dku->lockWindows();
 
       // Generate samples of nonzeros
-      for (ttb_indx idx=0; idx<num_samples_zeros; ++idx) {
+      for (ttb_indx idx=0; idx<num_samples_nonzeros; ++idx) {
         generator_type gen = rand_pool.get_state();
         const ttb_indx i = Rand::draw(gen,0,X.nnz());
         for (ttb_indx m=0; m<nd; ++m) {
@@ -816,7 +815,7 @@ namespace Genten {
       //dku->updateTensor(Y);
 
       // Import u to overlapped tensor map
-      dku->doImport(u_overlap, u);
+      //dku->doImport(u_overlap, u);
 
       const ttb_indx nnz = Y.nnz();
       for (ttb_indx idx=0; idx<nnz; ++idx) {
