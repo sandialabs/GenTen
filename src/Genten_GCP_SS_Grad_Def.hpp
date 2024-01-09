@@ -815,7 +815,7 @@ namespace Genten {
       dku->updateTensor(Y);
 
       // Import u to overlapped tensor map
-      //dku->doImport(u_overlap, u);
+      dku->doImport(u_overlap, u);
 
       const ttb_indx nnz = Y.nnz();
       for (ttb_indx idx=0; idx<nnz; ++idx) {

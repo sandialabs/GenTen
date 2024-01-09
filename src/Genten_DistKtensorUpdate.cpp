@@ -250,7 +250,7 @@ doExport(const KtensorT<ExecSpace>& u,
 template <typename ExecSpace>
 void
 KtensorOneSidedUpdate<ExecSpace>::
-copyToWindows(const KtensorT<ExecSpace>& u)
+copyToWindows(const KtensorT<ExecSpace>& u) const
 {
   if (parallel) {
     const unsigned nd = u.ndims();
@@ -265,7 +265,7 @@ copyToWindows(const KtensorT<ExecSpace>& u)
 template <typename ExecSpace>
 void
 KtensorOneSidedUpdate<ExecSpace>::
-copyFromWindows(const KtensorT<ExecSpace>& u)
+copyFromWindows(const KtensorT<ExecSpace>& u) const
 {
   if (parallel) {
     const unsigned nd = u.ndims();
@@ -279,7 +279,7 @@ copyFromWindows(const KtensorT<ExecSpace>& u)
 template <typename ExecSpace>
 void
 KtensorOneSidedUpdate<ExecSpace>::
-zeroOutWindows()
+zeroOutWindows() const
 {
   if (parallel) {
     const unsigned nd = windows.size();
@@ -294,7 +294,7 @@ zeroOutWindows()
 template <typename ExecSpace>
 void
 KtensorOneSidedUpdate<ExecSpace>::
-lockWindows()
+lockWindows() const
 {
   if (parallel) {
     const unsigned nd = windows.size();
@@ -306,7 +306,7 @@ lockWindows()
 template <typename ExecSpace>
 void
 KtensorOneSidedUpdate<ExecSpace>::
-unlockWindows()
+unlockWindows() const
 {
   if (parallel) {
     const unsigned nd = windows.size();
@@ -318,7 +318,7 @@ unlockWindows()
 template <typename ExecSpace>
 void
 KtensorOneSidedUpdate<ExecSpace>::
-fenceWindows()
+fenceWindows() const
 {
   if (parallel) {
     const unsigned nd = windows.size();
@@ -331,7 +331,7 @@ template <typename ExecSpace>
 void
 KtensorOneSidedUpdate<ExecSpace>::
 importRow(const unsigned n, const ttb_indx row, const KtensorT<ExecSpace>& u,
-          const KtensorT<ExecSpace>& u_overlap)
+          const KtensorT<ExecSpace>& u_overlap) const
 {
   if (parallel) {
     const ttb_indx stride_u = u_overlap[n].view().stride(0);
@@ -356,7 +356,7 @@ template <typename ExecSpace>
 void
 KtensorOneSidedUpdate<ExecSpace>::
 exportRow(const unsigned n, const ttb_indx row, const ArrayT<ExecSpace>& grad,
-          const KtensorT<ExecSpace>& g)
+          const KtensorT<ExecSpace>& g) const
 {
   if (parallel) {
     const ttb_indx stride_b = bufs[n].stride(0);
@@ -391,6 +391,56 @@ find_proc_for_row(unsigned n, unsigned row) const
   return p;
 }
 
+// template <typename ExecSpace>
+// void
+// KtensorOneSidedUpdate<ExecSpace>::
+// doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
+//                const KtensorT<ExecSpace>& u) const
+// {
+// #ifdef HAVE_DIST
+//   const unsigned nd = u.ndims();
+//   for (unsigned n=0; n<nd; ++n) {
+//     const unsigned rank = pmap->subCommRank(n);
+//     const unsigned np = pmap->subCommSize(n);
+//     gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
+//     gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
+
+//     // Copy u into our window
+//     MPI_Win_fence(0, windows[n]);
+//     Kokkos::deep_copy(bufs[n], u[n].view());
+//     MPI_Win_fence(0, windows[n]);
+//   }
+
+//   for (unsigned n=0; n<nd; ++n)
+//     MPI_Win_lock_all(0, windows[n]);
+
+//   // Only fill u_overlapped[n] for the rows corresponding to nonzeros in X
+//   for (unsigned n=0; n<nd; ++n) {
+//     const ttb_indx nrow = maps[n].capacity();
+//     const ttb_indx stride_u = u_overlapped[n].view().stride(0);
+//     const ttb_indx stride_b = bufs[n].stride(0);
+//     for (ttb_indx i=0; i<nrow; ++i) {
+//       if (maps[n].valid_at(i)) {
+//         const ttb_indx row = maps[n].key_at(i);
+//         const unsigned p = maps[n].value_at(i);
+
+//         // Grab the given row from the given processor
+//         ttb_real *ptr = u_overlapped[n].view().data()+row*stride_u;
+//         const int cnt = u.ncomponents();
+//         const MPI_Aint beg = (row-offsets[n][p])*stride_b;
+//         gt_assert(int(beg) < sizes_r[n][p]);
+//         gt_assert(int(beg+cnt) <= sizes_r[n][p]);
+//         MPI_Get(ptr, cnt, DistContext::toMpiType<ttb_real>(), p,
+//                 beg, cnt, DistContext::toMpiType<ttb_real>(), windows[n]);
+//       }
+//     }
+//   }
+
+//   for (unsigned n=0; n<nd; ++n)
+//     MPI_Win_unlock_all(windows[n]);
+// #endif
+// }
+
 template <typename ExecSpace>
 void
 KtensorOneSidedUpdate<ExecSpace>::
@@ -398,46 +448,23 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
                const KtensorT<ExecSpace>& u) const
 {
 #ifdef HAVE_DIST
-  const unsigned nd = u.ndims();
-  for (unsigned n=0; n<nd; ++n) {
-    const unsigned rank = pmap->subCommRank(n);
-    const unsigned np = pmap->subCommSize(n);
-    gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
-    gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
-
-    // Copy u into our window
-    MPI_Win_fence(0, windows[n]);
-    Kokkos::deep_copy(bufs[n], u[n].view());
-    MPI_Win_fence(0, windows[n]);
-  }
-
-  for (unsigned n=0; n<nd; ++n)
-    MPI_Win_lock_all(0, windows[n]);
+  copyToWindows(u);
+  lockWindows();
 
   // Only fill u_overlapped[n] for the rows corresponding to nonzeros in X
+  const unsigned nd = u.ndims();
   for (unsigned n=0; n<nd; ++n) {
     const ttb_indx nrow = maps[n].capacity();
-    const ttb_indx stride_u = u_overlapped[n].view().stride(0);
-    const ttb_indx stride_b = bufs[n].stride(0);
     for (ttb_indx i=0; i<nrow; ++i) {
       if (maps[n].valid_at(i)) {
         const ttb_indx row = maps[n].key_at(i);
-        const unsigned p = maps[n].value_at(i);
-
-        // Grab the given row from the given processor
-        ttb_real *ptr = u_overlapped[n].view().data()+row*stride_u;
-        const int cnt = u.ncomponents();
-        const MPI_Aint beg = (row-offsets[n][p])*stride_b;
-        gt_assert(int(beg) < sizes_r[n][p]);
-        gt_assert(int(beg+cnt) <= sizes_r[n][p]);
-        MPI_Get(ptr, cnt, DistContext::toMpiType<ttb_real>(), p,
-                beg, cnt, DistContext::toMpiType<ttb_real>(), windows[n]);
+        importRow(n, row, u, u_overlapped);
       }
     }
   }
 
-  for (unsigned n=0; n<nd; ++n)
-    MPI_Win_unlock_all(windows[n]);
+  unlockWindows();
+  fenceWindows();
 #endif
 }
 

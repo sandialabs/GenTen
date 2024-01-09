@@ -564,17 +564,18 @@ public:
                         const KtensorT<ExecSpace>& u_overlapped,
                         const ttb_indx n) const override;
 
-  void copyToWindows(const KtensorT<ExecSpace>& u);
-  void copyFromWindows(const KtensorT<ExecSpace>& u);
-  void zeroOutWindows();
-  void lockWindows();
-  void unlockWindows();
-  void fenceWindows();
+  void copyToWindows(const KtensorT<ExecSpace>& u) const;
+  void copyFromWindows(const KtensorT<ExecSpace>& u) const;
+  void zeroOutWindows() const;
+  void lockWindows() const;
+  void unlockWindows() const;
+  void fenceWindows() const;
   void importRow(const unsigned n, const ttb_indx row,
                  const KtensorT<ExecSpace>& u,
-                 const KtensorT<ExecSpace>& u_overlap);
+                 const KtensorT<ExecSpace>& u_overlap) const;
   void exportRow(const unsigned n, const ttb_indx row,
-                 const ArrayT<ExecSpace>& grad, const KtensorT<ExecSpace>& g);
+                 const ArrayT<ExecSpace>& grad,
+                 const KtensorT<ExecSpace>& g) const;
 
 private:
 
