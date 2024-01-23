@@ -288,7 +288,8 @@ namespace Genten {
             false, Yf, wf, rand_pool, algParams);
       }
 
-      dku_F->updateTensor(Yf);
+      if (algParams.dist_update_method != Dist_Update_Method::OneSided)
+        dku_F->updateTensor(Yf);
     }
 
     virtual void sampleTensorG(const KtensorT<ExecSpace>& u,
@@ -339,7 +340,8 @@ namespace Genten {
             Yh, algParams);
         }
 
-        dku_G->updateTensor(Yg);
+        if (algParams.dist_update_method != Dist_Update_Method::OneSided)
+          dku_G->updateTensor(Yg);
       }
     }
 
