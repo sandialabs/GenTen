@@ -448,7 +448,7 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
 {
 #ifdef HAVE_DIST
   copyToWindows(u);
-  lockWindows();
+  //lockWindows();
 
   // Only fill u_overlapped[n] for the rows corresponding to nonzeros in X
   const unsigned nd = u.ndims();
@@ -462,7 +462,7 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
     }
   }
 
-  unlockWindows();
+  //unlockWindows();
   fenceWindows();
 #endif
 }
@@ -486,7 +486,7 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
   MPI_Win_fence(0, windows[n]);
 
   // Only fill u_overlapped[n] for the rows corresponding to nonzeros in X
-  MPI_Win_lock_all(0, windows[n]);
+  //MPI_Win_lock_all(0, windows[n]);
   const ttb_indx nrow = maps[n].capacity();
   const ttb_indx stride_u = u_overlapped[n].view().stride(0);
   const ttb_indx stride_b = bufs[n].stride(0);
@@ -505,7 +505,8 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
               beg, cnt, DistContext::toMpiType<ttb_real>(), windows[n]);
     }
   }
-  MPI_Win_unlock_all(windows[n]);
+  //MPI_Win_unlock_all(windows[n]);
+  MPI_Win_fence(0, windows[n]);
 #endif
 }
 
@@ -600,8 +601,8 @@ doExportSparse(const KtensorT<ExecSpace>& u,
     MPI_Win_fence(0, windows[n]);
   }
 
-  for (unsigned n=0; n<nd; ++n)
-    MPI_Win_lock_all(0, windows[n]);
+  // for (unsigned n=0; n<nd; ++n)
+  //   MPI_Win_lock_all(0, windows[n]);
 
   // Only accumulate u[n] for the rows corespondong to nonzeros in X
   for (unsigned n=0; n<nd; ++n) {
@@ -624,13 +625,14 @@ doExportSparse(const KtensorT<ExecSpace>& u,
     }
   }
 
-  for (unsigned n=0; n<nd; ++n)
-    MPI_Win_unlock_all(windows[n]);
+  // for (unsigned n=0; n<nd; ++n)
+  //   MPI_Win_unlock_all(windows[n]);
 
   // Copy window data into u
   for (unsigned n=0; n<nd; ++n) {
     MPI_Win_fence(0, windows[n]);
     Kokkos::deep_copy(u[n].view(), bufs[n]);
+    MPI_Win_fence(0, windows[n]);
   }
 #endif
 }
@@ -654,7 +656,7 @@ doExportSparse(const KtensorT<ExecSpace>& u,
   MPI_Win_fence(0, windows[n]);
 
   // Only accumulate u[n] for the rows corespondong to nonzeros in X
-  MPI_Win_lock_all(0, windows[n]);
+  //MPI_Win_lock_all(0, windows[n]);
   const ttb_indx nrow = maps[n].capacity();
   const ttb_indx stride_u = u_overlapped[n].view().stride(0);
   const ttb_indx stride_b = bufs[n].stride(0);
@@ -672,11 +674,12 @@ doExportSparse(const KtensorT<ExecSpace>& u,
                      windows[n]);
     }
   }
-  MPI_Win_unlock_all(windows[n]);
+  //MPI_Win_unlock_all(windows[n]);
 
   // Copy window data into u
   MPI_Win_fence(0, windows[n]);
   Kokkos::deep_copy(u[n].view(), bufs[n]);
+  MPI_Win_fence(0, windows[n]);
 #endif
 }
 
