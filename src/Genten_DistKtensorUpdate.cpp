@@ -390,56 +390,6 @@ find_proc_for_row(unsigned n, unsigned row) const
   return p;
 }
 
-// template <typename ExecSpace>
-// void
-// KtensorOneSidedUpdate<ExecSpace>::
-// doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
-//                const KtensorT<ExecSpace>& u) const
-// {
-// #ifdef HAVE_DIST
-//   const unsigned nd = u.ndims();
-//   for (unsigned n=0; n<nd; ++n) {
-//     const unsigned rank = pmap->subCommRank(n);
-//     const unsigned np = pmap->subCommSize(n);
-//     gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
-//     gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
-
-//     // Copy u into our window
-//     MPI_Win_fence(0, windows[n]);
-//     Kokkos::deep_copy(bufs[n], u[n].view());
-//     MPI_Win_fence(0, windows[n]);
-//   }
-
-//   for (unsigned n=0; n<nd; ++n)
-//     MPI_Win_lock_all(0, windows[n]);
-
-//   // Only fill u_overlapped[n] for the rows corresponding to nonzeros in X
-//   for (unsigned n=0; n<nd; ++n) {
-//     const ttb_indx nrow = maps[n].capacity();
-//     const ttb_indx stride_u = u_overlapped[n].view().stride(0);
-//     const ttb_indx stride_b = bufs[n].stride(0);
-//     for (ttb_indx i=0; i<nrow; ++i) {
-//       if (maps[n].valid_at(i)) {
-//         const ttb_indx row = maps[n].key_at(i);
-//         const unsigned p = maps[n].value_at(i);
-
-//         // Grab the given row from the given processor
-//         ttb_real *ptr = u_overlapped[n].view().data()+row*stride_u;
-//         const int cnt = u.ncomponents();
-//         const MPI_Aint beg = (row-offsets[n][p])*stride_b;
-//         gt_assert(int(beg) < sizes_r[n][p]);
-//         gt_assert(int(beg+cnt) <= sizes_r[n][p]);
-//         MPI_Get(ptr, cnt, DistContext::toMpiType<ttb_real>(), p,
-//                 beg, cnt, DistContext::toMpiType<ttb_real>(), windows[n]);
-//       }
-//     }
-//   }
-
-//   for (unsigned n=0; n<nd; ++n)
-//     MPI_Win_unlock_all(windows[n]);
-// #endif
-// }
-
 template <typename ExecSpace>
 void
 KtensorOneSidedUpdate<ExecSpace>::
@@ -447,25 +397,75 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
                const KtensorT<ExecSpace>& u) const
 {
 #ifdef HAVE_DIST
-  copyToWindows(u);
-  //lockWindows();
-
-  // Only fill u_overlapped[n] for the rows corresponding to nonzeros in X
   const unsigned nd = u.ndims();
   for (unsigned n=0; n<nd; ++n) {
+    const unsigned rank = pmap->subCommRank(n);
+    const unsigned np = pmap->subCommSize(n);
+    gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
+    gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
+
+    // Copy u into our window
+    Kokkos::deep_copy(bufs[n], u[n].view());
+
+    // Tell MPI we are going to start RMA operations
+    MPI_Win_fence(MPI_MODE_NOPRECEDE, windows[n]);
+  }
+
+
+  // Only fill u_overlapped[n] for the rows corresponding to nonzeros in X
+  for (unsigned n=0; n<nd; ++n) {
     const ttb_indx nrow = maps[n].capacity();
+    const ttb_indx stride_u = u_overlapped[n].view().stride(0);
+    const ttb_indx stride_b = bufs[n].stride(0);
     for (ttb_indx i=0; i<nrow; ++i) {
       if (maps[n].valid_at(i)) {
         const ttb_indx row = maps[n].key_at(i);
-        importRow(n, row, u, u_overlapped);
+        const unsigned p = maps[n].value_at(i);
+
+        // Grab the given row from the given processor
+        ttb_real *ptr = u_overlapped[n].view().data()+row*stride_u;
+        const int cnt = u.ncomponents();
+        const MPI_Aint beg = (row-offsets[n][p])*stride_b;
+        gt_assert(int(beg) < sizes_r[n][p]);
+        gt_assert(int(beg+cnt) <= sizes_r[n][p]);
+        MPI_Get(ptr, cnt, DistContext::toMpiType<ttb_real>(), p,
+                beg, cnt, DistContext::toMpiType<ttb_real>(), windows[n]);
       }
     }
   }
 
-  //unlockWindows();
-  fenceWindows();
+  // Tell MPI we are done with RMA
+  for (unsigned n=0; n<nd; ++n)
+    MPI_Win_fence(MPI_MODE_NOPUT+MPI_MODE_NOSTORE+MPI_MODE_NOSUCCEED, windows[n]);
 #endif
 }
+
+// template <typename ExecSpace>
+// void
+// KtensorOneSidedUpdate<ExecSpace>::
+// doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
+//                const KtensorT<ExecSpace>& u) const
+// {
+// #ifdef HAVE_DIST
+//   copyToWindows(u);
+//   //lockWindows();
+
+//   // Only fill u_overlapped[n] for the rows corresponding to nonzeros in X
+//   const unsigned nd = u.ndims();
+//   for (unsigned n=0; n<nd; ++n) {
+//     const ttb_indx nrow = maps[n].capacity();
+//     for (ttb_indx i=0; i<nrow; ++i) {
+//       if (maps[n].valid_at(i)) {
+//         const ttb_indx row = maps[n].key_at(i);
+//         importRow(n, row, u, u_overlapped);
+//       }
+//     }
+//   }
+
+//   //unlockWindows();
+//   fenceWindows();
+// #endif
+// }
 
 template <typename ExecSpace>
 void
@@ -481,12 +481,12 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
   gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
 
   // Copy u into our window
-  MPI_Win_fence(0, windows[n]);
   Kokkos::deep_copy(bufs[n], u[n].view());
-  MPI_Win_fence(0, windows[n]);
+
+  // Tell MPI we are going to start RMA operations
+  MPI_Win_fence(MPI_MODE_NOPRECEDE, windows[n]);
 
   // Only fill u_overlapped[n] for the rows corresponding to nonzeros in X
-  //MPI_Win_lock_all(0, windows[n]);
   const ttb_indx nrow = maps[n].capacity();
   const ttb_indx stride_u = u_overlapped[n].view().stride(0);
   const ttb_indx stride_b = bufs[n].stride(0);
@@ -505,8 +505,9 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
               beg, cnt, DistContext::toMpiType<ttb_real>(), windows[n]);
     }
   }
-  //MPI_Win_unlock_all(windows[n]);
-  MPI_Win_fence(0, windows[n]);
+
+  // Tell MPI we are done with RMA
+  MPI_Win_fence(MPI_MODE_NOPUT+MPI_MODE_NOSTORE+MPI_MODE_NOSUCCEED, windows[n]);
 #endif
 }
 
@@ -596,13 +597,11 @@ doExportSparse(const KtensorT<ExecSpace>& u,
     gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
 
     // Zero out window
-    MPI_Win_fence(0, windows[n]);
     Kokkos::deep_copy(bufs[n], ttb_real(0.0));
-    MPI_Win_fence(0, windows[n]);
-  }
 
-  // for (unsigned n=0; n<nd; ++n)
-  //   MPI_Win_lock_all(0, windows[n]);
+    // Tell MPI we are going to start RMA operations
+    MPI_Win_fence(MPI_MODE_NOPRECEDE, windows[n]);
+  }
 
   // Only accumulate u[n] for the rows corespondong to nonzeros in X
   for (unsigned n=0; n<nd; ++n) {
@@ -625,14 +624,12 @@ doExportSparse(const KtensorT<ExecSpace>& u,
     }
   }
 
-  // for (unsigned n=0; n<nd; ++n)
-  //   MPI_Win_unlock_all(windows[n]);
-
-  // Copy window data into u
   for (unsigned n=0; n<nd; ++n) {
-    MPI_Win_fence(0, windows[n]);
+    // Tell MPI we are done with RMA
+    MPI_Win_fence(MPI_MODE_NOPUT+MPI_MODE_NOSTORE+MPI_MODE_NOSUCCEED, windows[n]);
+
+    // Copy window data into u
     Kokkos::deep_copy(u[n].view(), bufs[n]);
-    MPI_Win_fence(0, windows[n]);
   }
 #endif
 }
@@ -651,12 +648,12 @@ doExportSparse(const KtensorT<ExecSpace>& u,
   gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
 
   // Zero out window
-  MPI_Win_fence(0, windows[n]);
   Kokkos::deep_copy(bufs[n], ttb_real(0.0));
-  MPI_Win_fence(0, windows[n]);
+
+  // Tell MPI we are going to start RMA operations
+  MPI_Win_fence(MPI_MODE_NOPRECEDE, windows[n]);
 
   // Only accumulate u[n] for the rows corespondong to nonzeros in X
-  //MPI_Win_lock_all(0, windows[n]);
   const ttb_indx nrow = maps[n].capacity();
   const ttb_indx stride_u = u_overlapped[n].view().stride(0);
   const ttb_indx stride_b = bufs[n].stride(0);
@@ -674,12 +671,12 @@ doExportSparse(const KtensorT<ExecSpace>& u,
                      windows[n]);
     }
   }
-  //MPI_Win_unlock_all(windows[n]);
+
+  // Tell MPI we are done with RMA
+  MPI_Win_fence(MPI_MODE_NOPUT+MPI_MODE_NOSTORE+MPI_MODE_NOSUCCEED, windows[n]);
 
   // Copy window data into u
-  MPI_Win_fence(0, windows[n]);
   Kokkos::deep_copy(u[n].view(), bufs[n]);
-  MPI_Win_fence(0, windows[n]);
 #endif
 }
 
