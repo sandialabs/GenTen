@@ -531,13 +531,11 @@ doImportDense(const KtensorT<ExecSpace>& u_overlapped,
     gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
 
     // Copy u into our window
-    MPI_Win_fence(0, windows[n]);
     Kokkos::deep_copy(bufs[n], u[n].view());
-    MPI_Win_fence(0, windows[n]);
-  }
 
-  for (unsigned n=0; n<nd; ++n)
-    MPI_Win_lock_all(0, windows[n]);
+    // Tell MPI we are going to start RMA operations
+    MPI_Win_fence(MPI_MODE_NOPRECEDE, windows[n]);
+  }
 
   // Get data from all ranks
   for (unsigned n=0; n<nd; ++n) {
@@ -551,8 +549,9 @@ doImportDense(const KtensorT<ExecSpace>& u_overlapped,
     }
   }
 
+  // Tell MPI we are done with RMA
   for (unsigned n=0; n<nd; ++n)
-    MPI_Win_unlock_all(windows[n]);
+    MPI_Win_fence(MPI_MODE_NOPUT+MPI_MODE_NOSTORE+MPI_MODE_NOSUCCEED, windows[n]);
 #endif
 }
 
@@ -570,12 +569,12 @@ doImportDense(const KtensorT<ExecSpace>& u_overlapped,
   gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
 
   // Copy u into our window
-  MPI_Win_fence(0, windows[n]);
   Kokkos::deep_copy(bufs[n], u[n].view());
-  MPI_Win_fence(0, windows[n]);
+
+  // Tell MPI we are going to start RMA operations
+  MPI_Win_fence(MPI_MODE_NOPRECEDE, windows[n]);
 
   // Get data from all ranks
-  MPI_Win_lock_all(0, windows[n]);
   for (unsigned p=0; p<np; ++p) {
     ttb_real *ptr = u_overlapped[n].view().data()+offsets_r[n][p];
     const int cnt = sizes_r[n][p];
@@ -583,7 +582,9 @@ doImportDense(const KtensorT<ExecSpace>& u_overlapped,
     MPI_Get(ptr, cnt, DistContext::toMpiType<ttb_real>(), p,
             beg, cnt, DistContext::toMpiType<ttb_real>(), windows[n]);
   }
-  MPI_Win_unlock_all(windows[n]);
+
+  // Tell MPI we are done with RMA
+  MPI_Win_fence(MPI_MODE_NOPUT+MPI_MODE_NOSTORE+MPI_MODE_NOSUCCEED, windows[n]);
 #endif
 }
 
@@ -700,13 +701,11 @@ doExportDense(const KtensorT<ExecSpace>& u,
     gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
 
     // Zero out window
-    MPI_Win_fence(0, windows[n]);
     Kokkos::deep_copy(bufs[n], ttb_real(0.0));
-    MPI_Win_fence(0, windows[n]);
-  }
 
-  for (unsigned n=0; n<nd; ++n)
-    MPI_Win_lock_all(0, windows[n]);
+    // Tell MPI we are going to start RMA operations
+    MPI_Win_fence(MPI_MODE_NOPRECEDE, windows[n]);
+  }
 
   // Accumulate data to all ranks
   for (unsigned n=0; n<nd; ++n) {
@@ -721,12 +720,11 @@ doExportDense(const KtensorT<ExecSpace>& u,
     }
   }
 
-  for (unsigned n=0; n<nd; ++n)
-    MPI_Win_unlock_all(windows[n]);
-
-  // Copy window data into u
   for (unsigned n=0; n<nd; ++n) {
-    MPI_Win_fence(0, windows[n]);
+    // Tell MPI we are done with RMA
+    MPI_Win_fence(MPI_MODE_NOPUT+MPI_MODE_NOSTORE+MPI_MODE_NOSUCCEED, windows[n]);
+
+    // Copy window data into u
     Kokkos::deep_copy(u[n].view(), bufs[n]);
   }
 #endif
@@ -746,12 +744,12 @@ doExportDense(const KtensorT<ExecSpace>& u,
   gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
 
   // Zero out window
-  MPI_Win_fence(0, windows[n]);
   Kokkos::deep_copy(bufs[n], ttb_real(0.0));
-  MPI_Win_fence(0, windows[n]);
+
+  // Tell MPI we are going to start RMA operations
+  MPI_Win_fence(MPI_MODE_NOPRECEDE, windows[n]);
 
   // Accumulate data to all ranks
-  MPI_Win_lock_all(0, windows[n]);
   for (unsigned p=0; p<np; ++p) {
     const ttb_real *ptr = u_overlapped[n].view().data()+offsets_r[n][p];
     const int cnt = sizes_r[n][p];
@@ -760,10 +758,11 @@ doExportDense(const KtensorT<ExecSpace>& u,
                    beg, cnt, DistContext::toMpiType<ttb_real>(), MPI_SUM,
                    windows[n]);
   }
-  MPI_Win_unlock_all(windows[n]);
+
+  // Tell MPI we are done with RMA
+  MPI_Win_fence(MPI_MODE_NOPUT+MPI_MODE_NOSTORE+MPI_MODE_NOSUCCEED, windows[n]);
 
   // Copy window data into u
-  MPI_Win_fence(0, windows[n]);
   Kokkos::deep_copy(u[n].view(), bufs[n]);
 #endif
 }
