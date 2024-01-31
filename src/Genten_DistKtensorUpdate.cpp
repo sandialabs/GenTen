@@ -88,13 +88,18 @@ KtensorOneSidedUpdate(const DistTensor<ExecSpace>& X,
     const unsigned nd = u.ndims();
     windows.resize(nd);
     bufs.resize(nd);
+    MPI_Info info;
+    MPI_Info_create(&info);
+    MPI_Info_set(info, "no_locks", "true");
+    MPI_Info_set(info, "accumulate_ordering", "none");
+    MPI_Info_set(info, "accumulate_ops", "same_op");
     for (unsigned n=0; n<nd; ++n) {
       const ttb_indx nrow   = u[n].view().extent(0);
       const ttb_indx ncol   = u[n].view().extent(1);
       const ttb_indx stride = u[n].view().stride(0);
       const MPI_Aint sz     = u[n].view().span()*sizeof(ttb_real);
       ttb_real *buf;
-      MPI_Win_allocate(sz, int(sizeof(ttb_real)), MPI_INFO_NULL,
+      MPI_Win_allocate(sz, int(sizeof(ttb_real)), info,
                        pmap->subComm(n), &buf, &windows[n]);
       Kokkos::LayoutStride layout(nrow, stride, ncol, 1);
       bufs[n] = umv_type(buf, layout);
