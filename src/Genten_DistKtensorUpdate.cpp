@@ -255,9 +255,7 @@ copyToWindows(const KtensorT<ExecSpace>& u) const
   if (parallel) {
     const unsigned nd = u.ndims();
     for (unsigned n=0; n<nd; ++n) {
-      MPI_Win_fence(0, windows[n]);
       Kokkos::deep_copy(bufs[n], u[n].view());
-      MPI_Win_fence(0, windows[n]);
     }
   }
 }
@@ -270,8 +268,7 @@ copyFromWindows(const KtensorT<ExecSpace>& u) const
   if (parallel) {
     const unsigned nd = u.ndims();
     for (unsigned n=0; n<nd; ++n) {
-      MPI_Win_fence(0, windows[n]);
-    Kokkos::deep_copy(u[n].view(), bufs[n]);
+      Kokkos::deep_copy(u[n].view(), bufs[n]);
     }
   }
 }
@@ -284,9 +281,7 @@ zeroOutWindows() const
   if (parallel) {
     const unsigned nd = windows.size();
     for (unsigned n=0; n<nd; ++n) {
-      MPI_Win_fence(0, windows[n]);
       Kokkos::deep_copy(bufs[n], ttb_real(0.0));
-      MPI_Win_fence(0, windows[n]);
     }
   }
 }
@@ -299,7 +294,7 @@ lockWindows() const
   if (parallel) {
     const unsigned nd = windows.size();
     for (unsigned n=0; n<nd; ++n)
-      MPI_Win_lock_all(0, windows[n]);
+       MPI_Win_fence(MPI_MODE_NOPRECEDE, windows[n]);
   }
 }
 
@@ -311,7 +306,7 @@ unlockWindows() const
   if (parallel) {
     const unsigned nd = windows.size();
     for (unsigned n=0; n<nd; ++n)
-      MPI_Win_unlock_all(windows[n]);
+      MPI_Win_fence(MPI_MODE_NOPUT+MPI_MODE_NOSTORE+MPI_MODE_NOSUCCEED, windows[n]);
   }
 }
 
