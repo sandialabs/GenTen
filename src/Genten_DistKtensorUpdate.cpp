@@ -49,7 +49,7 @@ KtensorOneSidedUpdate(const DistTensor<ExecSpace>& X,
                       const KtensorT<ExecSpace>& u) :
   pmap(u.getProcessorMap())
 {
-  parallel = pmap != nullptr && pmap->gridSize() > 1;
+  parallel = pmap == nullptr || (pmap != nullptr && pmap->gridSize() > 1);
   if (parallel) {
     const unsigned nd = u.ndims();
     sizes.resize(nd);
