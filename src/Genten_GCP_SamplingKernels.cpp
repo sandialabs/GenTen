@@ -920,11 +920,7 @@ namespace {
       // Resize Y if necessary
       const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
       if (Yd.ndims() == 0 || Yd.nnz() < total_samples) {
-        Yd = SptensorT<ExecSpace>(Xd.size(), total_samples); // Correct size is set later
-        Yd.allocGlobalSubscripts();
-        deep_copy(Yd.getLowerBounds(), Xd.getLowerBounds());
-        deep_copy(Yd.getUpperBounds(), Xd.getUpperBounds());
-        Yd.setProcessorMap(Xd.getProcessorMap());
+        Yd = SptensorT<ExecSpace>(Xd.size(), total_samples);
         w = ArrayT<ExecSpace>(total_samples);
       }
       auto Y = Yd.impl();
@@ -949,9 +945,13 @@ namespace {
           // Generate random tensor index
           Kokkos::single( Kokkos::PerThread( team ), [&] ()
           {
-            const ttb_indx i = Rand::draw(gen,0,nnz);
+            ttb_indx i;
+            if (ns_nz == nnz)
+              i = idx;        // Don't sample if all nonzeros were requested
+            else
+              i = Rand::draw(gen,0,nnz);
             for (ttb_indx m=0; m<nd; ++m)
-              Y.globalSubscript(idx,m) = X.globalSubscript(i,m);
+              Y.subscript(idx,m) = X.subscript(i,m);
             Y.value(idx) = X.value(i); // We need x_val for both value and grad
             if (!compute_gradient)
               w[idx] = weight_nonzeros;
@@ -987,7 +987,7 @@ namespace {
             {
               // Generate index
               for (ttb_indx m=0; m<nd; ++m)
-                ind[m] = Rand::draw(gen,X.lowerBound(m),X.upperBound(m));
+                ind[m] = Rand::draw(gen,0,X.size(m));
 
               // Search for index
               f = searcher.search(ind);
@@ -999,7 +999,7 @@ namespace {
           Kokkos::single( Kokkos::PerThread( team ), [&] ()
           {
             for (ttb_indx m=0; m<nd; ++m)
-              Y.globalSubscript(row,m) = ind[m];
+              Y.subscript(row,m) = ind[m];
             if (!compute_gradient) {
               Y.value(row) = 0.0; // We don't need the value for grad
               w[row] = weight_zeros;

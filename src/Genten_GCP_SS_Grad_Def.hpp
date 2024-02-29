@@ -609,10 +609,6 @@ namespace Genten {
       const ttb_indx total_samples = num_samples_nonzeros + num_samples_zeros;
       if (Y.ndims() == 0 || Y.nnz() < total_samples) {
         Y = SptensorT<ExecSpace>(X.size(), total_samples);
-        Y.allocGlobalSubscripts();
-        deep_copy(Y.getLowerBounds(), X.getLowerBounds());
-        deep_copy(Y.getUpperBounds(), X.getUpperBounds());
-        Y.setProcessorMap(X.getProcessorMap());
       }
 
       // auto X = create_mirror_view(Xd);
@@ -634,8 +630,8 @@ namespace Genten {
         generator_type gen = rand_pool.get_state();
         const ttb_indx i = Rand::draw(gen,0,X.nnz());
         for (ttb_indx m=0; m<nd; ++m) {
-          const ttb_indx row = X.globalSubscript(i,m);
-          Y.globalSubscript(idx,m) = row;
+          const ttb_indx row = X.subscript(i,m);
+          Y.subscript(idx,m) = row;
           dku->importRow(m, row, u, u_overlapped);
         }
         Y.value(idx) = X.value(i); // We need x_val later in gradient
@@ -651,7 +647,7 @@ namespace Genten {
         while (found) {
           // Generate index
           for (ttb_indx m=0; m<nd; ++m)
-            ind[m] = Rand::draw(gen,X.lowerBound(m),X.upperBound(m));
+            ind[m] = Rand::draw(gen,0,X.size(m));
 
           // Search for index
           found = searcher.search(ind);
