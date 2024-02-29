@@ -655,7 +655,7 @@ namespace Genten {
 
         // Add new nonzero
         for (ttb_indx m=0; m<nd; ++m) {
-          Y.globalSubscript(num_samples_nonzeros+idx,m) = ind[m];
+          Y.subscript(num_samples_nonzeros+idx,m) = ind[m];
           dku->importRow(m, ind[m], u, u_overlapped);
         }
         rand_pool.free_state(gen);
@@ -688,7 +688,7 @@ namespace Genten {
             ttb_real tmp = y_val;
             for (unsigned m=0; m<nd; ++m) {
               if (m != n)
-                tmp *= u[m].entry(ind[m],j);
+                tmp *= u_overlapped[m].entry(ind[m],j);
             }
             grad_tmp[j] = tmp;
           }
