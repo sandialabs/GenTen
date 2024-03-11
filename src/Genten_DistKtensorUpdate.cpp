@@ -892,9 +892,12 @@ updateTensor(const DistTensor<ExecSpace>& X)
       GENTEN_START_TIMER("num row sends");
       pmap->subGridAllToAll(
         n, num_row_recvs[n].data(), 1, num_row_sends[n].data(), 1);
+      GENTEN_STOP_TIMER("num row sends");
+
+      GENTEN_START_TIMER("num fac sends");
       for (unsigned p=0; p<np; ++p)
         num_fac_sends[n][p] = num_row_sends[n][p]*nc;
-      GENTEN_STOP_TIMER("num row sends");
+      GENTEN_STOP_TIMER("num fac sends");
 
       // compute total number of sends and receives and offsets
       GENTEN_START_TIMER("total num sends and recvs");
