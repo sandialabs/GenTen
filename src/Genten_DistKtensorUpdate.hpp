@@ -73,6 +73,13 @@ public:
     return u;
   };
 
+  virtual void initOverlapKtensor(KtensorT<ExecSpace>& u) const
+  {
+    GENTEN_TIME_MONITOR("k-tensor init");
+    u.weights() = ttb_real(1.0);
+    u.setMatrices(0.0);
+  }
+
   virtual bool overlapAliasesArg() const { return true; }
 
   virtual bool isReplicated() const { return true; }
@@ -669,6 +676,8 @@ public:
 
   virtual KtensorT<ExecSpace>
   createOverlapKtensor(const KtensorT<ExecSpace>& u) const override;
+
+  virtual void initOverlapKtensor(KtensorT<ExecSpace>& u) const;
 
   virtual bool overlapAliasesArg() const override { return !parallel; }
 

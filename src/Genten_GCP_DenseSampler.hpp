@@ -153,8 +153,7 @@ namespace Genten {
                           const int timer_grad_update) override
     {
       timer.start(timer_init);
-      g_overlap.weights() = ttb_real(1.0);
-      g_overlap.setMatrices(0.0);
+      dku->initOverlapKtensor(g_overlap);
       timer.stop(timer_init);
 
       timer.start(timer_grad_comm);

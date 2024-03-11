@@ -818,20 +818,6 @@ updateTensor(const DistTensor<ExecSpace>& X)
   sparse = X.isSparse();
 
   if (sparse && parallel) {
-    // maps.clear();
-    // num_row_sends.clear();
-    // num_row_recvs.clear();
-    // row_send_offsets.clear();
-    // row_recv_offsets.clear();
-    // row_sends.clear();
-    // row_recvs.clear();
-    // num_fac_sends.clear();
-    // num_fac_recvs.clear();
-    // fac_send_offsets.clear();
-    // fac_recv_offsets.clear();
-    // fac_sends.clear();
-    // fac_recvs.clear();
-
     X_sparse = X.getSptensor();
     const ttb_indx nnz = X_sparse.nnz();
     const unsigned nd = X_sparse.ndims();
@@ -971,6 +957,31 @@ createOverlapKtensor(const KtensorT<ExecSpace>& u) const
   }
   u_overlapped.setProcessorMap(u.getProcessorMap());
   return u_overlapped;
+}
+
+template <typename ExecSpace>
+void
+KtensorTwoSidedUpdate<ExecSpace>::
+initOverlapKtensor(KtensorT<ExecSpace>& u) const
+{
+  GENTEN_TIME_MONITOR("k-tensor init");
+  u.weights() = ttb_real(1.0);
+  if (parallel && sparse) {
+    const unsigned nd = u.ndims();
+    for (unsigned n=0; n<nd; ++n) {
+      const unsigned np = pmap->subCommSize(n);
+      for (unsigned p=0; p<np; ++p) {
+        const unsigned nrow = num_row_recvs[n][p];
+        const unsigned off = row_recv_offsets[n][p];
+        for (unsigned i=0; i<nrow; ++i)
+          for (unsigned j=0; j<nc; ++j)
+            u[n].entry(row_recvs[n][off+i],j) = 0.0;
+      }
+    }
+  }
+  else {
+    u.setMatrices(0.0);
+  }
 }
 
 template <typename ExecSpace>

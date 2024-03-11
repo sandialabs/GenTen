@@ -460,8 +460,7 @@ namespace Genten {
       else {
 
         timer.start(timer_init);
-        gt_overlap.weights() = ttb_real(1.0);
-        gt_overlap.setMatrices(0.0);
+        dku_G->initOverlapKtensor(gt_overlap);
         timer.stop(timer_init);
 
         // We are cheating here by not importing ut, since we know it happened
