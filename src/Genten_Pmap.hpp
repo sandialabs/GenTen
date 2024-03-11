@@ -271,6 +271,34 @@ public:
     }
   }
 
+  // Alltoall
+  template <typename T> void subGridAllToAll(
+    ttb_indx i,
+    const T* send, const ttb_indx count_send,
+          T* recv, const ttb_indx count_recv) const {
+    static_assert(std::is_arithmetic<T>::value,
+                  "subGridAllToAll requires something like a double, or int");
+
+    MPI_Alltoall(
+      send, count_send, DistContext::toMpiType<T>(),
+      recv, count_recv, DistContext::toMpiType<T>(),
+      sub_maps_[i]);
+  }
+
+  // Alltoallv
+  template <typename T> void subGridAllToAll(
+    ttb_indx i,
+    const T* send, const int counts_send[], const int offsets_send[],
+          T* recv, const int counts_recv[], const int offsets_recv[]) const {
+    static_assert(std::is_arithmetic<T>::value,
+                  "subGridAllToAll requires something like a double, or int");
+
+    MPI_Alltoallv(
+      send, counts_send, offsets_send, DistContext::toMpiType<T>(),
+      recv, counts_recv, offsets_recv, DistContext::toMpiType<T>(),
+      sub_maps_[i]);
+  }
+
   class FacMap {
   public:
     FacMap() = default;

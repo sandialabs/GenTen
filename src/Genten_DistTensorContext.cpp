@@ -1023,7 +1023,8 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
     }
     else if (
       algParams.dist_update_method == Dist_Update_Method::AllGatherReduce ||
-      algParams.dist_update_method == Dist_Update_Method::OneSided)
+      algParams.dist_update_method == Dist_Update_Method::OneSided ||
+      algParams.dist_update_method == Dist_Update_Method::TwoSided)
     {
       // Distributed ktensor in blocks across subgrid layers, then
       // distribute each block uniformly across procs in the layer
@@ -1204,7 +1205,8 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
     }
     else if (
       algParams.dist_update_method == Dist_Update_Method::AllGatherReduce ||
-      algParams.dist_update_method == Dist_Update_Method::OneSided)
+      algParams.dist_update_method == Dist_Update_Method::OneSided ||
+      algParams.dist_update_method == Dist_Update_Method::TwoSided)
     {
       const ttb_indx procs_in_layer = pmap_->subCommSize(n);
       const ttb_indx my_proc = pmap_->subCommRank(n);

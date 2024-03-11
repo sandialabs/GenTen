@@ -254,7 +254,8 @@ namespace Genten {
             u, Impl::StratifiedGradient<LossFunction>(loss_func), false,
             Yf, wf, u_overlap_F, rand_pool, algParams);
       }
-      else if (algParams.dist_update_method == Dist_Update_Method::OneSided) {
+      else if (algParams.dist_update_method == Dist_Update_Method::OneSided ||
+               algParams.dist_update_method == Dist_Update_Method::TwoSided) {
         if (algParams.hash)
           Impl::stratified_sample_tensor_onesided(
             X, Impl::HashSearcher<ExecSpace>(this->X.impl(), hash_map),
@@ -288,7 +289,8 @@ namespace Genten {
             false, Yf, wf, rand_pool, algParams);
       }
 
-      if (algParams.dist_update_method != Dist_Update_Method::OneSided)
+      if (algParams.dist_update_method != Dist_Update_Method::OneSided &&
+          algParams.dist_update_method != Dist_Update_Method::TwoSided)
         dku_F->updateTensor(Yf);
     }
 
@@ -305,7 +307,8 @@ namespace Genten {
             u, Impl::SemiStratifiedGradient<LossFunction>(loss_func), true,
             Yg, wg, u_overlap_G, rand_pool, algParams);
         }
-        else if (algParams.dist_update_method == Dist_Update_Method::OneSided) {
+        else if (algParams.dist_update_method == Dist_Update_Method::OneSided ||
+                 algParams.dist_update_method == Dist_Update_Method::TwoSided) {
           Impl::stratified_sample_tensor_onesided(
             X, Impl::SemiStratifiedSearcher<ExecSpace>(),
             num_samples_nonzeros_grad, num_samples_zeros_grad,
@@ -428,7 +431,7 @@ namespace Genten {
         }
         else {
           dku_G->doImport(u_overlap_G, ut);
- 
+
           // Create modes array
           IndxArrayT<ExecSpace> modes(mode_end-mode_beg);
           auto modes_host = create_mirror_view(modes);

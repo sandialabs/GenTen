@@ -762,7 +762,470 @@ doExportDense(const KtensorT<ExecSpace>& u,
 #endif
 }
 
+template <typename ExecSpace>
+KtensorTwoSidedUpdate<ExecSpace>::
+KtensorTwoSidedUpdate(const DistTensor<ExecSpace>& X,
+                      const KtensorT<ExecSpace>& u) :
+  pmap(u.getProcessorMap()), nc(u.ncomponents())
+{
+  parallel = pmap == nullptr || (pmap != nullptr && pmap->gridSize() > 1);
+  if (parallel) {
+    const unsigned nd = u.ndims();
+    sizes.resize(nd);
+    sizes_r.resize(nd);
+    offsets.resize(nd);
+    offsets_r.resize(nd);
+    for (unsigned n=0; n<nd; ++n) {
+      const unsigned np = pmap->subCommSize(n);
+
+      // Get number of rows on each processor
+      sizes[n].resize(np);
+      sizes[n][pmap->subCommRank(n)] = u[n].nRows();
+      pmap->subGridAllGather(n, sizes[n].data(), 1);
+
+      // Get span on each processor
+      sizes_r[n].resize(np);
+      sizes_r[n][pmap->subCommRank(n)] = u[n].view().span();
+      pmap->subGridAllGather(n, sizes_r[n].data(), 1);
+
+      // Get starting offsets for each processor
+      offsets[n].resize(np);
+      offsets_r[n].resize(np);
+      offsets[n][0] = 0;
+      offsets_r[n][0] = 0;
+      for (unsigned p=1; p<np; ++p) {
+        offsets[n][p] = offsets[n][p-1] + sizes[n][p-1];
+        offsets_r[n][p] = offsets_r[n][p-1] + sizes_r[n][p-1];
+      }
+    }
+  }
+
+  updateTensor(X); // build parallel RMA maps
 }
 
-#define INST_MACRO(SPACE) template class Genten::KtensorOneSidedUpdate<SPACE>;
+template <typename ExecSpace>
+KtensorTwoSidedUpdate<ExecSpace>::
+~KtensorTwoSidedUpdate()
+{
+}
+
+template <typename ExecSpace>
+void
+KtensorTwoSidedUpdate<ExecSpace>::
+updateTensor(const DistTensor<ExecSpace>& X)
+{
+  GENTEN_TIME_MONITOR("update tensor");
+  sparse = X.isSparse();
+
+  if (sparse && parallel) {
+    // maps.clear();
+    // num_row_sends.clear();
+    // num_row_recvs.clear();
+    // row_send_offsets.clear();
+    // row_recv_offsets.clear();
+    // row_sends.clear();
+    // row_recvs.clear();
+    // num_fac_sends.clear();
+    // num_fac_recvs.clear();
+    // fac_send_offsets.clear();
+    // fac_recv_offsets.clear();
+    // fac_sends.clear();
+    // fac_recvs.clear();
+
+    X_sparse = X.getSptensor();
+    const ttb_indx nnz = X_sparse.nnz();
+    const unsigned nd = X_sparse.ndims();
+    maps.resize(nd);
+    num_row_sends.resize(nd);
+    num_row_recvs.resize(nd);
+    row_send_offsets.resize(nd);
+    row_recv_offsets.resize(nd);
+    row_sends.resize(nd);
+    row_recvs.resize(nd);
+    num_fac_sends.resize(nd);
+    num_fac_recvs.resize(nd);
+    fac_send_offsets.resize(nd);
+    fac_recv_offsets.resize(nd);
+    fac_sends.resize(nd);
+    fac_recvs.resize(nd);
+    for (unsigned n=0; n<nd; ++n) {
+      const unsigned np = offsets[n].size();
+      const ttb_indx nrows = offsets[n][np-1]+sizes[n][np-1];
+      maps[n] = unordered_map_type(nrows);
+      num_row_sends[n].resize(np);
+      num_row_recvs[n].resize(np);
+      row_send_offsets[n].resize(np);
+      row_recv_offsets[n].resize(np);
+      num_fac_sends[n].resize(np);
+      num_fac_recvs[n].resize(np);
+      fac_send_offsets[n].resize(np);
+      fac_recv_offsets[n].resize(np);
+
+      num_row_recvs[n].clear();
+      num_fac_recvs[n].clear();
+    }
+
+    // Note:  here "sends" and "recvs" refers to the import direction of
+    // communication, so "recvs" is the rows we need to receive to compute
+    // the overlapped ktensor.
+
+    auto X_sparse_h = create_mirror_view(X_sparse);
+    deep_copy(X_sparse_h, X_sparse);
+    for (ttb_indx i=0; i<nnz; ++i) {
+      const auto subs = X_sparse_h.getSubscripts(i);
+      for (unsigned n=0; n<nd; ++n) {
+        const ttb_indx row = subs[n];
+        if (!maps[n].exists(row)) {
+          unsigned p = find_proc_for_row(n, row);
+          gt_assert(!maps[n].insert(row,p).failed());
+          num_row_recvs[n][p] += 1;
+          num_fac_recvs[n][p] += nc;
+        }
+      }
+    }
+
+    for (unsigned n=0; n<nd; ++n) {
+      const unsigned np = offsets[n].size();
+
+      // num_recvs contains number of rows we need from each each processor,
+      // get how many rows we will send to each processor
+      pmap->subGridAllToAll(
+        n, num_row_recvs[n].data(), 1, num_row_sends[n].data(), 1);
+      for (unsigned p=0; p<np; ++p)
+        num_fac_sends[n][p] = num_row_sends[n][p]*nc;
+
+      // compute total number of sends and receives and offsets
+      ttb_indx tot_num_row_sends = 0;
+      ttb_indx tot_num_row_recvs = 0;
+      ttb_indx tot_num_fac_sends = 0;
+      ttb_indx tot_num_fac_recvs = 0;
+      for (unsigned p=0; p<np; ++p) {
+        row_send_offsets[n][p] = tot_num_row_sends;
+        row_recv_offsets[n][p] = tot_num_row_recvs;
+        tot_num_row_sends += num_row_sends[n][p];
+        tot_num_row_recvs += num_row_recvs[n][p];
+
+        fac_send_offsets[n][p] = tot_num_fac_sends;
+        fac_recv_offsets[n][p] = tot_num_fac_recvs;
+        tot_num_fac_sends += num_fac_sends[n][p];
+        tot_num_fac_recvs += num_fac_recvs[n][p];
+      }
+
+      // allocate row send/recv buffers
+      row_sends[n].resize(tot_num_row_sends);
+      row_recvs[n].reserve(tot_num_row_recvs);
+      row_recvs[n].resize(0);
+      fac_sends[n].resize(tot_num_fac_sends);
+      fac_recvs[n].resize(tot_num_fac_recvs);
+
+      // fill row recv buffer with rows we receive from each proc
+      std::vector< std::vector<int> > row_recvs_for_proc(np);
+      for (unsigned p=0; p<np; ++p)
+        row_recvs_for_proc[p].reserve(num_row_recvs[n][p]);
+      const ttb_indx nrow = maps[n].capacity();
+      for (ttb_indx i=0; i<nrow; ++i) {
+        if (maps[n].valid_at(i)) {
+          const ttb_indx row = maps[n].key_at(i);
+          const unsigned p = maps[n].value_at(i);
+          row_recvs_for_proc[p].push_back(row);
+        }
+      }
+      for (unsigned p=0; p<np; ++p)
+        std::sort(row_recvs_for_proc[p].begin(),
+                  row_recvs_for_proc[p].end());
+      for (unsigned p=0; p<np; ++p) {
+        gt_assert(static_cast<int>(row_recvs_for_proc[p].size()) == num_row_recvs[n][p]);
+        for (int i=0; i<num_row_recvs[n][p]; ++i)
+          row_recvs[n].push_back(row_recvs_for_proc[p][i]);
+      }
+
+      // compute rows we need to send
+      pmap->subGridAllToAll(
+        n,
+        row_recvs[n].data(),num_row_recvs[n].data(),row_recv_offsets[n].data(),
+        row_sends[n].data(),num_row_sends[n].data(),row_send_offsets[n].data());
+      gt_assert(row_recvs[n].size() == tot_num_row_recvs);
+    }
+  }
+}
+
+template <typename ExecSpace>
+KtensorT<ExecSpace>
+KtensorTwoSidedUpdate<ExecSpace>::
+createOverlapKtensor(const KtensorT<ExecSpace>& u) const
+{
+  GENTEN_TIME_MONITOR("create overlapped k-tensor");
+  if (!parallel)
+    return u;
+
+  const unsigned nd = u.ndims();
+  const unsigned nc = u.ncomponents();
+  KtensorT<ExecSpace> u_overlapped = KtensorT<ExecSpace>(nc, nd);
+  for (unsigned n=0; n<nd; ++n) {
+    const unsigned np = offsets[n].size();
+    const ttb_indx nrows = offsets[n][np-1]+sizes[n][np-1];
+    FacMatrixT<ExecSpace> mat(nrows, nc);
+    u_overlapped.set_factor(n, mat);
+  }
+  u_overlapped.setProcessorMap(u.getProcessorMap());
+  return u_overlapped;
+}
+
+template <typename ExecSpace>
+void
+KtensorTwoSidedUpdate<ExecSpace>::
+doImport(const KtensorT<ExecSpace>& u_overlapped,
+         const KtensorT<ExecSpace>& u) const
+{
+  GENTEN_TIME_MONITOR("k-tensor import");
+  if (parallel) {
+    if (sparse)
+      doImportSparse(u_overlapped, u);
+    else
+      doImportDense(u_overlapped, u);
+  }
+  else
+    deep_copy(u_overlapped, u); // no-op if u and u_overlapped are the same
+}
+
+template <typename ExecSpace>
+void
+KtensorTwoSidedUpdate<ExecSpace>::
+doImport(const KtensorT<ExecSpace>& u_overlapped,
+         const KtensorT<ExecSpace>& u,
+         const ttb_indx n) const
+{
+  GENTEN_TIME_MONITOR("k-tensor import");
+  if (parallel) {
+    if (sparse)
+      doImportSparse(u_overlapped, u, n);
+    else
+      doImportDense(u_overlapped, u, n);
+  }
+  else
+    deep_copy(u_overlapped[n], u[n]); // no-op if u and u_overlapped are the same
+}
+
+template <typename ExecSpace>
+void
+KtensorTwoSidedUpdate<ExecSpace>::
+doExport(const KtensorT<ExecSpace>& u,
+         const KtensorT<ExecSpace>& u_overlapped) const
+{
+  GENTEN_TIME_MONITOR("k-tensor export");
+  if (parallel) {
+    if (sparse)
+      doExportSparse(u, u_overlapped);
+    else
+      doExportDense(u, u_overlapped);
+  }
+  else
+    deep_copy(u, u_overlapped); // no-op if u and u_overlapped are the same
+}
+
+template <typename ExecSpace>
+void
+KtensorTwoSidedUpdate<ExecSpace>::
+doExport(const KtensorT<ExecSpace>& u,
+         const KtensorT<ExecSpace>& u_overlapped,
+         const ttb_indx n) const
+{
+  GENTEN_TIME_MONITOR("k-tensor export");
+  if (parallel) {
+    if (sparse)
+      doExportSparse(u, u_overlapped, n);
+    else
+      doExportDense(u, u_overlapped, n);
+  }
+  else
+    deep_copy(u[n], u_overlapped[n]); // no-op if u and u_overlapped are the same
+}
+
+template <typename ExecSpace>
+unsigned
+KtensorTwoSidedUpdate<ExecSpace>::
+find_proc_for_row(unsigned n, unsigned row) const
+{
+  // Find processor given row lives on by finding processor where
+  // the first row is bigger than the given row, then move back one
+  const unsigned np = pmap->subCommSize(n);
+  unsigned p = 0;
+  while (p < np && row >= ttb_indx(offsets[n][p])) ++p;
+  --p;
+  return p;
+}
+
+template <typename ExecSpace>
+void
+KtensorTwoSidedUpdate<ExecSpace>::
+doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
+               const KtensorT<ExecSpace>& u) const
+{
+  const unsigned nd = u.ndims();
+  for (unsigned n=0; n<nd; ++n)
+    doImportSparse(u_overlapped, u, n);
+}
+
+template <typename ExecSpace>
+void
+KtensorTwoSidedUpdate<ExecSpace>::
+doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
+               const KtensorT<ExecSpace>& u,
+               const ttb_indx n) const
+{
+  const unsigned rank = pmap->subCommRank(n);
+  const unsigned np = pmap->subCommSize(n);
+
+  // Check view sizes match what we expect
+  gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
+  gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
+
+  // Pack u into send buffer
+  for (unsigned p=0; p<np; ++p) {
+    const unsigned nrow = num_row_sends[n][p];
+    const unsigned off = row_send_offsets[n][p];
+    for (unsigned i=0; i<nrow; ++i)
+      for (unsigned j=0; j<nc; ++j) {
+        const ttb_indx idx = nc*(off+i)+j;
+        const ttb_indx row = row_sends[n][off+i]-offsets[n][rank];
+        fac_sends[n][idx] = u[n].entry(row,j);
+      }
+  }
+
+  // Import off-processor rows
+  pmap->subGridAllToAll(
+    n,
+    fac_sends[n].data(), num_fac_sends[n].data(), fac_send_offsets[n].data(),
+    fac_recvs[n].data(), num_fac_recvs[n].data(), fac_recv_offsets[n].data());
+
+  // Copy recv buffer into u_overlapped
+  for (unsigned p=0; p<np; ++p) {
+    const unsigned nrow = num_row_recvs[n][p];
+    const unsigned off = row_recv_offsets[n][p];
+    for (unsigned i=0; i<nrow; ++i)
+      for (unsigned j=0; j<nc; ++j)
+        u_overlapped[n].entry(row_recvs[n][off+i],j) =
+          fac_recvs[n][nc*(off+i)+j];
+  }
+}
+
+template <typename ExecSpace>
+void
+KtensorTwoSidedUpdate<ExecSpace>::
+doImportDense(const KtensorT<ExecSpace>& u_overlapped,
+              const KtensorT<ExecSpace>& u) const
+{
+  const unsigned nd = u.ndims();
+  for (unsigned n=0; n<nd; ++n)
+    doImportDense(u_overlapped, u, n);
+}
+
+template <typename ExecSpace>
+void
+KtensorTwoSidedUpdate<ExecSpace>::
+doImportDense(const KtensorT<ExecSpace>& u_overlapped,
+              const KtensorT<ExecSpace>& u,
+              const ttb_indx n) const
+{
+  auto uov = u_overlapped[n].view();
+  const unsigned rank = pmap->subCommRank(n);
+  const unsigned np = pmap->subCommSize(n);
+  gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
+  gt_assert(uov.span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
+  Kokkos::fence();
+  pmap->subGridAllGather(n, u[n].view(), uov,
+                         sizes_r[n].data(), offsets_r[n].data());
+}
+
+template <typename ExecSpace>
+void
+KtensorTwoSidedUpdate<ExecSpace>::
+doExportSparse(const KtensorT<ExecSpace>& u,
+               const KtensorT<ExecSpace>& u_overlapped) const
+{
+  const unsigned nd = u.ndims();
+  for (unsigned n=0; n<nd; ++n)
+    doExportSparse(u, u_overlapped, n);
+}
+
+template <typename ExecSpace>
+void
+KtensorTwoSidedUpdate<ExecSpace>::
+doExportSparse(const KtensorT<ExecSpace>& u,
+               const KtensorT<ExecSpace>& u_overlapped,
+               const ttb_indx n) const
+{
+  const unsigned rank = pmap->subCommRank(n);
+  const unsigned np = pmap->subCommSize(n);
+
+  // Check view sizes match what we expect
+  gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
+  gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
+
+  // Pack u_overlapped into recv buffer
+  for (unsigned p=0; p<np; ++p) {
+    const unsigned nrow = num_row_recvs[n][p];
+    const unsigned off = row_recv_offsets[n][p];
+    for (unsigned i=0; i<nrow; ++i)
+      for (unsigned j=0; j<nc; ++j)
+        fac_recvs[n][nc*(off+i)+j] =
+          u_overlapped[n].entry(row_recvs[n][off+i],j);
+  }
+
+  // Export off-processor rows
+  pmap->subGridAllToAll(
+    n,
+    fac_recvs[n].data(), num_fac_recvs[n].data(), fac_recv_offsets[n].data(),
+    fac_sends[n].data(), num_fac_sends[n].data(), fac_send_offsets[n].data());
+
+  // Copy send buffer into u, combining rows that are sent from multiple procs
+  u[n] = 0.0;
+  for (unsigned p=0; p<np; ++p) {
+    const unsigned nrow = num_row_sends[n][p];
+    const unsigned off = row_send_offsets[n][p];
+    for (unsigned i=0; i<nrow; ++i)
+      for (unsigned j=0; j<nc; ++j)
+        u[n].entry(row_sends[n][off+i]-offsets[n][rank],j)
+          += fac_sends[n][nc*(off+i)+j];
+  }
+}
+
+template <typename ExecSpace>
+void
+KtensorTwoSidedUpdate<ExecSpace>::
+doExportDense(const KtensorT<ExecSpace>& u,
+              const KtensorT<ExecSpace>& u_overlapped) const
+{
+  const unsigned nd = u.ndims();
+  for (unsigned n=0; n<nd; ++n)
+    doExportDense(u, u_overlapped, n);
+}
+
+template <typename ExecSpace>
+void
+KtensorTwoSidedUpdate<ExecSpace>::
+doExportDense(const KtensorT<ExecSpace>& u,
+              const KtensorT<ExecSpace>& u_overlapped,
+              const ttb_indx n) const
+{
+  auto uv = u[n].view();
+  const unsigned np = pmap->subCommSize(n);
+  for (unsigned p=0; p<np; ++p) {
+    auto sub = Kokkos::subview(
+      u_overlapped[n].view(),
+      std::make_pair(offsets[n][p], offsets[n][p]+sizes[n][p]), Kokkos::ALL);
+    Kokkos::fence();
+    if (pmap->subCommRank(n) == p && sub.span() != uv.span()) {
+      Genten::error("Spans do not match!");
+    }
+    pmap->subGridReduce(n, sub, uv, p);
+  }
+}
+
+}
+
+#define INST_MACRO(SPACE) \
+  template class Genten::KtensorOneSidedUpdate<SPACE>; \
+  template class Genten::KtensorTwoSidedUpdate<SPACE>;
+
 GENTEN_INST(INST_MACRO)

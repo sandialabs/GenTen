@@ -615,6 +615,114 @@ private:
 
 };
 
+template <typename ExecSpace>
+class KtensorTwoSidedUpdate :
+    public DistKtensorUpdate<ExecSpace> {
+private:
+  const ProcessorMap *pmap;
+  bool parallel;
+  std::vector< std::vector<int> > offsets;
+  std::vector< std::vector<int> > sizes;
+
+  std::vector< std::vector<int> > offsets_r;
+  std::vector< std::vector<int> > sizes_r;
+
+  bool sparse;
+  SptensorT<ExecSpace> X_sparse;
+
+  unsigned nc;
+  std::vector< std::vector<int> > num_row_sends;
+  std::vector< std::vector<int> > num_row_recvs;
+  std::vector< std::vector<int> > row_send_offsets;
+  std::vector< std::vector<int> > row_recv_offsets;
+  std::vector< std::vector<ttb_indx> > row_sends;
+  std::vector< std::vector<ttb_indx> > row_recvs;
+
+  std::vector< std::vector<int> > num_fac_sends;
+  std::vector< std::vector<int> > num_fac_recvs;
+  std::vector< std::vector<int> > fac_send_offsets;
+  std::vector< std::vector<int> > fac_recv_offsets;
+  mutable std::vector< std::vector<ttb_real> > fac_sends;
+  mutable std::vector< std::vector<ttb_real> > fac_recvs;
+
+public:
+  using unordered_map_type =
+    Kokkos::UnorderedMap<ttb_indx,unsigned,Kokkos::HostSpace>;
+  std::vector<unordered_map_type> maps;
+
+public:
+  KtensorTwoSidedUpdate(const DistTensor<ExecSpace>& X,
+                                       const KtensorT<ExecSpace>& u);
+  virtual ~KtensorTwoSidedUpdate();
+
+  KtensorTwoSidedUpdate(KtensorTwoSidedUpdate&&) = default;
+  KtensorTwoSidedUpdate(const KtensorTwoSidedUpdate&) = default;
+  KtensorTwoSidedUpdate& operator=(KtensorTwoSidedUpdate&&) = default;
+  KtensorTwoSidedUpdate& operator=(const KtensorTwoSidedUpdate&) = default;
+
+  virtual void updateTensor(const DistTensor<ExecSpace>& X) override;
+
+  virtual bool overlapDependsOnTensor() const override { return false; }
+
+  virtual KtensorT<ExecSpace>
+  createOverlapKtensor(const KtensorT<ExecSpace>& u) const override;
+
+  virtual bool overlapAliasesArg() const override { return !parallel; }
+
+  virtual bool isReplicated() const override { return false; }
+
+  using DistKtensorUpdate<ExecSpace>::doImport;
+
+  virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
+                        const KtensorT<ExecSpace>& u) const override;
+
+  virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
+                        const KtensorT<ExecSpace>& u,
+                        const ttb_indx n) const override;
+
+  using DistKtensorUpdate<ExecSpace>::doExport;
+
+  virtual void doExport(const KtensorT<ExecSpace>& u,
+                        const KtensorT<ExecSpace>& u_overlapped) const override;
+
+  virtual void doExport(const KtensorT<ExecSpace>& u,
+                        const KtensorT<ExecSpace>& u_overlapped,
+                        const ttb_indx n) const override;
+
+  unsigned find_proc_for_row(unsigned n, unsigned row) const;
+
+private:
+
+  void doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
+                      const KtensorT<ExecSpace>& u) const;
+
+  void doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
+                      const KtensorT<ExecSpace>& u,
+                      const ttb_indx n) const;
+
+  void doImportDense(const KtensorT<ExecSpace>& u_overlapped,
+                     const KtensorT<ExecSpace>& u) const;
+
+  void doImportDense(const KtensorT<ExecSpace>& u_overlapped,
+                     const KtensorT<ExecSpace>& u,
+                     const ttb_indx n) const;
+
+  void doExportSparse(const KtensorT<ExecSpace>& u,
+                      const KtensorT<ExecSpace>& u_overlapped) const;
+
+  void doExportSparse(const KtensorT<ExecSpace>& u,
+                      const KtensorT<ExecSpace>& u_overlapped,
+                      const ttb_indx n) const;
+
+  void doExportDense(const KtensorT<ExecSpace>& u,
+                     const KtensorT<ExecSpace>& u_overlapped) const;
+
+  void doExportDense(const KtensorT<ExecSpace>& u,
+                     const KtensorT<ExecSpace>& u_overlapped,
+                     const ttb_indx n) const;
+
+};
+
 template <typename TensorType>
 DistKtensorUpdate<typename TensorType::exec_space>*
 createKtensorUpdate(const TensorType& X,
@@ -633,6 +741,8 @@ createKtensorUpdate(const TensorType& X,
     dku = new KtensorAllGatherReduceUpdate<exec_space>(u);
   else if (algParams.dist_update_method == Dist_Update_Method::OneSided)
     dku = new KtensorOneSidedUpdate<exec_space>(X, u);
+   else if (algParams.dist_update_method == Dist_Update_Method::TwoSided)
+    dku = new KtensorTwoSidedUpdate<exec_space>(X, u);
   else
     Genten::error("Unknown distributed Ktensor update method");
   return dku;
