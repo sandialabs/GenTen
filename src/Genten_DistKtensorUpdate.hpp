@@ -637,6 +637,7 @@ private:
   std::vector< std::vector<int> > row_recv_offsets;
   std::vector< std::vector<ttb_indx> > row_sends;
   std::vector< std::vector<ttb_indx> > row_recvs;
+  std::vector< std::vector< std::vector<int> > > row_recvs_for_proc;
 
   std::vector< std::vector<int> > num_fac_sends;
   std::vector< std::vector<int> > num_fac_recvs;

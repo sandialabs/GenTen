@@ -848,6 +848,7 @@ updateTensor(const DistTensor<ExecSpace>& X)
     fac_recv_offsets.resize(nd);
     fac_sends.resize(nd);
     fac_recvs.resize(nd);
+    row_recvs_for_proc.resize(nd);
     for (unsigned n=0; n<nd; ++n) {
       const unsigned np = offsets[n].size();
       const ttb_indx nrows = offsets[n][np-1]+sizes[n][np-1];
@@ -860,6 +861,9 @@ updateTensor(const DistTensor<ExecSpace>& X)
       num_fac_recvs[n].resize(np);
       fac_send_offsets[n].resize(np);
       fac_recv_offsets[n].resize(np);
+      row_recvs_for_proc[n].resize(np);
+      for (unsigned p=0; p<np; ++p)
+        row_recvs_for_proc[n][p].resize(0);
 
       num_row_recvs[n].clear();
       num_fac_recvs[n].clear();
@@ -869,6 +873,7 @@ updateTensor(const DistTensor<ExecSpace>& X)
     // communication, so "recvs" is the rows we need to receive to compute
     // the overlapped ktensor.
 
+    // Get rows we receive from each proc
     auto X_sparse_h = create_mirror_view(X_sparse);
     deep_copy(X_sparse_h, X_sparse);
     for (ttb_indx i=0; i<nnz; ++i) {
@@ -880,6 +885,7 @@ updateTensor(const DistTensor<ExecSpace>& X)
           gt_assert(!maps[n].insert(row,p).failed());
           num_row_recvs[n][p] += 1;
           num_fac_recvs[n][p] += nc;
+          row_recvs_for_proc[n][p].push_back(row);
         }
       }
     }
@@ -918,25 +924,17 @@ updateTensor(const DistTensor<ExecSpace>& X)
       fac_sends[n].resize(tot_num_fac_sends);
       fac_recvs[n].resize(tot_num_fac_recvs);
 
+      // Sort rows we receive from eaach processor for more predictable
+      // memory accesses of factor matrix rows
+      for (unsigned p=0; p<np; ++p)
+        std::sort(row_recvs_for_proc[n][p].begin(),
+                  row_recvs_for_proc[n][p].end());
+
       // fill row recv buffer with rows we receive from each proc
-      std::vector< std::vector<int> > row_recvs_for_proc(np);
-      for (unsigned p=0; p<np; ++p)
-        row_recvs_for_proc[p].reserve(num_row_recvs[n][p]);
-      const ttb_indx nrow = maps[n].capacity();
-      for (ttb_indx i=0; i<nrow; ++i) {
-        if (maps[n].valid_at(i)) {
-          const ttb_indx row = maps[n].key_at(i);
-          const unsigned p = maps[n].value_at(i);
-          row_recvs_for_proc[p].push_back(row);
-        }
-      }
-      for (unsigned p=0; p<np; ++p)
-        std::sort(row_recvs_for_proc[p].begin(),
-                  row_recvs_for_proc[p].end());
       for (unsigned p=0; p<np; ++p) {
-        gt_assert(static_cast<int>(row_recvs_for_proc[p].size()) == num_row_recvs[n][p]);
+        gt_assert(static_cast<int>(row_recvs_for_proc[n][p].size()) == num_row_recvs[n][p]);
         for (int i=0; i<num_row_recvs[n][p]; ++i)
-          row_recvs[n].push_back(row_recvs_for_proc[p][i]);
+          row_recvs[n].push_back(row_recvs_for_proc[n][p][i]);
       }
 
       // compute rows we need to send
