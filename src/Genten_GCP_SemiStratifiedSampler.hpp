@@ -343,7 +343,8 @@ namespace Genten {
             Yh, algParams);
         }
 
-        if (algParams.dist_update_method != Dist_Update_Method::OneSided)
+        if (algParams.dist_update_method != Dist_Update_Method::OneSided &&
+            algParams.dist_update_method != Dist_Update_Method::TwoSided)
           dku_G->updateTensor(Yg);
       }
     }
