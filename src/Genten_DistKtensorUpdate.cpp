@@ -818,6 +818,7 @@ updateTensor(const DistTensor<ExecSpace>& X)
   sparse = X.isSparse();
 
   if (sparse && parallel) {
+    GENTEN_START_TIMER("initialize");
     X_sparse = X.getSptensor();
     const ttb_indx nnz = X_sparse.nnz();
     const unsigned nd = X_sparse.ndims();
@@ -856,12 +857,14 @@ updateTensor(const DistTensor<ExecSpace>& X)
       num_row_recvs[n].clear();
       num_fac_recvs[n].clear();
     }
+    GENTEN_STOP_TIMER("initialize");
 
     // Note:  here "sends" and "recvs" refers to the import direction of
     // communication, so "recvs" is the rows we need to receive to compute
     // the overlapped ktensor.
 
     // Get rows we receive from each proc
+    GENTEN_START_TIMER("extract row recvs");
     auto X_sparse_h = create_mirror_view(X_sparse);
     deep_copy(X_sparse_h, X_sparse);
     for (ttb_indx i=0; i<nnz; ++i) {
@@ -879,18 +882,22 @@ updateTensor(const DistTensor<ExecSpace>& X)
         }
       }
     }
+    GENTEN_STOP_TIMER("extract row recvs");
 
     for (unsigned n=0; n<nd; ++n) {
       const unsigned np = offsets[n].size();
 
       // num_recvs contains number of rows we need from each each processor,
       // get how many rows we will send to each processor
+      GENTEN_START_TIMER("num row sends");
       pmap->subGridAllToAll(
         n, num_row_recvs[n].data(), 1, num_row_sends[n].data(), 1);
       for (unsigned p=0; p<np; ++p)
         num_fac_sends[n][p] = num_row_sends[n][p]*nc;
+      GENTEN_STOP_TIMER("num row sends");
 
       // compute total number of sends and receives and offsets
+      GENTEN_START_TIMER("total num sends and recvs");
       ttb_indx tot_num_row_sends = 0;
       ttb_indx tot_num_row_recvs = 0;
       ttb_indx tot_num_fac_sends = 0;
@@ -906,33 +913,42 @@ updateTensor(const DistTensor<ExecSpace>& X)
         tot_num_fac_sends += num_fac_sends[n][p];
         tot_num_fac_recvs += num_fac_recvs[n][p];
       }
+      GENTEN_STOP_TIMER("total num sends and recvs");
 
       // allocate row send/recv buffers
+      GENTEN_START_TIMER("allocate buffers");
       row_sends[n].resize(tot_num_row_sends);
       row_recvs[n].reserve(tot_num_row_recvs);
       row_recvs[n].resize(0);
       fac_sends[n].resize(tot_num_fac_sends);
       fac_recvs[n].resize(tot_num_fac_recvs);
+      GENTEN_STOP_TIMER("allocate buffers");
 
       // Sort rows we receive from eaach processor for more predictable
       // memory accesses of factor matrix rows
+      GENTEN_START_TIMER("sort row recvs");
       for (unsigned p=0; p<np; ++p)
         std::sort(row_recvs_for_proc[n][p].begin(),
                   row_recvs_for_proc[n][p].end());
+      GENTEN_STOP_TIMER("sort row recvs");
 
       // fill row recv buffer with rows we receive from each proc
+      GENTEN_START_TIMER("fill row recvs");
       for (unsigned p=0; p<np; ++p) {
         gt_assert(static_cast<int>(row_recvs_for_proc[n][p].size()) == num_row_recvs[n][p]);
         for (int i=0; i<num_row_recvs[n][p]; ++i)
           row_recvs[n].push_back(row_recvs_for_proc[n][p][i]);
       }
+      GENTEN_STOP_TIMER("fill row recvs");
 
       // compute rows we need to send
+      GENTEN_START_TIMER("fill row sends");
       pmap->subGridAllToAll(
         n,
         row_recvs[n].data(),num_row_recvs[n].data(),row_recv_offsets[n].data(),
         row_sends[n].data(),num_row_sends[n].data(),row_send_offsets[n].data());
       gt_assert(row_recvs[n].size() == tot_num_row_recvs);
+      GENTEN_STOP_TIMER("fill row sends");
     }
   }
 }
