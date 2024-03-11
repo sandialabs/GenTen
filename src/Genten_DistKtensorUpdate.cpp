@@ -852,7 +852,9 @@ updateTensor(const DistTensor<ExecSpace>& X)
     for (unsigned n=0; n<nd; ++n) {
       const unsigned np = offsets[n].size();
       const ttb_indx nrows = offsets[n][np-1]+sizes[n][np-1];
-      maps[n] = unordered_map_type(nrows);
+      //maps[n] = unordered_map_type(nrows);
+      maps[n].clear();
+      //maps[n].reserve(nrows);
       num_row_sends[n].resize(np);
       num_row_recvs[n].resize(np);
       row_send_offsets[n].resize(np);
@@ -880,9 +882,11 @@ updateTensor(const DistTensor<ExecSpace>& X)
       const auto subs = X_sparse_h.getSubscripts(i);
       for (unsigned n=0; n<nd; ++n) {
         const ttb_indx row = subs[n];
-        if (!maps[n].exists(row)) {
+        //if (!maps[n].exists(row)) {
+        if (maps[n].count(row) == 0) {
           unsigned p = find_proc_for_row(n, row);
-          gt_assert(!maps[n].insert(row,p).failed());
+          //gt_assert(!maps[n].insert(row,p).failed());
+          gt_assert(maps[n].insert({row, p}).second);
           num_row_recvs[n][p] += 1;
           num_fac_recvs[n][p] += nc;
           row_recvs_for_proc[n][p].push_back(row);

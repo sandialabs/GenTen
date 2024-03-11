@@ -49,6 +49,7 @@
 #include "Genten_SystemTimer.hpp"
 
 #include "Kokkos_UnorderedMap.hpp"
+#include <unordered_map>
 
 namespace Genten {
 
@@ -647,8 +648,9 @@ private:
   mutable std::vector< std::vector<ttb_real> > fac_recvs;
 
 public:
-  using unordered_map_type =
-    Kokkos::UnorderedMap<ttb_indx,unsigned,Kokkos::HostSpace>;
+  // using unordered_map_type =
+  //   Kokkos::UnorderedMap<ttb_indx,unsigned,Kokkos::HostSpace>;
+  using unordered_map_type = std::unordered_map<ttb_indx, unsigned>;
   std::vector<unordered_map_type> maps;
 
 public:
