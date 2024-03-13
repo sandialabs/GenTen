@@ -82,6 +82,22 @@ namespace Genten {
       Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
       const AlgParams& algParams);
 
+    template <typename TensorType, typename ExecSpace, typename Searcher, typename LossFunction>
+    void uniform_sample_tensor_onesided(
+      const TensorType& X,
+      const Searcher& searcher,
+      const ttb_indx num_samples,
+      const ttb_real weight,
+      const KtensorT<ExecSpace>& u,
+      const LossFunction& loss_func,
+      const bool compute_gradient,
+      SptensorT<ExecSpace>& Y,
+      ArrayT<ExecSpace>& w,
+      DistKtensorUpdate<ExecSpace>& dku,
+      KtensorT<ExecSpace>& u_overlap,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool,
+      const AlgParams& algParams);
+
     template <typename ExecSpace, typename Searcher, typename Gradient>
     void stratified_sample_tensor(
       const SptensorT<ExecSpace>& X,
