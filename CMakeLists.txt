@@ -1185,10 +1185,10 @@ endif()
 
 # distributed methods to run
 set(dist_methods "")
-list(APPEND dist_methods "all-reduce")
-if (HAVE_TPETRA)
-  list(APPEND dist_methods "tpetra")
-endif()
+list(APPEND dist_methods "all-reduce" "two-sided")
+# if (HAVE_TPETRA)
+#   list(APPEND dist_methods "tpetra")
+# endif()
 
 add_subdirectory(tpls/googletest)
 add_subdirectory(test)
