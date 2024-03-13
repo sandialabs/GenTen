@@ -1002,8 +1002,8 @@ KtensorTwoSidedUpdate<ExecSpace>::
 initOverlapKtensor(KtensorT<ExecSpace>& u) const
 {
   GENTEN_TIME_MONITOR("k-tensor init");
-  u.weights() = ttb_real(1.0);
   if (parallel && sparse) {
+    auto uh = create_mirror_view(u);
     const unsigned nd = u.ndims();
     for (unsigned n=0; n<nd; ++n) {
       const unsigned np = pmap->subCommSize(n);
@@ -1012,13 +1012,15 @@ initOverlapKtensor(KtensorT<ExecSpace>& u) const
         const unsigned off = row_recv_offsets[n][p];
         for (unsigned i=0; i<nrow; ++i)
           for (unsigned j=0; j<nc; ++j)
-            u[n].entry(row_recvs[n][off+i],j) = 0.0;
+            uh[n].entry(row_recvs[n][off+i],j) = 0.0;
       }
     }
+    deep_copy(u, uh);
   }
   else {
     u.setMatrices(0.0);
   }
+  u.weights() = ttb_real(1.0);
 }
 
 template <typename ExecSpace>
@@ -1131,6 +1133,8 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
   gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
 
   // Pack u into send buffer
+  auto uhn = create_mirror_view(u[n]);
+  deep_copy(uhn, u[n]);
   for (unsigned p=0; p<np; ++p) {
     const unsigned nrow = num_row_sends[n][p];
     const unsigned off = row_send_offsets[n][p];
@@ -1138,7 +1142,7 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
       for (unsigned j=0; j<nc; ++j) {
         const ttb_indx idx = nc*(off+i)+j;
         const ttb_indx row = row_sends[n][off+i]-offsets[n][rank];
-        fac_sends[n][idx] = u[n].entry(row,j);
+        fac_sends[n][idx] = uhn.entry(row,j);
       }
   }
 
@@ -1149,14 +1153,16 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
     fac_recvs[n].data(), num_fac_recvs[n].data(), fac_recv_offsets[n].data());
 
   // Copy recv buffer into u_overlapped
+  auto uhn_overlapped = create_mirror_view(u_overlapped[n]);
   for (unsigned p=0; p<np; ++p) {
     const unsigned nrow = num_row_recvs[n][p];
     const unsigned off = row_recv_offsets[n][p];
     for (unsigned i=0; i<nrow; ++i)
       for (unsigned j=0; j<nc; ++j)
-        u_overlapped[n].entry(row_recvs[n][off+i],j) =
+        uhn_overlapped.entry(row_recvs[n][off+i],j) =
           fac_recvs[n][nc*(off+i)+j];
   }
+  deep_copy(u_overlapped[n], uhn_overlapped);
 }
 
 template <typename ExecSpace>
@@ -1213,13 +1219,15 @@ doExportSparse(const KtensorT<ExecSpace>& u,
   gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
 
   // Pack u_overlapped into recv buffer
+  auto uhn_overlapped = create_mirror_view(u_overlapped[n]);
+  deep_copy(uhn_overlapped, u_overlapped[n]);
   for (unsigned p=0; p<np; ++p) {
     const unsigned nrow = num_row_recvs[n][p];
     const unsigned off = row_recv_offsets[n][p];
     for (unsigned i=0; i<nrow; ++i)
       for (unsigned j=0; j<nc; ++j)
         fac_recvs[n][nc*(off+i)+j] =
-          u_overlapped[n].entry(row_recvs[n][off+i],j);
+          uhn_overlapped.entry(row_recvs[n][off+i],j);
   }
 
   // Export off-processor rows
@@ -1229,15 +1237,17 @@ doExportSparse(const KtensorT<ExecSpace>& u,
     fac_sends[n].data(), num_fac_sends[n].data(), fac_send_offsets[n].data());
 
   // Copy send buffer into u, combining rows that are sent from multiple procs
-  u[n] = 0.0;
+  auto uhn = create_mirror_view(u[n]);
+  uhn = 0.0;
   for (unsigned p=0; p<np; ++p) {
     const unsigned nrow = num_row_sends[n][p];
     const unsigned off = row_send_offsets[n][p];
     for (unsigned i=0; i<nrow; ++i)
       for (unsigned j=0; j<nc; ++j)
-        u[n].entry(row_sends[n][off+i]-offsets[n][rank],j)
+        uhn.entry(row_sends[n][off+i]-offsets[n][rank],j)
           += fac_sends[n][nc*(off+i)+j];
   }
+  deep_copy(u[n], uhn);
 }
 
 template <typename ExecSpace>
