@@ -40,6 +40,8 @@
 
 #pragma once
 
+#include "Genten_Util.hpp"
+
 #include "CMakeInclude.h"
 #if defined(HAVE_DIST)
 
@@ -47,7 +49,6 @@
 
 #include "Genten_SmallVector.hpp"
 #include "Genten_DistContext.hpp"
-#include "Genten_Util.hpp"
 
 namespace Genten {
 
@@ -419,6 +420,12 @@ public:
   }
   template <typename T> void gridScan(T* element, ttb_indx n, MpiOp op = Sum) const {}
   template <typename T> void subGridScan(ttb_indx i, T* element, ttb_indx n, ttb_indx root, MpiOp op = Sum) const {}
+  template <typename T> void subGridAllToAll(ttb_indx i,const T* send, const ttb_indx count_send, T* recv, const ttb_indx count_recv) const {
+    Genten::error("Not implemented, you shouldn't be calling this!");
+  }
+  template <typename T> void subGridAllToAll(ttb_indx i, const T* send, const int counts_send[], const int offsets_send[], T* recv, const int counts_recv[], const int offsets_recv[]) const {
+    Genten::error("Not implemented, you shouldn't be calling this!");
+  }
 
   class FacMap {
   public:

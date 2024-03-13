@@ -252,12 +252,14 @@ void
 KtensorOneSidedUpdate<ExecSpace>::
 copyToWindows(const KtensorT<ExecSpace>& u) const
 {
+#ifdef HAVE_DIST
   if (parallel) {
     const unsigned nd = u.ndims();
     for (unsigned n=0; n<nd; ++n) {
       Kokkos::deep_copy(bufs[n], u[n].view());
     }
   }
+#endif
 }
 
 template <typename ExecSpace>
@@ -265,12 +267,14 @@ void
 KtensorOneSidedUpdate<ExecSpace>::
 copyFromWindows(const KtensorT<ExecSpace>& u) const
 {
+#ifdef HAVE_DIST
   if (parallel) {
     const unsigned nd = u.ndims();
     for (unsigned n=0; n<nd; ++n) {
       Kokkos::deep_copy(u[n].view(), bufs[n]);
     }
   }
+#endif
 }
 
 template <typename ExecSpace>
@@ -278,12 +282,14 @@ void
 KtensorOneSidedUpdate<ExecSpace>::
 zeroOutWindows() const
 {
+#ifdef HAVE_DIST
   if (parallel) {
     const unsigned nd = windows.size();
     for (unsigned n=0; n<nd; ++n) {
       Kokkos::deep_copy(bufs[n], ttb_real(0.0));
     }
   }
+#endif
 }
 
 template <typename ExecSpace>
@@ -291,11 +297,13 @@ void
 KtensorOneSidedUpdate<ExecSpace>::
 lockWindows() const
 {
+#ifdef HAVE_DIST
   if (parallel) {
     const unsigned nd = windows.size();
     for (unsigned n=0; n<nd; ++n)
        MPI_Win_fence(MPI_MODE_NOPRECEDE, windows[n]);
   }
+#endif
 }
 
 template <typename ExecSpace>
@@ -303,11 +311,13 @@ void
 KtensorOneSidedUpdate<ExecSpace>::
 unlockWindows() const
 {
+#ifdef HAVE_DIST
   if (parallel) {
     const unsigned nd = windows.size();
     for (unsigned n=0; n<nd; ++n)
       MPI_Win_fence(MPI_MODE_NOPUT+MPI_MODE_NOSTORE+MPI_MODE_NOSUCCEED, windows[n]);
   }
+#endif
 }
 
 template <typename ExecSpace>
@@ -315,11 +325,13 @@ void
 KtensorOneSidedUpdate<ExecSpace>::
 fenceWindows() const
 {
+#ifdef HAVE_DIST
   if (parallel) {
     const unsigned nd = windows.size();
     for (unsigned n=0; n<nd; ++n)
       MPI_Win_fence(0, windows[n]);
   }
+#endif
 }
 
 template <typename ExecSpace>
@@ -328,6 +340,7 @@ KtensorOneSidedUpdate<ExecSpace>::
 importRow(const unsigned n, const ttb_indx row, const KtensorT<ExecSpace>& u,
           const KtensorT<ExecSpace>& u_overlap) const
 {
+#ifdef HAVE_DIST
   if (parallel) {
     const unsigned rank = pmap->subCommRank(n);
     const unsigned np = pmap->subCommSize(n);
@@ -346,7 +359,10 @@ importRow(const unsigned n, const ttb_indx row, const KtensorT<ExecSpace>& u,
     MPI_Get(ptr, cnt, DistContext::toMpiType<ttb_real>(), p,
             beg, cnt, DistContext::toMpiType<ttb_real>(), windows[n]);
   }
-  else if (u[n].view().data() != u_overlap[n].view().data())
+  else
+#endif
+    if (u[n].view().data() != u_overlap[n].view().data())
+
     Kokkos::deep_copy(Kokkos::subview(u_overlap[n].view(), row, Kokkos::ALL),
                       Kokkos::subview(u[n].view(), row, Kokkos::ALL));
 }
@@ -357,6 +373,7 @@ KtensorOneSidedUpdate<ExecSpace>::
 exportRow(const unsigned n, const ttb_indx row, const ArrayT<ExecSpace>& grad,
           const KtensorT<ExecSpace>& g) const
 {
+#ifdef HAVE_DIST
   if (parallel) {
     const ttb_indx stride_b = bufs[n].stride(0);
     const unsigned p = find_proc_for_row(n, row);
@@ -372,6 +389,7 @@ exportRow(const unsigned n, const ttb_indx row, const ArrayT<ExecSpace>& grad,
                    windows[n]);
   }
   else
+#endif
     Kokkos::deep_copy(Kokkos::subview(g[n].view(), row, Kokkos::ALL),
                       grad.values());
 }
@@ -838,7 +856,7 @@ updateTensor(const DistTensor<ExecSpace>& X)
     row_recvs_for_proc.resize(nd);
     for (unsigned n=0; n<nd; ++n) {
       const unsigned np = offsets[n].size();
-      const ttb_indx nrows = offsets[n][np-1]+sizes[n][np-1];
+      //const ttb_indx nrows = offsets[n][np-1]+sizes[n][np-1];
       //maps[n] = unordered_map_type(nrows);
       maps[n].clear();
       //maps[n].reserve(nrows);
