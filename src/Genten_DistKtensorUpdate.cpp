@@ -780,6 +780,8 @@ doExportDense(const KtensorT<ExecSpace>& u,
 #endif
 }
 
+#define GENTEN_PACK_DEVICE 1
+
 template <typename ExecSpace>
 KtensorTwoSidedUpdate<ExecSpace>::
 KtensorTwoSidedUpdate(const DistTensor<ExecSpace>& X,
@@ -854,6 +856,10 @@ updateTensor(const DistTensor<ExecSpace>& X)
     fac_sends.resize(nd);
     fac_recvs.resize(nd);
     row_recvs_for_proc.resize(nd);
+    row_sends_dev.resize(nd);
+    row_recvs_dev.resize(nd);
+    fac_sends_dev.resize(nd);
+    fac_recvs_dev.resize(nd);
     for (unsigned n=0; n<nd; ++n) {
       const unsigned np = offsets[n].size();
       //const ttb_indx nrows = offsets[n][np-1]+sizes[n][np-1];
@@ -938,9 +944,12 @@ updateTensor(const DistTensor<ExecSpace>& X)
 
       // allocate row send/recv buffers
       GENTEN_START_TIMER("allocate buffers");
+      row_sends_dev[n] = row_vec_type("row_sends", tot_num_row_sends);
+      row_recvs_dev[n] = row_vec_type("row_recvs", tot_num_row_recvs);
+      fac_sends_dev[n] = fac_vec_type("fac_sends", tot_num_fac_sends);
+      fac_recvs_dev[n] = fac_vec_type("fac_recvs", tot_num_fac_recvs);
       row_sends[n].resize(tot_num_row_sends);
-      row_recvs[n].reserve(tot_num_row_recvs);
-      row_recvs[n].resize(0);
+      row_recvs[n].resize(tot_num_row_recvs);
       fac_sends[n].resize(tot_num_fac_sends);
       fac_recvs[n].resize(tot_num_fac_recvs);
       GENTEN_STOP_TIMER("allocate buffers");
@@ -955,11 +964,16 @@ updateTensor(const DistTensor<ExecSpace>& X)
 
       // fill row recv buffer with rows we receive from each proc
       GENTEN_START_TIMER("fill row recvs");
+      auto rrh = Kokkos::create_mirror_view(row_recvs_dev[n]);
+      ttb_indx idx = 0;
       for (unsigned p=0; p<np; ++p) {
         gt_assert(static_cast<int>(row_recvs_for_proc[n][p].size()) == num_row_recvs[n][p]);
-        for (int i=0; i<num_row_recvs[n][p]; ++i)
-          row_recvs[n].push_back(row_recvs_for_proc[n][p][i]);
+        for (int i=0; i<num_row_recvs[n][p]; ++i) {
+          row_recvs[n][idx] = row_recvs_for_proc[n][p][i];
+          rrh[idx++] = row_recvs_for_proc[n][p][i];
+        }
       }
+      Kokkos::deep_copy(row_recvs_dev[n], rrh);
       GENTEN_STOP_TIMER("fill row recvs");
 
       // compute rows we need to send
@@ -968,7 +982,9 @@ updateTensor(const DistTensor<ExecSpace>& X)
         n,
         row_recvs[n].data(),num_row_recvs[n].data(),row_recv_offsets[n].data(),
         row_sends[n].data(),num_row_sends[n].data(),row_send_offsets[n].data());
-      gt_assert(row_recvs[n].size() == tot_num_row_recvs);
+      Kokkos::View<ttb_indx*,Kokkos::HostSpace> row_sends_umv(
+        row_sends[n].data(), tot_num_row_sends);
+      Kokkos::deep_copy(row_sends_dev[n], row_sends_umv);
       GENTEN_STOP_TIMER("fill row sends");
     }
   }
@@ -1003,6 +1019,26 @@ initOverlapKtensor(KtensorT<ExecSpace>& u) const
 {
   GENTEN_TIME_MONITOR("k-tensor init");
   if (parallel && sparse) {
+#if GENTEN_PACK_DEV
+    const unsigned nd = u.ndims();
+    const unsigned nc_ = nc;
+    for (unsigned n=0; n<nd; ++n) {
+      const unsigned np = pmap->subCommSize(n);
+      auto rr = row_recvs_dev[n];
+      auto un = u[n];
+      for (unsigned p=0; p<np; ++p) {
+        const unsigned nrow = num_row_recvs[n][p];
+        const unsigned off = row_recv_offsets[n][p];
+        Kokkos::parallel_for("Genten::TwoSidedDKU::initOverlapKtensor",
+                         Kokkos::RangePolicy<ExecSpace>(0,nrow),
+                         KOKKOS_LAMBDA(const unsigned i)
+        {
+          for (unsigned j=0; j<nc_; ++j)
+            un.entry(rr[off+i],j) = 0.0;
+        });
+      }
+    }
+#else
     auto uh = create_mirror_view(u);
     const unsigned nd = u.ndims();
     for (unsigned n=0; n<nd; ++n) {
@@ -1016,11 +1052,13 @@ initOverlapKtensor(KtensorT<ExecSpace>& u) const
       }
     }
     deep_copy(u, uh);
+#endif
   }
   else {
     u.setMatrices(0.0);
   }
   u.weights() = ttb_real(1.0);
+  Kokkos::fence(); // for accurate timer
 }
 
 template <typename ExecSpace>
@@ -1049,8 +1087,13 @@ doImport(const KtensorT<ExecSpace>& u_overlapped,
 {
   GENTEN_TIME_MONITOR("k-tensor import");
   if (parallel) {
-    if (sparse)
+    if (sparse) {
+#if GENTEN_PACK_DEV
+      doImportSparseDev(u_overlapped, u, n);
+#else
       doImportSparse(u_overlapped, u, n);
+#endif
+    }
     else
       doImportDense(u_overlapped, u, n);
   }
@@ -1084,8 +1127,13 @@ doExport(const KtensorT<ExecSpace>& u,
 {
   GENTEN_TIME_MONITOR("k-tensor export");
   if (parallel) {
-    if (sparse)
+    if (sparse) {
+#if GENTEN_PACK_DEV
+      doExportSparseDev (u, u_overlapped, n);
+#else
       doExportSparse(u, u_overlapped, n);
+#endif
+    }
     else
       doExportDense(u, u_overlapped, n);
   }
@@ -1114,8 +1162,13 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
                const KtensorT<ExecSpace>& u) const
 {
   const unsigned nd = u.ndims();
-  for (unsigned n=0; n<nd; ++n)
+  for (unsigned n=0; n<nd; ++n) {
+#if GENTEN_PACK_DEV
+    doImportSparseDev(u_overlapped, u, n);
+#else
     doImportSparse(u_overlapped, u, n);
+#endif
+  }
 }
 
 template <typename ExecSpace>
@@ -1133,6 +1186,7 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
   gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
 
   // Pack u into send buffer
+  GENTEN_START_TIMER("pack");
   auto uhn = create_mirror_view(u[n]);
   deep_copy(uhn, u[n]);
   for (unsigned p=0; p<np; ++p) {
@@ -1145,14 +1199,18 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
         fac_sends[n][idx] = uhn.entry(row,j);
       }
   }
+  GENTEN_STOP_TIMER("pack");
 
   // Import off-processor rows
+  GENTEN_START_TIMER("communication");
   pmap->subGridAllToAll(
     n,
     fac_sends[n].data(), num_fac_sends[n].data(), fac_send_offsets[n].data(),
     fac_recvs[n].data(), num_fac_recvs[n].data(), fac_recv_offsets[n].data());
+  GENTEN_STOP_TIMER("communication");
 
   // Copy recv buffer into u_overlapped
+  GENTEN_START_TIMER("unpack");
   auto uhn_overlapped = create_mirror_view(u_overlapped[n]);
   for (unsigned p=0; p<np; ++p) {
     const unsigned nrow = num_row_recvs[n][p];
@@ -1163,6 +1221,71 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
           fac_recvs[n][nc*(off+i)+j];
   }
   deep_copy(u_overlapped[n], uhn_overlapped);
+  GENTEN_STOP_TIMER("unpack");
+}
+
+template <typename ExecSpace>
+void
+KtensorTwoSidedUpdate<ExecSpace>::
+doImportSparseDev(const KtensorT<ExecSpace>& u_overlapped,
+                  const KtensorT<ExecSpace>& u,
+                  const ttb_indx n) const
+{
+  const unsigned rank = pmap->subCommRank(n);
+  const unsigned np = pmap->subCommSize(n);
+
+  // Check view sizes match what we expect
+  gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
+  gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
+
+  // Pack u into send buffer
+  GENTEN_START_TIMER("pack");
+  auto fs = fac_sends_dev[n];
+  auto rs = row_sends_dev[n];
+  auto un = u[n];
+  const ttb_indx gid_offset = offsets[n][rank];
+  const unsigned nc_ = nc;
+  for (unsigned p=0; p<np; ++p) {
+    const unsigned nrow = num_row_sends[n][p];
+    const unsigned off = row_send_offsets[n][p];
+    Kokkos::parallel_for("Genten::TwoSidedDKU::Import_Pack",
+                         Kokkos::RangePolicy<ExecSpace>(0,nrow),
+                         KOKKOS_LAMBDA(const unsigned i)
+    {
+      const ttb_indx row = rs[off+i]-gid_offset;
+      for (unsigned j=0; j<nc_; ++j)
+        fs[nc_*(off+i)+j] = un.entry(row,j);
+    });
+  }
+  Kokkos::fence();
+  GENTEN_STOP_TIMER("pack");
+
+  // Import off-processor rows
+  GENTEN_START_TIMER("communication");
+  pmap->subGridAllToAll(
+    n,
+    fac_sends[n].data(), num_fac_sends[n].data(), fac_send_offsets[n].data(),
+    fac_recvs[n].data(), num_fac_recvs[n].data(), fac_recv_offsets[n].data());
+  GENTEN_STOP_TIMER("communication");
+
+  // Copy recv buffer into u_overlapped
+  GENTEN_START_TIMER("unpack");
+  auto fr = fac_recvs_dev[n];
+  auto rr = row_recvs_dev[n];
+  auto uon = u_overlapped[n];
+  for (unsigned p=0; p<np; ++p) {
+    const unsigned nrow = num_row_recvs[n][p];
+    const unsigned off = row_recv_offsets[n][p];
+    Kokkos::parallel_for("Genten::TwoSidedDKU::Import_Unpack",
+                         Kokkos::RangePolicy<ExecSpace>(0,nrow),
+                         KOKKOS_LAMBDA(const unsigned i)
+    {
+      for (unsigned j=0; j<nc_; ++j)
+        uon.entry(rr[off+i],j) = fr[nc_*(off+i)+j];
+    });
+  }
+  Kokkos::fence();
+  GENTEN_STOP_TIMER("unpack");
 }
 
 template <typename ExecSpace>
@@ -1200,8 +1323,13 @@ doExportSparse(const KtensorT<ExecSpace>& u,
                const KtensorT<ExecSpace>& u_overlapped) const
 {
   const unsigned nd = u.ndims();
-  for (unsigned n=0; n<nd; ++n)
+  for (unsigned n=0; n<nd; ++n) {
+#if GENTEN_PACK_DEV
+    doExportSparseDev(u, u_overlapped, n);
+#else
     doExportSparse(u, u_overlapped, n);
+#endif
+  }
 }
 
 template <typename ExecSpace>
@@ -1219,6 +1347,7 @@ doExportSparse(const KtensorT<ExecSpace>& u,
   gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
 
   // Pack u_overlapped into recv buffer
+  GENTEN_START_TIMER("pack");
   auto uhn_overlapped = create_mirror_view(u_overlapped[n]);
   deep_copy(uhn_overlapped, u_overlapped[n]);
   for (unsigned p=0; p<np; ++p) {
@@ -1229,14 +1358,18 @@ doExportSparse(const KtensorT<ExecSpace>& u,
         fac_recvs[n][nc*(off+i)+j] =
           uhn_overlapped.entry(row_recvs[n][off+i],j);
   }
+  GENTEN_STOP_TIMER("pack");
 
   // Export off-processor rows
+  GENTEN_START_TIMER("communication");
   pmap->subGridAllToAll(
     n,
     fac_recvs[n].data(), num_fac_recvs[n].data(), fac_recv_offsets[n].data(),
     fac_sends[n].data(), num_fac_sends[n].data(), fac_send_offsets[n].data());
+  GENTEN_STOP_TIMER("communication");
 
   // Copy send buffer into u, combining rows that are sent from multiple procs
+  GENTEN_START_TIMER("unpack");
   auto uhn = create_mirror_view(u[n]);
   uhn = 0.0;
   for (unsigned p=0; p<np; ++p) {
@@ -1248,6 +1381,72 @@ doExportSparse(const KtensorT<ExecSpace>& u,
           += fac_sends[n][nc*(off+i)+j];
   }
   deep_copy(u[n], uhn);
+  GENTEN_STOP_TIMER("unpack");
+}
+
+template <typename ExecSpace>
+void
+KtensorTwoSidedUpdate<ExecSpace>::
+doExportSparseDev(const KtensorT<ExecSpace>& u,
+                  const KtensorT<ExecSpace>& u_overlapped,
+                  const ttb_indx n) const
+{
+  const unsigned rank = pmap->subCommRank(n);
+  const unsigned np = pmap->subCommSize(n);
+
+  // Check view sizes match what we expect
+  gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
+  gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
+
+  // Pack u_overlapped into recv buffer
+  GENTEN_START_TIMER("pack");
+  auto fr = fac_recvs_dev[n];
+  auto rr = row_recvs_dev[n];
+  auto uon = u_overlapped[n];
+  const unsigned nc_ = nc;
+  for (unsigned p=0; p<np; ++p) {
+    const unsigned nrow = num_row_recvs[n][p];
+    const unsigned off = row_recv_offsets[n][p];
+    Kokkos::parallel_for("Genten::TwoSidedDKU::Export_Pack",
+                         Kokkos::RangePolicy<ExecSpace>(0,nrow),
+                         KOKKOS_LAMBDA(const unsigned i)
+    {
+      for (unsigned j=0; j<nc_; ++j)
+        fr[nc_*(off+i)+j] = uon.entry(rr[off+i],j);
+    });
+  }
+  Kokkos::fence();
+  GENTEN_STOP_TIMER("pack");
+
+  // Export off-processor rows
+  GENTEN_START_TIMER("communication");
+  pmap->subGridAllToAll(
+    n,
+    fac_recvs[n].data(), num_fac_recvs[n].data(), fac_recv_offsets[n].data(),
+    fac_sends[n].data(), num_fac_sends[n].data(), fac_send_offsets[n].data());
+  GENTEN_STOP_TIMER("communication");
+
+  // Copy send buffer into u, combining rows that are sent from multiple procs
+  GENTEN_START_TIMER("unpack");
+  auto fs = fac_sends_dev[n];
+  auto rs = row_sends_dev[n];
+  auto un = u[n];
+  un = 0.0;
+  const ttb_indx gid_offset = offsets[n][rank];
+  for (unsigned p=0; p<np; ++p) {
+    const unsigned nrow = num_row_sends[n][p];
+    const unsigned off = row_send_offsets[n][p];
+    Kokkos::parallel_for("Genten::TwoSidedDKU::Import_Unpack",
+                         Kokkos::RangePolicy<ExecSpace>(0,nrow),
+                         KOKKOS_LAMBDA(const unsigned i)
+    {
+      const ttb_indx row = rs[off+i]-gid_offset;
+      for (unsigned j=0; j<nc_; ++j)
+        un.entry(row,j) += fs[nc_*(off+i)+j];
+    });
+  }
+  Kokkos::fence();
+  GENTEN_STOP_TIMER("unpack");
 }
 
 template <typename ExecSpace>

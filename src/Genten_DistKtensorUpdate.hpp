@@ -654,6 +654,13 @@ private:
   mutable std::vector< std::vector<ttb_real> > fac_sends;
   mutable std::vector< std::vector<ttb_real> > fac_recvs;
 
+  using row_vec_type = Kokkos::View<ttb_indx*,ExecSpace>;
+  using fac_vec_type = Kokkos::View<ttb_real*,ExecSpace>;
+  std::vector< row_vec_type > row_sends_dev;
+  std::vector< row_vec_type > row_recvs_dev;
+  std::vector< fac_vec_type > fac_sends_dev;
+  std::vector< fac_vec_type > fac_recvs_dev;
+
 public:
   // using unordered_map_type =
   //   Kokkos::UnorderedMap<ttb_indx,unsigned,Kokkos::HostSpace>;
@@ -702,6 +709,16 @@ public:
                         const ttb_indx n) const override;
 
   unsigned find_proc_for_row(unsigned n, unsigned row) const;
+
+  // These have to be public for Cuda
+
+  void doImportSparseDev(const KtensorT<ExecSpace>& u_overlapped,
+                         const KtensorT<ExecSpace>& u,
+                         const ttb_indx n) const;
+
+  void doExportSparseDev(const KtensorT<ExecSpace>& u,
+                         const KtensorT<ExecSpace>& u_overlapped,
+                         const ttb_indx n) const;
 
 private:
 
