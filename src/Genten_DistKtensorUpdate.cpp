@@ -780,7 +780,7 @@ doExportDense(const KtensorT<ExecSpace>& u,
 #endif
 }
 
-#define GENTEN_PACK_DEVICE 1
+#define GENTEN_PACK_DEV 1
 
 template <typename ExecSpace>
 KtensorTwoSidedUpdate<ExecSpace>::
@@ -1186,7 +1186,7 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
   gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
 
   // Pack u into send buffer
-  GENTEN_START_TIMER("pack");
+  GENTEN_START_TIMER("pack-host");
   auto uhn = create_mirror_view(u[n]);
   deep_copy(uhn, u[n]);
   for (unsigned p=0; p<np; ++p) {
@@ -1199,7 +1199,7 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
         fac_sends[n][idx] = uhn.entry(row,j);
       }
   }
-  GENTEN_STOP_TIMER("pack");
+  GENTEN_STOP_TIMER("pack-host");
 
   // Import off-processor rows
   GENTEN_START_TIMER("communication");
@@ -1210,7 +1210,7 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
   GENTEN_STOP_TIMER("communication");
 
   // Copy recv buffer into u_overlapped
-  GENTEN_START_TIMER("unpack");
+  GENTEN_START_TIMER("unpack-host");
   auto uhn_overlapped = create_mirror_view(u_overlapped[n]);
   for (unsigned p=0; p<np; ++p) {
     const unsigned nrow = num_row_recvs[n][p];
@@ -1221,7 +1221,7 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
           fac_recvs[n][nc*(off+i)+j];
   }
   deep_copy(u_overlapped[n], uhn_overlapped);
-  GENTEN_STOP_TIMER("unpack");
+  GENTEN_STOP_TIMER("unpack-host");
 }
 
 template <typename ExecSpace>
@@ -1239,7 +1239,7 @@ doImportSparseDev(const KtensorT<ExecSpace>& u_overlapped,
   gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
 
   // Pack u into send buffer
-  GENTEN_START_TIMER("pack");
+  GENTEN_START_TIMER("pack-device");
   auto fs = fac_sends_dev[n];
   auto rs = row_sends_dev[n];
   auto un = u[n];
@@ -1258,7 +1258,7 @@ doImportSparseDev(const KtensorT<ExecSpace>& u_overlapped,
     });
   }
   Kokkos::fence();
-  GENTEN_STOP_TIMER("pack");
+  GENTEN_STOP_TIMER("pack-device");
 
   // Import off-processor rows
   GENTEN_START_TIMER("communication");
@@ -1269,7 +1269,7 @@ doImportSparseDev(const KtensorT<ExecSpace>& u_overlapped,
   GENTEN_STOP_TIMER("communication");
 
   // Copy recv buffer into u_overlapped
-  GENTEN_START_TIMER("unpack");
+  GENTEN_START_TIMER("unpack-device");
   auto fr = fac_recvs_dev[n];
   auto rr = row_recvs_dev[n];
   auto uon = u_overlapped[n];
@@ -1285,7 +1285,7 @@ doImportSparseDev(const KtensorT<ExecSpace>& u_overlapped,
     });
   }
   Kokkos::fence();
-  GENTEN_STOP_TIMER("unpack");
+  GENTEN_STOP_TIMER("unpack-device");
 }
 
 template <typename ExecSpace>
@@ -1347,7 +1347,7 @@ doExportSparse(const KtensorT<ExecSpace>& u,
   gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
 
   // Pack u_overlapped into recv buffer
-  GENTEN_START_TIMER("pack");
+  GENTEN_START_TIMER("pack-host");
   auto uhn_overlapped = create_mirror_view(u_overlapped[n]);
   deep_copy(uhn_overlapped, u_overlapped[n]);
   for (unsigned p=0; p<np; ++p) {
@@ -1358,7 +1358,7 @@ doExportSparse(const KtensorT<ExecSpace>& u,
         fac_recvs[n][nc*(off+i)+j] =
           uhn_overlapped.entry(row_recvs[n][off+i],j);
   }
-  GENTEN_STOP_TIMER("pack");
+  GENTEN_STOP_TIMER("pack-host");
 
   // Export off-processor rows
   GENTEN_START_TIMER("communication");
@@ -1369,7 +1369,7 @@ doExportSparse(const KtensorT<ExecSpace>& u,
   GENTEN_STOP_TIMER("communication");
 
   // Copy send buffer into u, combining rows that are sent from multiple procs
-  GENTEN_START_TIMER("unpack");
+  GENTEN_START_TIMER("unpack-host");
   auto uhn = create_mirror_view(u[n]);
   uhn = 0.0;
   for (unsigned p=0; p<np; ++p) {
@@ -1381,7 +1381,7 @@ doExportSparse(const KtensorT<ExecSpace>& u,
           += fac_sends[n][nc*(off+i)+j];
   }
   deep_copy(u[n], uhn);
-  GENTEN_STOP_TIMER("unpack");
+  GENTEN_STOP_TIMER("unpack-host");
 }
 
 template <typename ExecSpace>
@@ -1399,7 +1399,7 @@ doExportSparseDev(const KtensorT<ExecSpace>& u,
   gt_assert(u_overlapped[n].view().span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
 
   // Pack u_overlapped into recv buffer
-  GENTEN_START_TIMER("pack");
+  GENTEN_START_TIMER("pack-device");
   auto fr = fac_recvs_dev[n];
   auto rr = row_recvs_dev[n];
   auto uon = u_overlapped[n];
@@ -1416,7 +1416,7 @@ doExportSparseDev(const KtensorT<ExecSpace>& u,
     });
   }
   Kokkos::fence();
-  GENTEN_STOP_TIMER("pack");
+  GENTEN_STOP_TIMER("pack-device");
 
   // Export off-processor rows
   GENTEN_START_TIMER("communication");
@@ -1427,7 +1427,7 @@ doExportSparseDev(const KtensorT<ExecSpace>& u,
   GENTEN_STOP_TIMER("communication");
 
   // Copy send buffer into u, combining rows that are sent from multiple procs
-  GENTEN_START_TIMER("unpack");
+  GENTEN_START_TIMER("unpack-device");
   auto fs = fac_sends_dev[n];
   auto rs = row_sends_dev[n];
   auto un = u[n];
@@ -1446,7 +1446,7 @@ doExportSparseDev(const KtensorT<ExecSpace>& u,
     });
   }
   Kokkos::fence();
-  GENTEN_STOP_TIMER("unpack");
+  GENTEN_STOP_TIMER("unpack-device");
 }
 
 template <typename ExecSpace>
