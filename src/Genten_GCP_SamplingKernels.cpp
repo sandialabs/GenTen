@@ -448,7 +448,7 @@ namespace {
               ind[m] = Rand::draw(gen,0,sz[m]);
             Y.value(idx) = searcher.value(ind);
             for (ttb_indx m=0; m<nd; ++m)
-              Y.globalSubscript(idx,m) = ind[m];
+              Y.subscript(idx,m) = ind[m];
             if (!compute_gradient)
               w[idx] = weight;
           });
