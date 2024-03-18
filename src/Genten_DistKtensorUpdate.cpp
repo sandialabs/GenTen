@@ -1264,8 +1264,8 @@ doImportSparseDev(const KtensorT<ExecSpace>& u_overlapped,
   GENTEN_START_TIMER("communication");
   pmap->subGridAllToAll(
     n,
-    fac_sends[n].data(), num_fac_sends[n].data(), fac_send_offsets[n].data(),
-    fac_recvs[n].data(), num_fac_recvs[n].data(), fac_recv_offsets[n].data());
+    fac_sends_dev[n].data(), num_fac_sends[n].data(), fac_send_offsets[n].data(),
+    fac_recvs_dev[n].data(), num_fac_recvs[n].data(), fac_recv_offsets[n].data());
   GENTEN_STOP_TIMER("communication");
 
   // Copy recv buffer into u_overlapped
@@ -1280,8 +1280,9 @@ doImportSparseDev(const KtensorT<ExecSpace>& u_overlapped,
                          Kokkos::RangePolicy<ExecSpace>(0,nrow),
                          KOKKOS_LAMBDA(const unsigned i)
     {
+      const ttb_indx row = rr[off+i];
       for (unsigned j=0; j<nc_; ++j)
-        uon.entry(rr[off+i],j) = fr[nc_*(off+i)+j];
+        uon.entry(row,j) = fr[nc_*(off+i)+j];
     });
   }
   Kokkos::fence();
@@ -1422,8 +1423,8 @@ doExportSparseDev(const KtensorT<ExecSpace>& u,
   GENTEN_START_TIMER("communication");
   pmap->subGridAllToAll(
     n,
-    fac_recvs[n].data(), num_fac_recvs[n].data(), fac_recv_offsets[n].data(),
-    fac_sends[n].data(), num_fac_sends[n].data(), fac_send_offsets[n].data());
+    fac_recvs_dev[n].data(), num_fac_recvs[n].data(), fac_recv_offsets[n].data(),
+    fac_sends_dev[n].data(), num_fac_sends[n].data(), fac_send_offsets[n].data());
   GENTEN_STOP_TIMER("communication");
 
   // Copy send buffer into u, combining rows that are sent from multiple procs
