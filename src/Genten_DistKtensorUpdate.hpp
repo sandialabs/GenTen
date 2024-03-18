@@ -643,23 +643,19 @@ private:
   std::vector< std::vector<int> > num_row_recvs;
   std::vector< std::vector<int> > row_send_offsets;
   std::vector< std::vector<int> > row_recv_offsets;
-  std::vector< std::vector<ttb_indx> > row_sends;
-  std::vector< std::vector<ttb_indx> > row_recvs;
   std::vector< std::vector< std::vector<int> > > row_recvs_for_proc;
 
   std::vector< std::vector<int> > num_fac_sends;
   std::vector< std::vector<int> > num_fac_recvs;
   std::vector< std::vector<int> > fac_send_offsets;
   std::vector< std::vector<int> > fac_recv_offsets;
-  mutable std::vector< std::vector<ttb_real> > fac_sends;
-  mutable std::vector< std::vector<ttb_real> > fac_recvs;
 
   using row_vec_type = Kokkos::View<ttb_indx*,ExecSpace>;
   using fac_vec_type = Kokkos::View<ttb_real*,ExecSpace>;
-  std::vector< row_vec_type > row_sends_dev;
-  std::vector< row_vec_type > row_recvs_dev;
-  std::vector< fac_vec_type > fac_sends_dev;
-  std::vector< fac_vec_type > fac_recvs_dev;
+  std::vector< row_vec_type > row_sends;
+  std::vector< row_vec_type > row_recvs;
+  std::vector< fac_vec_type > fac_sends;
+  std::vector< fac_vec_type > fac_recvs;
 
 public:
   // using unordered_map_type =
@@ -712,22 +708,18 @@ public:
 
   // These have to be public for Cuda
 
-  void doImportSparseDev(const KtensorT<ExecSpace>& u_overlapped,
-                         const KtensorT<ExecSpace>& u,
-                         const ttb_indx n) const;
+  void doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
+                      const KtensorT<ExecSpace>& u,
+                      const ttb_indx n) const;
 
-  void doExportSparseDev(const KtensorT<ExecSpace>& u,
-                         const KtensorT<ExecSpace>& u_overlapped,
-                         const ttb_indx n) const;
+  void doExportSparse(const KtensorT<ExecSpace>& u,
+                      const KtensorT<ExecSpace>& u_overlapped,
+                      const ttb_indx n) const;
 
 private:
 
   void doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
                       const KtensorT<ExecSpace>& u) const;
-
-  void doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
-                      const KtensorT<ExecSpace>& u,
-                      const ttb_indx n) const;
 
   void doImportDense(const KtensorT<ExecSpace>& u_overlapped,
                      const KtensorT<ExecSpace>& u) const;
@@ -738,10 +730,6 @@ private:
 
   void doExportSparse(const KtensorT<ExecSpace>& u,
                       const KtensorT<ExecSpace>& u_overlapped) const;
-
-  void doExportSparse(const KtensorT<ExecSpace>& u,
-                      const KtensorT<ExecSpace>& u_overlapped,
-                      const ttb_indx n) const;
 
   void doExportDense(const KtensorT<ExecSpace>& u,
                      const KtensorT<ExecSpace>& u_overlapped) const;
