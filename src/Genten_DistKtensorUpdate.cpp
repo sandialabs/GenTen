@@ -938,10 +938,10 @@ updateTensor(const DistTensor<ExecSpace>& X)
 
       // allocate row send/recv buffers
       GENTEN_START_TIMER("allocate buffers");
-      row_sends[n] = row_vec_type("row_sends", tot_num_row_sends);
-      row_recvs[n] = row_vec_type("row_recvs", tot_num_row_recvs);
-      fac_sends[n] = fac_vec_type("fac_sends", tot_num_fac_sends);
-      fac_recvs[n] = fac_vec_type("fac_recvs", tot_num_fac_recvs);
+      row_sends[n] = row_vec_type(Kokkos::ViewAllocateWithoutInitializing("row_sends"), tot_num_row_sends);
+      row_recvs[n] = row_vec_type(Kokkos::ViewAllocateWithoutInitializing("row_recvs"), tot_num_row_recvs);
+      fac_sends[n] = fac_vec_type(Kokkos::ViewAllocateWithoutInitializing("fac_sends"), tot_num_fac_sends);
+      fac_recvs[n] = fac_vec_type(Kokkos::ViewAllocateWithoutInitializing("fac_recvs"), tot_num_fac_recvs);
       GENTEN_STOP_TIMER("allocate buffers");
 
       // Sort rows we receive from eaach processor for more predictable
