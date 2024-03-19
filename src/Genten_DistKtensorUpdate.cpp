@@ -1255,18 +1255,14 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
   auto un = u[n];
   const ttb_indx gid_offset = offsets[n][rank];
   const unsigned nc_ = nc;
-  for (unsigned p=0; p<np; ++p) {
-    const unsigned nrow = num_row_sends[n][p];
-    const unsigned off = row_send_offsets[n][p];
-    Kokkos::parallel_for("Genten::TwoSidedDKU::Import_Pack",
-                         Kokkos::RangePolicy<ExecSpace>(0,nrow),
-                         KOKKOS_LAMBDA(const unsigned i)
-    {
-      const ttb_indx row = rs[off+i]-gid_offset;
-      for (unsigned j=0; j<nc_; ++j)
-        fs[nc_*(off+i)+j] = un.entry(row,j);
-    });
-  }
+  Kokkos::parallel_for("Genten::TwoSidedDKU::Import_Pack",
+                       Kokkos::RangePolicy<ExecSpace>(0,rs.extent(0)),
+                       KOKKOS_LAMBDA(const unsigned i)
+  {
+    const ttb_indx row = rs[i] - gid_offset;
+    for (unsigned j=0; j<nc_; ++j)
+      fs[nc_*i+j] = un.entry(row,j);
+  });
   Kokkos::fence();
   GENTEN_STOP_TIMER("pack");
 
@@ -1283,18 +1279,14 @@ doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
   auto fr = fac_recvs[n];
   auto rr = row_recvs[n];
   auto uon = u_overlapped[n];
-  for (unsigned p=0; p<np; ++p) {
-    const unsigned nrow = num_row_recvs[n][p];
-    const unsigned off = row_recv_offsets[n][p];
-    Kokkos::parallel_for("Genten::TwoSidedDKU::Import_Unpack",
-                         Kokkos::RangePolicy<ExecSpace>(0,nrow),
-                         KOKKOS_LAMBDA(const unsigned i)
-    {
-      const ttb_indx row = rr[off+i];
-      for (unsigned j=0; j<nc_; ++j)
-        uon.entry(row,j) = fr[nc_*(off+i)+j];
-    });
-  }
+  Kokkos::parallel_for("Genten::TwoSidedDKU::Import_Unpack",
+                       Kokkos::RangePolicy<ExecSpace>(0,rr.extent(0)),
+                       KOKKOS_LAMBDA(const unsigned i)
+  {
+    const ttb_indx row = rr[i];
+    for (unsigned j=0; j<nc_; ++j)
+      uon.entry(row,j) = fr[nc_*i+j];
+  });
   Kokkos::fence();
   GENTEN_STOP_TIMER("unpack");
 }
@@ -1359,17 +1351,14 @@ doExportSparse(const KtensorT<ExecSpace>& u,
   auto rr = row_recvs[n];
   auto uon = u_overlapped[n];
   const unsigned nc_ = nc;
-  for (unsigned p=0; p<np; ++p) {
-    const unsigned nrow = num_row_recvs[n][p];
-    const unsigned off = row_recv_offsets[n][p];
-    Kokkos::parallel_for("Genten::TwoSidedDKU::Export_Pack",
-                         Kokkos::RangePolicy<ExecSpace>(0,nrow),
-                         KOKKOS_LAMBDA(const unsigned i)
-    {
-      for (unsigned j=0; j<nc_; ++j)
-        fr[nc_*(off+i)+j] = uon.entry(rr[off+i],j);
-    });
-  }
+  Kokkos::parallel_for("Genten::TwoSidedDKU::Export_Pack",
+                       Kokkos::RangePolicy<ExecSpace>(0,rr.extent(0)),
+                       KOKKOS_LAMBDA(const unsigned i)
+  {
+    const ttb_indx row = rr[i];
+    for (unsigned j=0; j<nc_; ++j)
+      fr[nc_*i+j] = uon.entry(row,j);
+  });
   Kokkos::fence();
   GENTEN_STOP_TIMER("pack");
 
@@ -1388,18 +1377,14 @@ doExportSparse(const KtensorT<ExecSpace>& u,
   auto un = u[n];
   un = 0.0;
   const ttb_indx gid_offset = offsets[n][rank];
-  for (unsigned p=0; p<np; ++p) {
-    const unsigned nrow = num_row_sends[n][p];
-    const unsigned off = row_send_offsets[n][p];
-    Kokkos::parallel_for("Genten::TwoSidedDKU::Import_Unpack",
-                         Kokkos::RangePolicy<ExecSpace>(0,nrow),
-                         KOKKOS_LAMBDA(const unsigned i)
-    {
-      const ttb_indx row = rs[off+i]-gid_offset;
-      for (unsigned j=0; j<nc_; ++j)
-        un.entry(row,j) += fs[nc_*(off+i)+j];
-    });
-  }
+  Kokkos::parallel_for("Genten::TwoSidedDKU::Export_Unpack",
+                       Kokkos::RangePolicy<ExecSpace>(0,rs.extent(0)),
+                       KOKKOS_LAMBDA(const unsigned i)
+  {
+    const ttb_indx row = rs[i]-gid_offset;
+    for (unsigned j=0; j<nc_; ++j)
+      Kokkos::atomic_add(&un.entry(row,j), fs[nc_*i+j]);
+  });
   Kokkos::fence();
   GENTEN_STOP_TIMER("unpack");
 }
