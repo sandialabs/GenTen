@@ -1048,12 +1048,14 @@ updateTensor(const DistTensor<ExecSpace>& X)
       GENTEN_STOP_TIMER("allocate buffers");
 
       // Sort rows we receive from eaach processor for more predictable
-      // memory accesses of factor matrix rows
-      GENTEN_START_TIMER("sort row recvs");
-      for (unsigned p=0; p<np; ++p)
-        std::sort(row_recvs_for_proc[n][p].begin(),
-                  row_recvs_for_proc[n][p].end());
-      GENTEN_STOP_TIMER("sort row recvs");
+      // memory accesses of factor matrix rows on the host
+      if (!is_gpu_space<ExecSpace>::value) {
+        GENTEN_START_TIMER("sort row recvs");
+        for (unsigned p=0; p<np; ++p)
+          std::sort(row_recvs_for_proc[n][p].begin(),
+                    row_recvs_for_proc[n][p].end());
+        GENTEN_STOP_TIMER("sort row recvs");
+      }
 
       // fill row recv buffer with rows we receive from each proc
       GENTEN_START_TIMER("fill row recvs");
