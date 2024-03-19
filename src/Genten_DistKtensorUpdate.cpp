@@ -783,8 +783,9 @@ doExportDense(const KtensorT<ExecSpace>& u,
 template <typename ExecSpace>
 KtensorTwoSidedUpdate<ExecSpace>::
 KtensorTwoSidedUpdate(const DistTensor<ExecSpace>& X,
-                      const KtensorT<ExecSpace>& u) :
-  pmap(u.getProcessorMap()), nc(u.ncomponents())
+                      const KtensorT<ExecSpace>& u,
+                      const AlgParams& a) :
+  pmap(u.getProcessorMap()), nc(u.ncomponents()), algParams(a)
 {
   parallel = pmap == nullptr || (pmap != nullptr && pmap->gridSize() > 1);
   if (parallel) {
@@ -793,6 +794,7 @@ KtensorTwoSidedUpdate(const DistTensor<ExecSpace>& X,
     sizes_r.resize(nd);
     offsets.resize(nd);
     offsets_r.resize(nd);
+    offsets_dev.resize(nd);
     for (unsigned n=0; n<nd; ++n) {
       const unsigned np = pmap->subCommSize(n);
 
@@ -815,6 +817,9 @@ KtensorTwoSidedUpdate(const DistTensor<ExecSpace>& X,
         offsets[n][p] = offsets[n][p-1] + sizes[n][p-1];
         offsets_r[n][p] = offsets_r[n][p-1] + sizes_r[n][p-1];
       }
+
+      offsets_dev[n] = offsets_dev_type("offsets-dev", np);
+      Kokkos::deep_copy(offsets_dev[n], offsets_dev_type(offsets[n].data(),np));
     }
   }
 
@@ -830,6 +835,125 @@ KtensorTwoSidedUpdate<ExecSpace>::
 template <typename ExecSpace>
 void
 KtensorTwoSidedUpdate<ExecSpace>::
+extractRowRecvsHost()
+{
+  GENTEN_START_TIMER("extract row recvs host");
+  const ttb_indx nnz = X_sparse.nnz();
+  const unsigned nd = X_sparse.ndims();
+  maps.resize(nd);
+  for (unsigned n=0; n<nd; ++n)
+    maps[n].clear();
+
+  auto X_sparse_h = create_mirror_view(X_sparse);
+  deep_copy(X_sparse_h, X_sparse);
+
+  for (ttb_indx i=0; i<nnz; ++i) {
+    const auto subs = X_sparse_h.getSubscripts(i);
+    for (unsigned n=0; n<nd; ++n) {
+      const ttb_indx row = subs[n];
+      if (maps[n].count(row) == 0) {
+        unsigned p = find_proc_for_row(n, row);
+        gt_assert(maps[n].insert({row, p}).second);
+        num_row_recvs[n][p] += 1;
+        num_fac_recvs[n][p] += nc;
+        row_recvs_for_proc[n][p].push_back(row);
+      }
+    }
+  }
+  GENTEN_STOP_TIMER("extract row recvs host");
+}
+
+namespace {
+
+template <typename offsets_type>
+KOKKOS_INLINE_FUNCTION
+unsigned
+find_proc_for_row_dev(const offsets_type& offsets, const ttb_indx row)
+{
+  // Find processor given row lives on by finding processor where
+  // the first row is bigger than the given row, then move back one
+  const unsigned np = offsets.extent(0);
+  unsigned p = 0;
+  while (p < np && row >= ttb_indx(offsets[p])) ++p;
+  --p;
+  return p;
+}
+
+}
+
+template <typename ExecSpace>
+void
+KtensorTwoSidedUpdate<ExecSpace>::
+extractRowRecvsDevice()
+{
+  using unordered_map_type = Kokkos::UnorderedMap<ttb_indx,unsigned,ExecSpace>;
+  using umv_type = Kokkos::View<int*,Kokkos::HostSpace>;
+
+  GENTEN_START_TIMER("extract row recvs device");
+  const ttb_indx nnz = X_sparse.nnz();
+  const unsigned nd = X_sparse.ndims();
+  const unsigned nc_ = nc;
+  for (unsigned n=0; n<nd; ++n) {
+    const unsigned np = offsets[n].size();
+
+    // Get list of unique rows and associated processors
+    // Even though there are at most nrows unique keys, we use 2*nrows as the
+    // capacity hint to ensure there is enough space in the map.
+    const ttb_indx nrows = offsets[n][np-1]+sizes[n][np-1];
+    unordered_map_type map(2*nrows);
+    const offsets_dev_type od = offsets_dev[n];
+    const auto subs = X_sparse.getSubscripts();
+    Kokkos::View<int*,ExecSpace> nrr("num row recvs", np);
+    Kokkos::View<int*,ExecSpace> nfr("num fac recvs", np);
+    Kokkos::parallel_for("Genten::TwoSidedDKU::BuildRowMap",
+                         Kokkos::RangePolicy<ExecSpace>(0,nnz),
+                         KOKKOS_LAMBDA(const ttb_indx i)
+    {
+      const ttb_indx row = subs(i,n);
+      if (!map.exists(row)) {
+        unsigned p = find_proc_for_row_dev(od, row);
+        auto res = map.insert(row,p);
+        if (res.failed())
+          Kokkos::abort("Insertion of row failed, capacity hint is likely too small!");
+        if (res.success()) { // only true if key insert succeeded and it didn't exist in the map previously
+          Kokkos::atomic_add(&nrr[p], 1);
+          Kokkos::atomic_add(&nfr[p], nc_);
+        }
+      }
+    });
+    Kokkos::deep_copy(umv_type(num_row_recvs[n].data(), np), nrr);
+    Kokkos::deep_copy(umv_type(num_fac_recvs[n].data(), np), nfr);
+
+    // Compute list of recvs for each processor
+    const ttb_indx sz = map.capacity();
+    for (unsigned p=0; p<np; ++p) {
+      const ttb_indx num_recv = num_row_recvs[n][p];
+      Kokkos::View<int*,ExecSpace> rrfp("row recvs for proc", num_recv);
+      Kokkos::View<int,ExecSpace> cnt("cnt");
+      Kokkos::parallel_for("Genten::TwoSidedDKU::BuildRowRecvsForProc",
+                           Kokkos::RangePolicy<ExecSpace>(0,sz),
+                           KOKKOS_LAMBDA(const ttb_indx i)
+      {
+        if (map.valid_at(i)) {
+          const unsigned row = map.key_at(i);
+          const unsigned proc = map.value_at(i);
+          if (proc == p) {
+            const int idx = Kokkos::atomic_fetch_add(&cnt(), 1);
+            rrfp[idx] = row;
+          }
+        }
+      });
+      row_recvs_for_proc[n][p].resize(num_recv);
+      Kokkos::deep_copy(umv_type(row_recvs_for_proc[n][p].data(), num_recv),
+                        rrfp);
+    }
+  }
+  GENTEN_STOP_TIMER("extract row recvs device");
+}
+
+template <typename ExecSpace>
+void
+KtensorTwoSidedUpdate<ExecSpace>::
 updateTensor(const DistTensor<ExecSpace>& X)
 {
   GENTEN_TIME_MONITOR("update tensor");
@@ -838,9 +962,7 @@ updateTensor(const DistTensor<ExecSpace>& X)
   if (sparse && parallel) {
     GENTEN_START_TIMER("initialize");
     X_sparse = X.getSptensor();
-    const ttb_indx nnz = X_sparse.nnz();
     const unsigned nd = X_sparse.ndims();
-    maps.resize(nd);
     num_row_sends.resize(nd);
     num_row_recvs.resize(nd);
     row_send_offsets.resize(nd);
@@ -856,10 +978,6 @@ updateTensor(const DistTensor<ExecSpace>& X)
     row_recvs_for_proc.resize(nd);
     for (unsigned n=0; n<nd; ++n) {
       const unsigned np = offsets[n].size();
-      //const ttb_indx nrows = offsets[n][np-1]+sizes[n][np-1];
-      //maps[n] = unordered_map_type(nrows);
-      maps[n].clear();
-      //maps[n].reserve(nrows);
       num_row_sends[n].resize(np);
       num_row_recvs[n].resize(np);
       row_send_offsets[n].resize(np);
@@ -882,25 +1000,10 @@ updateTensor(const DistTensor<ExecSpace>& X)
     // the overlapped ktensor.
 
     // Get rows we receive from each proc
-    GENTEN_START_TIMER("extract row recvs");
-    auto X_sparse_h = create_mirror_view(X_sparse);
-    deep_copy(X_sparse_h, X_sparse);
-    for (ttb_indx i=0; i<nnz; ++i) {
-      const auto subs = X_sparse_h.getSubscripts(i);
-      for (unsigned n=0; n<nd; ++n) {
-        const ttb_indx row = subs[n];
-        //if (!maps[n].exists(row)) {
-        if (maps[n].count(row) == 0) {
-          unsigned p = find_proc_for_row(n, row);
-          //gt_assert(!maps[n].insert(row,p).failed());
-          gt_assert(maps[n].insert({row, p}).second);
-          num_row_recvs[n][p] += 1;
-          num_fac_recvs[n][p] += nc;
-          row_recvs_for_proc[n][p].push_back(row);
-        }
-      }
-    }
-    GENTEN_STOP_TIMER("extract row recvs");
+    if (algParams.build_maps_on_device)
+      extractRowRecvsDevice();
+    else
+      extractRowRecvsHost();
 
     for (unsigned n=0; n<nd; ++n) {
       const unsigned np = offsets[n].size();

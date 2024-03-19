@@ -629,16 +629,22 @@ class KtensorTwoSidedUpdate :
 private:
   const ProcessorMap *pmap;
   bool parallel;
+  AlgParams algParams;
+
   std::vector< std::vector<int> > offsets;
   std::vector< std::vector<int> > sizes;
 
   std::vector< std::vector<int> > offsets_r;
   std::vector< std::vector<int> > sizes_r;
 
+  using offsets_dev_type = Kokkos::View<int*,ExecSpace> ;
+  std::vector< offsets_dev_type > offsets_dev;
+
   bool sparse;
   SptensorT<ExecSpace> X_sparse;
 
   unsigned nc;
+  std::vector< std::unordered_map<ttb_indx, unsigned> > maps;
   std::vector< std::vector<int> > num_row_sends;
   std::vector< std::vector<int> > num_row_recvs;
   std::vector< std::vector<int> > row_send_offsets;
@@ -658,14 +664,9 @@ private:
   std::vector< fac_vec_type > fac_recvs;
 
 public:
-  // using unordered_map_type =
-  //   Kokkos::UnorderedMap<ttb_indx,unsigned,Kokkos::HostSpace>;
-  using unordered_map_type = std::unordered_map<ttb_indx, unsigned>;
-  std::vector<unordered_map_type> maps;
-
-public:
   KtensorTwoSidedUpdate(const DistTensor<ExecSpace>& X,
-                                       const KtensorT<ExecSpace>& u);
+                        const KtensorT<ExecSpace>& u,
+                        const AlgParams& algParams);
   virtual ~KtensorTwoSidedUpdate();
 
   KtensorTwoSidedUpdate(KtensorTwoSidedUpdate&&) = default;
@@ -704,9 +705,9 @@ public:
                         const KtensorT<ExecSpace>& u_overlapped,
                         const ttb_indx n) const override;
 
-  unsigned find_proc_for_row(unsigned n, unsigned row) const;
-
   // These have to be public for Cuda
+
+  void extractRowRecvsDevice();
 
   void doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
                       const KtensorT<ExecSpace>& u,
@@ -717,6 +718,10 @@ public:
                       const ttb_indx n) const;
 
 private:
+
+  unsigned find_proc_for_row(unsigned n, unsigned row) const;
+
+  void extractRowRecvsHost();
 
   void doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
                       const KtensorT<ExecSpace>& u) const;
@@ -759,7 +764,7 @@ createKtensorUpdate(const TensorType& X,
   else if (algParams.dist_update_method == Dist_Update_Method::OneSided)
     dku = new KtensorOneSidedUpdate<exec_space>(X, u);
    else if (algParams.dist_update_method == Dist_Update_Method::TwoSided)
-    dku = new KtensorTwoSidedUpdate<exec_space>(X, u);
+     dku = new KtensorTwoSidedUpdate<exec_space>(X, u, algParams);
   else
     Genten::error("Unknown distributed Ktensor update method");
   return dku;
