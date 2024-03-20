@@ -785,7 +785,7 @@ KtensorTwoSidedUpdate<ExecSpace>::
 KtensorTwoSidedUpdate(const DistTensor<ExecSpace>& X,
                       const KtensorT<ExecSpace>& u,
                       const AlgParams& a) :
-  pmap(u.getProcessorMap()), nc(u.ncomponents()), algParams(a)
+  pmap(u.getProcessorMap()), algParams(a), nc(u.ncomponents())
 {
   parallel = pmap == nullptr || (pmap != nullptr && pmap->gridSize() > 1);
   if (parallel) {
@@ -818,8 +818,8 @@ KtensorTwoSidedUpdate(const DistTensor<ExecSpace>& X,
         offsets_r[n][p] = offsets_r[n][p-1] + sizes_r[n][p-1];
       }
 
-      offsets_dev[n] = offsets_dev_type("offsets-dev", np);
-      Kokkos::deep_copy(offsets_dev[n], offsets_dev_type(offsets[n].data(),np));
+      offsets_dev[n] = offsets_type("offsets-dev", np);
+      Kokkos::deep_copy(offsets_dev[n], host_offsets_type(offsets[n].data(),np));
     }
   }
 
@@ -840,13 +840,28 @@ extractRowRecvsHost()
   GENTEN_START_TIMER("extract row recvs host");
   const ttb_indx nnz = X_sparse.nnz();
   const unsigned nd = X_sparse.ndims();
-  maps.resize(nd);
-  for (unsigned n=0; n<nd; ++n)
+  if (maps.empty()) {
+    maps.resize(nd);
+    row_recvs_for_proc.resize(nd);
+    for (unsigned n=0; n<nd; ++n) {
+      const unsigned np = offsets[n].size();
+      row_recvs_for_proc[n].resize(np);
+    }
+  }
+  for (unsigned n=0; n<nd; ++n) {
+    const unsigned np = offsets[n].size();
     maps[n].clear();
+    for (unsigned p=0; p<np; ++p)
+      row_recvs_for_proc[n][p].resize(0);
+  }
 
+  GENTEN_START_TIMER("build row recv map");
   auto X_sparse_h = create_mirror_view(X_sparse);
   deep_copy(X_sparse_h, X_sparse);
-
+  for (unsigned n=0; n<nd; ++n) {
+    Kokkos::deep_copy(num_row_recvs[n], 0);
+    Kokkos::deep_copy(num_fac_recvs[n], 0);
+  }
   for (ttb_indx i=0; i<nnz; ++i) {
     const auto subs = X_sparse_h.getSubscripts(i);
     for (unsigned n=0; n<nd; ++n) {
@@ -859,6 +874,54 @@ extractRowRecvsHost()
         row_recvs_for_proc[n][p].push_back(row);
       }
     }
+  }
+  GENTEN_STOP_TIMER("build row recv map");
+
+  for (unsigned n=0; n<nd; ++n) {
+    const unsigned np = offsets[n].size();
+
+    GENTEN_START_TIMER("total num recvs");
+    ttb_indx tot_num_row_recvs = 0;
+    ttb_indx tot_num_fac_recvs = 0;
+    for (unsigned p=0; p<np; ++p) {
+      row_recv_offsets[n][p] = tot_num_row_recvs;
+      tot_num_row_recvs += num_row_recvs[n][p];
+
+      fac_recv_offsets[n][p] = tot_num_fac_recvs;
+      tot_num_fac_recvs += num_fac_recvs[n][p];
+    }
+    GENTEN_STOP_TIMER("total num recvs");
+
+    // allocate recv buffers
+    GENTEN_START_TIMER("allocate recv buffers");
+    row_recvs[n] = row_vec_type(Kokkos::ViewAllocateWithoutInitializing("row_recvs"), tot_num_row_recvs);
+    fac_recvs[n] = fac_vec_type(Kokkos::ViewAllocateWithoutInitializing("fac_recvs"), tot_num_fac_recvs);
+    Kokkos::fence();
+    GENTEN_STOP_TIMER("allocate recv buffers");
+
+    // Sort rows we receive from eaach processor for more predictable
+    // memory accesses of factor matrix rows on the host
+    if (!is_gpu_space<ExecSpace>::value) {
+      GENTEN_START_TIMER("sort row recvs");
+      for (unsigned p=0; p<np; ++p)
+        std::sort(row_recvs_for_proc[n][p].begin(),
+                  row_recvs_for_proc[n][p].end());
+      GENTEN_STOP_TIMER("sort row recvs");
+    }
+
+    // fill row recv buffer with rows we receive from each proc
+    GENTEN_START_TIMER("fill row recvs");
+    auto rrh = Kokkos::create_mirror_view(row_recvs[n]);
+    ttb_indx idx = 0;
+    for (unsigned p=0; p<np; ++p) {
+      gt_assert(static_cast<int>(row_recvs_for_proc[n][p].size()) == num_row_recvs[n][p]);
+      for (int i=0; i<num_row_recvs[n][p]; ++i) {
+        rrh[idx++] = row_recvs_for_proc[n][p][i];
+      }
+    }
+    Kokkos::deep_copy(row_recvs[n], rrh);
+    GENTEN_STOP_TIMER("fill row recvs");
+
   }
   GENTEN_STOP_TIMER("extract row recvs host");
 }
@@ -887,24 +950,38 @@ KtensorTwoSidedUpdate<ExecSpace>::
 extractRowRecvsDevice()
 {
   using unordered_map_type = Kokkos::UnorderedMap<ttb_indx,unsigned,ExecSpace>;
-  using umv_type = Kokkos::View<int*,Kokkos::HostSpace>;
 
   GENTEN_START_TIMER("extract row recvs device");
   const ttb_indx nnz = X_sparse.nnz();
   const unsigned nd = X_sparse.ndims();
   const unsigned nc_ = nc;
+  if (num_row_recvs_dev.empty()) {
+    num_row_recvs_dev.resize(nd);
+    num_fac_recvs_dev.resize(nd);
+    row_recv_offsets_dev.resize(nd);
+    for (unsigned n=0; n<nd; ++n) {
+      const unsigned np = offsets[n].size();
+      num_row_recvs_dev[n] = offsets_type("num_row_recvs_dev", np);
+      num_fac_recvs_dev[n] = offsets_type("num_fac_recvs_dev", np);
+      row_recv_offsets_dev[n] = offsets_type("row_recv_offsets_dev", np);
+    }
+  }
+
   for (unsigned n=0; n<nd; ++n) {
     const unsigned np = offsets[n].size();
 
+    GENTEN_START_TIMER("build row recv map");
     // Get list of unique rows and associated processors
     // Even though there are at most nrows unique keys, we use 2*nrows as the
     // capacity hint to ensure there is enough space in the map.
     const ttb_indx nrows = offsets[n][np-1]+sizes[n][np-1];
     unordered_map_type map(2*nrows);
-    const offsets_dev_type od = offsets_dev[n];
+    const offsets_type od = offsets_dev[n];
     const auto subs = X_sparse.getSubscripts();
-    Kokkos::View<int*,ExecSpace> nrr("num row recvs", np);
-    Kokkos::View<int*,ExecSpace> nfr("num fac recvs", np);
+    auto nrrd = num_row_recvs_dev[n];
+    auto nfrd = num_fac_recvs_dev[n];
+    Kokkos::deep_copy(nrrd, 0);
+    Kokkos::deep_copy(nfrd, 0);
     Kokkos::parallel_for("Genten::TwoSidedDKU::BuildRowMap",
                          Kokkos::RangePolicy<ExecSpace>(0,nnz),
                          KOKKOS_LAMBDA(const ttb_indx i)
@@ -916,38 +993,72 @@ extractRowRecvsDevice()
         if (res.failed())
           Kokkos::abort("Insertion of row failed, capacity hint is likely too small!");
         if (res.success()) { // only true if key insert succeeded and it didn't exist in the map previously
-          Kokkos::atomic_add(&nrr[p], 1);
-          Kokkos::atomic_add(&nfr[p], nc_);
+          Kokkos::atomic_add(&nrrd[p], 1);
+          Kokkos::atomic_add(&nfrd[p], nc_);
         }
       }
     });
-    Kokkos::deep_copy(umv_type(num_row_recvs[n].data(), np), nrr);
-    Kokkos::deep_copy(umv_type(num_fac_recvs[n].data(), np), nfr);
+    Kokkos::deep_copy(num_row_recvs[n], nrrd);
+    Kokkos::deep_copy(num_fac_recvs[n], nfrd);
+    Kokkos::fence();
+    GENTEN_STOP_TIMER("build row recv map");
+
+    GENTEN_START_TIMER("total num recvs");
+    // Compute row recv offsets
+    int total_num_row_recvs;
+    auto nrr = num_row_recvs[n];
+    auto rro = row_recv_offsets[n];
+    Kokkos::parallel_scan("Genten::TwoSidedDKU::ComputeRowRecvOffsets",
+                          Kokkos::RangePolicy<HostExecSpace>(0,np),
+                          KOKKOS_LAMBDA(int i, int& partial_sum, bool is_final)
+    {
+      if (is_final) rro[i] = partial_sum;
+      partial_sum += nrr[i];
+    }, total_num_row_recvs);
+
+    // Compute fac recv offsets
+    int total_num_fac_recvs;
+    auto nfr = num_fac_recvs[n];
+    auto fro = fac_recv_offsets[n];
+    Kokkos::parallel_scan("Genten::TwoSidedDKU::ComputeFacRecvOffsets",
+                          Kokkos::RangePolicy<HostExecSpace>(0,np),
+                          KOKKOS_LAMBDA(int i, int& partial_sum, bool is_final)
+    {
+      if (is_final) fro[i] = partial_sum;
+      partial_sum += nfr[i];
+    }, total_num_fac_recvs);
+    Kokkos::deep_copy(row_recv_offsets_dev[n], rro);
+    Kokkos::fence();
+    GENTEN_STOP_TIMER("total num recvs");
+
+    // allocate recv buffers
+    GENTEN_START_TIMER("allocate recv buffers");
+    row_recvs[n] = row_vec_type(Kokkos::ViewAllocateWithoutInitializing("row_recvs"), total_num_row_recvs);
+    fac_recvs[n] = fac_vec_type(Kokkos::ViewAllocateWithoutInitializing("fac_recvs"), total_num_fac_recvs);
+    Kokkos::fence();
+    GENTEN_STOP_TIMER("allocate recv buffers");
 
     // Compute list of recvs for each processor
+    GENTEN_START_TIMER("fill row recvs");
     const ttb_indx sz = map.capacity();
-    for (unsigned p=0; p<np; ++p) {
-      const ttb_indx num_recv = num_row_recvs[n][p];
-      Kokkos::View<int*,ExecSpace> rrfp("row recvs for proc", num_recv);
-      Kokkos::View<int,ExecSpace> cnt("cnt");
-      Kokkos::parallel_for("Genten::TwoSidedDKU::BuildRowRecvsForProc",
-                           Kokkos::RangePolicy<ExecSpace>(0,sz),
-                           KOKKOS_LAMBDA(const ttb_indx i)
-      {
-        if (map.valid_at(i)) {
-          const unsigned row = map.key_at(i);
-          const unsigned proc = map.value_at(i);
-          if (proc == p) {
-            const int idx = Kokkos::atomic_fetch_add(&cnt(), 1);
-            rrfp[idx] = row;
-          }
-        }
-      });
-      row_recvs_for_proc[n][p].resize(num_recv);
-      Kokkos::deep_copy(umv_type(row_recvs_for_proc[n][p].data(), num_recv),
-                        rrfp);
-    }
+    Kokkos::View<int*,ExecSpace> cnt("cnt", np);
+    auto rr = row_recvs[n];
+    auto rrod = row_recv_offsets_dev[n];
+    Kokkos::parallel_for("Genten::TwoSidedDKU::BuildRowRecvsForProc",
+                         Kokkos::RangePolicy<ExecSpace>(0,sz),
+                         KOKKOS_LAMBDA(const ttb_indx i)
+    {
+      if (map.valid_at(i)) {
+        const unsigned row = map.key_at(i);
+        const unsigned p = map.value_at(i);
+        const int idx = Kokkos::atomic_fetch_add(&cnt(p), 1);
+        rr[idx+rrod[p]] = row;
+      }
+    });
+    Kokkos::fence();
+    GENTEN_STOP_TIMER("fill row recvs");
   }
+  Kokkos::fence();
   GENTEN_STOP_TIMER("extract row recvs device");
 }
 
@@ -963,35 +1074,30 @@ updateTensor(const DistTensor<ExecSpace>& X)
     GENTEN_START_TIMER("initialize");
     X_sparse = X.getSptensor();
     const unsigned nd = X_sparse.ndims();
-    num_row_sends.resize(nd);
-    num_row_recvs.resize(nd);
-    row_send_offsets.resize(nd);
-    row_recv_offsets.resize(nd);
-    row_sends.resize(nd);
-    row_recvs.resize(nd);
-    num_fac_sends.resize(nd);
-    num_fac_recvs.resize(nd);
-    fac_send_offsets.resize(nd);
-    fac_recv_offsets.resize(nd);
-    fac_sends.resize(nd);
-    fac_recvs.resize(nd);
-    row_recvs_for_proc.resize(nd);
-    for (unsigned n=0; n<nd; ++n) {
-      const unsigned np = offsets[n].size();
-      num_row_sends[n].resize(np);
-      num_row_recvs[n].resize(np);
-      row_send_offsets[n].resize(np);
-      row_recv_offsets[n].resize(np);
-      num_fac_sends[n].resize(np);
-      num_fac_recvs[n].resize(np);
-      fac_send_offsets[n].resize(np);
-      fac_recv_offsets[n].resize(np);
-      row_recvs_for_proc[n].resize(np);
-      for (unsigned p=0; p<np; ++p)
-        row_recvs_for_proc[n][p].resize(0);
-
-      num_row_recvs[n].clear();
-      num_fac_recvs[n].clear();
+    if (num_row_sends.empty()) {
+      num_row_sends.resize(nd);
+      num_row_recvs.resize(nd);
+      row_send_offsets.resize(nd);
+      row_recv_offsets.resize(nd);
+      row_sends.resize(nd);
+      row_recvs.resize(nd);
+      num_fac_sends.resize(nd);
+      num_fac_recvs.resize(nd);
+      fac_send_offsets.resize(nd);
+      fac_recv_offsets.resize(nd);
+      fac_sends.resize(nd);
+      fac_recvs.resize(nd);
+      for (unsigned n=0; n<nd; ++n) {
+        const unsigned np = offsets[n].size();
+        num_row_sends[n] = host_offsets_type("num_row_sends", np);
+        num_row_recvs[n] = host_offsets_type("num_row_recvs", np);
+        row_send_offsets[n] = host_offsets_type("row_send_offsets", np);
+        row_recv_offsets[n] = host_offsets_type("row_recv_offsets", np);
+        num_fac_sends[n] = host_offsets_type("num_fac_sends", np);
+        num_fac_recvs[n] = host_offsets_type("num_fac_recvs", np);
+        fac_send_offsets[n] = host_offsets_type("fac_send_offsets", np);
+        fac_recv_offsets[n] = host_offsets_type("fac_recv_offsets", np);
+      }
     }
     GENTEN_STOP_TIMER("initialize");
 
@@ -1016,59 +1122,49 @@ updateTensor(const DistTensor<ExecSpace>& X)
       GENTEN_STOP_TIMER("num row sends");
 
       GENTEN_START_TIMER("num fac sends");
-      for (unsigned p=0; p<np; ++p)
-        num_fac_sends[n][p] = num_row_sends[n][p]*nc;
+      auto nfs = num_fac_sends[n];
+      auto nrs = num_row_sends[n];
+      const unsigned nc_ = nc;
+      Kokkos::parallel_for("Genten::TwoSidedDKU::ComputeNumFacSends",
+                           Kokkos::RangePolicy<HostExecSpace>(0,np),
+                           KOKKOS_LAMBDA(const int p)
+      {
+        nfs[p] = nrs[p]*nc_;
+      });
+      Kokkos::fence();
       GENTEN_STOP_TIMER("num fac sends");
 
       // compute total number of sends and receives and offsets
-      GENTEN_START_TIMER("total num sends and recvs");
-      ttb_indx tot_num_row_sends = 0;
-      ttb_indx tot_num_row_recvs = 0;
-      ttb_indx tot_num_fac_sends = 0;
-      ttb_indx tot_num_fac_recvs = 0;
-      for (unsigned p=0; p<np; ++p) {
-        row_send_offsets[n][p] = tot_num_row_sends;
-        row_recv_offsets[n][p] = tot_num_row_recvs;
-        tot_num_row_sends += num_row_sends[n][p];
-        tot_num_row_recvs += num_row_recvs[n][p];
+      GENTEN_START_TIMER("total num sends");
+      // Compute row recv offsets
+      int total_num_row_sends;
+      auto rso = row_send_offsets[n];
+      Kokkos::parallel_scan("Genten::TwoSidedDKU::ComputeRowSendOffsets",
+                            Kokkos::RangePolicy<HostExecSpace>(0,np),
+                            KOKKOS_LAMBDA(int i, int& partial_sum, bool is_final)
+      {
+        if (is_final) rso[i] = partial_sum;
+        partial_sum += nrs[i];
+      }, total_num_row_sends);
 
-        fac_send_offsets[n][p] = tot_num_fac_sends;
-        fac_recv_offsets[n][p] = tot_num_fac_recvs;
-        tot_num_fac_sends += num_fac_sends[n][p];
-        tot_num_fac_recvs += num_fac_recvs[n][p];
-      }
-      GENTEN_STOP_TIMER("total num sends and recvs");
+      // Compute fac send offsets
+      int total_num_fac_sends;
+      auto fso = fac_send_offsets[n];
+      Kokkos::parallel_scan("Genten::TwoSidedDKU::ComputeFacSendOffsets",
+                            Kokkos::RangePolicy<HostExecSpace>(0,np),
+                            KOKKOS_LAMBDA(int i, int& partial_sum, bool is_final)
+      {
+        if (is_final) fso[i] = partial_sum;
+        partial_sum += nfs[i];
+      }, total_num_fac_sends);
+      Kokkos::fence();
+      GENTEN_STOP_TIMER("total num sends");
 
-      // allocate row send/recv buffers
-      GENTEN_START_TIMER("allocate buffers");
-      row_sends[n] = row_vec_type(Kokkos::ViewAllocateWithoutInitializing("row_sends"), tot_num_row_sends);
-      row_recvs[n] = row_vec_type(Kokkos::ViewAllocateWithoutInitializing("row_recvs"), tot_num_row_recvs);
-      fac_sends[n] = fac_vec_type(Kokkos::ViewAllocateWithoutInitializing("fac_sends"), tot_num_fac_sends);
-      fac_recvs[n] = fac_vec_type(Kokkos::ViewAllocateWithoutInitializing("fac_recvs"), tot_num_fac_recvs);
-      GENTEN_STOP_TIMER("allocate buffers");
-
-      // Sort rows we receive from eaach processor for more predictable
-      // memory accesses of factor matrix rows on the host
-      if (!is_gpu_space<ExecSpace>::value) {
-        GENTEN_START_TIMER("sort row recvs");
-        for (unsigned p=0; p<np; ++p)
-          std::sort(row_recvs_for_proc[n][p].begin(),
-                    row_recvs_for_proc[n][p].end());
-        GENTEN_STOP_TIMER("sort row recvs");
-      }
-
-      // fill row recv buffer with rows we receive from each proc
-      GENTEN_START_TIMER("fill row recvs");
-      auto rrh = Kokkos::create_mirror_view(row_recvs[n]);
-      ttb_indx idx = 0;
-      for (unsigned p=0; p<np; ++p) {
-        gt_assert(static_cast<int>(row_recvs_for_proc[n][p].size()) == num_row_recvs[n][p]);
-        for (int i=0; i<num_row_recvs[n][p]; ++i) {
-          rrh[idx++] = row_recvs_for_proc[n][p][i];
-        }
-      }
-      Kokkos::deep_copy(row_recvs[n], rrh);
-      GENTEN_STOP_TIMER("fill row recvs");
+      // allocate send buffers
+      GENTEN_START_TIMER("allocate send buffers");
+      row_sends[n] = row_vec_type(Kokkos::ViewAllocateWithoutInitializing("row_sends"), total_num_row_sends);
+      fac_sends[n] = fac_vec_type(Kokkos::ViewAllocateWithoutInitializing("fac_sends"), total_num_fac_sends);
+      GENTEN_STOP_TIMER("allocate send buffers");
 
       // compute rows we need to send
       GENTEN_START_TIMER("fill row sends");

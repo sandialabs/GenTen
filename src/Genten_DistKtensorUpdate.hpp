@@ -637,24 +637,29 @@ private:
   std::vector< std::vector<int> > offsets_r;
   std::vector< std::vector<int> > sizes_r;
 
-  using offsets_dev_type = Kokkos::View<int*,ExecSpace> ;
-  std::vector< offsets_dev_type > offsets_dev;
-
   bool sparse;
   SptensorT<ExecSpace> X_sparse;
-
   unsigned nc;
-  std::vector< std::unordered_map<ttb_indx, unsigned> > maps;
-  std::vector< std::vector<int> > num_row_sends;
-  std::vector< std::vector<int> > num_row_recvs;
-  std::vector< std::vector<int> > row_send_offsets;
-  std::vector< std::vector<int> > row_recv_offsets;
-  std::vector< std::vector< std::vector<int> > > row_recvs_for_proc;
 
-  std::vector< std::vector<int> > num_fac_sends;
-  std::vector< std::vector<int> > num_fac_recvs;
-  std::vector< std::vector<int> > fac_send_offsets;
-  std::vector< std::vector<int> > fac_recv_offsets;
+  using offsets_type = Kokkos::View<int*,ExecSpace>;
+  using host_offsets_type = Kokkos::View<int*,Kokkos::HostSpace>;
+  using HostExecSpace = typename Kokkos::HostSpace::execution_space;
+  std::vector< offsets_type > offsets_dev;
+
+  // MPI_Alltoallv doesn't appear to work with these on the device
+  // (for at least some MPI libraries)
+  std::vector< host_offsets_type > num_row_sends;
+  std::vector< host_offsets_type > num_row_recvs;
+  std::vector< host_offsets_type > row_send_offsets;
+  std::vector< host_offsets_type > row_recv_offsets;
+  std::vector< host_offsets_type > num_fac_sends;
+  std::vector< host_offsets_type > num_fac_recvs;
+  std::vector< host_offsets_type > fac_send_offsets;
+  std::vector< host_offsets_type > fac_recv_offsets;
+
+  std::vector< offsets_type > num_row_recvs_dev;
+  std::vector< offsets_type > num_fac_recvs_dev;
+  std::vector< offsets_type > row_recv_offsets_dev;
 
   using row_vec_type = Kokkos::View<ttb_indx*,ExecSpace>;
   using fac_vec_type = Kokkos::View<ttb_real*,ExecSpace>;
@@ -662,6 +667,9 @@ private:
   std::vector< row_vec_type > row_recvs;
   std::vector< fac_vec_type > fac_sends;
   std::vector< fac_vec_type > fac_recvs;
+
+  std::vector< std::unordered_map<ttb_indx, unsigned> > maps;
+  std::vector< std::vector< std::vector<int> > > row_recvs_for_proc;
 
 public:
   KtensorTwoSidedUpdate(const DistTensor<ExecSpace>& X,
