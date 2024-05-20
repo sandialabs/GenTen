@@ -1208,7 +1208,7 @@ function(add_genten_mpi_tests name cmd args spaces dists)
       # The tests can run VERY slowly with multiple threads and MPI ranks,
       # so run with a single thread for OpenMP and Threads
       if (HAVE_MPI AND (space STREQUAL "openmp") OR (space STREQUAL "threads"))
-        string(CONCAT test_args ${test_args} " --kokkos-threads=1")
+        string(CONCAT test_args ${test_args} " --kokkos-num-threads=1")
       endif()
       genten_add_test(NAME ${test_name} COMMAND ${cmd} ARGS ${test_args} PARALLEL)
     endforeach()
