@@ -119,14 +119,13 @@ Genten::AlgParams::AlgParams() :
   adam_beta2(0.999),
   adam_eps(1.0e-8),
   async(false),
-  anneal(false),
+  annealer(Genten::GCP_AnnealerMethod::default_type),
   anneal_min_lr(1e-14),
   anneal_max_lr(1e-10),
+  anneal_Ti(10.0),
   fed_method(Genten::GCP_FedMethod::default_type),
   meta_step_type(Genten::GCP_Step::default_type),
   meta_rate(1e-3),
-  annealer(Genten::GCP_AnnealerMethod::default_type),
-  anneal_Ti(10.0),
   downpour_iters(4),
   streaming_solver(Genten::GCP_Streaming_Solver::default_type),
   history_method(Genten::GCP_Streaming_History_Method::default_type),
@@ -291,9 +290,13 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   adam_beta2 = parse_ttb_real(args, "--adam-beta2", adam_beta2, 0.0, 1.0);
   adam_eps = parse_ttb_real(args, "--adam-eps", adam_eps, 0.0, 1.0);
   async = parse_ttb_bool(args, "--async", "--sync", async);
-  anneal = parse_ttb_bool(args, "--anneal", "--no-anneal", anneal);
+  annealer = parse_ttb_enum(args, "--annealer", annealer,
+                              Genten::GCP_AnnealerMethod::num_types,
+                              Genten::GCP_AnnealerMethod::types,
+                              Genten::GCP_AnnealerMethod::names);
   anneal_min_lr = parse_ttb_real(args, "--anneal-min-lr", anneal_min_lr, 0.0, 1.0);
   anneal_max_lr = parse_ttb_real(args, "--anneal-max-lr", anneal_max_lr, 0.0, 1.0);
+  anneal_Ti = parse_ttb_real(args, "--anneal-temp", anneal_Ti, 0.0, DOUBLE_MAX);
 
   // GCP-Fed options
   fed_method = parse_ttb_enum(args, "--fed-method", fed_method,
@@ -305,11 +308,6 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
                                   Genten::GCP_Step::types,
                                   Genten::GCP_Step::names);
   meta_rate = parse_ttb_real(args, "--meta-rate", meta_rate, 0.0, DOUBLE_MAX);
-  annealer = parse_ttb_enum(args, "--annealer", annealer,
-                              Genten::GCP_AnnealerMethod::num_types,
-                              Genten::GCP_AnnealerMethod::types,
-                              Genten::GCP_AnnealerMethod::names);
-  anneal_Ti = parse_ttb_real(args, "--anneal-temp", anneal_Ti, 0.0, DOUBLE_MAX);
   downpour_iters =
     parse_ttb_indx(args, "--downpour-iters", downpour_iters, 1, INT_MAX);
 
@@ -505,6 +503,14 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_value(gcp_input, "adam-beta1", adam_beta1, 0.0, 1.0);
     parse_ptree_value(gcp_input, "adam-beta2", adam_beta2, 0.0, 1.0);
     parse_ptree_value(gcp_input, "adam-eps", adam_eps, 0.0, 1.0);
+    auto anneal_input_o = gcp_input.get_child_optional("annealer");
+    if (anneal_input_o) {
+      auto& anneal_input = *anneal_input_o;
+      parse_ptree_enum<GCP_AnnealerMethod>(anneal_input, "method", annealer);
+      parse_ptree_value(anneal_input, "min-lr", anneal_min_lr, 0.0, 1.0);
+      parse_ptree_value(anneal_input, "max-lr", anneal_max_lr, 0.0, 1.0);
+      parse_ptree_value(anneal_input, "temp", anneal_Ti, 0.0, DOUBLE_MAX);
+    }
   };
   auto gcp_input_o = input.get_child_optional("gcp-sgd");
   if (gcp_input_o) {
@@ -516,9 +522,6 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_value(gcp_input, "bulk-factor", bulk_factor, 1, INT_MAX);
     parse_ptree_value(gcp_input, "fuse-sa", fuse_sa);
     parse_ptree_value(gcp_input, "async", async);
-    parse_ptree_value(gcp_input, "anneal", anneal);
-    parse_ptree_value(gcp_input, "anneal-min-lr", anneal_min_lr, 0.0, 1.0);
-    parse_ptree_value(gcp_input, "anneal-max-lr", anneal_max_lr, 0.0, 1.0);
   }
 
   // GCP-Fed
@@ -529,8 +532,6 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_enum<GCP_FedMethod>(gcp_input, "fed-method", fed_method);
     parse_ptree_enum<GCP_Step>(gcp_input, "meta-step", meta_step_type);
     parse_ptree_value(gcp_input, "meta-rate", meta_rate, 0.0, DOUBLE_MAX);
-    parse_ptree_enum<GCP_AnnealerMethod>(gcp_input, "annealer", annealer);
-    parse_ptree_value(gcp_input, "anneal-temp", anneal_Ti, 0.0, DOUBLE_MAX);
     parse_ptree_value(gcp_input, "downpour-iters", downpour_iters, 1, INT_MAX);
   }
 
@@ -721,12 +722,18 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --adam-beta2       Decay rate for 2nd moment avg." << std::endl;
   out << "  --adam-eps         Shift in ADAM step." << std::endl;
   out << "  --async            Asynchronous SGD solver" << std::endl;
-  out << "  --anneal           Apply annealing algorithm to step size"
-      << std::endl;
+  out << "  --annealer <type>  Step size annealer method: ";
+  for (unsigned i=0; i<Genten::GCP_AnnealerMethod::num_types; ++i) {
+    out << Genten::GCP_AnnealerMethod::names[i];
+    if (i != Genten::GCP_AnnealerMethod::num_types-1)
+      out << ", ";
+  }
+  out << std::endl;
   out << "  --anneal-min-lr    Minimum learning rate for annealer"
       << std::endl;
   out << "  --anneal-max-lr    Maximum learning rate for annealer"
       << std::endl;
+  out << "  --anneal-temp      Initial annealer temperature" << std::endl;
 
   out << std::endl;
   out << "GCP-Fed options:" << std::endl;
@@ -746,14 +753,6 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << std::endl;
   out << "  --meta-rate <float> initial step size for meta optimizer"
       << std::endl;
-  out << "  --annealer <type>  Step size annealer method: ";
-  for (unsigned i=0; i<Genten::GCP_AnnealerMethod::num_types; ++i) {
-    out << Genten::GCP_AnnealerMethod::names[i];
-    if (i != Genten::GCP_AnnealerMethod::num_types-1)
-      out << ", ";
-  }
-  out << std::endl;
-  out << "  --anneal-temp      Initial annealer temperature" << std::endl;
   out << "  --downpour-iters   Number of downpour iterations"
       << std::endl;
 
@@ -894,11 +893,10 @@ void Genten::AlgParams::print(std::ostream& out) const
   out << "  adam-beta2 = " << adam_beta2 << std::endl;
   out << "  adam-eps = " << adam_eps << std::endl;
   out << "  async = " << (async ? "true" : "false") << std::endl;
-  out << "  anneal = " << (anneal ? "true" : "false") << std::endl;
-  if (anneal){
-    out << "  anneal-min-lr = " << anneal_min_lr << std::endl;
-    out << "  anneal-max-lr = " << anneal_max_lr << std::endl;
-  }
+  out << "  annealer = " << Genten::GCP_AnnealerMethod::names[annealer] << std::endl;
+  out << "  anneal-min-lr = " << anneal_min_lr << std::endl;
+  out << "  anneal-max-lr = " << anneal_max_lr << std::endl;
+  out << "  anneal-temp = " << anneal_Ti << std::endl;
 
   out << std::endl;
   out << "GCP-Fed options:" << std::endl;
@@ -907,8 +905,6 @@ void Genten::AlgParams::print(std::ostream& out) const
   out << "  meta-step = " << Genten::GCP_Step::names[meta_step_type]
       << std::endl;
   out << "  meta-rate = " << meta_rate << std::endl;
-  out << "  annealer = " << Genten::GCP_AnnealerMethod::names[annealer] << std::endl;
-  out << "  anneal-temp = " << anneal_Ti << std::endl;
   out << "  downpour-iters = " << downpour_iters << std::endl;
 
   out << std::endl;

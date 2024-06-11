@@ -56,7 +56,6 @@
 
 // To do:
 //  * use normal sampling setup
-//  * unify annealers with gcp-sgd
 //  * use normal dist-update methods
 //  * add MPI one-sided back in
 
@@ -258,15 +257,15 @@ operator() (const Loss& loss) {
     out << "\nGCP-FedAvg:\n";
   else
     out << "\nGCP-FedOpt:\n";
-  out << "  Generalized function type: " << loss.name() << std::endl
-      << "  Meta step method: " << GCP_Step::names[algParams_.meta_step_type]
+  out << "Generalized function type: " << loss.name() << std::endl
+      << "Meta step method: " << GCP_Step::names[algParams_.meta_step_type]
       << std::endl
-      << "  Local step method: " << GCP_Step::names[algParams_.step_type]
+      << "Local step method: " << GCP_Step::names[algParams_.step_type]
       << std::endl
-      << "  Max epochs: " << maxEpochs << std::endl
-      << "  Iterations per epoch: " << epochIters << std::endl
-      << "  Downpour interations: " << dp_iters << std::endl
-      << "  Max fails: " << max_fails << std::endl;
+      << "Max epochs: " << maxEpochs << std::endl
+      << "Iterations per epoch: " << epochIters << std::endl
+      << "Downpour interations: " << dp_iters << std::endl
+      << "Max fails: " << max_fails << std::endl;
   annealer.print(out);
   // NOTE (ETP 9/20/22:  sampler output is not correct because pmap is not
   // passed through the tensor, so it only prints the local number of samples.

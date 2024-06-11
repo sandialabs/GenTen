@@ -31,11 +31,7 @@
         "gnzs": 100,
         "gzs": 0,
         "fnzs": 10000,
-        "fzs": 0,
-        "learning-rate":
-        {
-            "step": 1e-3
-        }
+        "fzs": 0
     },
     "testing":
     {
