@@ -52,6 +52,7 @@
 #include "Genten_GCP_SGD_Step.hpp"
 #include "Genten_GCP_SGD_IterFactory.hpp"
 
+#include "Genten_Annealer.hpp"
 #include "Genten_Sptensor.hpp"
 #include "Genten_Tensor.hpp"
 #include "Genten_SystemTimer.hpp"
@@ -167,8 +168,6 @@ namespace Genten {
 
     // Constants for the algorithm
     const ttb_real tol = algParams.gcp_tol;
-    const ttb_real decay = algParams.decay;
-    const ttb_real rate = algParams.rate;
     const ttb_indx max_fails = algParams.max_fails;
     const ttb_indx epoch_iters = algParams.epoch_iters;
     const ttb_indx seed = algParams.gcp_seed > 0 ? algParams.gcp_seed : std::random_device{}();
@@ -180,16 +179,17 @@ namespace Genten {
     Sampler<TensorType,LossFunction> *sampler =
       createSampler<LossFunction>(X, u0, algParams);
 
+    // Create annealer
+    auto annealer = getAnnealer(algParams);
+
     if (print_hdr) {
       out << "\nGCP-SGD (Generalized CP Tensor Decomposition):\n"
           << "Generalized function type: " << loss_func.name() << std::endl
           << "Optimization method: " << GCP_Step::names[algParams.step_type]
           << std::endl
           << "Max iterations (epochs): " << maxEpochs << std::endl
-          << "Iterations per epoch: " << epoch_iters << std::endl
-          << "Learning rate / decay / maxfails: "
-          << std::setprecision(1) << std::scientific
-          << rate << " " << decay << " " << max_fails << std::endl;
+          << "Iterations per epoch: " << epoch_iters << std::endl;
+      annealer->print(out);
       sampler->print(out);
       out << "Gradient method: ";
       if (algParams.async)
@@ -301,73 +301,15 @@ namespace Genten {
       p.cum_time = timer.getTotalTime(timer_sgd);
     }
 
-    struct Annealer {
-      ttb_real last_returned = 0.0;
-      ttb_real last_good = 0.0;
-      ttb_real min_lr;
-      ttb_real max_lr = 0.0;
-      ttb_real warm_up_min;
-      ttb_real warm_up_max;
-      ttb_real warmup_scale;
-      int epoch_internal = 0;
-      int cycle_size = 100;
-      int warmup_size = 50;
-      bool do_warmup = true;
-
-      Annealer(AlgParams const& algParams):
-        min_lr(algParams.anneal_min_lr),
-        max_lr(algParams.anneal_max_lr),
-        warm_up_max(10 * algParams.anneal_max_lr)
-      {
-        warm_up_min = 0.1 * min_lr;
-        const auto term = std::log(warm_up_max/warm_up_min)/warmup_size;
-        warmup_scale = std::exp(term);
-      }
-
-      ttb_real operator()(int epoch){
-        if(do_warmup){
-          last_returned = warm_up_min * std::pow(warmup_scale, epoch_internal);
-        } else {
-          last_returned = min_lr + 0.5 * (max_lr - min_lr) * (1 +
-              std::cos(double(epoch_internal + cycle_size)/cycle_size * M_PI));
-        }
-        ++epoch_internal;
-        if(do_warmup && epoch_internal == warmup_size){
-          epoch_internal = 0; // Start over
-          do_warmup = false;
-        }
-        return last_returned;
-      }
-
-      void failed(){
-        if(do_warmup){
-          do_warmup = false;
-          max_lr = 0.5 * last_good;
-        } else {
-          min_lr *= 0.1;
-          max_lr *= 0.1;
-        }
-        epoch_internal = 0;
-      }
-
-      void success(){
-        last_good = last_returned;
-      }
-    } annealer(algParams);
-
     // SGD epoch loop
-    ttb_real nuc = 1.0;
     ttb_indx nfails = 0;
     ttb_indx total_iters = 0;
 
     for (numEpochs=0; numEpochs<maxEpochs; ++numEpochs) {
 
       // Gradient step size
-      if(algParams.anneal){
-        stepper->setStep(annealer(numEpochs));
-      } else {
-        stepper->setStep(nuc*rate);
-      }
+      auto epoch_lr = (*annealer)(numEpochs);
+      stepper->setStep(epoch_lr);
 
       // Epoch iterations
       it.run(X, loss_func, *sampler, *stepper, total_iters);
@@ -420,14 +362,12 @@ namespace Genten {
       }
 
       if (failed_epoch) {
-        nuc *= decay;
-
         // restart from last epoch
         u.set(u_prev);
         fest = fest_prev;
         fit = fit_prev;
         stepper->setFailed();
-        annealer.failed();
+        annealer->failed();
       }
       else {
         // update previous data
@@ -435,7 +375,7 @@ namespace Genten {
         fest_prev = fest;
         fit_prev = fit;
         stepper->setPassed();
-        annealer.success();
+        annealer->success();
       }
 
       if (nfails > max_fails || fest < tol)
