@@ -183,7 +183,8 @@ private:
     const std::vector<small_vector<ttb_indx>>& blocking,
     const TensorLayout layout,
     const ProcessorMap& pmap,
-    const AlgParams& algParams);
+    const AlgParams& algParams,
+    bool redistribute_needed = true);
 
   std::vector<ttb_indx> local_dims_;
   std::vector<ttb_indx> global_dims_;

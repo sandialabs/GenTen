@@ -724,24 +724,35 @@ static nlohmann::json json_schema = R"(
                   "type": "boolean",
                   "default": false
               },
-              "anneal": {
-                  "description": "Use annealing approach for step size",
-                  "type": "boolean",
-                  "default": false
-              },
-              "anneal-min-lr": {
-                  "description": "Minimum learning rate for annealer.",
-                  "type": "number",
-                  "minimum": 0.0,
-                  "maximum": 1.0,
-                  "default": 1e-14
-              },
-              "anneal-max-lr": {
-                  "description": "Maximum learning rate for annealer",
-                  "type": "number",
-                  "minimum": 0.0,
-                  "maximum": 1.0,
-                  "default": 1e-10
+              "annealer": {
+                  "description": "Step size annealer parameters",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                      "method": {
+                          "description": "Annealing method",
+                          "enum": ["traditional", "cosine"],
+                          "default": "traditional"
+                      },
+                      "max": {
+                          "description": "Initial max learning rate for cosine annealer",
+                          "type": "number",
+                          "minimum": 0.0,
+                          "default": 1e-9
+                      },
+                      "min": {
+                          "description": "Initial min learning rate for cosine annealer",
+                          "type": "number",
+                          "minimum": 0.0,
+                          "default": 1e-12
+                      },
+                      "temp": {
+                          "description": "Initial temperature",
+                          "type": "number",
+                          "minimum": 0.0,
+                          "default": 10.0
+                      }
+                  }
               },
               "goal": {
                 "$ref": "#/definitions/goal"
@@ -794,6 +805,19 @@ static nlohmann::json json_schema = R"(
                 "description": "Seed for random number generator used in sampling",
                 "type": "integer",
                 "minimum": 1
+              },
+              "rate": {
+                  "description": "Initial step size",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "default": 1e-3
+              },
+              "decay": {
+                  "description": "Rate step size decreases on fails",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "maximum": 1.0,
+                  "default": 0.1
               },
               "fails": {
                   "description": "Maximum number of fails",
@@ -919,27 +943,14 @@ static nlohmann::json json_schema = R"(
                   "default": 1e-3
               },
               "annealer": {
-                  "description": "Step size annealer",
-                  "enum": ["traditional", "cosine"],
-                  "default": "traditional"
-              },
-              "learning-rate": {
-                  "description": "Annealer learning rate parameters",
+                  "description": "Step size annealer parameters",
                   "type": "object",
                   "additionalProperties": false,
                   "properties": {
-                      "step": {
-                          "description": "Initial step size for traditional annealer",
-                          "type": "number",
-                          "minimum": 0.0,
-                          "default": 3e-4
-                      },
-                      "decay": {
-                          "description": "Rate step size decreases on fails",
-                          "type": "number",
-                          "minimum": 0.0,
-                          "maximum": 1.0,
-                          "default": 0.1
+                      "method": {
+                          "description": "Annealing method",
+                          "enum": ["traditional", "cosine"],
+                          "default": "traditional"
                       },
                       "max": {
                           "description": "Initial max learning rate for cosine annealer",

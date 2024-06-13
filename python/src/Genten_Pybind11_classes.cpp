@@ -300,15 +300,14 @@ void pygenten_algparams(py::module &m){
     cl.def_readwrite("adam_beta2", &Genten::AlgParams::adam_beta2);
     cl.def_readwrite("adam_eps", &Genten::AlgParams::adam_eps);
     cl.def_readwrite("async", &Genten::AlgParams::async);
-    cl.def_readwrite("anneal", &Genten::AlgParams::anneal);
+    cl.def_readwrite("annealer", &Genten::AlgParams::annealer);
     cl.def_readwrite("anneal_min_lr", &Genten::AlgParams::anneal_min_lr);
     cl.def_readwrite("anneal_max_lr", &Genten::AlgParams::anneal_max_lr);
+    cl.def_readwrite("anneal_temp", &Genten::AlgParams::anneal_Ti);
 
     cl.def_readwrite("fed_method", &Genten::AlgParams::fed_method);
     cl.def_readwrite("meta_step_type", &Genten::AlgParams::meta_step_type);
     cl.def_readwrite("meta_rate", &Genten::AlgParams::meta_rate);
-    cl.def_readwrite("annealer", &Genten::AlgParams::annealer);
-    cl.def_readwrite("anneal_temp", &Genten::AlgParams::anneal_Ti);
 
     cl.def_readwrite("streaming_solver", &Genten::AlgParams::streaming_solver);
     cl.def_readwrite("history_method", &Genten::AlgParams::history_method);

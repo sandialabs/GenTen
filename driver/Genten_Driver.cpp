@@ -474,7 +474,7 @@ int main(int argc, char* argv[])
           Genten::parse_ptree_value(tensor_input, "input-file", inputfilename);
           Genten::parse_ptree_value(tensor_input, "index-base", index_base, 0, INT_MAX);
           Genten::parse_ptree_value(tensor_input, "compressed", gz);
-          Genten::parse_ptree_value(tensor_input, "tensor-output-file", tensor_outputfilename);
+          Genten::parse_ptree_value(tensor_input, "output-file", tensor_outputfilename);
           Genten::parse_ptree_value(tensor_input, "rand-nnz", nnz, 1, INT_MAX);
           if (tensor_input.get_child_optional("rand-dims")) {
             std::vector<ttb_real> dims;
@@ -689,7 +689,6 @@ int main(int argc, char* argv[])
       else
         Genten::error("Invalid execution space: " + std::string(Genten::Execution_Space::names[algParams.exec_space]));
     }
-
   }
   catch(const std::exception& e)
   {

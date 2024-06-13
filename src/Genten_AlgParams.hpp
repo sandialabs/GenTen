@@ -147,16 +147,15 @@ namespace Genten {
     ttb_real adam_beta2;                 // Decay rate of second moment avg.
     ttb_real adam_eps;                   // Shift in ADAM/AdaGrad step
     bool async;                          // Asynchronous SGD solver
-    bool anneal;                         // Do Cosine annealing
-    ttb_real anneal_min_lr;
-    ttb_real anneal_max_lr;
+    GCP_AnnealerMethod::type annealer;   // Annealer method
+    ttb_real anneal_min_lr;              // Cosine annealer min learning rate
+    ttb_real anneal_max_lr;              // Cosine annealer max learning rate
+    ttb_real anneal_Ti;                  // Cosine annealer initial temperature
 
     // GCP Federated learning options
     GCP_FedMethod::type fed_method;      // Learning method (FedOpt or FedAvg)
     GCP_Step::type meta_step_type;       // Meta step type
     ttb_real meta_rate;                  // Initial meta step size
-    GCP_AnnealerMethod::type annealer;   // Annealer method
-    ttb_real anneal_Ti;                  // Temperature for traditional annealer
     ttb_indx downpour_iters;             // Downpour iterations
 
     // Streaming GCP options
