@@ -642,8 +642,18 @@ private:
   unsigned nc;
 
   using offsets_type = Kokkos::View<int*,ExecSpace>;
-  using host_offsets_type = Kokkos::View<int*,Kokkos::HostSpace>;
-  using HostExecSpace = typename Kokkos::HostSpace::execution_space;
+  // Set the host execution space to be ExecSpace if it is a host execution
+  // space.  This avoids using OpenMP instead of Serial when both are enabled
+  // when doing:
+  //   using host_offsets_type = Kokkos::View<int*,Kokkos::HostSpace>;
+  //   using HostExecSpace = typename Kokkos::HostSpace::execution_space;
+  using HostExecSpace =
+    std::conditional_t<
+      Kokkos::Impl::MemorySpaceAccess<
+        Kokkos::HostSpace, typename ExecSpace::memory_space >::accessible,
+      ExecSpace, typename Kokkos::HostSpace::execution_space >;
+  using HostDevice = Kokkos::Device< HostExecSpace, Kokkos::HostSpace >;
+  using host_offsets_type = Kokkos::View<int*,HostDevice>;
   std::vector< offsets_type > offsets_dev;
 
   // MPI_Alltoallv doesn't appear to work with these on the device
