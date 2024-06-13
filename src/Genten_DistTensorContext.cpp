@@ -280,7 +280,8 @@ distributeTensorToVectorsDense(const Tensor& dn_tensor_host, ttb_indx nnz,
 namespace {
 ttb_indx blockInThatDim(ttb_indx element, const small_vector<ttb_indx>& range) {
   // const ttb_indx nblocks = range.size();
-  gt_assert(element < range.back()); // This would mean the element is too large
+  if (element >= range.back())
+    Genten::error("Tensor nonzero exceeds expected range.  Is your index-base possibly set incorrectly?");
   gt_assert(range.size() >= 2);      // Range always has at least 2 elements
 
   // We could binary search, which could be faster for large ranges, but I
