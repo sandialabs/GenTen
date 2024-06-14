@@ -314,12 +314,15 @@ bool weightsAreSame(const KtensorT<ExecSpace>&) {
 #else
 template <typename ExecSpace>
 bool weightsAreSame(const KtensorT<ExecSpace> &u) {
-  const ttb_indx wspan = u.weights().values().span();
+  auto w = u.weights();
+  const ttb_indx wspan = w.values().span();
   if (!isValueSame(wspan)) {
     return false;
   }
+  auto w_h = create_mirror_view(w);
+  deep_copy(w_h, w);
   for (std::size_t i = 0; i < wspan; ++i) {
-    if (!isValueSame(u.weights(i))) {
+    if (!isValueSame(w_h[i])) {
       return false;
     }
   }
