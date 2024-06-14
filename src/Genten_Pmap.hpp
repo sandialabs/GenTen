@@ -164,7 +164,10 @@ public:
     static_assert(std::is_arithmetic<scalar_type2>::value,
                   "subGridAllReduce requires something like a double, or int");
 
-    MPI_Reduce(send.data(), recv.data(), send.span(),
+    scalar_type2* recv_data = nullptr;
+    if (sub_grid_rank_[i] == root)
+      recv_data = recv.data();
+    MPI_Reduce(send.data(), recv_data, send.span(),
                DistContext::toMpiType<scalar_type1>(),
                convertOp(op), root, sub_maps_[i]);
   }
