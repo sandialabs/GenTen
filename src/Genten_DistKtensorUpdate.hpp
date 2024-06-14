@@ -699,7 +699,7 @@ public:
   virtual KtensorT<ExecSpace>
   createOverlapKtensor(const KtensorT<ExecSpace>& u) const override;
 
-  virtual void initOverlapKtensor(KtensorT<ExecSpace>& u) const;
+  virtual void initOverlapKtensor(KtensorT<ExecSpace>& u) const override;
 
   virtual bool overlapAliasesArg() const override { return !parallel; }
 

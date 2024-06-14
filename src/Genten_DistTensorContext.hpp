@@ -389,9 +389,6 @@ KtensorT<ExecSpaceDst>
 DistTensorContext<ExecSpace>::
 importToAll(const KtensorT<ExecSpace>& u) const
 {
-  const bool print =
-    DistContext::isDebug() && (pmap_->gridRank() == 0);
-
   const ttb_indx nd = u.ndims();
   const ttb_indx nc = u.ncomponents();
   gt_assert(ttb_indx(global_dims_.size()) == nd);

@@ -1071,8 +1071,8 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
     }
 #endif
     else
-      Genten::error("Unknown distributed-guess method: " +
-                    algParams.dist_update_method);
+      Genten::error(std::string("Unknown distributed-guess method: ") +
+                    Dist_Update_Method::names[algParams.dist_update_method]);
   }
 
   if (DistContext::isDebug()) {
@@ -1257,8 +1257,8 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
     }
 #endif
     else
-      Genten::error("Unknown distributed ktensor method: " +
-                    algParams.dist_update_method);
+      Genten::error(std::string("Unknown distributed ktensor method: ") +
+                    Dist_Update_Method::names[algParams.dist_update_method]);
   }
 
   if (DistContext::isDebug()) {
