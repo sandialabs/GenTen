@@ -277,8 +277,8 @@ driver(const DistTensorContext<ExecSpace>& dtc,
   }
   else if (algParams.method == Genten::Solver_Method::GCP_SGD &&
            algParams.fuse_sa) {
-    if (algParams.dist_update_method == Dist_Update_Method::Tpetra)
-      Genten::error("Fused-SA GCP-SGD method does not work with Tpetra distributed parallelism");
+    if (algParams.dist_update_method != Dist_Update_Method::AllReduce)
+      Genten::error("Fused-SA GCP-SGD method requires AllReduce distributed parallelism");
     // Run GCP-SGD
     ttb_indx iter;
     ttb_real resNorm;
@@ -334,6 +334,22 @@ driver(const DistTensorContext<ExecSpace>& dtc,
     Teuchos::TimeMonitor::getStackedTimer()->report(out, comm, options);
   }
 #endif
+
+  if (algParams.timings_xml != "") {
+#if defined(HAVE_TEUCHOS)
+#ifdef HAVE_DIST
+    auto comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap->gridComm()));
+#else
+    auto comm = Teuchos::createSerialComm<int>();
+#endif
+    out << "Saving timings to " << algParams.timings_xml << std::endl;
+    std::ofstream timings(algParams.timings_xml);
+    Teuchos::TimeMonitor::getStackedTimer()->reportXML(timings, "", "", comm);
+    timings.close();
+#else
+    Genten::error("Saving timings to XML file requires Trilinos!");
+#endif
+    }
 
   x.setProcessorMap(nullptr);
   u.setProcessorMap(nullptr);
@@ -512,6 +528,22 @@ driver(const DistTensorContext<ExecSpace>& dtc,
     Teuchos::TimeMonitor::getStackedTimer()->report(out, comm, options);
   }
 #endif
+
+  if (algParams.timings_xml != "") {
+#if defined(HAVE_TEUCHOS)
+#ifdef HAVE_DIST
+    auto comm = Teuchos::rcp(new Teuchos::MpiComm<int>(pmap->gridComm()));
+#else
+    auto comm = Teuchos::createSerialComm<int>();
+#endif
+    out << "Saving timings to " << algParams.timings_xml << std::endl;
+    std::ofstream timings(algParams.timings_xml);
+    Teuchos::TimeMonitor::getStackedTimer()->reportXML(timings, "", "", comm);
+    timings.close();
+#else
+    Genten::error("Saving timings to XML file requires Trilinos!");
+#endif
+    }
 
   x.setProcessorMap(nullptr);
   u.setProcessorMap(nullptr);

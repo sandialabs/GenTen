@@ -181,6 +181,11 @@ namespace Genten {
 
       dku_F = createKtensorUpdate(Yf, u, algParams);
       dku_G = createKtensorUpdate(Yg, u, algParams);
+
+      if (algParams.dist_update_method != Dist_Update_Method::Tpetra) {
+        u_overlap_F = dku_F->createOverlapKtensor(u);
+        u_overlap_G = dku_G->createOverlapKtensor(u);
+      }
     }
 
     virtual ~StratifiedSampler()
@@ -253,25 +258,44 @@ namespace Genten {
             u, Impl::StratifiedGradient<LossFunction>(loss_func), false,
             Yf, wf, u_overlap_F, rand_pool, algParams);
       }
+      else if (algParams.dist_update_method == Dist_Update_Method::OneSided ||
+               algParams.dist_update_method == Dist_Update_Method::TwoSided) {
+        if (algParams.hash)
+          Impl::stratified_sample_tensor_onesided(
+            X, Impl::HashSearcher<ExecSpace>(this->X.impl(), hash_map),
+            num_samples_nonzeros_value, num_samples_zeros_value,
+            weight_nonzeros_value, weight_zeros_value,
+            u, Impl::StratifiedGradient<LossFunction>(loss_func), false,
+            Yf, wf, *dku_F, u_overlap_F, rand_pool, algParams);
+        else
+          Impl::stratified_sample_tensor_onesided(
+            X, Impl::SortSearcher<ExecSpace>(this->X.impl()),
+            num_samples_nonzeros_value, num_samples_zeros_value,
+            weight_nonzeros_value, weight_zeros_value,
+            u, Impl::StratifiedGradient<LossFunction>(loss_func), false,
+            Yf, wf, *dku_F, u_overlap_F, rand_pool, algParams);
+      }
       else {
+        dku_F->doImport(u_overlap_F, u);
         if (algParams.hash)
           Impl::stratified_sample_tensor(
             X, Impl::HashSearcher<ExecSpace>(this->X.impl(), hash_map),
             num_samples_nonzeros_value, num_samples_zeros_value,
             weight_nonzeros_value, weight_zeros_value,
-            u, Impl::StratifiedGradient<LossFunction>(loss_func), false,
-            Yf, wf, rand_pool, algParams);
+            u_overlap_F, Impl::StratifiedGradient<LossFunction>(loss_func),
+            false, Yf, wf, rand_pool, algParams);
         else
           Impl::stratified_sample_tensor(
             X, Impl::SortSearcher<ExecSpace>(this->X.impl()),
             num_samples_nonzeros_value, num_samples_zeros_value,
             weight_nonzeros_value, weight_zeros_value,
-            u, Impl::StratifiedGradient<LossFunction>(loss_func), false,
-            Yf, wf, rand_pool, algParams);
-        u_overlap_F = u;
+            u_overlap_F, Impl::StratifiedGradient<LossFunction>(loss_func),
+            false, Yf, wf, rand_pool, algParams);
       }
 
-      dku_F->updateTensor(Yf);
+      if (algParams.dist_update_method != Dist_Update_Method::OneSided &&
+          algParams.dist_update_method != Dist_Update_Method::TwoSided)
+        dku_F->updateTensor(Yf);
     }
 
     virtual void sampleTensorG(const KtensorT<ExecSpace>& u,
@@ -294,22 +318,39 @@ namespace Genten {
             u, Impl::StratifiedGradient<LossFunction>(loss_func), true,
             Yg, wg, u_overlap_G, rand_pool, algParams);
       }
+      else if (algParams.dist_update_method == Dist_Update_Method::OneSided ||
+               algParams.dist_update_method == Dist_Update_Method::TwoSided) {
+        if (algParams.hash)
+          Impl::stratified_sample_tensor_onesided(
+            X, Impl::HashSearcher<ExecSpace>(this->X.impl(), hash_map),
+            num_samples_nonzeros_grad, num_samples_zeros_grad,
+            weight_nonzeros_grad, weight_zeros_grad,
+            u, Impl::StratifiedGradient<LossFunction>(loss_func), true,
+            Yg, wg, *dku_G, u_overlap_G, rand_pool, algParams);
+        else
+          Impl::stratified_sample_tensor_onesided(
+            X, Impl::SortSearcher<ExecSpace>(this->X.impl()),
+            num_samples_nonzeros_grad, num_samples_zeros_grad,
+            weight_nonzeros_grad, weight_zeros_grad,
+            u, Impl::StratifiedGradient<LossFunction>(loss_func), true,
+            Yg, wg, *dku_G, u_overlap_G, rand_pool, algParams);
+      }
       else {
+        dku_G->doImport(u_overlap_G, u);
         if (algParams.hash)
           Impl::stratified_sample_tensor(
             X, Impl::HashSearcher<ExecSpace>(this->X.impl(), hash_map),
             num_samples_nonzeros_grad, num_samples_zeros_grad,
             weight_nonzeros_grad, weight_zeros_grad,
-            u, Impl::StratifiedGradient<LossFunction>(loss_func), true,
-            Yg, wg, rand_pool, algParams);
+            u_overlap_G, Impl::StratifiedGradient<LossFunction>(loss_func),
+            true, Yg, wg, rand_pool, algParams);
         else
           Impl::stratified_sample_tensor(
             X, Impl::SortSearcher<ExecSpace>(this->X.impl()),
             num_samples_nonzeros_grad, num_samples_zeros_grad,
             weight_nonzeros_grad, weight_zeros_grad,
-            u, Impl::StratifiedGradient<LossFunction>(loss_func), true,
-            Yg, wg, rand_pool, algParams);
-        u_overlap_G = u;
+            u_overlap_G, Impl::StratifiedGradient<LossFunction>(loss_func),
+            true, Yg, wg, rand_pool, algParams);
       }
 
       if (hist.do_gcp_loss()) {
@@ -328,7 +369,9 @@ namespace Genten {
           Yh, algParams);
       }
 
-      dku_G->updateTensor(Yg);
+      if (algParams.dist_update_method != Dist_Update_Method::OneSided &&
+          algParams.dist_update_method != Dist_Update_Method::TwoSided)
+        dku_G->updateTensor(Yg);
     }
 
     virtual void prepareGradient(const KtensorT<ExecSpace>& gt) override
@@ -339,7 +382,8 @@ namespace Genten {
         if (Yh.nnz() > 0)
           Yh.createPermutation();
       }
-      gt_overlap = dku_G->createOverlapKtensor(gt);
+      if (gt_overlap.isEmpty() || dku_G->overlapDependsOnTensor())
+        gt_overlap = dku_G->createOverlapKtensor(gt);
     }
 
     virtual void value(const KtensorT<ExecSpace>& u,
@@ -385,8 +429,7 @@ namespace Genten {
                           const int timer_grad_update) override
     {
       timer.start(timer_init);
-      gt_overlap.weights() = ttb_real(1.0);
-      gt_overlap.setMatrices(0.0);
+      dku_G->initOverlapKtensor(gt_overlap);
       timer.stop(timer_init);
 
       // We are cheating here by not importing ut, since we know it happened

@@ -48,6 +48,9 @@
 #include "Genten_DistFacMatrix.hpp"
 #include "Genten_SystemTimer.hpp"
 
+#include "Kokkos_UnorderedMap.hpp"
+#include <unordered_map>
+
 namespace Genten {
 
 template <typename ExecSpace>
@@ -62,7 +65,7 @@ public:
   DistKtensorUpdate& operator=(DistKtensorUpdate&&) = default;
   DistKtensorUpdate& operator=(const DistKtensorUpdate&) = default;
 
-  virtual void updateTensor(DistTensor<ExecSpace>& X) {}
+  virtual void updateTensor(const DistTensor<ExecSpace>& X) {}
 
   virtual KtensorT<ExecSpace>
   createOverlapKtensor(const KtensorT<ExecSpace>& u) const
@@ -70,9 +73,18 @@ public:
     return u;
   };
 
+  virtual void initOverlapKtensor(KtensorT<ExecSpace>& u) const
+  {
+    GENTEN_TIME_MONITOR("k-tensor init");
+    u.weights() = ttb_real(1.0);
+    u.setMatrices(0.0);
+  }
+
   virtual bool overlapAliasesArg() const { return true; }
 
   virtual bool isReplicated() const { return true; }
+
+  virtual bool overlapDependsOnTensor() const { return false; }
 
   virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
                         const KtensorT<ExecSpace>& u) const
@@ -194,431 +206,6 @@ public:
 
 };
 
-template <typename ViewType>
-class ViewContainer
-{
-public:
-
-  typedef typename ViewType::execution_space exec_space;
-  typedef Kokkos::View<ViewType*,Kokkos::LayoutRight,exec_space> container_type;
-  typedef Kokkos::View<ViewType*,typename ViewType::array_layout,DefaultHostExecutionSpace> host_container_type;
-  typedef typename container_type::host_mirror_space::execution_space host_mirror_space;
-
-  // ----- CREATER & DESTROY -----
-
-  // Empty constructor
-  KOKKOS_DEFAULTED_FUNCTION
-  ViewContainer() = default;
-
-  // Construct an array to hold n factor matrices.
-  ViewContainer(ttb_indx n) : data("Genten::ViewContainer::data",n)
-  {
-    if (Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename exec_space::memory_space >::accessible)
-      host_data = host_container_type(data.data(), n);
-    else
-      host_data = host_container_type("Genten::ViewContainer::host_data",n);
-  }
-
-  // Copy constructor
-  KOKKOS_DEFAULTED_FUNCTION
-  ViewContainer(const ViewContainer & src) = default;
-
-  // Destructor.
-  KOKKOS_DEFAULTED_FUNCTION
-  ~ViewContainer() = default;
-
-  // Make a copy of an existing array.
-  KOKKOS_DEFAULTED_FUNCTION
-  ViewContainer & operator=(const ViewContainer & src) = default;
-
-  // Set a view
-  void set_view(const ttb_indx i, const ViewType& src) const
-  {
-    gt_assert(i < size());
-    host_data[i] = src;
-    auto v = data;
-    if (!Kokkos::Impl::MemorySpaceAccess< typename DefaultHostExecutionSpace::memory_space, typename exec_space::memory_space >::accessible) {
-      Kokkos::RangePolicy<exec_space> policy(0,1);
-      Kokkos::parallel_for("Genten::ViewContainer::set_view",
-                           policy, KOKKOS_LAMBDA(const ttb_indx j)
-      {
-        v[i] = src;
-      });
-    }
-  }
-
-  // Return the number of factor matrices.
-  KOKKOS_INLINE_FUNCTION
-  ttb_indx size() const { return data.extent(0); }
-
-  // Return n-th view
-  KOKKOS_INLINE_FUNCTION
-  const ViewType& operator[](ttb_indx n) const
-  {
-    KOKKOS_IF_ON_DEVICE(return data[n];)
-    KOKKOS_IF_ON_HOST(return host_data[n];)
-  }
-
-  // Return n-th view
-  KOKKOS_INLINE_FUNCTION
-  ViewType& operator[](ttb_indx n)
-  {
-    KOKKOS_IF_ON_DEVICE(return data[n];)
-    KOKKOS_IF_ON_HOST(return host_data[n];)
-  }
-
-private:
-
-  // Array of views, each view on device
-  container_type data;
-
-  // Host view of array of views
-  host_container_type host_data;
-};
-
-template <typename ExecSpace>
-class KtensorAllGatherUpdate : public DistKtensorUpdate<ExecSpace> {
-public:
-  typedef Kokkos::View<ttb_indx*, ExecSpace> row_type;
-  typedef Kokkos::View<ttb_real**, Kokkos::LayoutRight, ExecSpace> val_type;
-
-private:
-  //typedef Kokkos::View<int*, DefaultHostExecutionSpace> count_offset_type;
-  typedef std::vector<int> count_offset_type;
-
-  const ProcessorMap *pmap;
-
-  unsigned nd, nc;
-
-  std::vector<int> my_rank;
-
-  ViewContainer<row_type> rows, my_rows;
-  std::vector<count_offset_type> row_counts;
-  std::vector<count_offset_type> row_offsets;
-
-  ViewContainer<val_type> vals, my_vals;
-  std::vector<count_offset_type> val_counts;
-  std::vector<count_offset_type> val_offsets;
-
-public:
-  KtensorAllGatherUpdate(const KtensorT<ExecSpace>& u,
-                         const IndxArray& my_num_updates) :
-    pmap(u.getProcessorMap()),
-    nd(u.ndims()), nc(u.ncomponents()), my_rank(nd),
-    rows(nd), my_rows(nd), row_counts(nd), row_offsets(nd),
-    vals(nd), my_vals(nd), val_counts(nd), val_offsets(nd)
-  {
-    for (unsigned n=0; n<nd; ++n) {
-
-      // Gather row counts from all processors
-      if (pmap != nullptr) {
-        const int size = pmap->subCommSize(n);
-        const int rank = pmap->subCommRank(n);
-        my_rank[n] = rank;
-        row_counts[n] = count_offset_type(size);
-        row_counts[n][rank] = my_num_updates[n];
-        pmap->subGridAllGather(n, row_counts[n].data(), 1);
-      }
-      else {
-        my_rank[n] = 0;
-        row_counts[n] = count_offset_type(1);
-        row_counts[n][0] = my_num_updates[n];
-      }
-      const int num_proc = row_counts[n].size();
-
-      // Total number of rows
-      int num_row = 0;
-      for (int p=0; p<num_proc; ++p)
-        num_row += row_counts[n][p];
-
-      // Allocate rows and vals
-      rows.set_view(n, row_type("row_type_n", num_row));
-      vals.set_view(n, val_type("val_type_n", num_row, nc));
-
-      // Compute counts and offsets
-      const ttb_indx s = vals[n].stride(0);  // May not equal nc due to padding
-      row_offsets[n] = count_offset_type(num_proc);
-      val_counts[n] = count_offset_type(num_proc);
-      val_offsets[n] = count_offset_type(num_proc);
-      val_counts[n][0] = row_counts[n][0]*s;
-      row_offsets[n][0] = 0;
-      val_offsets[n][0] = 0;
-      for (int p=1; p<num_proc; ++p) {
-        val_counts[n][p] = row_counts[n][p]*s;
-        row_offsets[n][p] = row_offsets[n][p-1] + row_counts[n][p-1];
-        val_offsets[n][p] = val_offsets[n][p-1] + val_counts[n][p-1];
-      }
-
-      // Get my portion of rows and vals
-      const int rank = my_rank[n];
-      const ttb_indx my_num_rows = row_counts[n][rank];
-      const ttb_indx row_beg = row_offsets[n][rank];
-      const ttb_indx row_end = row_beg + my_num_rows;
-      const auto row_range = std::make_pair(row_beg, row_end);
-      my_rows.set_view(n, Kokkos::subview(rows[n], row_range));
-      my_vals.set_view(n, Kokkos::subview(vals[n], row_range, Kokkos::ALL));
-    }
-  }
-  KtensorAllGatherUpdate(const KtensorT<ExecSpace>& u,
-                         const ttb_indx my_num_updates) :
-    KtensorAllGatherUpdate(u, IndxArray(u.ndims(), my_num_updates)) {}
-  virtual ~KtensorAllGatherUpdate() {}
-
-  KtensorAllGatherUpdate(KtensorAllGatherUpdate&&) = default;
-  KtensorAllGatherUpdate(const KtensorAllGatherUpdate&) = default;
-  KtensorAllGatherUpdate& operator=(KtensorAllGatherUpdate&&) = default;
-  KtensorAllGatherUpdate& operator=(const KtensorAllGatherUpdate&) = default;
-
-  virtual void doExport(const KtensorT<ExecSpace>& u,
-                        const KtensorT<ExecSpace>& u_overlapped) const override
-  {
-    GENTEN_TIME_MONITOR("k-tensor export");
-
-    deep_copy(u, u_overlapped); // no-op if u and u_overlapped are the same
-
-    if (pmap != nullptr)
-      Kokkos::fence();
-
-    for (unsigned n=0; n<nd; ++n) {
-      auto row_n = rows[n];
-      auto val_n = vals[n];
-
-      // Gather contributions from each processor
-      if (pmap != nullptr) {
-        pmap->subGridAllGather(n, row_n.data(), row_counts[n].data(),
-                               row_offsets[n].data());
-        pmap->subGridAllGather(n, val_n.data(), val_counts[n].data(),
-                               val_offsets[n].data());
-      }
-    }
-
-    // Apply contributions to u
-    // In the future, sort vals based on increasing indices in rows and do
-    // a thread-local accumulation, which will drastically reduce atomic
-    // throughput requirements.  Also use TinyVec.
-    u.setMatrices(0.0);
-    typedef SpaceProperties<ExecSpace> space_prop;
-    for (unsigned n=0; n<nd; ++n) {
-      auto row_n = rows[n];
-      auto val_n = vals[n];
-      auto& u_n = u[n];
-      const ttb_indx nrow = row_n.extent(0);
-      const ttb_indx ncom = nc;
-      if (space_prop::concurrency() == 1) {
-        Kokkos::parallel_for("KtensorAllGatherUpdate",
-                             Kokkos::RangePolicy<ExecSpace>(0,nrow),
-                             KOKKOS_LAMBDA(const ttb_indx i)
-        {
-          auto row = row_n[i];
-          for (ttb_indx j=0; j<ncom; ++j) {
-            u_n.entry(row,j) += val_n(i,j);
-          }
-        });
-      }
-      else {
-        Kokkos::parallel_for("KtensorAllGatherUpdate",
-                             Kokkos::RangePolicy<ExecSpace>(0,nrow),
-                             KOKKOS_LAMBDA(const ttb_indx i)
-        {
-          auto row = row_n[i];
-          for (ttb_indx j=0; j<ncom; ++j) {
-            Kokkos::atomic_add(&(u_n.entry(row,j)), val_n(i,j));
-          }
-        });
-      }
-    }
-  }
-
-  virtual void doExport(const KtensorT<ExecSpace>& u,
-                        const KtensorT<ExecSpace>& u_overlapped,
-                        SystemTimer& timer,
-                        const int timer_comm,
-                        const int timer_update) const override
-  {
-    GENTEN_TIME_MONITOR("k-tensor export");
-
-    deep_copy(u, u_overlapped); // no-op if u and u_overlapped are the same
-
-    if (pmap != nullptr)
-      Kokkos::fence();
-
-    timer.start(timer_comm);
-    for (unsigned n=0; n<nd; ++n) {
-      auto row_n = rows[n];
-      auto val_n = vals[n];
-
-      // Gather contributions from each processor
-      if (pmap != nullptr) {
-        pmap->subGridAllGather(n, row_n.data(), row_counts[n].data(),
-                               row_offsets[n].data());
-        pmap->subGridAllGather(n, val_n.data(), val_counts[n].data(),
-                               val_offsets[n].data());
-      }
-    }
-    timer.stop(timer_comm);
-
-    // Apply contributions to u
-    // In the future, sort vals based on increasing indices in rows and do
-    // a thread-local accumulation, which will drastically reduce atomic
-    // throughput requirements.  Also use TinyVec.
-    timer.start(timer_update);
-    u.setMatrices(0.0);
-    typedef SpaceProperties<ExecSpace> space_prop;
-    for (unsigned n=0; n<nd; ++n) {
-      auto row_n = rows[n];
-      auto val_n = vals[n];
-      auto& u_n = u[n];
-      const ttb_indx nrow = row_n.extent(0);
-      const ttb_indx ncom = nc;
-      if (space_prop::concurrency() == 1) {
-        Kokkos::parallel_for("KtensorAllGatherUpdate",
-                             Kokkos::RangePolicy<ExecSpace>(0,nrow),
-                             KOKKOS_LAMBDA(const ttb_indx i)
-        {
-          auto row = row_n[i];
-          for (ttb_indx j=0; j<ncom; ++j) {
-            u_n.entry(row,j) += val_n(i,j);
-          }
-        });
-      }
-      else {
-        Kokkos::parallel_for("KtensorAllGatherUpdate",
-                             Kokkos::RangePolicy<ExecSpace>(0,nrow),
-                             KOKKOS_LAMBDA(const ttb_indx i)
-        {
-          auto row = row_n[i];
-          for (ttb_indx j=0; j<ncom; ++j) {
-            Kokkos::atomic_add(&(u_n.entry(row,j)), val_n(i,j));
-          }
-        });
-      }
-    }
-    timer.stop(timer_update);
-  }
-
-  virtual void doExport(const KtensorT<ExecSpace>& u,
-                        const KtensorT<ExecSpace>& u_overlapped,
-                        const ttb_indx n) const override
-  {
-    GENTEN_TIME_MONITOR("k-tensor export");
-
-    gt_assert(u[n].nCols() == nc);
-
-    deep_copy(u[n], u_overlapped[n]); // no-op if u and u_overlapped are the same
-
-    if (pmap != nullptr)
-      Kokkos::fence();
-
-    auto row_n = rows[n];
-    auto val_n = vals[n];
-    auto& u_n = u[n];
-
-    // Gather contributions from each processor
-    if (pmap != nullptr) {
-      pmap->subGridAllGather(n, row_n.data(), row_counts[n].data(),
-                             row_offsets[n].data());
-      pmap->subGridAllGather(n, val_n.data(), val_counts[n].data(),
-                             val_offsets[n].data());
-    }
-
-    // Apply contributions to u
-    // In the future, sort vals based on increasing indices in rows and do
-    // a thread-local accumulation, which will drastically reduce atomic
-    // throughput requirements.  Also use TinyVec.
-    u_n = ttb_real(0.0);
-    const ttb_indx nrow = row_n.extent(0);
-    const ttb_indx ncom = nc;
-    typedef SpaceProperties<ExecSpace> space_prop;
-    if (space_prop::concurrency() == 1) {
-      Kokkos::parallel_for("KtensorAllGatherUpdate",
-                           Kokkos::RangePolicy<ExecSpace>(0,nrow),
-                           KOKKOS_LAMBDA(const ttb_indx i)
-      {
-        auto row = row_n[i];
-        for (ttb_indx j=0; j<ncom; ++j) {
-          u_n.entry(row,j) += val_n(i,j);
-        }
-      });
-    }
-    else {
-      Kokkos::parallel_for("KtensorAllGatherUpdate",
-                           Kokkos::RangePolicy<ExecSpace>(0,nrow),
-                           KOKKOS_LAMBDA(const ttb_indx i)
-      {
-        for (ttb_indx j=0; j<ncom; ++j) {
-          Kokkos::atomic_add(&(u_n.entry(row_n[i],j)), val_n(i,j));
-        }
-      });
-    }
-  }
-
-  virtual void doExport(const KtensorT<ExecSpace>& u,
-                        const KtensorT<ExecSpace>& u_overlapped,
-                        const ttb_indx n,
-                        SystemTimer& timer,
-                        const int timer_comm,
-                        const int timer_update) const override
-  {
-    GENTEN_TIME_MONITOR("k-tensor export");
-
-    gt_assert(u[n].nCols() == nc);
-
-    deep_copy(u[n], u_overlapped[n]); // no-op if u and u_overlapped are the same
-
-    if (pmap != nullptr)
-      Kokkos::fence();
-
-    auto row_n = rows[n];
-    auto val_n = vals[n];
-    auto& u_n = u[n];
-
-    // Gather contributions from each processor
-    if (pmap != nullptr) {
-      pmap->subGridAllGather(n, row_n.data(), row_counts[n].data(),
-                             row_offsets[n].data());
-      pmap->subGridAllGather(n, val_n.data(), val_counts[n].data(),
-                             val_offsets[n].data());
-    }
-    timer.stop(timer_comm);
-
-    // Apply contributions to u
-    // In the future, sort vals based on increasing indices in rows and do
-    // a thread-local accumulation, which will drastically reduce atomic
-    // throughput requirements.  Also use TinyVec.
-    u_n = ttb_real(0.0);
-    const ttb_indx nrow = row_n.extent(0);
-    const ttb_indx ncom = nc;
-    typedef SpaceProperties<ExecSpace> space_prop;
-    if (space_prop::concurrency() == 1) {
-      Kokkos::parallel_for("KtensorAllGatherUpdate",
-                           Kokkos::RangePolicy<ExecSpace>(0,nrow),
-                           KOKKOS_LAMBDA(const ttb_indx i)
-      {
-        auto row = row_n[i];
-        for (ttb_indx j=0; j<ncom; ++j) {
-          u_n.entry(row,j) += val_n(i,j);
-        }
-      });
-    }
-    else {
-      Kokkos::parallel_for("KtensorAllGatherUpdate",
-                           Kokkos::RangePolicy<ExecSpace>(0,nrow),
-                           KOKKOS_LAMBDA(const ttb_indx i)
-      {
-        for (ttb_indx j=0; j<ncom; ++j) {
-          Kokkos::atomic_add(&(u_n.entry(row_n[i],j)), val_n(i,j));
-        }
-      });
-    }
-  }
-
-  row_type getRowUpdates(const ttb_indx n) const { return my_rows[n]; }
-  val_type getValUpdates(const ttb_indx n) const { return my_vals[n]; }
-
-  ViewContainer<row_type> getRowUpdates() const { return my_rows; }
-  ViewContainer<val_type> getValUpdates() const { return my_vals; }
-};
-
 #ifdef HAVE_TPETRA
 
 template <typename ExecSpace>
@@ -637,7 +224,9 @@ public:
   KtensorTpetraUpdate& operator=(KtensorTpetraUpdate&&) = default;
   KtensorTpetraUpdate& operator=(const KtensorTpetraUpdate&) = default;
 
-  virtual void updateTensor(DistTensor<ExecSpace>& X_) override
+  virtual bool overlapDependsOnTensor() const override { return true; }
+
+  virtual void updateTensor(const DistTensor<ExecSpace>& X_) override
   {
     X = X_;
   }
@@ -739,44 +328,461 @@ public:
 
 #endif
 
-template <typename TensorType>
-DistKtensorUpdate<typename TensorType::exec_space>*
-createKtensorUpdate(const TensorType& X,
-                    const KtensorT<typename TensorType::exec_space>& u,
-                    const AlgParams& algParams)
-{
-  using exec_space = typename TensorType::exec_space;
-  DistKtensorUpdate<exec_space>* dku = nullptr;
-  if (algParams.dist_update_method == Dist_Update_Method::AllReduce)
-    dku = new KtensorAllReduceUpdate<exec_space>(u);
-  else if (algParams.dist_update_method == Dist_Update_Method::AllGather)
-    dku = new KtensorAllGatherUpdate<exec_space>(u, X.nnz());
-#ifdef HAVE_TPETRA
-  else if (algParams.dist_update_method == Dist_Update_Method::Tpetra)
-    dku = new KtensorTpetraUpdate<exec_space>(X, u);
+template <typename ExecSpace>
+class KtensorAllGatherReduceUpdate : public DistKtensorUpdate<ExecSpace> {
+private:
+  const ProcessorMap *pmap;
+  std::vector< std::vector<int> > offsets;
+  std::vector< std::vector<int> > sizes;
+
+  std::vector< std::vector<int> > offsets_r;
+  std::vector< std::vector<int> > sizes_r;
+
+public:
+  KtensorAllGatherReduceUpdate(const KtensorT<ExecSpace>& u) :
+    pmap(u.getProcessorMap())
+  {
+    const unsigned nd = u.ndims();
+    sizes.resize(nd);
+    sizes_r.resize(nd);
+    offsets.resize(nd);
+    offsets_r.resize(nd);
+    for (unsigned n=0; n<nd; ++n) {
+      if (pmap != nullptr) {
+        const unsigned np = pmap->subCommSize(n);
+
+        // Get number of rows on each processor
+        sizes[n].resize(np);
+        sizes[n][pmap->subCommRank(n)] = u[n].nRows();
+        pmap->subGridAllGather(n, sizes[n].data(), 1);
+
+        // Get span on each processor
+        sizes_r[n].resize(np);
+        sizes_r[n][pmap->subCommRank(n)] = u[n].view().span();
+        pmap->subGridAllGather(n, sizes_r[n].data(), 1);
+
+        // Get starting offsets for each processor
+        offsets[n].resize(np);
+        offsets_r[n].resize(np);
+        offsets[n][0] = 0;
+        offsets_r[n][0] = 0;
+        for (unsigned p=1; p<np; ++p) {
+          offsets[n][p] = offsets[n][p-1] + sizes[n][p-1];
+          offsets_r[n][p] = offsets_r[n][p-1] + sizes_r[n][p-1];
+        }
+      }
+      else {
+        sizes[n].resize(1);
+        sizes_r[n].resize(1);
+        offsets[n].resize(1);
+        offsets_r[n].resize(1);
+        sizes[n][0] = u[n].nRows();
+        sizes_r[n][0] = u[n].view().span();
+        offsets[n][0] = 0;
+        offsets_r[n][0] = 0;
+      }
+    }
+  }
+  virtual ~KtensorAllGatherReduceUpdate() {}
+
+  KtensorAllGatherReduceUpdate(KtensorAllGatherReduceUpdate&&) = default;
+  KtensorAllGatherReduceUpdate(const KtensorAllGatherReduceUpdate&) = default;
+  KtensorAllGatherReduceUpdate& operator=(KtensorAllGatherReduceUpdate&&) = default;
+  KtensorAllGatherReduceUpdate& operator=(const KtensorAllGatherReduceUpdate&) = default;
+
+  virtual KtensorT<ExecSpace>
+  createOverlapKtensor(const KtensorT<ExecSpace>& u) const override
+  {
+    GENTEN_TIME_MONITOR("create overlapped k-tensor");
+
+    const unsigned nd = u.ndims();
+    const unsigned nc = u.ncomponents();
+    KtensorT<ExecSpace> u_overlapped = KtensorT<ExecSpace>(nc, nd);
+    for (unsigned n=0; n<nd; ++n) {
+      const unsigned np = offsets[n].size();
+      const ttb_indx nrows = offsets[n][np-1]+sizes[n][np-1];
+      FacMatrixT<ExecSpace> mat(nrows, nc);
+      u_overlapped.set_factor(n, mat);
+    }
+    u_overlapped.setProcessorMap(u.getProcessorMap());
+    return u_overlapped;
+  };
+
+  virtual bool overlapAliasesArg() const override { return false; }
+
+  virtual bool isReplicated() const override { return false; }
+
+  using DistKtensorUpdate<ExecSpace>::doImport;
+
+  virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
+                        const KtensorT<ExecSpace>& u) const override
+  {
+    GENTEN_TIME_MONITOR("k-tensor import");
+
+    if (pmap != nullptr) {
+      const unsigned nd = u.ndims();
+      for (unsigned n=0; n<nd; ++n) {
+        auto uov = u_overlapped[n].view();
+        const unsigned rank = pmap->subCommRank(n);
+        const unsigned np = pmap->subCommSize(n);
+        gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
+        gt_assert(uov.span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
+        Kokkos::fence();
+        pmap->subGridAllGather(n, u[n].view(), uov,
+                               sizes_r[n].data(), offsets_r[n].data());
+      }
+    }
+    else
+      deep_copy(u_overlapped, u); // no-op if u and u_overlapped are the same
+  }
+
+  virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
+                        const KtensorT<ExecSpace>& u,
+                        const ttb_indx n) const override
+  {
+    GENTEN_TIME_MONITOR("k-tensor import");
+
+    if (pmap != nullptr) {
+      auto uov = u_overlapped[n].view();
+      const unsigned rank = pmap->subCommRank(n);
+      const unsigned np = pmap->subCommSize(n);
+      gt_assert(u[n].view().span() == size_t(sizes_r[n][rank]));
+      gt_assert(uov.span() == size_t(offsets_r[n][np-1]+sizes_r[n][np-1]));
+      Kokkos::fence();
+      pmap->subGridAllGather(n, u[n].view(), uov,
+                             sizes_r[n].data(), offsets_r[n].data());
+    }
+    else
+      deep_copy(u_overlapped[n], u[n]); // no-op if u and u_overlapped are the same
+  }
+
+  using DistKtensorUpdate<ExecSpace>::doExport;
+
+  virtual void doExport(const KtensorT<ExecSpace>& u,
+                        const KtensorT<ExecSpace>& u_overlapped) const override
+  {
+    GENTEN_TIME_MONITOR("k-tensor export");
+
+    if (pmap != nullptr) {
+      const unsigned nd = u.ndims();
+      for (unsigned n=0; n<nd; ++n) {
+        auto uv = u[n].view();
+        const unsigned np = pmap->subCommSize(n);
+        for (unsigned p=0; p<np; ++p) {
+          auto sub = Kokkos::subview(
+            u_overlapped[n].view(),
+            std::make_pair(offsets[n][p], offsets[n][p]+sizes[n][p]), Kokkos::ALL);
+          Kokkos::fence();
+          if (pmap->subCommRank(n) == p)
+            gt_assert(sub.span() == uv.span());
+          pmap->subGridReduce(n, sub, uv, p);
+        }
+      }
+    }
+    else
+      deep_copy(u, u_overlapped); // no-op if u and u_overlapped are the same
+  }
+
+  virtual void doExport(const KtensorT<ExecSpace>& u,
+                        const KtensorT<ExecSpace>& u_overlapped,
+                        const ttb_indx n) const override
+  {
+    GENTEN_TIME_MONITOR("k-tensor export");
+
+    if (pmap != nullptr) {
+      auto uv = u[n].view();
+      const unsigned np = pmap->subCommSize(n);
+      for (unsigned p=0; p<np; ++p) {
+        auto sub = Kokkos::subview(
+          u_overlapped[n].view(),
+          std::make_pair(offsets[n][p], offsets[n][p]+sizes[n][p]), Kokkos::ALL);
+        Kokkos::fence();
+        if (pmap->subCommRank(n) == p && sub.span() != uv.span()) {
+          Genten::error("Spans do not match!");
+        }
+        pmap->subGridReduce(n, sub, uv, p);
+      }
+    }
+    else
+      deep_copy(u[n], u_overlapped[n]); // no-op if u and u_overlapped are the same
+  }
+
+};
+
+template <typename ExecSpace>
+class KtensorOneSidedUpdate :
+    public DistKtensorUpdate<ExecSpace> {
+private:
+  const ProcessorMap *pmap;
+  bool parallel;
+  std::vector< std::vector<int> > offsets;
+  std::vector< std::vector<int> > sizes;
+
+  std::vector< std::vector<int> > offsets_r;
+  std::vector< std::vector<int> > sizes_r;
+
+  bool sparse;
+  SptensorT<ExecSpace> X_sparse;
+
+public:
+  using unordered_map_type =
+    Kokkos::UnorderedMap<ttb_indx,unsigned,Kokkos::HostSpace>;
+  std::vector<unordered_map_type> maps;
+
+private:
+
+#ifdef HAVE_DIST
+  using umv_type = Kokkos::View<ttb_real**, Kokkos::LayoutStride, ExecSpace, Kokkos::MemoryUnmanaged>;
+  std::vector<MPI_Win> windows;
+  std::vector<umv_type> bufs;
 #endif
-  else
-    Genten::error("Unknown distributed Ktensor update method");
-  return dku;
-}
+
+public:
+  KtensorOneSidedUpdate(const DistTensor<ExecSpace>& X,
+                                       const KtensorT<ExecSpace>& u);
+  virtual ~KtensorOneSidedUpdate();
+
+  KtensorOneSidedUpdate(KtensorOneSidedUpdate&&) = default;
+  KtensorOneSidedUpdate(const KtensorOneSidedUpdate&) = default;
+  KtensorOneSidedUpdate& operator=(KtensorOneSidedUpdate&&) = default;
+  KtensorOneSidedUpdate& operator=(const KtensorOneSidedUpdate&) = default;
+
+  virtual void updateTensor(const DistTensor<ExecSpace>& X) override;
+
+  virtual bool overlapDependsOnTensor() const override { return false; }
+
+  virtual KtensorT<ExecSpace>
+  createOverlapKtensor(const KtensorT<ExecSpace>& u) const override;
+
+  virtual bool overlapAliasesArg() const override { return !parallel; }
+
+  virtual bool isReplicated() const override { return false; }
+
+  using DistKtensorUpdate<ExecSpace>::doImport;
+
+  virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
+                        const KtensorT<ExecSpace>& u) const override;
+
+  virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
+                        const KtensorT<ExecSpace>& u,
+                        const ttb_indx n) const override;
+
+  using DistKtensorUpdate<ExecSpace>::doExport;
+
+  virtual void doExport(const KtensorT<ExecSpace>& u,
+                        const KtensorT<ExecSpace>& u_overlapped) const override;
+
+  virtual void doExport(const KtensorT<ExecSpace>& u,
+                        const KtensorT<ExecSpace>& u_overlapped,
+                        const ttb_indx n) const override;
+
+  void copyToWindows(const KtensorT<ExecSpace>& u) const;
+  void copyFromWindows(const KtensorT<ExecSpace>& u) const;
+  void zeroOutWindows() const;
+  void lockWindows() const;
+  void unlockWindows() const;
+  void fenceWindows() const;
+  void importRow(const unsigned n, const ttb_indx row,
+                 const KtensorT<ExecSpace>& u,
+                 const KtensorT<ExecSpace>& u_overlap) const;
+  void exportRow(const unsigned n, const ttb_indx row,
+                 const ArrayT<ExecSpace>& grad,
+                 const KtensorT<ExecSpace>& g) const;
+
+  unsigned find_proc_for_row(unsigned n, unsigned row) const;
+
+private:
+
+  void doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
+                      const KtensorT<ExecSpace>& u) const;
+
+  void doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
+                      const KtensorT<ExecSpace>& u,
+                      const ttb_indx n) const;
+
+  void doImportDense(const KtensorT<ExecSpace>& u_overlapped,
+                     const KtensorT<ExecSpace>& u) const;
+
+  void doImportDense(const KtensorT<ExecSpace>& u_overlapped,
+                     const KtensorT<ExecSpace>& u,
+                     const ttb_indx n) const;
+
+  void doExportSparse(const KtensorT<ExecSpace>& u,
+                      const KtensorT<ExecSpace>& u_overlapped) const;
+
+  void doExportSparse(const KtensorT<ExecSpace>& u,
+                      const KtensorT<ExecSpace>& u_overlapped,
+                      const ttb_indx n) const;
+
+  void doExportDense(const KtensorT<ExecSpace>& u,
+                     const KtensorT<ExecSpace>& u_overlapped) const;
+
+  void doExportDense(const KtensorT<ExecSpace>& u,
+                     const KtensorT<ExecSpace>& u_overlapped,
+                     const ttb_indx n) const;
+
+};
+
+template <typename ExecSpace>
+class KtensorTwoSidedUpdate :
+    public DistKtensorUpdate<ExecSpace> {
+private:
+  const ProcessorMap *pmap;
+  bool parallel;
+  AlgParams algParams;
+
+  std::vector< std::vector<int> > offsets;
+  std::vector< std::vector<int> > sizes;
+
+  std::vector< std::vector<int> > offsets_r;
+  std::vector< std::vector<int> > sizes_r;
+
+  bool sparse;
+  SptensorT<ExecSpace> X_sparse;
+  unsigned nc;
+
+  using offsets_type = Kokkos::View<int*,ExecSpace>;
+  // Set the host execution space to be ExecSpace if it is a host execution
+  // space.  This avoids using OpenMP instead of Serial when both are enabled
+  // when doing:
+  //   using host_offsets_type = Kokkos::View<int*,Kokkos::HostSpace>;
+  //   using HostExecSpace = typename Kokkos::HostSpace::execution_space;
+  using HostExecSpace =
+    std::conditional_t<
+      Kokkos::Impl::MemorySpaceAccess<
+        Kokkos::HostSpace, typename ExecSpace::memory_space >::accessible,
+      ExecSpace, typename Kokkos::HostSpace::execution_space >;
+  using HostDevice = Kokkos::Device< HostExecSpace, Kokkos::HostSpace >;
+  using host_offsets_type = Kokkos::View<int*,HostDevice>;
+  std::vector< offsets_type > offsets_dev;
+
+  // MPI_Alltoallv doesn't appear to work with these on the device
+  // (for at least some MPI libraries)
+  std::vector< host_offsets_type > num_row_sends;
+  std::vector< host_offsets_type > num_row_recvs;
+  std::vector< host_offsets_type > row_send_offsets;
+  std::vector< host_offsets_type > row_recv_offsets;
+  std::vector< host_offsets_type > num_fac_sends;
+  std::vector< host_offsets_type > num_fac_recvs;
+  std::vector< host_offsets_type > fac_send_offsets;
+  std::vector< host_offsets_type > fac_recv_offsets;
+
+  std::vector< offsets_type > num_row_recvs_dev;
+  std::vector< offsets_type > num_fac_recvs_dev;
+  std::vector< offsets_type > row_recv_offsets_dev;
+
+  using row_vec_type = Kokkos::View<ttb_indx*,ExecSpace>;
+  using fac_vec_type = Kokkos::View<ttb_real*,ExecSpace>;
+  std::vector< row_vec_type > row_sends;
+  std::vector< row_vec_type > row_recvs;
+  std::vector< fac_vec_type > fac_sends;
+  std::vector< fac_vec_type > fac_recvs;
+
+  std::vector< std::unordered_map<ttb_indx, unsigned> > maps;
+  std::vector< std::vector< std::vector<int> > > row_recvs_for_proc;
+
+public:
+  KtensorTwoSidedUpdate(const DistTensor<ExecSpace>& X,
+                        const KtensorT<ExecSpace>& u,
+                        const AlgParams& algParams);
+  virtual ~KtensorTwoSidedUpdate();
+
+  KtensorTwoSidedUpdate(KtensorTwoSidedUpdate&&) = default;
+  KtensorTwoSidedUpdate(const KtensorTwoSidedUpdate&) = default;
+  KtensorTwoSidedUpdate& operator=(KtensorTwoSidedUpdate&&) = default;
+  KtensorTwoSidedUpdate& operator=(const KtensorTwoSidedUpdate&) = default;
+
+  virtual void updateTensor(const DistTensor<ExecSpace>& X) override;
+
+  virtual bool overlapDependsOnTensor() const override { return false; }
+
+  virtual KtensorT<ExecSpace>
+  createOverlapKtensor(const KtensorT<ExecSpace>& u) const override;
+
+  virtual void initOverlapKtensor(KtensorT<ExecSpace>& u) const override;
+
+  virtual bool overlapAliasesArg() const override { return !parallel; }
+
+  virtual bool isReplicated() const override { return false; }
+
+  using DistKtensorUpdate<ExecSpace>::doImport;
+
+  virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
+                        const KtensorT<ExecSpace>& u) const override;
+
+  virtual void doImport(const KtensorT<ExecSpace>& u_overlapped,
+                        const KtensorT<ExecSpace>& u,
+                        const ttb_indx n) const override;
+
+  using DistKtensorUpdate<ExecSpace>::doExport;
+
+  virtual void doExport(const KtensorT<ExecSpace>& u,
+                        const KtensorT<ExecSpace>& u_overlapped) const override;
+
+  virtual void doExport(const KtensorT<ExecSpace>& u,
+                        const KtensorT<ExecSpace>& u_overlapped,
+                        const ttb_indx n) const override;
+
+  // These have to be public for Cuda
+
+  void extractRowRecvsDevice();
+
+  void doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
+                      const KtensorT<ExecSpace>& u,
+                      const ttb_indx n) const;
+
+  void doExportSparse(const KtensorT<ExecSpace>& u,
+                      const KtensorT<ExecSpace>& u_overlapped,
+                      const ttb_indx n) const;
+
+private:
+
+  unsigned find_proc_for_row(unsigned n, unsigned row) const;
+
+  void extractRowRecvsHost();
+
+  void doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
+                      const KtensorT<ExecSpace>& u) const;
+
+  void doImportDense(const KtensorT<ExecSpace>& u_overlapped,
+                     const KtensorT<ExecSpace>& u) const;
+
+  void doImportDense(const KtensorT<ExecSpace>& u_overlapped,
+                     const KtensorT<ExecSpace>& u,
+                     const ttb_indx n) const;
+
+  void doExportSparse(const KtensorT<ExecSpace>& u,
+                      const KtensorT<ExecSpace>& u_overlapped) const;
+
+  void doExportDense(const KtensorT<ExecSpace>& u,
+                     const KtensorT<ExecSpace>& u_overlapped) const;
+
+  void doExportDense(const KtensorT<ExecSpace>& u,
+                     const KtensorT<ExecSpace>& u_overlapped,
+                     const ttb_indx n) const;
+
+};
 
 template <typename TensorType>
 DistKtensorUpdate<typename TensorType::exec_space>*
 createKtensorUpdate(const TensorType& X,
                     const KtensorT<typename TensorType::exec_space>& u,
-                    const ttb_indx nnz,
                     const AlgParams& algParams)
 {
   using exec_space = typename TensorType::exec_space;
   DistKtensorUpdate<exec_space>* dku = nullptr;
   if (algParams.dist_update_method == Dist_Update_Method::AllReduce)
     dku = new KtensorAllReduceUpdate<exec_space>(u);
-  else if (algParams.dist_update_method == Dist_Update_Method::AllGather)
-    dku = new KtensorAllGatherUpdate<exec_space>(u, nnz);
 #ifdef HAVE_TPETRA
   else if (algParams.dist_update_method == Dist_Update_Method::Tpetra)
     dku = new KtensorTpetraUpdate<exec_space>(X, u);
 #endif
+   else if (algParams.dist_update_method == Dist_Update_Method::AllGatherReduce)
+    dku = new KtensorAllGatherReduceUpdate<exec_space>(u);
+  else if (algParams.dist_update_method == Dist_Update_Method::OneSided)
+    dku = new KtensorOneSidedUpdate<exec_space>(X, u);
+   else if (algParams.dist_update_method == Dist_Update_Method::TwoSided)
+     dku = new KtensorTwoSidedUpdate<exec_space>(X, u, algParams);
   else
     Genten::error("Unknown distributed Ktensor update method");
   return dku;

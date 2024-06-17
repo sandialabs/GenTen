@@ -333,7 +333,7 @@ TensorT<Kokkos::DefaultHostExecutionSpace> cokurtosis_impl(
     for (std::size_t ji = 0; ji < upper_limit_ji; ++ji) {
       for (std::size_t ii = 0; ii < upper_limit_ii; ++ii) {
         const auto linIdx = ii + ji*(size_i*size_j);
-        gt_assert(static_cast<const int>(linIdx)<n_elements_in_block);
+        gt_assert(static_cast<int>(linIdx)<n_elements_in_block);
 
         const auto lIdx = linIdx / (size_i*size_j*size_k) + lShift;
         const auto b = linIdx % (size_i*size_j*size_k);

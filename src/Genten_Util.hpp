@@ -245,17 +245,21 @@ namespace Genten {
   struct Dist_Update_Method {
     enum type {
       AllReduce,
-      AllGather,
-      Tpetra
+      Tpetra,
+      AllGatherReduce,
+      OneSided,
+      TwoSided
     };
-    static constexpr unsigned num_types = 3;
+    static constexpr unsigned num_types = 5;
     static constexpr type types[] = {
       AllReduce,
-      AllGather,
-      Tpetra
+      Tpetra,
+      AllGatherReduce,
+      OneSided,
+      TwoSided
     };
     static constexpr const char* names[] = {
-      "all-reduce", "all-gather", "tpetra"
+      "all-reduce", "tpetra", "all-gather-reduce", "one-sided", "two-sided"
     };
     static constexpr type default_type = AllReduce;
   };

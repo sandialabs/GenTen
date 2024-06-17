@@ -549,7 +549,7 @@ public:
   SptensorT(const SptensorT&) = default;
   SptensorT& operator=(SptensorT&&) = default;
   SptensorT& operator=(const SptensorT&) = default;
-  ~SptensorT() {};
+  virtual ~SptensorT() {};
 
   impl_type& impl() { return *this; }
   const impl_type& impl() const { return *this; }
@@ -608,6 +608,14 @@ public:
     // only copy extra data if this and x point to the same data
     if (this->getValues().data() == x.getValues().data())
       extra_data = x.extra_data;
+  }
+
+  // DistTensor methods
+  virtual bool isSparse() const override { return true; }
+  virtual bool isDense() const override { return false; }
+  virtual SptensorT<ExecSpace> getSptensor() const override { return *this; }
+  virtual TensorT<ExecSpace> getTensor() const override {
+    return TensorT<ExecSpace>();
   }
 
 protected:

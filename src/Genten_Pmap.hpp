@@ -40,6 +40,8 @@
 
 #pragma once
 
+#include "Genten_Util.hpp"
+
 #include "CMakeInclude.h"
 #if defined(HAVE_DIST)
 
@@ -47,17 +49,16 @@
 
 #include "Genten_SmallVector.hpp"
 #include "Genten_DistContext.hpp"
-#include "Genten_Util.hpp"
 
 namespace Genten {
 
 class ProcessorMap {
 public:
   ProcessorMap(std::vector<ttb_indx> const &tensor_dims,
-               const bool use_tpetra);
+               const Dist_Update_Method::type dist_method);
   ProcessorMap(std::vector<ttb_indx> const &tensor_dims,
                small_vector<ttb_indx> const &predetermined_grid,
-               const bool use_tpetra);
+               const Dist_Update_Method::type dist_method);
   ~ProcessorMap();
 
   ProcessorMap() = delete;
@@ -123,6 +124,52 @@ public:
       MPI_Allreduce(MPI_IN_PLACE, element, n, DistContext::toMpiType<T>(),
                     convertOp(op), sub_maps_[i]);
     }
+  }
+
+  template <typename T> void gridReduce(T* element, ttb_indx n, ttb_indx root, MpiOp op = Sum) const {
+    static_assert(std::is_arithmetic<T>::value,
+                  "subGridAllReduce requires something like a double, or int");
+
+    if (grid_nprocs_ > 1) {
+      if (grid_rank_ == root)
+        MPI_Reduce(MPI_IN_PLACE, element, n, DistContext::toMpiType<T>(),
+                   convertOp(op), root, cart_comm_);
+      else
+        MPI_Reduce(element, nullptr, n, DistContext::toMpiType<T>(),
+                   convertOp(op), root, cart_comm_);
+    }
+  }
+
+  template <typename T> void subGridReduce(ttb_indx i, T* element, ttb_indx n, ttb_indx root, MpiOp op = Sum) const {
+    static_assert(std::is_arithmetic<T>::value,
+                  "subGridAllReduce requires something like a double, or int");
+
+    if (sub_comm_sizes_[i] > 1) {
+      if (sub_grid_rank_[i] == root)
+        MPI_Reduce(MPI_IN_PLACE, element, n, DistContext::toMpiType<T>(),
+                   convertOp(op), root, sub_maps_[i]);
+      else
+        MPI_Reduce(element, nullptr, n, DistContext::toMpiType<T>(),
+                   convertOp(op), root, sub_maps_[i]);
+    }
+  }
+
+  template <typename ViewT1, typename ViewT2> void subGridReduce(ttb_indx i, const ViewT1& send, const ViewT2& recv, ttb_indx root, MpiOp op = Sum) const {
+    using scalar_type1 = typename ViewT1::non_const_value_type;
+    using scalar_type2 = typename ViewT2::non_const_value_type;
+    static_assert(std::is_same_v<scalar_type1,scalar_type2>,
+                  "Views must have the same scalar type.");
+    static_assert(std::is_arithmetic<scalar_type1>::value,
+                  "subGridAllReduce requires something like a double, or int");
+    static_assert(std::is_arithmetic<scalar_type2>::value,
+                  "subGridAllReduce requires something like a double, or int");
+
+    scalar_type2* recv_data = nullptr;
+    if (sub_grid_rank_[i] == root)
+      recv_data = recv.data();
+    MPI_Reduce(send.data(), recv_data, send.span(),
+               DistContext::toMpiType<scalar_type1>(),
+               convertOp(op), root, sub_maps_[i]);
   }
 
   template <typename T> void gridBcast(T* element, ttb_indx n, ttb_indx root) const {
@@ -191,6 +238,71 @@ public:
     }
   }
 
+  // Allgatherv
+  template <typename ViewT1, typename ViewT2> void subGridAllGather(ttb_indx i, const ViewT1& send, const ViewT2& recv, const int counts[], const int offsets[]) const {
+    using scalar_type1 = typename ViewT1::non_const_value_type;
+    using scalar_type2 = typename ViewT2::non_const_value_type;
+    static_assert(std::is_same_v<scalar_type1,scalar_type2>,
+                  "Views must have the same scalar type.");
+    static_assert(std::is_arithmetic<scalar_type1>::value,
+                  "subGridAllGather requires something like a double, or int");
+    static_assert(std::is_arithmetic<scalar_type2>::value,
+                  "subGridAllGather requires something like a double, or int");
+
+    MPI_Allgatherv(send.data(), send.span(),
+                   DistContext::toMpiType<scalar_type1>(), recv.data(),
+                   counts, offsets,
+                   DistContext::toMpiType<scalar_type2>(), sub_maps_[i]);
+  }
+
+  template <typename T> void gridScan(T* element, ttb_indx n, MpiOp op = Sum) const {
+    static_assert(std::is_arithmetic<T>::value,
+                  "subGridAllReduce requires something like a double, or int");
+
+    if (grid_nprocs_ > 1) {
+      MPI_Scan(MPI_IN_PLACE, element, n, DistContext::toMpiType<T>(),
+                 convertOp(op), cart_comm_);
+    }
+  }
+
+  template <typename T> void subGridScan(ttb_indx i, T* element, ttb_indx n, ttb_indx root, MpiOp op = Sum) const {
+    static_assert(std::is_arithmetic<T>::value,
+                  "subGridAllReduce requires something like a double, or int");
+
+    if (sub_comm_sizes_[i] > 1) {
+      MPI_Scan(MPI_IN_PLACE, element, n, DistContext::toMpiType<T>(),
+               convertOp(op), root, sub_maps_[i]);
+    }
+  }
+
+  // Alltoall
+  template <typename T> void subGridAllToAll(
+    ttb_indx i,
+    const T* send, const ttb_indx count_send,
+          T* recv, const ttb_indx count_recv) const {
+    static_assert(std::is_arithmetic<T>::value,
+                  "subGridAllToAll requires something like a double, or int");
+
+    MPI_Alltoall(
+      send, count_send, DistContext::toMpiType<T>(),
+      recv, count_recv, DistContext::toMpiType<T>(),
+      sub_maps_[i]);
+  }
+
+  // Alltoallv
+  template <typename T> void subGridAllToAll(
+    ttb_indx i,
+    const T* send, const int counts_send[], const int offsets_send[],
+          T* recv, const int counts_recv[], const int offsets_recv[]) const {
+    static_assert(std::is_arithmetic<T>::value,
+                  "subGridAllToAll requires something like a double, or int");
+
+    MPI_Alltoallv(
+      send, counts_send, offsets_send, DistContext::toMpiType<T>(),
+      recv, counts_recv, offsets_recv, DistContext::toMpiType<T>(),
+      sub_maps_[i]);
+  }
+
   class FacMap {
   public:
     FacMap() = default;
@@ -227,15 +339,15 @@ public:
     }
 
     // In-place Allgatherv
-      template <typename T> void allGather(T* element, const int counts[], const int offsets[]) const {
-        static_assert(std::is_arithmetic<T>::value,
+    template <typename T> void allGather(T* element, const int counts[], const int offsets[]) const {
+      static_assert(std::is_arithmetic<T>::value,
                     "allGather requires something like a double, or int");
 
-        // Note, 2nd argument (send_count) is ignored in this version and
-        // internally extracted from counts[proc_id]
-        MPI_Allgatherv(MPI_IN_PLACE, 0, DistContext::toMpiType<T>(), element,
-                       counts, offsets, DistContext::toMpiType<T>(), comm_);
-      }
+      // Note, 2nd argument (send_count) is ignored in this version and
+      // internally extracted from counts[proc_id]
+      MPI_Allgatherv(MPI_IN_PLACE, 0, DistContext::toMpiType<T>(), element,
+                     counts, offsets, DistContext::toMpiType<T>(), comm_);
+    }
   private:
     MPI_Comm comm_;
     ttb_indx size_;
@@ -262,6 +374,8 @@ private:
 };
 
 #else
+
+#include "Genten_Kokkos.hpp"
 
 namespace Genten {
 
@@ -293,12 +407,28 @@ public:
   template <typename T> T gridAllReduce(T element, MpiOp op = Sum) const { return element; }
   template <typename T> void gridAllReduce(T* element, ttb_indx n, MpiOp op = Sum) const {}
   template <typename T> void subGridAllReduce(ttb_indx i, T* element, ttb_indx n, MpiOp op = Sum) const {}
+  template <typename T> void gridReduce(T* element, ttb_indx n, ttb_indx root, MpiOp op = Sum) const {}
+  template <typename T> void subGridReduce(ttb_indx i, T* element, ttb_indx n, ttb_indx root, MpiOp op = Sum) const {}
+  template <typename ViewT1, typename ViewT2> void subGridReduce(ttb_indx i, const ViewT1& send, const ViewT2& recv, ttb_indx root, MpiOp op = Sum) const {
+    Kokkos::deep_copy(recv, send);
+  }
   template <typename T> void gridBcast(T* element, ttb_indx n, ttb_indx root) const {}
   template <typename T> void subGridBcast(ttb_indx i, T* element, ttb_indx n, ttb_indx root) const {}
   template <typename T> void gridAllGather(T* element, const ttb_indx count) const {}
   template <typename T> void subGridAllGather(ttb_indx i, T* element, const ttb_indx count) const {}
   template <typename T> void gridAllGather(T* element, const int counts[], const int offsets[]) const {}
   template <typename T> void subGridAllGather(ttb_indx i, T* element, const int counts[], const int offsets[]) const {}
+  template <typename ViewT1, typename ViewT2> void subGridAllGather(ttb_indx i, const ViewT1& send, ViewT2& recv, const int counts[], const int offsets[]) const {
+    Kokkos::deep_copy(recv, send);
+  }
+  template <typename T> void gridScan(T* element, ttb_indx n, MpiOp op = Sum) const {}
+  template <typename T> void subGridScan(ttb_indx i, T* element, ttb_indx n, ttb_indx root, MpiOp op = Sum) const {}
+  template <typename T> void subGridAllToAll(ttb_indx i,const T* send, const ttb_indx count_send, T* recv, const ttb_indx count_recv) const {
+    Genten::error("Not implemented, you shouldn't be calling this!");
+  }
+  template <typename T> void subGridAllToAll(ttb_indx i, const T* send, const int counts_send[], const int offsets_send[], T* recv, const int counts_recv[], const int offsets_recv[]) const {
+    Genten::error("Not implemented, you shouldn't be calling this!");
+  }
 
   class FacMap {
   public:
@@ -311,6 +441,7 @@ public:
     ttb_indx rank() const { return 0; }
     template <typename T> T allReduce(T element, MpiOp op = Sum) const { return element; }
     template <typename T> void allReduce(T* element, ttb_indx n, MpiOp op = Sum) const {}
+    template <typename T> void allGather(T* element, const int counts[], const int offsets[]) const {}
   };
 
   const FacMap* facMap(ttb_indx i) const { return &facMap_; }

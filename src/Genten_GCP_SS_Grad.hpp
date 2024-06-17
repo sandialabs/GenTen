@@ -45,6 +45,7 @@
 #include "Genten_Array.hpp"
 #include "Genten_AlgParams.hpp"
 #include "Genten_SystemTimer.hpp"
+#include "Genten_DistKtensorUpdate.hpp"
 
 #include "Kokkos_Random.hpp"
 
@@ -88,6 +89,25 @@ namespace Genten {
       SystemTimer& timer,
       const int timer_nzs,
       const int timer_zs);
+
+    template <typename ExecSpace, typename Searcher, typename Gradient>
+    void gcp_sgd_ss_grad_onesided(
+      const SptensorT<ExecSpace>& Xd,
+      const KtensorT<ExecSpace>& ud,
+      const Searcher& searcher,
+      const ttb_indx num_samples_nonzeros,
+      const ttb_indx num_samples_zeros,
+      const ttb_real weight_nonzeros,
+      const ttb_real weight_zeros,
+      const Gradient& gradient,
+      const AlgParams& algParams,
+      DistKtensorUpdate<ExecSpace> *dku_ptr,
+      SptensorT<ExecSpace>& Yd,
+      ArrayT<ExecSpace>& w,
+      KtensorT<ExecSpace>& ud_overlapped,
+      const KtensorT<ExecSpace>& Gd,
+      const KtensorT<ExecSpace>& Gd_overlap,
+      Kokkos::Random_XorShift64_Pool<ExecSpace>& rand_pool);
 
   }
 

@@ -740,6 +740,7 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_Sptensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Tensor.cpp
   ${Genten_SOURCE_DIR}/src/Genten_HessVec.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_DistKtensorUpdate.cpp
   ${Genten_SOURCE_DIR}/joint_moments/Genten_HigherMoments.cpp
   ${Genten_SOURCE_DIR}/src/Genten_Driver.cpp
   ${Genten_SOURCE_DIR}/src/Genten_CublasHandle.cpp
@@ -1195,7 +1196,7 @@ endif()
 
 # distributed methods to run
 set(dist_methods "")
-list(APPEND dist_methods "all-reduce")
+list(APPEND dist_methods "all-reduce" "two-sided")
 if (HAVE_TPETRA)
   list(APPEND dist_methods "tpetra")
 endif()
@@ -1217,8 +1218,9 @@ function(add_genten_mpi_tests name cmd args spaces dists)
       string(CONCAT test_name ${name} "_" ${space} "_" ${dist})
       string(CONCAT test_args ${args} " --exec-space " ${space} " --dist-method " ${dist})
       # The tests can run VERY slowly with multiple threads and MPI ranks,
-      # so run with a single thread for OpenMP and Threads
-      if (HAVE_MPI AND (space STREQUAL "openmp") OR (space STREQUAL "threads"))
+      # so run with a single thread (for all spaces because OpenMP or Threads
+      # maybe the default host execution space).
+      if (HAVE_MPI)
         string(CONCAT test_args ${test_args} " --kokkos-num-threads=1")
       endif()
       genten_add_test(NAME ${test_name} COMMAND ${cmd} ARGS ${test_args} PARALLEL)

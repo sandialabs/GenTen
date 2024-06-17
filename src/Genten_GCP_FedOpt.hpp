@@ -234,6 +234,7 @@ operator() (const Loss& loss) {
 
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(
     spTensor_, ut, algParams_, false);
+  sampler.prepareGradient(GFac);
 
   // Create steppers
   Impl::GCP_SGD_Step<ExecSpace,Loss> *stepper =

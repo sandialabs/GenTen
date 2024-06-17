@@ -280,7 +280,8 @@ distributeTensorToVectorsDense(const Tensor& dn_tensor_host, ttb_indx nnz,
 namespace {
 ttb_indx blockInThatDim(ttb_indx element, const small_vector<ttb_indx>& range) {
   // const ttb_indx nblocks = range.size();
-  gt_assert(element < range.back()); // This would mean the element is too large
+  if (element >= range.back())
+    Genten::error("Tensor nonzero exceeds expected range.  Is your index-base possibly set incorrectly?");
   gt_assert(range.size() >= 2);      // Range always has at least 2 elements
 
   // We could binary search, which could be faster for large ranges, but I
@@ -549,8 +550,6 @@ distributeTensorImpl(const Sptensor& X, const AlgParams& algParams)
     for (ttb_indx i=0; i<ndims; ++i)
       global_dims_[i] = X.size(i);
 
-    const bool use_tpetra =
-      algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
     if (algParams.proc_grid.size() > 0) {
       gt_assert(algParams.proc_grid.size() == ndims);
       small_vector<ttb_indx> grid(ndims);
@@ -558,11 +557,11 @@ distributeTensorImpl(const Sptensor& X, const AlgParams& algParams)
         grid[i] = algParams.proc_grid[i];
       pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
                                                              grid,
-                                                             use_tpetra));
+                                                             dist_method));
     }
     else
       pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
-                                                             use_tpetra));
+                                                             dist_method));
     detail::printGrids(*pmap_);
 
     global_blocking_ =
@@ -600,8 +599,6 @@ distributeTensorImpl(const Tensor& X, const AlgParams& algParams)
     for (ttb_indx i=0; i<ndims; ++i)
       global_dims_[i] = X.size(i);
 
-    const bool use_tpetra =
-      algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
     if (algParams.proc_grid.size() > 0) {
       gt_assert(algParams.proc_grid.size() == ndims);
       small_vector<ttb_indx> grid(ndims);
@@ -609,11 +606,11 @@ distributeTensorImpl(const Tensor& X, const AlgParams& algParams)
         grid[i] = algParams.proc_grid[i];
       pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
                                                              grid,
-                                                             use_tpetra));
+                                                             dist_method));
     }
     else
       pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
-                                                           use_tpetra));
+                                                             dist_method));
 
     detail::printGrids(*pmap_);
 
@@ -724,6 +721,8 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
                  const bool compressed, const ptree& tree,
                  const AlgParams& algParams)
 {
+  dist_method = algParams.dist_update_method;
+
   SptensorT<ExecSpace> X_sparse;
   TensorT<ExecSpace> X_dense;
   TensorReader<Genten::DefaultHostExecutionSpace> reader(
@@ -819,9 +818,6 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
   else {
     global_dims_ = global_dims;
 
-    const bool use_tpetra =
-      algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
-
     if (algParams.proc_grid.size() > 0) {
       gt_assert(algParams.proc_grid.size() == ndims);
       small_vector<ttb_indx> grid(ndims);
@@ -829,11 +825,11 @@ distributeTensor(const std::string& file, const ttb_indx index_base,
         grid[i] = algParams.proc_grid[i];
       pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
                                                              grid,
-                                                             use_tpetra));
+                                                             dist_method));
     }
     else
       pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
-                                                             use_tpetra));
+                                                             dist_method));
     detail::printGrids(*pmap_);
 
     global_blocking_ =
@@ -1019,31 +1015,65 @@ distributeTensorData(const std::vector<SpDataType>& Tvec,
           Teuchos::rcp(new tpetra_import_type<ExecSpace>(
                          factorMap[dim], overlapFactorMap[dim]));
     }
-
-    // Build maps and importers for importing factor matrices to/from root
-    rootMap.resize(ndims);
-    rootImporter.resize(ndims);
-    for (ttb_indx dim=0; dim<ndims; ++dim) {
-      const Tpetra::global_size_t numGlobalElements = global_dims_[dim];
-      const size_t numLocalElements =
-        (gridRank() == 0) ? global_dims_[dim] : 0;
-      rootMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(numGlobalElements, numLocalElements, indexBase, tpetra_comm));
-      rootImporter[dim] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(factorMap[dim], rootMap[dim]));
-    }
-
-    // Build maps and importers for importing factor matrices to all procs
-    replicatedMap.resize(ndims);
-    replicatedImporter.resize(ndims);
-    for (ttb_indx dim=0; dim<ndims; ++dim) {
-      const Tpetra::global_size_t numGlobalElements = global_dims_[dim];
-      replicatedMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(numGlobalElements, indexBase, tpetra_comm, Tpetra::LocallyReplicated));
-      replicatedImporter[dim] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(factorMap[dim], replicatedMap[dim]));
-    }
   }
 #else
   if (use_tpetra)
     Genten::error("Cannot use tpetra distribution approach without enabling Tpetra!");
 #endif
+
+  // Compute local dimensions of compatible factor matrices
+  ktensor_local_dims_.resize(ndims);
+  ktensor_local_offsets_.resize(ndims);
+  for (ttb_indx n=0; n<ndims; ++n) {
+    if (algParams.dist_update_method == Dist_Update_Method::AllReduce)
+    {
+      ktensor_local_dims_[n] = local_dims_[n];
+      const ttb_indx coord = pmap_->gridCoord(n);
+      ktensor_local_offsets_[n] = global_blocking_[n][coord];
+    }
+    else if (
+      algParams.dist_update_method == Dist_Update_Method::AllGatherReduce ||
+      algParams.dist_update_method == Dist_Update_Method::OneSided ||
+      algParams.dist_update_method == Dist_Update_Method::TwoSided)
+    {
+      // Distributed ktensor in blocks across subgrid layers, then
+      // distribute each block uniformly across procs in the layer
+      const ttb_indx procs_in_layer = pmap_->subCommSize(n);
+      const ttb_indx my_proc = pmap_->subCommRank(n);
+      const ttb_indx rows_in_layer = local_dims_[n];
+      ttb_indx num_my_rows = rows_in_layer / procs_in_layer;
+      const ttb_indx rem = rows_in_layer - num_my_rows*procs_in_layer;
+
+      // Distribute remainder across the first rem procs
+      if (my_proc < rem)
+        ++num_my_rows;
+
+      // Compute local offset
+      std::vector<ttb_indx> local_sizes(procs_in_layer);
+      local_sizes[my_proc] = num_my_rows;
+      pmap_->subGridAllGather(n, local_sizes.data(), 1);
+      ttb_indx my_offset = 0;
+      for (unsigned proc=0; proc<my_proc; ++proc)
+        my_offset += local_sizes[proc];
+
+      // Add offset from other layers
+      const ttb_indx coord = pmap_->gridCoord(n);
+      my_offset += global_blocking_[n][coord];
+
+      ktensor_local_dims_[n] = num_my_rows;
+      ktensor_local_offsets_[n] = my_offset;
+    }
+#ifdef HAVE_TPETRA
+    else if (algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra)
+    {
+      ktensor_local_dims_[n] = factorMap[n]->getLocalNumElements();
+      ktensor_local_offsets_[n] = factorMap[n]->getGlobalElement(0);
+    }
+#endif
+    else
+      Genten::error(std::string("Unknown distributed-guess method: ") +
+                    Dist_Update_Method::names[algParams.dist_update_method]);
+  }
 
   if (DistContext::isDebug()) {
     if (gridRank() == 0) {
@@ -1173,31 +1203,63 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
           Teuchos::rcp(new tpetra_import_type<ExecSpace>(
                          factorMap[dim], overlapFactorMap[dim]));
     }
-
-    // Build maps and importers for importing factor matrices to/from root
-    rootMap.resize(ndims);
-    rootImporter.resize(ndims);
-    for (ttb_indx dim=0; dim<ndims; ++dim) {
-      const Tpetra::global_size_t numGlobalElements = global_dims_[dim];
-      const size_t numLocalElements =
-        (gridRank() == 0) ? global_dims_[dim] : 0;
-      rootMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(numGlobalElements, numLocalElements, indexBase, tpetra_comm));
-      rootImporter[dim] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(factorMap[dim], rootMap[dim]));
-    }
-
-    // Build maps and importers for importing factor matrices to all procs
-    replicatedMap.resize(ndims);
-    replicatedImporter.resize(ndims);
-    for (ttb_indx dim=0; dim<ndims; ++dim) {
-      const Tpetra::global_size_t numGlobalElements = global_dims_[dim];
-      replicatedMap[dim] = Teuchos::rcp(new tpetra_map_type<ExecSpace>(numGlobalElements, indexBase, tpetra_comm, Tpetra::LocallyReplicated));
-      replicatedImporter[dim] = Teuchos::rcp(new tpetra_import_type<ExecSpace>(factorMap[dim], replicatedMap[dim]));
-    }
   }
 #else
   if (use_tpetra)
     Genten::error("Cannot use tpetra distribution approach without enabling Tpetra!");
 #endif
+
+  // Compute local dimensions of compatible factor matrices
+  ktensor_local_dims_.resize(ndims);
+  ktensor_local_offsets_.resize(ndims);
+  for (ttb_indx n=0; n<ndims; ++n) {
+    if (algParams.dist_update_method == Dist_Update_Method::AllReduce)
+    {
+      ktensor_local_dims_[n] = local_dims_[n];
+      const ttb_indx coord = pmap_->gridCoord(n);
+      ktensor_local_offsets_[n] = global_blocking_[n][coord];
+    }
+    else if (
+      algParams.dist_update_method == Dist_Update_Method::AllGatherReduce ||
+      algParams.dist_update_method == Dist_Update_Method::OneSided ||
+      algParams.dist_update_method == Dist_Update_Method::TwoSided)
+    {
+      const ttb_indx procs_in_layer = pmap_->subCommSize(n);
+      const ttb_indx my_proc = pmap_->subCommRank(n);
+      const ttb_indx rows_in_layer = local_dims_[n];
+      ttb_indx num_my_rows = rows_in_layer / procs_in_layer;
+      const ttb_indx rem = rows_in_layer - num_my_rows*procs_in_layer;
+
+      // Distribute remainder across the first rem procs
+      if (my_proc < rem)
+        ++num_my_rows;
+
+      // Compute local offset
+      std::vector<ttb_indx> local_sizes(procs_in_layer);
+      local_sizes[my_proc] = num_my_rows;
+      pmap_->subGridAllGather(n, local_sizes.data(), 1);
+      ttb_indx my_offset = 0;
+      for (unsigned proc=0; proc<my_proc; ++proc)
+        my_offset += local_sizes[proc];
+
+      // Add offset from other layers
+      const ttb_indx coord = pmap_->gridCoord(n);
+      my_offset += global_blocking_[n][coord];
+
+      ktensor_local_dims_[n] = num_my_rows;
+      ktensor_local_offsets_[n] = my_offset;
+    }
+#ifdef HAVE_TPETRA
+    else if (algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra)
+    {
+      ktensor_local_dims_[n] = factorMap[n]->getLocalNumElements();
+      ktensor_local_offsets_[n] = factorMap[n]->getGlobalElement(0);
+    }
+#endif
+    else
+      Genten::error(std::string("Unknown distributed ktensor method: ") +
+                    Dist_Update_Method::names[algParams.dist_update_method]);
+  }
 
   if (DistContext::isDebug()) {
     if (gridRank() == 0) {
@@ -1225,6 +1287,8 @@ distributeTensor(const std::string& file,
                  const ptree& tree,
                  const AlgParams& algParams)
 {
+  dist_method = algParams.dist_update_method;
+
   SptensorT<ExecSpace> X_sparse;
   TensorT<ExecSpace> X_dense;
   Genten::TensorReader<ExecSpace> reader(file, index_base, compressed, tree);
@@ -1233,15 +1297,21 @@ distributeTensor(const std::string& file,
     X_sparse = reader.getSparseTensor();
     const ttb_indx nd = X_sparse.ndims();
     global_dims_.resize(nd);
-    for (ttb_indx i=0; i<nd; ++i)
+    ktensor_local_dims_.resize(nd);
+    for (ttb_indx i=0; i<nd; ++i) {
       global_dims_[i] = X_sparse.size(i);
+      ktensor_local_dims_[i] = X_sparse.size(i);
+    }
   }
   else if (reader.isDense()) {
     X_dense = reader.getDenseTensor();
     const ttb_indx nd = X_dense.ndims();
     global_dims_.resize(nd);
-    for (ttb_indx i=0; i<nd; ++i)
+    ktensor_local_dims_.resize(nd);
+    for (ttb_indx i=0; i<nd; ++i) {
       global_dims_[i] = X_dense.size(i);
+      ktensor_local_dims_[i] = X_dense.size(i);
+    }
   }
   else
     Genten::error("Tensor is neither sparse nor dense, something is wrong!");
@@ -1306,7 +1376,7 @@ randomInitialGuess(const SptensorT<ExecSpace>& X,
                    const ttb_indx seed,
                    const bool prng,
                    const bool scale_guess_by_norm_x,
-                   const std::string& dist_method) const
+                   const std::string& dist_guess_method) const
 {
   const ttb_indx nd = X.ndims();
   const ttb_real norm_x = globalNorm(X);
@@ -1314,7 +1384,7 @@ randomInitialGuess(const SptensorT<ExecSpace>& X,
 
   Genten::KtensorT<ExecSpace> u;
 
-  if (dist_method == "serial") {
+  if (dist_guess_method == "serial") {
     // Compute random ktensor on rank 0 and broadcast to all proc's
     IndxArrayT<ExecSpace> sz(nd);
     auto hsz = create_mirror_view(sz);
@@ -1328,34 +1398,26 @@ randomInitialGuess(const SptensorT<ExecSpace>& X,
     }
     u = exportFromRoot(u0);
   }
-  else if (dist_method == "parallel" || dist_method == "parallel-drew") {
-#ifdef HAVE_TPETRA
-    if (tpetra_comm != Teuchos::null) {
-      const ttb_indx nd = X.ndims();
-      IndxArrayT<ExecSpace> sz(nd);
-      auto hsz = create_mirror_view(sz);
-      for (ttb_indx i=0; i<nd; ++i)
-        hsz[i] = factorMap[i]->getLocalNumElements();
-      deep_copy(sz,hsz);
-      u = KtensorT<ExecSpace>(rank, nd, sz);
-      u.setWeights(1.0);
-      u.setMatricesScatter(false, prng, cRMT);
-      u.setProcessorMap(&pmap());
-    }
-    else
-#endif
-    {
-      u = KtensorT<ExecSpace>(rank, nd, X.size());
-      u.setWeights(1.0);
-      u.setMatricesScatter(false, prng, cRMT);
-      u.setProcessorMap(&pmap());
+  else if (dist_guess_method == "parallel" ||
+           dist_guess_method == "parallel-drew") {
+    const ttb_indx nd = X.ndims();
+    IndxArrayT<ExecSpace> sz(nd);
+    auto hsz = create_mirror_view(sz);
+    for (ttb_indx i=0; i<nd; ++i)
+      hsz[i] = ktensor_local_dims_[i];
+    deep_copy(sz,hsz);
+    u = KtensorT<ExecSpace>(rank, nd, sz);
+    u.setWeights(1.0);
+    u.setMatricesScatter(false, prng, cRMT);
+    u.setProcessorMap(&pmap());
+    if (dist_method == Dist_Update_Method::AllReduce) {
       allReduce(u, true); // make replicated proc's consistent
     }
   }
   else
-    Genten::error("Unknown distributed-guess method: " + dist_method);
+    Genten::error("Unknown distributed-guess method: " + dist_guess_method);
 
-  if (dist_method == "parallel-drew")
+  if (dist_guess_method == "parallel-drew")
     u.weights().times(1.0 / norm_x); // don't understand this
   else {
     const ttb_real norm_u = globalNorm(u);
@@ -1375,7 +1437,7 @@ randomInitialGuess(const TensorT<ExecSpace>& X,
                    const ttb_indx seed,
                    const bool prng,
                    const bool scale_guess_by_norm_x,
-                   const std::string& dist_method) const
+                   const std::string& dist_guess_method) const
 {
   const ttb_indx nd = X.ndims();
   const ttb_real norm_x = globalNorm(X);
@@ -1383,7 +1445,7 @@ randomInitialGuess(const TensorT<ExecSpace>& X,
 
   Genten::KtensorT<ExecSpace> u;
 
-  if (dist_method == "serial") {
+  if (dist_guess_method == "serial") {
     // Compute random ktensor on rank 0 and broadcast to all proc's
     IndxArrayT<ExecSpace> sz(nd);
     auto hsz = create_mirror_view(sz);
@@ -1397,34 +1459,26 @@ randomInitialGuess(const TensorT<ExecSpace>& X,
     }
     u = exportFromRoot(u0);
   }
-  else if (dist_method == "parallel" || dist_method == "parallel-drew") {
-#ifdef HAVE_TPETRA
-    if (tpetra_comm != Teuchos::null) {
-      const ttb_indx nd = X.ndims();
-      IndxArrayT<ExecSpace> sz(nd);
-      auto hsz = create_mirror_view(sz);
-      for (ttb_indx i=0; i<nd; ++i)
-        hsz[i] = factorMap[i]->getLocalNumElements();
-      deep_copy(sz,hsz);
-      u = KtensorT<ExecSpace>(rank, nd, sz);
-      u.setWeights(1.0);
-      u.setMatricesScatter(false, prng, cRMT);
-      u.setProcessorMap(&pmap());
-    }
-    else
-#endif
-    {
-      u = KtensorT<ExecSpace>(rank, nd, X.size());
-      u.setWeights(1.0);
-      u.setMatricesScatter(false, prng, cRMT);
-      u.setProcessorMap(&pmap());
+  else if (dist_guess_method == "parallel" ||
+           dist_guess_method == "parallel-drew") {
+    const ttb_indx nd = X.ndims();
+    IndxArrayT<ExecSpace> sz(nd);
+    auto hsz = create_mirror_view(sz);
+    for (ttb_indx i=0; i<nd; ++i)
+      hsz[i] = ktensor_local_dims_[i];
+    deep_copy(sz,hsz);
+    u = KtensorT<ExecSpace>(rank, nd, sz);
+    u.setWeights(1.0);
+    u.setMatricesScatter(false, prng, cRMT);
+    u.setProcessorMap(&pmap());
+    if (dist_method == Dist_Update_Method::AllReduce) {
       allReduce(u, true); // make replicated proc's consistent
     }
   }
   else
-    Genten::error("Unknown distributed-guess method: " + dist_method);
+    Genten::error("Unknown distributed-guess method: " + dist_guess_method);
 
-  if (dist_method == "parallel-drew")
+  if (dist_guess_method == "parallel-drew")
     u.weights().times(1.0 / norm_x); // don't understand this
   else {
     const ttb_real norm_u = globalNorm(u);

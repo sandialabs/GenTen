@@ -639,6 +639,7 @@ Genten::Sptensor read_exodus_dense_tensor(const std::string& filename)
   return x;
 
 #else
+  (void) filename; // fix compiler warning
   Genten::error("Cannot read exodus files without SEACAS enabled");
   return Genten::Tensor(0);
 #endif

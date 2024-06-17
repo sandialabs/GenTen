@@ -80,11 +80,12 @@ namespace Genten {
         algParams.sampling_type != GCP_Sampling::SemiStratified)
       Genten::error("Must use semi-stratified sampling with asynchronous solver!");
     if (algParams.async &&
-        algParams.dist_update_method == Dist_Update_Method::Tpetra)
-      Genten::error("Asynchronous GCP-SGD does not work with Tpetra distributed parallelism");
+        algParams.dist_update_method != Dist_Update_Method::AllReduce)
+      Genten::error("Asynchronous GCP-SGD requires AllReduce distributed parallelism");
     if (algParams.fuse &&
-        algParams.dist_update_method == Dist_Update_Method::Tpetra)
-      Genten::error("Fused sampling does not work with Tpetra distributed parallelism");
+        algParams.dist_update_method != Dist_Update_Method::AllReduce &&
+        algParams.dist_update_method != Dist_Update_Method::OneSided)
+      Genten::error("Fused sampling requies AllReduce or OneSided distributed parallelism");
 
     // Create stepper
     // Note:  uv is not a view of u, so this involves an allocation.

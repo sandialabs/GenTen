@@ -71,6 +71,7 @@ namespace Genten {
     ttb_indx printitn;   // Print iterations
     bool debug;          // Print debugging info
     bool timings;        // Print accurate kernel timing info (requires fences)
+    std::string timings_xml; // XML file to save timing info
     bool full_gram;      // Use full Gram matrix formulation
     bool rank_def_solver; // Use rank-deficient least-squares solver
     ttb_real rcond;      // Truncation threshold in rank-deficient solver
