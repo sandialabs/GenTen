@@ -243,13 +243,15 @@ int run_sparse_mttkrp(const std::string& inputfilename,
     for (ttb_indx n=0; n<nDims; ++n) {
       const ttb_indx nRows = cFacDims_host[n];
       ttb_indx num_failures_n = 0;
+      auto cResult_host_n = cResult_host[n];
+      auto cAnswer_host_n = cAnswer_host[n];
       Kokkos::RangePolicy<Genten::DefaultHostExecutionSpace> policy2(0,nRows);
       Kokkos::parallel_reduce(policy2,
                               [=](const ttb_indx i, ttb_indx& nfail)
       {
         for (ttb_indx j=0; j<nNumComponents; ++j) {
-          const ttb_real v1 = cResult_host[n].entry(i,j);
-          const ttb_real v2 = cAnswer_host[n].entry(i,j);
+          const ttb_real v1 = cResult_host_n.entry(i,j);
+          const ttb_real v2 = cAnswer_host_n.entry(i,j);
           const bool isequal = Genten::isEqualToTol(v1, v2, tol);
           if (!isequal)
             ++nfail;
@@ -454,13 +456,15 @@ int run_dense_mttkrp(const std::string& inputfilename,
     for (ttb_indx n=0; n<nDims; ++n) {
       const ttb_indx nRows = cFacDims_host[n];
       ttb_indx num_failures_n = 0;
+      auto cResult_host_n = cResult_host[n];
+      auto cAnswer_host_n = cAnswer_host[n];
       Kokkos::RangePolicy<Genten::DefaultHostExecutionSpace> policy2(0,nRows);
       Kokkos::parallel_reduce(policy2,
                               [=](const ttb_indx i, ttb_indx& nfail)
       {
         for (ttb_indx j=0; j<nNumComponents; ++j) {
-          const ttb_real v1 = cResult_host[n].entry(i,j);
-          const ttb_real v2 = cAnswer_host[n].entry(i,j);
+          const ttb_real v1 = cResult_host_n.entry(i,j);
+          const ttb_real v2 = cAnswer_host_n.entry(i,j);
           const bool isequal = Genten::isEqualToTol(v1, v2, tol);
           if (!isequal)
             ++nfail;
