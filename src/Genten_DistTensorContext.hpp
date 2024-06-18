@@ -301,7 +301,7 @@ namespace {
 template <typename T> bool isValueSame(T x) {
   T p[]{-x, x};
   MPI_Allreduce(MPI_IN_PLACE, p, 2, DistContext::toMpiType<T>(), MPI_MIN,
-                MPI_COMM_WORLD);
+                DistContext::commWorld());
   return p[0] == -p[1];
 }
 
