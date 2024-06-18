@@ -27,9 +27,11 @@ stages:
 # Build genten (w/clang) and push to registry using docker-in-docker
 build-gitlab-clang-image:
   stage: build
-  image: docker:stable
+  #image: docker:stable
+  image: docker:25
   services:
-    - docker:stable-dind
+    #- docker:stable-dind
+    - docker:25-dind
   script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
     - docker pull ${CI_REGISTRY_IMAGE}/genten-clang-openmp-snb:latest || true
