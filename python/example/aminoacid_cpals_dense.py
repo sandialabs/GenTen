@@ -6,7 +6,11 @@ try:
 except:
     have_matplotlib = False
 
-x = pygenten.import_tensor("data/aminoacid_data_dense.txt")
+# Read tensor only on proc 0
+if pygenten.proc_rank() == 0:
+    x = pygenten.import_tensor("data/aminoacid_data_dense.txt")
+else:
+    x = pygenten.Tensor()
 
 u,perf = pygenten.cp_als(x, rank=8, maxiters=20, tol=1e-4, timings=True)
 
