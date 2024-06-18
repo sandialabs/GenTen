@@ -1,13 +1,13 @@
-import pygenten as gt
-import pytest
-import json
-from inspect import signature
-
 try:
     import pyttb as ttb
     have_ttb = True
 except:
     have_ttb = False
+
+import pygenten as gt
+import pytest
+import json
+from inspect import signature
 
 def test_cpals_dense():
     x = gt.import_tensor("data/aminoacid_data_dense.txt")

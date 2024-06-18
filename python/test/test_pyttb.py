@@ -1,12 +1,12 @@
-import pygenten as gt
-import pytest
-
 try:
     import pyttb as ttb
     import numpy as np
     have_ttb = True
 except:
     have_ttb = False
+
+import pygenten as gt
+import pytest
 
 if have_ttb:
 
