@@ -1264,7 +1264,7 @@ endif()
 
 # python tests
 if (HAVE_PYTHON)
-  genten_add_test(NAME Genten_Test_Python COMMAND "pytest" ARGS "--disable-warnings;${CMAKE_SOURCE_DIR}/python/test")
+  genten_add_test(NAME Genten_Test_Python COMMAND "pytest" ARGS "-v;--disable-warnings;${CMAKE_SOURCE_DIR}/python/test")
 endif()
 
 #------------------------------------------------------------
