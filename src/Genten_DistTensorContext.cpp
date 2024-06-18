@@ -535,20 +535,45 @@ SptensorT<ExecSpace>
 DistTensorContext<ExecSpace>::
 distributeTensorImpl(const Sptensor& X, const AlgParams& algParams)
 {
+  // Check tensor has consistent number of dimensions on all processors,
+  // or is non-empty only on processor 0
+  ttb_indx ndims = X.ndims();
+#ifdef HAVE_DIST
+  ttb_indx max_ndims = ndims;
+  MPI_Allreduce(MPI_IN_PLACE, &max_ndims, 1, DistContext::toMpiType<ttb_indx>(),
+                MPI_MAX, DistContext::commWorld());
+  if (max_ndims != ndims && ndims != 0)
+    Genten::error("Number of tensor dimensions is not consistent across processors!");
+  if (ndims == 0 && DistContext::rank() == 0)
+    Genten::error("Tensor cannot be empty on rank 0!");
+  ndims = max_ndims;
+#endif
+
   // Check if we have already distributed a tensor, in which case this one
   // needs to be of the same size
-  const ttb_indx ndims = X.ndims();
   if (global_dims_.size() > 0) {
     if (global_dims_.size() != ndims)
       Genten::error("distributeTensor() called twice with different number of dimensions!");
-    for (ttb_indx i=0; i<ndims; ++i)
-      if (global_dims_[i] != X.size(i))
+    if (X.ndims() > 0) {
+      for (ttb_indx i=0; i<ndims; ++i)
+        if (global_dims_[i] != X.size(i))
           Genten::error("distributeTensor() called twice with different sized tensors!");
+    }
   }
   else {
     global_dims_.resize(ndims);
     for (ttb_indx i=0; i<ndims; ++i)
-      global_dims_[i] = X.size(i);
+      global_dims_[i] = X.ndims() > 0 ? X.size(i) : 0;
+
+#ifdef HAVE_DIST
+    std::vector<ttb_indx> max_global_dims = global_dims_;
+    MPI_Allreduce(MPI_IN_PLACE, max_global_dims.data(), ndims,
+                  DistContext::toMpiType<ttb_indx>(), MPI_MAX,
+                  DistContext::commWorld());
+    if (X.ndims() > 0 && max_global_dims != global_dims_)
+      Genten::error("Tensor dimensions are not consistent across processors!");
+    global_dims_ = max_global_dims;
+#endif
 
     if (algParams.proc_grid.size() > 0) {
       gt_assert(algParams.proc_grid.size() == ndims);
@@ -571,9 +596,9 @@ distributeTensorImpl(const Sptensor& X, const AlgParams& algParams)
     DistContext::Barrier();
   }
 
+  ttb_indx nnz = pmap_->gridAllReduce(X.nnz(), ProcessorMap::Max);
   auto Tvec = detail::distributeTensorToVectorsSparse(
-    X, X.nnz(), pmap_->gridComm(), pmap_->gridRank(),
-    pmap_->gridSize());
+    X, nnz, pmap_->gridComm(), pmap_->gridRank(), pmap_->gridSize());
 
   return distributeTensorData(Tvec, global_dims_, global_blocking_, *pmap_,
                               algParams);
@@ -584,20 +609,45 @@ TensorT<ExecSpace>
 DistTensorContext<ExecSpace>::
 distributeTensorImpl(const Tensor& X, const AlgParams& algParams)
 {
+  // Check tensor has consistent number of dimensions on all processors,
+  // or is non-empty only on processor 0
+  ttb_indx ndims = X.ndims();
+#ifdef HAVE_DIST
+  ttb_indx max_ndims = ndims;
+  MPI_Allreduce(MPI_IN_PLACE, &max_ndims, 1, DistContext::toMpiType<ttb_indx>(),
+                MPI_MAX, DistContext::commWorld());
+  if (max_ndims != ndims && ndims != 0)
+    Genten::error("Number of tensor dimensions is not consistent across processors!");
+  if (ndims == 0 && DistContext::rank() == 0)
+    Genten::error("Tensor cannot be empty on rank 0!");
+  ndims = max_ndims;
+#endif
+
   // Check if we have already distributed a tensor, in which case this one
   // needs to be of the same size
-  const ttb_indx ndims = X.ndims();
   if (global_dims_.size() > 0) {
     if (global_dims_.size() != ndims)
       Genten::error("distributeTensor() called twice with different number of dimensions!");
-    for (ttb_indx i=0; i<ndims; ++i)
-      if (global_dims_[i] != X.size(i))
+    if (X.ndims() > 0) {
+      for (ttb_indx i=0; i<ndims; ++i)
+        if (global_dims_[i] != X.size(i))
           Genten::error("distributeTensor() called twice with different sized tensors!");
+    }
   }
   else {
     global_dims_.resize(ndims);
     for (ttb_indx i=0; i<ndims; ++i)
-      global_dims_[i] = X.size(i);
+      global_dims_[i] = X.ndims() > 0 ? X.size(i) : 0;
+
+#ifdef HAVE_DIST
+    std::vector<ttb_indx> max_global_dims = global_dims_;
+    MPI_Allreduce(MPI_IN_PLACE, max_global_dims.data(), ndims,
+                  DistContext::toMpiType<ttb_indx>(), MPI_MAX,
+                  DistContext::commWorld());
+    if (X.ndims() > 0 && max_global_dims != global_dims_)
+      Genten::error("Tensor dimensions are not consistent across processors!");
+    global_dims_ = max_global_dims;
+#endif
 
     if (algParams.proc_grid.size() > 0) {
       gt_assert(algParams.proc_grid.size() == ndims);
@@ -621,11 +671,10 @@ distributeTensorImpl(const Tensor& X, const AlgParams& algParams)
     DistContext::Barrier();
   }
 
-  ttb_indx nnz = X.nnz();
+  ttb_indx nnz = pmap_->gridAllReduce(X.nnz(), ProcessorMap::Max);
   ttb_indx offset = 0;
   auto Tvec = detail::distributeTensorToVectorsDense(
-    X, nnz, pmap_->gridComm(), pmap_->gridRank(),
-    pmap_->gridSize(), offset);
+    X, nnz, pmap_->gridComm(), pmap_->gridRank(), pmap_->gridSize(), offset);
 
   return distributeTensorData(Tvec, nnz, offset, global_dims_, global_blocking_,
                               X.getLayout(), *pmap_, algParams);
