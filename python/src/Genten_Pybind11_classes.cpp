@@ -598,6 +598,11 @@ void pygenten_tensor(py::module &m){
         }
 
         Genten::Tensor x;
+
+        // Check for empty tensor (nd may be > 0 in this case)
+        if (numel == 0)
+          return x;
+
         if (info.strides[0]/sizeof(ttb_real) == 1) {
           // The 'F' layout case
           Genten::Array vals(numel, static_cast<ttb_real*>(info.ptr), !copy);
@@ -703,10 +708,16 @@ void pygenten_sptensor(py::module &m){
      Constructor that returns an empty sptensor.)");
     cl.def(py::init([](const py::tuple& sizes, const py::buffer& subs, const py::buffer& vals, const bool copy=true) {
           // Sizes
+          // Check for empty tensor (nd may be > 0 in this case)
           const ttb_indx nd = sizes.size();
+          if (nd == 0)
+            return Genten::Sptensor();
           Genten::IndxArray sz(nd);
-          for (ttb_indx i=0; i<nd; ++i)
+          for (ttb_indx i=0; i<nd; ++i) {
             sz[i] = py::cast<ttb_indx>(sizes[i]);
+            if (sz[i] == 0)
+              return Genten::Sptensor();
+          }
 
           // Subscripts.  We support nearly any type of ordinal, but only
           // if it matches ttb_indx can we avoid the copy.
