@@ -445,7 +445,8 @@ public:
   using host_mirror_space = typename left_impl_type::host_mirror_space;
   using HostMirror = TensorT<host_mirror_space>;
 
-  TensorT() : dist_type(), layout_(TensorLayout::Left) {}
+  TensorT(TensorLayout layout = TensorLayout::Left) :
+    dist_type(), layout_(layout) {}
 
   TensorT(const IndxArrayT<ExecSpace>& sz, ttb_real val = 0.0,
           TensorLayout layout = TensorLayout::Left) :

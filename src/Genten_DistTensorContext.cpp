@@ -609,10 +609,20 @@ TensorT<ExecSpace>
 DistTensorContext<ExecSpace>::
 distributeTensorImpl(const Tensor& X, const AlgParams& algParams)
 {
+  ttb_indx ndims = X.ndims();
+  auto layout = X.getLayout();
+#ifdef HAVE_DIST
+  // Check layout is consistent across processors (unless empty) by comparing
+  // to proc 0's layout (which must be non-empty).  Use proc 0's layout for
+  // if tensor is empty on our proc since the code will branch later on layout.
+  int int_layout = static_cast<int>(layout);
+  DistContext::Bcast(int_layout, 0);
+  layout = static_cast<Genten::TensorLayout>(int_layout);
+  if (layout != X.getLayout() && ndims > 0)
+    Genten::error("Tensor layout is not consistent across processors for non-empty tensors!");
+
   // Check tensor has consistent number of dimensions on all processors,
   // or is non-empty only on processor 0
-  ttb_indx ndims = X.ndims();
-#ifdef HAVE_DIST
   ttb_indx max_ndims = ndims;
   MPI_Allreduce(MPI_IN_PLACE, &max_ndims, 1, DistContext::toMpiType<ttb_indx>(),
                 MPI_MAX, DistContext::commWorld());
@@ -677,7 +687,7 @@ distributeTensorImpl(const Tensor& X, const AlgParams& algParams)
     X, nnz, pmap_->gridComm(), pmap_->gridRank(), pmap_->gridSize(), offset);
 
   return distributeTensorData(Tvec, nnz, offset, global_dims_, global_blocking_,
-                              X.getLayout(), *pmap_, algParams);
+                              layout, *pmap_, algParams);
 }
 
 template <typename ExecSpace>
