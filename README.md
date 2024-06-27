@@ -21,7 +21,7 @@ GenTen is a tool for computing Canonical Polyadic (CP, also called CANDECOMP/PAR
 
 GenTen does not provide CP-APR for Poisson data (see [SparTen](https://github.com/sandialabs/sparten) instead) nor other tensor decompositions methods such as Tucker (see [TuckerMPI](https://gitlab.com/tensors/TuckerMPI) instead) or Tensor Train. 
 
-GenTen builds on [Kokkos](https://github.com/kokkos/kokkos) to support shared memory parallel programming models on a variety of contemporary architectures, including:
+GenTen builds on [Kokkos](https://github.com/kokkos/kokkos) and [Kokkos Kernels](https://github.com/kokkos/kokkos-kernels) to support shared memory parallel programming models on a variety of contemporary architectures, including:
 * OpenMP for CPUs.
 * CUDA for NVIDIA GPUs.
 * HIP for AMD GPUs.
@@ -42,34 +42,32 @@ Additional papers describing recent GenTen research and development:
 
 ## Required Dependencies
 
-Genten requires the following components in order to build and run:
-* Kokkos for perfomance portable shared memory parallelism.  Genten bundles a clone of the Kokkos source using `git subtree` for use with inline builds (see below), which is generally kept up to date with the current Kokkos master branch (which corresponds to Kokkos releases).  This is the only version of Kokkos that is guaranteed to work with Genten (however later versions or the develop branch may work).
-* A C++14 standard-compliant compiler.  In principle, any C++14 compiler supported by Kokkos should work, however many older compilers that claim compatability have bugs that are often exposed by Kokkos and/or Genten.  Genten is regularly tested with the following compilers and so these or any later version should work (earlier versions of these compilers *may* work, however it is known that Genten does not compile with GCC 5 and Intel 17 or 18):
-  * GCC 7
-  * Intel 19
-  * Clang 9
-* BLAS and LAPACK for CPU (OpenMP and/or pThreads) builds.
-* The Cuda toolkit for Nvidia Cuda builds.  In principle any version of Cuda supported by Kokkos should work.  Currently this is Cuda versions 9 and 10.
-* CMake for configure/build.  Any version of CMake supported by Kokkos should work.  Currently this is version 3.16 or later.
+GenTen bundles most of what it needs to build and run, including Kokkos/Kokkos-Kernels but requires the following components:
+* A C++ compiler [supported by Kokkos](https://kokkos.org/kokkos-core-wiki/requirements.html#compiler-versions) for the intended architecture/programming model.
+* The corresponding toolkit for GPU builds (CUDA, ROCm, or oneAPI for NVIDIA, AMD, or Intel GPUs, respectively).
+* A version of CMake [supported by Kokkos](https://kokkos.org/kokkos-core-wiki/requirements.html#build-system).
+* BLAS and LAPACK libraries when intending to run GenTen algorithms on a CPU architecture (GenTen uses BLAS/LAPACK functionality provided by the NVIDIA, AMD, and Intel toolkits for GPU builds)
 
 ## Optional Dependencies
 
-Genten can optionally use the following components:
-* MATLAB for integration with the Tensor Toolbox.  Version 2018a or later should work.
+Genten can optionally make use the following components:
+* MPI for distributed memory parallelism.
+  * For distributed parallelism with GPUs, GenTen assumes the MPI library is "GPU-aware" in that it can read and write data directly from GPU memory.  On NVIDIA GPUs, one can also enable UVM in the Kokkos build if the MPI library is not GPU-aware.  
+* Python for Python bindings.
+  * pytest is required for testing GenTen Python bindings.
+  * Integration with pyttb requires several other Python packages required by pyttb, including numpy, numpy_groupies, and scipy.
+* MATLAB for integration with the Matlab Tensor Toolbox.
 * Boost for reading compressed sparse tensors.
-* Caliper for application profiling.
-* Trilinos/ROL for gradient-based GCP optimization approaches (experimental)
+* GenTen can use several packages from Trilinos, including:
+  * ROL for large-scale, parallel, derivative-based optimization methods.
+  * Tpetra for certain distributed parallelism approaches.
+  * Teuchos for timing-related utilities.
+  * SEACAS for reading tensor data from Exodus files.
+  * Trilinos builds can also be used to provide Kokkos/Kokkos-Kernels.
 
 ## Building Genten
 
-Genten requires [Kokkos](github.com/kokkos/kokkos) for on-node thread/GPU
-parallelism.  Genten supports two approaches for building Kokkos for use with Genten:  an
-external build of Kokkos that is installed and linked to Genten, or an inline
-build of Kokkos along with Genten using the bundled Kokkos source (contained within tpls/kokkos).
-The latter is simpler and will be described first.  The former is useful if Genten
-must be linked into an application that itself uses Kokkos.  Note however that only
-the version of Kokkos that is provided with Genten is regularly tested for either
-inline or external builds.
+Genten bundles Kokkos and Kokkos Kernels (along with several other support libraries) using `git subtree` that are compiled along with GenTen to make building GenTen easier (referred to as inline builds below), which are generally kept up-to-date with the most recent release of these libraries.  GenTen can also link against externally compiled versions of these libraries, however compatibility is only guaranteed for the same version bundled by GenTen.  We first describe the basics of building GenTen with inline builds of Kokkos/Kokkos-Kernels followed by the modifications needed for build linking to externally compiled Kokkos/Kokkos-Kernels libraries.
 
 ## Inline build with Kokkos
 
