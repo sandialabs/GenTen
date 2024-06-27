@@ -12,29 +12,30 @@ Government retains certain rights in this software.
 
 # About GenTen
 
-GenTen is a tool for computing Canonical Polyadic (CP, also called CANDECOMP/PARAFAC) decompositions of tensor data.  It is geared towards analysis of extreme-scale data and implements several CP decomposition algorithms that are parallel and scalable including:
+GenTen is a tool for computing Canonical Polyadic (CP, also called CANDECOMP/PARAFAC) decompositions of tensor data.  It is geared towards analysis of extreme-scale data and implements several CP decomposition algorithms that are parallel and scalable, including:
 * CP-ALS:  The workhorse algorithm for Gaussian sparse or dense tensor data.
-* CP-OPT:  CP decomposition of Gaussian data using a quasi-Newton optimization algorithm incorporating possible upper and lower bound constraints.
-* GCP:  Generalized CP supporting arbitrary loss functions (Gaussian, Poisson, Bernoulli, ...), solved using quasi-Newton (dense tensors) or stochastic gradient descent (sparse or dense tensors) optimization methods.
-* Streaming GCP: A GCP algorithm that incrementally updates a GCP decomposition as new data is observed, suitable for analysis of in situ analysis of streaming data.
+* [CP-OPT](https://doi.org/10.1002/cem.1335):  CP decomposition of Gaussian data using a quasi-Newton optimization algorithm incorporating possible upper and lower bound constraints.
+* [GCP](https://epubs.siam.org/doi/abs/10.1137/18M1203626):  Generalized CP supporting arbitrary loss functions (Gaussian, Poisson, Bernoulli, ...), solved using [quasi-Newton](https://epubs.siam.org/doi/abs/10.1137/18M1203626) (dense tensors) or [stochastic gradient descent](https://doi.org/10.1137/19M1266265) (sparse or dense tensors) optimization methods.
+* [Streaming GCP](https://doi.org/10.1145/3592979.3593405): A GCP algorithm that incrementally updates a GCP decomposition as new data is observed, suitable for analysis of in situ analysis of streaming data.
 * Federated GCP:  A federated learning algorithm for GCP supporting asynchronous parallel communication.
 
 GenTen does not provide CP-APR for Poisson data (see [SparTen](https://github.com/sandialabs/sparten) instead) nor other tensor decompositions methods such as Tucker (see [TuckerMPI](https://gitlab.com/tensors/TuckerMPI) instead) or Tensor Train. 
 
-GenTen builds on [Kokkos](https://github.com/kokkos/kokkos) to support shared memory parallel programming models on a variety of contemporary architectures including:
+GenTen builds on [Kokkos](https://github.com/kokkos/kokkos) to support shared memory parallel programming models on a variety of contemporary architectures, including:
 * OpenMP for CPUs.
 * CUDA for NVIDIA GPUs.
 * HIP for AMD GPUs.
 * SYCL for Intel GPUs.
+
 GenTen also supports distributed memory parallelism using MPI.
 
-GenTen is implemented in C++ for high-performance and supports several modes of operation.  It provides a standalone command line tool for reading tensor data from files, and also provides Matlab and Python bindings that integrate with the [Matlab Tensor Toolbox](https://www.tensortoolbox.org/) and [Python Tensor Toolbox (pyttb)](https://github.com/sandialabs/pyttb) to provide high-performance tensor decomposition capabilities in those environments.
+GenTen is implemented in C++ for high-performance and supports several modes of operation.  It provides a standalone command line tool for reading tensor data from files, and also provides Matlab and Python bindings that integrate with the [Matlab Tensor Toolbox](https://www.tensortoolbox.org/) and [Python Tensor Toolbox (pyttb)](https://github.com/sandialabs/pyttb) to provide high-performance, parallel tensor decomposition capabilities in those environments.
 
 For more information on the algorithms used in Genten with Kokkos, or to cite Genten, please see
 * Eric T. Phipps and Tamara G. Kolda, *Software for Sparse Tensor Decomposition on Emerging Computing Architectures*, SIAM Journal on Scientific Computing 2019 41:3, C269-C290, [DOI: 10.1137/18M1210691](https://epubs.siam.org/doi/ref/10.1137/18M1210691).
 
 Additional papers describing recent GenTen research and development:
-* Saibal De, Hemanth Kolla, Antoine Meyer, Eric T. Phipps, and Francesco Rizzi, *Hybrid Parallel Tucker Decomposition of Streaming Data*, In Platform for Advanced Scientific Computing Conference (PASC ’24), June 3–5, 2024, Zurich, Switzerland, [DOI: 10.1145/3659914.3659934](https://doi.org/10.1145/3659914.3659934).
+* E. Phipps, N. Johnson and T. Kolda, *Streaming Generalized Canonical Polyadic Tensor Decompositions,* in Proceedings of the Platform for Advanced Scientific Computing Conference (PASC ’23), 2023 [DOI: 10.1145/3592979.3593405](https://doi.org/10.1145/3592979.3593405).
 * C. Lewis and E. Phipps, *Low-Communication Asynchronous Distributed Generalized Canonical Polyadic Tensor Decomposition,* 2021 IEEE High Performance Extreme Computing Conference (HPEC), 2021 [DOI: 0.1109/HPEC49654.2021.9622844](https://doi.org/10.1109/HPEC49654.2021.9622844).
 
 # Installing GenTen
