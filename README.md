@@ -226,17 +226,11 @@ Once GenTen has been compiled, it can be tested by executing `ctest`.
 
 # Using Genten
 
-The primary executable for Genten is `bin/genten` in your build tree, which is
-a driver for reading in a (sparse) tensor and performing a CP or GCP
-decomposition of it.  The driver accepts numerous command line options
-controlling various aspects of the computation.  Run `genten --help` for a full
-listing.  For example
+The primary executable for GenTen is `bin/genten` in your build tree, which is a driver for reading in a tensor from a file and performing a CP decomposition of it.  The driver accepts numerous command line options controlling various aspects of the computation.  Run `genten --help` for a full listing.  For example
 ```
 ./bin/genten --input data/aminoacid_data.txt --rank 16 --output aa.ktns
 ```
-will perform a rank 16 CP decomposition of the amino-acid tensor data set
-included with Genten in the data directory, and save the resulting factors in
-`aa.ktns`.  One should see output similar to:
+will perform a rank 16 CP decomposition of the amino-acid tensor data set included with Genten in the data directory, and save the resulting factors in `aa.ktns`.  One should see output similar to:
 ```
 ./bin/genten --input data/aminoacid_data.txt --rank 16 --output aa.ktns
 Read tensor with 61305 nonzeros, dimensions [ 5 201 61 ], and starting index 0
@@ -252,30 +246,16 @@ Final fit =  9.883227e-01
 Ktensor export took  0.005 seconds
 ```
 
-For larger tensor datasets, consider those available from the
-[FROSTT](https://frost.io) collection.  Note that Genten *does not* require
-a header at the top of the sparse tensor file indicating the number of modes,
-their dimensions, and the number of nonzeros.  Any textfile consisting of a list
-of nonzeros in coordinate format (i.e., nonzero indices and value) can be
-read.  If configured with Boost support, compressed tensors can be read directly
-without first decompressing them.
+For larger tensor datasets, consider those available from the [FROSTT](https://frost.io) collection.  Note that GenTen *does not* require a header at the top of the sparse tensor file indicating the number of modes, their dimensions, and the number of nonzeros.  Any textfile consisting of a list of nonzeros in coordinate format (i.e., nonzero indices and value) can be read.  If configured with Boost support, compressed tensors can be read directly without first decompressing them.  GenTen can also read sparse and dense tensors in a binary format that can be generated using the provided `bin/convert_tensor` utility (once a tensor has been converted to binary format, reading it into GenTen for decomposition is much faster and can be executed in parallel).
 
 ## Using the MATLAB interface
 
-To use Genten within MATLAB, you must first add the Tensor Toolbox and the path
-to the `matlab` directory in your Genten build tree to your MATLAB path.
-Genten provides a MATLAB class `sptensor_gt` that works similarly to the
-Tensor Toolbox sparse tensor class `sptensor` that can be passed to various
-MATLAB functions provided by Genten for manipulating the tensor.  A given
-tensor `X` in `sptensor` format can be converted to `sptensor_gt` format
-by calling the constructor:
+To use GenTen within MATLAB, you must first add the Tensor Toolbox and the path to the `matlab` directory in your GenTen build tree to your MATLAB path. GenTen provides a MATLAB class `sptensor_gt` that works similarly to the Tensor Toolbox sparse tensor class `sptensor` that can be passed to various MATLAB functions provided by Genten for manipulating the tensor.  A given tensor `X` in `sptensor` format can be converted to `sptensor_gt` format by calling the constructor:
 ```
 >> X = sptenrand([10 20 30],100);
 >> X_gt = sptensor_gt(X);
 ```
-Genten then provides overloads of several functions in the Tensor Toolbox
-that call the corresponding implementation in Genten when passed a tensor
-in `sptensor_gt` format, e.g.,
+Genten then provides overloads of several functions in the Tensor Toolbox that call the corresponding implementation in Genten when passed a tensor in `sptensor_gt` format, e.g.,
 ```
 >> U = cp_als(X_gt,16,'maxiters',5);
 
@@ -287,9 +267,7 @@ Iter   4: fit =  2.465984e-01 fitdelta =  2.7e-02
 Iter   5: fit =  2.692030e-01 fitdelta =  2.3e-02
 Final fit =  2.692030e-01
 ```
-Note that in addition to the normal options accepted by `cp_als`,
-all options accepted by the `genten` command-line driver (without the
-leading '--') are also accepted, e.g.,
+Note that in addition to the normal options accepted by `cp_als`, all options accepted by the `genten` command-line driver (without the leading '--') are also accepted, e.g.,
 ```
 >> U = cp_als(X_gt,16,'maxiters',5,'mttkrp-method','duplicated','timings');
 Parsing tensor took 3.740000e-04 seconds
@@ -312,9 +290,9 @@ CpAls completed 6 iterations in 1.03e-02 seconds
 	Arrange total time = 3.47e-04 seconds, average time = 3.47e-04 seconds
 ```
 
-# Updating Kokkos
+# Updating Bundled Libraries (For Developers)
 
-Genten uses `git subtree` to manage the bundled Kokkos source.  Below is a summary of the steps required to update Genten's clone to the latest Kokkos sources.
+GenTen uses `git subtree` to manage the bundled sources for the several bundled libraries it depends on.  Below is a summary of the steps required to update GenTen's clone to the latest sources using Kokkos as an example.
 
 First add a remote referencing the Kokkos github repo:
 ```
