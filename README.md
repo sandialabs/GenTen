@@ -10,9 +10,34 @@ Copyright 2017 National Technology & Engineering Solutions of Sandia, LLC
 (NTESS). Under the terms of Contract DE-NA0003525 with NTESS, the U.S.
 Government retains certain rights in this software.
 
-[[_TOC_]]
+# About GenTen
 
-# Build Instructions
+GenTen is a tool for computing Canonical Polyadic (CP, also called CANDECOMP/PARAFAC) decompositions of tensor data.  It is geared towards analysis of extreme-scale data and implements several CP decomposition algorithms that are parallel and scalable including:
+* CP-ALS:  The workhorse algorithm for Gaussian sparse or dense tensor data.
+* CP-OPT:  CP decomposition of Gaussian data using a quasi-Newton optimization algorithm incorporating possible upper and lower bound constraints.
+* GCP:  Generalized CP supporting arbitrary loss functions (Gaussian, Poisson, Bernoulli, ...), solved using quasi-Newton (dense tensors) or stochastic gradient descent (sparse or dense tensors) optimization methods.
+* Streaming GCP: A GCP algorithm that incrementally updates a GCP decomposition as new data is observed, suitable for analysis of in situ analysis of streaming data.
+* Federated GCP:  A federated learning algorithm for GCP supporting asynchronous parallel communication.
+
+GenTen does not provide CP-APR for Poisson data (see [SparTen](https://github.com/sandialabs/sparten) instead) nor other tensor decompositions methods such as Tucker (see [TuckerMPI](https://gitlab.com/tensors/TuckerMPI) instead) or Tensor Train. 
+
+GenTen builds on [Kokkos](https://github.com/kokkos/kokkos) to support shared memory parallel programming models on a variety of contemporary architectures including:
+* OpenMP for CPUs.
+* CUDA for NVIDIA GPUs.
+* HIP for AMD GPUs.
+* SYCL for Intel GPUs.
+GenTen also supports distributed memory parallelism using MPI.
+
+GenTen is implemented in C++ for high-performance and supports several modes of operation.  It provides a standalone command line tool for reading tensor data from files, and also provides Matlab and Python bindings that integrate with the [Matlab Tensor Toolbox](https://www.tensortoolbox.org/) and [Python Tensor Toolbox (pyttb)](https://github.com/sandialabs/pyttb) to provide high-performance tensor decomposition capabilities in those environments.
+
+For more information on the algorithms used in Genten with Kokkos, or to cite Genten, please see
+* Eric T. Phipps and Tamara G. Kolda, *Software for Sparse Tensor Decomposition on Emerging Computing Architectures*, SIAM Journal on Scientific Computing 2019 41:3, C269-C290, [DOI: 10.1137/18M1210691](https://epubs.siam.org/doi/ref/10.1137/18M1210691).
+
+Additional papers describing recent GenTen research and development:
+* Saibal De, Hemanth Kolla, Antoine Meyer, Eric T. Phipps, and Francesco Rizzi, *Hybrid Parallel Tucker Decomposition of Streaming Data*, In Platform for Advanced Scientific Computing Conference (PASC ’24), June 3–5, 2024, Zurich, Switzerland, [DOI: 10.1145/3659914.3659934](https://doi.org/10.1145/3659914.3659934).
+* C. Lewis and E. Phipps, *Low-Communication Asynchronous Distributed Generalized Canonical Polyadic Tensor Decomposition,* 2021 IEEE High Performance Extreme Computing Conference (HPEC), 2021 [DOI: 0.1109/HPEC49654.2021.9622844](https://doi.org/10.1109/HPEC49654.2021.9622844).
+
+# Installing GenTen
 
 ## Required Dependencies
 
@@ -465,15 +490,6 @@ CpAls completed 6 iterations in 1.03e-02 seconds
 	Norm total time = 3.53e-04 seconds, average time = 2.35e-05 seconds
 	Arrange total time = 3.47e-04 seconds, average time = 3.47e-04 seconds
 ```
-
-# More information and how to cite
-
-For more information on the algorithms used in Genten with Kokkos, or to cite
-Genten, please see
-* Eric T. Phipps and Tamara G. Kolda, *Software for Sparse Tensor Decomposition
-  on Emerging Computing Architectures*, SIAM Journal on Scientific Computing
-  2019 41:3, C269-C290
-  (available [here](https://epubs.siam.org/doi/ref/10.1137/18M1210691)).
 
 # Updating Kokkos
 
