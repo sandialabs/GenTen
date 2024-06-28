@@ -40,7 +40,7 @@ Additional papers describing recent GenTen research and development:
 
 # Installing GenTen
 
-## Required Dependencies
+## Required dependencies
 
 GenTen bundles most of what it needs to build and run, including Kokkos/Kokkos-Kernels but requires the following components:
 * A C++ compiler [supported by Kokkos](https://kokkos.org/kokkos-core-wiki/requirements.html#compiler-versions) for the intended architecture/programming model.
@@ -48,7 +48,7 @@ GenTen bundles most of what it needs to build and run, including Kokkos/Kokkos-K
 * A version of CMake [supported by Kokkos](https://kokkos.org/kokkos-core-wiki/requirements.html#build-system).
 * BLAS and LAPACK libraries when intending to run GenTen algorithms on a CPU architecture (GenTen uses BLAS/LAPACK functionality provided by the NVIDIA, AMD, and Intel toolkits for GPU builds)
 
-## Optional Dependencies
+## Optional dependencies
 
 Genten can optionally make use the following components:
 * MPI for distributed memory parallelism.
@@ -289,6 +289,10 @@ CpAls completed 6 iterations in 1.03e-02 seconds
 	Norm total time = 3.53e-04 seconds, average time = 2.35e-05 seconds
 	Arrange total time = 3.47e-04 seconds, average time = 3.47e-04 seconds
 ```
+
+## Using the Python interface
+
+Examples of using the Python interface can be found in [python/example](python/example).  This interface is most useful when used in conjunction with pyttb, as pygenten provides limited support for manipulating tensors and their CP decompositions on its own.  If MPI support is enabled in the GenTen build, pygenten can also use distributed parallelism by launching python in parallel using `mpirun`/`mpiexec`.  GPU parallelism is also supported whereby Python tensor data will be copied to the GPU by GenTen within the Python implementation of the decomposition routine (e.g., `cp_als`) and the resulting CP model will be copied from the GPU when it is returned to Python.
 
 # Updating Bundled Libraries (For Developers)
 
