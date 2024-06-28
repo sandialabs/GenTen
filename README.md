@@ -294,7 +294,7 @@ CpAls completed 6 iterations in 1.03e-02 seconds
 
 Examples of using the Python interface can be found in [python/example](python/example).  This interface is most useful when used in conjunction with pyttb, as pygenten provides limited support for manipulating tensors and their CP decompositions on its own.  If MPI support is enabled in the GenTen build, pygenten can also use distributed parallelism by launching python in parallel using `mpirun`/`mpiexec`.  GPU parallelism is also supported whereby Python tensor data will be copied to the GPU by GenTen within the Python implementation of the decomposition routine (e.g., `cp_als`) and the resulting CP model will be copied from the GPU when it is returned to Python.
 
-# Updating Bundled Libraries (For Developers)
+# Updating bundled libraries (for developers)
 
 GenTen uses `git subtree` to manage the bundled sources for the several bundled libraries it depends on.  Below is a summary of the steps required to update GenTen's clone to the latest sources using Kokkos as an example.
 
