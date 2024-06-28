@@ -220,11 +220,11 @@ To enable Trilinos support, you must use an external build of Trilinos and then 
 ```
 CMake will determine which packages in Trilinos were enabled and enable the corresponding support in GenTen.  CMake can also deduce the compilers, BLAS/LAPACK libraries, and MPI support from the Trilinos build saving the need to specify these in the GenTen build as well.
 
-# Testing Genten
+# Testing GenTen
 
 Once GenTen has been compiled, it can be tested by executing `ctest`.
 
-# Using Genten
+# Using GenTen
 
 The primary executable for GenTen is `bin/genten` in your build tree, which is a driver for reading in a tensor from a file and performing a CP decomposition of it.  The driver accepts numerous command line options controlling various aspects of the computation.  Run `genten --help` for a full listing.  For example
 ```
