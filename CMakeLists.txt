@@ -67,6 +67,13 @@ OPTION(ENABLE_TPETRA "Enable Tpetra distributed parallelism" ON)
 OPTION(ENABLE_ROL "Enable ROL optimization package" ON)
 OPTION(ENABLE_SEACAS "Enable SEACAS tools" ON)
 OPTION(ENABLE_CMAKE_TIMERS "Enable timers for each compile/link step" OFF)
+OPTION(PYGENTEN_PIP "Indicate pyGenTen is being built through pip" OFF)
+OPTION(PYGENTEN_MPI "Enable MPI in pyGenTen when being built through pip" OFF)
+OPTION(PYGENTEN_SERIAL "Enable SERIAL in pyGenTen when being built through pip" OFF)
+OPTION(PYGENTEN_OPENMP "Enable OPENMP in pyGenTen when being built through pip" OFF)
+OPTION(PYGENTEN_CUDA "Enable CUDA in pyGenTen when being built through pip" OFF)
+OPTION(PYGENTEN_HIP "Enable HIP in pyGenTen when being built through pip" OFF)
+OPTION(PYGENTEN_SYCL "Enable SYCL in pyGenTen when being built through pip" OFF)
 
 # Warn about some deprecated variables
 IF(DEFINED KOKKOS_PATH)
@@ -96,6 +103,83 @@ ENDIF()
 
 # Advertise that we support shared libs
 SET_PROPERTY(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
+
+# Setup architectures when building pyGenTen through pip.  We do this
+# because pip/scikit-build doesn't have a way to specify meta-options, so
+# we try to set things up for the user based on a single meta-cmake option
+IF(PYGENTEN_PIP)
+  SET(ENABLE_PYTHON ON)
+  SET(BUILD_SHARED_LIBS ON)
+
+  # If no device parallelism enabled, use Serial for MPI and OpenMP otherwise
+  IF(NOT PYGENTEN_SERIAL AND NOT PYGENTEN_OPENMP AND NOT PYGENTEN_CUDA AND NOT PYGENTEN_HIP AND NOT PYGENTEN_SYCL)
+    IF(PYGENTEN_MPI)
+      SET(PYGENTEN_SERIAL ON)
+    ELSE()
+      SET(PYGENTEN_OPENMP ON)
+    ENDIF()
+  ENDIF()
+
+  IF(PYGENTEN_MPI)
+    IF(NOT DEFINED CMAKE_CXX_COMPILER)
+      SET(CMAKE_CXX_COMPILER "mpicxx")
+    ENDIF()
+    IF(NOT DEFINED CMAKE_C_COMPILER)
+      SET(CMAKE_C_COMPILER "mpicc")
+    ENDIF()
+    SET(ENABLE_MPI ON)
+  ENDIF()
+
+  IF(PYGENTEN_SERIAL)
+    SET(Kokkos_ENABLE_SERIAL ON CACHE BOOL "")
+    SET(Kokkos_ENABLE_AGGRESSIVE_VECTORIZATION ON CACHE BOOL "")
+  ENDIF()
+
+  IF(PYGENTEN_OPENMP)
+    SET(Kokkos_ENABLE_OPENMP ON CACHE BOOL "")
+    SET(Kokkos_ENABLE_AGGRESSIVE_VECTORIZATION ON CACHE BOOL "")
+  ENDIF()
+
+  IF(PYGENTEN_CUDA)
+    SET(Kokkos_ENABLE_CUDA ON CACHE BOOL "")
+    #SET(Kokkos_ARCH_VOLTA70 ON CACHE BOOL "")
+    IF(PYGENTEN_MPI)
+      SET(ENV{OMPI_CXX} "${CMAKE_SOURCE_DIR}/tpls/kokkos/bin/nvcc_wrapper")
+      SET(ENV{MPICH_CXX} "${CMAKE_SOURCE_DIRR}/tpls/kokkos/bin/nvcc_wrapper")
+    ELSE()
+      SET(CMAKE_CXX_COMPILER "${CMAKE_SOURCE_DIR}/tpls/kokkos/bin/nvcc_wrapper")
+    ENDIF()
+  ENDIF()
+
+  IF(PYGENTEN_HIP)
+    SET(Kokkos_ENABLE_HIP ON CACHE BOOL "")
+    #SET(Kokkos_ARCH_VEGA90A ON CACHE BOOL "")
+    IF(PYGENTEN_MPI)
+      SET(ENV{OMPI_CXX} "hipcc")
+      SET(ENV{MPICH_CXX} "hipcc")
+      SET(ENV{OMPI_CC} "hipcc")
+      SET(ENV{MPICH_CC} "hipcc")
+    ELSE()
+      SET(CMAKE_CXX_COMPILER "hipcc")
+      SET(CMAKE_C_COMPILER "hipcc")
+    ENDIF()
+  ENDIF()
+
+  IF(PYGENTEN_SYCL)
+    SET(Kokkos_ENABLE_SYCL ON CACHE BOOL "")
+    #SET(Kokkos_ARCH_INTEL_PVC ON CACHE BOOL "")
+    SET(Kokkos_ENABLE_ONEDPL OFF CACHE BOOL "")
+    IF(PYGENTEN_MPI)
+      SET(ENV{OMPI_CXX} "icpx")
+      SET(ENV{MPICH_CXX} "icpx")
+      SET(ENV{OMPI_CC} "icx")
+      SET(ENV{MPICH_CC} "icx")
+    ELSE()
+      SET(CMAKE_CXX_COMPILER "icpx")
+      SET(CMAKE_C_COMPILER "icx")
+    ENDIF()
+  ENDIF()
+ENDIF()
 
 # Parse Trilinos support.  Do this before any compiler checks as we may
 # set the compilers to match Trilinos
@@ -1112,9 +1196,13 @@ IF(HAVE_PYTHON AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
   SET(pyGenten_BUILD_DIR
     ${Genten_BINARY_DIR}/python/pygenten
     )
-  SET(pyGenten_INSTALL_DIR
-    ${CMAKE_INSTALL_PREFIX}/lib/python${PYTHON_VERSION}/site-packages/pygenten
-    )
+  IF(PYGENTEN_PIP)
+    SET(pyGenten_INSTALL_DIR ${CMAKE_INSTALL_PREFIX})
+  ELSE()
+    SET(pyGenten_INSTALL_DIR
+      ${CMAKE_INSTALL_PREFIX}/lib/python${PYTHON_VERSION}/site-packages/pygenten
+      )
+  ENDIF()
   MESSAGE("-- pygenten installation path: ${pyGenten_INSTALL_DIR}")
   add_subdirectory( python )
 ENDIF()
