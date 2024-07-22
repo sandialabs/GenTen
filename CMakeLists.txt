@@ -121,13 +121,14 @@ IF(PYGENTEN_PIP)
   ENDIF()
 
   IF(PYGENTEN_MPI)
+    SET(ENABLE_MPI ON)
+    # Use standard compiler wrappers if we aren't told to do something else
     IF(NOT DEFINED CMAKE_CXX_COMPILER)
       SET(CMAKE_CXX_COMPILER "mpicxx")
     ENDIF()
     IF(NOT DEFINED CMAKE_C_COMPILER)
       SET(CMAKE_C_COMPILER "mpicc")
     ENDIF()
-    SET(ENABLE_MPI ON)
   ENDIF()
 
   IF(PYGENTEN_SERIAL)
@@ -142,24 +143,30 @@ IF(PYGENTEN_PIP)
 
   IF(PYGENTEN_CUDA)
     SET(Kokkos_ENABLE_CUDA ON CACHE BOOL "")
-    #SET(Kokkos_ARCH_VOLTA70 ON CACHE BOOL "")
+    SET(NVCC_WRAPPER "${CMAKE_SOURCE_DIR}/tpls/kokkos/bin/nvcc_wrapper")
     IF(PYGENTEN_MPI)
-      SET(ENV{OMPI_CXX} "${CMAKE_SOURCE_DIR}/tpls/kokkos/bin/nvcc_wrapper")
-      SET(ENV{MPICH_CXX} "${CMAKE_SOURCE_DIRR}/tpls/kokkos/bin/nvcc_wrapper")
+      # We need to override the internal compilers called by the compiler
+      # wrappers, which is done through environment variables.  While CMake
+      # allows you to set environment variables for the current CMake process,
+      # they are not propagated to the build, so we have to go through a script.
+      # The user can override the compiler nvcc_wrapper calls be setting
+      # NVCC_WRAPPER_DEFAULT_COMPILER as an environment variable.
+      CONFIGURE_FILE (
+        ${CMAKE_SOURCE_DIR}/cmake/genten_mpicxx_nvccwrapper.sh.tmpl
+        ${CMAKE_BINARY_DIR}/cmake/genten_mpicxx_nvccwrapper.sh
+	)
+        SET(CMAKE_CXX_COMPILER "${CMAKE_BINARY_DIR}/cmake/genten_mpicxx_nvccwrapper.sh")
     ELSE()
-      SET(CMAKE_CXX_COMPILER "${CMAKE_SOURCE_DIR}/tpls/kokkos/bin/nvcc_wrapper")
+      SET(CMAKE_CXX_COMPILER "${NVCC_WRAPPER}")
     ENDIF()
   ENDIF()
 
   IF(PYGENTEN_HIP)
     SET(Kokkos_ENABLE_HIP ON CACHE BOOL "")
-    #SET(Kokkos_ARCH_VEGA90A ON CACHE BOOL "")
-    IF(PYGENTEN_MPI)
-      SET(ENV{OMPI_CXX} "hipcc")
-      SET(ENV{MPICH_CXX} "hipcc")
-      SET(ENV{OMPI_CC} "hipcc")
-      SET(ENV{MPICH_CC} "hipcc")
-    ELSE()
+    # We assume the user has MPI compiler wrappers for AMD GPUs, which are set
+    # above, so we only need to set a compiler if none is provided and there is
+    # no MPI.
+    IF(NOT PYGENTEN_MPI AND NOT DEFINED CMAKE_CXX_COMPILER)
       SET(CMAKE_CXX_COMPILER "hipcc")
       SET(CMAKE_C_COMPILER "hipcc")
     ENDIF()
@@ -167,14 +174,11 @@ IF(PYGENTEN_PIP)
 
   IF(PYGENTEN_SYCL)
     SET(Kokkos_ENABLE_SYCL ON CACHE BOOL "")
-    #SET(Kokkos_ARCH_INTEL_PVC ON CACHE BOOL "")
     SET(Kokkos_ENABLE_ONEDPL OFF CACHE BOOL "")
-    IF(PYGENTEN_MPI)
-      SET(ENV{OMPI_CXX} "icpx")
-      SET(ENV{MPICH_CXX} "icpx")
-      SET(ENV{OMPI_CC} "icx")
-      SET(ENV{MPICH_CC} "icx")
-    ELSE()
+    # We assume the user has MPI compiler wrappers for Intel GPUs, which are set
+    # above, so we only need to set a compiler if none is provided and there is
+    # no MPI.
+    IF(NOT PYGENTEN_MPI AND NOT DEFINED CMAKE_CXX_COMPILER)
       SET(CMAKE_CXX_COMPILER "icpx")
       SET(CMAKE_C_COMPILER "icx")
     ENDIF()

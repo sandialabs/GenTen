@@ -19,6 +19,8 @@ classifiers = [
 ]
 
 [tool.scikit-build]
+ninja.version = ">=1.10"  # to support fortran
+ninja.make-fallback = false
 wheel.expand-macos-universal-tags = true
 logging.level = "DEBUG"
 wheel.install-dir = "pygenten"

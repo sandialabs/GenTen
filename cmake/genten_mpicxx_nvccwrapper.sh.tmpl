@@ -1,0 +1,6 @@
+#!/bin/bash
+
+export OMPI_CXX=@NVCC_WRAPPER@
+export MPICH_CXX=@NVCC_WRAPPER@
+
+@CMAKE_CXX_COMPILER@ "$@"
