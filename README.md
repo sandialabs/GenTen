@@ -10,46 +10,70 @@ Copyright 2017 National Technology & Engineering Solutions of Sandia, LLC
 (NTESS). Under the terms of Contract DE-NA0003525 with NTESS, the U.S.
 Government retains certain rights in this software.
 
-[[_TOC_]]
+# About GenTen
 
-# Build Instructions
+GenTen is a tool for computing Canonical Polyadic (CP, also called CANDECOMP/PARAFAC) decompositions of tensor data.  It is geared towards analysis of extreme-scale data and implements several CP decomposition algorithms that are parallel and scalable, including:
+* CP-ALS:  The workhorse algorithm for Gaussian sparse or dense tensor data.
+* [CP-OPT](https://doi.org/10.1002/cem.1335):  CP decomposition of (sparse or dense) Gaussian data using a quasi-Newton optimization algorithm incorporating possible upper and lower bound constraints.
+* [GCP](https://epubs.siam.org/doi/abs/10.1137/18M1203626):  Generalized CP supporting arbitrary loss functions (Gaussian, Poisson, Bernoulli, ...), solved using [quasi-Newton](https://epubs.siam.org/doi/abs/10.1137/18M1203626) (dense tensors) or [stochastic gradient descent](https://doi.org/10.1137/19M1266265) (sparse or dense tensors) optimization methods.
+* [Streaming GCP](https://doi.org/10.1145/3592979.3593405): A GCP algorithm that incrementally updates a GCP decomposition as new data is observed, suitable for in situ analysis of streaming data.
+* Federated GCP:  A federated learning algorithm for GCP supporting asynchronous parallel communication.
 
-## Required Dependencies
+GenTen does not provide CP-APR for Poisson data (see [SparTen](https://github.com/sandialabs/sparten) instead) nor other tensor decompositions methods such as Tucker (see [TuckerMPI](https://gitlab.com/tensors/TuckerMPI) instead) or Tensor Train. 
 
-Genten requires the following components in order to build and run:
-* Kokkos for perfomance portable shared memory parallelism.  Genten bundles a clone of the Kokkos source using `git subtree` for use with inline builds (see below), which is generally kept up to date with the current Kokkos master branch (which corresponds to Kokkos releases).  This is the only version of Kokkos that is guaranteed to work with Genten (however later versions or the develop branch may work).
-* A C++14 standard-compliant compiler.  In principle, any C++14 compiler supported by Kokkos should work, however many older compilers that claim compatability have bugs that are often exposed by Kokkos and/or Genten.  Genten is regularly tested with the following compilers and so these or any later version should work (earlier versions of these compilers *may* work, however it is known that Genten does not compile with GCC 5 and Intel 17 or 18):
-  * GCC 7
-  * Intel 19
-  * Clang 9
-* BLAS and LAPACK for CPU (OpenMP and/or pThreads) builds.
-* The Cuda toolkit for Nvidia Cuda builds.  In principle any version of Cuda supported by Kokkos should work.  Currently this is Cuda versions 9 and 10.
-* CMake for configure/build.  Any version of CMake supported by Kokkos should work.  Currently this is version 3.16 or later.
+GenTen builds on [Kokkos](https://github.com/kokkos/kokkos) and [Kokkos Kernels](https://github.com/kokkos/kokkos-kernels) to support shared memory parallel programming models on a variety of contemporary architectures, including:
+* OpenMP for CPUs.
+* CUDA for NVIDIA GPUs.
+* HIP for AMD GPUs.
+* SYCL for Intel GPUs.
 
-## Optional Dependencies
+GenTen also supports distributed memory parallelism using MPI.
 
-Genten can optionally use the following components:
-* MATLAB for integration with the Tensor Toolbox.  Version 2018a or later should work.
+GenTen is implemented in C++ for high-performance and supports several modes of operation.  It provides a standalone command line tool for reading tensor data from files, and also provides Matlab and Python bindings that integrate with the [Matlab Tensor Toolbox](https://www.tensortoolbox.org/) and [Python Tensor Toolbox (pyttb)](https://github.com/sandialabs/pyttb) to provide high-performance, parallel tensor decomposition capabilities in those environments.
+
+For more information on the algorithms used in Genten with Kokkos, or to cite Genten, please see
+* Eric T. Phipps and Tamara G. Kolda, *Software for Sparse Tensor Decomposition on Emerging Computing Architectures*, SIAM Journal on Scientific Computing 2019 41:3, C269-C290, [DOI: 10.1137/18M1210691](https://epubs.siam.org/doi/ref/10.1137/18M1210691).
+
+Additional papers describing recent GenTen research and development:
+* E. Phipps, N. Johnson and T. Kolda, *Streaming Generalized Canonical Polyadic Tensor Decompositions,* in Proceedings of the Platform for Advanced Scientific Computing Conference (PASC ’23), 2023 [DOI: 10.1145/3592979.3593405](https://doi.org/10.1145/3592979.3593405).
+* C. Lewis and E. Phipps, *Low-Communication Asynchronous Distributed Generalized Canonical Polyadic Tensor Decomposition,* 2021 IEEE High Performance Extreme Computing Conference (HPEC), 2021 [DOI: 0.1109/HPEC49654.2021.9622844](https://doi.org/10.1109/HPEC49654.2021.9622844).
+
+# Installing GenTen
+
+## Required dependencies
+
+GenTen bundles most of what it needs to build and run, including Kokkos/Kokkos-Kernels but requires the following components:
+* A C++ compiler [supported by Kokkos](https://kokkos.org/kokkos-core-wiki/requirements.html#compiler-versions) for the intended architecture/programming model.
+* The corresponding toolkit for GPU builds (CUDA, ROCm, or oneAPI for NVIDIA, AMD, or Intel GPUs, respectively).
+* A version of CMake [supported by Kokkos](https://kokkos.org/kokkos-core-wiki/requirements.html#build-system).
+* BLAS and LAPACK libraries when intending to run GenTen algorithms on a CPU architecture (GenTen uses BLAS/LAPACK functionality provided by the NVIDIA, AMD, and Intel toolkits for GPU builds)
+
+## Optional dependencies
+
+Genten can optionally make use the following components:
+* MPI for distributed memory parallelism.
+  * For distributed parallelism with GPUs, GenTen assumes the MPI library is "GPU-aware" in that it can read and write data directly from GPU memory.  On NVIDIA GPUs, one can also enable UVM in the Kokkos build if the MPI library is not GPU-aware.  
+* Python for Python bindings.
+  * pytest is required for testing GenTen Python bindings.
+  * Integration with pyttb requires several other Python packages required by pyttb, including numpy, numpy_groupies, and scipy.
+* MATLAB for integration with the Matlab Tensor Toolbox.
 * Boost for reading compressed sparse tensors.
-* Caliper for application profiling.
-* Trilinos/ROL for gradient-based GCP optimization approaches (experimental)
+* GenTen can use several packages from Trilinos, including:
+  * ROL for large-scale, parallel, derivative-based optimization methods.
+  * Tpetra for certain distributed parallelism approaches.
+  * Teuchos for timing-related utilities.
+  * SEACAS for reading tensor data from Exodus files.
+  * Trilinos builds can also be used to provide Kokkos/Kokkos-Kernels.
 
 ## Building Genten
 
-Genten requires [Kokkos](github.com/kokkos/kokkos) for on-node thread/GPU
-parallelism.  Genten supports two approaches for building Kokkos for use with Genten:  an
-external build of Kokkos that is installed and linked to Genten, or an inline
-build of Kokkos along with Genten using the bundled Kokkos source (contained within tpls/kokkos).
-The latter is simpler and will be described first.  The former is useful if Genten
-must be linked into an application that itself uses Kokkos.  Note however that only
-the version of Kokkos that is provided with Genten is regularly tested for either
-inline or external builds.
+Genten bundles Kokkos and Kokkos Kernels (along with several other support libraries) using `git subtree` that are compiled along with GenTen to make building GenTen easier (referred to as inline builds below), which are generally kept up-to-date with the most recent release of these libraries.  GenTen can also link against externally compiled versions of these libraries, however compatibility is only guaranteed for the same version bundled by GenTen.  We first describe the basics of building GenTen with inline builds of Kokkos/Kokkos-Kernels followed by the modifications needed for linking to externally compiled Kokkos/Kokkos-Kernels libraries.
 
-## Inline build with Kokkos
+### Inline build of Kokkos and Kokkos Kernels
 
-The instructions below assume a directory structure similar to the following.
-For concreteness, assume we will building an optimized version of the code using GNU compilers
-and OpenMP parallelism.
+The simplest approach for building GenTen in standalone situations is to compile Kokkos and Kokkos Kernels along with GenTen, which means the correct configuration options for configuring Kokkos/Kokkos-Kernels for the intended architecture(s) must be provided when configuring GenTen.  A full description of how to configure these packages is beyond the scope of this document, and we refer the reader to [here](https://kokkos.org/kokkos-core-wiki/building.html) and [here](https://github.com/kokkos/kokkos-kernels/blob/develop/BUILD.md) for more information.
+
+The instructions below assume a directory structure similar to the following.  For concreteness, assume we will build an optimized version of the code using GNU compilers and OpenMP parallelism.
 
 ```
 top-level
@@ -61,17 +85,11 @@ top-level
           | -- opt_gnu_openmp
 ```
 
-Of course that structure isn't required, but modifying it will require
-adjusting the paths in the scripts below.
+Of course that structure isn't required, but modifying it will require adjusting the paths in the scripts below.
 
-Genten is built using [CMake](cmake.org), an open-souce build system
-that supports multiple operating systems. You must download and install
-CMake to build Genten.
+GenTen is built using [CMake](cmake.org), an open-souce build system that supports multiple operating systems. You must download and install CMake to build Genten.
 
-Using our example above, the genten source goes in
-top-level/genten/genten.  To build the code with CMake,
-we create a simple bash script (in top-level/genten/genten/build/opt_gnu_openmp),
-such as the following:
+Using our example above, the GenTen source goes in top-level/genten/genten.  To build the code with CMake, we create a simple bash script (in top-level/genten/genten/build/opt_gnu_openmp), such as the following:
 
 ```
 #!/bin/bash
@@ -90,307 +108,129 @@ cmake \
  ../../genten
 ```
 
-The script uses Kokkos options to specify the type of parallelism (OpenMP) and
-the host architecture (SKX for Intel Skylake CPU).
+The script uses Kokkos options to specify the type of parallelism (OpenMP) and the host architecture (SKX for Intel Skylake CPU).
 
-Execute this script to configure genten and Kokkos using CMake.  This will use
-Kokkos for setting the necessary CXX flags for your architecture.
-Then run "make".  To run the tests, you can run `./bin/unit_tests`.
-
-For examples of using genten, look in directories performance, driver,
-and tests.
+Execute this script to configure GenTen using CMake.  This will use Kokkos for setting the necessary CXX flags for your architecture. Then run `make`.  To run the tests, you can run `ctest`.
 
 ### Build options
 
-#### Boost
-
-Genten can use [Boost](www.boost.org) for reading compressed tensors.
-This is enabled by adding the following to your genten configure script:
-
-```
- -D ENABLE_BOOST=ON \
- -D BOOST_PATH=PATH-TO-BOOST \
-```
-
-where PATH-TO-BOOST is the path to the top-level of your boost
-installation.
-
 #### BLAS/LAPACK
 
-Most computations in Genten are implemented directly with Kokkos, however BLAS and LAPACK routines are used when possible.  Therefore these libraries are required for CPU builds (i.e., OpenMP or pThreads).  For Cuda GPU builds, Genten instead uses cuBLAS and cuSolver, which are distributed as part of the Cuda toolkit.  LAPACK and BLAS are enabled through the LAPACK_LIBS and LAPACK_ADD_LIBS CMake variables, e.g., for Intel MKL:
+Most computations in Genten are implemented directly with Kokkos/Kokkos-Kernels, however BLAS and LAPACK routines are used when possible.  Therefore these libraries are required for CPU builds.  CMake will attempt to locate these libraries automatically, but in many situations they must be specified through the LAPACK_LIBS and LAPACK_ADD_LIBS CMake variables, e.g., for Intel MKL:
 
 ```
  -D LAPACK_LIBS=${MKLROOT}/lib/intel64/libmkl_rt.so \
  -D LAPACK_ADD_LIBS="-liomp5;-lpthread;-lm;-ldl" \
 ```
 
+#### MPI
+
+GenTen supports distributed memory parallelism using MPI.  This is enabled by replacing the compilers with the MPI compilers and telling GenTen to enable MPI support, e.g.,:
+
+```
+#!/bin/bash
+
+rm -f CMakeCache.txt;
+rm -rf CMakeFiles
+
+EXTRA_ARGS=$@
+
+cmake \
+ -D CMAKE_CXX_COMPILER=mpicxx \
+ -D CMAKE_C_COMPILER=mpicc \
+ -D Kokkos_ENABLE_OPENMP=ON \
+ -D Kokkos_ARCH_SKX=ON \
+ -D ENABLE_MPI=ON \
+ ${EXTRA_ARGS} \
+ ../../genten
+```
+
+If you are also going to run GenTen's tests, it is recommended to specify a maximum number of MPI processors to use (otherwise it will use the maximum number available on the machine) and tell MPI to bind processes to cores to improve performance.  When using OpenMPI, this can be done by adding the following configuration options:
+```
+ -D MPIEXEC_MAX_NUMPROCS=4 \
+ -D MPIEXEC_PREFLAGS="--bind-to;core" \
+```
+
+#### GPU architectures
+
+GenTen supports building for NVIDIA, AMD, and Intel GPU architectures supported by Kokkos.  Enabling these generally just requires enabling the corresponding Kokkos backend and target architecture, e.g., for NVIDIA V100 architecture:
+```
+ -D Kokkos_ENABLE_CUDA=ON \
+ -D Kokkos_ARCH_VOLTA70=ON \
+```
+and set the CMake CXX compiler to be the appropriate compiler provided by the vendor toolkit.  For CUDA however, one must use the `nvcc_wrapper` script provided by Kokkos as the compiler, e.g.,:
+```
+ -D CMAKE_CXX_COMPILER=${PWD}/../../genten/tpls/kokkos/bin/nvcc_wrapper \
+```
+Note that `nvcc_wrapper` uses g++ as the host compiler by default.  If this is not correct, the compiler can be changed by setting the `NVCC_WRAPPER_DEFAULT_COMPILER` environment variable, e.g.,
+```
+export NVCC_WRAPPER_DEFAULT_COMPILER=/path/to/my/gnu/compiler/g++
+```
+Also, when enabling MPI and CUDA, the supported approach is to still use the MPI compilers as the CMake CXX compiler as shown in the MPI section above, but override the compiler it calls to be `nvcc_wrapper`, e.g. for OpenMPI,
+```
+export OMPI_CXX=${PWD}/../genten/tpls/kokkos/bin/nvcc_wrapper
+```
+
+#### Boost
+
+GenTen can use [Boost](www.boost.org) for reading compressed tensors.  This is enabled by adding the following to your genten configure script:
+
+```
+ -D ENABLE_BOOST=ON \
+ -D Boost_ROOT=PATH-TO-BOOST \
+```
+
+where PATH-TO-BOOST is the path to the top-level of your boost installation.
+
 #### MATLAB
 
-Genten includes a limited MATLAB interface designed to be integrated with
-the [Tensor Toolbox](https://www.tensortoolbox.org/).  To enable it, simply
-add the configure options:
+GenTen includes a limited MATLAB interface designed to be integrated with the [Tensor Toolbox](https://www.tensortoolbox.org/).  To enable it, simply add the configure options:
 ```
  -D ENABLE_MATLAB=ON \
- -D MATLAB_PATH=/path/to/MATLAB/R2018b \
+ -D Matlab_ROOT=/path/to/MATLAB/R2018b \
 ```
-where `/path/to/MATLAB/R2018b` is the path to your toplevel MATLAB installation
-(R2018b in this case).  On recent Mac OS X architectures, you may also need to
-add
+where `/path/to/MATLAB/R2018b` is the path to your toplevel MATLAB installation (R2018b in this case).  On recent Mac OS X architectures, you may also need to add
 ```
  -D INDEX_TYPE="unsigned long long" \
 ```
 to your configure options.
 
+#### Python
 
-### Advanced architectures
-
-Through the use of Kokkos, Genten can be compiled and run on a variety
-of multi-core and many-core architectures, including multi-core CPUs,
-many-core Intel Phi accelerators, and Nvidia GPUs.  Compiling for each
-architecture requires specifying compilers and architecture-related Kokkos
-options in the Genten configure scripts.
-Examples for common cases are summarized here.
-
-#### Intel CPU architectures
-
-For Intel CPU architectures, the Intel compilers should be used, along
-with Intel MKL.  The configure scripts are similar to the ones above.
-For example, a configure script for Skylake is
-
+GenTen provides Python bindings through a Python module called pygenten generated by [pybind11](https://github.com/pybind/pybind11).  This can be enabled by adding the configuration option
 ```
-#!/bin/bash
-
-rm -f CMakeCache.txt;
-rm -rf CMakeFiles
-
-EXTRA_ARGS=$@
-
-cmake \
- -D CMAKE_CXX_COMPILER=icpc \
- -D CMAKE_C_COMPILER=icc \
- -D CMAKE_CXX_FLAGS="-g -restrict" \
- -D CMAKE_C_FLAGS="-g -restrict" \
- -D Kokkos_ENABLE_OPENMP=ON \
- -D Kokkos_ARCH_SKX=ON \
- -D Kokkos_ENABLE_AGGRESSIVE_VECTORIZATION=ON \
- -D LAPACK_LIBS=$MKLROOT/lib/intel64/libmkl_rt.so \
- -D LAPACK_ADD_LIBS="-liomp5;-lpthread;-lm;-ldl" \
- ${EXTRA_ARGS} \
- ../../genten
+ -D ENABLE_PYTHON=ON \
 ```
+which will compile GenTen to link against the version of python found in your environment.  If the tests are going to be run, one must also have `pytest` installed.  Furthermore, GenTen provides support for interoperability with pyttb.  Several examples of using pygenten with and without pyttb can be found in [python/example](python/example).
 
-#### Intel KNL architecture
+## External builds of Kokkos/Kokkos-Kernels
 
-The configure for Intel KNL is quite similar to CPU architectures
-above.  The only change is the host architecture:
-
+For external builds of Kokkos and/or Kokkos Kernels, you must configure, build and install them first using their CMake files.  Once that is completed, you just configure GenTen to point to their corresponding installations via:
 ```
- -D KOKKOS_ARCH_KNL=ON \
+-D Kokkos_ROOT=/path/to/kokkos/install
+-D KokkosKernels_ROOT=/path/to/kokkos-kernels/install
 ```
+using the paths to their respective top-level installations.  You then do not need to supply any Kokkos-related configuration options when configuring GenTen.
 
-#### Nvidia GPU architectures
+## Building with Trilinos
 
-The build of Kokkos and Genten for GPU architectures is complicated by
-the fact that Kokkos requires all source code using Kokkos to be
-compiled by nvcc (even code not executed on the GPU).  To facilitate
-this, Kokkos provides a script called nvcc_wrapper that makes nvcc act
-like a normal compiler in terms of command line arguments, which must
-be specified as the compiler.
-
-A configure script suitable for Nvida Volta GPUs is then
-
+To enable Trilinos support, you must use an external build of Trilinos and then specify the path to this installation via
 ```
-rm -f CMakeCache.txt;
-rm -rf CMakeFiles
-
-EXTRA_ARGS=$@
-KOKKOS=${PWD}/../../genten/tpls/kokkos
-
-cmake \
- -D CMAKE_CXX_COMPILER=${KOKKOS}/bin/nvcc_wrapper \
- -D CMAKE_C_COMPILER=gcc \
- -D CMAKE_CXX_FLAGS="-g  -lineinfo" \
- -D CMAKE_C_FLAGS="-g" \
- -D Kokkos_ENABLE_OPENMP=ON \
- -D Kokkos_ENABLE_CUDA=ON \
- -D Kokkos_ARCH_SKX=ON \
- -D Kokkos_ARCH_VOLTA70=ON \
- ${EXTRA_ARGS} \
- ../../genten
+-D Trilinos_DIR=path/to/trilinos/install/lib64/cmake/Trilinos \
 ```
+CMake will determine which packages in Trilinos were enabled and enable the corresponding support in GenTen.  CMake can also deduce the compilers, BLAS/LAPACK libraries, and MPI support from the Trilinos build saving the need to specify these in the GenTen build as well.
 
-In addition to Cuda, this also enables OpenMP for host-side
-computations.  In this case, nvcc_wrapper will use g++ as the host
-compiler.  If this is not correct, the compiler can be changed by
-setting the NVCC_WRAPPER_DEFAULT_COMPILER environment variable, e.g.,
+# Testing GenTen
 
-```
-export NVCC_WRAPPER_DEFAULT_COMPILER=/path/to/my/gnu/compiler/g++
-```
+Once GenTen has been compiled, it can be tested by executing `ctest`.
 
-Note that instead of LAPACK, cuSolver and cuBLAS are used instead,
-which are part of the standard Cuda installation.
+# Using GenTen
 
-Genten does not require the use of Cuda-UVM as all necessary data transfers
-between the host and device are implemented through Kokkos.  However one can
-enable UVM by adding the configure option
-
-```
--D Kokkos_ENABLE_CUDA_UVM=ON \
-```
-
-in which case one should also set the environment variables
-
-```
-export CUDA_LAUNCH_BLOCKING=1
-export CUDA_VISIBLE_DEVICES=0
-```
-
-For the Nvidia Pascal P100 GPUs, the configure is the same, except the
-architecture is specified in the Kokkos configure script as Pascal60.
-
-## External build with Kokkos
-
-For an external build of Kokkos, you must configure, build and install Kokkos
-first using their CMake files.  Similar to the inline build above, the
-instructions below assume the following directory structure:
-
-```
-top-level
-| -- kokkos
-     | -- kokkos
-     | -- build
-          | -- opt_gnu_openmp
-     | -- install
-          | -- opt_gnu_openmp
-| -- genten
-     | -- genten
-     | -- build
-          | -- opt_gnu_openmp
-```
-
-### Build Kokkos
-
-The CMake script for building Kokkos is similar to the inline build
-scripts shown above, just with all of the Genten-specific options
-removed.  You must also specify an install directory.  Furthemore,
-since Genten requires use of C++14 constructs, the C++ standard
-enabled within Kokkos must be set to 14.  For example,
-here is a simple script for building Kokkos using OpenMP on a
-Skylake CPU architecture, assuming the Kokkos source is placed in
-top-level/kokkos/kokkos:
-
-```
-rm -f CMakeCache.txt;
-rm -rf CMakeFiles
-
-KOKKOS=../../kokkos
-INSTALL=`pwd`/../../install/opt_gnu_openmp
-
-cmake \
-  -D CMAKE_INSTALL_PREFIX=${INSTALL} \
-  -D CMAKE_CXX_COMPILER=g++ \
-  -D Kokkos_CXX_STANDARD=14 \
-  -D Kokkos_ENABLE_OPENMP=ON \
-  -D Kokkos_ARCH_SKX=ON \
-  ${KOKKOS}
-```
-
-which goes in the top-level/kokkos/build/opt_gnu_openmp directory above.
-After executing this script, do "make" and "make install".
-
-### Build Genten
-
-Genten is then built with CMake similar to the inline build discussed above,
-however the path to the Kokkos installation is specified instead of any
-Kokkos-related build options:
-
-```
-#!/bin/bash
-
-rm -f CMakeCache.txt;
-rm -rf CMakeFiles
-
-EXTRA_ARGS=$@
-KOKKOS=`pwd`/../../../kokkos/install/opt_gnu_openmp
-
-cmake \
- -D CMAKE_CXX_COMPILER=g++ \
- -D CMAKE_C_COMPILER=gcc \
- -D KOKKOS_PATH=${KOKKOS} \
- ${EXTRA_ARGS} \
- ../../genten
-```
-
-#### Nvidia GPU architectures
-
-Since Kokkos now uses CMake for their standalone build, the configure
-scripts for advanced architectures for an external build are similar
-to the inline build as shown above.  However for Nvidia GPU
-architectures, there are some caveats.  As with the inline build,
-nvcc_wrapper must be used as the compiler when compiling Kokkos.
-Furthermore you must enable lambda support through the option `-D
-Kokkos_ENABLE_CUDA_LAMBDA=ON \`, since Genten makes heavy use of
-lambdas.  For example, a Kokkos configure script suitable for Nvidia
-Volta GPUs is then
-
-```
-rm -f CMakeCache.txt;
-rm -rf CMakeFiles
-
-KOKKOS=`pwd`/../../kokkos
-INSTALL=`pwd`/../../install/opt_gnu_cuda
-
-cmake \
-  -D CMAKE_INSTALL_PREFIX=${INSTALL} \
-  -D CMAKE_CXX_COMPILER=${KOKKOS}/bin/nvcc_wrapper \
-  -D Kokkos_CXX_STANDARD=14 \
-  -D Kokkos_ENABLE_CUDA=ON \
-  -D Kokkos_ENABLE_CUDA_UVM=OFF \
-  -D Kokkos_ENABLE_CUDA_LAMBDA=ON \
-  -D Kokkos_ARCH_SKX=ON \
-  -D Kokkos_ARCH_VOLTA70=ON \
-  ${KOKKOS}
-```
-
-This script additionally turns UVM off, which is optional.  Similarly, for the Genten configure script we have
-
-```
-#!/bin/bash
-
-rm -f CMakeCache.txt;
-rm -rf CMakeFiles
-
-EXTRA_ARGS=$@
-KOKKOS=`pwd`/../../../kokkos/install/opt_gnu_cuda
-
-cmake \
- -D CMAKE_CXX_COMPILER=${KOKKOS}/bin/nvcc_wrapper \
- -D CMAKE_C_COMPILER=gcc \
- -D CMAKE_CXX_FLAGS="-g -lineinfo" \
- -D CMAKE_C_FLAGS="-g" \
- -D KOKKOS_PATH=${KOKKOS} \
- ${EXTRA_ARGS} \
- ../../genten
-```
-
-# Testing Genten
-
-Once Genten has been compiled, it can be tested by executing `ctest`.
-
-# Using Genten
-
-The primary executable for Genten is `bin/genten` in your build tree, which is
-a driver for reading in a (sparse) tensor and performing a CP or GCP
-decomposition of it.  The driver accepts numerous command line options
-controlling various aspects of the computation.  Run `genten --help` for a full
-listing.  For example
+The primary executable for GenTen is `bin/genten` in your build tree, which is a driver for reading in a tensor from a file and performing a CP decomposition of it.  The driver accepts numerous command line options controlling various aspects of the computation.  Run `genten --help` for a full listing.  For example
 ```
 ./bin/genten --input data/aminoacid_data.txt --rank 16 --output aa.ktns
 ```
-will perform a rank 16 CP decomposition of the amino-acid tensor data set
-included with Genten in the data directory, and save the resulting factors in
-`aa.ktns`.  One should see output similar to:
+will perform a rank 16 CP decomposition of the amino-acid tensor data set included with Genten in the data directory, and save the resulting factors in `aa.ktns`.  One should see output similar to:
 ```
 ./bin/genten --input data/aminoacid_data.txt --rank 16 --output aa.ktns
 Read tensor with 61305 nonzeros, dimensions [ 5 201 61 ], and starting index 0
@@ -406,30 +246,16 @@ Final fit =  9.883227e-01
 Ktensor export took  0.005 seconds
 ```
 
-For larger tensor datasets, consider those available from the
-[FROSTT](https://frost.io) collection.  Note that Genten *does not* require
-a header at the top of the sparse tensor file indicating the number of modes,
-their dimensions, and the number of nonzeros.  Any textfile consisting of a list
-of nonzeros in coordinate format (i.e., nonzero indices and value) can be
-read.  If configured with Boost support, compressed tensors can be read directly
-without first decompressing them.
+For larger tensor datasets, consider those available from the [FROSTT](https://frost.io) collection.  Note that GenTen *does not* require a header at the top of the sparse tensor file indicating the number of modes, their dimensions, and the number of nonzeros.  Any textfile consisting of a list of nonzeros in coordinate format (i.e., nonzero indices and value) can be read.  If configured with Boost support, compressed tensors can be read directly without first decompressing them.  GenTen can also read sparse and dense tensors in a binary format that can be generated using the provided `bin/convert_tensor` utility (once a tensor has been converted to binary format, reading it into GenTen for decomposition is much faster and can be executed in parallel).
 
 ## Using the MATLAB interface
 
-To use Genten within MATLAB, you must first add the Tensor Toolbox and the path
-to the `matlab` directory in your Genten build tree to your MATLAB path.
-Genten provides a MATLAB class `sptensor_gt` that works similarly to the
-Tensor Toolbox sparse tensor class `sptensor` that can be passed to various
-MATLAB functions provided by Genten for manipulating the tensor.  A given
-tensor `X` in `sptensor` format can be converted to `sptensor_gt` format
-by calling the constructor:
+To use GenTen within MATLAB, you must first add the Tensor Toolbox and the path to the `matlab` directory in your GenTen build tree to your MATLAB path. GenTen provides a MATLAB class `sptensor_gt` that works similarly to the Tensor Toolbox sparse tensor class `sptensor` that can be passed to various MATLAB functions provided by Genten for manipulating the tensor.  A given tensor `X` in `sptensor` format can be converted to `sptensor_gt` format by calling the constructor:
 ```
 >> X = sptenrand([10 20 30],100);
 >> X_gt = sptensor_gt(X);
 ```
-Genten then provides overloads of several functions in the Tensor Toolbox
-that call the corresponding implementation in Genten when passed a tensor
-in `sptensor_gt` format, e.g.,
+Genten then provides overloads of several functions in the Tensor Toolbox that call the corresponding implementation in Genten when passed a tensor in `sptensor_gt` format, e.g.,
 ```
 >> U = cp_als(X_gt,16,'maxiters',5);
 
@@ -441,9 +267,7 @@ Iter   4: fit =  2.465984e-01 fitdelta =  2.7e-02
 Iter   5: fit =  2.692030e-01 fitdelta =  2.3e-02
 Final fit =  2.692030e-01
 ```
-Note that in addition to the normal options accepted by `cp_als`,
-all options accepted by the `genten` command-line driver (without the
-leading '--') are also accepted, e.g.,
+Note that in addition to the normal options accepted by `cp_als`, all options accepted by the `genten` command-line driver (without the leading '--') are also accepted, e.g.,
 ```
 >> U = cp_als(X_gt,16,'maxiters',5,'mttkrp-method','duplicated','timings');
 Parsing tensor took 3.740000e-04 seconds
@@ -466,18 +290,13 @@ CpAls completed 6 iterations in 1.03e-02 seconds
 	Arrange total time = 3.47e-04 seconds, average time = 3.47e-04 seconds
 ```
 
-# More information and how to cite
+## Using the Python interface
 
-For more information on the algorithms used in Genten with Kokkos, or to cite
-Genten, please see
-* Eric T. Phipps and Tamara G. Kolda, *Software for Sparse Tensor Decomposition
-  on Emerging Computing Architectures*, SIAM Journal on Scientific Computing
-  2019 41:3, C269-C290
-  (available [here](https://epubs.siam.org/doi/ref/10.1137/18M1210691)).
+Examples of using the Python interface can be found in [python/example](python/example).  This interface is most useful when used in conjunction with pyttb, as pygenten provides limited support for manipulating tensors and their CP decompositions on its own.  If MPI support is enabled in the GenTen build, pygenten can also use distributed parallelism by launching python in parallel using `mpirun`/`mpiexec`.  GPU parallelism is also supported whereby Python tensor data will be copied to the GPU by GenTen within the Python implementation of the decomposition routine (e.g., `cp_als`) and the resulting CP model will be copied from the GPU when it is returned to Python.
 
-# Updating Kokkos
+# Updating bundled libraries (for developers)
 
-Genten uses `git subtree` to manage the bundled Kokkos source.  Below is a summary of the steps required to update Genten's clone to the latest Kokkos sources.
+GenTen uses `git subtree` to manage the bundled sources for the several bundled libraries it depends on.  Below is a summary of the steps required to update GenTen's clone to the latest sources using Kokkos as an example.
 
 First add a remote referencing the Kokkos github repo:
 ```
