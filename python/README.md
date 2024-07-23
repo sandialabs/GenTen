@@ -48,6 +48,7 @@ Any CMake define accepted by GenTen/Kokkos/KokkosKernels can be passed this way.
 | PYGENTEN_CUDA   | Enable CUDA parallelism for NVIDIA GPU architectures |
 | PYGENTEN_HIP    | Enable HIP parallelism for AMD GPU architectures |
 | PYGENTEN_SYCL   | Enable SYCL parallelism for Intel GPU architectures |
+
 When enabling GPU architectures, one also needs to specify the corresponding architecture via `Kokkos_ARCH_*` defines described [here](https://kokkos.org/kokkos-core-wiki/keywords.html#architectures). 
 
 For example, an MPI+CUDA build for a Volta V100 GPU architecture can be obtained with
