@@ -67,20 +67,26 @@
 IF(ENABLE_LAPACK)
   IF(NOT LAPACK_LIBS)
     MESSAGE (STATUS "GenTen: Looking for LAPACK/BLAS libraries")
-    FIND_LIBRARY(LAPACK lapack)
-    FIND_LIBRARY(BLAS blas)
-    MARK_AS_ADVANCED(LAPACK BLAS)
-    IF(LAPACK AND BLAS)
-      SET(LAPACK_LIBS "${LAPACK};${BLAS}" CACHE STRING "Location of LAPACK/BLAS libraries")
-    ENDIF(LAPACK AND BLAS)
+    # FIND_LIBRARY(LAPACK lapack)
+    # FIND_LIBRARY(BLAS blas)
+    # MARK_AS_ADVANCED(LAPACK BLAS)
+    # IF(LAPACK AND BLAS)
+    #   SET(LAPACK_LIBS "${LAPACK};${BLAS}" CACHE STRING "Location of LAPACK/BLAS libraries")
+    # ENDIF()
+    find_package(LAPACK)
+    IF(LAPACK_FOUND)
+      SET(LAPACK_LIBS "${LAPACK_LIBRARIES}" CACHE STRING "Location of LAPACK/BLAS libraries")
+    ENDIF()
   ELSE (NOT LAPACK_LIBS)
     MESSAGE (STATUS "GenTen: Attempting to use user-defined BLAS/LAPACK libraries: ${LAPACK_LIBS}")
+    # Check if user-specified libraries exist.
+    FOREACH (loopVar  ${LAPACK_LIBS})
+      IF (NOT EXISTS ${loopVar})
+        MESSAGE (FATAL_ERROR "GenTen: Cannot find file " ${loopVar})
+      ENDIF (NOT EXISTS ${loopVar})
+    ENDFOREACH (loopVar)
   ENDIF(NOT LAPACK_LIBS)
 ENDIF(ENABLE_LAPACK)
-
-# The following did not work on MacOSX, because the BLAS library was missing
-#FIND_LIBRARY (LAPACK_LIBS NAMES lapack
-#              DOC "Location of LAPACK library")
 
 # Set the boolean LAPACK_FOUND.
 IF (NOT ENABLE_LAPACK OR NOT LAPACK_LIBS)
@@ -88,13 +94,6 @@ IF (NOT ENABLE_LAPACK OR NOT LAPACK_LIBS)
   SET (LAPACK_LIBS "")
 ELSE (NOT ENABLE_LAPACK OR NOT LAPACK_LIBS)
   SET (LAPACK_FOUND TRUE)
-
-  # Check if user-specified libraries exist.
-  FOREACH (loopVar  ${LAPACK_LIBS})
-    IF (NOT EXISTS ${loopVar})
-      MESSAGE (FATAL_ERROR "GenTen: Cannot find file " ${loopVar})
-    ENDIF (NOT EXISTS ${loopVar})
-  ENDFOREACH (loopVar)
 ENDIF (NOT ENABLE_LAPACK OR NOT LAPACK_LIBS)
 
 # Report which libraries will be used.

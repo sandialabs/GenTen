@@ -67,6 +67,13 @@ OPTION(ENABLE_TPETRA "Enable Tpetra distributed parallelism" ON)
 OPTION(ENABLE_ROL "Enable ROL optimization package" ON)
 OPTION(ENABLE_SEACAS "Enable SEACAS tools" ON)
 OPTION(ENABLE_CMAKE_TIMERS "Enable timers for each compile/link step" OFF)
+OPTION(PYGENTEN_PIP "Indicate pyGenTen is being built through pip" OFF)
+OPTION(PYGENTEN_MPI "Enable MPI in pyGenTen when being built through pip" OFF)
+OPTION(PYGENTEN_SERIAL "Enable SERIAL in pyGenTen when being built through pip" OFF)
+OPTION(PYGENTEN_OPENMP "Enable OPENMP in pyGenTen when being built through pip" OFF)
+OPTION(PYGENTEN_CUDA "Enable CUDA in pyGenTen when being built through pip" OFF)
+OPTION(PYGENTEN_HIP "Enable HIP in pyGenTen when being built through pip" OFF)
+OPTION(PYGENTEN_SYCL "Enable SYCL in pyGenTen when being built through pip" OFF)
 
 # Warn about some deprecated variables
 IF(DEFINED KOKKOS_PATH)
@@ -96,6 +103,87 @@ ENDIF()
 
 # Advertise that we support shared libs
 SET_PROPERTY(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
+
+# Setup architectures when building pyGenTen through pip.  We do this
+# because pip/scikit-build doesn't have a way to specify meta-options, so
+# we try to set things up for the user based on a single meta-cmake option
+IF(PYGENTEN_PIP)
+  SET(ENABLE_PYTHON ON)
+  SET(BUILD_SHARED_LIBS ON)
+
+  # If no device parallelism enabled, use Serial for MPI and OpenMP otherwise
+  IF(NOT PYGENTEN_SERIAL AND NOT PYGENTEN_OPENMP AND NOT PYGENTEN_CUDA AND NOT PYGENTEN_HIP AND NOT PYGENTEN_SYCL)
+    IF(PYGENTEN_MPI)
+      SET(PYGENTEN_SERIAL ON)
+    ELSE()
+      SET(PYGENTEN_OPENMP ON)
+    ENDIF()
+  ENDIF()
+
+  IF(PYGENTEN_MPI)
+    SET(ENABLE_MPI ON)
+    # Use standard compiler wrappers if we aren't told to do something else
+    IF(NOT DEFINED CMAKE_CXX_COMPILER)
+      SET(CMAKE_CXX_COMPILER "mpicxx")
+    ENDIF()
+    IF(NOT DEFINED CMAKE_C_COMPILER)
+      SET(CMAKE_C_COMPILER "mpicc")
+    ENDIF()
+  ENDIF()
+
+  IF(PYGENTEN_SERIAL)
+    SET(Kokkos_ENABLE_SERIAL ON CACHE BOOL "")
+    SET(Kokkos_ENABLE_AGGRESSIVE_VECTORIZATION ON CACHE BOOL "")
+  ENDIF()
+
+  IF(PYGENTEN_OPENMP)
+    SET(Kokkos_ENABLE_OPENMP ON CACHE BOOL "")
+    SET(Kokkos_ENABLE_AGGRESSIVE_VECTORIZATION ON CACHE BOOL "")
+  ENDIF()
+
+  IF(PYGENTEN_CUDA)
+    SET(Kokkos_ENABLE_CUDA ON CACHE BOOL "")
+    SET(NVCC_WRAPPER "${CMAKE_SOURCE_DIR}/tpls/kokkos/bin/nvcc_wrapper")
+    IF(PYGENTEN_MPI)
+      # We need to override the internal compilers called by the compiler
+      # wrappers, which is done through environment variables.  While CMake
+      # allows you to set environment variables for the current CMake process,
+      # they are not propagated to the build, so we have to go through a script.
+      # The user can override the compiler nvcc_wrapper calls be setting
+      # NVCC_WRAPPER_DEFAULT_COMPILER as an environment variable.
+      CONFIGURE_FILE (
+        ${CMAKE_SOURCE_DIR}/cmake/genten_mpicxx_nvccwrapper.sh.tmpl
+        ${CMAKE_BINARY_DIR}/cmake/genten_mpicxx_nvccwrapper.sh
+	)
+        SET(CMAKE_CXX_COMPILER "${CMAKE_BINARY_DIR}/cmake/genten_mpicxx_nvccwrapper.sh")
+    ELSE()
+      SET(CMAKE_CXX_COMPILER "${NVCC_WRAPPER}")
+    ENDIF()
+  ENDIF()
+
+  IF(PYGENTEN_HIP)
+    SET(Kokkos_ENABLE_HIP ON CACHE BOOL "")
+    # We assume the user has MPI compiler wrappers for AMD GPUs, which are set
+    # above, so we only need to set a compiler if none is provided and there is
+    # no MPI.
+    IF(NOT PYGENTEN_MPI AND NOT DEFINED CMAKE_CXX_COMPILER)
+      SET(CMAKE_CXX_COMPILER "hipcc")
+      SET(CMAKE_C_COMPILER "hipcc")
+    ENDIF()
+  ENDIF()
+
+  IF(PYGENTEN_SYCL)
+    SET(Kokkos_ENABLE_SYCL ON CACHE BOOL "")
+    SET(Kokkos_ENABLE_ONEDPL OFF CACHE BOOL "")
+    # We assume the user has MPI compiler wrappers for Intel GPUs, which are set
+    # above, so we only need to set a compiler if none is provided and there is
+    # no MPI.
+    IF(NOT PYGENTEN_MPI AND NOT DEFINED CMAKE_CXX_COMPILER)
+      SET(CMAKE_CXX_COMPILER "icpx")
+      SET(CMAKE_C_COMPILER "icx")
+    ENDIF()
+  ENDIF()
+ENDIF()
 
 # Parse Trilinos support.  Do this before any compiler checks as we may
 # set the compilers to match Trilinos
@@ -1112,9 +1200,13 @@ IF(HAVE_PYTHON AND (${GENTEN_FLOAT_TYPE} STREQUAL "double"))
   SET(pyGenten_BUILD_DIR
     ${Genten_BINARY_DIR}/python/pygenten
     )
-  SET(pyGenten_INSTALL_DIR
-    ${CMAKE_INSTALL_PREFIX}/lib/python${PYTHON_VERSION}/site-packages/pygenten
-    )
+  IF(PYGENTEN_PIP)
+    SET(pyGenten_INSTALL_DIR ${CMAKE_INSTALL_PREFIX})
+  ELSE()
+    SET(pyGenten_INSTALL_DIR
+      ${CMAKE_INSTALL_PREFIX}/lib/python${PYTHON_VERSION}/site-packages/pygenten
+      )
+  ENDIF()
   MESSAGE("-- pygenten installation path: ${pyGenten_INSTALL_DIR}")
   add_subdirectory( python )
 ENDIF()
