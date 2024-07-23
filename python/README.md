@@ -39,7 +39,7 @@ The build of GenTen/pygenten can be customized by passing CMake defines to speci
 ```
 --config-settings=cmake.define.SOME_DEFINE=value
 ```
-Any CMake define accepted by GenTen/Kokkos/KokkosKernels can be passed this way.  Since this is fairly verbose and GenTen can require several defines, meta-options are provided to enable supported parallel programming models
+Any CMake define accepted by GenTen/Kokkos/KokkosKernels can be passed this way.  Since this is fairly verbose and GenTen can require several defines, several meta-options are provided to enable supported parallel programming models:
 | CMake Define    | What it enables |
 | --------------- | --------------- |
 | PYGENTEN_MPI    | Enable distributed parallelism with MPI.  Sets the execution space to Serial by default. |
@@ -56,3 +56,11 @@ For example, an MPI+CUDA build for a Volta V100 GPU architecture can be obtained
 pip install -v --config-settings=cmake.define.PYGENTEN_CUDA=ON --config-settings=cmake.define.Kokkos_ARCH_VOLTA70=ON --config-settings=cmake.define.PYGENTEN_MPI=ON
 ```
 For MPI builds, pygenten assumes the MPI compiler wrappers `mpicxx` and `mpicc` are available in the user's path.  If this is not correct, the user can specify the appropriate compiler by setting the appropriate CMake define, e.g., `CMAKE_CXX_COMPILER`.  Furthermore, for CUDA builds, pygenten will build with the `nvcc_wrapper` script as the compiler as required by Kokkos, which calls `g++` as the host compiler by default.  This can be changed by setting the `NVCC_WRAPPER_DEFAULT_COMPILER` environment variable.  Moreover, for MPI+CUDA, pygenten will set environment variables to override the compiler wrapped by `mpicxx` to use `nvcc_wrapper`, which currently works only with OpenMPI and MPICH.  Finally, for MPI+HIP or MPI+SYCL builds, pygenten assumes the compiler wrappers call the appropriate device-enabled compiler, e.g., `hipcc` for AMD and `icpx` for Intel.
+
+# Installing numpy
+
+pygenten relies on numpy, both of which are compiled extension libraries leveraging OpenMP and BLAS/LAPACK.  Therefore, module import errors can occur if pygenten and numpy are compiled in very different environments, due to, e.g., symbol conflicts in `libstdc++`.  This typically happens when pygenten is compiled with a much newer compiler than what was used to compile the numpy wheel.  Futhermore, we have observed slower performance in pygenten in some cases when numpy is imported before pygenten, which we believe is due to inconsistent OpenMP and/or BLAS/LAPACK libraries between the two packages.  Thus, the most robust way to use pygenten is to also install numpy from source, using the same build environment as pygenten.  This can be done in a similar manner as pygenten by providing configure options to numpy through pip, e.g.,
+```
+pip install --no-binary numpy -Csetup-args=-Dblas=my_blas -Csetup-args=-Dlapack=my_lapack numpy
+```
+to specify the appropriate BLAS and LAPACK libraries (called `my_blas` and `my_lapack` in this case).  Compilers can be specified through the `CC`, `CXX`, and `FC` environment variables.  More details can be found [here](https://numpy.org/doc/stable/building/compilers_and_options.html).  However, we only recommend doing this if you see errors when importing pygenten or you observe slower performance than what would be observed with the `genten` command-line tool.
