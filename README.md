@@ -203,6 +203,8 @@ GenTen provides Python bindings through a Python module called pygenten generate
 ```
 which will compile GenTen to link against the version of python found in your environment.  If the tests are going to be run, one must also have `pytest` installed.  Furthermore, GenTen provides support for interoperability with pyttb.  Several examples of using pygenten with and without pyttb can be found in [python/example](python/example).
 
+Alternatively, pygenten can be directly installed using pip.  See [python/README.md](python/README.md) for more details.
+
 ## External builds of Kokkos/Kokkos-Kernels
 
 For external builds of Kokkos and/or Kokkos Kernels, you must configure, build and install them first using their CMake files.  Once that is completed, you just configure GenTen to point to their corresponding installations via:
