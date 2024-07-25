@@ -251,9 +251,6 @@ namespace Genten {
     integer isave[LENGTH_ISAVE];
     double  dsave[LENGTH_DSAVE];
 
-    const ttb_real nrm_X = X.norm();
-    const ttb_real nrm_X_sq = nrm_X*nrm_X;
-
     history.addEmpty();
     CP_Model<TensorT> cp_model(X, u, algParams);
 
