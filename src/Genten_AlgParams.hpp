@@ -98,10 +98,10 @@ namespace Genten {
     ttb_real lower;              // Lower bound of factorization
     ttb_real upper;              // Upper bound of factorization
     std::string rolfilename;     // Filename for ROL solver options
-    ttb_real factr;              // factr parameter for L-BFGS-B
-    ttb_real pgtol;              // pgtol parameter for L-BFGS-B
+    ttb_real ftol;               // residual tolerance for L-BFGS-B
+    ttb_real gtol;               // gradient tolerance for L-BFGS-B
     ttb_indx memory;             // memory parameter for L-BFGS-B
-    ttb_indx max_total_iters;    // maximum total iterations for L-BFGS-B
+    ttb_indx sub_iters;          // inner iterations for L-BFGS-B
     Hess_Vec_Method::type hess_vec_method; // Hessian-vector product method
     Hess_Vec_Tensor_Method::type hess_vec_tensor_method; // Hessian-vector product method for tensor-only term
     Hess_Vec_Prec_Method::type hess_vec_prec_method; // Preconditoning method for hessian-vector product

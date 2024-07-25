@@ -254,10 +254,10 @@ void pygenten_algparams(py::module &m){
     cl.def_readwrite("lower", &Genten::AlgParams::lower);
     cl.def_readwrite("upper", &Genten::AlgParams::upper);
     cl.def_readwrite("rolfilename", &Genten::AlgParams::rolfilename);
-    cl.def_readwrite("factr", &Genten::AlgParams::factr);
-    cl.def_readwrite("pgtol", &Genten::AlgParams::pgtol);
+    cl.def_readwrite("ftol", &Genten::AlgParams::ftol);
+    cl.def_readwrite("gtol", &Genten::AlgParams::gtol);
     cl.def_readwrite("memory", &Genten::AlgParams::memory);
-    cl.def_readwrite("max_total_iters", &Genten::AlgParams::max_total_iters);
+    cl.def_readwrite("sub_iters", &Genten::AlgParams::sub_iters);
     cl.def_readwrite("hess_vec_method", &Genten::AlgParams::hess_vec_method);
     cl.def_readwrite("hess_vec_tensor_method", &Genten::AlgParams::hess_vec_tensor_method);
     cl.def_readwrite("hess_vec_prec_method", &Genten::AlgParams::hess_vec_prec_method);

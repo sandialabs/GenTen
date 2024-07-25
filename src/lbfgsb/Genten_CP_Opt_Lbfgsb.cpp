@@ -235,10 +235,10 @@ namespace Genten {
 
     // L-BFGS-B data
     integer m = algParams.memory;
-    double factr = algParams.factr;
-    double pgtol = algParams.pgtol;
+    double factr = algParams.ftol/MACHINE_EPSILON;
+    double pgtol = algParams.gtol;
     ttb_indx iterMax = algParams.maxiters;
-    ttb_indx total_iterMax = algParams.max_total_iters;
+    ttb_indx total_iterMax = iterMax * algParams.sub_iters;
     std::vector<integer> iwa(3*n);
     std::vector<double> wa(2*m*n + 5*n + 11*m*m + 8*m);
     integer task = START;
@@ -250,9 +250,6 @@ namespace Genten {
     logical lsave[LENGTH_LSAVE];
     integer isave[LENGTH_ISAVE];
     double  dsave[LENGTH_DSAVE];
-
-    const ttb_real nrm_X = X.norm();
-    const ttb_real nrm_X_sq = nrm_X*nrm_X;
 
     history.addEmpty();
     CP_Model<TensorT> cp_model(X, u, algParams);
@@ -283,7 +280,7 @@ namespace Genten {
           history.resize(iters+1);
         history[iters].iteration = iters;
         history[iters].residual = f;
-        history[iters].fit = ttb_real(1.0) - f / (ttb_real(0.5)*nrm_X_sq);
+        history[iters].fit = ttb_real(1.0) - f;
         history[iters].grad_norm = nrmg;
         history[iters].cum_time = time;
 
@@ -346,7 +343,7 @@ namespace Genten {
         std::cout << "Reached maximum number of total iterations." << std::endl;
       else
         std::cout << Impl::findTaskString(task) << std::endl;
-      const ttb_real fit = ttb_real(1.0) - f / (ttb_real(0.5)*nrm_X_sq);
+      const ttb_real fit = ttb_real(1.0) - f;
       std::cout << "Final fit = " << std::setprecision(3) << std::scientific
                 << fit << std::endl;
       std::cout << "Total time = " << std::setprecision(2) << std::scientific

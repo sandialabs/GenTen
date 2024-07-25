@@ -134,10 +134,10 @@ void gcp_opt_lbfgsb_impl(const TensorT<ExecSpace>& X,
 
   // L-BFGS-B data
   integer m = algParams.memory;
-  double factr = algParams.factr;
-  double pgtol = algParams.pgtol;
+  double factr = algParams.ftol/MACHINE_EPSILON;
+  double pgtol = algParams.gtol;
   ttb_indx iterMax = algParams.maxiters;
-  ttb_indx total_iterMax = algParams.max_total_iters;
+  ttb_indx total_iterMax = iterMax * algParams.sub_iters;
   std::vector<integer> iwa(3*n);
   std::vector<double> wa(2*m*n + 5*n + 11*m*m + 8*m);
   integer task = START;
