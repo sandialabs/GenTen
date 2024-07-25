@@ -78,10 +78,10 @@ Genten::AlgParams::AlgParams() :
   lower(-DOUBLE_MAX),
   upper(DOUBLE_MAX),
   rolfilename(""),
-  factr(1e7),
-  pgtol(1e-5),
+  ftol(1e-10),
+  gtol(1e-5),
   memory(5),
-  max_total_iters(5000),
+  sub_iters(10),
   hess_vec_method(Hess_Vec_Method::default_type),
   hess_vec_tensor_method(Hess_Vec_Tensor_Method::default_type),
   hess_vec_prec_method(Hess_Vec_Prec_Method::default_type),
@@ -211,10 +211,10 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   lower = parse_ttb_real(args, "--lower", lower, -DOUBLE_MAX, DOUBLE_MAX);
   upper = parse_ttb_real(args, "--upper", upper, -DOUBLE_MAX, DOUBLE_MAX);
   rolfilename = parse_string(args, "--rol", rolfilename.c_str());
-  factr = parse_ttb_real(args, "--factr", factr, 0.0, DOUBLE_MAX);
-  pgtol = parse_ttb_real(args, "--pgtol", pgtol, 0.0, DOUBLE_MAX);
+  ftol = parse_ttb_real(args, "--ftol", ftol, 0.0, DOUBLE_MAX);
+  gtol = parse_ttb_real(args, "--gtol", gtol, 0.0, DOUBLE_MAX);
   memory = parse_ttb_indx(args, "--memory", memory, 0, INT_MAX);
-  max_total_iters = parse_ttb_indx(args, "--total-iters", max_total_iters, 0, INT_MAX);
+  sub_iters = parse_ttb_indx(args, "-sub-iters", sub_iters, 1, INT_MAX);
   hess_vec_method = parse_ttb_enum(args, "--hess-vec", hess_vec_method,
                                    Genten::Hess_Vec_Method::num_types,
                                    Genten::Hess_Vec_Method::types,
@@ -397,10 +397,10 @@ void Genten::AlgParams::parse(const ptree& input)
     parse_ptree_enum<Opt_Method>(cpopt_input, "method", opt_method);
     parse_generic_solver_params(cpopt_input);
     parse_ptree_value(cpopt_input, "rol-file", rolfilename);
-    parse_ptree_value(cpopt_input, "factr", factr, 0.0, DOUBLE_MAX);
-    parse_ptree_value(cpopt_input, "pgtol", pgtol, 0.0, DOUBLE_MAX);
+    parse_ptree_value(cpopt_input, "ftol", ftol, 0.0, DOUBLE_MAX);
+    parse_ptree_value(cpopt_input, "gtol", gtol, 0.0, DOUBLE_MAX);
     parse_ptree_value(cpopt_input, "memory", memory, 0, INT_MAX);
-    parse_ptree_value(cpopt_input, "total-iters", max_total_iters, 0, INT_MAX);
+    parse_ptree_value(cpopt_input, "sub-iters", sub_iters, 1, INT_MAX);
     parse_mttkrp(cpopt_input);
   };
 
@@ -640,10 +640,10 @@ void Genten::AlgParams::print_help(std::ostream& out)
   out << "  --lower <float>    lower bound of factorization" << std::endl;
   out << "  --upper <float>    upper bound of factorization" << std::endl;
   out << "  --rol <string>     path to ROL optimization settings file for CP-Opt method" << std::endl;
-  out << "  --factr <float>    factr parameter for L-BFGS-B" << std::endl;
-  out << "  --pgtol <float>    pgtol parameter for L-BFGS-B" << std::endl;
+  out << "  --ftol <float>     relative residual reduction tolerance for L-BFGS-B" << std::endl;
+  out << "  --gtol <float>     gradient tolerance for L-BFGS-B" << std::endl;
   out << "  --memory <int>     memory parameter for L-BFGS-B" << std::endl;
-  out << "  --total-iters <int> max total iterations for L-BFGS-B" << std::endl;
+  out << "  --sub-iters <int>  max inner iterations for L-BFGS-B" << std::endl;
   out << "  --hess-vec <method> Hessian-vector product method: ";
   for (unsigned i=0; i<Genten::Hess_Vec_Method::num_types; ++i) {
     out << Genten::Hess_Vec_Method::names[i];
@@ -843,10 +843,10 @@ void Genten::AlgParams::print(std::ostream& out) const
   out << "  lower = " << lower << std::endl;
   out << "  upper = " << upper << std::endl;
   out << "  rol = " << rolfilename << std::endl;
-  out << "  factr = " << factr << std::endl;
-  out << "  pgtol = " << pgtol << std::endl;
+  out << "  ftol = " << ftol << std::endl;
+  out << "  gtol = " << gtol << std::endl;
   out << "  memory = " << memory << std::endl;
-  out << "  total-iters = " << max_total_iters << std::endl;
+  out << "  sub-iters = " << sub_iters << std::endl;
   out << "  hess-vec = " << Genten::Hess_Vec_Method::names[hess_vec_method] << std::endl;
   out << "  hess-vec-tensor = " << Genten::Hess_Vec_Tensor_Method::names[hess_vec_tensor_method] << std::endl;
   out << "  hess-vec-prec = " << Genten::Hess_Vec_Prec_Method::names[hess_vec_prec_method] << std::endl;

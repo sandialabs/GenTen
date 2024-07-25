@@ -396,14 +396,14 @@ static nlohmann::json json_schema = R"(
                   "type": "string",
                   "default": ""
               },
-              "factr": {
-                  "description": "factr parameter for L-BFGS-B",
+              "ftol": {
+                  "description": "relative residual reduction tolerance for L-BFGS-B",
                   "type": "number",
                   "minimum": 0.0,
-                  "default": 1e7
+                  "default": 1e-10
               },
-              "pgtol": {
-                  "description": "pgtol parameter for L-BFGS-B",
+              "gtol": {
+                  "description": "gradient tolerance for L-BFGS-B",
                   "type": "number",
                   "minimum": 0.0,
                   "default": 1e-5
@@ -414,11 +414,11 @@ static nlohmann::json json_schema = R"(
                   "minimum": 1,
                   "default": 5
               },
-              "total-iters": {
-                  "description": "Max total iterations for L-BFGS-B",
+              "sub-iters": {
+                  "description": "Max number of inner iterations for L-BFGS-B",
                   "type": "integer",
                   "minimum": 0,
-                  "default": 5000
+                  "default": 10
               },
               "hess-vec": {
                   "description": "Hessian-vector product method",
@@ -490,14 +490,14 @@ static nlohmann::json json_schema = R"(
                   "type": "string",
                   "default": ""
               },
-              "factr": {
-                  "description": "factr parameter for L-BFGS-B",
+              "ftol": {
+                  "description": "relative residual reduction tolerance for L-BFGS-B",
                   "type": "number",
                   "minimum": 0.0,
-                  "default": 1e7
+                  "default": 1e-10
               },
-              "pgtol": {
-                  "description": "pgtol parameter for L-BFGS-B",
+              "gtol": {
+                  "description": "gradient tolerance for L-BFGS-B",
                   "type": "number",
                   "minimum": 0.0,
                   "default": 1e-5
@@ -508,12 +508,12 @@ static nlohmann::json json_schema = R"(
                   "minimum": 1,
                   "default": 5
               },
-              "total-iters": {
-                  "description": "Max total iterations for L-BFGS-B",
+              "sub-iters": {
+                  "description": "Max number of inner iterations for L-BFGS-B",
                   "type": "integer",
                   "minimum": 0,
-                  "default": 5000
-             },
+                  "default": 10
+              },
              "fit": {
                   "description": "Compute fit metric",
                   "type": "boolean",

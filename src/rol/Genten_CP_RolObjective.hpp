@@ -208,7 +208,7 @@ namespace Genten {
     ttb_real res = cp_model.value(M);
 
     history.lastEntry().residual = res;
-    history.lastEntry().fit = ttb_real(1.0) - res / (ttb_real(0.5)*nrm_X_sq);
+    history.lastEntry().fit = ttb_real(1.0) - res;
 
     return res;
   }

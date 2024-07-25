@@ -18,19 +18,19 @@
     "cp-opt":
     {
         "method": "rol",
-        "maxiters": 20,
-        "tol": 1e-4
+        "maxiters": 200,
+        "gtol": 1e-4
     },
     "testing":
     {
         "final-fit":
         {
-            "value": 0.98,
-            "absolute-tolerance": 0.1
+            "value": 0.99,
+            "absolute-tolerance": 0.05
         },
         "iterations":
         {
-            "value": 20,
+            "value": 63,
             "absolute-tolerance": 2
         }
     }

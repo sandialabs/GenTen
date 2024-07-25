@@ -69,11 +69,11 @@ namespace Genten {
     void update(const ktensor_type& M);
 
     // Compute value of the objective function:
-    //      0.5 * ||X-M||^2 = 0.5* (||X||^2 + ||M||^2) - <X,M>
+    //      ||X-M||^2/||X||^2 = (||X||^2 + ||M||^2 - 2*<X,M>)/||X||^2
     ttb_real value(const ktensor_type& M) const;
 
     // Compute gradient of objective function:
-    //       G[m] = -X_(m)*Z_m*diag(w) + A_m*[diag(w)*Z_m^T*Z_m*diag(w)]
+    //       G[m] = 2*(-X_(m)*Z_m*diag(w) + A_m*[diag(w)*Z_m^T*Z_m*diag(w)])/||X||^2
     void gradient(ktensor_type& G, const ktensor_type& M) const;
 
     // Compute value and gradient together, allowing reuse of some information
@@ -187,11 +187,11 @@ namespace Genten {
     // compute MTTKRP in update()
     const ttb_real ip = innerprod(X,M_overlap);
 
-    ttb_real f = ttb_real(0.5)*(nrm_X_sq + nrm_M_sq) - ip;
+    ttb_real f = (nrm_X_sq + nrm_M_sq - ttb_real(2.0)*ip) / nrm_X_sq;
 
     if (algParams.penalty != ttb_real(0.0)) {
       for (ttb_indx n=0; n<nd; ++n)
-        f += (algParams.penalty / ttb_real(2.0)) * M[n].normFsq();
+        f += algParams.penalty * M[n].normFsq() / nrm_X_sq;
     }
 
     return f;
@@ -208,12 +208,12 @@ namespace Genten {
     dku->doExport(G, G_overlap);
 
     const ttb_indx nd = M.ndims();
-    for (ttb_indx n=0; n<nd; ++n)
-      G[n].gemm(false, false, ttb_real(1.0), M[n], hada[n], ttb_real(-1.0));
+    for (ttb_indx n=0; n<nd; ++n) {
+      G[n].gemm(false, false, ttb_real(2.0)/nrm_X_sq, M[n], hada[n],
+                -ttb_real(2.0)/nrm_X_sq);
 
-    if (algParams.penalty != ttb_real(0.0)) {
-      for (ttb_indx n=0; n<nd; ++n)
-        G[n].plus(M[n], algParams.penalty);
+      if (algParams.penalty != ttb_real(0.0))
+        G[n].plus(M[n], algParams.penalty*ttb_real(2.0)/nrm_X_sq);
     }
   }
 
@@ -236,16 +236,16 @@ namespace Genten {
     const ttb_real nrm_M_sq = gram[nd-1].innerprod(hada[nd-1], ones);
 
     // Compute objective
-    ttb_real f = ttb_real(0.5)*(nrm_X_sq + nrm_M_sq) - ip;
+    ttb_real f = (nrm_X_sq + nrm_M_sq - ttb_real(2.0)*ip) / nrm_X_sq;
 
     // Compute gradient
-    for (ttb_indx n=0; n<nd; ++n)
-      G[n].gemm(false, false, ttb_real(1.0), M[n], hada[n], ttb_real(-1.0));
+    for (ttb_indx n=0; n<nd; ++n) {
+      G[n].gemm(false, false, ttb_real(2.0)/nrm_X_sq, M[n], hada[n],
+                -ttb_real(2.0)/nrm_X_sq);
 
-    if (algParams.penalty != ttb_real(0.0)) {
-      for (ttb_indx n=0; n<nd; ++n) {
-        f += (algParams.penalty / ttb_real(2.0)) * M[n].normFsq();
-        G[n].plus(M[n], algParams.penalty);
+      if (algParams.penalty != ttb_real(0.0)) {
+        f += algParams.penalty * M[n].normFsq() / nrm_X_sq;
+        G[n].plus(M[n], algParams.penalty*ttb_real(2.0)/nrm_X_sq);
       }
     }
 
@@ -257,6 +257,8 @@ namespace Genten {
   CP_Model<Tensor>::
   hess_vec(ktensor_type& U, const ktensor_type& M, const ktensor_type& V)
   {
+    const ttb_indx nd = M.ndims();
+
     if (algParams.hess_vec_method == Hess_Vec_Method::Full) {
       if (dku->overlapAliasesArg()) {
         V_overlap = dku->createOverlapKtensor(V);
@@ -264,14 +266,18 @@ namespace Genten {
       }
       Genten::hess_vec(X, M, V, U, M_overlap, V_overlap, U_overlap, *dku,
                        algParams);
+      for (ttb_indx n=0; n<nd; ++n)
+        U[n].times(ttb_real(2.0)/nrm_X_sq);
     }
-    else if (algParams.hess_vec_method == Hess_Vec_Method::GaussNewton)
+    else if (algParams.hess_vec_method == Hess_Vec_Method::GaussNewton) {
       gauss_newton_hess_vec(X, M, V, U, algParams);
+      for (ttb_indx n=0; n<nd; ++n)
+        U[n].times(ttb_real(2.0)/nrm_X_sq);
+    }
     else if (algParams.hess_vec_method == Hess_Vec_Method::FiniteDifference)
     {
       const ttb_real h = 1.0e-7;
       const ttb_indx nc = M.ncomponents();
-      const ttb_indx nd = M.ndims();
 
       KtensorT<exec_space> Mp(nc, nd, X.size(), M.getProcessorMap()),
         Up(nc, nd, X.size(), U.getProcessorMap());

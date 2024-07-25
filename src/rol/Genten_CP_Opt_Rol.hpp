@@ -113,8 +113,8 @@ namespace Genten {
 
     // Set stopping criteria
     Teuchos::ParameterList& status_params = rol_params.sublist("Status Test");
-    status_params.set<double>("Gradient Tolerance", algParams.tol);
-    status_params.set<double>("Step Tolerance", algParams.tol);
+    status_params.set<double>("Gradient Tolerance", algParams.gtol);
+    status_params.set<double>("Step Tolerance", algParams.ftol);
     status_params.set<int>("Iteration Limit", algParams.maxiters);
 
     // Print iterations

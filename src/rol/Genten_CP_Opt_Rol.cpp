@@ -181,7 +181,7 @@ namespace Genten {
     ttb_real tol;
     const ttb_real res = objective->value(*z, tol);
     const ttb_real nrm = x.global_norm();
-    const ttb_real fit = ttb_real(1.0) - res / (ttb_real(0.5)*nrm*nrm) ;
+    const ttb_real fit = ttb_real(1.0) - res ;
     if (algParams.printitn > 0) {
       stream << "Final fit = " << fit << std::endl;
       stream << "Total time = " << timer.getTotalTime(0) << std::endl
