@@ -4,7 +4,7 @@
 # This is intended to be run from the top-level genten source tree
 
 # Base image
-FROM nvidia/cuda:11.7.0-devel-ubuntu22.04
+FROM nvidia/cuda:11.7.1-devel-ubuntu22.04
 #FROM nvidia/cuda:11.0.3-devel-ubuntu20.04
 MAINTAINER Eric Phipps <etphipp@sandia.gov>
 
