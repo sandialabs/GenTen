@@ -30,9 +30,13 @@ jobs:
           - os: ubuntu-latest
             c_compiler: gcc
             cpp_compiler: g++
+            openmp: ON
+            serial: OFF
           - os: ubuntu-latest
             c_compiler: clang
             cpp_compiler: clang++
+            openmp: OFF
+            serial: ON
     steps:
     - uses: actions/checkout@v4
 
@@ -51,7 +55,8 @@ jobs:
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-        -DKokkos_ENABLE_OPENMP=ON
+        -DKokkos_ENABLE_OPENMP=${{ matrix.openmp }}
+        -DKokkos_ENABLE_SERIAL=${{ matrix.serial }}
         -S ${{ github.workspace }}
 
     - name: Build
