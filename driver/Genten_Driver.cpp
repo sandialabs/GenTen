@@ -425,7 +425,7 @@ int main(int argc, char* argv[])
 
     print_banner(std::cout);
 
-#ifdef HAVE_PYTHON
+#ifdef HAVE_PYTHON_EMBED
     // Start up python interpreter
     pybind11::scoped_interpreter guard{};
 #endif
