@@ -48,7 +48,7 @@
 #include "Genten_IndxArray.hpp"
 #include "Genten_Ptree.hpp"
 
-#ifdef HAVE_PYTHON
+#ifdef HAVE_PYTHON_EMBED
 #include "pybind11/pytypes.h"
 #endif
 
@@ -114,7 +114,7 @@ namespace Genten {
     GCP_Goal_Method::type goal_method;   // Way of supplying goal function
     std::string python_module_name;      // Module name for python goal
     std::string python_object_name;      // Object name for python module goal
-#ifdef HAVE_PYTHON
+#ifdef HAVE_PYTHON_EMBED
     pybind11::object python_object;      // Python object for python goal
 #endif
 

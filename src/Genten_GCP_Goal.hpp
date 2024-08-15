@@ -46,7 +46,7 @@
 #include "Genten_Ktensor.hpp"
 #include "Genten_AlgParams.hpp"
 
-#ifdef HAVE_PYTHON
+#ifdef HAVE_PYTHON_EMBED
 #include <pybind11/embed.h>
 #endif
 
@@ -76,7 +76,7 @@ namespace Genten {
                           const ttb_real s) const = 0;
   };
 
-#ifdef HAVE_PYTHON
+#ifdef HAVE_PYTHON_EMBED
   // A goal function implemented as a python object
   template <typename ExecSpace>
   class __attribute__((visibility("default"))) GCP_PythonObjectGoal :
@@ -158,14 +158,14 @@ namespace Genten {
     if (algParams.goal_method == GCP_Goal_Method::None)
       goal = nullptr;
     else if (algParams.goal_method == GCP_Goal_Method::PythonObject) {
-#ifdef HAVE_PYTHON
+#ifdef HAVE_PYTHON_EMBED
       goal = new GCP_PythonObjectGoal<ExecSpace>(X, M, algParams.python_object);
 #else
-      Genten::error("Python object goal requires python!");
+      Genten::error("Python object goal requires embedded python (configure with ENABLE_PYTHON_EMBED=ON)!");
 #endif
     }
     else if (algParams.goal_method == GCP_Goal_Method::PythonModule) {
-#ifdef HAVE_PYTHON
+#ifdef HAVE_PYTHON_EMBED
       try {
         auto python_module =
           pybind11::module_::import(algParams.python_module_name.c_str());
@@ -184,7 +184,7 @@ namespace Genten {
         Genten::error(e.what());
       }
 #else
-      Genten::error("Python module goal requires python!");
+      Genten::error("Python module goal requires embedded python (configure with ENABLE_PYTHON_EMBED=ON)!");
 #endif
     }
     else
