@@ -329,10 +329,12 @@ void pygenten_algparams(py::module &m){
     cl.def("set_proc_grid", [](Genten::AlgParams& a, py::tuple b) {
         a.proc_grid = make_indxarray(b);
       });
+#ifdef HAVE_PYTHON_EMBED
     cl.def("set_py_goal", [](Genten::AlgParams& a, const py::object& po) {
         a.python_object = po;
         a.goal_method = Genten::GCP_Goal_Method::PythonObject;
       });
+#endif
     cl.def("parse_json", [](Genten::AlgParams& a, const std::string& str) {
         Genten::ptree tree;
         tree.parse(str);
