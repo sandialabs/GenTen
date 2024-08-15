@@ -55,7 +55,8 @@ OPTION(ENABLE_BOOST "Enable Boost for reading compressed tensor files and distri
 OPTION(ENABLE_MPI "Enable MPI distributed memory functionality" OFF)
 OPTION(ENABLE_CALIPER "Enable Caliper for application profiling" OFF)
 OPTION(ENABLE_MATLAB "Enable MATLAB linkage to Tensor Toolbox" OFF)
-OPTION(ENABLE_PYTHON "Enable PYTHON linkage to pyTTB" OFF)
+OPTION(ENABLE_PYTHON "Enable PYTHON bindings" OFF)
+OPTION(ENABLE_PYTHON_EMBED "Enable embedded PYTHON interpreter when ENABLE_PYTHON=ON (requires linking to libpython)" ON)
 OPTION(ENABLE_PHYSICS_UTILS "Enable PYTHON physics specific tools" OFF)
 OPTION(FLOAT_TYPE "C++ data type used for floating-point values" OFF)
 OPTION(INDEX_TYPE "C++ data type used for tensor indices" OFF)
@@ -357,7 +358,7 @@ ENDIF()
 
 # We support 3 options for Kokkos:
 #  - Inline build of bundled sources in tpls/kokkos.
-#  - Linking to external library determined by Kokkos_ROOT.
+#  - Linking to external library determined by Kokkos_ROOT
 #  - Linking to external library through Trilinos.
 # If Trilinos is enabled and it enables Kokkos, we must use it
 IF(Kokkos_ROOT OR HAVE_TRILINOS_KOKKOS)
@@ -563,7 +564,9 @@ IF(ENABLE_PYTHON)
 
   ADD_SUBDIRECTORY(tpls/pybind11)
   SET(HAVE_PYTHON ON)
-  MESSAGE("  -- PYTHON_LIBRARIES = ${PYTHON_LIBRARIES}")
+  IF(ENABLE_PYTHON_EMBED)
+    SET(HAVE_PYTHON_EMBED ON)
+  ENDIF()
 ENDIF()
 
 IF(ENABLE_PHYSICS_UTILS)
@@ -957,7 +960,7 @@ IF(HAVE_MPI)
     TARGET_LINK_LIBRARIES(gentenlib Boost::boost)
   ENDIF()
 ENDIF()
-IF(HAVE_PYTHON)
+IF(HAVE_PYTHON_EMBED)
   TARGET_LINK_LIBRARIES (gentenlib pybind11::embed)
 ENDIF()
 
