@@ -46,7 +46,7 @@
 #include "Genten_FacTestSetGenerator.hpp"
 #include "Genten_Ptree.hpp"
 
-#ifdef HAVE_PYTHON
+#ifdef HAVE_PYTHON_EMBED
 #include <pybind11/embed.h>
 #endif
 
