@@ -58,8 +58,14 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pytest
-        pip install pyttb
-        echo "$PYTHONPATH"
+        # Released version of pyttb is too old, so we need to build from the github repo
+        #pip install pyttb
+        mkdir pyttb
+        cd pyttb
+        git clone https://github.com/sandialabs/pyttb.git
+        cd pyttb
+        pip install .
+        
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
