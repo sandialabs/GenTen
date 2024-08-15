@@ -53,10 +53,13 @@ jobs:
         python-version: 3.11
 
     - name: Install dependencies
+      env:
+        PYTHONPATH: ${{ steps.strings.outputs.build-output-dir }}/python
       run: |
         python -m pip install --upgrade pip
         pip install pytest
         pip install pyttb
+        echo "$PYTHONPATH"
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
@@ -79,7 +82,7 @@ jobs:
     - name: Test
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
       env:
-        PYTHONPATH=${{ steps.strings.outputs.build-output-dir }}/python
+        PYTHONPATH: ${{ steps.strings.outputs.build-output-dir }}/python
       # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest --build-config ${{ matrix.build_type }} --output-on-failure
