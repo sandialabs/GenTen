@@ -23,7 +23,7 @@ jobs:
           CIBW_BEFORE_ALL_LINUX: "yum install -y openblas-devel"
           CIBW_BEFORE_ALL_MACOS: "brew install libomp"
           CIBW_CONFIG_SETTINGS: "cmake.define.ENABLE_PYTHON_EMBED=OFF"
-          CIBW_CONFIG_SETTINGS_MACOS: "cmake.define.OpenMP_ROOT=$(brew --prefix)/opt/libomp"
+          CIBW_CONFIG_SETTINGS_MACOS: "cmake.define.OpenMP_ROOT=/opt/libomp"
           CIBW_TEST_REQUIRES: pytest
           CIBW_TEST_COMMAND: >
             cd {package} &&
