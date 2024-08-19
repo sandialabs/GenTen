@@ -30,6 +30,32 @@ jobs:
           CIBW_BEFORE_ALL: "yum install -y openblas-devel"
           CIBW_CONFIG_SETTINGS: "cmake.define.ENABLE_PYTHON_EMBED=OFF"
 
-      #- uses: actions/upload-artifact@v2
-      #  with:
-      #    path: ./dist/*.whl
+      - uses: actions/upload-artifact@v2
+        with:
+          name: release-dists
+          path: ./dist/*.whl
+          
+  pypi-publish:
+    runs-on: ubuntu-latest
+
+    needs:
+      - build
+
+    permissions:
+      id-token: write
+
+    # Dedicated environments with protections for publishing are strongly recommended.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/pygenten/
+
+    steps:
+      - name: Retrieve release distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
+
+      - name: Publish release distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
