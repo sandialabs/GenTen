@@ -61,6 +61,7 @@ jobs:
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
         -DBUILD_SHARED_LIBS=ON
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -DCMAKE_Fortran_COMPILER=gfortran-12
         -DKokkos_ENABLE_OPENMP=${{ matrix.openmp }}
         -DKokkos_ENABLE_SERIAL=${{ matrix.serial }}
         -DENABLE_PYTHON=ON
