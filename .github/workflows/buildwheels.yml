@@ -21,41 +21,41 @@ jobs:
           name: release-dists
           path: dist/
     
-  # build-wheels:
-  #   runs-on: ${{ matrix.os }}
-  #   strategy:
-  #     matrix:
-  #       os: [ubuntu-latest]
-  #   steps:
-  #     - uses: actions/checkout@v2
+  build-wheels:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v2
 
-  #     - uses: actions/setup-python@v2
-  #       with:
-  #         python-version: 3.11
+      - uses: actions/setup-python@v2
+        with:
+          python-version: 3.11
 
-  #     - name: Setup pip
-  #       run: |
-  #         python -m pip install --upgrade pip
-  #         python -m pip install cibuildwheel
+      - name: Setup pip
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install cibuildwheel
 
-  #     - name: Build wheel
-  #       run: python -m cibuildwheel --output-dir dist/
-  #       env:
-  #         CIBW_BUILD: cp311-manylinux_x86_64
-  #         CIBW_SKIP: "*-win32 *-manylinux_i686"
-  #         CIBW_BUILD_VERBOSITY: 1
-  #         CIBW_BEFORE_ALL: "yum install -y openblas-devel"
-  #         CIBW_CONFIG_SETTINGS: "cmake.define.ENABLE_PYTHON_EMBED=OFF"
-  #         CIBW_TEST_REQUIRES: pytest
-  #         CIBW_TEST_COMMAND: >
-  #           cd {package} &&
-  #           pytest python/test
+      - name: Build wheel
+        run: python -m cibuildwheel --output-dir dist/
+        env:
+          CIBW_BUILD: cp311-manylinux_x86_64
+          CIBW_SKIP: "*-win32 *-manylinux_i686"
+          CIBW_BUILD_VERBOSITY: 1
+          CIBW_BEFORE_ALL: "yum install -y openblas-devel"
+          CIBW_CONFIG_SETTINGS: "cmake.define.ENABLE_PYTHON_EMBED=OFF"
+          CIBW_TEST_REQUIRES: pytest
+          CIBW_TEST_COMMAND: >
+            cd {package} &&
+            pytest python/test
 
-  #     - name: Upload distributions
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: release-dists
-  #         path: dist/
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
           
   pypi-publish:
     runs-on: ubuntu-latest
