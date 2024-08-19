@@ -59,12 +59,13 @@ jobs:
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       env:
-        OpenMP_ROOT: $(brew --prefix)/opt/libomp
+        
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
         -DBUILD_SHARED_LIBS=ON
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         -DCMAKE_Fortran_COMPILER=gfortran-12
+        -DOpenMP_ROOT=$(brew --prefix)/opt/libomp
         -DKokkos_ENABLE_OPENMP=${{ matrix.openmp }}
         -DKokkos_ENABLE_SERIAL=${{ matrix.serial }}
         -DENABLE_PYTHON=ON
