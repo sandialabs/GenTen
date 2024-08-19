@@ -28,7 +28,7 @@ jobs:
           CIBW_BUILD_VERBOSITY: 1
           CIBW_BEFORE_ALL: "yum install -y openblas-devel"
           CIBW_CONFIG_SETTINGS: "cmake.define.ENABLE_PYTHON_EMBED=OFF"
-          CIBW_REPAIR_WHEEL_COMMAND: "auditwheel show {wheel}; auditwheel repair -w {dest_dir} {wheel}"
+          #CIBW_REPAIR_WHEEL_COMMAND: "auditwheel repair -w {dest_dir} {wheel}"
 
       #- uses: actions/upload-artifact@v2
       #  with:
