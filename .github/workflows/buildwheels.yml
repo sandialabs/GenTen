@@ -30,10 +30,11 @@ jobs:
           CIBW_BEFORE_ALL: "yum install -y openblas-devel"
           CIBW_CONFIG_SETTINGS: "cmake.define.ENABLE_PYTHON_EMBED=OFF"
 
-      - uses: actions/upload-artifact@v2
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
         with:
           name: release-dists
-          path: ./dist/*.whl
+          path: dist/
           
   pypi-publish:
     runs-on: ubuntu-latest
