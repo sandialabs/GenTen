@@ -21,8 +21,9 @@ jobs:
           CIBW_SKIP: "*win32 *i686 *musllinux*"
           CIBW_BUILD_VERBOSITY: 1
           CIBW_BEFORE_ALL_LINUX: "yum install -y openblas-devel"
-          CIBW_BEFORE_ALL_MACOS: "brew install libomp; brew install gcc"
+          CIBW_BEFORE_ALL_MACOS: "brew install libomp"
           CIBW_CONFIG_SETTINGS: "cmake.define.ENABLE_PYTHON_EMBED=OFF"
+          CIBW_CONFIG_SETTINGS_MACOS: "cmake.define.CMAKE_Fortran_COMPILER=gfortran-12"
           CIBW_ENVIRONMENT_MACOS: "OpenMP_ROOT=$(brew --prefix)/opt/libomp"
           CIBW_TEST_REQUIRES: pytest
           CIBW_TEST_COMMAND: >
