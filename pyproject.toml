@@ -28,4 +28,4 @@ wheel.install-dir = "pygenten"
 [tool.scikit-build.cmake.define]
 CMAKE_BUILD_TYPE = "RELEASE"
 PYGENTEN_PIP = "ON"
-CMAKE_INSTALL_RPATH="$ORIGIN/lib64;$ORIGIN/lib;$ORIGIN;@loader_path/lib64;@loader_path/lib;@loader_path"
+CMAKE_INSTALL_RPATH="$ORIGIN/lib64;$ORIGIN/lib;$ORIGIN;$ORIGIN/..;$ORIGIN/../lib;$ORIGIN/../lib64;$ORIGIN/../..;@loader_path/lib64;@loader_path/lib;@loader_path;@loader_path/..;@loader_path/../lib;@loader_path/../lib64;@loader_path/../.."
