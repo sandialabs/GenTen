@@ -15,6 +15,11 @@ jobs:
           python -m pip install build
       - name: Build sdist
         run: python -m build --sdist
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
     
   # build-wheels:
   #   runs-on: ${{ matrix.os }}
