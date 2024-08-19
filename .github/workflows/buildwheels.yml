@@ -62,7 +62,7 @@ jobs:
 
     needs:
       - build-sdist
-      #- build-wheels
+      - build-wheels
 
     permissions:
       id-token: write
