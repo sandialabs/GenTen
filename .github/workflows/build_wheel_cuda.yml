@@ -17,6 +17,8 @@ jobs:
         id: cuda-toolkit
         with:
           cuda: '12.5.0'
+          log-file-suffix: '${{matrix.os}}.txt'
+          linux-local-args: '["--toolkit"]'
       
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.20.0
