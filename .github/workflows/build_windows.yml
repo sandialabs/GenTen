@@ -82,6 +82,7 @@ jobs:
         -DKokkos_ENABLE_OPENMP=${{ matrix.openmp }}
         -DKokkos_ENABLE_SERIAL=${{ matrix.serial }}
         -DENABLE_PYTHON=ON
+        -DF77_BLAS_MANGLE='(name,NAME) name ## _'
         -S ${{ github.workspace }}
 
     - name: Build
