@@ -22,8 +22,8 @@ jobs:
         build_type: [Release]
         include:
           - os: windows-latest
-            openmp: ON
-            serial: OFF
+            openmp: OFF
+            serial: ON
     steps:
     - uses: actions/checkout@v4
 
