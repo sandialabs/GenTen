@@ -1,4 +1,4 @@
-name: Build python wheels
+name: Build python wheels - cuda
 
 on:
   workflow_dispatch
