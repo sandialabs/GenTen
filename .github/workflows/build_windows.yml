@@ -77,7 +77,7 @@ jobs:
         MKLROOT: c:\Program Files (x86)\Intel\oneAPI\mkl\latest
       shell: bash
       run: >
-        echo $MKLROOT && cmake -B ${{ steps.strings.outputs.build-output-dir }}
+        cmake -B ${{ steps.strings.outputs.build-output-dir }}
         -DBUILD_SHARED_LIBS=ON
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         -DKokkos_ENABLE_OPENMP=${{ matrix.openmp }}
