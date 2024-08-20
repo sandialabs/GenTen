@@ -1,3 +1,11 @@
+# Experimental workflow to build on windows.  Currently doesn't work.  Issues:
+#   * Need BLAS/LAPACK.  Using info from here: https://community.intel.com/t5/Intel-oneAPI-Math-Kernel-Library/How-to-install-oneMKL-in-GitHub-Actions/m-p/1484626 
+#     and here: https://github.com/oneapi-src/oneapi-ci/blob/master/.github/workflows/build_all.yml, can install and use MKL.  Based on the
+#     path though, seems to be 32-bit, and I can't figure out how to force a 64-bit install in C:\Program Files
+#   * OpenMP doesn't work due to missing functionality in MSVC
+#   * Need to specify Fortran name mangling to not require a Fortran compiler
+# With the above, I can get a successful configure, but build fails very quickly.
+
 name: CMake on multiple platforms - windows
 
 on:
@@ -73,7 +81,7 @@ jobs:
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       env:
-        MKLROOT: c:\Program Files\Intel\oneAPI\mkl\latest
+        MKLROOT: c:\Program Files (x86)\Intel\oneAPI\mkl\latest
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
         -DBUILD_SHARED_LIBS=ON
