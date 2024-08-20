@@ -1,3 +1,6 @@
+# Experimental workflow to build binary wheels for macos.  While the builds succeed, the tests fail immediately with seg faults, on both
+# x86 and amd64 architectures.  I suspect it has something to do with delocate.
+
 name: Build python wheels - macos
 
 on:
