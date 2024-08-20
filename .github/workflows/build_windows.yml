@@ -75,7 +75,6 @@ jobs:
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       env:
         MKLROOT: c:\Program Files (x86)\Intel\oneAPI\mkl\latest
-      shell: bash
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
         -DBUILD_SHARED_LIBS=ON
