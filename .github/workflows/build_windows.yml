@@ -1,10 +1,13 @@
 # Experimental workflow to build on windows.  Currently doesn't work.  Issues:
-#   * Need BLAS/LAPACK.  Using info from here: https://community.intel.com/t5/Intel-oneAPI-Math-Kernel-Library/How-to-install-oneMKL-in-GitHub-Actions/m-p/1484626 
-#     and here: https://github.com/oneapi-src/oneapi-ci/blob/master/.github/workflows/build_all.yml, can install and use MKL.  Based on the
+#   * Need BLAS/LAPACK.  Using info from here: https://community.intel.com/t5/Intel-oneAPI-Math-Kernel-Library/How-to-install-oneMKL-in-GitHub-Actions/m-p/1484626,
+#   * here:  https://github.com/oneapi-src/oneapi-ci/blob/master/scripts/install_windows.bat, and here: 
+#   * https://github.com/oneapi-src/oneapi-ci/blob/master/.github/workflows/build_all.yml, can install and use MKL.  Based on the
 #     path though, seems to be 32-bit, and I can't figure out how to force a 64-bit install in C:\Program Files
 #   * OpenMP doesn't work due to missing functionality in MSVC
 #   * Need to specify Fortran name mangling to not require a Fortran compiler
-# With the above, I can get a successful configure, but build fails very quickly.
+# With the above, I can get a successful configure, but build fails very quickly with error:  
+#   LINK : fatal error LNK1181: cannot open input file '..\..\core\src\Release\kokkoscore.lib' [D:\a\GenTen\GenTen\build\tpls\kokkos\containers
+# These seems to happen before anything is actually compiled though, which I don't understand.
 
 name: CMake on multiple platforms - windows
 
