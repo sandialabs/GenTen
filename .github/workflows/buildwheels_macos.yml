@@ -24,7 +24,7 @@ jobs:
           #CIBW_BEFORE_ALL_MACOS: "brew install libomp"
           CIBW_CONFIG_SETTINGS: "cmake.define.ENABLE_PYTHON_EMBED=OFF"
           #CIBW_CONFIG_SETTINGS_MACOS: "cmake.define.CMAKE_Fortran_COMPILER=gfortran-12 cmake.define.CMAKE_OSX_DEPLOYMENT_TARGET=10.13 cmake.define.PYGENTEN_OPENMP=OFF cmake.define.PYGENTEN_SERIAL=ON" 
-          CIBW_CONFIG_SETTINGS_MACOS: cmake.define.F77_BLAS_MANGLE="(name,NAME) name ## _" cmake.define.PYGENTEN_OPENMP=OFF cmake.define.PYGENTEN_SERIAL=ON
+          CIBW_CONFIG_SETTINGS_MACOS: "cmake.define.F77_BLAS_MANGLE='(name,NAME) name ## _' cmake.define.PYGENTEN_OPENMP=OFF cmake.define.PYGENTEN_SERIAL=ON"
           #CIBW_ENVIRONMENT_MACOS: OpenMP_ROOT="$(brew --prefix)/opt/libomp" MACOSX_DEPLOYMENT_TARGET=10.13
           # CIBW_TEST_REQUIRES: pytest
           # CIBW_TEST_COMMAND: >
