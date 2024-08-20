@@ -1,4 +1,4 @@
-name: CMake on multiple platforms - macos
+name: Build and test on MacOS
 
 on:
   workflow_dispatch
