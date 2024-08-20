@@ -1,0 +1,35 @@
+name: Build python wheels
+
+on:
+  workflow_dispatch
+
+jobs:
+    
+  build-wheels:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: Jimver/cuda-toolkit@v0.2.16
+        id: cuda-toolkit
+        with:
+          cuda: '12.5.0'
+      
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.20.0
+        with:
+          output-dir: dist
+        env:
+          CIBW_BUILD: cp38-manylinux_x86_64
+          CIBW_BUILD_VERBOSITY: 1
+          CIBW_BEFORE_ALL_LINUX: "yum install -y openblas-devel"
+          CIBW_CONFIG_SETTINGS: "cmake.define.ENABLE_PYTHON_EMBED=OFF cmake.define.PYGENTEN_CUDA=ON"
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
