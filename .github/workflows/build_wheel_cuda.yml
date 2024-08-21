@@ -27,8 +27,7 @@ jobs:
         env:
           CIBW_BUILD: cp38-manylinux_x86_64
           CIBW_BUILD_VERBOSITY: 1
-          #CIBW_BEFORE_ALL_LINUX: "yum install -y openblas-devel nvidia-cuda-toolkit"
-          CIBW_BEFORE_ALL_LINUX: "apt install -y nvidia-cuda-toolkit"
+          CIBW_BEFORE_ALL_LINUX: "wget https://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-repo-rhel7-10.2.89-1.x86_64.rpm && rpm -i cuda-repo-*.rpm && yum install -y openblas-devel cuda"
           CIBW_CONFIG_SETTINGS: "cmake.define.ENABLE_PYTHON_EMBED=OFF cmake.define.PYGENTEN_CUDA=ON"
 
       - name: Upload distributions
