@@ -27,7 +27,8 @@ jobs:
         env:
           CIBW_BUILD: cp38-manylinux_x86_64
           CIBW_BUILD_VERBOSITY: 1
-          CIBW_BEFORE_ALL_LINUX: "yum install -y openblas-devel nvidia-cuda-toolkit"
+          #CIBW_BEFORE_ALL_LINUX: "yum install -y openblas-devel nvidia-cuda-toolkit"
+          CIBW_BEFORE_ALL_LINUX: "apt install -y nvidia-cuda-toolkit"
           CIBW_CONFIG_SETTINGS: "cmake.define.ENABLE_PYTHON_EMBED=OFF cmake.define.PYGENTEN_CUDA=ON"
 
       - name: Upload distributions
