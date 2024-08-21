@@ -1,3 +1,6 @@
+# An attempt at a workflow for building a python wheel for cuda.  The cuda-toolkit action doesn't ever seem to work,
+# but it needs to happen in the manylinux container anyway.  And manually installing the cuda toolkit doesn't work either.
+
 name: Build python wheels - cuda
 
 on:
