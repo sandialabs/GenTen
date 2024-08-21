@@ -23,7 +23,7 @@ There are two general approaches for building pygenten:
 
 ## Installing with pip
 
-pygenten has experimental support for installation using pip from the source distribution on [pypi](https://pypi.org/project/pygenten/).  Because of the wide variety of parallel architectures that GenTen/pygenten can be compiled for, binary distributions (a.k.a. wheels) are not currently provided, but might be in the future.  The pip installation leverages [scikit-build-core](https://github.com/scikit-build/scikit-build-core) to provide a CMake build backend for pip, which allows the user to provide CMake defines that control the pygenten build process and determine which architectures/parallel programming models are enabled.  We thus recommend becoming familiar with the CMake build process for GenTen in general as described [here](https://github.com/sandialabs/GenTen#installing-genten) before continuing.  In particular, the user must have BLAS and LAPACK libraries available in their build environment that can either be automatically discovered by CMake or manually specified through `LAPACK_LIBS`.
+pygenten has experimental support for installation using pip from the source distribution on [pypi](https://pypi.org/project/pygenten/).  Furthermore, binary wheels are provided in limited circumstances (currently just linux with OpenMP support only, but more may be provided in the future), enabling immediate installation.  The pip installation leverages [scikit-build-core](https://github.com/scikit-build/scikit-build-core) to provide a CMake build backend for pip, which allows the user to provide CMake defines that control the pygenten build process and determine which architectures/parallel programming models are enabled.  We thus recommend becoming familiar with the CMake build process for GenTen in general as described [here](https://github.com/sandialabs/GenTen#installing-genten) before continuing.  In particular, the user must have BLAS and LAPACK libraries available in their build environment that can either be automatically discovered by CMake or manually specified through `LAPACK_LIBS`.
 
 ### Basic installation
 
@@ -31,11 +31,13 @@ A basic installation of pygenten can be done simply by:
 ```
 pip install pygenten
 ```
-This will build Genten and pygenten for a CPU architecture using OpenMP parallelism using a default compiler from the user's path.  During the build of pygenten, CMake will attempt to locate valid BLAS and LAPACK libraries in the user environment.  If these cannot be found, the user can customize the build by specifying `LAPACK_LIBS` as described below.
+This will install the binary wheel if it is available, and if it isn't, build GenTen and pygenten for a CPU architecture using OpenMP parallelism using a default compiler from the user's path.  During the build of pygenten, CMake will attempt to locate valid BLAS and LAPACK libraries in the user environment.  If these cannot be found, the user can customize the build by specifying `LAPACK_LIBS` as described below.
+
+**Note that when installing pygenten from a binary wheel, the `repairwheel` step that makes the wheel usable on a wide variety of architectures seems to make the included `genten` and related executables unusable.  If you want to use GenTen outside of python, you should install it from source as described below.**
 
 ### Customized installation
 
-The build of GenTen/pygenten can be customized by passing CMake defines to specify compilers, BLAS/LAPACK libraries, host/device architectures, and enabled programming models.  This is done by adding command-line arguments to pip of the form
+To customize the GenTen/pygenten build, you must first instruct pip to compile from source by adding the `--no-binary pygenten` command-line argument.  The can then be customized by passing CMake defines to specify compilers, BLAS/LAPACK libraries, host/device architectures, and enabled programming models.  This is done by adding command-line arguments to pip of the form
 ```
 --config-settings=cmake.define.SOME_DEFINE=value
 ```
@@ -53,7 +55,7 @@ When enabling GPU architectures, one also needs to specify the corresponding arc
 
 For example, an MPI+CUDA build for a Volta V100 GPU architecture can be obtained with
 ```
-pip install -v --config-settings=cmake.define.PYGENTEN_CUDA=ON --config-settings=cmake.define.Kokkos_ARCH_VOLTA70=ON --config-settings=cmake.define.PYGENTEN_MPI=ON pygenten
+pip install -v --no-binary pygenten --config-settings=cmake.define.PYGENTEN_CUDA=ON --config-settings=cmake.define.Kokkos_ARCH_VOLTA70=ON --config-settings=cmake.define.PYGENTEN_MPI=ON pygenten
 ```
 For MPI builds, pygenten assumes the MPI compiler wrappers `mpicxx` and `mpicc` are available in the user's path.  If this is not correct, the user can specify the appropriate compiler by setting the appropriate CMake define, e.g., `CMAKE_CXX_COMPILER`.  Furthermore, for CUDA builds, pygenten will build with the `nvcc_wrapper` script as the compiler as required by Kokkos, which calls `g++` as the host compiler by default.  This can be changed by setting the `NVCC_WRAPPER_DEFAULT_COMPILER` environment variable.  Moreover, for MPI+CUDA, pygenten will set environment variables to override the compiler wrapped by `mpicxx` to use `nvcc_wrapper`, which currently works only with OpenMPI and MPICH.  Finally, for MPI+HIP or MPI+SYCL builds, pygenten assumes the compiler wrappers call the appropriate device-enabled compiler, e.g., `hipcc` for AMD and `icpx` for Intel.
 
