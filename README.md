@@ -205,6 +205,16 @@ which will compile GenTen to link against the version of python found in your en
 
 Alternatively, pygenten can be directly installed using pip.  See [python/README.md](python/README.md) for more details.
 
+### Building on MacOS
+
+Building GenTen on MacOS has a few challenges.  First, MacOS does not provide a Fortran compiler, used by Kokkos-Kernels to discover Fortran name mangling for calling BLAS/LAPACK functions from C++.  There are two ways to address this:
+* Tell Kokkos-Kernels what the name mangling scheme is, e.g., `-D F77_BLAS_MANGLE='(name,NAME) name ## _'` seems to be the correct scheme on recent MacOS versions.
+* Install a Fortran compiler using your favorite package manager (e.g., `brew install gcc`).  If the compiler has a standard name (e.g., `gfortran`) and is in your path, CMake will automatically find it.  Otherwise you can set the Fortran compiler with `-D CMAKE_Fortran_COMPILER=gfortran`).
+
+Second, the MacOS toolchain does not include the OpenMP libraries.  If you want to enable OpenMP, you can install the libraries using your package manager, e.g., `brew install libomp`, and then tell CMake where they were installed, e.g., `-D OpenMP_ROOT=$(brew --prefix)/opt/libomp`.
+
+Note, that CMake will automatically discover the BLAS/LAPACK libraries included natively in MacOS, so you don't need to specify them (unless you want to use something else).
+
 ## External builds of Kokkos/Kokkos-Kernels
 
 For external builds of Kokkos and/or Kokkos Kernels, you must configure, build and install them first using their CMake files.  Once that is completed, you just configure GenTen to point to their corresponding installations via:
