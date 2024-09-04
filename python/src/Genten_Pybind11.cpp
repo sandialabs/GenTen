@@ -187,18 +187,17 @@ PYBIND11_MODULE(_pygenten, m) {
      for computing CP decompositions of those tensors.  It leverages Kokkos
      for shared-memory parallelism on CPU and GPU architectures, and MPI for
      distributed memory parallelism.)";
-  m.def("initializeKokkos", [](const int num_threads, const int num_devices, const int device_id) -> void {
+  m.def("initializeKokkos", [](const int num_threads, const int device_id) -> void {
       if(!Kokkos::is_initialized()) {
         Kokkos::InitializationSettings args;
         args.set_num_threads(num_threads);
-        args.set_num_devices(num_devices);
         args.set_device_id(device_id);
         Kokkos::initialize(args);
       }
     }, R"(
     Initialize Kokkos to set up the shared memory parallel environment.
 
-    Users should not generally call this, but instead call 'initializeGenten'.)", pybind11::arg("num_threads") = -1, pybind11::arg("num_devices") = -1, pybind11::arg("device_id") = -1);
+    Users should not generally call this, but instead call 'initializeGenten'.)", pybind11::arg("num_threads") = -1, pybind11::arg("device_id") = -1);
   m.def("finalizeKokkos", []() -> void {
       if(Kokkos::is_initialized())
         Kokkos::finalize();
