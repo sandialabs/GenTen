@@ -367,8 +367,7 @@ public:
   template <typename E>
   void copy_extra_data(const KtensorT<E>& x) {
     // only copy extra data if this and x point to the same data
-    if (static_cast<void*>(this->factors().values().data()) ==
-        static_cast<void*>(x.factors().values().data()))
+    if (this->factors().is_same(x.factors()))
       extra_data = x.extra_data;
   }
 
