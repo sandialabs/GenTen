@@ -87,8 +87,8 @@ public:
   // ----- CREATER & DESTROY -----
 
   // Empty constructor
-  KOKKOS_DEFAULTED_FUNCTION
-  FacMatArrayT() = default;
+  KOKKOS_INLINE_FUNCTION
+  FacMatArrayT() : ref_count(nullptr) {}
 
   // Construct an array to hold n factor matrices.
   FacMatArrayT(ttb_indx n) : data("Genten::FacMatArray::data",n)
@@ -97,6 +97,7 @@ public:
       host_data = host_view_type(data.data(), n);
     else
       host_data = host_view_type("Genten::FacMatArray::host_data",n);
+    ref_count = new int(1);
   }
 
   // Construct an array to hold n factor matrices.
@@ -114,19 +115,19 @@ public:
     }
   }
 
-  // Create array from supplied view
-  KOKKOS_INLINE_FUNCTION
-  FacMatArrayT(const view_type& v) : data(v) {}
-
   // Copy constructor
-  KOKKOS_DEFAULTED_FUNCTION
-  FacMatArrayT(const FacMatArrayT & src) = default;
+  KOKKOS_INLINE_FUNCTION
+  FacMatArrayT(const FacMatArrayT & src) :
+    data(src.data), host_data(src.host_data), ref_count(src.ref_count) {
+    if (ref_count != nullptr)
+      *ref_count += 1;
+  }
 
   // Destructor.
-  KOKKOS_DEFAULTED_FUNCTION
-  ~FacMatArrayT() = default;
-
-  // ----- RESIZE & RESET -----
+  KOKKOS_INLINE_FUNCTION
+  ~FacMatArrayT() {
+    KOKKOS_IF_ON_HOST(destroyHost();)
+  }
 
   // Set all entries of all matrices to val
   void operator=(ttb_real val) const
@@ -137,8 +138,12 @@ public:
   }
 
   // Make a copy of an existing array.
-  KOKKOS_DEFAULTED_FUNCTION
-  FacMatArrayT & operator=(const FacMatArrayT & src) = default;
+  KOKKOS_INLINE_FUNCTION
+  FacMatArrayT & operator=(const FacMatArrayT & src) {
+    KOKKOS_IF_ON_HOST(copyHost(src);)
+    KOKKOS_IF_ON_DEVICE(copyDevice(src);)
+    return *this;
+  }
 
   // Set a factor matrix
   void set_factor(const ttb_indx i, const FacMatrixT<ExecSpace>& src) const
@@ -179,19 +184,54 @@ public:
     KOKKOS_IF_ON_HOST(return host_data[n];)
   }
 
-  KOKKOS_INLINE_FUNCTION
-  view_type values() const { return data; }
-
-  KOKKOS_INLINE_FUNCTION
-  host_view_type host_values() const { return host_data; }
+  // Return whether FacMatArrays point to same data
+  template <typename E>
+  bool is_same(const FacMatArrayT<E>& x) {
+    return static_cast<void*>(data.data()) == static_cast<void*>(x.data.data());
+  }
 
 private:
+
+  template <typename E> friend class FacMatArrayT;
 
   // Array of factor matrices, each factor matrix on device
   view_type data;
 
   // Host view of array of factor matrices
   host_view_type host_data;
+
+  // To avoid deadlocks, Kokkos now requires us to deallocate host_view ourselves
+  int *ref_count;
+
+  void copyHost(const FacMatArrayT & src) {
+    if (this != &src) {
+      destroyHost();
+      data = src.data;
+      host_data = src.host_data;
+      ref_count = src.ref_count;
+      if (ref_count != nullptr)
+        *ref_count += 1;
+    }
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  void copyDevice(const FacMatArrayT & src) {
+    if (this != &src) {
+      data = src.data;
+    }
+  }
+
+  void destroyHost() {
+    if (ref_count != nullptr) {
+      *ref_count -= 1;
+      if (*ref_count <= 0) {
+        ttb_indx sz = size();
+        for (ttb_indx i=0; i<sz; ++i)
+          host_data[i] = FacMatrixT<ExecSpace>();
+        delete ref_count;
+      }
+    }
+  }
 };
 
 // Overload of create_mirror_view when spaces are the same
