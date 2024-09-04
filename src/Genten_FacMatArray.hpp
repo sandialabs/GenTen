@@ -185,9 +185,14 @@ public:
   }
 
   // Return whether FacMatArrays point to same data
-  bool is_same(const FacMatArrayT& x) { return data.data() == x.data.data(); }
+  template <typename E>
+  bool is_same(const FacMatArrayT<E>& x) {
+    return static_cast<void*>(data.data()) == static_cast<void*>(x.data.data());
+  }
 
 private:
+
+  template <typename E> friend class FacMatArrayT;
 
   // Array of factor matrices, each factor matrix on device
   view_type data;
@@ -209,6 +214,7 @@ private:
     }
   }
 
+  KOKKOS_INLINE_FUNCTION
   void copyDevice(const FacMatArrayT & src) {
     if (this != &src) {
       data = src.data;
