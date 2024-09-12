@@ -68,7 +68,7 @@ struct TestInsert {
     } while (rehash_on_fail && failed_count > 0u);
 
     // Trigger the m_size mutable bug.
-    typename map_type::HostMirror map_h;
+    auto map_h = create_mirror(map);
     execution_space().fence();
     Kokkos::deep_copy(map_h, map);
     execution_space().fence();
@@ -367,7 +367,7 @@ void test_deep_copy(uint32_t num_nodes) {
     }
   }
 
-  host_map_type hmap;
+  auto hmap = create_mirror(map);
   Kokkos::deep_copy(hmap, map);
 
   ASSERT_EQ(map.size(), hmap.size());
@@ -380,6 +380,7 @@ void test_deep_copy(uint32_t num_nodes) {
   }
 
   map_type mmap;
+  mmap.allocate_view(hmap);
   Kokkos::deep_copy(mmap, hmap);
 
   const_map_type cmap = mmap;
@@ -396,12 +397,6 @@ void test_deep_copy(uint32_t num_nodes) {
 
 #if !defined(_WIN32)
 TEST(TEST_CATEGORY, UnorderedMap_insert) {
-#if defined(KOKKOS_ENABLE_CUDA) && \
-    defined(KOKKOS_COMPILER_NVHPC)  // FIXME_NVHPC
-  if constexpr (std::is_same_v<TEST_EXECSPACE, Kokkos::Cuda>) {
-    GTEST_SKIP() << "unit test is hanging from index 0";
-  }
-#endif
   for (int i = 0; i < 500; ++i) {
     test_inserts<TEST_EXECSPACE>(100000, 90000, 100, true);
     test_inserts<TEST_EXECSPACE>(100000, 90000, 100, false);
@@ -418,12 +413,6 @@ TEST(TEST_CATEGORY, UnorderedMap_failed_insert) {
 }
 
 TEST(TEST_CATEGORY, UnorderedMap_deep_copy) {
-#if defined(KOKKOS_ENABLE_CUDA) && \
-    defined(KOKKOS_COMPILER_NVHPC)  // FIXME_NVHPC
-  if constexpr (std::is_same_v<TEST_EXECSPACE, Kokkos::Cuda>) {
-    GTEST_SKIP() << "unit test is hanging from index 0";
-  }
-#endif
   for (int i = 0; i < 2; ++i) test_deep_copy<TEST_EXECSPACE>(10000);
 }
 
@@ -436,22 +425,62 @@ TEST(TEST_CATEGORY, UnorderedMap_valid_empty) {
   Map n{};
   n = Map{m.capacity()};
   n.rehash(m.capacity());
-  Kokkos::deep_copy(n, m);
+  n.create_copy_view(m);
   ASSERT_TRUE(m.is_allocated());
   ASSERT_TRUE(n.is_allocated());
 }
 
-TEST(TEST_CATEGORY, UnorderedMap_clear_zero_size) {
-  using Map =
-      Kokkos::UnorderedMap<int, void, Kokkos::DefaultHostExecutionSpace>;
+/**
+ * This helper is needed because NVCC does not like extended lambdas
+ * in private member functions.
+ * Google Test bodies are private member functions. So it is incompatible.
+ * See also https://github.com/google/googletest/issues/4104.
+ */
+template <typename map_type>
+struct UnorderedMapInsert {
+  //! Type of range-for policy and its index type.
+  using range_policy_t =
+      Kokkos::RangePolicy<typename map_type::execution_space,
+                          Kokkos::IndexType<unsigned short int>>;
+  using index_t = typename range_policy_t::index_type;
 
-  Map m(11);
+  const map_type m_map;
+
+  //! Ensure shared ownership of @ref m_map.
+  UnorderedMapInsert(map_type map) : m_map(std::move(map)) {}
+
+  //! Insert a single value.
+  template <typename T>
+  void insert_single(const T &arg) const {
+    Kokkos::parallel_for(
+        Kokkos::RangePolicy<typename map_type::execution_space>(0, 1),
+        // NOLINTNEXTLINE(kokkos-implicit-this-capture)
+        KOKKOS_CLASS_LAMBDA(const index_t) { m_map.insert(arg); });
+  }
+
+  //! Insert multiple values.
+  template <typename... Args>
+  void insert(Args &&... args) const {
+    static_assert(sizeof...(Args) > 1, "Prefer the single value version");
+    constexpr size_t size = sizeof...(Args);
+    Kokkos::Array<typename map_type::key_type, size> values{
+        std::forward<Args>(args)...};
+    Kokkos::parallel_for(
+        Kokkos::RangePolicy<typename map_type::execution_space>(0, size),
+        // NOLINTNEXTLINE(kokkos-implicit-this-capture)
+        KOKKOS_CLASS_LAMBDA(const index_t i) { m_map.insert(values[i]); });
+  }
+};
+
+TEST(TEST_CATEGORY, UnorderedMap_clear_zero_size) {
+  using map_type = Kokkos::UnorderedMap<int, void, TEST_EXECSPACE>;
+
+  map_type m(11);
+
   ASSERT_EQ(0u, m.size());
 
-  m.insert(2);
-  m.insert(3);
-  m.insert(5);
-  m.insert(7);
+  UnorderedMapInsert<map_type>(m).insert(2, 3, 5, 7);
+
   ASSERT_EQ(4u, m.size());
   m.rehash(0);
   ASSERT_EQ(128u, m.capacity());
@@ -462,19 +491,22 @@ TEST(TEST_CATEGORY, UnorderedMap_clear_zero_size) {
 }
 
 TEST(TEST_CATEGORY, UnorderedMap_consistent_size) {
-  using Map =
-      Kokkos::UnorderedMap<int, void, Kokkos::DefaultHostExecutionSpace>;
+  using map_type = Kokkos::UnorderedMap<int, void, TEST_EXECSPACE>;
 
-  Map m(11);
-  m.insert(7);
-  ;
+  map_type m(11);
+  UnorderedMapInsert<map_type> inserter(m);
+
+  inserter.insert_single(7);
+
   ASSERT_EQ(1u, m.size());
 
   {
-    auto m2 = m;
-    m2.insert(2);
+    auto m_copy = m;
+    UnorderedMapInsert<decltype(m_copy)> inserter_copy(m_copy);
+    inserter_copy.insert_single(2);
     // This line triggers modified flags to be cleared in both m and m2
-    [[maybe_unused]] auto sz = m2.size();
+    const auto sz = m_copy.size();
+    ASSERT_EQ(2u, sz);
   }
 
   ASSERT_EQ(2u, m.size());
@@ -518,6 +550,18 @@ TEST(TEST_CATEGORY, UnorderedMap_lambda_capturable) {
   test_unordered_map_device_capture();
 }
 #endif
+
+/**
+ * @test This test ensures that an @ref UnorderedMap can be built
+ *       with an execution space instance (using @ref view_alloc).
+ */
+TEST(TEST_CATEGORY, UnorderedMap_constructor_view_alloc) {
+  using map_type = Kokkos::UnorderedMap<size_t, void, TEST_EXECSPACE>;
+  map_type map(Kokkos::view_alloc(TEST_EXECSPACE{}, "test umap"), 150);
+  ASSERT_EQ(map.size(), 0u);
+  ASSERT_GE(map.capacity(), 150u);
+  ASSERT_TRUE(map.is_allocated());
+}
 
 }  // namespace Test
 

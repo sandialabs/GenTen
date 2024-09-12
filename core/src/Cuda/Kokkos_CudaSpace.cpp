@@ -33,7 +33,6 @@
 
 //#include <Cuda/Kokkos_Cuda_BlockSize_Deduction.hpp>
 #include <impl/Kokkos_Error.hpp>
-#include <impl/Kokkos_MemorySpace.hpp>
 
 #include <impl/Kokkos_Tools.hpp>
 
@@ -43,7 +42,8 @@
 cudaStream_t Kokkos::Impl::cuda_get_deep_copy_stream() {
   static cudaStream_t s = nullptr;
   if (s == nullptr) {
-    cudaStreamCreate(&s);
+    KOKKOS_IMPL_CUDA_SAFE_CALL(
+        (CudaInternal::singleton().cuda_stream_create_wrapper(&s)));
   }
   return s;
 }
@@ -59,31 +59,28 @@ const std::unique_ptr<Kokkos::Cuda> &Kokkos::Impl::cuda_get_deep_copy_space(
 namespace Kokkos {
 namespace Impl {
 
-namespace {
-
-static std::atomic<int> num_uvm_allocations(0);
-
-}  // namespace
-
 void DeepCopyCuda(void *dst, const void *src, size_t n) {
-  KOKKOS_IMPL_CUDA_SAFE_CALL(cudaMemcpy(dst, src, n, cudaMemcpyDefault));
+  KOKKOS_IMPL_CUDA_SAFE_CALL((CudaInternal::singleton().cuda_memcpy_wrapper(
+      dst, src, n, cudaMemcpyDefault)));
 }
 
 void DeepCopyAsyncCuda(const Cuda &instance, void *dst, const void *src,
                        size_t n) {
   KOKKOS_IMPL_CUDA_SAFE_CALL(
-      cudaMemcpyAsync(dst, src, n, cudaMemcpyDefault, instance.cuda_stream()));
+      (instance.impl_internal_space_instance()->cuda_memcpy_async_wrapper(
+          dst, src, n, cudaMemcpyDefault)));
 }
 
 void DeepCopyAsyncCuda(void *dst, const void *src, size_t n) {
   cudaStream_t s = cuda_get_deep_copy_stream();
   KOKKOS_IMPL_CUDA_SAFE_CALL(
-      cudaMemcpyAsync(dst, src, n, cudaMemcpyDefault, s));
-  Impl::cuda_stream_synchronize(
-      s,
+      (CudaInternal::singleton().cuda_memcpy_async_wrapper(
+          dst, src, n, cudaMemcpyDefault, s)));
+  Kokkos::Tools::Experimental::Impl::profile_fence_event<Kokkos::Cuda>(
+      "Kokkos::Impl::DeepCopyAsyncCuda: Deep Copy Stream Sync",
       Kokkos::Tools::Experimental::SpecialSynchronizationCases::
           DeepCopyResourceSynchronization,
-      "Kokkos::Impl::DeepCopyAsyncCuda: Deep Copy Stream Sync");
+      [&]() { KOKKOS_IMPL_CUDA_SAFE_CALL(cudaStreamSynchronize(s)); });
 }
 
 }  // namespace Impl
@@ -131,13 +128,25 @@ void kokkos_impl_cuda_set_pin_uvm_to_host(bool val) {
 
 namespace Kokkos {
 
-CudaSpace::CudaSpace() : m_device(Kokkos::Cuda().cuda_device()) {}
+CudaSpace::CudaSpace()
+    : m_device(Kokkos::Cuda().cuda_device()),
+      m_stream(Kokkos::Cuda().cuda_stream()) {}
+CudaSpace::CudaSpace(int device_id, cudaStream_t stream)
+    : m_device(device_id), m_stream(stream) {}
 
-CudaUVMSpace::CudaUVMSpace() : m_device(Kokkos::Cuda().cuda_device()) {}
+CudaUVMSpace::CudaUVMSpace()
+    : m_device(Kokkos::Cuda().cuda_device()),
+      m_stream(Kokkos::Cuda().cuda_stream()) {}
+CudaUVMSpace::CudaUVMSpace(int device_id, cudaStream_t stream)
+    : m_device(device_id), m_stream(stream) {}
 
-CudaHostPinnedSpace::CudaHostPinnedSpace() {}
+CudaHostPinnedSpace::CudaHostPinnedSpace()
+    : m_device(Kokkos::Cuda().cuda_device()),
+      m_stream(Kokkos::Cuda().cuda_stream()) {}
+CudaHostPinnedSpace::CudaHostPinnedSpace(int device_id, cudaStream_t stream)
+    : m_device(device_id), m_stream(stream) {}
 
-int memory_threshold_g = 40000;  // 40 kB
+size_t memory_threshold_g = 40000;  // 40 kB
 
 //==============================================================================
 // <editor-fold desc="allocate()"> {{{1
@@ -157,43 +166,39 @@ void *CudaSpace::allocate(const char *arg_label, const size_t arg_alloc_size,
 }
 
 namespace {
-void *impl_allocate_common(const Cuda &exec_space, const char *arg_label,
-                           const size_t arg_alloc_size,
+void *impl_allocate_common(const int device_id,
+                           [[maybe_unused]] const cudaStream_t stream,
+                           const char *arg_label, const size_t arg_alloc_size,
                            const size_t arg_logical_size,
                            const Kokkos::Tools::SpaceHandle arg_handle,
-                           bool exec_space_provided) {
+                           [[maybe_unused]] bool stream_sync_only) {
   void *ptr = nullptr;
+  KOKKOS_IMPL_CUDA_SAFE_CALL(cudaSetDevice(device_id));
 
+  cudaError_t error_code = cudaSuccess;
 #ifndef CUDART_VERSION
 #error CUDART_VERSION undefined!
 #elif (defined(KOKKOS_ENABLE_IMPL_CUDA_MALLOC_ASYNC) && CUDART_VERSION >= 11020)
-  cudaError_t error_code;
   if (arg_alloc_size >= memory_threshold_g) {
-    if (exec_space_provided) {
-      cudaStream_t stream = exec_space.cuda_stream();
-      error_code          = cudaMallocAsync(&ptr, arg_alloc_size, stream);
-      exec_space.fence("Kokkos::Cuda: backend fence after async malloc");
-    } else {
-      error_code = cudaMallocAsync(&ptr, arg_alloc_size, 0);
-      Impl::cuda_device_synchronize(
-          "Kokkos::Cuda: backend fence after async malloc");
+    error_code = cudaMallocAsync(&ptr, arg_alloc_size, stream);
+
+    if (error_code == cudaSuccess) {
+      if (stream_sync_only) {
+        KOKKOS_IMPL_CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
+      } else {
+        Impl::cuda_device_synchronize(
+            "Kokkos::Cuda: backend fence after async malloc");
+      }
     }
-  } else {
-    error_code = cudaMalloc(&ptr, arg_alloc_size);
-  }
-#else
-  (void)exec_space;
-  (void)exec_space_provided;
-  auto error_code = cudaMalloc(&ptr, arg_alloc_size);
+  } else
 #endif
+  { error_code = cudaMalloc(&ptr, arg_alloc_size); }
   if (error_code != cudaSuccess) {  // TODO tag as unlikely branch
-    cudaGetLastError();  // This is the only way to clear the last error, which
-                         // we should do here since we're turning it into an
-                         // exception here
-    throw Experimental::CudaRawMemoryAllocationFailure(
-        arg_alloc_size, error_code,
-        Experimental::RawMemoryAllocationFailure::AllocationMechanism::
-            CudaMalloc);
+    // This is the only way to clear the last error, which
+    // we should do here since we're turning it into an
+    // exception here
+    cudaGetLastError();
+    Kokkos::Impl::throw_bad_alloc(arg_handle.name, arg_alloc_size, arg_label);
   }
 
   if (Kokkos::Profiling::profileLibraryLoaded()) {
@@ -209,7 +214,7 @@ void *CudaSpace::impl_allocate(
     const char *arg_label, const size_t arg_alloc_size,
     const size_t arg_logical_size,
     const Kokkos::Tools::SpaceHandle arg_handle) const {
-  return impl_allocate_common(Kokkos::Cuda{}, arg_label, arg_alloc_size,
+  return impl_allocate_common(m_device, m_stream, arg_label, arg_alloc_size,
                               arg_logical_size, arg_handle, false);
 }
 
@@ -217,8 +222,9 @@ void *CudaSpace::impl_allocate(
     const Cuda &exec_space, const char *arg_label, const size_t arg_alloc_size,
     const size_t arg_logical_size,
     const Kokkos::Tools::SpaceHandle arg_handle) const {
-  return impl_allocate_common(exec_space, arg_label, arg_alloc_size,
-                              arg_logical_size, arg_handle, true);
+  return impl_allocate_common(
+      exec_space.cuda_device(), exec_space.cuda_stream(), arg_label,
+      arg_alloc_size, arg_logical_size, arg_handle, true);
 }
 
 void *CudaUVMSpace::allocate(const size_t arg_alloc_size) const {
@@ -237,26 +243,24 @@ void *CudaUVMSpace::impl_allocate(
   Cuda::impl_static_fence(
       "Kokkos::CudaUVMSpace::impl_allocate: Pre UVM Allocation");
   if (arg_alloc_size > 0) {
-    Kokkos::Impl::num_uvm_allocations++;
-
-    auto error_code =
+    KOKKOS_IMPL_CUDA_SAFE_CALL(cudaSetDevice(m_device));
+    cudaError_t error_code =
         cudaMallocManaged(&ptr, arg_alloc_size, cudaMemAttachGlobal);
+
+    if (error_code != cudaSuccess) {  // TODO tag as unlikely branch
+      // This is the only way to clear the last error, which
+      // we should do here since we're turning it into an
+      // exception here
+      cudaGetLastError();
+      Kokkos::Impl::throw_bad_alloc(name(), arg_alloc_size, arg_label);
+    }
 
 #ifdef KOKKOS_IMPL_DEBUG_CUDA_PIN_UVM_TO_HOST
     if (Kokkos::CudaUVMSpace::cuda_pin_uvm_to_host())
-      cudaMemAdvise(ptr, arg_alloc_size, cudaMemAdviseSetPreferredLocation,
-                    cudaCpuDeviceId);
+      KOKKOS_IMPL_CUDA_SAFE_CALL(
+          cudaMemAdvise(ptr, arg_alloc_size, cudaMemAdviseSetPreferredLocation,
+                        cudaCpuDeviceId));
 #endif
-
-    if (error_code != cudaSuccess) {  // TODO tag as unlikely branch
-      cudaGetLastError();  // This is the only way to clear the last error,
-                           // which we should do here since we're turning it
-                           // into an exception here
-      throw Experimental::CudaRawMemoryAllocationFailure(
-          arg_alloc_size, error_code,
-          Experimental::RawMemoryAllocationFailure::AllocationMechanism::
-              CudaMallocManaged);
-    }
   }
   Cuda::impl_static_fence(
       "Kokkos::CudaUVMSpace::impl_allocate: Post UVM Allocation");
@@ -281,15 +285,15 @@ void *CudaHostPinnedSpace::impl_allocate(
     const Kokkos::Tools::SpaceHandle arg_handle) const {
   void *ptr = nullptr;
 
-  auto error_code = cudaHostAlloc(&ptr, arg_alloc_size, cudaHostAllocDefault);
+  KOKKOS_IMPL_CUDA_SAFE_CALL(cudaSetDevice(m_device));
+  cudaError_t error_code =
+      cudaHostAlloc(&ptr, arg_alloc_size, cudaHostAllocDefault);
   if (error_code != cudaSuccess) {  // TODO tag as unlikely branch
-    cudaGetLastError();  // This is the only way to clear the last error, which
-                         // we should do here since we're turning it into an
-                         // exception here
-    throw Experimental::CudaRawMemoryAllocationFailure(
-        arg_alloc_size, error_code,
-        Experimental::RawMemoryAllocationFailure::AllocationMechanism::
-            CudaHostAlloc);
+    // This is the only way to clear the last error, which
+    // we should do here since we're turning it into an
+    // exception here
+    cudaGetLastError();
+    Kokkos::Impl::throw_bad_alloc(name(), arg_alloc_size, arg_label);
   }
   if (Kokkos::Profiling::profileLibraryLoaded()) {
     const size_t reported_size =
@@ -320,24 +324,24 @@ void CudaSpace::impl_deallocate(
     Kokkos::Profiling::deallocateData(arg_handle, arg_label, arg_alloc_ptr,
                                       reported_size);
   }
-  try {
 #ifndef CUDART_VERSION
 #error CUDART_VERSION undefined!
 #elif (defined(KOKKOS_ENABLE_IMPL_CUDA_MALLOC_ASYNC) && CUDART_VERSION >= 11020)
-    if (arg_alloc_size >= memory_threshold_g) {
-      Impl::cuda_device_synchronize(
-          "Kokkos::Cuda: backend fence before async free");
-      KOKKOS_IMPL_CUDA_SAFE_CALL(cudaFreeAsync(arg_alloc_ptr, 0));
-      Impl::cuda_device_synchronize(
-          "Kokkos::Cuda: backend fence after async free");
-    } else {
-      KOKKOS_IMPL_CUDA_SAFE_CALL(cudaFree(arg_alloc_ptr));
-    }
-#else
+  if (arg_alloc_size >= memory_threshold_g) {
+    Impl::cuda_device_synchronize(
+        "Kokkos::Cuda: backend fence before async free");
+    KOKKOS_IMPL_CUDA_SAFE_CALL(cudaSetDevice(m_device));
+    KOKKOS_IMPL_CUDA_SAFE_CALL(cudaFreeAsync(arg_alloc_ptr, m_stream));
+    Impl::cuda_device_synchronize(
+        "Kokkos::Cuda: backend fence after async free");
+  } else {
+    KOKKOS_IMPL_CUDA_SAFE_CALL(cudaSetDevice(m_device));
     KOKKOS_IMPL_CUDA_SAFE_CALL(cudaFree(arg_alloc_ptr));
-#endif
-  } catch (...) {
   }
+#else
+  KOKKOS_IMPL_CUDA_SAFE_CALL(cudaSetDevice(m_device));
+  KOKKOS_IMPL_CUDA_SAFE_CALL(cudaFree(arg_alloc_ptr));
+#endif
 }
 void CudaUVMSpace::deallocate(void *const arg_alloc_ptr,
                               const size_t arg_alloc_size) const {
@@ -353,10 +357,7 @@ void CudaUVMSpace::deallocate(const char *arg_label, void *const arg_alloc_ptr,
 }
 void CudaUVMSpace::impl_deallocate(
     const char *arg_label, void *const arg_alloc_ptr,
-    const size_t arg_alloc_size
-
-    ,
-    const size_t arg_logical_size,
+    const size_t arg_alloc_size, const size_t arg_logical_size,
     const Kokkos::Tools::SpaceHandle arg_handle) const {
   Cuda::impl_static_fence(
       "Kokkos::CudaUVMSpace::impl_deallocate: Pre UVM Deallocation");
@@ -366,12 +367,9 @@ void CudaUVMSpace::impl_deallocate(
     Kokkos::Profiling::deallocateData(arg_handle, arg_label, arg_alloc_ptr,
                                       reported_size);
   }
-  try {
-    if (arg_alloc_ptr != nullptr) {
-      Kokkos::Impl::num_uvm_allocations--;
-      KOKKOS_IMPL_CUDA_SAFE_CALL(cudaFree(arg_alloc_ptr));
-    }
-  } catch (...) {
+  if (arg_alloc_ptr != nullptr) {
+    KOKKOS_IMPL_CUDA_SAFE_CALL(cudaSetDevice(m_device));
+    KOKKOS_IMPL_CUDA_SAFE_CALL(cudaFree(arg_alloc_ptr));
   }
   Cuda::impl_static_fence(
       "Kokkos::CudaUVMSpace::impl_deallocate: Post UVM Deallocation");
@@ -398,10 +396,8 @@ void CudaHostPinnedSpace::impl_deallocate(
     Kokkos::Profiling::deallocateData(arg_handle, arg_label, arg_alloc_ptr,
                                       reported_size);
   }
-  try {
-    KOKKOS_IMPL_CUDA_SAFE_CALL(cudaFreeHost(arg_alloc_ptr));
-  } catch (...) {
-  }
+  KOKKOS_IMPL_CUDA_SAFE_CALL(cudaSetDevice(m_device));
+  KOKKOS_IMPL_CUDA_SAFE_CALL(cudaFreeHost(arg_alloc_ptr));
 }
 
 }  // namespace Kokkos
@@ -412,165 +408,13 @@ void CudaHostPinnedSpace::impl_deallocate(
 namespace Kokkos {
 namespace Impl {
 
-#ifdef KOKKOS_ENABLE_DEBUG
-SharedAllocationRecord<void, void>
-    SharedAllocationRecord<Kokkos::CudaSpace, void>::s_root_record;
-
-SharedAllocationRecord<void, void>
-    SharedAllocationRecord<Kokkos::CudaUVMSpace, void>::s_root_record;
-
-SharedAllocationRecord<void, void>
-    SharedAllocationRecord<Kokkos::CudaHostPinnedSpace, void>::s_root_record;
-#endif
-
-//==============================================================================
-// <editor-fold desc="SharedAllocationRecord destructors"> {{{1
-
-SharedAllocationRecord<Kokkos::CudaSpace, void>::~SharedAllocationRecord() {
-  auto alloc_size = SharedAllocationRecord<void, void>::m_alloc_size;
-  m_space.deallocate(m_label.c_str(),
-                     SharedAllocationRecord<void, void>::m_alloc_ptr,
-                     alloc_size, (alloc_size - sizeof(SharedAllocationHeader)));
-}
-
-void SharedAllocationRecord<Kokkos::CudaSpace, void>::deep_copy_header_no_exec(
-    void *ptr, const void *header) {
-  Kokkos::Cuda exec;
-  Kokkos::Impl::DeepCopy<CudaSpace, HostSpace>(exec, ptr, header,
-                                               sizeof(SharedAllocationHeader));
-  exec.fence(
-      "SharedAllocationRecord<Kokkos::CudaSpace, "
-      "void>::SharedAllocationRecord(): fence after copying header from "
-      "HostSpace");
-}
-
-SharedAllocationRecord<Kokkos::CudaUVMSpace, void>::~SharedAllocationRecord() {
-  m_space.deallocate(m_label.c_str(),
-                     SharedAllocationRecord<void, void>::m_alloc_ptr,
-                     SharedAllocationRecord<void, void>::m_alloc_size,
-                     (SharedAllocationRecord<void, void>::m_alloc_size -
-                      sizeof(SharedAllocationHeader)));
-}
-
-SharedAllocationRecord<Kokkos::CudaHostPinnedSpace,
-                       void>::~SharedAllocationRecord() {
-  m_space.deallocate(m_label.c_str(),
-                     SharedAllocationRecord<void, void>::m_alloc_ptr,
-                     SharedAllocationRecord<void, void>::m_alloc_size,
-                     (SharedAllocationRecord<void, void>::m_alloc_size -
-                      sizeof(SharedAllocationHeader)));
-}
-
-// </editor-fold> end SharedAllocationRecord destructors }}}1
-//==============================================================================
-
-//==============================================================================
-// <editor-fold desc="SharedAllocationRecord constructors"> {{{1
-
-SharedAllocationRecord<Kokkos::CudaSpace, void>::SharedAllocationRecord(
-    const Kokkos::CudaSpace &arg_space, const std::string &arg_label,
-    const size_t arg_alloc_size,
-    const SharedAllocationRecord<void, void>::function_type arg_dealloc)
-    // Pass through allocated [ SharedAllocationHeader , user_memory ]
-    // Pass through deallocation function
-    : base_t(
-#ifdef KOKKOS_ENABLE_DEBUG
-          &SharedAllocationRecord<Kokkos::CudaSpace, void>::s_root_record,
-#endif
-          Impl::checked_allocation_with_header(arg_space, arg_label,
-                                               arg_alloc_size),
-          sizeof(SharedAllocationHeader) + arg_alloc_size, arg_dealloc,
-          arg_label),
-      m_space(arg_space) {
-
-  SharedAllocationHeader header;
-
-  this->base_t::_fill_host_accessible_header_info(header, arg_label);
-
-  // Copy to device memory
-  Kokkos::Cuda exec;
-  Kokkos::Impl::DeepCopy<CudaSpace, HostSpace>(
-      exec, RecordBase::m_alloc_ptr, &header, sizeof(SharedAllocationHeader));
-  exec.fence(
-      "SharedAllocationRecord<Kokkos::CudaSpace, "
-      "void>::SharedAllocationRecord(): fence after copying header from "
-      "HostSpace");
-}
-
-SharedAllocationRecord<Kokkos::CudaSpace, void>::SharedAllocationRecord(
-    const Kokkos::Cuda &arg_exec_space, const Kokkos::CudaSpace &arg_space,
-    const std::string &arg_label, const size_t arg_alloc_size,
-    const SharedAllocationRecord<void, void>::function_type arg_dealloc)
-    // Pass through allocated [ SharedAllocationHeader , user_memory ]
-    // Pass through deallocation function
-    : base_t(
-#ifdef KOKKOS_ENABLE_DEBUG
-          &SharedAllocationRecord<Kokkos::CudaSpace, void>::s_root_record,
-#endif
-          Impl::checked_allocation_with_header(arg_exec_space, arg_space,
-                                               arg_label, arg_alloc_size),
-          sizeof(SharedAllocationHeader) + arg_alloc_size, arg_dealloc,
-          arg_label),
-      m_space(arg_space) {
-
-  SharedAllocationHeader header;
-
-  this->base_t::_fill_host_accessible_header_info(header, arg_label);
-
-  // Copy to device memory
-  Kokkos::Impl::DeepCopy<CudaSpace, HostSpace>(arg_exec_space,
-                                               RecordBase::m_alloc_ptr, &header,
-                                               sizeof(SharedAllocationHeader));
-}
-
-SharedAllocationRecord<Kokkos::CudaUVMSpace, void>::SharedAllocationRecord(
-    const Kokkos::CudaUVMSpace &arg_space, const std::string &arg_label,
-    const size_t arg_alloc_size,
-    const SharedAllocationRecord<void, void>::function_type arg_dealloc)
-    // Pass through allocated [ SharedAllocationHeader , user_memory ]
-    // Pass through deallocation function
-    : base_t(
-#ifdef KOKKOS_ENABLE_DEBUG
-          &SharedAllocationRecord<Kokkos::CudaUVMSpace, void>::s_root_record,
-#endif
-          Impl::checked_allocation_with_header(arg_space, arg_label,
-                                               arg_alloc_size),
-          sizeof(SharedAllocationHeader) + arg_alloc_size, arg_dealloc,
-          arg_label),
-      m_space(arg_space) {
-  this->base_t::_fill_host_accessible_header_info(*base_t::m_alloc_ptr,
-                                                  arg_label);
-}
-
-SharedAllocationRecord<Kokkos::CudaHostPinnedSpace, void>::
-    SharedAllocationRecord(
-        const Kokkos::CudaHostPinnedSpace &arg_space,
-        const std::string &arg_label, const size_t arg_alloc_size,
-        const SharedAllocationRecord<void, void>::function_type arg_dealloc)
-    // Pass through allocated [ SharedAllocationHeader , user_memory ]
-    // Pass through deallocation function
-    : base_t(
-#ifdef KOKKOS_ENABLE_DEBUG
-          &SharedAllocationRecord<Kokkos::CudaHostPinnedSpace,
-                                  void>::s_root_record,
-#endif
-          Impl::checked_allocation_with_header(arg_space, arg_label,
-                                               arg_alloc_size),
-          sizeof(SharedAllocationHeader) + arg_alloc_size, arg_dealloc,
-          arg_label),
-      m_space(arg_space) {
-  this->base_t::_fill_host_accessible_header_info(*base_t::m_alloc_ptr,
-                                                  arg_label);
-}
-
-// </editor-fold> end SharedAllocationRecord constructors }}}1
-//==============================================================================
-
 void cuda_prefetch_pointer(const Cuda &space, const void *ptr, size_t bytes,
                            bool to_device) {
   if ((ptr == nullptr) || (bytes == 0)) return;
   cudaPointerAttributes attr;
-  KOKKOS_IMPL_CUDA_SAFE_CALL(cudaPointerGetAttributes(&attr, ptr));
+  KOKKOS_IMPL_CUDA_SAFE_CALL((
+      space.impl_internal_space_instance()->cuda_pointer_get_attributes_wrapper(
+          &attr, ptr)));
   // I measured this and it turns out prefetching towards the host slows
   // DualView syncs down. Probably because the latency is not too bad in the
   // first place for the pull down. If we want to change that provde
@@ -578,8 +422,9 @@ void cuda_prefetch_pointer(const Cuda &space, const void *ptr, size_t bytes,
   bool is_managed = attr.type == cudaMemoryTypeManaged;
   if (to_device && is_managed &&
       space.cuda_device_prop().concurrentManagedAccess) {
-    KOKKOS_IMPL_CUDA_SAFE_CALL(cudaMemPrefetchAsync(
-        ptr, bytes, space.cuda_device(), space.cuda_stream()));
+    KOKKOS_IMPL_CUDA_SAFE_CALL(
+        (space.impl_internal_space_instance()->cuda_mem_prefetch_async_wrapper(
+            ptr, bytes, space.cuda_device())));
   }
 }
 
@@ -591,19 +436,12 @@ void cuda_prefetch_pointer(const Cuda &space, const void *ptr, size_t bytes,
 
 #include <impl/Kokkos_SharedAlloc_timpl.hpp>
 
-namespace Kokkos {
-namespace Impl {
-
-// To avoid additional compilation cost for something that's (mostly?) not
-// performance sensitive, we explicity instantiate these CRTP base classes here,
-// where we have access to the associated *_timpl.hpp header files.
-template class SharedAllocationRecordCommon<Kokkos::CudaSpace>;
-template class HostInaccessibleSharedAllocationRecordCommon<Kokkos::CudaSpace>;
-template class SharedAllocationRecordCommon<Kokkos::CudaUVMSpace>;
-template class SharedAllocationRecordCommon<Kokkos::CudaHostPinnedSpace>;
-
-}  // end namespace Impl
-}  // end namespace Kokkos
+KOKKOS_IMPL_HOST_INACCESSIBLE_SHARED_ALLOCATION_RECORD_EXPLICIT_INSTANTIATION(
+    Kokkos::CudaSpace);
+KOKKOS_IMPL_SHARED_ALLOCATION_RECORD_EXPLICIT_INSTANTIATION(
+    Kokkos::CudaUVMSpace);
+KOKKOS_IMPL_SHARED_ALLOCATION_RECORD_EXPLICIT_INSTANTIATION(
+    Kokkos::CudaHostPinnedSpace);
 
 // </editor-fold> end Explicit instantiations of CRTP Base classes }}}1
 //==============================================================================

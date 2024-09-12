@@ -4,6 +4,7 @@ SET(Kokkos_TPLS @KOKKOS_ENABLED_TPLS@)
 SET(Kokkos_ARCH @KOKKOS_ENABLED_ARCH_LIST@)
 SET(Kokkos_CXX_COMPILER "@CMAKE_CXX_COMPILER@")
 SET(Kokkos_CXX_COMPILER_ID "@KOKKOS_CXX_COMPILER_ID@")
+SET(Kokkos_CXX_COMPILER_VERSION "@KOKKOS_CXX_COMPILER_VERSION@")
 SET(Kokkos_CXX_STANDARD @KOKKOS_CXX_STANDARD@)
 
 # Required to be a TriBITS-compliant external package
@@ -224,8 +225,13 @@ FUNCTION(kokkos_compilation)
     # if built w/o CUDA support, we want to basically make this a no-op
     SET(_Kokkos_ENABLE_CUDA @Kokkos_ENABLE_CUDA@)
 
+
+    IF(CMAKE_VERSION VERSION_GREATER_EQUAL 3.17)
+      SET(MAYBE_CURRENT_INSTALLATION_ROOT "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../..")
+    ENDIF()
+
     # search relative first and then absolute
-    SET(_HINTS "${CMAKE_CURRENT_LIST_DIR}/../.." "@CMAKE_INSTALL_PREFIX@")
+    SET(_HINTS "${MAYBE_CURRENT_INSTALLATION_ROOT}" "@CMAKE_INSTALL_PREFIX@")
 
     # find kokkos_launch_compiler
     FIND_PROGRAM(Kokkos_COMPILE_LAUNCHER

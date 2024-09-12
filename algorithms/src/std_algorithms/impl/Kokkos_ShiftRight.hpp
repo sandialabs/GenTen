@@ -29,10 +29,9 @@ namespace Experimental {
 namespace Impl {
 
 template <class ExecutionSpace, class IteratorType>
-IteratorType shift_right_impl(const std::string& label,
-                              const ExecutionSpace& ex, IteratorType first,
-                              IteratorType last,
-                              typename IteratorType::difference_type n) {
+IteratorType shift_right_exespace_impl(
+    const std::string& label, const ExecutionSpace& ex, IteratorType first,
+    IteratorType last, typename IteratorType::difference_type n) {
   // checks
   Impl::static_assert_random_access_and_accessible(ex, first);
   Impl::expect_valid_range(first, last);
@@ -100,6 +99,41 @@ IteratorType shift_right_impl(const std::string& label,
                          step2_func_type(begin(tmp_view), first + n));
 
   ex.fence("Kokkos::shift_right: fence after operation");
+
+  return first + n;
+}
+
+template <class TeamHandleType, class IteratorType>
+KOKKOS_FUNCTION IteratorType shift_right_team_impl(
+    const TeamHandleType& teamHandle, IteratorType first, IteratorType last,
+    typename IteratorType::difference_type n) {
+  // checks
+  Impl::static_assert_random_access_and_accessible(teamHandle, first);
+  Impl::expect_valid_range(first, last);
+  KOKKOS_EXPECTS(n >= 0);
+
+  // handle trivial cases
+  if (n == 0) {
+    return first;
+  }
+
+  if (n >= Kokkos::Experimental::distance(first, last)) {
+    return last;
+  }
+
+  // we cannot use here a new allocation like we do for the
+  // execution space impl because for this team impl we are
+  // within a parallel region, so for now we solve serially
+
+  using difference_type = typename IteratorType::difference_type;
+  const difference_type numElementsToMove =
+      ::Kokkos::Experimental::distance(first, last - n);
+  Kokkos::single(Kokkos::PerTeam(teamHandle), [=]() {
+    for (difference_type i = 0; i < numElementsToMove; ++i) {
+      last[-i - 1] = std::move(last[-n - i - 1]);
+    }
+  });
+  teamHandle.team_barrier();
 
   return first + n;
 }

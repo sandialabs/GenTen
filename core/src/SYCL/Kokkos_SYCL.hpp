@@ -78,19 +78,15 @@ class SYCL {
   //! \name Functions that all Kokkos devices must implement.
   //@{
 
-  KOKKOS_INLINE_FUNCTION static int in_parallel() {
+#ifdef KOKKOS_ENABLE_DEPRECATED_CODE_4
+  KOKKOS_DEPRECATED KOKKOS_INLINE_FUNCTION static int in_parallel() {
 #if defined(__SYCL_DEVICE_ONLY__)
     return true;
 #else
     return false;
 #endif
   }
-
-  /** \brief  Set the device in a "sleep" state. */
-  static bool sleep();
-
-  /** \brief Wake the device from the 'sleep' state. A noop for OpenMP. */
-  static bool wake();
+#endif
 
   /** \brief Wait until all dispatched functors complete. A noop for OpenMP. */
   static void impl_static_fence(const std::string& name);
@@ -163,7 +159,8 @@ std::vector<SYCL> partition_space(const SYCL& sycl_space, Args...) {
   std::vector<SYCL> instances;
   instances.reserve(sizeof...(Args));
   for (unsigned int i = 0; i < sizeof...(Args); ++i)
-    instances.emplace_back(sycl::queue(context, device));
+    instances.emplace_back(
+        sycl::queue(context, device, sycl::property::queue::in_order()));
   return instances;
 }
 
@@ -183,9 +180,14 @@ std::vector<SYCL> partition_space(const SYCL& sycl_space,
   // otherwise.
   instances.reserve(weights.size());
   for (unsigned int i = 0; i < weights.size(); ++i)
-    instances.emplace_back(sycl::queue(context, device));
+    instances.emplace_back(
+        sycl::queue(context, device, sycl::property::queue::in_order()));
   return instances;
 }
+
+namespace Impl {
+std::vector<sycl::device> get_sycl_devices();
+}  // namespace Impl
 }  // namespace Experimental
 
 }  // namespace Kokkos

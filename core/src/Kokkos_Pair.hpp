@@ -28,6 +28,7 @@
 #endif
 
 #include <Kokkos_Macros.hpp>
+#include <Kokkos_Swap.hpp>
 #include <utility>
 
 namespace Kokkos {
@@ -62,8 +63,7 @@ struct pair {
   ///
   /// This calls the copy constructors of T1 and T2.  It won't compile
   /// if those copy constructors are not defined and public.
-#ifdef KOKKOS_COMPILER_NVHPC  // FIXME_NVHPC bug in NVHPC regarding constexpr
-                              // constructors used in device code
+#if defined(KOKKOS_COMPILER_NVHPC) && KOKKOS_COMPILER_NVHPC < 230700
   KOKKOS_FORCEINLINE_FUNCTION
 #else
   KOKKOS_FORCEINLINE_FUNCTION constexpr
@@ -75,8 +75,7 @@ struct pair {
   /// This calls the copy constructors of T1 and T2.  It won't compile
   /// if those copy constructors are not defined and public.
   template <class U, class V>
-#ifdef KOKKOS_COMPILER_NVHPC  // FIXME_NVHPC bug in NVHPC regarding constexpr
-                              // constructors used in device code
+#if defined(KOKKOS_COMPILER_NVHPC) && KOKKOS_COMPILER_NVHPC < 230700
   KOKKOS_FORCEINLINE_FUNCTION
 #else
   KOKKOS_FORCEINLINE_FUNCTION constexpr
@@ -414,12 +413,13 @@ KOKKOS_FORCEINLINE_FUNCTION pair<T1&, T2&> tie(T1& x, T2& y) {
   return (pair<T1&, T2&>(x, y));
 }
 
+#ifdef KOKKOS_ENABLE_DEPRECATED_CODE_4
 //
 // Specialization of Kokkos::pair for a \c void second argument.  This
 // is not actually a "pair"; it only contains one element, the first.
 //
 template <class T1>
-struct pair<T1, void> {
+struct KOKKOS_DEPRECATED pair<T1, void> {
   using first_type  = T1;
   using second_type = void;
 
@@ -449,44 +449,50 @@ struct pair<T1, void> {
 // Specialization of relational operators for Kokkos::pair<T1,void>.
 //
 
+#if defined(KOKKOS_COMPILER_GNU) && (KOKKOS_COMPILER_GNU < 1110)
+KOKKOS_IMPL_DISABLE_DEPRECATED_WARNINGS_PUSH()
+#endif
 template <class T1>
-KOKKOS_FORCEINLINE_FUNCTION constexpr bool operator==(
+KOKKOS_DEPRECATED KOKKOS_FORCEINLINE_FUNCTION constexpr bool operator==(
     const pair<T1, void>& lhs, const pair<T1, void>& rhs) {
   return lhs.first == rhs.first;
 }
 
 template <class T1>
-KOKKOS_FORCEINLINE_FUNCTION constexpr bool operator!=(
+KOKKOS_DEPRECATED KOKKOS_FORCEINLINE_FUNCTION constexpr bool operator!=(
     const pair<T1, void>& lhs, const pair<T1, void>& rhs) {
   return !(lhs == rhs);
 }
 
 template <class T1>
-KOKKOS_FORCEINLINE_FUNCTION constexpr bool operator<(
+KOKKOS_DEPRECATED KOKKOS_FORCEINLINE_FUNCTION constexpr bool operator<(
     const pair<T1, void>& lhs, const pair<T1, void>& rhs) {
   return lhs.first < rhs.first;
 }
 
 template <class T1>
-KOKKOS_FORCEINLINE_FUNCTION constexpr bool operator<=(
+KOKKOS_DEPRECATED KOKKOS_FORCEINLINE_FUNCTION constexpr bool operator<=(
     const pair<T1, void>& lhs, const pair<T1, void>& rhs) {
   return !(rhs < lhs);
 }
 
 template <class T1>
-KOKKOS_FORCEINLINE_FUNCTION constexpr bool operator>(
+KOKKOS_DEPRECATED KOKKOS_FORCEINLINE_FUNCTION constexpr bool operator>(
     const pair<T1, void>& lhs, const pair<T1, void>& rhs) {
   return rhs < lhs;
 }
 
 template <class T1>
-KOKKOS_FORCEINLINE_FUNCTION constexpr bool operator>=(
+KOKKOS_DEPRECATED KOKKOS_FORCEINLINE_FUNCTION constexpr bool operator>=(
     const pair<T1, void>& lhs, const pair<T1, void>& rhs) {
   return !(lhs < rhs);
 }
+#if defined(KOKKOS_COMPILER_GNU) && (KOKKOS_COMPILER_GNU < 1110)
+KOKKOS_IMPL_DISABLE_DEPRECATED_WARNINGS_POP()
+#endif
+#endif
 
 namespace Impl {
-
 template <class T>
 struct is_pair_like : std::false_type {};
 template <class T, class U>
