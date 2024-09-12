@@ -24,18 +24,21 @@ namespace Kokkos {
 namespace Experimental {
 namespace Impl {
 
+template <class T>
+class RandomAccessIterator;
+
 template <typename T, typename enable = void>
 struct is_admissible_to_kokkos_std_algorithms : std::false_type {};
 
 template <typename T>
 struct is_admissible_to_kokkos_std_algorithms<
-    T, std::enable_if_t< ::Kokkos::is_view<T>::value && T::rank() == 1 &&
-                         (std::is_same<typename T::traits::array_layout,
-                                       Kokkos::LayoutLeft>::value ||
-                          std::is_same<typename T::traits::array_layout,
-                                       Kokkos::LayoutRight>::value ||
-                          std::is_same<typename T::traits::array_layout,
-                                       Kokkos::LayoutStride>::value)> >
+    T, std::enable_if_t<::Kokkos::is_view<T>::value && T::rank() == 1 &&
+                        (std::is_same<typename T::traits::array_layout,
+                                      Kokkos::LayoutLeft>::value ||
+                         std::is_same<typename T::traits::array_layout,
+                                      Kokkos::LayoutRight>::value ||
+                         std::is_same<typename T::traits::array_layout,
+                                      Kokkos::LayoutStride>::value)>>
     : std::true_type {};
 
 template <class ViewType>
@@ -55,6 +58,21 @@ using iterator_category_t = typename T::iterator_category;
 template <class T>
 using is_iterator = Kokkos::is_detected<iterator_category_t, T>;
 
+template <class T>
+inline constexpr bool is_iterator_v = is_iterator<T>::value;
+
+template <typename ViewType>
+struct is_kokkos_iterator : std::false_type {};
+
+template <typename ViewType>
+struct is_kokkos_iterator<RandomAccessIterator<ViewType>> {
+  static constexpr bool value =
+      is_admissible_to_kokkos_std_algorithms<ViewType>::value;
+};
+
+template <class T>
+inline constexpr bool is_kokkos_iterator_v = is_kokkos_iterator<T>::value;
+
 //
 // are_iterators
 //
@@ -63,14 +81,17 @@ struct are_iterators;
 
 template <class T>
 struct are_iterators<T> {
-  static constexpr bool value = is_iterator<T>::value;
+  static constexpr bool value = is_iterator_v<T>;
 };
 
 template <class Head, class... Tail>
 struct are_iterators<Head, Tail...> {
   static constexpr bool value =
-      are_iterators<Head>::value && are_iterators<Tail...>::value;
+      are_iterators<Head>::value && (are_iterators<Tail>::value && ... && true);
 };
+
+template <class... Ts>
+inline constexpr bool are_iterators_v = are_iterators<Ts...>::value;
 
 //
 // are_random_access_iterators
@@ -81,16 +102,20 @@ struct are_random_access_iterators;
 template <class T>
 struct are_random_access_iterators<T> {
   static constexpr bool value =
-      is_iterator<T>::value &&
-      std::is_base_of<std::random_access_iterator_tag,
-                      typename T::iterator_category>::value;
+      is_iterator_v<T> && std::is_base_of<std::random_access_iterator_tag,
+                                          typename T::iterator_category>::value;
 };
 
 template <class Head, class... Tail>
 struct are_random_access_iterators<Head, Tail...> {
-  static constexpr bool value = are_random_access_iterators<Head>::value &&
-                                are_random_access_iterators<Tail...>::value;
+  static constexpr bool value =
+      are_random_access_iterators<Head>::value &&
+      (are_random_access_iterators<Tail>::value && ... && true);
 };
+
+template <class... Ts>
+inline constexpr bool are_random_access_iterators_v =
+    are_random_access_iterators<Ts...>::value;
 
 //
 // iterators_are_accessible_from
@@ -113,16 +138,18 @@ struct iterators_are_accessible_from<ExeSpace, Head, Tail...> {
       iterators_are_accessible_from<ExeSpace, Tail...>::value;
 };
 
-template <class ExecutionSpace, class... IteratorTypes>
+template <class ExecutionSpaceOrTeamHandleType, class... IteratorTypes>
 KOKKOS_INLINE_FUNCTION constexpr void
-static_assert_random_access_and_accessible(const ExecutionSpace& /* ex */,
-                                           IteratorTypes... /* iterators */) {
+static_assert_random_access_and_accessible(
+    const ExecutionSpaceOrTeamHandleType& /* ex_or_th*/,
+    IteratorTypes... /* iterators */) {
   static_assert(
       are_random_access_iterators<IteratorTypes...>::value,
       "Currently, Kokkos standard algorithms require random access iterators.");
-  static_assert(
-      iterators_are_accessible_from<ExecutionSpace, IteratorTypes...>::value,
-      "Incompatible view/iterator and execution space");
+  static_assert(iterators_are_accessible_from<
+                    typename ExecutionSpaceOrTeamHandleType::execution_space,
+                    IteratorTypes...>::value,
+                "Incompatible view/iterator and execution space");
 }
 
 //
@@ -182,10 +209,10 @@ struct not_openmptarget {
 #endif
 };
 
-template <class ExecutionSpace>
+template <class ExecutionSpaceOrTeamHandleType>
 KOKKOS_INLINE_FUNCTION constexpr void static_assert_is_not_openmptarget(
-    const ExecutionSpace&) {
-  static_assert(not_openmptarget<ExecutionSpace>::value,
+    const ExecutionSpaceOrTeamHandleType& /*ex_or_th*/) {
+  static_assert(not_openmptarget<ExecutionSpaceOrTeamHandleType>::value,
                 "Currently, Kokkos standard algorithms do not support custom "
                 "comparators in OpenMPTarget");
 }
@@ -194,12 +221,45 @@ KOKKOS_INLINE_FUNCTION constexpr void static_assert_is_not_openmptarget(
 // valid range
 //
 template <class IteratorType>
-void expect_valid_range(IteratorType first, IteratorType last) {
+KOKKOS_INLINE_FUNCTION void expect_valid_range(IteratorType first,
+                                               IteratorType last) {
   // this is a no-op for release
   KOKKOS_EXPECTS(last >= first);
   // avoid compiler complaining when KOKKOS_EXPECTS is no-op
   (void)first;
   (void)last;
+}
+
+//
+// Check if kokkos iterators are overlapping
+//
+template <typename IteratorType1, typename IteratorType2>
+KOKKOS_INLINE_FUNCTION void expect_no_overlap(
+    [[maybe_unused]] IteratorType1 first, [[maybe_unused]] IteratorType1 last,
+    [[maybe_unused]] IteratorType2 s_first) {
+  if constexpr (is_kokkos_iterator_v<IteratorType1> &&
+                is_kokkos_iterator_v<IteratorType2>) {
+    auto const view1 = first.view();
+    auto const view2 = s_first.view();
+
+    std::size_t stride1  = view1.stride(0);
+    std::size_t stride2  = view2.stride(0);
+    ptrdiff_t first_diff = view1.data() - view2.data();
+
+    // FIXME If strides are not identical, checks may not be made
+    // with the cost of O(1)
+    // Currently, checks are made only if strides are identical
+    // If first_diff == 0, there is already an overlap
+    if (stride1 == stride2 || first_diff == 0) {
+      [[maybe_unused]] bool is_no_overlap  = (first_diff % stride1);
+      auto* first_pointer1                 = view1.data();
+      auto* first_pointer2                 = view2.data();
+      [[maybe_unused]] auto* last_pointer1 = first_pointer1 + (last - first);
+      [[maybe_unused]] auto* last_pointer2 = first_pointer2 + (last - first);
+      KOKKOS_EXPECTS(first_pointer1 >= last_pointer2 ||
+                     last_pointer1 <= first_pointer2 || is_no_overlap);
+    }
+  }
 }
 
 }  // namespace Impl
