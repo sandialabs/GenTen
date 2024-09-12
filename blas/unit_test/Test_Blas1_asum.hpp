@@ -28,8 +28,7 @@ void impl_test_asum(int N) {
 
   view_stride_adapter<ViewTypeA> a("A", N);
 
-  Kokkos::Random_XorShift64_Pool<typename Device::execution_space> rand_pool(
-      13718);
+  Kokkos::Random_XorShift64_Pool<typename Device::execution_space> rand_pool(13718);
 
   ScalarA randStart, randEnd;
   Test::getRandomBounds(10.0, randStart, randEnd);
@@ -46,8 +45,7 @@ void impl_test_asum(int N) {
     // parts.
     //
     // This is safe; ArithTraits<T>::imag is 0 if T is real.
-    expected_result +=
-        MAT::abs(AT::real(a.h_view(i))) + MAT::abs(AT::imag(a.h_view(i)));
+    expected_result += MAT::abs(AT::real(a.h_view(i))) + MAT::abs(AT::imag(a.h_view(i)));
   }
 
   typename AT::mag_type nonconst_result = KokkosBlas::asum(a.d_view);
@@ -62,8 +60,7 @@ void impl_test_asum(int N) {
 template <class ScalarA, class Device>
 int test_asum() {
 #if defined(KOKKOSKERNELS_INST_LAYOUTLEFT) || \
-    (!defined(KOKKOSKERNELS_ETI_ONLY) &&      \
-     !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
+    (!defined(KOKKOSKERNELS_ETI_ONLY) && !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
   typedef Kokkos::View<ScalarA*, Kokkos::LayoutLeft, Device> view_type_a_ll;
   Test::impl_test_asum<view_type_a_ll, Device>(0);
   Test::impl_test_asum<view_type_a_ll, Device>(13);
@@ -72,8 +69,7 @@ int test_asum() {
 #endif
 
 #if defined(KOKKOSKERNELS_INST_LAYOUTRIGHT) || \
-    (!defined(KOKKOSKERNELS_ETI_ONLY) &&       \
-     !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
+    (!defined(KOKKOSKERNELS_ETI_ONLY) && !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
   typedef Kokkos::View<ScalarA*, Kokkos::LayoutRight, Device> view_type_a_lr;
   Test::impl_test_asum<view_type_a_lr, Device>(0);
   Test::impl_test_asum<view_type_a_lr, Device>(13);
@@ -81,8 +77,7 @@ int test_asum() {
   // Test::impl_test_asum<view_type_a_lr, Device>(132231);
 #endif
 
-#if (!defined(KOKKOSKERNELS_ETI_ONLY) && \
-     !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
+#if (!defined(KOKKOSKERNELS_ETI_ONLY) && !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
   typedef Kokkos::View<ScalarA*, Kokkos::LayoutStride, Device> view_type_a_ls;
   Test::impl_test_asum<view_type_a_ls, Device>(0);
   Test::impl_test_asum<view_type_a_ls, Device>(13);
@@ -94,41 +89,37 @@ int test_asum() {
 }
 
 #if defined(KOKKOSKERNELS_INST_FLOAT) || \
-    (!defined(KOKKOSKERNELS_ETI_ONLY) && \
-     !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
+    (!defined(KOKKOSKERNELS_ETI_ONLY) && !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
 TEST_F(TestCategory, asum_float) {
   Kokkos::Profiling::pushRegion("KokkosBlas::Test::asum_float");
-  test_asum<float, TestExecSpace>();
+  test_asum<float, TestDevice>();
   Kokkos::Profiling::popRegion();
 }
 #endif
 
 #if defined(KOKKOSKERNELS_INST_DOUBLE) || \
-    (!defined(KOKKOSKERNELS_ETI_ONLY) &&  \
-     !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
+    (!defined(KOKKOSKERNELS_ETI_ONLY) && !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
 TEST_F(TestCategory, asum_double) {
   Kokkos::Profiling::pushRegion("KokkosBlas::Test::asum_double");
-  test_asum<double, TestExecSpace>();
+  test_asum<double, TestDevice>();
   Kokkos::Profiling::popRegion();
 }
 #endif
 
 #if defined(KOKKOSKERNELS_INST_COMPLEX_DOUBLE) || \
-    (!defined(KOKKOSKERNELS_ETI_ONLY) &&          \
-     !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
+    (!defined(KOKKOSKERNELS_ETI_ONLY) && !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
 TEST_F(TestCategory, asum_complex_double) {
   Kokkos::Profiling::pushRegion("KokkosBlas::Test::asum_complex_double");
-  test_asum<Kokkos::complex<double>, TestExecSpace>();
+  test_asum<Kokkos::complex<double>, TestDevice>();
   Kokkos::Profiling::popRegion();
 }
 #endif
 
-#if defined(KOKKOSKERNELS_INST_INT) ||   \
-    (!defined(KOKKOSKERNELS_ETI_ONLY) && \
-     !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
+#if defined(KOKKOSKERNELS_INST_INT) || \
+    (!defined(KOKKOSKERNELS_ETI_ONLY) && !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
 TEST_F(TestCategory, asum_int) {
   Kokkos::Profiling::pushRegion("KokkosBlas::Test::asum_int");
-  test_asum<int, TestExecSpace>();
+  test_asum<int, TestDevice>();
   Kokkos::Profiling::popRegion();
 }
 #endif

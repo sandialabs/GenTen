@@ -51,8 +51,7 @@ struct NonUnitDiagTRTRI {
   KOKKOS_INLINE_FUNCTION
   void operator()(const int& i) const { A_(i, i) = A_(i, i) + 10; }
 };
-template <class ViewTypeA, class ViewTypeB, class ViewTypeC,
-          class ExecutionSpace>
+template <class ViewTypeA, class ViewTypeB, class ViewTypeC, class ExecutionSpace>
 struct VanillaGEMM {
   bool A_t, B_t, A_c, B_c;
   int N, K;
@@ -69,12 +68,9 @@ struct VanillaGEMM {
   ScalarC beta;
 
   KOKKOS_INLINE_FUNCTION
-  void operator()(
-      const typename Kokkos::TeamPolicy<ExecutionSpace>::member_type& team)
-      const {
+  void operator()(const typename Kokkos::TeamPolicy<ExecutionSpace>::member_type& team) const {
 // GNU COMPILER BUG WORKAROUND
-#if defined(KOKKOS_COMPILER_GNU) && !defined(__CUDA_ARCH__) && \
-    !defined(__HIP_DEVICE_COMPILE__)
+#if defined(KOKKOS_COMPILER_GNU) && !defined(__CUDA_ARCH__) && !defined(__HIP_DEVICE_COMPILE__)
     int i = team.league_rank();
 #else
     const int i = team.league_rank();
@@ -110,9 +106,9 @@ struct ParamTag {
   typedef D diag;
 };
 
-template <typename DeviceType, typename ViewType, typename ParamTagType,
-          typename AlgoTagType>
+template <typename DeviceType, typename ViewType, typename ParamTagType, typename AlgoTagType>
 struct Functor_TestBatchedSerialTrtri {
+  using execution_space = typename DeviceType::execution_space;
   ViewType _a;
 
   KOKKOS_INLINE_FUNCTION
@@ -122,8 +118,7 @@ struct Functor_TestBatchedSerialTrtri {
   void operator()(const ParamTagType&, const int k) const {
     auto aa = Kokkos::subview(_a, k, Kokkos::ALL(), Kokkos::ALL());
 
-    SerialTrtri<typename ParamTagType::uplo, typename ParamTagType::diag,
-                AlgoTagType>::invoke(aa);
+    SerialTrtri<typename ParamTagType::uplo, typename ParamTagType::diag, AlgoTagType>::invoke(aa);
   }
 
   inline void run() {
@@ -132,14 +127,13 @@ struct Functor_TestBatchedSerialTrtri {
     const std::string name_value_type = Test::value_type_name<value_type>();
     std::string name                  = name_region + name_value_type;
     Kokkos::Profiling::pushRegion(name.c_str());
-    Kokkos::RangePolicy<DeviceType, ParamTagType> policy(0, _a.extent(0));
+    Kokkos::RangePolicy<execution_space, ParamTagType> policy(0, _a.extent(0));
     Kokkos::parallel_for("Functor_TestBatchedSerialTrtri", policy, *this);
     Kokkos::Profiling::popRegion();
   }
 };
 
-template <typename DeviceType, typename ViewType, typename ScalarType,
-          typename ParamTagType, typename AlgoTagType>
+template <typename DeviceType, typename ViewType, typename ScalarType, typename ParamTagType, typename AlgoTagType>
 void impl_test_batched_trtri(const int N, const int K) {
   typedef typename ViewType::value_type value_type;
   typedef typename DeviceType::execution_space execution_space;
@@ -154,8 +148,7 @@ void impl_test_batched_trtri(const int N, const int K) {
   bool fail_flag     = false;
   ScalarType cur_check_val;  // Either 1 or 0, to check A_I
 
-  const bool is_A_lower =
-      std::is_same<typename ParamTagType::uplo, Uplo::Lower>::value;
+  const bool is_A_lower = std::is_same<typename ParamTagType::uplo, Uplo::Lower>::value;
   ViewType A("A", N, K, K);
   ViewType A_original("A_original", N, K, K);
   ViewType A_I("A_I", N, K, K);
@@ -163,39 +156,29 @@ void impl_test_batched_trtri(const int N, const int K) {
   typename ViewType::HostMirror I_host = Kokkos::create_mirror_view(A_I);
   typename ViewType::HostMirror A_host = Kokkos::create_mirror_view(A);
 
-  uint64_t seed =
-      std::chrono::high_resolution_clock::now().time_since_epoch().count();
+  uint64_t seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
 
-  using ViewTypeSubA =
-      decltype(Kokkos::subview(A, 0, Kokkos::ALL(), Kokkos::ALL()));
+  using ViewTypeSubA = decltype(Kokkos::subview(A, 0, Kokkos::ALL(), Kokkos::ALL()));
 
   Kokkos::Random_XorShift64_Pool<execution_space> rand_pool(seed);
 
   if (std::is_same<typename ParamTagType::diag, Diag::Unit>::value) {
     // Initialize A with deterministic random numbers
-    Kokkos::fill_random(A, rand_pool,
-                        Kokkos::rand<Kokkos::Random_XorShift64<execution_space>,
-                                     ScalarType>::max());
+    Kokkos::fill_random(A, rand_pool, Kokkos::rand<Kokkos::Random_XorShift64<execution_space>, ScalarType>::max());
     using functor_type = UnitDiagTRTRI<ViewTypeSubA, execution_space>;
     for (int k = 0; k < N; ++k) {
       functor_type udtrtri(Kokkos::subview(A, k, Kokkos::ALL(), Kokkos::ALL()));
       // Initialize As diag with 1s
-      Kokkos::parallel_for("KokkosBlas::Test::UnitDiagTRTRI",
-                           Kokkos::RangePolicy<execution_space>(0, K), udtrtri);
+      Kokkos::parallel_for("KokkosBlas::Test::UnitDiagTRTRI", Kokkos::RangePolicy<execution_space>(0, K), udtrtri);
     }
   } else {  //(diag[0]=='N')||(diag[0]=='n')
     // Initialize A with random numbers
-    Kokkos::fill_random(A, rand_pool,
-                        Kokkos::rand<Kokkos::Random_XorShift64<execution_space>,
-                                     ScalarType>::max());
+    Kokkos::fill_random(A, rand_pool, Kokkos::rand<Kokkos::Random_XorShift64<execution_space>, ScalarType>::max());
     using functor_type = NonUnitDiagTRTRI<ViewTypeSubA, execution_space>;
     for (int k = 0; k < N; ++k) {
-      functor_type nudtrtri(
-          Kokkos::subview(A, k, Kokkos::ALL(), Kokkos::ALL()));
+      functor_type nudtrtri(Kokkos::subview(A, k, Kokkos::ALL(), Kokkos::ALL()));
       // Initialize As diag with A(i,i)+10
-      Kokkos::parallel_for("KokkosBlas::Test::NonUnitDiagTRTRI",
-                           Kokkos::RangePolicy<execution_space>(0, K),
-                           nudtrtri);
+      Kokkos::parallel_for("KokkosBlas::Test::NonUnitDiagTRTRI", Kokkos::RangePolicy<execution_space>(0, K), nudtrtri);
     }
   }
   Kokkos::fence();
@@ -240,9 +223,7 @@ void impl_test_batched_trtri(const int N, const int K) {
   }
 #endif
 
-  Functor_TestBatchedSerialTrtri<DeviceType, ViewType, ParamTagType,
-                                 Algo::Trtri::Unblocked>(A)
-      .run();
+  Functor_TestBatchedSerialTrtri<DeviceType, ViewType, ParamTagType, Algo::Trtri::Unblocked>(A).run();
 
 #if PRINT_MAT
   printf("A_original:\n");
@@ -270,8 +251,7 @@ void impl_test_batched_trtri(const int N, const int K) {
 
   Kokkos::fence();
 
-  struct VanillaGEMM<ViewTypeSubA, ViewTypeSubA, ViewTypeSubA, execution_space>
-      vgemm;
+  struct VanillaGEMM<ViewTypeSubA, ViewTypeSubA, ViewTypeSubA, execution_space> vgemm;
   vgemm.A_t   = false;
   vgemm.B_t   = false;
   vgemm.A_c   = false;
@@ -286,9 +266,8 @@ void impl_test_batched_trtri(const int N, const int K) {
     ;
     vgemm.C = Kokkos::subview(A_I, i, Kokkos::ALL(), Kokkos::ALL());
     ;
-    Kokkos::parallel_for(
-        "KokkosBlas::Test::VanillaGEMM",
-        Kokkos::TeamPolicy<execution_space>(K, Kokkos::AUTO, 16), vgemm);
+    Kokkos::parallel_for("KokkosBlas::Test::VanillaGEMM", Kokkos::TeamPolicy<execution_space>(K, Kokkos::AUTO, 16),
+                         vgemm);
   }
 
   Kokkos::fence();
@@ -310,8 +289,7 @@ void impl_test_batched_trtri(const int N, const int K) {
   for (int k = 0; k < N; ++k) {
     for (int i = 0; i < K; ++i) {
       for (int j = 0; j < K; ++j) {
-        cur_check_val =
-            (i == j) ? ScalarType(1) : ScalarType(0);  // ats::abs(host_A(i,j));
+        cur_check_val = (i == j) ? ScalarType(1) : ScalarType(0);  // ats::abs(host_A(i,j));
         if (ats::abs(ats::abs(I_host(k, i, j)) - cur_check_val) > eps) {
           fail_flag = true;
           // printf("   Error: eps ( %g ), I_host ( %.15f ) != cur_check_val
@@ -328,41 +306,29 @@ void impl_test_batched_trtri(const int N, const int K) {
 }  // namespace Trtri
 }  // namespace Test
 
-template <typename DeviceType, typename ValueType, typename ScalarType,
-          typename ParamTagType, typename AlgoTagType>
+template <typename DeviceType, typename ValueType, typename ScalarType, typename ParamTagType, typename AlgoTagType>
 int test_batched_trtri(int batchSize = 512) {
 #if defined(KOKKOSKERNELS_INST_LAYOUTLEFT)
   {
     typedef Kokkos::View<ValueType***, Kokkos::LayoutLeft, DeviceType> ViewType;
-    Test::Trtri::impl_test_batched_trtri<DeviceType, ViewType, ScalarType,
-                                         ParamTagType, AlgoTagType>(0, 10);
+    Test::Trtri::impl_test_batched_trtri<DeviceType, ViewType, ScalarType, ParamTagType, AlgoTagType>(0, 10);
     // Test::impl_test_batched_trtri<DeviceType,ViewType,ScalarType,ParamTagType,AlgoTagType>(
     // 1, 2);
     for (int i = 0; i < 10; ++i) {
       // printf("Testing: LayoutLeft,  Blksize %d\n", i);
-      Test::Trtri::impl_test_batched_trtri<DeviceType, ViewType, ScalarType,
-                                           ParamTagType, AlgoTagType>(batchSize,
-                                                                      i);
-      Test::Trtri::impl_test_batched_trtri<DeviceType, ViewType, ScalarType,
-                                           ParamTagType, AlgoTagType>(batchSize,
-                                                                      i);
+      Test::Trtri::impl_test_batched_trtri<DeviceType, ViewType, ScalarType, ParamTagType, AlgoTagType>(batchSize, i);
+      Test::Trtri::impl_test_batched_trtri<DeviceType, ViewType, ScalarType, ParamTagType, AlgoTagType>(batchSize, i);
     }
   }
 #endif
 #if defined(KOKKOSKERNELS_INST_LAYOUTRIGHT)
   {
-    typedef Kokkos::View<ValueType***, Kokkos::LayoutRight, DeviceType>
-        ViewType;
-    Test::Trtri::impl_test_batched_trtri<DeviceType, ViewType, ScalarType,
-                                         ParamTagType, AlgoTagType>(0, 10);
+    typedef Kokkos::View<ValueType***, Kokkos::LayoutRight, DeviceType> ViewType;
+    Test::Trtri::impl_test_batched_trtri<DeviceType, ViewType, ScalarType, ParamTagType, AlgoTagType>(0, 10);
     for (int i = 0; i < 10; ++i) {
       // printf("Testing: LayoutRight, Blksize %d\n", i);
-      Test::Trtri::impl_test_batched_trtri<DeviceType, ViewType, ScalarType,
-                                           ParamTagType, AlgoTagType>(batchSize,
-                                                                      i);
-      Test::Trtri::impl_test_batched_trtri<DeviceType, ViewType, ScalarType,
-                                           ParamTagType, AlgoTagType>(batchSize,
-                                                                      i);
+      Test::Trtri::impl_test_batched_trtri<DeviceType, ViewType, ScalarType, ParamTagType, AlgoTagType>(batchSize, i);
+      Test::Trtri::impl_test_batched_trtri<DeviceType, ViewType, ScalarType, ParamTagType, AlgoTagType>(batchSize, i);
     }
   }
 #endif

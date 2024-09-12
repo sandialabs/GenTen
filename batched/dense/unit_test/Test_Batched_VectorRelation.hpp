@@ -21,10 +21,8 @@
 //       to ensure it is not included in these
 //       backends unit-test
 
-#if !defined(TEST_CUDA_BATCHED_DENSE_CPP) && \
-    !defined(TEST_HIP_BATCHED_DENSE_CPP) &&  \
-    !defined(TEST_SYCL_BATCHED_DENSE_CPP) && \
-    !defined(TEST_OPENMPTARGET_BATCHED_DENSE_CPP)
+#if !defined(TEST_CUDA_BATCHED_DENSE_CPP) && !defined(TEST_HIP_BATCHED_DENSE_CPP) && \
+    !defined(TEST_SYCL_BATCHED_DENSE_CPP) && !defined(TEST_OPENMPTARGET_BATCHED_DENSE_CPP)
 
 #include "gtest/gtest.h"
 #include "Kokkos_Core.hpp"
@@ -60,11 +58,10 @@ void impl_test_batched_vector_relation() {
 
     {
 #undef CHECK
-#define CHECK(op)                             \
-  {                                           \
-    const auto comparison = a op b;           \
-    for (int i = 0; i < vector_length; ++i)   \
-      EXPECT_EQ(comparison[i], a[i] op b[i]); \
+#define CHECK(op)                                                                   \
+  {                                                                                 \
+    const auto comparison = a op b;                                                 \
+    for (int i = 0; i < vector_length; ++i) EXPECT_EQ(comparison[i], a[i] op b[i]); \
   }
 
       CHECK(<);
@@ -75,11 +72,10 @@ void impl_test_batched_vector_relation() {
       CHECK(!=);
 
 #undef CHECK
-#define CHECK(op)                                      \
-  {                                                    \
-    const auto comparison = a op value_type(0);        \
-    for (int i = 0; i < vector_length; ++i)            \
-      EXPECT_EQ(comparison[i], a[i] op value_type(0)); \
+#define CHECK(op)                                                                            \
+  {                                                                                          \
+    const auto comparison = a op value_type(0);                                              \
+    for (int i = 0; i < vector_length; ++i) EXPECT_EQ(comparison[i], a[i] op value_type(0)); \
   }
 
       CHECK(<);
@@ -90,11 +86,10 @@ void impl_test_batched_vector_relation() {
       CHECK(!=);
 
 #undef CHECK
-#define CHECK(op)                                      \
-  {                                                    \
-    const auto comparison = value_type(0) op b;        \
-    for (int i = 0; i < vector_length; ++i)            \
-      EXPECT_EQ(comparison[i], value_type(0) op b[i]); \
+#define CHECK(op)                                                                            \
+  {                                                                                          \
+    const auto comparison = value_type(0) op b;                                              \
+    for (int i = 0; i < vector_length; ++i) EXPECT_EQ(comparison[i], value_type(0) op b[i]); \
   }
 
       CHECK(<);
@@ -113,9 +108,8 @@ void impl_test_batched_vector_relation() {
 
 template <typename DeviceType, typename VectorTagType, int VectorLength>
 int test_batched_vector_relation() {
-  static_assert(
-      Kokkos::SpaceAccessibility<DeviceType, Kokkos::HostSpace>::accessible,
-      "vector datatype is only tested on host space");
+  static_assert(Kokkos::SpaceAccessibility<DeviceType, Kokkos::HostSpace>::accessible,
+                "vector datatype is only tested on host space");
   Test::impl_test_batched_vector_relation<VectorTagType, VectorLength>();
 
   return 0;
@@ -127,19 +121,19 @@ int test_batched_vector_relation() {
 
 #if defined(KOKKOSKERNELS_INST_FLOAT)
 TEST_F(TestCategory, batched_vector_relation_simd_float3) {
-  test_batched_vector_relation<TestExecSpace, SIMD<float>, 3>();
+  test_batched_vector_relation<TestDevice, SIMD<float>, 3>();
 }
 TEST_F(TestCategory, batched_vector_relation_simd_float8) {
-  test_batched_vector_relation<TestExecSpace, SIMD<float>, 8>();
+  test_batched_vector_relation<TestDevice, SIMD<float>, 8>();
 }
 #endif
 
 #if defined(KOKKOSKERNELS_INST_DOUBLE)
 TEST_F(TestCategory, batched_vector_relation_simd_double3) {
-  test_batched_vector_relation<TestExecSpace, SIMD<double>, 3>();
+  test_batched_vector_relation<TestDevice, SIMD<double>, 3>();
 }
 TEST_F(TestCategory, batched_vector_relation_simd_double4) {
-  test_batched_vector_relation<TestExecSpace, SIMD<double>, 4>();
+  test_batched_vector_relation<TestDevice, SIMD<double>, 4>();
 }
 #endif
 
@@ -147,14 +141,14 @@ TEST_F(TestCategory, batched_vector_relation_simd_double4) {
 
 // #if defined(KOKKOSKERNELS_INST_COMPLEX_FLOAT)
 // TEST_F( TestCategory, batched_vector_relation_simd_scomplex4 ) {
-//   test_batched_vector_relation<TestExecSpace,SIMD<Kokkos::complex<float>
+//   test_batched_vector_relation<TestDevice,SIMD<Kokkos::complex<float>
 //   >,4>();
 // }
 // #endif
 
 // #if defined(KOKKOSKERNELS_INST_COMPLEX_DOUBLE)
 // TEST_F( TestCategory, batched_vector_relation_simd_dcomplex2 ) {
-//   test_batched_vector_relation<TestExecSpace,SIMD<Kokkos::complex<double>
+//   test_batched_vector_relation<TestDevice,SIMD<Kokkos::complex<double>
 //   >,2>();
 // }
 // #endif

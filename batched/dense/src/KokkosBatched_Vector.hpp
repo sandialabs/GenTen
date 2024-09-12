@@ -120,21 +120,19 @@ struct DefaultVectorLength<Kokkos::complex<double>, Kokkos::CudaUVMSpace> {
 
 #if defined(KOKKOS_ENABLE_HIP)
 template <>
-struct DefaultVectorLength<float, Kokkos::Experimental::HIPSpace> {
+struct DefaultVectorLength<float, Kokkos::HIPSpace> {
   enum : int { value = 16 };
 };
 template <>
-struct DefaultVectorLength<double, Kokkos::Experimental::HIPSpace> {
+struct DefaultVectorLength<double, Kokkos::HIPSpace> {
   enum : int { value = 16 };
 };
 template <>
-struct DefaultVectorLength<Kokkos::complex<float>,
-                           Kokkos::Experimental::HIPSpace> {
+struct DefaultVectorLength<Kokkos::complex<float>, Kokkos::HIPSpace> {
   enum : int { value = 16 };
 };
 template <>
-struct DefaultVectorLength<Kokkos::complex<double>,
-                           Kokkos::Experimental::HIPSpace> {
+struct DefaultVectorLength<Kokkos::complex<double>, Kokkos::HIPSpace> {
   enum : int { value = 16 };
 };
 #endif
@@ -145,9 +143,7 @@ struct DefaultInternalVectorLength {
 };
 template <typename ValueType>
 struct DefaultInternalVectorLength<ValueType, Kokkos::HostSpace> {
-  enum : int {
-    value = DefaultVectorLength<ValueType, Kokkos::HostSpace>::value
-  };
+  enum : int { value = DefaultVectorLength<ValueType, Kokkos::HostSpace>::value };
 };
 
 #if defined(KOKKOS_ENABLE_CUDA)
@@ -176,34 +172,30 @@ struct DefaultInternalVectorLength<double, Kokkos::CudaUVMSpace> {
   enum : int { value = 2 };
 };
 template <>
-struct DefaultInternalVectorLength<Kokkos::complex<float>,
-                                   Kokkos::CudaUVMSpace> {
+struct DefaultInternalVectorLength<Kokkos::complex<float>, Kokkos::CudaUVMSpace> {
   enum : int { value = 2 };
 };
 template <>
-struct DefaultInternalVectorLength<Kokkos::complex<double>,
-                                   Kokkos::CudaUVMSpace> {
+struct DefaultInternalVectorLength<Kokkos::complex<double>, Kokkos::CudaUVMSpace> {
   enum : int { value = 1 };
 };
 #endif
 
 #if defined(KOKKOS_ENABLE_HIP)
 template <>
-struct DefaultInternalVectorLength<float, Kokkos::Experimental::HIPSpace> {
+struct DefaultInternalVectorLength<float, Kokkos::HIPSpace> {
   enum : int { value = 8 };
 };
 template <>
-struct DefaultInternalVectorLength<double, Kokkos::Experimental::HIPSpace> {
+struct DefaultInternalVectorLength<double, Kokkos::HIPSpace> {
   enum : int { value = 4 };
 };
 template <>
-struct DefaultInternalVectorLength<Kokkos::complex<float>,
-                                   Kokkos::Experimental::HIPSpace> {
+struct DefaultInternalVectorLength<Kokkos::complex<float>, Kokkos::HIPSpace> {
   enum : int { value = 4 };
 };
 template <>
-struct DefaultInternalVectorLength<Kokkos::complex<double>,
-                                   Kokkos::Experimental::HIPSpace> {
+struct DefaultInternalVectorLength<Kokkos::complex<double>, Kokkos::HIPSpace> {
   enum : int { value = 2 };
 };
 #endif
@@ -260,18 +252,12 @@ class ArithTraits<KokkosBatched::Vector<KokkosBatched::SIMD<T>, l>> {
   typedef typename ArithTraits<T>::val_type val_scalar_type;
   typedef typename ArithTraits<T>::mag_type mag_scalar_type;
 
-  typedef KokkosBatched::Vector<KokkosBatched::SIMD<val_scalar_type>, l>
-      val_type;
-  typedef KokkosBatched::Vector<KokkosBatched::SIMD<mag_scalar_type>, l>
-      mag_type;
+  typedef KokkosBatched::Vector<KokkosBatched::SIMD<val_scalar_type>, l> val_type;
+  typedef KokkosBatched::Vector<KokkosBatched::SIMD<mag_scalar_type>, l> mag_type;
 
-  static KOKKOS_FORCEINLINE_FUNCTION mag_type real(const val_type &val) {
-    return val;
-  }
+  static KOKKOS_FORCEINLINE_FUNCTION mag_type real(const val_type &val) { return val; }
 
-  static KOKKOS_FORCEINLINE_FUNCTION val_type conj(const val_type &val) {
-    return val;
-  }
+  static KOKKOS_FORCEINLINE_FUNCTION val_type conj(const val_type &val) { return val; }
 
   static KOKKOS_FORCEINLINE_FUNCTION val_type abs(const val_type &val) {
     using KAT = ArithTraits<typename val_type::value_type>;
@@ -290,17 +276,13 @@ class ArithTraits<KokkosBatched::Vector<KokkosBatched::SIMD<T>, l>> {
 };
 
 template <typename T, int l>
-class ArithTraits<
-    KokkosBatched::Vector<KokkosBatched::SIMD<Kokkos::complex<T>>, l>> {
+class ArithTraits<KokkosBatched::Vector<KokkosBatched::SIMD<Kokkos::complex<T>>, l>> {
  public:
   typedef typename ArithTraits<T>::val_type val_scalar_type;
   typedef typename ArithTraits<T>::mag_type mag_scalar_type;
 
-  typedef KokkosBatched::Vector<
-      KokkosBatched::SIMD<Kokkos::complex<val_scalar_type>>, l>
-      val_type;
-  typedef KokkosBatched::Vector<KokkosBatched::SIMD<mag_scalar_type>, l>
-      mag_type;
+  typedef KokkosBatched::Vector<KokkosBatched::SIMD<Kokkos::complex<val_scalar_type>>, l> val_type;
+  typedef KokkosBatched::Vector<KokkosBatched::SIMD<mag_scalar_type>, l> mag_type;
 
   static KOKKOS_FORCEINLINE_FUNCTION mag_type real(const val_type &val) {
     mag_type r_val;

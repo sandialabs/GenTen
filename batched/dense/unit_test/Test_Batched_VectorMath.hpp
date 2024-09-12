@@ -21,10 +21,8 @@
 //       to ensure it is not included in these
 //       backends unit-test
 
-#if !defined(TEST_CUDA_BATCHED_DENSE_CPP) && \
-    !defined(TEST_HIP_BATCHED_DENSE_CPP) &&  \
-    !defined(TEST_SYCL_BATCHED_DENSE_CPP) && \
-    !defined(TEST_OPENMPTARGET_BATCHED_DENSE_CPP)
+#if !defined(TEST_CUDA_BATCHED_DENSE_CPP) && !defined(TEST_HIP_BATCHED_DENSE_CPP) && \
+    !defined(TEST_SYCL_BATCHED_DENSE_CPP) && !defined(TEST_OPENMPTARGET_BATCHED_DENSE_CPP)
 
 #include "gtest/gtest.h"
 #include "Kokkos_Core.hpp"
@@ -67,11 +65,10 @@ void impl_test_batched_vector_math() {
 
     {
 #undef CHECK
-#define CHECK(op)                                        \
-  {                                                      \
-    a = op(aref);                                        \
-    for (int i = 0; i < vector_length; ++i)              \
-      EXPECT_NEAR_KK(a[i], ats::op(aref[i]), eps* a[i]); \
+#define CHECK(op)                                                                              \
+  {                                                                                            \
+    a = op(aref);                                                                              \
+    for (int i = 0; i < vector_length; ++i) EXPECT_NEAR_KK(a[i], ats::op(aref[i]), eps* a[i]); \
   }
 
       CHECK(sqrt);
@@ -89,32 +86,29 @@ void impl_test_batched_vector_math() {
       CHECK(atan);
 
 #undef CHECK
-#define CHECK                                                      \
-  {                                                                \
-    a = pow(aref, bref);                                           \
-    for (int i = 0; i < vector_length; ++i)                        \
-      EXPECT_NEAR_KK(a[i], ats::pow(aref[i], bref[i]), eps* a[i]); \
-  }                                                                \
+#define CHECK                                                                                            \
+  {                                                                                                      \
+    a = pow(aref, bref);                                                                                 \
+    for (int i = 0; i < vector_length; ++i) EXPECT_NEAR_KK(a[i], ats::pow(aref[i], bref[i]), eps* a[i]); \
+  }                                                                                                      \
   CHECK;
 
 #undef CHECK
-#define CHECK(op)                                              \
-  {                                                            \
-    mag_type beta = mag_type(3.2);                             \
-    a             = op(aref, beta);                            \
-    for (int i = 0; i < vector_length; ++i)                    \
-      EXPECT_NEAR_KK(a[i], ats::op(aref[i], beta), eps* a[i]); \
+#define CHECK(op)                                                                                    \
+  {                                                                                                  \
+    mag_type beta = mag_type(3.2);                                                                   \
+    a             = op(aref, beta);                                                                  \
+    for (int i = 0; i < vector_length; ++i) EXPECT_NEAR_KK(a[i], ats::op(aref[i], beta), eps* a[i]); \
   }
 
       CHECK(pow);
 
 #undef CHECK
-#define CHECK(op)                                               \
-  {                                                             \
-    value_type alpha = random.value() + 2.0;                    \
-    a                = op(alpha, bref);                         \
-    for (int i = 0; i < vector_length; ++i)                     \
-      EXPECT_NEAR_KK(a[i], ats::op(alpha, bref[i]), eps* a[i]); \
+#define CHECK(op)                                                                                     \
+  {                                                                                                   \
+    value_type alpha = random.value() + 2.0;                                                          \
+    a                = op(alpha, bref);                                                               \
+    for (int i = 0; i < vector_length; ++i) EXPECT_NEAR_KK(a[i], ats::op(alpha, bref[i]), eps* a[i]); \
   }
 
       CHECK(pow);
@@ -126,9 +120,8 @@ void impl_test_batched_vector_math() {
 
 template <typename DeviceType, typename VectorTagType, int VectorLength>
 int test_batched_vector_math() {
-  static_assert(
-      Kokkos::SpaceAccessibility<DeviceType, Kokkos::HostSpace>::accessible,
-      "vector datatype is only tested on host space");
+  static_assert(Kokkos::SpaceAccessibility<DeviceType, Kokkos::HostSpace>::accessible,
+                "vector datatype is only tested on host space");
   Test::impl_test_batched_vector_math<VectorTagType, VectorLength>();
 
   return 0;
@@ -156,21 +149,13 @@ int test_batched_vector_math() {
 ///
 
 #if defined(KOKKOSKERNELS_INST_FLOAT)
-TEST_F(TestCategory, batched_vector_math_simd_float3) {
-  test_batched_vector_math<TestExecSpace, SIMD<float>, 3>();
-}
-TEST_F(TestCategory, batched_vector_math_simd_float8) {
-  test_batched_vector_math<TestExecSpace, SIMD<float>, 8>();
-}
+TEST_F(TestCategory, batched_vector_math_simd_float3) { test_batched_vector_math<TestDevice, SIMD<float>, 3>(); }
+TEST_F(TestCategory, batched_vector_math_simd_float8) { test_batched_vector_math<TestDevice, SIMD<float>, 8>(); }
 #endif
 
 #if defined(KOKKOSKERNELS_INST_DOUBLE)
-TEST_F(TestCategory, batched_vector_math_simd_double3) {
-  test_batched_vector_math<TestExecSpace, SIMD<double>, 3>();
-}
-TEST_F(TestCategory, batched_vector_math_simd_double4) {
-  test_batched_vector_math<TestExecSpace, SIMD<double>, 4>();
-}
+TEST_F(TestCategory, batched_vector_math_simd_double3) { test_batched_vector_math<TestDevice, SIMD<double>, 3>(); }
+TEST_F(TestCategory, batched_vector_math_simd_double4) { test_batched_vector_math<TestDevice, SIMD<double>, 4>(); }
 #endif
 
 // using namespace Test;
@@ -178,20 +163,20 @@ TEST_F(TestCategory, batched_vector_math_simd_double4) {
 // #if defined(KOKKOSKERNELS_INST_COMPLEX_FLOAT)
 // TEST_F( TestCategory, batched_vector_math_simd_scomplex3 ) {
 //   test_complex_pow<float>();
-//   test_batched_vector_math<TestExecSpace,SIMD<Kokkos::complex<float> >,3>();
+//   test_batched_vector_math<TestDevice,SIMD<Kokkos::complex<float> >,3>();
 // }
 // TEST_F( TestCategory, batched_vector_math_simd_scomplex4 ) {
-//   test_batched_vector_math<TestExecSpace,SIMD<Kokkos::complex<float> >,4>();
+//   test_batched_vector_math<TestDevice,SIMD<Kokkos::complex<float> >,4>();
 // }
 // #endif
 
 // #if defined(KOKKOSKERNELS_INST_COMPLEX_DOUBLE)
 // TEST_F( TestCategory, batched_vector_math_simd_dcomplex3 ) {
 //   test_complex_pow<double>();
-//   test_batched_vector_math<TestExecSpace,SIMD<Kokkos::complex<double> >,3>();
+//   test_batched_vector_math<TestDevice,SIMD<Kokkos::complex<double> >,3>();
 // }
 // TEST_F( TestCategory, batched_vector_math_simd_dcomplex2 ) {
-//   test_batched_vector_math<TestExecSpace,SIMD<Kokkos::complex<double> >,2>();
+//   test_batched_vector_math<TestDevice,SIMD<Kokkos::complex<double> >,2>();
 // }
 // #endif
 
