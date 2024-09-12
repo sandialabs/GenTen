@@ -1,4 +1,5 @@
-[![Generic badge](https://readthedocs.org/projects/pip/badge/?version=latest&style=flat)](https://kokkos-kernels.readthedocs.io/en/latest/)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/kokkos/kokkos-kernels/badge)](https://securityscorecards.dev/viewer/?uri=github.com/kokkos/kokkos-kernels)
+[![Generic badge](https://readthedocs.org/projects/kokkos-kernels/badge/?version=latest)](https://kokkos-kernels.readthedocs.io/en/latest/)
 
 ![KokkosKernels](https://avatars2.githubusercontent.com/u/10199860?s=200&v=4)
 
@@ -133,7 +134,7 @@ For a complete list of tunable Kokkos options, run
 spack info kokkos
 ````
 
-#### Settuping a development environment with Spack
+#### Setting up a development environment with Spack
 Spack is generally most useful for installng packages to use.
 If you want to install all *dependencies* of Kokkos Kernels first so that you can actively develop a given Kokkos Kernels source this can still be done. Go to the Kokkos Kernels source code folder and run:
 ````
