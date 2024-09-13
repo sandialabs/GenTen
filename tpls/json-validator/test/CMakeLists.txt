@@ -43,6 +43,10 @@ add_executable(issue-98 issue-98.cpp)
 target_link_libraries(issue-98 nlohmann_json_schema_validator)
 add_test(NAME issue-98-erase-exception-unknown-keywords COMMAND issue-98)
 
+add_executable(issue-293 issue-293.cpp)
+target_link_libraries(issue-293 nlohmann_json_schema_validator)
+add_test(NAME issue-293-float-point-error COMMAND issue-293)
+
 # Unit test for string format checks
 add_executable(string-format-check-test string-format-check-test.cpp)
 target_include_directories(string-format-check-test PRIVATE ${PROJECT_SOURCE_DIR}/src/)
@@ -73,3 +77,11 @@ add_test(NAME issue-149-entry-selection COMMAND issue-149-entry-selection)
 add_executable(issue-189-default-values issue-189-default-values.cpp)
 target_link_libraries(issue-189-default-values nlohmann_json_schema_validator)
 add_test(NAME issue-189-default-values COMMAND issue-189-default-values)
+
+add_executable(issue-229-oneof-default-values issue-229-oneof-default-values.cpp)
+target_link_libraries(issue-229-oneof-default-values nlohmann_json_schema_validator)
+add_test(NAME issue-229-oneof-default-values COMMAND issue-229-oneof-default-values)
+
+add_executable(issue-243-root-default-values issue-243-root-default-values.cpp)
+target_link_libraries(issue-243-root-default-values nlohmann_json_schema_validator)
+add_test(NAME issue-243-root-default-values COMMAND issue-243-root-default-values)

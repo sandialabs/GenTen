@@ -14,6 +14,7 @@
 #include <memory>
 #include <set>
 #include <sstream>
+#include <string>
 
 using nlohmann::json;
 using nlohmann::json_patch;
@@ -40,6 +41,16 @@ protected:
 	root_schema *root_;
 	json default_value_ = nullptr;
 
+protected:
+	virtual std::shared_ptr<schema> make_for_default_(
+	    std::shared_ptr<::schema> & /* sch */,
+	    root_schema * /* root */,
+	    std::vector<nlohmann::json_uri> & /* uris */,
+	    nlohmann::json & /* default_value */) const
+	{
+		return nullptr;
+	};
+
 public:
 	virtual ~schema() = default;
 
@@ -65,6 +76,8 @@ class schema_ref : public schema
 {
 	const std::string id_;
 	std::weak_ptr<schema> target_;
+	std::shared_ptr<schema> target_strong_; // for references to references keep also the shared_ptr because
+	                                        // no one else might use it after resolving
 
 	void validate(const json::json_pointer &ptr, const json &instance, json_patch &patch, error_handler &e) const final
 	{
@@ -90,12 +103,33 @@ class schema_ref : public schema
 		return default_value_;
 	}
 
+protected:
+	virtual std::shared_ptr<schema> make_for_default_(
+	    std::shared_ptr<::schema> &sch,
+	    root_schema *root,
+	    std::vector<nlohmann::json_uri> &uris,
+	    nlohmann::json &default_value) const override
+	{
+		// create a new reference schema using the original reference (which will be resolved later)
+		// to store this overloaded default value #209
+		auto result = std::make_shared<schema_ref>(uris[0].to_string(), root);
+		result->set_target(sch, true);
+		result->set_default_value(default_value);
+		return result;
+	};
+
 public:
 	schema_ref(const std::string &id, root_schema *root)
 	    : schema(root), id_(id) {}
 
 	const std::string &id() const { return id_; }
-	void set_target(const std::shared_ptr<schema> &target) { target_ = target; }
+
+	void set_target(const std::shared_ptr<schema> &target, bool strong = false)
+	{
+		target_ = target;
+		if (strong)
+			target_strong_ = target;
+	}
 };
 
 } // namespace
@@ -171,7 +205,7 @@ public:
 		auto fragment = new_uri.pointer();
 
 		// is there a reference looking for this unknown-keyword, which is thus no longer a unknown keyword but a schema
-		auto unresolved = file.unresolved.find(fragment);
+		auto unresolved = file.unresolved.find(fragment.to_string());
 		if (unresolved != file.unresolved.end())
 			schema::make(value, this, {}, {{new_uri}});
 		else { // no, nothing ref'd it, keep for later
@@ -275,11 +309,31 @@ public:
 				break;
 		} while (1);
 
-		for (const auto &file : files_)
-			if (file.second.unresolved.size() != 0)
+		for (const auto &file : files_) {
+			if (file.second.unresolved.size() != 0) {
+				// Build a representation of the undefined
+				// references as a list of comma-separated strings.
+				auto n_urefs = file.second.unresolved.size();
+				std::string urefs = "[";
+
+				decltype(n_urefs) counter = 0;
+				for (const auto &p : file.second.unresolved) {
+					urefs += p.first;
+
+					if (counter != n_urefs - 1u) {
+						urefs += ", ";
+					}
+
+					++counter;
+				}
+
+				urefs += "]";
+
 				throw std::invalid_argument("after all files have been parsed, '" +
 				                            (file.first == "" ? "<root>" : file.first) +
-				                            "' has still undefined references.");
+				                            "' has still the following undefined references: " + urefs);
+			}
+		}
 	}
 
 	void validate(const json::json_pointer &ptr,
@@ -382,9 +436,12 @@ class logical_combination : public schema
 
 		for (auto &s : subschemata_) {
 			first_error_handler esub;
+			auto oldPatchSize = patch.get_json().size();
 			s->validate(ptr, instance, patch, esub);
 			if (!esub)
 				count++;
+			else
+				patch.get_json().get_ref<nlohmann::json::array_t &>().resize(oldPatchSize);
 
 			if (is_validate_complete(instance, ptr, e, esub, count))
 				return;
@@ -499,7 +556,22 @@ class type_schema : public schema
 					else_->validate(ptr, instance, patch, e);
 			}
 		}
+		if (instance.is_null()) {
+			patch.add(nlohmann::json::json_pointer{}, default_value_);
+		}
 	}
+
+protected:
+	virtual std::shared_ptr<schema> make_for_default_(
+	    std::shared_ptr<::schema> & /* sch */,
+	    root_schema * /* root */,
+	    std::vector<nlohmann::json_uri> & /* uris */,
+	    nlohmann::json &default_value) const override
+	{
+		auto result = std::make_shared<type_schema>(*this);
+		result->set_default_value(default_value);
+		return result;
+	};
 
 public:
 	type_schema(json &sch,
@@ -535,10 +607,12 @@ public:
 			} break;
 
 			case json::value_t::array: // "type": ["type1", "type2"]
-				for (auto &schema_type : attr.value())
+				for (auto &array_value : attr.value()) {
+					auto schema_type = array_value.get<std::string>();
 					for (auto &t : schema_types)
 						if (t.first == schema_type)
 							type_[static_cast<uint8_t>(t.second)] = type_schema::make(sch, t.second, root, uris, known_keywords);
+				}
 				break;
 
 			default:
@@ -790,7 +864,12 @@ class numeric : public schema
 	bool violates_multiple_of(T x) const
 	{
 		double res = std::remainder(x, multipleOf_.second);
+		double multiple = std::fabs(x / multipleOf_.second);
+		if (multiple > 1) {
+			res = res / multiple;
+		}
 		double eps = std::nextafter(x, 0) - static_cast<double>(x);
+
 		return std::fabs(res) > std::fabs(eps);
 	}
 
@@ -884,8 +963,8 @@ class boolean : public schema
 	{
 		if (!true_) { // false schema
 			// empty array
-			//switch (instance.type()) {
-			//case json::value_t::array:
+			// switch (instance.type()) {
+			// case json::value_t::array:
 			//	if (instance.size() != 0) // valid false-schema
 			//		e.error(ptr, instance, "false-schema required empty array");
 			//	return;
@@ -1067,6 +1146,11 @@ public:
 		if (attr != sch.end()) {
 			propertyNames_ = schema::make(attr.value(), root, {"propertyNames"}, uris);
 			sch.erase(attr);
+		}
+
+		attr = sch.find("default");
+		if (attr != sch.end()) {
+			set_default_value(*attr);
 		}
 	}
 };
@@ -1277,16 +1361,12 @@ std::shared_ptr<schema> schema::make(json &schema,
 
 			schema.erase(attr);
 
-			// special case where break draft-7 and allow overriding of properties when a $ref is used
+			// special case where we break draft-7 and allow overriding of properties when a $ref is used
 			attr = schema.find("default");
 			if (attr != schema.end()) {
 				// copy the referenced schema depending on the underlying type and modify the default value
-				if (auto *ref_sch = dynamic_cast<schema_ref *>(sch.get())) {
-					sch = std::make_shared<schema_ref>(*ref_sch);
-					sch->set_default_value(attr.value());
-				} else if (auto *type_sch = dynamic_cast<type_schema *>(sch.get())) {
-					sch = std::make_shared<type_schema>(*type_sch);
-					sch->set_default_value(attr.value());
+				if (auto new_sch = sch->make_for_default_(sch, root, uris, attr.value())) {
+					sch = new_sch;
 				}
 				schema.erase(attr);
 			}
