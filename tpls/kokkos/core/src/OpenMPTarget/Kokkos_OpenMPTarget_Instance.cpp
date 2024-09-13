@@ -106,14 +106,16 @@ void OpenMPTargetInternal::print_configuration(std::ostream& os,
 void OpenMPTargetInternal::impl_finalize() {
   m_is_initialized = false;
   Kokkos::Impl::OpenMPTargetExec space;
-  if (space.m_lock_array != nullptr) space.clear_lock_array();
 
   if (space.m_uniquetoken_ptr != nullptr)
     Kokkos::kokkos_free<Kokkos::Experimental::OpenMPTargetSpace>(
         space.m_uniquetoken_ptr);
 }
+
 void OpenMPTargetInternal::impl_initialize() {
   m_is_initialized = true;
+
+  Kokkos::Impl::OpenMPTargetExec::MAX_ACTIVE_THREADS = concurrency();
 
   // FIXME_OPENMPTARGET:  Only fix the number of teams for NVIDIA architectures
   // from Pascal and upwards.
@@ -175,8 +177,10 @@ void OpenMPTarget::impl_static_fence(const std::string& name) {
 }
 
 void OpenMPTarget::impl_initialize(InitializationSettings const& settings) {
+  using Kokkos::Impl::get_visible_devices;
+  std::vector<int> const& visible_devices = get_visible_devices();
   using Kokkos::Impl::get_gpu;
-  const int device_num = get_gpu(settings);
+  const int device_num = get_gpu(settings).value_or(visible_devices[0]);
   omp_set_default_device(device_num);
 
   Impl::OpenMPTargetInternal::impl_singleton()->impl_initialize();
@@ -212,9 +216,10 @@ UniqueToken<Kokkos::Experimental::OpenMPTarget,
         Kokkos::kokkos_malloc<Kokkos::Experimental::OpenMPTargetSpace>(
             "Kokkos::OpenMPTarget::m_uniquetoken_ptr", size));
     std::vector<uint32_t> h_buf(count, 0);
-    KOKKOS_IMPL_OMPT_SAFE_CALL(omp_target_memcpy(ptr, h_buf.data(), size, 0, 0,
-                                                 omp_get_default_device(),
-                                                 omp_get_initial_device()));
+    if (0 < size)
+      KOKKOS_IMPL_OMPT_SAFE_CALL(omp_target_memcpy(ptr, h_buf.data(), size, 0,
+                                                   0, omp_get_default_device(),
+                                                   omp_get_initial_device()));
 
     Kokkos::Impl::OpenMPTargetExec::m_uniquetoken_ptr = ptr;
   }

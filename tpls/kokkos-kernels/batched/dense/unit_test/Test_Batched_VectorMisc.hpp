@@ -21,10 +21,8 @@
 //       to ensure it is not included in these
 //       backends unit-test
 
-#if !defined(TEST_CUDA_BATCHED_DENSE_CPP) && \
-    !defined(TEST_HIP_BATCHED_DENSE_CPP) &&  \
-    !defined(TEST_SYCL_BATCHED_DENSE_CPP) && \
-    !defined(TEST_OPENMPTARGET_BATCHED_DENSE_CPP)
+#if !defined(TEST_CUDA_BATCHED_DENSE_CPP) && !defined(TEST_HIP_BATCHED_DENSE_CPP) && \
+    !defined(TEST_SYCL_BATCHED_DENSE_CPP) && !defined(TEST_OPENMPTARGET_BATCHED_DENSE_CPP)
 
 #include "gtest/gtest.h"
 #include "Kokkos_Core.hpp"
@@ -159,9 +157,8 @@ void impl_test_batched_vector_misc() {
 
 template <typename DeviceType, typename VectorTagType, int VectorLength>
 int test_batched_vector_misc() {
-  static_assert(
-      Kokkos::SpaceAccessibility<DeviceType, Kokkos::HostSpace>::accessible,
-      "vector datatype is only tested on host space");
+  static_assert(Kokkos::SpaceAccessibility<DeviceType, Kokkos::HostSpace>::accessible,
+                "vector datatype is only tested on host space");
   Test::impl_test_batched_vector_misc<VectorTagType, VectorLength>();
 
   return 0;
@@ -172,38 +169,30 @@ int test_batched_vector_misc() {
 ///
 
 #if defined(KOKKOSKERNELS_INST_FLOAT)
-TEST_F(TestCategory, batched_vector_misc_simd_float3) {
-  test_batched_vector_misc<TestExecSpace, SIMD<float>, 3>();
-}
-TEST_F(TestCategory, batched_vector_misc_simd_float8) {
-  test_batched_vector_misc<TestExecSpace, SIMD<float>, 8>();
-}
+TEST_F(TestCategory, batched_vector_misc_simd_float3) { test_batched_vector_misc<TestDevice, SIMD<float>, 3>(); }
+TEST_F(TestCategory, batched_vector_misc_simd_float8) { test_batched_vector_misc<TestDevice, SIMD<float>, 8>(); }
 #endif
 
 #if defined(KOKKOSKERNELS_INST_DOUBLE)
-TEST_F(TestCategory, batched_vector_misc_simd_double3) {
-  test_batched_vector_misc<TestExecSpace, SIMD<double>, 3>();
-}
-TEST_F(TestCategory, batched_vector_misc_simd_double4) {
-  test_batched_vector_misc<TestExecSpace, SIMD<double>, 4>();
-}
+TEST_F(TestCategory, batched_vector_misc_simd_double3) { test_batched_vector_misc<TestDevice, SIMD<double>, 3>(); }
+TEST_F(TestCategory, batched_vector_misc_simd_double4) { test_batched_vector_misc<TestDevice, SIMD<double>, 4>(); }
 #endif
 
 // #if defined(KOKKOSKERNELS_INST_COMPLEX_FLOAT)
 // TEST_F( TestCategory, batched_vector_misc_simd_scomplex3 ) {
-//   test_batched_vector_misc<TestExecSpace,SIMD<Kokkos::complex<float> >,3>();
+//   test_batched_vector_misc<TestDevice,SIMD<Kokkos::complex<float> >,3>();
 // }
 // TEST_F( TestCategory, batched_vector_misc_simd_scomplex4 ) {
-//   test_batched_vector_misc<TestExecSpace,SIMD<Kokkos::complex<float> >,4>();
+//   test_batched_vector_misc<TestDevice,SIMD<Kokkos::complex<float> >,4>();
 // }
 // #endif
 
 // #if defined(KOKKOSKERNELS_INST_COMPLEX_DOUBLE)
 // TEST_F( TestCategory, batched_vector_misc_simd_dcomplex3 ) {
-//   test_batched_vector_misc<TestExecSpace,SIMD<Kokkos::complex<double> >,3>();
+//   test_batched_vector_misc<TestDevice,SIMD<Kokkos::complex<double> >,3>();
 // }
 // TEST_F( TestCategory, batched_vector_misc_simd_dcomplex2 ) {
-//   test_batched_vector_misc<TestExecSpace,SIMD<Kokkos::complex<double> >,2>();
+//   test_batched_vector_misc<TestDevice,SIMD<Kokkos::complex<double> >,2>();
 // }
 // #endif
 

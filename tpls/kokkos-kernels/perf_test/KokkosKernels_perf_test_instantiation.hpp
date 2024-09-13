@@ -26,9 +26,19 @@
 #error "The macro KOKKOSKERNELS_PERF_TEST_NAME was not defined"
 #endif
 
+// All perf tests must implement print_options()
+void print_options();
+
 int main_instantiation(int argc, char** argv) {
   perf_test::CommonInputParams params;
   perf_test::parse_common_options(argc, argv, params);
+
+  // If help is requested with "-h" or "--help", then just print the options
+  // and quit.
+  if (params.print_help) {
+    print_options();
+    return 0;
+  }
 
   /* Assumption is that use_openmp/use_threads variables are */
   /* provided as numbers of threads */
@@ -47,9 +57,7 @@ int main_instantiation(int argc, char** argv) {
   else if (params.use_sycl)
     device_id = params.use_sycl - 1;
 
-  Kokkos::initialize(Kokkos::InitializationSettings()
-                         .set_num_threads(num_threads)
-                         .set_device_id(device_id));
+  Kokkos::initialize(Kokkos::InitializationSettings().set_num_threads(num_threads).set_device_id(device_id));
   Kokkos::print_configuration(std::cout);
   std::cout << '\n';
 
@@ -102,8 +110,7 @@ int main_instantiation(int argc, char** argv) {
   if (params.use_sycl) {
 #if defined(KOKKOS_ENABLE_SYCL)
     std::cout << "Running on SYCL backend.\n";
-    KOKKOSKERNELS_PERF_TEST_NAME<Kokkos::Experimental::SYCL>(argc, argv,
-                                                             params);
+    KOKKOSKERNELS_PERF_TEST_NAME<Kokkos::Experimental::SYCL>(argc, argv, params);
     ran = true;
 #else
     std::cout << "ERROR: SYCL requested, but not available.\n";

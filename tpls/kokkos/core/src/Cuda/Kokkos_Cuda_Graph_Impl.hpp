@@ -31,8 +31,8 @@
 #include <Cuda/Kokkos_Cuda_GraphNode_Impl.hpp>
 
 #include <Cuda/Kokkos_Cuda.hpp>
-#include <cuda_runtime_api.h>
 #include <Cuda/Kokkos_Cuda_Error.hpp>
+#include <Cuda/Kokkos_Cuda_Instance.hpp>
 
 namespace Kokkos {
 namespace Impl {
@@ -55,8 +55,11 @@ struct GraphImpl<Kokkos::Cuda> {
     constexpr size_t error_log_size = 256;
     cudaGraphNode_t error_node      = nullptr;
     char error_log[error_log_size];
-    KOKKOS_IMPL_CUDA_SAFE_CALL(cudaGraphInstantiate(
-        &m_graph_exec, m_graph, &error_node, error_log, error_log_size));
+    KOKKOS_IMPL_CUDA_SAFE_CALL(
+        (m_execution_space.impl_internal_space_instance()
+             ->cuda_graph_instantiate_wrapper(&m_graph_exec, m_graph,
+                                              &error_node, error_log,
+                                              error_log_size)));
     // TODO @graphs print out errors
   }
 
@@ -69,7 +72,7 @@ struct GraphImpl<Kokkos::Cuda> {
       GraphNodeImpl<Kokkos::Cuda, aggregate_kernel_impl_t,
                     Kokkos::Experimental::TypeErasedTag>;
 
-  // Not moveable or copyable; it spends its whole life as a shared_ptr in the
+  // Not movable or copyable; it spends its whole life as a shared_ptr in the
   // Graph object
   GraphImpl()                 = delete;
   GraphImpl(GraphImpl const&) = delete;
@@ -83,34 +86,38 @@ struct GraphImpl<Kokkos::Cuda> {
     m_execution_space.fence("Kokkos::GraphImpl::~GraphImpl: Graph Destruction");
     KOKKOS_EXPECTS(bool(m_graph))
     if (bool(m_graph_exec)) {
-      KOKKOS_IMPL_CUDA_SAFE_CALL(cudaGraphExecDestroy(m_graph_exec));
+      KOKKOS_IMPL_CUDA_SAFE_CALL(
+          (m_execution_space.impl_internal_space_instance()
+               ->cuda_graph_exec_destroy_wrapper(m_graph_exec)));
     }
-    KOKKOS_IMPL_CUDA_SAFE_CALL(cudaGraphDestroy(m_graph));
+    KOKKOS_IMPL_CUDA_SAFE_CALL(
+        (m_execution_space.impl_internal_space_instance()
+             ->cuda_graph_destroy_wrapper(m_graph)));
   };
 
   explicit GraphImpl(Kokkos::Cuda arg_instance)
       : m_execution_space(std::move(arg_instance)) {
     KOKKOS_IMPL_CUDA_SAFE_CALL(
-        cudaGraphCreate(&m_graph, cuda_graph_flags_t{0}));
+        (m_execution_space.impl_internal_space_instance()
+             ->cuda_graph_create_wrapper(&m_graph, cuda_graph_flags_t{0})));
   }
 
   void add_node(std::shared_ptr<aggregate_node_impl_t> const& arg_node_ptr) {
     // All of the predecessors are just added as normal, so all we need to
     // do here is add an empty node
     KOKKOS_IMPL_CUDA_SAFE_CALL(
-        cudaGraphAddEmptyNode(&(arg_node_ptr->node_details_t::node), m_graph,
-                              /* dependencies = */ nullptr,
-                              /* numDependencies = */ 0));
+        (m_execution_space.impl_internal_space_instance()
+             ->cuda_graph_add_empty_node_wrapper(
+                 &(arg_node_ptr->node_details_t::node), m_graph,
+                 /* dependencies = */ nullptr,
+                 /* numDependencies = */ 0)));
   }
 
   template <class NodeImpl>
   //  requires NodeImplPtr is a shared_ptr to specialization of GraphNodeImpl
-  //  Also requires that the kernel has the graph node tag in it's policy
+  //  Also requires that the kernel has the graph node tag in its policy
   void add_node(std::shared_ptr<NodeImpl> const& arg_node_ptr) {
-    static_assert(
-        NodeImpl::kernel_type::Policy::is_graph_kernel::value,
-        "Something has gone horribly wrong, but it's too complicated to "
-        "explain here.  Buy Daisy a coffee and she'll explain it to you.");
+    static_assert(NodeImpl::kernel_type::Policy::is_graph_kernel::value);
     KOKKOS_EXPECTS(bool(arg_node_ptr));
     // The Kernel launch from the execute() method has been shimmed to insert
     // the node into the graph
@@ -146,7 +153,9 @@ struct GraphImpl<Kokkos::Cuda> {
     KOKKOS_EXPECTS(bool(cuda_node))
 
     KOKKOS_IMPL_CUDA_SAFE_CALL(
-        cudaGraphAddDependencies(m_graph, &pred_cuda_node, &cuda_node, 1));
+        (m_execution_space.impl_internal_space_instance()
+             ->cuda_graph_add_dependencies_wrapper(m_graph, &pred_cuda_node,
+                                                   &cuda_node, 1)));
   }
 
   void submit() {
@@ -154,7 +163,8 @@ struct GraphImpl<Kokkos::Cuda> {
       _instantiate_graph();
     }
     KOKKOS_IMPL_CUDA_SAFE_CALL(
-        cudaGraphLaunch(m_graph_exec, m_execution_space.cuda_stream()));
+        (m_execution_space.impl_internal_space_instance()
+             ->cuda_graph_launch_wrapper(m_graph_exec)));
   }
 
   execution_space const& get_execution_space() const noexcept {
@@ -167,9 +177,11 @@ struct GraphImpl<Kokkos::Cuda> {
     auto rv = std::make_shared<root_node_impl_t>(
         get_execution_space(), _graph_node_is_root_ctor_tag{});
     KOKKOS_IMPL_CUDA_SAFE_CALL(
-        cudaGraphAddEmptyNode(&(rv->node_details_t::node), m_graph,
-                              /* dependencies = */ nullptr,
-                              /* numDependencies = */ 0));
+        (m_execution_space.impl_internal_space_instance()
+             ->cuda_graph_add_empty_node_wrapper(&(rv->node_details_t::node),
+                                                 m_graph,
+                                                 /* dependencies = */ nullptr,
+                                                 /* numDependencies = */ 0)));
     KOKKOS_ENSURES(bool(rv->node_details_t::node))
     return rv;
   }

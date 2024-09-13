@@ -1,52 +1,29 @@
-/*
 //@HEADER
 // ************************************************************************
 //
-//                        Kokkos v. 2.0
-//              Copyright (2019) Sandia Corporation
+//                        Kokkos v. 4.0
+//       Copyright (2022) National Technology & Engineering
+//               Solutions of Sandia, LLC (NTESS).
 //
-// Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
+// Under the terms of Contract DE-NA0003525 with NTESS,
 // the U.S. Government retains certain rights in this software.
 //
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
+// Part of Kokkos, under the Apache License v2.0 with LLVM Exceptions.
+// See https://kokkos.org/LICENSE for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Christian R. Trott (crtrott@sandia.gov)
-//
-// ************************************************************************
 //@HEADER
-*/
-
 
 #pragma once
 
 #include "config.hpp"
 
+#include <cstdio>
+#include <cstdlib>
 #include <type_traits> // std::is_void
+#if defined(_MDSPAN_HAS_CUDA) || defined(_MDSPAN_HAS_HIP) || defined(_MDSPAN_HAS_SYCL)
+#include "assert.h"
+#endif
 
 #ifndef _MDSPAN_HOST_DEVICE
 #  if defined(_MDSPAN_HAS_CUDA) || defined(_MDSPAN_HAS_HIP)
@@ -66,6 +43,16 @@
 
 #ifndef MDSPAN_INLINE_FUNCTION
 #  define MDSPAN_INLINE_FUNCTION inline _MDSPAN_HOST_DEVICE
+#endif
+
+#ifndef MDSPAN_FUNCTION
+#  define MDSPAN_FUNCTION _MDSPAN_HOST_DEVICE
+#endif
+
+#ifdef _MDSPAN_HAS_HIP
+#  define MDSPAN_DEDUCTION_GUIDE _MDSPAN_HOST_DEVICE
+#else
+#  define MDSPAN_DEDUCTION_GUIDE
 #endif
 
 // In CUDA defaulted functions do not need host device markup
@@ -116,6 +103,72 @@
 #define MDSPAN_PP_REMOVE_PARENS_IMPL(...) __VA_ARGS__
 #define MDSPAN_PP_REMOVE_PARENS(...) MDSPAN_PP_REMOVE_PARENS_IMPL __VA_ARGS__
 
+#define MDSPAN_IMPL_STANDARD_NAMESPACE_STRING MDSPAN_PP_STRINGIFY(MDSPAN_IMPL_STANDARD_NAMESPACE)
+#define MDSPAN_IMPL_PROPOSED_NAMESPACE_STRING MDSPAN_PP_STRINGIFY(MDSPAN_IMPL_STANDARD_NAMESPACE) "::" MDSPAN_PP_STRINGIFY(MDSPAN_IMPL_PROPOSED_NAMESPACE)
+
+namespace MDSPAN_IMPL_STANDARD_NAMESPACE {
+namespace detail {
+
+#if defined(_MDSPAN_HAS_CUDA) || defined(_MDSPAN_HAS_HIP)
+MDSPAN_FUNCTION inline void default_precondition_violation_handler(const char* cond, const char* file, unsigned line)
+{
+  printf("%s:%u: precondition failure: `%s`\n", file, line, cond);
+  assert(0);
+}
+#elif defined(_MDSPAN_HAS_SYCL)
+MDSPAN_FUNCTION inline void default_precondition_violation_handler(const char* cond, const char* file, unsigned line)
+{
+  sycl::ext::oneapi::experimental::printf("%s:%u: precondition failure: `%s`\n", file, line, cond);
+  assert(0);
+}
+#else
+MDSPAN_FUNCTION inline void default_precondition_violation_handler(const char* cond, const char* file, unsigned line)
+{
+  std::fprintf(stderr, "%s:%u: precondition failure: `%s`\n", file, line, cond);
+  std::abort();
+}
+#endif
+
+} // namespace detail
+} // namespace MDSPAN_IMPL_STANDARD_NAMESPACE
+
+#ifndef MDSPAN_IMPL_PRECONDITION_VIOLATION_HANDLER
+#define MDSPAN_IMPL_PRECONDITION_VIOLATION_HANDLER(cond, file, line) \
+  MDSPAN_IMPL_STANDARD_NAMESPACE::detail::default_precondition_violation_handler(cond, file, line)
+#endif
+
+#ifndef MDSPAN_IMPL_CHECK_PRECONDITION
+  #ifndef NDEBUG
+    #define MDSPAN_IMPL_CHECK_PRECONDITION 0
+  #else
+    #define MDSPAN_IMPL_CHECK_PRECONDITION 1
+  #endif
+#endif
+
+namespace MDSPAN_IMPL_STANDARD_NAMESPACE {
+namespace detail {
+
+template <bool check = MDSPAN_IMPL_CHECK_PRECONDITION>
+MDSPAN_FUNCTION constexpr void precondition(const char* cond, const char* file, unsigned line)
+{
+  if (!check) { return; }
+  // in case the macro doesn't use the arguments for custom macros
+  (void) cond;
+  (void) file;
+  (void) line;
+  MDSPAN_IMPL_PRECONDITION_VIOLATION_HANDLER(cond, file, line);
+}
+
+} // namespace detail
+} // namespace MDSPAN_IMPL_STANDARD_NAMESPACE
+
+#define MDSPAN_IMPL_PRECONDITION(...) \
+  do { \
+    if (!(__VA_ARGS__)) { \
+      MDSPAN_IMPL_STANDARD_NAMESPACE::detail::precondition(#__VA_ARGS__, __FILE__, __LINE__); \
+    } \
+  } while (0)
+
 // </editor-fold> end Preprocessor helpers }}}1
 //==============================================================================
 
@@ -139,8 +192,7 @@
      /**/
 #endif
 
-
-#if defined(_MDSPAN_COMPILER_MSVC)
+#if defined(_MDSPAN_COMPILER_MSVC) && (!defined(_MSVC_TRADITIONAL) || _MSVC_TRADITIONAL)
 #  define MDSPAN_TEMPLATE_REQUIRES(...) \
       MDSPAN_PP_CAT( \
         MDSPAN_PP_CAT(MDSPAN_TEMPLATE_REQUIRES_, MDSPAN_PP_COUNT(__VA_ARGS__))\
@@ -294,7 +346,7 @@ struct __mdspan_enable_fold_comma { };
 #  define _MDSPAN_FOLD_COMMA(...) ((__VA_ARGS__), ...)
 #else
 
-namespace std {
+namespace MDSPAN_IMPL_STANDARD_NAMESPACE {
 
 namespace __fold_compatibility_impl {
 
@@ -590,22 +642,22 @@ __fold_left_assign_impl(Args&&... args) {
 
 
 template <class... Args>
-constexpr __mdspan_enable_fold_comma __fold_comma_impl(Args&&... args) noexcept { return { }; }
+constexpr __mdspan_enable_fold_comma __fold_comma_impl(Args&&...) noexcept { return { }; }
 
 template <bool... Bs>
 struct __bools;
 
 } // __fold_compatibility_impl
 
-} // end namespace std
+} // end namespace MDSPAN_IMPL_STANDARD_NAMESPACE
 
-#  define _MDSPAN_FOLD_AND(...) std::__fold_compatibility_impl::__fold_right_and_impl((__VA_ARGS__)...)
-#  define _MDSPAN_FOLD_OR(...) std::__fold_compatibility_impl::__fold_right_or_impl((__VA_ARGS__)...)
-#  define _MDSPAN_FOLD_ASSIGN_LEFT(INIT, ...) std::__fold_compatibility_impl::__fold_left_assign_impl(INIT, (__VA_ARGS__)...)
-#  define _MDSPAN_FOLD_ASSIGN_RIGHT(PACK, ...) std::__fold_compatibility_impl::__fold_right_assign_impl((PACK)..., __VA_ARGS__)
-#  define _MDSPAN_FOLD_TIMES_RIGHT(PACK, ...) std::__fold_compatibility_impl::__fold_right_times_impl((PACK)..., __VA_ARGS__)
-#  define _MDSPAN_FOLD_PLUS_RIGHT(PACK, ...) std::__fold_compatibility_impl::__fold_right_plus_impl((PACK)..., __VA_ARGS__)
-#  define _MDSPAN_FOLD_COMMA(...) std::__fold_compatibility_impl::__fold_comma_impl((__VA_ARGS__)...)
+#  define _MDSPAN_FOLD_AND(...) MDSPAN_IMPL_STANDARD_NAMESPACE::__fold_compatibility_impl::__fold_right_and_impl((__VA_ARGS__)...)
+#  define _MDSPAN_FOLD_OR(...) MDSPAN_IMPL_STANDARD_NAMESPACE::__fold_compatibility_impl::__fold_right_or_impl((__VA_ARGS__)...)
+#  define _MDSPAN_FOLD_ASSIGN_LEFT(INIT, ...) MDSPAN_IMPL_STANDARD_NAMESPACE::__fold_compatibility_impl::__fold_left_assign_impl(INIT, (__VA_ARGS__)...)
+#  define _MDSPAN_FOLD_ASSIGN_RIGHT(PACK, ...) MDSPAN_IMPL_STANDARD_NAMESPACE::__fold_compatibility_impl::__fold_right_assign_impl((PACK)..., __VA_ARGS__)
+#  define _MDSPAN_FOLD_TIMES_RIGHT(PACK, ...) MDSPAN_IMPL_STANDARD_NAMESPACE::__fold_compatibility_impl::__fold_right_times_impl((PACK)..., __VA_ARGS__)
+#  define _MDSPAN_FOLD_PLUS_RIGHT(PACK, ...) MDSPAN_IMPL_STANDARD_NAMESPACE::__fold_compatibility_impl::__fold_right_plus_impl((PACK)..., __VA_ARGS__)
+#  define _MDSPAN_FOLD_COMMA(...) MDSPAN_IMPL_STANDARD_NAMESPACE::__fold_compatibility_impl::__fold_comma_impl((__VA_ARGS__)...)
 
 #  define _MDSPAN_FOLD_AND_TEMPLATE(...) \
   _MDSPAN_TRAIT(std::is_same, __fold_compatibility_impl::__bools<(__VA_ARGS__)..., true>, __fold_compatibility_impl::__bools<true, (__VA_ARGS__)...>)

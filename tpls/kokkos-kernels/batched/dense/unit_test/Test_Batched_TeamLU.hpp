@@ -19,7 +19,7 @@
 #include "Kokkos_Core.hpp"
 #include "Kokkos_Random.hpp"
 
-//#include "KokkosBatched_Vector.hpp"
+// #include "KokkosBatched_Vector.hpp"
 
 #include "KokkosBatched_LU_Decl.hpp"
 #include "KokkosBatched_LU_Serial_Impl.hpp"
@@ -34,6 +34,8 @@ namespace TeamLU {
 
 template <typename DeviceType, typename ViewType, typename AlgoTagType>
 struct Functor_TestBatchedTeamLU {
+  using execution_space = typename DeviceType::execution_space;
+
   ViewType _a;
 
   KOKKOS_INLINE_FUNCTION
@@ -60,7 +62,7 @@ struct Functor_TestBatchedTeamLU {
     Kokkos::Profiling::pushRegion(name.c_str());
 
     const int league_size = _a.extent(0);
-    Kokkos::TeamPolicy<DeviceType> policy(league_size, Kokkos::AUTO);
+    Kokkos::TeamPolicy<execution_space> policy(league_size, Kokkos::AUTO);
     Kokkos::parallel_for(name.c_str(), policy, *this);
     Kokkos::Profiling::popRegion();
   }
@@ -74,16 +76,14 @@ void impl_test_batched_lu(const int N, const int BlkSize) {
   /// randomized input testing views
   ViewType a0("a0", N, BlkSize, BlkSize), a1("a1", N, BlkSize, BlkSize);
 
-  Kokkos::Random_XorShift64_Pool<typename DeviceType::execution_space> random(
-      13718);
+  Kokkos::Random_XorShift64_Pool<typename DeviceType::execution_space> random(13718);
   Kokkos::fill_random(a0, random, value_type(1.0));
 
   Kokkos::fence();
 
   Kokkos::deep_copy(a1, a0);
 
-  Functor_TestBatchedTeamLU<DeviceType, ViewType, Algo::LU::Unblocked>(a0)
-      .run();
+  Functor_TestBatchedTeamLU<DeviceType, ViewType, Algo::LU::Unblocked>(a0).run();
   Functor_TestBatchedTeamLU<DeviceType, ViewType, AlgoTagType>(a1).run();
 
   Kokkos::fence();
@@ -115,27 +115,21 @@ template <typename DeviceType, typename ValueType, typename AlgoTagType>
 int test_batched_team_lu() {
 #if defined(KOKKOSKERNELS_INST_LAYOUTLEFT)
   {
-    typedef Kokkos::View<ValueType ***, Kokkos::LayoutLeft, DeviceType>
-        ViewType;
-    Test::TeamLU::impl_test_batched_lu<DeviceType, ViewType, AlgoTagType>(0,
-                                                                          10);
+    typedef Kokkos::View<ValueType ***, Kokkos::LayoutLeft, DeviceType> ViewType;
+    Test::TeamLU::impl_test_batched_lu<DeviceType, ViewType, AlgoTagType>(0, 10);
     for (int i = 0; i < 10; ++i) {
       // printf("Testing: LayoutLeft,  Blksize %d\n", i);
-      Test::TeamLU::impl_test_batched_lu<DeviceType, ViewType, AlgoTagType>(
-          1024, i);
+      Test::TeamLU::impl_test_batched_lu<DeviceType, ViewType, AlgoTagType>(1024, i);
     }
   }
 #endif
 #if defined(KOKKOSKERNELS_INST_LAYOUTRIGHT)
   {
-    typedef Kokkos::View<ValueType ***, Kokkos::LayoutRight, DeviceType>
-        ViewType;
-    Test::TeamLU::impl_test_batched_lu<DeviceType, ViewType, AlgoTagType>(0,
-                                                                          10);
+    typedef Kokkos::View<ValueType ***, Kokkos::LayoutRight, DeviceType> ViewType;
+    Test::TeamLU::impl_test_batched_lu<DeviceType, ViewType, AlgoTagType>(0, 10);
     for (int i = 0; i < 10; ++i) {
       // printf("Testing: LayoutLeft,  Blksize %d\n", i);
-      Test::TeamLU::impl_test_batched_lu<DeviceType, ViewType, AlgoTagType>(
-          1024, i);
+      Test::TeamLU::impl_test_batched_lu<DeviceType, ViewType, AlgoTagType>(1024, i);
     }
   }
 #endif

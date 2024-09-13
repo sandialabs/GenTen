@@ -37,9 +37,6 @@ struct ViewDimension;
 
 template <class T, class Dim>
 struct ViewDataType;
-}  // namespace Kokkos::Impl
-
-namespace Kokkos::Experimental::Impl {
 
 // A few things to note --
 // - mdspan allows for 0-rank extents similarly to View, so we don't need
@@ -54,7 +51,7 @@ struct ExtentFromDimension {
 // Kokkos uses a dimension of '0' to denote a dynamic dimension.
 template <>
 struct ExtentFromDimension<std::size_t{0}> {
-  static constexpr std::size_t value = std::experimental::dynamic_extent;
+  static constexpr std::size_t value = dynamic_extent;
 };
 
 template <std::size_t N>
@@ -63,7 +60,7 @@ struct DimensionFromExtent {
 };
 
 template <>
-struct DimensionFromExtent<std::experimental::dynamic_extent> {
+struct DimensionFromExtent<dynamic_extent> {
   static constexpr std::size_t value = std::size_t{0};
 };
 
@@ -73,9 +70,9 @@ struct ExtentsFromDimension;
 template <class IndexType, class Dimension, std::size_t... Indices>
 struct ExtentsFromDimension<IndexType, Dimension,
                             std::index_sequence<Indices...>> {
-  using type = std::experimental::extents<
-      IndexType,
-      ExtentFromDimension<Dimension::static_extent(Indices)>::value...>;
+  using type =
+      extents<IndexType,
+              ExtentFromDimension<Dimension::static_extent(Indices)>::value...>;
 };
 
 template <class Extents, class Indices>
@@ -106,6 +103,20 @@ struct DataTypeFromExtents {
   // Will cause a compile error if it is malformed (i.e. dynamic after static)
   using type = typename ::Kokkos::Impl::ViewDataType<T, dimension_type>::type;
 };
-}  // namespace Kokkos::Experimental::Impl
+
+template <class Extents, class VM, std::size_t... Indices>
+constexpr KOKKOS_INLINE_FUNCTION auto extents_from_view_mapping_impl(
+    const VM &view_mapping, std::index_sequence<Indices...>) {
+  return Extents{view_mapping.extent(Indices)...};
+}
+
+template <class Extents, class VM>
+constexpr KOKKOS_INLINE_FUNCTION auto extents_from_view_mapping(
+    const VM &view_mapping) {
+  static_assert(Extents::rank() == VM::Rank);
+  return extents_from_view_mapping_impl<Extents>(
+      view_mapping, std::make_index_sequence<Extents::rank()>{});
+}
+}  // namespace Kokkos::Impl
 
 #endif  // KOKKOS_EXPERIMENTAL_MDSPAN_EXTENTS_HPP
