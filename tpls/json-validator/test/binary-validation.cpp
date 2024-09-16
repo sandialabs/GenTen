@@ -149,7 +149,7 @@ int main()
 	// TODO when we set `string` in array and set `contentEncoding` = "binary" - what it means? We expected string or binary?
 	// Or we expect only binary? Now if you set `contentEncoding` = "binary", then it means that you expect only binary data,
 	// not string
-	//val.validate({{"something", "string"}}, err); -> produce error about type
+	// val.validate({{"something", "string"}}, err); -> produce error about type
 	EXPECT_EQ(err.failed_pointers.size(), 0);
 	err.reset();
 
@@ -163,7 +163,7 @@ int main()
 	val.set_root_schema(array_of_types_without_binary);
 	val.validate({{"something", binary}}, err);
 	EXPECT_EQ(err.failed_pointers.size(), 1);
-	EXPECT_EQ(err.failed_pointers[0], "/something");
+	EXPECT_EQ(err.failed_pointers[0].to_string(), "/something");
 	err.reset();
 
 	// check that without content callback you get exception with schema with contentEncoding or contentMeditType
