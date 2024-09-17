@@ -444,10 +444,12 @@ IF(HAVE_TPETRA)
 ENDIF()
 
 # Embedded "JSON for Modern C++" library
+set(JSON_Install ON CACHE INTERNAL "")
 set(JSON_BuildTests OFF CACHE INTERNAL "")
 add_subdirectory(tpls/json)
 
 # Embedded "JSON schema validator for JSON for Modern C++"
+set(JSON_VALIDATOR_INSTALL ON CACHE INTERNAL "")
 set(JSON_VALIDATOR_BUILD_TESTS OFF CACHE INTERNAL "")
 set(JSON_VALIDATOR_BUILD_EXAMPLES OFF CACHE INTERNAL "")
 add_subdirectory(tpls/json-validator)
@@ -993,7 +995,7 @@ ENDIF()
 SET(GENTEN_LINK_LIBS gentenlib ${GENTEN_LIBS} ${LAPACK_LIBS} ${LAPACK_ADD_LIBS} ${OPSYS_LIBRARIES})
 TARGET_LINK_LIBRARIES(${GENTEN_LINK_LIBS})
 INSTALL (
-  TARGETS gentenlib nlohmann_json_schema_validator nlohmann_json
+  TARGETS gentenlib
   EXPORT genten
   DESTINATION ${CMAKE_INSTALL_LIBDIR}
   )
