@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "pygenten"
-version = "0.0.6"
+version = "0.1.0"
 description = "A Python interace to the GenTen tensor decomposition library"
 readme = "python/README.md"
 authors = [
