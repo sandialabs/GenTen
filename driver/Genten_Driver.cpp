@@ -96,8 +96,8 @@ void usage(char **argv)
   std::cout << "  --save-tensor <string> filename to save the tensor (leave blank for no save)" << std::endl;
   std::cout << "  --initial-file <string>  file name for reading Ktensor initial guess (leave blank for random initial guess)" << std::endl;
   std::cout << "  --output-file <string>  output file name for saving Ktensor" << std::endl;
-  std::cout << "  --output-dense-reconstruction <string>  output file name for saving the tensor reconstruction as a dense tensor" << std::endl;
-  std::cout << "  --output-sparse-reconstruction <string>  output file name for saving the tensor reconstruction as a sparse tensor" << std::endl;
+  std::cout << "  --dense-reconstruction <string>  output file name for saving the tensor reconstruction as a dense tensor" << std::endl;
+  std::cout << "  --sparse-reconstruction <string>  output file name for saving the tensor reconstruction as a sparse tensor" << std::endl;
   std::cout << "  --vtune            connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
   std::cout << "  --history-file     file to save performance history" << std::endl;
   std::cout << std::endl;
