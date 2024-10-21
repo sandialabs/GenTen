@@ -298,7 +298,7 @@ static nlohmann::json json_schema = R"(
               },
               "dist-method": {
                   "description": "Distributed Ktensor update method",
-                  "enum": ["all-reduce", "all-gather", "tpetra"],
+                  "enum": ["all-reduce", "tpetra", "all-gather-reduce", "one-sided", "two-sided"],
                   "default": "all-reduce"
               },
               "optimize-maps": {
