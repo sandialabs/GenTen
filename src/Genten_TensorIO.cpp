@@ -1088,7 +1088,9 @@ queryFile()
 template <typename ExecSpace>
 TensorWriter<ExecSpace>::
 TensorWriter(const std::string& fname,
-             const bool comp) : filename(fname), compressed(comp) {}
+             const ttb_indx ib,
+             const bool comp) :
+  filename(fname), index_base(ib), compressed(comp) {}
 
 template <typename ExecSpace>
 void
@@ -1119,7 +1121,9 @@ writeText(const SptensorT<ExecSpace>& X) const
 {
   Sptensor X_host = create_mirror_view(X);
   deep_copy(X_host, X);
-  export_sptensor(filename, X_host, true, 15, true, compressed);
+  if (index_base != 0 && index_base != 1)
+    Genten::error("Writing a sparse tensor requires index base of 0 or 1");
+  export_sptensor(filename, X_host, true, 15, index_base==0, compressed);
 }
 
 template <typename ExecSpace>

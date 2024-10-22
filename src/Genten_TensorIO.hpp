@@ -188,6 +188,7 @@ template <typename ExecSpace>
 class TensorWriter {
 public:
   TensorWriter(const std::string& filename,
+               const ttb_indx index_base = 0,
                const bool compressed = false);
 
   void writeBinary(const SptensorT<ExecSpace>& X,
@@ -199,6 +200,7 @@ public:
   void writeText(const TensorT<ExecSpace>& X) const;
 private:
   std::string filename;
+  ttb_indx index_base;
   bool compressed;
 };
 
