@@ -63,15 +63,16 @@ namespace Genten {
     typedef typename kokkos_vector::Ktensor_type Ktensor_type;
 
     // This just copies the shape of V, not the values
-    RolKokkosVector(const Ktensor_type& V, const bool make_view,
-                    const DistKtensorUpdate<ExecSpace> *dku) : kv(V, dku)
+    RolKokkosVector(const Ktensor_type& V, const bool make_view = false,
+                    const DistKtensorUpdate<ExecSpace> *dku = nullptr) :
+      kv(V, dku)
     {
       gt_assert(make_view == false);
     }
 
     RolKokkosVector(const unsigned nc, const unsigned nd, const IndxArray& sz,
                     const ProcessorMap* pmap,
-                    const DistKtensorUpdate<ExecSpace> *dku) :
+                    const DistKtensorUpdate<ExecSpace> *dku = nullptr) :
       kv(nc,nd,sz,pmap,dku)
     {
     }

@@ -176,9 +176,24 @@ namespace Genten {
     const ttb_indx printIter = print_itn ? algParams.printitn : 0;
     const bool compute_fit = algParams.compute_fit;
 
-    // Create sampler
+    // Create iterator
+    Impl::GCP_SGD_Iter<TensorType,LossFunction> *itp =
+      Impl::createIter<LossFunction>(
+        X, u0, hist, penalty, mode_beg, mode_end, algParams);
+    Impl::GCP_SGD_Iter<TensorType,LossFunction>& it = *itp;
+
+    // Get vector/Ktensor for current solution (this is a view of the data)
+    VectorType u = it.getSolution();
+    KtensorT<exec_space> ut = u.getKtensor();
+    ut.setProcessorMap(pmap);
+
+    // Copy Ktensor for restoring previous solution
+    VectorType u_prev = u.clone();
+    u_prev.set(u);
+
+    // Create sampler -- must use u from iterator to get the right padding
     Sampler<TensorType,LossFunction> *sampler =
-      createSampler<LossFunction>(X, u0, algParams);
+      createSampler<LossFunction>(X, ut, algParams);
 
     // Create annealer
     auto annealer = getAnnealer(algParams);
@@ -220,21 +235,6 @@ namespace Genten {
 
     // Start timer for total execution time of the algorithm.
     timer.start(timer_sgd);
-
-    // Create iterator
-    Impl::GCP_SGD_Iter<TensorType,LossFunction> *itp =
-      Impl::createIter<LossFunction>(
-        X, u0, hist, penalty, mode_beg, mode_end, algParams);
-    Impl::GCP_SGD_Iter<TensorType,LossFunction>& it = *itp;
-
-    // Get vector/Ktensor for current solution (this is a view of the data)
-    VectorType u = it.getSolution();
-    KtensorT<exec_space> ut = u.getKtensor();
-    ut.setProcessorMap(pmap);
-
-    // Copy Ktensor for restoring previous solution
-    VectorType u_prev = u.clone();
-    u_prev.set(u);
 
     // Initialize sampler (sorting, hashing, ...)
     timer.start(timer_sort);

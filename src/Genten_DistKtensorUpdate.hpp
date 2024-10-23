@@ -338,17 +338,21 @@ private:
   std::vector< std::vector<int> > offsets_r;
   std::vector< std::vector<int> > sizes_r;
 
+  std::vector<unsigned> padded;
+
 public:
   KtensorAllGatherReduceUpdate(const KtensorT<ExecSpace>& u) :
     pmap(u.getProcessorMap())
   {
     const unsigned nd = u.ndims();
+    padded.resize(nd);
     sizes.resize(nd);
     sizes_r.resize(nd);
     offsets.resize(nd);
     offsets_r.resize(nd);
     for (unsigned n=0; n<nd; ++n) {
       if (pmap != nullptr) {
+        padded[n] = u[n].isPadded();
         const unsigned np = pmap->subCommSize(n);
 
         // Get number of rows on each processor
@@ -401,7 +405,9 @@ public:
     for (unsigned n=0; n<nd; ++n) {
       const unsigned np = offsets[n].size();
       const ttb_indx nrows = offsets[n][np-1]+sizes[n][np-1];
-      FacMatrixT<ExecSpace> mat(nrows, nc);
+      // Create factor matrix to have same padding as u[n] for consistent
+      // dimensions in import/export
+      FacMatrixT<ExecSpace> mat(nrows, nc, nullptr, true, padded[n]);
       u_overlapped.set_factor(n, mat);
     }
     u_overlapped.setProcessorMap(u.getProcessorMap());
@@ -523,6 +529,7 @@ private:
 
   bool sparse;
   SptensorT<ExecSpace> X_sparse;
+  std::vector<unsigned> padded;
 
 public:
   using unordered_map_type =
@@ -639,7 +646,9 @@ private:
 
   bool sparse;
   SptensorT<ExecSpace> X_sparse;
+  unsigned nd;
   unsigned nc;
+  std::vector<unsigned> padded;
 
   using offsets_type = Kokkos::View<int*,ExecSpace>;
   // Set the host execution space to be ExecSpace if it is a host execution

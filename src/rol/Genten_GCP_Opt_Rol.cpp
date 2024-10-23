@@ -170,7 +170,7 @@ void gcp_opt_rol(const TensorT<ExecSpace>& x, KtensorT<ExecSpace>& u,
   if (algParams.printitn > 0) {
     if (algParams.compute_fit) {
       stream << "Final fit = " << std::setprecision(3) << std::scientific
-             <<  objective->computeFit(u) << std::endl;
+             <<  objective->computeFit(z->getKtensor()) << std::endl;
     }
     stream << "Total time = " << std::setprecision(2) << std::scientific
            << history.lastEntry().cum_time << std::endl

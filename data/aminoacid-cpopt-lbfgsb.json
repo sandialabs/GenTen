@@ -8,7 +8,7 @@
     },
     "k-tensor":
     {
-        "rank": 16,
+        "rank": 15,
         "output-file": "aminoacid.ktn",
         "initial-guess": "rand",
         "distributed-guess": "serial",
@@ -30,7 +30,7 @@
         },
         "iterations":
         {
-            "value": 39,
+            "value": 34,
             "absolute-tolerance": 2
         }
     }

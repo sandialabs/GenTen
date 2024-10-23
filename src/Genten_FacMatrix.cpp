@@ -59,13 +59,13 @@
 template <typename ExecSpace>
 Genten::FacMatrixT<ExecSpace>::
 FacMatrixT(ttb_indx m, ttb_indx n, const ProcessorMap::FacMap* pmap_,
-           const bool zero) :
+           const bool zero, const bool pad) :
   pmap(pmap_)
 {
   // Don't use padding if Cuda, HIP or SYCL is the default execution space, so factor
   // matrices allocated on the host have the same shape.  We really need a
   // better way to do this.
-  if (Genten::is_gpu_space<DefaultExecutionSpace>::value) {
+  if (!pad || Genten::is_gpu_space<DefaultExecutionSpace>::value) {
     if (zero)
       data = view_type("Genten::FacMatrix::data",m,n);
     else
@@ -86,12 +86,12 @@ FacMatrixT(ttb_indx m, ttb_indx n, const ProcessorMap::FacMap* pmap_,
 template <typename ExecSpace>
 Genten::FacMatrixT<ExecSpace>::
 FacMatrixT(ttb_indx m, ttb_indx n, const ttb_real * cvec,
-           const ProcessorMap::FacMap* pmap_) : pmap(pmap_)
+           const ProcessorMap::FacMap* pmap_, const bool pad) : pmap(pmap_)
 {
   // Don't use padding if Cuda, HIP or SYCL is the default execution space, so factor
   // matrices allocated on the host have the same shape.  We really need a
   // better way to do this.
-  if (Genten::is_gpu_space<DefaultExecutionSpace>::value)
+  if (!pad || Genten::is_gpu_space<DefaultExecutionSpace>::value)
     data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
                                         Kokkos::WithoutInitializing),m,n);
   else

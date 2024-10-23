@@ -119,7 +119,11 @@ namespace Genten {
                    const loss_function_type& func,
                    const AlgParams& algParams,
                    PerfHistory& h) :
-    M(m), gcp_model(x, m, func, algParams), history(h), timer(1),
+    M(m),
+    // create and pass a ktensor to gcp_model through the KokkosVector so to
+    // ensure the same padding as vectors that will be used in the algorithm
+    gcp_model(x, vector_type(m).getKtensor(), func, algParams),
+    history(h), timer(1),
     compute_fit(algParams.compute_fit)
   {
 #if COPY_KTENSOR
@@ -141,6 +145,11 @@ namespace Genten {
   update(const ROL::Vector<ttb_real>& xx, ROL::UpdateType type, int iter)
   {
     GENTEN_TIME_MONITOR("GCP_RolObjective::update");
+
+    const vector_type& x = dynamic_cast<const vector_type&>(xx);
+
+    // Convert input vector to a Ktensor
+    M = x.getKtensor();
 
     gcp_model.update(M);
 

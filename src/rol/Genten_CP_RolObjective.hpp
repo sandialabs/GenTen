@@ -121,8 +121,12 @@ namespace Genten {
   CP_RolObjective(const tensor_type& x,
                   const ktensor_type& m,
                   const AlgParams& algParams,
-                  PerfHistory& h) : M(m), cp_model(x, m, algParams), history(h),
-                                    timer(1)
+                  PerfHistory& h) :
+    M(m),
+    // create and pass a ktensor to cp_model through the KokkosVector so to
+    // ensure the same padding as vectors that will be used in the algorithm
+    cp_model(x, vector_type(m).getKtensor(), algParams), history(h),
+    timer(1)
     {
 #if COPY_KTENSOR
       const ttb_indx nc = M.ncomponents();
