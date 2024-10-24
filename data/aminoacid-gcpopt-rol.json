@@ -32,7 +32,7 @@
         },
         "iterations":
         {
-            "value": 65,
+            "value": 68,
             "absolute-tolerance": 2
         }
     }
