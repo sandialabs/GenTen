@@ -48,6 +48,7 @@
 #include "Genten_FacMatArray.hpp"
 #include "Genten_MathLibs_Wpr.hpp"
 #include "Genten_portability.hpp"
+#include "Kokkos_Random.hpp"
 #include "CMakeInclude.h"
 #include <algorithm>     // for std::max with MSVC compiler
 #include <cstring>
@@ -112,8 +113,13 @@ template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 rand() const
 {
-  auto data_1d = make_data_1d();
-  data_1d.rand();
+  // Don't fill as 1-D to get consistent values with and without padding
+
+  //auto data_1d = make_data_1d();
+  //data_1d.rand();
+
+  RandomMT cRNG(0);
+  scatter(false, false, cRNG);
 }
 
 template <typename ExecSpace>
@@ -122,8 +128,36 @@ scatter (const bool bUseMatlabRNG,
          const bool bUseParallelRNG,
          RandomMT &  cRMT) const
 {
-  auto data_1d = make_data_1d();
-  data_1d.scatter (bUseMatlabRNG, bUseParallelRNG, cRMT);
+  // Don't fill as 1-D to get consistent values with and without padding
+
+  //auto data_1d = make_data_1d();
+  //data_1d.scatter (bUseMatlabRNG, bUseParallelRNG, cRMT);
+
+  if (bUseParallelRNG)
+  {
+    const ttb_indx seed = cRMT.genrnd_int32();
+    Kokkos::Random_XorShift64_Pool<ExecSpace> rand_pool(seed);
+    ttb_real min_val = 0.0;
+    ttb_real max_val = 1.0;
+    Kokkos::fill_random(data, rand_pool, min_val, max_val);
+  }
+  else
+  {
+    const ttb_indx nrows = data.extent(0);
+    const ttb_indx ncols = data.extent(1);
+    auto d = create_mirror_view(data);
+    for (ttb_indx i=0; i<nrows; ++i) {
+      for (ttb_indx j=0; j<ncols; ++j) {
+        ttb_real  dNextRan;
+        if (bUseMatlabRNG)
+          dNextRan = cRMT.genMatlabMT();
+        else
+          dNextRan = cRMT.genrnd_double();
+        d(i,j) = dNextRan;
+      }
+    }
+    deep_copy(data, d);
+  }
 }
 
 template <typename ExecSpace>
