@@ -52,11 +52,13 @@ KtensorOneSidedUpdate(const DistTensor<ExecSpace>& X,
   parallel = pmap != nullptr && pmap->gridSize() > 1;
   if (parallel) {
     const unsigned nd = u.ndims();
+    padded.resize(nd);
     sizes.resize(nd);
     sizes_r.resize(nd);
     offsets.resize(nd);
     offsets_r.resize(nd);
     for (unsigned n=0; n<nd; ++n) {
+      padded[n] = u[n].isPadded();
       const unsigned np = pmap->subCommSize(n);
 
       // Get number of rows on each processor
@@ -170,7 +172,9 @@ createOverlapKtensor(const KtensorT<ExecSpace>& u) const
   for (unsigned n=0; n<nd; ++n) {
     const unsigned np = offsets[n].size();
     const ttb_indx nrows = offsets[n][np-1]+sizes[n][np-1];
-    FacMatrixT<ExecSpace> mat(nrows, nc);
+    // Create factor matrix to have same padding as u[n] for consistent
+    // dimensions in import/export
+    FacMatrixT<ExecSpace> mat(nrows, nc, nullptr, true, padded[n]);
     u_overlapped.set_factor(n, mat);
   }
   u_overlapped.setProcessorMap(u.getProcessorMap());
@@ -785,17 +789,18 @@ KtensorTwoSidedUpdate<ExecSpace>::
 KtensorTwoSidedUpdate(const DistTensor<ExecSpace>& X,
                       const KtensorT<ExecSpace>& u,
                       const AlgParams& a) :
-  pmap(u.getProcessorMap()), algParams(a), nc(u.ncomponents())
+  pmap(u.getProcessorMap()), algParams(a), nd(u.ndims()), nc(u.ncomponents())
 {
   parallel = pmap != nullptr && pmap->gridSize() > 1;
   if (parallel) {
-    const unsigned nd = u.ndims();
+    padded.resize(nd);
     sizes.resize(nd);
     sizes_r.resize(nd);
     offsets.resize(nd);
     offsets_r.resize(nd);
     offsets_dev.resize(nd);
     for (unsigned n=0; n<nd; ++n) {
+      padded[n] = u[n].isPadded();
       const unsigned np = pmap->subCommSize(n);
 
       // Get number of rows on each processor
@@ -839,7 +844,6 @@ extractRowRecvsHost()
 {
   GENTEN_START_TIMER("extract row recvs host");
   const ttb_indx nnz = X_sparse.nnz();
-  const unsigned nd = X_sparse.ndims();
   if (maps.empty()) {
     maps.resize(nd);
     row_recvs_for_proc.resize(nd);
@@ -953,7 +957,6 @@ extractRowRecvsDevice()
 
   GENTEN_START_TIMER("extract row recvs device");
   const ttb_indx nnz = X_sparse.nnz();
-  const unsigned nd = X_sparse.ndims();
   const unsigned nc_ = nc;
   if (num_row_recvs_dev.empty()) {
     num_row_recvs_dev.resize(nd);
@@ -1073,7 +1076,6 @@ updateTensor(const DistTensor<ExecSpace>& X)
   if (sparse && parallel) {
     GENTEN_START_TIMER("initialize");
     X_sparse = X.getSptensor();
-    const unsigned nd = X_sparse.ndims();
     if (num_row_sends.empty()) {
       num_row_sends.resize(nd);
       num_row_recvs.resize(nd);
@@ -1186,16 +1188,16 @@ createOverlapKtensor(const KtensorT<ExecSpace>& u) const
   if (!parallel)
     return u;
 
-  const unsigned nd = u.ndims();
-  const unsigned nc = u.ncomponents();
   KtensorT<ExecSpace> u_overlapped = KtensorT<ExecSpace>(nc, nd);
   for (unsigned n=0; n<nd; ++n) {
     const unsigned np = offsets[n].size();
     const ttb_indx nrows = offsets[n][np-1]+sizes[n][np-1];
-    FacMatrixT<ExecSpace> mat(nrows, nc);
+    // Create factor matrix to have same padding as u[n] for consistent
+    // dimensions in import/export
+    FacMatrixT<ExecSpace> mat(nrows, nc, nullptr, true, padded[n]);
     u_overlapped.set_factor(n, mat);
   }
-  u_overlapped.setProcessorMap(u.getProcessorMap());
+  u_overlapped.setProcessorMap(pmap);
   return u_overlapped;
 }
 
@@ -1206,7 +1208,6 @@ initOverlapKtensor(KtensorT<ExecSpace>& u) const
 {
   GENTEN_TIME_MONITOR("k-tensor init");
   if (parallel && sparse) {
-    const unsigned nd = u.ndims();
     const unsigned nc_ = nc;
     for (unsigned n=0; n<nd; ++n) {
       const unsigned np = pmap->subCommSize(n);
@@ -1324,7 +1325,6 @@ KtensorTwoSidedUpdate<ExecSpace>::
 doImportSparse(const KtensorT<ExecSpace>& u_overlapped,
                const KtensorT<ExecSpace>& u) const
 {
-  const unsigned nd = u.ndims();
   for (unsigned n=0; n<nd; ++n) {
     doImportSparse(u_overlapped, u, n);
   }
@@ -1393,7 +1393,6 @@ KtensorTwoSidedUpdate<ExecSpace>::
 doImportDense(const KtensorT<ExecSpace>& u_overlapped,
               const KtensorT<ExecSpace>& u) const
 {
-  const unsigned nd = u.ndims();
   for (unsigned n=0; n<nd; ++n)
     doImportDense(u_overlapped, u, n);
 }
@@ -1421,7 +1420,6 @@ KtensorTwoSidedUpdate<ExecSpace>::
 doExportSparse(const KtensorT<ExecSpace>& u,
                const KtensorT<ExecSpace>& u_overlapped) const
 {
-  const unsigned nd = u.ndims();
   for (unsigned n=0; n<nd; ++n) {
     doExportSparse(u, u_overlapped, n);
   }
@@ -1491,7 +1489,6 @@ KtensorTwoSidedUpdate<ExecSpace>::
 doExportDense(const KtensorT<ExecSpace>& u,
               const KtensorT<ExecSpace>& u_overlapped) const
 {
-  const unsigned nd = u.ndims();
   for (unsigned n=0; n<nd; ++n)
     doExportDense(u, u_overlapped, n);
 }

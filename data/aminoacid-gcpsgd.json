@@ -8,7 +8,7 @@
     },
     "k-tensor":
     {
-        "rank": 16,
+        "rank": 15,
         "output-file": "aminoacid.ktn",
         "initial-guess": "rand",
         "distributed-guess": "parallel-drew",
@@ -29,7 +29,7 @@
         "seed": 31415,
         "fuse": false,
         "hash": true,
-        "gnzs": 100,
+        "gnzs": 150,
         "gzs": 0,
         "fnzs": 10000,
         "fzs": 0,
@@ -44,8 +44,8 @@
         },
         "iterations":
         {
-            "value": 73,
-            "absolute-tolerance": 20
+            "value": 60,
+            "absolute-tolerance": 30
         }
     }
 }

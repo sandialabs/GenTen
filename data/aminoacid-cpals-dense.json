@@ -9,7 +9,7 @@
     },
     "k-tensor":
     {
-        "rank": 16,
+        "rank": 15,
         "initial-guess": "rand",
         "distributed-guess": "serial",
         "seed": 12345,
@@ -35,7 +35,7 @@
         },
         "iterations":
         {
-            "value": 8,
+            "value": 5,
             "absolute-tolerance": 1
         }
     }

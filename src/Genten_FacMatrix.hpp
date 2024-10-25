@@ -104,7 +104,7 @@ public:
      *  @param[in] n  Number of columns, should equal the number of components
      *                in the Ktensor.
      */
-    FacMatrixT(ttb_indx m, ttb_indx n, const ProcessorMap::FacMap* pmap_ = nullptr, const bool zero = true);
+    FacMatrixT(ttb_indx m, ttb_indx n, const ProcessorMap::FacMap* pmap_ = nullptr, const bool zero = true, const bool pad = true);
 
     //! Constructor to create a Factor Matrix of Size M x N using the
     // given view
@@ -117,7 +117,8 @@ public:
     // given data vector CVEC which is assumed to be stored *columnwise*.
     // Not currently used; therefore not part of doxygen API.
     FacMatrixT(ttb_indx m, ttb_indx n, const ttb_real * cvec,
-               const ProcessorMap::FacMap* pmap_ = nullptr);
+               const ProcessorMap::FacMap* pmap_ = nullptr,
+               const bool pad = true);
 
     //! @brief Create matrix from supplied view
     KOKKOS_INLINE_FUNCTION
@@ -244,6 +245,12 @@ public:
 
     void setProcessorMap(const ProcessorMap::FacMap* pmap_) { pmap = pmap_; }
     const ProcessorMap::FacMap* getProcessorMap() const { return pmap; }
+
+     KOKKOS_INLINE_FUNCTION
+     bool isPadded() const
+    {
+      return data.extent(0)*data.extent(1) != data.span();
+    }
 
     /** @} */
 
