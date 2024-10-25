@@ -29,7 +29,7 @@
         "seed": 31415,
         "fuse": false,
         "hash": true,
-        "gnzs": 100,
+        "gnzs": 150,
         "gzs": 0,
         "fnzs": 10000,
         "fzs": 0,
