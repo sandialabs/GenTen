@@ -266,5 +266,62 @@ TEST(TestSptensor, SearchSorted) {
   ASSERT_EQ(st.index(3, 0, 0), 10);
 }
 
+template <typename ExecSpace> struct TestSpTensorT : public ::testing::Test {
+  using exec_space = ExecSpace;
+};
+
+TYPED_TEST_SUITE(TestSpTensorT, genten_test_types);
+
+TYPED_TEST(TestSpTensorT, SpTensorFromKruskalTensor) {
+  using exec_space = typename TestFixture::exec_space;
+  using host_exec_space = DefaultHostExecutionSpace;
+
+  // Create ktensor whose reconstruction is sparse
+  IndxArray dims(3);
+  dims[0] = 2;
+  dims[1] = 2;
+  dims[2] = 2;
+  KtensorT<host_exec_space> kt(2, 3, dims);
+  FacMatrixT<host_exec_space> A(2,2);
+  A.entry(0,0) = 1.0;
+  A.entry(0,1) = 0.0;
+  A.entry(1,0) = 0.0;
+  A.entry(1,1) = 1.0;
+  deep_copy(kt[0],A);
+  deep_copy(kt[1],A);
+  deep_copy(kt[2],A);
+  kt.weights() = 1.0;
+  KtensorT<exec_space> kt_dev = create_mirror_view(exec_space(), kt);
+  deep_copy(kt_dev, kt);
+
+  // Create sparse reconstruction and check values
+  SptensorT<exec_space> x_dev(kt_dev);
+  SptensorT<host_exec_space> x = create_mirror_view(host_exec_space(), x_dev);
+  deep_copy(x,x_dev);
+  ASSERT_EQ(x.nnz(),2);
+  ASSERT_EQ(x.subscript(0,0),0);
+  ASSERT_EQ(x.subscript(0,1),0);
+  ASSERT_EQ(x.subscript(0,2),0);
+  ASSERT_EQ(x.subscript(1,0),1);
+  ASSERT_EQ(x.subscript(1,1),1);
+  ASSERT_EQ(x.subscript(1,2),1);
+  ASSERT_FLOAT_EQ(x.value(0),1.0);
+  ASSERT_FLOAT_EQ(x.value(1),1.0);
+
+  // Create second sparse reconstruction using sparsity pattern from x and check values
+  SptensorT<exec_space> x_dev2(x_dev, kt_dev);
+  SptensorT<host_exec_space> x2 = create_mirror_view(host_exec_space(), x_dev2);
+  deep_copy(x2,x_dev2);
+  ASSERT_EQ(x2.nnz(),2);
+  ASSERT_EQ(x2.subscript(0,0),0);
+  ASSERT_EQ(x2.subscript(0,1),0);
+  ASSERT_EQ(x2.subscript(0,2),0);
+  ASSERT_EQ(x2.subscript(1,0),1);
+  ASSERT_EQ(x2.subscript(1,1),1);
+  ASSERT_EQ(x2.subscript(1,2),1);
+  ASSERT_FLOAT_EQ(x2.value(0),1.0);
+  ASSERT_FLOAT_EQ(x2.value(1),1.0);
+}
+
 } // namespace UnitTests
 } // namespace Genten

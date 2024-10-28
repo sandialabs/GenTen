@@ -841,6 +841,8 @@ void pygenten_sptensor(py::module &m){
      The dense tensor is scanned for zeros which are excluded from the resulting
      sparse tensor.  Values are considered to be non-zero if they are larger in
      magnitude than the supplied tolerance.)", py::arg("X"), py::arg("tol") = 0.0);
+    cl.def(py::init([](const Genten::Sptensor& x, const Genten::Ktensor& u){ return new Genten::Sptensor(x,u); }),R"(
+     Constructor that creates a sparse tensor from the supplied Ktensor u using the nonzero pattern in x.)", py::arg("x"), py::arg("u"));
     cl.def_property_readonly("pmap", &Genten::Sptensor::getProcessorMap, py::return_value_policy::reference, R"(
     Processor map for distributed memory parallelism.)");
     cl.def_property_readonly("ndims", &Genten::Sptensor::ndims, R"(

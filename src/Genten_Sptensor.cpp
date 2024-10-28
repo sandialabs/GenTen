@@ -116,6 +116,55 @@ void copyFromTensor(const TensorImpl<ExecSpace,Layout>& x,
   });
 }
 
+template <typename ExecSpace>
+void copyFromKtensor(const SptensorImpl<ExecSpace>& x,
+                     const KtensorImpl<ExecSpace>& src)
+{
+  typedef Kokkos::TeamPolicy<ExecSpace> Policy;
+  typedef typename Policy::member_type TeamMember;
+
+  /*const*/ ttb_indx ne = x.nnz();
+  /*const*/ unsigned nd = src.ndims();
+  /*const*/ unsigned nc = src.ncomponents();
+
+  // Make VectorSize*TeamSize ~= 256 on Cuda and HIP
+  static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+  const unsigned VectorSize = is_gpu ? nc : 1;
+  const unsigned TeamSize = is_gpu ? (256+nc-1)/nc : 1;
+  const ttb_indx N = (ne+TeamSize-1)/TeamSize;
+
+  Policy policy(N, TeamSize, VectorSize);
+  Kokkos::parallel_for("copyFromKtensor",
+                       policy,
+                       KOKKOS_LAMBDA(const TeamMember& team)
+  {
+    const unsigned team_rank = team.team_rank();
+    const unsigned team_size = team.team_size();
+    const ttb_indx i = team.league_rank()*team_size+team_rank;
+    if (i >= ne)
+      return;
+
+    // Compute Ktensor value for given indices
+    ttb_real src_val = 0.0;
+    Kokkos::parallel_reduce(Kokkos::ThreadVectorRange(team, nc),
+                            [&](const unsigned j, ttb_real& v)
+    {
+      ttb_real tmp = src.weights(j);
+      for (unsigned m=0; m<nd; ++m) {
+        tmp *= src[m].entry(x.subscript(i,m),j);
+      }
+      v += tmp;
+    }, src_val);
+
+    // Write result
+    Kokkos::single(Kokkos::PerThread(team), [&]()
+    {
+      x.value(i) = src_val;
+    });
+
+  });
+}
+
 }
 }
 
@@ -252,6 +301,25 @@ SptensorImpl(const TensorT<ExecSpace>& x,
     Impl::copyFromTensor(x.right_impl(), subs, values.values(), tol);
   }
   subs_gids = subs;
+}
+
+template <typename ExecSpace>
+Genten::SptensorImpl<ExecSpace>::
+SptensorImpl(const SptensorImpl &x, const KtensorImpl<ExecSpace> &u) :
+  siz(x.size().clone()), nNumDims(x.ndims()), values(x.nnz()),
+  subs("Genten::Sptensor::subs",x.nnz(),x.ndims()), subs_gids(), perm(),
+  is_sorted(false),
+  lower_bound(nNumDims,ttb_indx(0)), upper_bound(siz.clone())
+{
+  siz_host = create_mirror_view(siz);
+  deep_copy(siz_host, siz);
+
+  // copy subs from original tensor
+  Kokkos::deep_copy(subs, x.subs);
+  subs_gids = subs;
+
+  // set values from reconstruction from u
+  Impl::copyFromKtensor(*this,u);
 }
 
 template <typename ExecSpace>

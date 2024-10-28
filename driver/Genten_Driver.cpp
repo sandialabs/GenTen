@@ -98,6 +98,8 @@ void usage(char **argv)
   std::cout << "  --output-file <string>  output file name for saving Ktensor" << std::endl;
   std::cout << "  --dense-reconstruction <string>  output file name for saving the tensor reconstruction as a dense tensor" << std::endl;
   std::cout << "  --sparse-reconstruction <string>  output file name for saving the tensor reconstruction as a sparse tensor" << std::endl;
+  std::cout << "  --sparse-reconstruction-tolerance <float>  tolerance for determining nonzeros in sparse reconstruction" << std::endl;
+  std::cout << "  --sparse-nonzero-reconstruction <string>  output file name for saving the tensor reconstruction as a sparse tensor using only nonzeros of the original sparse tensor (only for sparse input)" << std::endl;
   std::cout << "  --vtune            connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
   std::cout << "  --history-file     file to save performance history" << std::endl;
   std::cout << std::endl;
@@ -118,6 +120,7 @@ int main_driver(Genten::AlgParams& algParams,
                 const std::string& dense_reconstruction,
                 const std::string& sparse_reconstruction,
                 const ttb_real sparse_reconstruction_tol,
+                const std::string& sparse_nonzero_reconstruction,
                 const std::string& history_file)
 {
   int ret = 0;
@@ -209,8 +212,28 @@ int main_driver(Genten::AlgParams& algParams,
       if (dtc.gridRank() == 0)
         printf("Sptensor export took %6.3f seconds\n", timer.getTotalTime(1));
     }
+
+    // Save sparse nonzero reconstruction
+  if (sparse_nonzero_reconstruction != "") {
+    timer.start(1);
+    Genten::Ktensor u_root =
+      dtc.template importToRoot<Genten::DefaultHostExecutionSpace>(u);
+    if (dtc.gridRank() == 0) {
+      std::cout << "Writing ktensor sparse nonzero reconstruction to "
+                << sparse_nonzero_reconstruction << std::endl;
+      Genten::Sptensor sparse_recon(x, u_root);
+      Genten::export_sptensor(sparse_nonzero_reconstruction, sparse_recon);
+    }
+    timer.stop(1);
+    DC::Barrier();
+    if (dtc.gridRank() == 0)
+      printf("  Writing reconstruction took %6.3f seconds\n", timer.getTotalTime(1));
+  }
   }
   else {
+    if (sparse_nonzero_reconstruction != "")
+      Genten::error("Sparse nonzero reconstruction requires a sparse input tensor.");
+
     Tensor_host_type x_host;
     Tensor_type x;
     Sptensor_type xs;
@@ -450,6 +473,7 @@ int main(int argc, char* argv[])
       std::string tensor_outputfilename = "";
       std::string dense_reconstruction = "";
       std::string sparse_reconstruction = "";
+      std::string sparse_nonzero_reconstruction = "";
       ttb_real sparse_reconstruction_tol = 0.0;
       ttb_indx nnz = 1 * 1000 * 1000;
       Genten::IndxArray facDims_h = { 30, 40, 50 };
@@ -492,6 +516,7 @@ int main(int argc, char* argv[])
           Genten::parse_ptree_value(ktensor_input, "dense-reconstruction", dense_reconstruction);
           Genten::parse_ptree_value(ktensor_input, "sparse-reconstruction", sparse_reconstruction);
           Genten::parse_ptree_value(ktensor_input, "sparse-reconstruction-tolerance", sparse_reconstruction_tol, 0.0, DBL_MAX);
+          Genten::parse_ptree_value(ktensor_input, "sparse-nonzero-reconstruction", sparse_nonzero_reconstruction);
         }
 
         Genten::parse_ptree_value(json_input, "history-file", history_file);
@@ -513,6 +538,8 @@ int main(int argc, char* argv[])
         Genten::parse_string(args, "--sparse-reconstruction", sparse_reconstruction);
       sparse_reconstruction_tol =
         Genten::parse_ttb_real(args, "--sparse-reconstruction-tolerance", sparse_reconstruction_tol, 0.0, DBL_MAX);
+      sparse_nonzero_reconstruction =
+        Genten::parse_string(args, "--sparse-nonzero-reconstruction", sparse_nonzero_reconstruction);
       nnz =
         Genten::parse_ttb_indx(args, "--nnz", nnz, 1, INT_MAX);
       facDims_h =
@@ -555,7 +582,10 @@ int main(int argc, char* argv[])
         if (dense_reconstruction != "")
           std::cout << "  dense-reconstruction = " << dense_reconstruction << std::endl;
         if (sparse_reconstruction != "")
-          std::cout << "  sparse-reconstruction = " << sparse_reconstruction << std::endl;
+          std::cout << "  sparse-reconstruction = " << sparse_reconstruction 
+                    << " (tol = " << sparse_reconstruction_tol << ")" << std::endl;
+        if (sparse_nonzero_reconstruction != "")
+          std::cout << "  sparse-nonzero-reconstruction = " << sparse_nonzero_reconstruction << std::endl;
         std::cout << "  output-file = " << outputfilename << std::endl;
         std::cout << "  index_base = " << index_base << std::endl;
         std::cout << "  gz = " << (gz ? "true" : "false") << std::endl;
@@ -583,6 +613,7 @@ int main(int argc, char* argv[])
                                                          dense_reconstruction,
                                                          sparse_reconstruction,
                                                          sparse_reconstruction_tol,
+                                                         sparse_nonzero_reconstruction,
                                                          history_file);
 #ifdef HAVE_CUDA
       else if (algParams.exec_space == Genten::Execution_Space::Cuda)
@@ -599,6 +630,7 @@ int main(int argc, char* argv[])
                                         dense_reconstruction,
                                         sparse_reconstruction,
                                         sparse_reconstruction_tol,
+                                        sparse_nonzero_reconstruction,
                                         history_file);
 #endif
 #ifdef HAVE_HIP
@@ -616,6 +648,7 @@ int main(int argc, char* argv[])
                                                      dense_reconstruction,
                                                      sparse_reconstruction,
                                                      sparse_reconstruction_tol,
+                                                     sparse_nonzero_reconstruction,
                                                      history_file);
 #endif
 #ifdef HAVE_SYCL
@@ -633,6 +666,7 @@ int main(int argc, char* argv[])
                                                       dense_reconstruction,
                                                       sparse_reconstruction,
                                                       sparse_reconstruction_tol,
+                                                      sparse_nonzero_reconstruction,
                                                       history_file);
 #endif
 #ifdef HAVE_OPENMP
@@ -650,6 +684,7 @@ int main(int argc, char* argv[])
                                           dense_reconstruction,
                                           sparse_reconstruction,
                                           sparse_reconstruction_tol,
+                                          sparse_nonzero_reconstruction,
                                           history_file);
 #endif
 #ifdef HAVE_THREADS
@@ -667,6 +702,7 @@ int main(int argc, char* argv[])
                                            dense_reconstruction,
                                            sparse_reconstruction,
                                            sparse_reconstruction_tol,
+                                           sparse_nonzero_reconstruction,
                                            history_file);
 #endif
 #ifdef HAVE_SERIAL
@@ -684,6 +720,7 @@ int main(int argc, char* argv[])
                                           dense_reconstruction,
                                           sparse_reconstruction,
                                           sparse_reconstruction_tol,
+                                          sparse_nonzero_reconstruction,
                                           history_file);
 #endif
       else

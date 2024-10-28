@@ -266,6 +266,10 @@ static nlohmann::json json_schema = R"(
                   "minimum": 0.0,
                   "default": 0.0
               },
+              "sparse-nonzero-reconstruction": {
+                  "description": "Path to output K-tensor reconstruction as a sparse tensor using only nonzeros of the original sparse tensor",
+                  "type": "string"
+              },
               "initial-guess": {
                   "description": "Type of initial guess to use",
                   "enum": ["rand", "file"],

@@ -174,6 +174,10 @@ public:
   // with a magnitude larger than tol are included as non-zeros.
   SptensorImpl(const TensorT<ExecSpace>& x, const ttb_real tol = 0.0);
 
+  // Create a sparse tensor from a ktensor using an existing sparsity pattern
+  // This uses the sparsity pattern in x, regardless of what values are nonzero in the reconstruction
+  SptensorImpl(const SptensorImpl& x, const KtensorImpl<ExecSpace>& u);
+
   // Copy constructor.
   KOKKOS_DEFAULTED_FUNCTION
   SptensorImpl (const SptensorImpl & arg) = default;
@@ -544,6 +548,8 @@ public:
     impl_type(d,s), dist_type(d.size()) {}
   SptensorT(const TensorT<ExecSpace>& x, const ttb_real tol = 0.0) :
     impl_type(x, tol), dist_type(x.ndims()) {}
+  SptensorT(const SptensorT& x, const KtensorT<ExecSpace>& u) :
+    impl_type(x.impl(), u.impl()) {}
 
   SptensorT(SptensorT&&) = default;
   SptensorT(const SptensorT&) = default;
