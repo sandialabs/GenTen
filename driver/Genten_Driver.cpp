@@ -215,13 +215,18 @@ int main_driver(Genten::AlgParams& algParams,
 
     // Save sparse nonzero reconstruction
   if (sparse_nonzero_reconstruction != "") {
+    // We currently can't import the tensor to a single proc, so error out if nprocs > 1
+    if (dtc.nprocs() > 1)
+      Genten::error("Cannot currently compute sparse reconstruction with distributed parallelism.");
     timer.start(1);
+    Genten::Sptensor xh = create_mirror_view(x);
+    deep_copy(xh, x);
     Genten::Ktensor u_root =
       dtc.template importToRoot<Genten::DefaultHostExecutionSpace>(u);
     if (dtc.gridRank() == 0) {
       std::cout << "Writing ktensor sparse nonzero reconstruction to "
                 << sparse_nonzero_reconstruction << std::endl;
-      Genten::Sptensor sparse_recon(x, u_root);
+      Genten::Sptensor sparse_recon(xh, u_root);
       Genten::export_sptensor(sparse_nonzero_reconstruction, sparse_recon);
     }
     timer.stop(1);
