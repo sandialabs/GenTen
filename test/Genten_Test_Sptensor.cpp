@@ -294,17 +294,15 @@ TYPED_TEST(TestSpTensorT, SpTensorFromKruskalTensor) {
   KtensorT<exec_space> kt_dev = create_mirror_view(exec_space(), kt);
   deep_copy(kt_dev, kt);
 
-  // Create sparse reconstruction and check values
+  // Create sparse reconstruction and check values (ordering of nonzeros is not deterministic)
   SptensorT<exec_space> x_dev(kt_dev);
   SptensorT<host_exec_space> x = create_mirror_view(host_exec_space(), x_dev);
   deep_copy(x,x_dev);
   ASSERT_EQ(x.nnz(),2);
-  ASSERT_EQ(x.subscript(0,0),0);
-  ASSERT_EQ(x.subscript(0,1),0);
-  ASSERT_EQ(x.subscript(0,2),0);
-  ASSERT_EQ(x.subscript(1,0),1);
-  ASSERT_EQ(x.subscript(1,1),1);
-  ASSERT_EQ(x.subscript(1,2),1);
+  ASSERT_TRUE((x.subscript(0,0) == 0 && x.subscript(0,1) == 0 &&  x.subscript(0,2) == 0 &&
+               x.subscript(1,0) == 1 && x.subscript(1,1) == 1 &&  x.subscript(1,2) == 1) ||
+              (x.subscript(0,0) == 1 && x.subscript(0,1) == 1 &&  x.subscript(0,2) == 1 &&
+               x.subscript(1,0) == 0 && x.subscript(1,1) == 0 &&  x.subscript(1,2) == 0));
   ASSERT_FLOAT_EQ(x.value(0),1.0);
   ASSERT_FLOAT_EQ(x.value(1),1.0);
 
@@ -313,12 +311,10 @@ TYPED_TEST(TestSpTensorT, SpTensorFromKruskalTensor) {
   SptensorT<host_exec_space> x2 = create_mirror_view(host_exec_space(), x_dev2);
   deep_copy(x2,x_dev2);
   ASSERT_EQ(x2.nnz(),2);
-  ASSERT_EQ(x2.subscript(0,0),0);
-  ASSERT_EQ(x2.subscript(0,1),0);
-  ASSERT_EQ(x2.subscript(0,2),0);
-  ASSERT_EQ(x2.subscript(1,0),1);
-  ASSERT_EQ(x2.subscript(1,1),1);
-  ASSERT_EQ(x2.subscript(1,2),1);
+  ASSERT_TRUE((x2.subscript(0,0) == 0 && x2.subscript(0,1) == 0 &&  x2.subscript(0,2) == 0 &&
+               x2.subscript(1,0) == 1 && x2.subscript(1,1) == 1 &&  x2.subscript(1,2) == 1) ||
+              (x2.subscript(0,0) == 1 && x2.subscript(0,1) == 1 &&  x2.subscript(0,2) == 1 &&
+               x2.subscript(1,0) == 0 && x2.subscript(1,1) == 0 &&  x2.subscript(1,2) == 0));
   ASSERT_FLOAT_EQ(x2.value(0),1.0);
   ASSERT_FLOAT_EQ(x2.value(1),1.0);
 }
@@ -337,7 +333,7 @@ TYPED_TEST(TestSpTensorT, SpTensorImportToRoot) {
   for (ttb_indx i=0; i<nz; ++i) {
     X.value(i) = i;
     for (ttb_indx j=0; j<nd; ++j) {
-      X.subscript(i,j) = (i+j) % j; // mod is necessary to get subscript in valid range
+      X.subscript(i,j) = (i+j) % dims[j]; // mod is necessary to get subscript in valid range
     }
   }
 
@@ -361,15 +357,14 @@ TYPED_TEST(TestSpTensorT, SpTensorImportToRoot) {
     // Import the tensor back to root
     Sptensor Xi = dtc.template importToRoot<host_exec_space>(Xd);
 
-    // Check values and indices are correct
+    // Check values and indices are correct, but ordering is not deterministic, so have to search
     if (dtc.gridRank() == 0) {
       ASSERT_EQ(Xi.nnz(),nz);
       ASSERT_EQ(Xi.ndims(),nd);
       for (ttb_indx i=0; i<nz; ++i) {
-        ASSERT_FLOAT_EQ(Xi.value(i),X.value(i));
-        for (ttb_indx j=0; j<nd; ++j) {
-          ASSERT_EQ(Xi.subscript(i,j), X.subscript(i,j));
-        }
+        const ttb_indx ind = Xi.index(X.getSubscripts(i));
+        ASSERT_TRUE(ind < nz); // ind >= nz means indices were not found
+        ASSERT_FLOAT_EQ(Xi.value(ind),X.value(i));
       }
     }
   }
