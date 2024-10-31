@@ -266,5 +266,110 @@ TEST(TestSptensor, SearchSorted) {
   ASSERT_EQ(st.index(3, 0, 0), 10);
 }
 
+template <typename ExecSpace> struct TestSpTensorT : public ::testing::Test {
+  using exec_space = ExecSpace;
+};
+
+TYPED_TEST_SUITE(TestSpTensorT, genten_test_types);
+
+TYPED_TEST(TestSpTensorT, SpTensorFromKruskalTensor) {
+  using exec_space = typename TestFixture::exec_space;
+  using host_exec_space = DefaultHostExecutionSpace;
+
+  // Create ktensor whose reconstruction is sparse
+  IndxArray dims(3);
+  dims[0] = 2;
+  dims[1] = 2;
+  dims[2] = 2;
+  KtensorT<host_exec_space> kt(2, 3, dims);
+  FacMatrixT<host_exec_space> A(2,2);
+  A.entry(0,0) = 1.0;
+  A.entry(0,1) = 0.0;
+  A.entry(1,0) = 0.0;
+  A.entry(1,1) = 1.0;
+  deep_copy(kt[0],A);
+  deep_copy(kt[1],A);
+  deep_copy(kt[2],A);
+  kt.weights() = 1.0;
+  KtensorT<exec_space> kt_dev = create_mirror_view(exec_space(), kt);
+  deep_copy(kt_dev, kt);
+
+  // Create sparse reconstruction and check values (ordering of nonzeros is not deterministic)
+  SptensorT<exec_space> x_dev(kt_dev);
+  SptensorT<host_exec_space> x = create_mirror_view(host_exec_space(), x_dev);
+  deep_copy(x,x_dev);
+  ASSERT_EQ(x.nnz(),2);
+  ASSERT_TRUE((x.subscript(0,0) == 0 && x.subscript(0,1) == 0 &&  x.subscript(0,2) == 0 &&
+               x.subscript(1,0) == 1 && x.subscript(1,1) == 1 &&  x.subscript(1,2) == 1) ||
+              (x.subscript(0,0) == 1 && x.subscript(0,1) == 1 &&  x.subscript(0,2) == 1 &&
+               x.subscript(1,0) == 0 && x.subscript(1,1) == 0 &&  x.subscript(1,2) == 0));
+  ASSERT_FLOAT_EQ(x.value(0),1.0);
+  ASSERT_FLOAT_EQ(x.value(1),1.0);
+
+  // Create second sparse reconstruction using sparsity pattern from x and check values
+  SptensorT<exec_space> x_dev2(x_dev, kt_dev);
+  SptensorT<host_exec_space> x2 = create_mirror_view(host_exec_space(), x_dev2);
+  deep_copy(x2,x_dev2);
+  ASSERT_EQ(x2.nnz(),2);
+  ASSERT_TRUE((x2.subscript(0,0) == 0 && x2.subscript(0,1) == 0 &&  x2.subscript(0,2) == 0 &&
+               x2.subscript(1,0) == 1 && x2.subscript(1,1) == 1 &&  x2.subscript(1,2) == 1) ||
+              (x2.subscript(0,0) == 1 && x2.subscript(0,1) == 1 &&  x2.subscript(0,2) == 1 &&
+               x2.subscript(1,0) == 0 && x2.subscript(1,1) == 0 &&  x2.subscript(1,2) == 0));
+  ASSERT_FLOAT_EQ(x2.value(0),1.0);
+  ASSERT_FLOAT_EQ(x2.value(1),1.0);
+}
+
+TYPED_TEST(TestSpTensorT, SpTensorImportToRoot) {
+  using exec_space = typename TestFixture::exec_space;
+  using host_exec_space = DefaultHostExecutionSpace;
+
+  // Create a sparse tensor
+  const ttb_indx nz = 10;
+  const ttb_indx nd = 3;
+  IndxArray dims = { 3, 4, 5 };
+  Sptensor X(dims, nz);
+  ASSERT_EQ(X.nnz(),nz);
+  ASSERT_EQ(X.ndims(),nd); 
+  for (ttb_indx i=0; i<nz; ++i) {
+    X.value(i) = i;
+    for (ttb_indx j=0; j<nd; ++j) {
+      X.subscript(i,j) = (i+j) % dims[j]; // mod is necessary to get subscript in valid range
+    }
+  }
+
+  // Iterate over all distribution approaches (most don't change the tensor distribution approach, but some do)
+  for (unsigned t=0; t<Dist_Update_Method::num_types; ++t) {
+    AlgParams algParams;
+    algParams.dist_update_method = Dist_Update_Method::types[t];
+
+    // Skip tpetra if tpetra is not enabled
+#ifndef HAVE_TPETRA
+    if (algParams.dist_update_method == Dist_Update_Method::Tpetra)
+      continue;
+#endif
+    std::string message = std::string("Testing dist_update_method = ") + Dist_Update_Method::names[t];
+    INFO_MSG(message.c_str()); 
+
+    // Distribute the sparse tensor
+    DistTensorContext<exec_space> dtc;
+    SptensorT<exec_space> Xd = dtc.distributeTensor(X, algParams);
+
+    // Import the tensor back to root
+    Sptensor Xi = dtc.template importToRoot<host_exec_space>(Xd);
+
+    // Check values and indices are correct, but ordering is not deterministic, so have to search
+    if (dtc.gridRank() == 0) {
+      ASSERT_EQ(Xi.nnz(),nz);
+      ASSERT_EQ(Xi.ndims(),nd);
+      for (ttb_indx i=0; i<nz; ++i) {
+        const ttb_indx ind = Xi.index(X.getSubscripts(i));
+        ASSERT_TRUE(ind < nz); // ind >= nz means indices were not found
+        ASSERT_FLOAT_EQ(Xi.value(ind),X.value(i));
+      }
+    }
+  }
+}
+
+
 } // namespace UnitTests
 } // namespace Genten
