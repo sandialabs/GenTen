@@ -988,6 +988,10 @@ void pygenten_sptensor(py::module &m){
       }, R"(
     Distribute a given dense tensor in parallel and return the distributed
     tensor.)");
+    cl.def("importToRoot", [](const Genten::DTC& dtc, const Genten::Sptensor& u) {
+        return dtc.importToRoot<Genten::DefaultHostExecutionSpace>(u);
+      }, R"(
+    Import a given Sptensor to the root processor.)");
     cl.def("importToAll", [](const Genten::DTC& dtc, const Genten::Ktensor& u) {
         return dtc.importToAll<Genten::DefaultHostExecutionSpace>(u);
       }, R"(

@@ -49,6 +49,7 @@
 #include "Genten_Sptensor.hpp"
 #include "Genten_Tensor.hpp"
 #include "Genten_AlgParams.hpp"
+#include "Genten_TensorIO.hpp"
 
 #include "CMakeInclude.h"
 #if defined(HAVE_DIST)
@@ -122,6 +123,8 @@ public:
   ttb_real globalNorm(const SptensorT<ExecSpace>& X) const;
   ttb_indx globalNNZ(const SptensorT<ExecSpace>& X) const;
   ttb_real globalNumelFloat(const SptensorT<ExecSpace>& X) const;
+  template <typename ExecSpaceDst>
+  SptensorT<ExecSpaceDst> importToRoot(const SptensorT<ExecSpace>& u) const;
 
   // Tensor operations
   ttb_real globalNorm(const TensorT<ExecSpace>& X) const;
@@ -258,6 +261,95 @@ distributeTensor(const TensorT<ExecSpaceSrc>& X, const AlgParams& algParams)
   Tensor X_host = create_mirror_view(X);
   deep_copy(X_host, X);
   return distributeTensorImpl(X_host, algParams);
+}
+
+template <typename ExecSpace>
+template <typename ExecSpaceDst>
+SptensorT<ExecSpaceDst>
+DistTensorContext<ExecSpace>::
+importToRoot(const SptensorT<ExecSpace>& u) const
+{
+  const int num_procs = pmap_->gridSize();
+  const int rank = pmap_->gridRank();
+  const int my_nnz = u.nnz();
+  const int nd = u.ndims();
+
+  // Get number of nonzeros on each processor
+  std::vector<int> nnzs(num_procs);
+  MPI_Gather(&my_nnz, 1, MPI_INT, nnzs.data(), 1, MPI_INT, 0, pmap_->gridComm());
+
+  // Compute data sizes to receive from each processor
+  std::vector<int> counts(num_procs);
+  std::vector<int> displs(num_procs);
+  ttb_indx total_nnz = 0;
+  if (rank == 0) {
+    for (int i=0; i<num_procs; ++i) {
+      total_nnz += nnzs[i];
+      counts[i] = nnzs[i]*sizeof(SpDataType);
+    }
+  
+    displs[0] = 0;
+    for (int i=1; i<num_procs; ++i)
+      displs[i] = displs[i-1] + counts[i-1];
+  }
+
+  // Copy u to host
+  Sptensor uh = create_mirror_view(u);
+  deep_copy(uh,u);
+
+  // Copy tensor into send buffer (using GIDs)
+#ifdef HAVE_TPETRA
+  const bool use_tpetra = tpetra_comm != nullptr;
+#else
+  const bool use_tpetra = false;
+#endif
+  std::vector<SpDataType> Tvec(my_nnz);
+  if (use_tpetra) {
+    for (int i=0; i<my_nnz; ++i) {
+      Tvec[i].val = uh.value(i);
+      for (int j=0; j<nd; ++j)
+        Tvec[i].coo[j] = uh.globalSubscript(i,j);
+    }
+  }
+  else {
+    // It would be nice if we had GIDs for non-tpetra, or had lower_bound set correctly,
+    // but that doesn't appear to be the case, so we need to recompute it
+    std::vector<int> lower(nd);
+    for (int i=0; i<nd; ++i)
+      lower[i] = global_blocking_[i][pmap_->gridCoord(i)];
+    for (int i=0; i<my_nnz; ++i) {
+      Tvec[i].val = uh.value(i);
+      for (int j=0; j<nd; ++j)
+        Tvec[i].coo[j] = uh.subscript(i,j)+lower[j];
+    }
+  }
+
+  // Gather tensors from all procs
+  std::vector<SpDataType> gatheredTensor(total_nnz);
+  MPI_Gatherv(Tvec.data(), Tvec.size()*sizeof(SpDataType), MPI_BYTE,
+              gatheredTensor.data(), counts.data(), displs.data(),
+              MPI_BYTE, 0, pmap_->gridComm());
+
+  // Get global dimensions
+  IndxArray global_size(nd);
+  for (int i=0; i<nd; ++i)
+    global_size[i] = global_dims_[i];
+
+  // Create gathered tensor
+  Sptensor vh;
+  if (rank == 0) {
+    vh = Sptensor(global_size, total_nnz);
+    for (ttb_indx i=0; i<total_nnz; ++i) {
+      vh.value(i) = gatheredTensor[i].val;
+      for (int j=0; j<nd; ++j) {
+        vh.subscript(i,j) = gatheredTensor[i].coo[j];
+      }
+    }
+  }
+  SptensorT<ExecSpaceDst> v = create_mirror_view(ExecSpaceDst(), vh);
+  deep_copy(v, vh);
+
+  return v;
 }
 
 template <typename ExecSpace>
@@ -569,6 +661,12 @@ public:
   ttb_real globalNorm(const SptensorT<ExecSpace>& X) const { return X.norm(); }
   ttb_indx globalNNZ(const SptensorT<ExecSpace>& X) const { return X.nnz(); }
   ttb_real globalNumelFloat(const SptensorT<ExecSpace>& X) const { return X.numel_float(); }
+  template <typename ExecSpaceDst>
+  SptensorT<ExecSpaceDst> importToRoot(const SptensorT<ExecSpace>& u) const {
+    SptensorT<ExecSpaceDst> v = create_mirror_view(ExecSpaceDst(), u);
+    deep_copy(v, u);
+    return v;
+  }
 
   // Tensor operations
   ttb_real globalNorm(const TensorT<ExecSpace>& X) const { return X.norm(); }

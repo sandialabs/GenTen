@@ -306,17 +306,28 @@ SptensorImpl(const TensorT<ExecSpace>& x,
 template <typename ExecSpace>
 Genten::SptensorImpl<ExecSpace>::
 SptensorImpl(const SptensorImpl &x, const KtensorImpl<ExecSpace> &u) :
-  siz(x.size().clone()), nNumDims(x.ndims()), values(x.nnz()),
+  siz(x.siz.clone()), nNumDims(x.nNumDims), values(x.nnz()),
   subs("Genten::Sptensor::subs",x.nnz(),x.ndims()), subs_gids(), perm(),
-  is_sorted(false),
-  lower_bound(nNumDims,ttb_indx(0)), upper_bound(siz.clone())
+  is_sorted(x.is_sorted),
+  lower_bound(x.lower_bound.clone()), upper_bound(x.upper_bound.clone())
 {
   siz_host = create_mirror_view(siz);
   deep_copy(siz_host, siz);
 
   // copy subs from original tensor
   Kokkos::deep_copy(subs, x.subs);
-  subs_gids = subs;
+  if (x.subs.data() == x.subs_gids.data())
+    subs_gids = subs;
+  else {
+    subs_gids = subs_view_type("Genten::Sptensor::subs_gids",x.nnz(),x.ndims());
+    Kokkos::deep_copy(subs_gids, x.subs_gids);
+  }
+
+  // copy perm from original tensor
+  if (x.perm.data() != nullptr) {
+    perm = subs_view_type("Genten::Sptensor::perm",x.nnz(),x.ndims());
+    Kokkos::deep_copy(perm, x.perm);
+  }
 
   // set values from reconstruction from u
   Impl::copyFromKtensor(*this,u);

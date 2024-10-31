@@ -323,5 +323,58 @@ TYPED_TEST(TestSpTensorT, SpTensorFromKruskalTensor) {
   ASSERT_FLOAT_EQ(x2.value(1),1.0);
 }
 
+TYPED_TEST(TestSpTensorT, SpTensorImportToRoot) {
+  using exec_space = typename TestFixture::exec_space;
+  using host_exec_space = DefaultHostExecutionSpace;
+
+  // Create a sparse tensor
+  const ttb_indx nz = 10;
+  const ttb_indx nd = 3;
+  IndxArray dims = { 3, 4, 5 };
+  Sptensor X(dims, nz);
+  ASSERT_EQ(X.nnz(),nz);
+  ASSERT_EQ(X.ndims(),nd); 
+  for (ttb_indx i=0; i<nz; ++i) {
+    X.value(i) = i;
+    for (ttb_indx j=0; j<nd; ++j) {
+      X.subscript(i,j) = (i+j) % j; // mod is necessary to get subscript in valid range
+    }
+  }
+
+  // Iterate over all distribution approaches (most don't change the tensor distribution approach, but some do)
+  for (unsigned t=0; t<Dist_Update_Method::num_types; ++t) {
+    AlgParams algParams;
+    algParams.dist_update_method = Dist_Update_Method::types[t];
+
+    // Skip tpetra if tpetra is not enabled
+#ifndef HAVE_TPETRA
+    if (algParams.dist_update_method == Dist_Update_Method::Tpetra)
+      continue;
+#endif
+    std::string message = std::string("Testing dist_update_method = ") + Dist_Update_Method::names[t];
+    INFO_MSG(message.c_str()); 
+
+    // Distribute the sparse tensor
+    DistTensorContext<exec_space> dtc;
+    SptensorT<exec_space> Xd = dtc.distributeTensor(X, algParams);
+
+    // Import the tensor back to root
+    Sptensor Xi = dtc.template importToRoot<host_exec_space>(Xd);
+
+    // Check values and indices are correct
+    if (dtc.gridRank() == 0) {
+      ASSERT_EQ(Xi.nnz(),nz);
+      ASSERT_EQ(Xi.ndims(),nd);
+      for (ttb_indx i=0; i<nz; ++i) {
+        ASSERT_FLOAT_EQ(Xi.value(i),X.value(i));
+        for (ttb_indx j=0; j<nd; ++j) {
+          ASSERT_EQ(Xi.subscript(i,j), X.subscript(i,j));
+        }
+      }
+    }
+  }
+}
+
+
 } // namespace UnitTests
 } // namespace Genten
