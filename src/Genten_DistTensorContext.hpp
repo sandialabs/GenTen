@@ -299,7 +299,7 @@ importToRoot(const SptensorT<ExecSpace>& u) const
 
   // Copy tensor into send buffer (using GIDs)
 #ifdef HAVE_TPETRA
-  const bool use_tpetra = tpetra_comm != nullptr;
+  const bool use_tpetra = (tpetra_comm != Teuchos::null);
 #else
   const bool use_tpetra = false;
 #endif
