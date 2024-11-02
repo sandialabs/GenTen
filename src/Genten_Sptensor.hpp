@@ -635,11 +635,29 @@ typename SptensorT<ExecSpace>::HostMirror
 create_mirror_view(const SptensorT<ExecSpace>& a)
 {
   typedef typename SptensorT<ExecSpace>::HostMirror HostMirror;
-  HostMirror hm( create_mirror_view(a.size()),
-                 create_mirror_view(a.getValues()),
-                 create_mirror_view(a.getSubscripts()),
-                 create_mirror_view(a.getPerm()),
-                 a.isSorted() );
+  HostMirror hm;
+  if (a.getGlobalSubscripts().data() == a.getSubscripts().data()) {
+    // When subs_gids aliases gids, don't create a new view for subs_gids
+    auto sv = create_mirror_view(a.getSubscripts());
+    hm = HostMirror( create_mirror_view(a.size()),
+                     create_mirror_view(a.getValues()),
+                     sv,
+                     create_mirror_view(a.getPerm()),
+                     a.isSorted(),
+                     sv,
+                     create_mirror_view(a.getLowerBounds()),
+                     create_mirror_view(a.getUpperBounds()) );
+  }
+  else {
+    hm = HostMirror( create_mirror_view(a.size()),
+                     create_mirror_view(a.getValues()),
+                     create_mirror_view(a.getSubscripts()),
+                     create_mirror_view(a.getPerm()),
+                     a.isSorted(),
+                     create_mirror_view(a.getGlobalSubscripts()),
+                     create_mirror_view(a.getLowerBounds()),
+                     create_mirror_view(a.getUpperBounds()) );
+  }
   hm.copy_extra_data(a);
   return hm;
 }
