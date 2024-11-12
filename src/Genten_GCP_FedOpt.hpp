@@ -495,14 +495,6 @@ operator() (const Loss& loss) {
     }
     */
 
-    {
-      history_.addEmpty();
-      auto& p = history_.lastEntry();
-      p.iteration = e+1;
-      p.residual = fest;
-      p.cum_time = t1 - start_time;
-    }
-
     if (passed_epoch) {
       stepper->setPassed();
       meta_stepper->setPassed();
@@ -520,6 +512,14 @@ operator() (const Loss& loss) {
       meta_stepper->setFailed();
       fest = fest_best;
       ++nfails;
+    }
+
+    {
+      history_.addEmpty();
+      auto& p = history_.lastEntry();
+      p.iteration = e+1;
+      p.residual = fest;
+      p.cum_time = t1 - start_time;
     }
 
     if (nfails > max_fails || fest < tol*fest_init)

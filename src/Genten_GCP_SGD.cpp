@@ -352,16 +352,6 @@ namespace Genten {
         out << std::endl;
       }
 
-      {
-        perfInfo.addEmpty();
-        auto& p = perfInfo.lastEntry();
-        p.iteration = numEpochs+1;
-        p.residual = fest;
-        if (compute_fit)
-          p.fit = fit;
-        p.cum_time = timer.getTotalTime(timer_sgd);
-      }
-
       if (failed_epoch) {
         // restart from last epoch
         u.set(u_prev);
@@ -377,6 +367,16 @@ namespace Genten {
         fit_prev = fit;
         stepper->setPassed();
         annealer->success();
+      }
+
+      {
+        perfInfo.addEmpty();
+        auto& p = perfInfo.lastEntry();
+        p.iteration = numEpochs+1;
+        p.residual = fest;
+        if (compute_fit)
+          p.fit = fit;
+        p.cum_time = timer.getTotalTime(timer_sgd);
       }
 
       if (nfails > max_fails || fest < tol)
