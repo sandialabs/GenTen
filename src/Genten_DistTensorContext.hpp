@@ -96,6 +96,11 @@ public:
   template <typename ExecSpaceSrc>
   TensorT<ExecSpace> distributeTensor(const TensorT<ExecSpaceSrc>& X,
                                       const AlgParams& algParams = AlgParams());
+  template <typename ExecSpaceSrc>
+  TensorT<ExecSpace> distributeTensor(const TensorT<ExecSpaceSrc>& X,
+				      const std::vector<small_vector<ttb_indx>>& global_blocking,
+				      const small_vector<ttb_indx>& parallel_map,
+                                      const AlgParams& algParams = AlgParams());
 
   // Parallel info
   ttb_indx ndims() const { return global_dims_.size(); }
@@ -171,7 +176,10 @@ private:
   SptensorT<ExecSpace>
   distributeTensorImpl(const Sptensor& X, const AlgParams& algParams);
   TensorT<ExecSpace>
-  distributeTensorImpl(const Tensor& X, const AlgParams& algParams);
+  distributeTensorImpl(const Tensor& X, const AlgParams& algParams,
+                       const std::vector<small_vector<ttb_indx>>& global_blocking=std::vector<small_vector<ttb_indx>>(),
+                       const small_vector<ttb_indx>& parallel_map=small_vector<ttb_indx>());
+
 
   SptensorT<ExecSpace> distributeTensorData(
     const std::vector<SpDataType>& Tvec,
@@ -350,6 +358,18 @@ importToRoot(const SptensorT<ExecSpace>& u) const
   deep_copy(v, vh);
 
   return v;
+}
+
+template <typename ExecSpace>
+template <typename ExecSpaceSrc>
+TensorT<ExecSpace>
+DistTensorContext<ExecSpace>::
+distributeTensor(const TensorT<ExecSpaceSrc>& X, const std::vector<small_vector<ttb_indx>>& global_blocking, const small_vector<ttb_indx>& parallel_map, const AlgParams& algParams)
+{
+  dist_method = algParams.dist_update_method;
+  Tensor X_host = create_mirror_view(X);
+  deep_copy(X_host, X);
+  return distributeTensorImpl(X_host, algParams, global_blocking, parallel_map);
 }
 
 template <typename ExecSpace>
@@ -645,6 +665,14 @@ public:
     TensorT<ExecSpace> X_dst = create_mirror_view(ExecSpace(), X);
     deep_copy(X_dst, X);
     return X_dst;
+  }
+  template <typename ExecSpaceSrc>
+  TensorT<ExecSpace> distributeTensor(const TensorT<ExecSpaceSrc>& X,
+				      const std::vector<small_vector<ttb_indx>>& /*global_blocking*/,
+				      const small_vector<ttb_indx>& /*parallel_map*/,
+                                      const AlgParams& algParams = AlgParams())
+  {
+    return distributeTensor(X, algParams);
   }
 
   // Parallel info

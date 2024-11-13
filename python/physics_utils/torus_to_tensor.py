@@ -24,14 +24,15 @@ import os
 import sys
 import exodus3 as ex
 import numpy as np
-import _pygenten as gt
-import _phys_utils as pu
+import pygenten as gt
+import pygenten._phys_utils as pu
 
 def torus_to_tensor(base_filename, axis, num_procs_per_poloidal_plane,tol=1.0e-10):
     # error check the processor decomposition
     num_procs = gt.num_procs()
-    if num_procs%num_procs_per_poloidal_plane > 0:
-      raise Exception('Invalid num_procs_per_poloidal_plane (' + str(num_procs_per_poloidal_plane) + '): must divide num MPI ranks (' + str(num_procs) + ') evenly')
+    if num_procs_per_poloidal_plane > 0:
+      if num_procs%num_procs_per_poloidal_plane > 0:
+        raise Exception('Invalid num_procs_per_poloidal_plane (' + str(num_procs_per_poloidal_plane) + '): must divide num MPI ranks (' + str(num_procs) + ') evenly')
 
     # get filename for this proc
     rank = gt.proc_rank()
@@ -74,19 +75,21 @@ def torus_to_tensor(base_filename, axis, num_procs_per_poloidal_plane,tol=1.0e-1
     total_ref_nodes = pu.global_go_sum(num_ref_nodes)
     total_nodes     = pu.global_go_sum(num_nodes)
     total_thetas    = len(unique_thetas)
+    num_theta_procs = -1
     if total_nodes != total_ref_nodes*total_thetas:
       msg = 'Toroidal decomposition failure: total_nodes != total_ref_nodes*total_thetas'
       msg = msg + ' (' + str(total_nodes) + ' != ' + str(total_ref_nodes) + '*' + str(total_thetas) + ')'
       raise Exception(msg)
-    if num_procs_per_poloidal_plane > total_ref_nodes:
-      msg = 'Invalid num_procs_per_poloidal_plane (' + str(num_procs_per_poloidal_plane) + '): '
-      msg = msg + 'must be less than number of nodes per poloidal plane (' + str(total_ref_nodes) +')'
-      raise Exception(msg)
-    num_procs_per_theta = num_procs//num_procs_per_poloidal_plane
-    if num_procs_per_theta > total_thetas:
-      msg = 'Invalid num_procs_per_theta (num_procs/num_procs_per_poloidal_plane = ' + str(num_procs_per_theta) + '): '
-      msg = msg + 'must be less than number of poloidal planes in the mesh (' + str(total_thetas) +')'
-      raise Exception(msg)
+    if num_procs_per_poloidal_plane:
+      if num_procs_per_poloidal_plane > total_ref_nodes:
+        msg = 'Invalid num_procs_per_poloidal_plane (' + str(num_procs_per_poloidal_plane) + '): '
+        msg = msg + 'must be less than number of nodes per poloidal plane (' + str(total_ref_nodes) +')'
+        raise Exception(msg)
+      num_theta_procs = num_procs//num_procs_per_poloidal_plane
+      if num_theta_procs > total_thetas:
+        msg = 'Invalid num_theta_procs (num_procs/num_procs_per_poloidal_plane = ' + str(num_theta_procs) + '): '
+        msg = msg + 'must be less than number of poloidal planes in the mesh (' + str(total_thetas) +')'
+        raise Exception(msg)
 
     # get the associated gids and r and a values
     ref_gids = np.zeros(num_ref_nodes, dtype=np.longlong)
@@ -124,11 +127,20 @@ def torus_to_tensor(base_filename, axis, num_procs_per_poloidal_plane,tol=1.0e-1
       cids[i] = tids[i]*total_ref_nodes + rids[i]
 
     # determine which cids should be on which procs based on the user defined decomposition
-    redistributed_cids = distribute_composite_ids_across_procs(num_procs_per_theta,total_thetas,num_procs_per_poloidal_plane,total_ref_nodes)
+    redistributed_cids = -1*np.ones(0, dtype=np.longlong)
+    global_blocking = []
+    parallel_map = []
+    if num_procs_per_poloidal_plane > 0:
+      redistributed_cids, global_blocking = distribute_composite_ids_across_procs(num_theta_procs,total_thetas,num_procs_per_poloidal_plane,total_ref_nodes)
+    else:
+      redistributed_cids = distribute_composite_ids_to_root(num_theta_procs,total_thetas,num_procs_per_poloidal_plane,total_ref_nodes)
     redistributed_num_nodes = len(redistributed_cids)
 
     # use cids to redistribute data across procs
     redistributed_node_data = pu.redistribute_data_across_procs(cids,node_data,redistributed_cids)
+    tensor = np.zeros((0,0,0,0), dtype=np.double)
+    if len(redistributed_node_data) == 0:
+      return tensor
 
     # back out tids and rids from redistributed cids
     redistributed_tids = -1*np.ones(redistributed_num_nodes, dtype=np.longlong)
@@ -149,7 +161,18 @@ def torus_to_tensor(base_filename, axis, num_procs_per_poloidal_plane,tol=1.0e-1
       for v in range(num_vars):
         for t in range(num_times):
           tensor[redistributed_tids[i]-start_tid, redistributed_rids[i]-start_rid, v, t] = redistributed_node_data[i,t*num_vars+v]
-    return tensor 
+
+    # add var and time dimensions to global blocking
+    if num_procs_per_poloidal_plane > 0:
+      vt_blocking = np.zeros((2,num_procs+1),dtype=np.longlong)
+      vt_blocking[0,1] = num_vars
+      vt_blocking[1,1] = num_times
+      global_blocking = np.vstack([global_blocking,vt_blocking])
+      parallel_map = np.ones((4),dtype=np.longlong)
+      parallel_map[0] = num_theta_procs
+      parallel_map[1] = num_procs_per_poloidal_plane
+
+    return tensor, global_blocking, parallel_map 
 
 def get_cylindrical_coordinates(x, y, z, axis, tol):
    """
@@ -326,6 +349,32 @@ def distribute_composite_ids_across_procs(num_procs_x,total_x,num_procs_y,total_
    for i in range(num_target_xids):
      for j in range(num_target_yids):
        target_cids[i*num_target_yids+j] = (start_xid+i)*total_y + (start_yid+j)
+
+   # create the global blocking array needed for dist tensor context
+   global_blocking = np.zeros((2, num_procs+1), dtype=np.longlong)
+   for i in range(num_procs_x):
+     global_blocking[0,i+1] = global_blocking[0,i] + total_x//num_procs_x
+     if i < total_x%num_procs_x:
+       global_blocking[0,i+1] += 1
+   for i in range(num_procs_y):
+     global_blocking[1,i+1] = global_blocking[1,i] + total_y//num_procs_y
+     if i < total_y%num_procs_y:
+       global_blocking[1,i+1] += 1
+
+   return target_cids, global_blocking
+
+def distribute_composite_ids_to_root(num_procs_x,total_x,num_procs_y,total_y):
+   """
+   Given how many procs to divide a number of ids in two coordinate directions into,
+   distribute composite ids on each processor that fit this decomposition
+   """
+
+   # assign ranks in each coordinate direction
+   target_cids = -1*np.ones(0, dtype=np.longlong)
+   rank = gt.proc_rank()
+   if rank == 0:
+      total_cids = total_x*total_y
+      target_cids = np.arange(0, total_cids-1, 1, dtype=np.longlong)
    return target_cids
 
 if __name__ == "__main__":
@@ -340,7 +389,7 @@ if __name__ == "__main__":
    tol = 1.0e-10
    if len(sys.argv) >= 5:
      tol = np.double(sys.argv[4])
-   tensor = torus_to_tensor(base_filename, axis, num_procs_per_poloidal_plane, tol)
+   tensor, global_blocking = torus_to_tensor(base_filename, axis, num_procs_per_poloidal_plane, tol)
    gt.finalizeGenten()
 
 

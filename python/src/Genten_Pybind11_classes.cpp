@@ -585,7 +585,7 @@ void pygenten_tensor(py::module &m){
      Constructor that returns an empty tensor.)");
     cl.def(py::init([](const py::buffer& b, const bool copy=true) {
         // Initialize a Genten::Tensor from a numpy array
-        py::buffer_info info = b.request();
+	py::buffer_info info = b.request();
 
         if (info.format != py::format_descriptor<ttb_real>::format())
           throw std::runtime_error("Incompatible format: expected a ttb_real array!");
@@ -983,11 +983,43 @@ void pygenten_sptensor(py::module &m){
       }, R"(
     Distribute a given sparse tensor in parallel and return the distributed
     tensor.)");
-    cl.def("distributeTensor", [](Genten::DTC& dtc, const Genten::Tensor& X, const Genten::AlgParams& algParams) {
-        return dtc.distributeTensor(X, algParams);
+    cl.def("distributeTensor", [](Genten::DTC& dtc,
+                                  const Genten::Tensor& X,
+                                  const Genten::AlgParams& algParams,
+                                  const py::array_t<ttb_indx>& global_blocking_in,
+                                  const py::array_t<ttb_indx>& parallel_map_in) {
+	if(global_blocking_in.size() == 0)
+	{
+	  // the tensor hasn't already been distributed
+          return dtc.distributeTensor(X, algParams);
+	}
+	else
+	{
+	  // the tensor is already distributed and we can pass its global blocking after translating it into  a vector of vectors
+      	  using Genten::small_vector;
+          std::vector<small_vector<ttb_indx>> global_blocking;
+          for(py::ssize_t i = 0; i < global_blocking_in.shape(0); i++)
+	  {
+             small_vector<ttb_indx> variable_blocking;
+	     variable_blocking.push_back(global_blocking_in.at(i,0));
+	     for(py::ssize_t j = 1; j < global_blocking_in.shape(1); j++)
+	       if(global_blocking_in.at(i,j) > 0)
+	         variable_blocking.push_back(global_blocking_in.at(i,j));
+             global_blocking.push_back(variable_blocking);
+	  }
+          small_vector<ttb_indx> parallel_map(parallel_map_in.shape(0));
+          for(py::ssize_t i = 0; i < parallel_map_in.shape(0); i++)
+	  {
+            parallel_map[i] = parallel_map_in.at(i);
+          }
+          return dtc.distributeTensor(X, global_blocking, parallel_map, algParams);
+	}
       }, R"(
     Distribute a given dense tensor in parallel and return the distributed
-    tensor.)");
+    tensor.)", py::arg("X"),
+               py::arg("algParams"),
+               py::arg("global_blocking_in") = py::array_t<ttb_indx>(0),
+               py::arg("parallel_map_in") = py::array_t<ttb_indx>(0));
     cl.def("importToRoot", [](const Genten::DTC& dtc, const Genten::Sptensor& u) {
         return dtc.importToRoot<Genten::DefaultHostExecutionSpace>(u);
       }, R"(

@@ -4,6 +4,7 @@ Various utility functions for using GenTen.
 
 import pygenten._pygenten as gt
 import json
+import numpy
 
 def make_algparams(args):
     """
@@ -73,7 +74,7 @@ def read_and_distribute_tensor(filename, file_type=None, format=None, shape=None
         return Xs,dtc
     return Xd,dtc
 
-def distribute_tensor(X, **kwargs):
+def distribute_tensor(X, global_blocking=numpy.empty(0), parallel_map=numpy.empty(0), **kwargs):
     """
     Distribute the given tensor in parallel and return the result.
 
@@ -81,5 +82,5 @@ def distribute_tensor(X, **kwargs):
     """
     a,rem = make_algparams(kwargs)
     dtc = gt.DistTensorContext()
-    XX = dtc.distributeTensor(X, a)
+    XX = dtc.distributeTensor(X, a, global_blocking, parallel_map)
     return XX,dtc

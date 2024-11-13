@@ -4,9 +4,8 @@ import os
 import sys
 import exodus3 as ex
 import numpy as np
-import _pygenten as gt
+import pygenten as gt
 import _phys_utils as pu
-sys.path.append('..')
 import torus_to_tensor
 import unittest
 
