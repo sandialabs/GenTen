@@ -607,7 +607,7 @@ distributeTensorImpl(const Sptensor& X, const AlgParams& algParams)
 template <typename ExecSpace>
 TensorT<ExecSpace>
 DistTensorContext<ExecSpace>::
-distributeTensorImpl(const Tensor& X, const AlgParams& algParams)
+distributeTensorImpl(const Tensor& X, const AlgParams& algParams, const std::vector<small_vector<ttb_indx>>& global_blocking, const small_vector<ttb_indx>& parallel_map)
 {
   ttb_indx ndims = X.ndims();
   auto layout = X.getLayout();
@@ -633,6 +633,10 @@ distributeTensorImpl(const Tensor& X, const AlgParams& algParams)
   ndims = max_ndims;
 #endif
 
+  std::vector<ttb_real> Tvec;
+  ttb_indx nnz;
+  ttb_indx offset = 0;
+
   // Check if we have already distributed a tensor, in which case this one
   // needs to be of the same size
   if (global_dims_.size() > 0) {
@@ -650,44 +654,61 @@ distributeTensorImpl(const Tensor& X, const AlgParams& algParams)
       global_dims_[i] = X.ndims() > 0 ? X.size(i) : 0;
 
 #ifdef HAVE_DIST
-    std::vector<ttb_indx> max_global_dims = global_dims_;
-    MPI_Allreduce(MPI_IN_PLACE, max_global_dims.data(), ndims,
-                  DistContext::toMpiType<ttb_indx>(), MPI_MAX,
-                  DistContext::commWorld());
-    if (X.ndims() > 0 && max_global_dims != global_dims_)
-      Genten::error("Tensor dimensions are not consistent across processors!");
-    global_dims_ = max_global_dims;
+    if(global_blocking.size() == 0) {
+      std::vector<ttb_indx> max_global_dims = global_dims_;
+      MPI_Allreduce(MPI_IN_PLACE, max_global_dims.data(), ndims,
+                    DistContext::toMpiType<ttb_indx>(), MPI_MAX,
+                    DistContext::commWorld());
+      if (X.ndims() > 0 && max_global_dims != global_dims_)
+        Genten::error("Tensor dimensions are not consistent across processors!");
+      global_dims_ = max_global_dims;
+    }
 #endif
 
-    if (algParams.proc_grid.size() > 0) {
-      gt_assert(algParams.proc_grid.size() == ndims);
-      small_vector<ttb_indx> grid(ndims);
-      for (ttb_indx i=0; i<ndims; ++i)
-        grid[i] = algParams.proc_grid[i];
+    if(global_blocking.size() > 0) { 
+      global_blocking_ = global_blocking;
       pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
-                                                             grid,
+                                                             parallel_map,
                                                              dist_method));
+      DistContext::Barrier();
+      nnz = pmap_->gridAllReduce(X.nnz(), ProcessorMap::Sum);
+      Tvec = std::vector<ttb_real>(X.getValues().size());
+      for(ttb_indx i = 0; i < X.getValues().size(); i++)
+        Tvec[i] = X.getValues()[i];
     }
     else
-      pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
-                                                             dist_method));
+    {
+      if (algParams.proc_grid.size() > 0) {
+        gt_assert(algParams.proc_grid.size() == ndims);
+        small_vector<ttb_indx> grid(ndims);
+        for (ttb_indx i=0; i<ndims; ++i)
+          grid[i] = algParams.proc_grid[i];
+        pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
+                                                               grid,
+                                                               dist_method));
+      }
+      else
+        pmap_ = std::shared_ptr<ProcessorMap>(new ProcessorMap(global_dims_,
+                                                               dist_method));
 
+      global_blocking_ =
+        detail::generateUniformBlocking(global_dims_, pmap_->gridDims());
+
+      DistContext::Barrier();
+
+      nnz = pmap_->gridAllReduce(X.nnz(), ProcessorMap::Max);
+      Tvec = detail::distributeTensorToVectorsDense(
+        X, nnz, pmap_->gridComm(), pmap_->gridRank(), pmap_->gridSize(), offset);
+    }
     detail::printGrids(*pmap_);
-
-    global_blocking_ =
-      detail::generateUniformBlocking(global_dims_, pmap_->gridDims());
 
     detail::printBlocking(*pmap_, global_blocking_);
     DistContext::Barrier();
   }
 
-  ttb_indx nnz = pmap_->gridAllReduce(X.nnz(), ProcessorMap::Max);
-  ttb_indx offset = 0;
-  auto Tvec = detail::distributeTensorToVectorsDense(
-    X, nnz, pmap_->gridComm(), pmap_->gridRank(), pmap_->gridSize(), offset);
-
+  const bool redistribute_needed = global_blocking.size() == 0;
   return distributeTensorData(Tvec, nnz, offset, global_dims_, global_blocking_,
-                              layout, *pmap_, algParams);
+                              layout, *pmap_, algParams, redistribute_needed);
 }
 
 template <typename ExecSpace>
