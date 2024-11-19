@@ -72,15 +72,16 @@ def driver(X, u, args, dtc=None):
 
     # Call Genten
     if dtc is not None:
-        M,info = gt.driver(dtc, X, u, args);
+        M,M0,info = gt.driver(dtc, X, u, args)
     else:
-        M,info = gt.driver(X, u, args);
+        M,M0,info = gt.driver(X, u, args)
 
     # Convert result Ktensor to TTB ktensor if necessary
     if is_ttb:
         M = make_ttb_ktensor(M, copy=False)
+        M0 = make_ttb_ktensor(M0, copy=False)
 
-    return M, info
+    return M, M0, info
 
 def cp_als(X, **kwargs):
     """
@@ -98,6 +99,8 @@ def cp_als(X, **kwargs):
 
     Returns:
       * u:  the ktensor solution (as either a pyttb.ktensor
+        or pygenten.ktensor, depending on what was passed in).
+      * u0:  the initial guess (as either a pyttb.ktensor
         or pygenten.ktensor, depending on what was passed in).
       * perfInfo:  performance information as pygenten.PerfHistory.
     """
@@ -126,6 +129,8 @@ def cp_opt(X, **kwargs):
 
     Returns:
       * u:  the ktensor solution (as either a pyttb.ktensor
+        or pygenten.ktensor, depending on what was passed in).
+      * u0:  the initial guess (as either a pyttb.ktensor
         or pygenten.ktensor, depending on what was passed in).
       * perfInfo:  performance information as pygenten.PerfHistory.
     """
@@ -156,6 +161,8 @@ def gcp_opt(X, **kwargs):
     Returns:
       * u:  the ktensor solution (as either a pyttb.ktensor
         or pygenten.ktensor, depending on what was passed in).
+      * u0:  the initial guess (as either a pyttb.ktensor
+        or pygenten.ktensor, depending on what was passed in).
       * perfInfo:  performance information as pygenten.PerfHistory.
     """
     rem = kwargs
@@ -185,6 +192,8 @@ def gcp_sgd(X, **kwargs):
     Returns:
       * u:  the ktensor solution (as either a pyttb.ktensor
         or pygenten.ktensor, depending on what was passed in).
+      * u0:  the initial guess (as either a pyttb.ktensor
+        or pygenten.ktensor, depending on what was passed in).
       * perfInfo:  performance information as pygenten.PerfHistory.
     """
     rem = kwargs
@@ -213,6 +222,8 @@ def gcp_fed(X, **kwargs):
 
     Returns:
       * u:  the ktensor solution (as either a pyttb.ktensor
+        or pygenten.ktensor, depending on what was passed in).
+      * u0:  the initial guess (as either a pyttb.ktensor
         or pygenten.ktensor, depending on what was passed in).
       * perfInfo:  performance information as pygenten.PerfHistory.
     """
