@@ -387,12 +387,14 @@ operator() (const Loss& loss) {
       if ((i + 1) % dp_iters == 0 || i == (epochIters - 1)) {
         auto s0 = MPI_Wtime();
         if (fedavg) {
+          Kokkos::fence();
           timer.start(timer_allreduce);
           dtc_.allReduce(ut, true);
           timer.stop(timer_allreduce);
         } else {
           timer.start(timer_meta_step);
           diff.axpby(1.0, meta_u, -1.0, u); // Subtract u from meta_u to get Meta grad
+          Kokkos::fence();
           timer.stop(timer_meta_step);
 
           timer.start(timer_allreduce);
