@@ -275,6 +275,7 @@ namespace Genten {
     }
     timer.stop(timer_fest);
     ttb_real fest_prev = fest;
+    ttb_real ften_prev = ften;
     ttb_real fit_prev = fit;
     GENTEN_STOP_TIMER("objective function");
 
@@ -356,6 +357,7 @@ namespace Genten {
         // restart from last epoch
         u.set(u_prev);
         fest = fest_prev;
+        ften = ften_prev;
         fit = fit_prev;
         stepper->setFailed();
         annealer->failed();
@@ -364,6 +366,7 @@ namespace Genten {
         // update previous data
         u_prev.set(u);
         fest_prev = fest;
+        ften_prev = ften;
         fit_prev = fit;
         stepper->setPassed();
         annealer->success();
@@ -408,7 +411,6 @@ namespace Genten {
     }
 
     u.copyToKtensor(u0);
-    ften = fest;
 
     delete sampler;
     delete itp;

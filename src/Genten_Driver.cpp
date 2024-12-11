@@ -307,6 +307,8 @@ driver(const DistTensorContext<ExecSpace>& dtc,
     // timer.stop(2);
     // out << "GCP took " << timer.getTotalTime(2) << " seconds\n";
   }
+  else if (algParams.method == Genten::Solver_Method::Online_GCP)
+    Genten::error("Streaming OnlineGCP currently not supported in the driver.  You must use the Python or Matlab interfaces instead.");
 #endif
   else {
     Genten::error(std::string("Unknown decomposition method:  ") +
@@ -501,6 +503,8 @@ driver(const DistTensorContext<ExecSpace>& dtc,
     if (algParams.timings)
       out << "GCP-OPT took " << timer.getTotalTime(2) << " seconds\n";
   }
+  else if (algParams.method == Genten::Solver_Method::Online_GCP)
+    Genten::error("Streaming OnlineGCP currently not supported in the driver.  You must use the Python or Matlab interfaces instead.");
 #endif
   else {
     Genten::error(std::string("Unknown decomposition method:  ") +

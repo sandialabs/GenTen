@@ -93,9 +93,11 @@ namespace Genten {
         P[k] = FacMatrixT<ExecSpace>(u[k].nRows(),nc);
         Q[k] = FacMatrixT<ExecSpace>(nc,nc);
       }
-      if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
-          !Xinit.havePerm())
-        Xinit.createPermutation();
+      if constexpr (std::is_same_v<TensorT,SptensorT<ExecSpace> >) {
+        if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
+            !Xinit.havePerm())
+          Xinit.createPermutation();
+      }
       const bool full = algParams.full_gram;
       for (ttb_indx m=0; m<nd-1; ++m) {
         mttkrp(Xinit, u, m, P[m], algParams);
@@ -186,9 +188,11 @@ namespace Genten {
       leastSquaresSolve(false,X,u,fest,ften,out,print);
     else if (spatialAlgParams.streaming_solver ==
              GCP_Streaming_Solver::OnlineCP) {
-      if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
-          !X.havePerm())
-        X.createPermutation();
+      if constexpr (std::is_same_v<TensorT,SptensorT<ExecSpace> >) {
+        if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
+            !X.havePerm())
+          X.createPermutation();
+      }
       const ttb_indx nd = u.ndims();
       const bool full = algParams.full_gram;
       for (ttb_indx m=0; m<nd-1; ++m) {
@@ -239,10 +243,11 @@ namespace Genten {
     const ttb_indx nd = u.ndims();
     const bool full = algParams.full_gram;
 
-    if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
-        !X.havePerm())
-      X.createPermutation();
-
+    if constexpr (std::is_same_v<TensorT,SptensorT<ExecSpace> >) {
+      if (algParams.mttkrp_method == MTTKRP_Method::Perm &&
+          !X.havePerm())
+        X.createPermutation();
+    }
     const ttb_indx mode_beg = temporal ? nd-1 : 0;
     const ttb_indx mode_end = temporal ? nd   : nd-1;
     for (ttb_indx mode=mode_beg; mode<mode_end; ++mode) {
@@ -390,7 +395,8 @@ namespace Genten {
 }
 
 #define LOSS_INST_MACRO(SPACE,LOSS)                                     \
-  template class Genten::OnlineGCP<SptensorT<SPACE>,SPACE,LOSS>;
+  template class Genten::OnlineGCP<SptensorT<SPACE>,SPACE,LOSS>;        \
+  template class Genten::OnlineGCP<TensorT<SPACE>,SPACE,LOSS>;
 
 #define INST_MACRO(SPACE)                                               \
   GENTEN_INST_LOSS(SPACE,LOSS_INST_MACRO)                               \
@@ -398,6 +404,17 @@ namespace Genten {
   template void online_gcp<SptensorT<SPACE>,SPACE>(                     \
     std::vector<SptensorT<SPACE>>& x,                                   \
     SptensorT<SPACE>& x_init,                                           \
+    KtensorT<SPACE>& u,                                                 \
+    const AlgParams& algParams,                                         \
+    const AlgParams& temporalAlgParams,                                 \
+    const AlgParams& spatialAlgParams,                                  \
+    std::ostream& out,                                                  \
+    Array& fest,                                                        \
+    Array& ften);                                                       \
+                                                                        \
+  template void online_gcp<TensorT<SPACE>,SPACE>(                       \
+    std::vector<TensorT<SPACE>>& x,                                     \
+    TensorT<SPACE>& x_init,                                             \
     KtensorT<SPACE>& u,                                                 \
     const AlgParams& algParams,                                         \
     const AlgParams& temporalAlgParams,                                 \

@@ -134,7 +134,7 @@ void pygenten_algparams(py::module &m){
   py::enum_<Genten::MTTKRP_All_Method::type>(m, "MTTKRP_All_Method")
     .value("MttkrpAllDefault", Genten::MTTKRP_All_Method::type::Default)
     .value("MttkrpAllIterated", Genten::MTTKRP_All_Method::type::Iterated)
-    .value("AMttkrpAlltomic", Genten::MTTKRP_All_Method::type::Atomic)
+    .value("MttkrpAllAtomic", Genten::MTTKRP_All_Method::type::Atomic)
     .value("MttkrpAllDuplicated", Genten::MTTKRP_All_Method::type::Duplicated)
     .value("MttkrpAllSingle", Genten::MTTKRP_All_Method::type::Single)
     .export_values();
@@ -335,6 +335,9 @@ void pygenten_algparams(py::module &m){
         a.goal_method = Genten::GCP_Goal_Method::PythonObject;
       });
 #endif
+    cl.def("parse", [](Genten::AlgParams& a, std::vector<std::string>& args) {
+        a.parse(args);
+      });
     cl.def("parse_json", [](Genten::AlgParams& a, const std::string& str) {
         Genten::ptree tree;
         tree.parse(str);

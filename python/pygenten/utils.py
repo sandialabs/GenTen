@@ -29,7 +29,14 @@ def make_algparams(args):
             setattr(a, key, value)
         else:
             rem[key] = value
-    return a, rem
+
+        # parse remaining arguments using command-line parser
+        arg_list = []
+        for key,value in rem.items():
+            arg_list.append(key)
+            arg_list.append(str(value))
+        a.parse(arg_list)
+    return a
 
 def read_and_distribute_tensor(filename, file_type=None, format=None, shape=None, nnz=None, value_bits=None, sub_bits=None, index_base=0, compressed=False, **kwargs):
     """

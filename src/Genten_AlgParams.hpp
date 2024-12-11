@@ -318,9 +318,10 @@ namespace Genten {
   void AlgParams::fixup(std::ostream& out) {
     typedef SpaceProperties<ExecSpace> space_prop;
 
-    // Even for dense tensors we use sparse mttkrp for GCP-SGD/GCP-FED
+    // Even for dense tensors we use sparse mttkrp for GCP-SGD/GCP-FED/OnlineGCP
     const bool use_sparse = sparse || method == Solver_Method::GCP_SGD ||
-      method == Solver_Method::GCP_FED;
+      method == Solver_Method::GCP_FED || 
+      (method == Solver_Method::Online_GCP && streaming_solver == GCP_Streaming_Solver::SGD);
 
     // Compute default MTTKRP method
     if (mttkrp_method == MTTKRP_Method::Default && use_sparse) {
