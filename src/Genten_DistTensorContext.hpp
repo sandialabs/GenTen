@@ -380,6 +380,12 @@ exportFromRoot(const KtensorT<ExecSpaceSrc>& u) const
 {
   const ttb_indx nd = u.ndims();
   const ttb_indx nc = u.ncomponents();
+
+  // Handle case when u is empty
+  if (nc == 0 || nd == 0) {
+    return KtensorT<ExecSpace>();
+  }
+
   gt_assert(ttb_indx(global_dims_.size()) == nd);
 
   Genten::KtensorT<ExecSpace> exp = Genten::KtensorT<ExecSpace>(nc, nd);

@@ -12,7 +12,7 @@ if pygenten.proc_rank() == 0:
 else:
     x = pygenten.Tensor()
 
-u,perf = pygenten.cp_als(x, rank=8, maxiters=20, tol=1e-4, timings=True)
+u,u0,perf = pygenten.cp_als(x, rank=8, maxiters=20, tol=1e-4, timings=True)
 
 if pygenten.proc_rank() == 0:
     pygenten.export_ktensor("aminoacid.ktn", u)
@@ -32,4 +32,4 @@ if pygenten.proc_rank() == 0:
         pyplot.draw()
         pyplot.savefig("conv.pdf")
 
-del u, x
+del u, u0, x

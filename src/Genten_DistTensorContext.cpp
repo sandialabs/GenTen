@@ -1430,8 +1430,6 @@ exportToFile(const KtensorT<ExecSpace>& u, const std::string& file_name) const
     // Normalize Ktensor u before writing out
     out.normalize(Genten::NormTwo);
     out.arrange();
-
-    std::cout << "Saving final Ktensor to " << file_name << std::endl;
     Genten::export_ktensor(file_name, out);
   }
 }

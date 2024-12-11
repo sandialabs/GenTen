@@ -153,7 +153,7 @@ template<typename ExecSpace>
 KtensorT<ExecSpace>
 driver(const DistTensorContext<ExecSpace>& dtc,
        SptensorT<ExecSpace>& x,
-       KtensorT<ExecSpace>& u,
+       KtensorT<ExecSpace>& u_init,
        AlgParams& algParams,
        PerfHistory& history,
        std::ostream& out_in)
@@ -173,22 +173,27 @@ driver(const DistTensorContext<ExecSpace>& dtc,
   out.precision(2);
 
   // Generate a random starting point if initial guess is empty
-  if (u.ncomponents() == 0 && u.ndims() == 0) {
+  if (u_init.ncomponents() == 0 && u_init.ndims() == 0) {
     timer.start(0);
-    u = dtc.randomInitialGuess(x, algParams.rank, algParams.seed,
-                               algParams.prng,
-                               algParams.scale_guess_by_norm_x,
-                               algParams.dist_guess_method);
+    u_init = dtc.randomInitialGuess(x, algParams.rank, algParams.seed,
+                                    algParams.prng,
+                                    algParams.scale_guess_by_norm_x,
+                                    algParams.dist_guess_method);
     timer.stop(0);
     if (algParams.timings)
       out << "\nCreating random initial guess took " << timer.getTotalTime(0)
           << " seconds\n";
   }
 
+  // Copy u_init into u
+  KtensorT<ExecSpace> u = clone(u_init);
+  deep_copy(u, u_init);
+
   if (algParams.debug) {
     Ktensor_host_type u0 =
       dtc.template importToRoot<Genten::DefaultHostExecutionSpace>(u);
-    Genten::print_ktensor(u0, out, "Initial guess");
+    if (pmap->gridRank() == 0)
+      Genten::print_ktensor(u0, out, "Initial guess");
   }
 
   // Fixup algorithmic choices
@@ -361,7 +366,7 @@ template<typename ExecSpace>
 KtensorT<ExecSpace>
 driver(const DistTensorContext<ExecSpace>& dtc,
        TensorT<ExecSpace>& x,
-       KtensorT<ExecSpace>& u,
+       KtensorT<ExecSpace>& u_init,
        AlgParams& algParams,
        PerfHistory& history,
        std::ostream& out_in)
@@ -381,21 +386,26 @@ driver(const DistTensorContext<ExecSpace>& dtc,
   out.precision(2);
 
   // Generate a random starting point if initial guess is empty
-  if (u.ncomponents() == 0 && u.ndims() == 0) {
-    u = dtc.randomInitialGuess(x, algParams.rank, algParams.seed,
-                               algParams.prng,
-                               algParams.scale_guess_by_norm_x,
-                               algParams.dist_guess_method);
+  if (u_init.ncomponents() == 0 && u_init.ndims() == 0) {
+    u_init = dtc.randomInitialGuess(x, algParams.rank, algParams.seed,
+                                    algParams.prng,
+                                    algParams.scale_guess_by_norm_x,
+                                    algParams.dist_guess_method);
     timer.stop(0);
     if (algParams.timings)
       out << "\nCreating random initial guess took " << timer.getTotalTime(0)
           << " seconds\n";
   }
 
+  // Copy u_init into u
+  KtensorT<ExecSpace> u = clone(u_init);
+  deep_copy(u, u_init);
+
   if (algParams.debug) {
      Ktensor_host_type u0 =
       dtc.template importToRoot<Genten::DefaultHostExecutionSpace>(u);
-     Genten::print_ktensor(u0, out, "Initial guess");
+    if (pmap->gridRank() == 0)
+      Genten::print_ktensor(u0, out, "Initial guess");
   }
 
   // Fixup algorithmic choices
