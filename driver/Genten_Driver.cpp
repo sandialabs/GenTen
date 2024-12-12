@@ -96,6 +96,7 @@ void usage(char **argv)
   std::cout << "  --save-tensor <string> filename to save the tensor (leave blank for no save)" << std::endl;
   std::cout << "  --initial-file <string>  file name for reading Ktensor initial guess (leave blank for random initial guess)" << std::endl;
   std::cout << "  --output-file <string>  output file name for saving Ktensor" << std::endl;
+  std::cout << "  --initial-guess-output-file path to output file for K-tensor initial guess" << std::endl;
   std::cout << "  --dense-reconstruction <string>  output file name for saving the tensor reconstruction as a dense tensor" << std::endl;
   std::cout << "  --sparse-reconstruction <string>  output file name for saving the tensor reconstruction as a sparse tensor" << std::endl;
   std::cout << "  --sparse-reconstruction-tolerance <float>  tolerance for determining nonzeros in sparse reconstruction" << std::endl;
@@ -111,6 +112,7 @@ int main_driver(Genten::AlgParams& algParams,
                 const Genten::ptree& json_input,
                 const std::string& inputfilename,
                 const std::string& outputfilename,
+                const std::string& ig_output_file,
                 const std::string& initfilename,
                 const ttb_indx index_base,
                 const ttb_bool gz,
@@ -137,6 +139,7 @@ int main_driver(Genten::AlgParams& algParams,
   Genten::DistTensorContext<Space> dtc;
 
   Ktensor_type u;
+  Ktensor_type u_init;
   Genten::PerfHistory history;
   if (algParams.sparse) {
     Sptensor_host_type x_host;
@@ -193,8 +196,9 @@ int main_driver(Genten::AlgParams& algParams,
     if (algParams.debug) Genten::print_sptensor(x_host, std::cout, "tensor");
 
     // Read in initial guess if provided
-    Ktensor_type u_init;
     if (initfilename != "") {
+      if (dtc.gridRank() == 0)
+        std::cout << "\nReading initial guess from " << initfilename << std::endl;
       u_init = dtc.readInitialGuess(initfilename);
     }
 
@@ -271,6 +275,8 @@ int main_driver(Genten::AlgParams& algParams,
     // Read in initial guess if provided
     Ktensor_type u_init;
     if (initfilename != "") {
+      if (dtc.gridRank() == 0)
+        std::cout << "\nReading initial guess from " << initfilename << std::endl;
       u_init = dtc.readInitialGuess(initfilename);
     }
 
@@ -291,7 +297,21 @@ int main_driver(Genten::AlgParams& algParams,
   if (outputfilename != "")
   {
     timer.start(1);
+    if (dtc.gridRank() == 0)
+      std::cout << "Saving final Ktensor to " << outputfilename << std::endl;
     dtc.exportToFile(u, outputfilename);
+    timer.stop(1);
+    DC::Barrier();
+    if (dtc.gridRank() == 0)
+      printf("  Ktensor export took %6.3f seconds\n", timer.getTotalTime(1));
+  }
+
+  // Save initial guess to file
+  if (ig_output_file != "") {
+    timer.start(1);
+    if (dtc.gridRank() == 0)
+      std::cout << "\nSaving initial guess to " << ig_output_file << std::endl;
+    dtc.exportToFile(u_init, ig_output_file);
     timer.stop(1);
     DC::Barrier();
     if (dtc.gridRank() == 0)
@@ -472,6 +492,7 @@ int main(int argc, char* argv[])
       std::string inputfilename = "";
       ttb_indx index_base = 0;
       ttb_bool gz = false;
+      std::string ig_output_file = "";
       std::string tensor_outputfilename = "";
       std::string dense_reconstruction = "";
       std::string sparse_reconstruction = "";
@@ -515,6 +536,7 @@ int main(int argc, char* argv[])
           auto& ktensor_input = *ktensor_input_o;
           Genten::parse_ptree_value(ktensor_input, "initial-file", init);
           Genten::parse_ptree_value(ktensor_input, "output-file", outputfilename);
+          Genten::parse_ptree_value(ktensor_input, "initial-guess-output-file", ig_output_file);
           Genten::parse_ptree_value(ktensor_input, "dense-reconstruction", dense_reconstruction);
           Genten::parse_ptree_value(ktensor_input, "sparse-reconstruction", sparse_reconstruction);
           Genten::parse_ptree_value(ktensor_input, "sparse-reconstruction-tolerance", sparse_reconstruction_tol, 0.0, DBL_MAX);
@@ -532,6 +554,8 @@ int main(int argc, char* argv[])
         Genten::parse_ttb_indx(args, "--index-base", index_base, 0, INT_MAX);
       gz =
         Genten::parse_ttb_bool(args, "--gz", "--no-gz", gz);
+      ig_output_file =
+        Genten::parse_string(args, "--initial-guess-output-file", ig_output_file);
       tensor_outputfilename =
         Genten::parse_string(args, "--save-tensor", tensor_outputfilename);
       dense_reconstruction =
@@ -589,6 +613,8 @@ int main(int argc, char* argv[])
         if (sparse_nonzero_reconstruction != "")
           std::cout << "  sparse-nonzero-reconstruction = " << sparse_nonzero_reconstruction << std::endl;
         std::cout << "  output-file = " << outputfilename << std::endl;
+        if (ig_output_file != "")
+          std::cout << "  initial-guess-output-file = " << ig_output_file << std::endl;
         std::cout << "  index_base = " << index_base << std::endl;
         std::cout << "  gz = " << (gz ? "true" : "false") << std::endl;
         std::cout << "  vtune = " << (vtune ? "true" : "false") << std::endl;
@@ -606,6 +632,7 @@ int main(int argc, char* argv[])
                                                          json_input,
                                                          inputfilename,
                                                          outputfilename,
+                                                         ig_output_file,
                                                          init,
                                                          index_base,
                                                          gz,
@@ -623,6 +650,7 @@ int main(int argc, char* argv[])
                                         json_input,
                                         inputfilename,
                                         outputfilename,
+                                        ig_output_file,
                                         init,
                                         index_base,
                                         gz,
@@ -641,6 +669,7 @@ int main(int argc, char* argv[])
                                                      json_input,
                                                      inputfilename,
                                                      outputfilename,
+                                                     ig_output_file,
                                                      init,
                                                      index_base,
                                                      gz,
@@ -659,6 +688,7 @@ int main(int argc, char* argv[])
                                                       json_input,
                                                       inputfilename,
                                                       outputfilename,
+                                                      ig_output_file,
                                                       init,
                                                       index_base,
                                                       gz,
@@ -677,6 +707,7 @@ int main(int argc, char* argv[])
                                           json_input,
                                           inputfilename,
                                           outputfilename,
+                                          ig_output_file,
                                           init,
                                           index_base,
                                           gz,
@@ -695,6 +726,7 @@ int main(int argc, char* argv[])
                                            json_input,
                                            inputfilename,
                                            outputfilename,
+                                           ig_output_file,
                                            init,
                                            index_base,
                                            gz,
@@ -713,6 +745,7 @@ int main(int argc, char* argv[])
                                           json_input,
                                           inputfilename,
                                           outputfilename,
+                                          ig_output_file,
                                           init,
                                           index_base,
                                           gz,

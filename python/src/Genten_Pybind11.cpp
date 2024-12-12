@@ -18,39 +18,22 @@ namespace {
 template <typename ExecSpace, typename TensorType>
 Genten::Ktensor
 driver_impl(const TensorType& x,
-            const Genten::Ktensor& u,
+            Genten::Ktensor& u0,
             Genten::AlgParams& algParams,
             Genten::PerfHistory& history,
             std::ostream& out)
 {
   Genten::DistTensorContext<ExecSpace> dtc;
   auto xd = dtc.distributeTensor(x, algParams);
-  Genten::KtensorT<ExecSpace> ud;
-  const ttb_indx nc = u.ncomponents();
-  const ttb_indx nd = u.ndims();
-  if (nd > 0 && nc > 0) {
-#ifdef HAVE_DIST
-    ud = dtc.exportFromRoot(u);
-#else
-    // We do not create a mirror-view of u because we always want a copy,
-    // since driver overwrites it and we don't want that in python.  And
-    // dtc.exportFromRoot() in serial builds is just a mirror.
-    ud = Genten::KtensorT<ExecSpace>(nc, nd);
-    deep_copy(ud.weights(), u.weights());
-    for (ttb_indx i=0; i<nd; ++i) {
-      Genten::FacMatrixT<ExecSpace> A(u[i].nRows(), nc);
-      deep_copy(A, u[i]);
-      ud.set_factor(i, A);
-    }
-#endif
-  }
+  auto u0d = dtc.exportFromRoot(u0);
 
   Genten::print_environment(xd, dtc, out);
 
-  ud = Genten::driver(dtc, xd, ud, algParams, history, out);
+  Genten::KtensorT<ExecSpace> ud = Genten::driver(dtc, xd, u0d, algParams, history, out);
 
   Genten::Ktensor ret =
     dtc.template importToAll<Genten::DefaultHostExecutionSpace>(ud);
+  u0 = dtc.template importToAll<Genten::DefaultHostExecutionSpace>(u0d);
 
   return ret;
 }
@@ -58,37 +41,37 @@ driver_impl(const TensorType& x,
 template <typename TensorType>
 Genten::Ktensor
 driver_host(const TensorType& x,
-            const Genten::Ktensor& u,
+            Genten::Ktensor& u0,
             Genten::AlgParams& algParams,
             Genten::PerfHistory& history,
             std::ostream& out)
 {
   Genten::Ktensor ret;
   if (algParams.exec_space == Genten::Execution_Space::Default)
-    ret = driver_impl<Genten::DefaultExecutionSpace>(x, u, algParams, history, out);
+    ret = driver_impl<Genten::DefaultExecutionSpace>(x, u0, algParams, history, out);
 #ifdef HAVE_CUDA
   else if (algParams.exec_space == Genten::Execution_Space::Cuda)
-    ret = driver_impl<Kokkos::Cuda>(x, u, algParams, history, out);
+    ret = driver_impl<Kokkos::Cuda>(x, u0, algParams, history, out);
 #endif
 #ifdef HAVE_HIP
   else if (algParams.exec_space == Genten::Execution_Space::HIP)
-    ret = driver_impl<Kokkos::Experimental::HIP>(x, u, algParams, history, out);
+    ret = driver_impl<Kokkos::Experimental::HIP>(x, u0, algParams, history, out);
 #endif
 #ifdef HAVE_SYCL
   else if (algParams.exec_space == Genten::Execution_Space::SYCL)
-    ret = driver_impl<Kokkos::Experimental::SYCL>(x, u, algParams, history, out);
+    ret = driver_impl<Kokkos::Experimental::SYCL>(x, u0, algParams, history, out);
 #endif
 #ifdef HAVE_OPENMP
   else if (algParams.exec_space == Genten::Execution_Space::OpenMP)
-    ret = driver_impl<Kokkos::OpenMP>(x, u, algParams, history, out);
+    ret = driver_impl<Kokkos::OpenMP>(x, u0, algParams, history, out);
 #endif
 #ifdef HAVE_THREADS
   else if (algParams.exec_space == Genten::Execution_Space::Threads)
-    ret = driver_impl<Kokkos::Threads>(x, u, algParams, history, out);
+    ret = driver_impl<Kokkos::Threads>(x, u0, algParams, history, out);
 #endif
 #ifdef HAVE_SERIAL
   else if (algParams.exec_space == Genten::Execution_Space::Serial)
-    ret = driver_impl<Kokkos::Serial>(x, u, algParams, history, out);
+    ret = driver_impl<Kokkos::Serial>(x, u0, algParams, history, out);
 #endif
   else
     Genten::error("Invalid execution space: " + std::string(Genten::Execution_Space::names[algParams.exec_space]));
@@ -100,36 +83,26 @@ template <typename ExecSpace, typename TensorType>
 Genten::Ktensor
 driver_impl(const Genten::DTC& dtc,
             const TensorType& x,
-            const Genten::Ktensor& u,
+            Genten::Ktensor& u0,
             Genten::AlgParams& algParams,
             Genten::PerfHistory& history,
             std::ostream& out)
 {
   auto xd = create_mirror_view(ExecSpace(), x);
+  auto u0d = create_mirror_view(ExecSpace(), u0);
   deep_copy(xd, x);
-  Genten::KtensorT<ExecSpace> ud;
-  const ttb_indx nc = u.ncomponents();
-  const ttb_indx nd = u.ndims();
-  if (nd > 0 && nc > 0) {
-    // We do not create a mirror-view of u because we always want a copy,
-    // since driver overwrites it and we don't want that in python.
-    ud = Genten::KtensorT<ExecSpace>(nc, nd);
-    deep_copy(ud.weights(), u.weights());
-    for (ttb_indx i=0; i<nd; ++i) {
-      Genten::FacMatrixT<ExecSpace> A(u[i].nRows(), nc);
-      deep_copy(A, u[i]);
-      ud.set_factor(i, A);
-    }
-  }
+  deep_copy(u0d, u0);
 
   Genten::DistTensorContext<ExecSpace> dtc2(dtc);
 
   Genten::print_environment(xd, dtc2, out);
 
-  ud = Genten::driver(dtc2, xd, ud, algParams, history, out);
+  Genten::KtensorT<ExecSpace> ud = Genten::driver(dtc2, xd, u0d, algParams, history, out);
 
   Genten::Ktensor ret = create_mirror_view(ud);
+  u0 = create_mirror_view(u0d);
   deep_copy(ret, ud);
+  deep_copy(u0, u0d);
 
   return ret;
 }
@@ -138,37 +111,37 @@ template <typename TensorType>
 Genten::Ktensor
 driver_host(const Genten::DTC& dtc,
             const TensorType& x,
-            const Genten::Ktensor& u,
+            Genten::Ktensor& u0,
             Genten::AlgParams& algParams,
             Genten::PerfHistory& history,
             std::ostream& out)
 {
   Genten::Ktensor ret;
   if (algParams.exec_space == Genten::Execution_Space::Default)
-    ret = driver_impl<Genten::DefaultExecutionSpace>(dtc, x, u, algParams, history, out);
+    ret = driver_impl<Genten::DefaultExecutionSpace>(dtc, x, u0, algParams, history, out);
 #ifdef HAVE_CUDA
   else if (algParams.exec_space == Genten::Execution_Space::Cuda)
-    ret = driver_impl<Kokkos::Cuda>(dtc, x, u, algParams, history, out);
+    ret = driver_impl<Kokkos::Cuda>(dtc, x, u0, algParams, history, out);
 #endif
 #ifdef HAVE_HIP
   else if (algParams.exec_space == Genten::Execution_Space::HIP)
-    ret = driver_impl<Kokkos::Experimental::HIP>(dtc, x, u, algParams, history, out);
+    ret = driver_impl<Kokkos::Experimental::HIP>(dtc, x, u0, algParams, history, out);
 #endif
 #ifdef HAVE_SYCL
   else if (algParams.exec_space == Genten::Execution_Space::SYCL)
-    ret = driver_impl<Kokkos::Experimental::SYCL>(dtc, x, u, algParams, history, out);
+    ret = driver_impl<Kokkos::Experimental::SYCL>(dtc, x, u0, algParams, history, out);
 #endif
 #ifdef HAVE_OPENMP
   else if (algParams.exec_space == Genten::Execution_Space::OpenMP)
-    ret = driver_impl<Kokkos::OpenMP>(dtc, x, u, algParams, history, out);
+    ret = driver_impl<Kokkos::OpenMP>(dtc, x, u0, algParams, history, out);
 #endif
 #ifdef HAVE_THREADS
   else if (algParams.exec_space == Genten::Execution_Space::Threads)
-    ret = driver_impl<Kokkos::Threads>(dtc, x, u, algParams, history, out);
+    ret = driver_impl<Kokkos::Threads>(dtc, x, u0, algParams, history, out);
 #endif
 #ifdef HAVE_SERIAL
   else if (algParams.exec_space == Genten::Execution_Space::Serial)
-    ret = driver_impl<Kokkos::Serial>(dtc, x, u, algParams, history, out);
+    ret = driver_impl<Kokkos::Serial>(dtc, x, u0, algParams, history, out);
 #endif
   else
     Genten::error("Invalid execution space: " + std::string(Genten::Execution_Space::names[algParams.exec_space]));
@@ -330,7 +303,7 @@ PYBIND11_MODULE(_pygenten, m) {
 
     All GenTen data structures must be destroyed before calling this.)");
 
-  m.def("driver", [](const Genten::Tensor& x, const Genten::Ktensor& u0, Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::PerfHistory > {
+  m.def("driver", [](const Genten::Tensor& x, Genten::Ktensor& u0, Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::Ktensor, Genten::PerfHistory > {
       py::scoped_ostream_redirect stream(
         std::cout,                                // std::ostream&
         py::module_::import("sys").attr("stdout") // Python output
@@ -341,7 +314,7 @@ PYBIND11_MODULE(_pygenten, m) {
        );
       Genten::PerfHistory perfInfo;
       Genten::Ktensor u = driver_host(x, u0, algParams, perfInfo, std::cout);
-      return std::make_tuple(u, perfInfo);
+      return std::make_tuple(u, u0, perfInfo);
     }, R"(
     Low-level driver for calling GenTen's solver methods on dense tensors.
 
@@ -355,9 +328,9 @@ PYBIND11_MODULE(_pygenten, m) {
       * algParams: algorithmic parameters controlling which algorithm is chosen
         as well as its solver parameters.
 
-    Returns a tuple of the Ktensor solution and PerfHistory containing
+    Returns a tuple of the Ktensor solution, initial guess, and PerfHistory containing
     information on the performance of the algorithm.)", pybind11::arg("X"), pybind11::arg("u0"), pybind11::arg("algParams"));
-    m.def("driver", [](const Genten::Sptensor& x, const Genten::Ktensor& u0, Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::PerfHistory > {
+    m.def("driver", [](const Genten::Sptensor& x, Genten::Ktensor& u0, Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::Ktensor, Genten::PerfHistory > {
         py::scoped_ostream_redirect stream(
           std::cout,                                // std::ostream&
           py::module_::import("sys").attr("stdout") // Python output
@@ -368,7 +341,7 @@ PYBIND11_MODULE(_pygenten, m) {
           );
         Genten::PerfHistory perfInfo;
         Genten::Ktensor u = driver_host(x, u0, algParams, perfInfo, std::cout);
-        return std::make_tuple(u, perfInfo);
+        return std::make_tuple(u, u0, perfInfo);
       }, R"(
     Low-level driver for calling GenTen's solver methods on sparse tensors.
 
@@ -382,10 +355,10 @@ PYBIND11_MODULE(_pygenten, m) {
       * algParams: algorithmic parameters controlling which algorithm is chosen
         as well as its solver parameters.
 
-    Returns a tuple of the Ktensor solution and PerfHistory containing
+    Returns a tuple of the Ktensor solution, initial guess, and PerfHistory containing
     information on the performance of the algorithm.)", pybind11::arg("X"), pybind11::arg("u0"), pybind11::arg("algParams"));
 
-    m.def("driver", [](const Genten::DTC& dtc, const Genten::Tensor& x, const Genten::Ktensor& u0, Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::PerfHistory > {
+    m.def("driver", [](const Genten::DTC& dtc, const Genten::Tensor& x, Genten::Ktensor& u0, Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::Ktensor, Genten::PerfHistory > {
         py::scoped_ostream_redirect stream(
           std::cout,                                // std::ostream&
           py::module_::import("sys").attr("stdout") // Python output
@@ -396,7 +369,7 @@ PYBIND11_MODULE(_pygenten, m) {
           );
         Genten::PerfHistory perfInfo;
         Genten::Ktensor u = driver_host(dtc, x, u0, algParams, perfInfo, std::cout);
-        return std::make_tuple(u, perfInfo);
+        return std::make_tuple(u, u0, perfInfo);
       }, R"(
     Low-level driver for calling GenTen's solver methods on dense tensors.
 
@@ -412,9 +385,9 @@ PYBIND11_MODULE(_pygenten, m) {
       * algParams: algorithmic parameters controlling which algorithm is chosen
         as well as its solver parameters.
 
-    Returns a tuple of the Ktensor solution and PerfHistory containing
+    Returns a tuple of the Ktensor solution, initial guess, and PerfHistory containing
     information on the performance of the algorithm.)", pybind11::arg("dtc"), pybind11::arg("X"), pybind11::arg("u0"), pybind11::arg("algParams"));
-    m.def("driver", [](const Genten::DTC& dtc, const Genten::Sptensor& x, const Genten::Ktensor& u0, Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::PerfHistory > {
+    m.def("driver", [](const Genten::DTC& dtc, const Genten::Sptensor& x, Genten::Ktensor& u0, Genten::AlgParams& algParams) -> std::tuple< Genten::Ktensor, Genten::Ktensor, Genten::PerfHistory > {
         py::scoped_ostream_redirect stream(
           std::cout,                                // std::ostream&
           py::module_::import("sys").attr("stdout") // Python output
@@ -425,7 +398,7 @@ PYBIND11_MODULE(_pygenten, m) {
           );
         Genten::PerfHistory perfInfo;
         Genten::Ktensor u = driver_host(dtc, x, u0, algParams, perfInfo, std::cout);
-        return std::make_tuple(u, perfInfo);
+        return std::make_tuple(u, u0, perfInfo);
     }, R"(
     Low-level driver for calling GenTen's solver methods on sparsetensors.
 
