@@ -161,14 +161,14 @@ online_gcp_impl(const std::vector<TensorType>& X,
                 Genten::Array& fest,
                 Genten::Array& ften)
 {
+  auto X0d = create_mirror_view(ExecSpace(), X0);
+  deep_copy(X0d, X0);
   ttb_indx n = X.size();
-  std::vector<TensorType> Xd(n);
+  std::vector<decltype(X0d)> Xd(n);
   for (ttb_indx i=0; i<n; ++i) {
     Xd[i] = create_mirror_view(ExecSpace(), X[i]);
     deep_copy(Xd[i], X[i]);
   }
-  auto X0d = create_mirror_view(ExecSpace(), X0);
-  deep_copy(X0d, X0);
   Genten::KtensorT<ExecSpace> ud;
   const ttb_indx nc = u.ncomponents();
   const ttb_indx nd = u.ndims();
