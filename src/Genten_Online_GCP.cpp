@@ -75,6 +75,12 @@ namespace Genten {
     generator(algParams.seed),
     hist(u,algParams)
   {
+    // Semi-stratified is currently not supported
+    if (!hist.do_gcp_loss() &&
+        ((temporalAlgParams.streaming_solver == GCP_Streaming_Solver::SGD && temporalAlgParams.sampling_type == GCP_Sampling::SemiStratified) ||
+         (spatialAlgParams.streaming_solver == GCP_Streaming_Solver::SGD && spatialAlgParams.sampling_type == GCP_Sampling::SemiStratified)))
+        Genten::error("Semi-stratified sampling is currently not supported for the SGD streaming solver.  Use stratified instead.");
+
     const ttb_indx nc = u.ncomponents();
     const ttb_indx nd = u.ndims();
     if (temporalAlgParams.streaming_solver == GCP_Streaming_Solver::LeastSquares ||
