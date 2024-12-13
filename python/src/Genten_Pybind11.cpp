@@ -497,12 +497,13 @@ PYBIND11_MODULE(_pygenten, m) {
         return X;
     }, R"(
     Read and return a dense tensor from a given file.)", pybind11::arg("file"));
-    m.def("import_sptensor", [](const std::string& fName) -> Genten::Sptensor {
+    m.def("import_sptensor", [](const std::string& fName, const ttb_indx index_base = 0,
+                                const bool compressed = false) -> Genten::Sptensor {
         Genten::Sptensor X;
-        Genten::import_sptensor(fName, X);
+        Genten::import_sptensor(fName, X, index_base, compressed);
         return X;
     }, R"(
-    Read and return a sparse tensor from a given file.)", pybind11::arg("file"));
+    Read and return a sparse tensor from a given file.)", pybind11::arg("file"), pybind11::arg("index_base") = 0, pybind11::arg("compressed") = false);
 
     m.def("export_ktensor", [](const std::string& fName, const Genten::Ktensor& u) -> void {
         Genten::export_ktensor(fName, u);

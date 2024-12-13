@@ -88,6 +88,6 @@ def make_gt_ktensor(M, copy=True):
     Mf = cpy.copy(M.factor_matrices)
     for i in range(len(Mf)):
         if not Mf[i].flags.c_contiguous:
-            print('Warning:  factor matrix passed to make_gt_ktensor() is not F-contiguous, so will be copied and reordered')
+            print('Warning:  factor matrix passed to make_gt_ktensor() is not C-contiguous, so will be copied and reordered')
             Mf[i] = numpy.ascontiguousarray(Mf[i])
     return gt.Ktensor(M.weights, M.factor_matrices, copy=copy)
