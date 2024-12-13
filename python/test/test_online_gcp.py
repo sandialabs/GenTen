@@ -64,8 +64,8 @@ if have_ttb:
             return Xt,ut
 
     def test_online_gcp_dense_gaussian():
-        syn_noise = 0.0        # noise level
-        syn_rank = 20          # rank of underlying tensor
+        syn_noise = 0.2        # noise level
+        syn_rank = 2           # rank of underlying tensor
         syn_shape = (30,30)    # spatial size of the tensor
         syn_T = 20             # temporal period
         num_time = syn_T       # number of time steps in the final tensor
@@ -86,10 +86,10 @@ if have_ttb:
         X = ttb.tensor(all_data)
         X0 = X[:,:,0:num_warm]
 
-        # Generate warm start using u_true as the initial guess to ensure we convege to the right local minimum
-        u0 = syn.u_true.copy()
-        u0.factor_matrices[-1] = u0.factor_matrices[-1][0:num_warm,:]
-        u_init,_,_ = gt.cp_als(X0,rank=rank,tol=1e-6,maxiters=1000,init=u0)
+        # Generate warm start
+        #u0 = syn.u_true.copy()
+        #u0.factor_matrices[-1] = u0.factor_matrices[-1][0:num_warm,:]
+        u_init,_,_ = gt.cp_als(X0,rank=rank,tol=1e-6,maxiters=1000)#,init=u0)
         u_init.normalize(None).redistribute(2) # normalize factor matrix columns and put all weight in time mode
 
         # Compute streaming GCP decomposition
