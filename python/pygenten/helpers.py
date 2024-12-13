@@ -52,7 +52,11 @@ def make_gt_tensor(X, copy=True):
 
     Returns a pygenten.Tensor for X.
     """
-    return gt.Tensor(X.data, copy=copy)
+    Xd = X.data
+    if not Xd.flags.f_contiguous and not Xd.flags.c_contiguous:
+        print('Warning:  dense tensor passed to make_gt_tensor() is not C or F-contiguous, so will be copied and reordered')
+        Xd = numpy.asfortranarray(Xd)
+    return gt.Tensor(Xd, copy=copy)
 
 def make_gt_sptensor(X, copy=True):
     """
@@ -64,9 +68,14 @@ def make_gt_sptensor(X, copy=True):
 
     Returns a pygenten.Sptensor for X.
     """
-    return gt.Sptensor(X.shape, X.subs, X.vals, copy=copy)
+    Xs = X.subs
+    if not Xs.flags.c_contiguous:
+        print('Warning:  sparse tensor subscripts passed to make_gt_sptensor() is not C-contiguous, so will be copied and reordered')
+        Xs = numpy.ascontiguousnarray(Xs)
+    return gt.Sptensor(X.shape, Xs, X.vals, copy=copy)
 
 def make_gt_ktensor(M, copy=True):
+    import copy as cpy
     """
     Convert the given ktensor to a pygenten.Ktensor
 
@@ -76,4 +85,9 @@ def make_gt_ktensor(M, copy=True):
 
     Returns a pygenten.Ktensor for M.
     """
+    Mf = cpy.copy(M.factor_matrices)
+    for i in range(len(Mf)):
+        if not Mf[i].flags.c_contiguous:
+            print('Warning:  factor matrix passed to make_gt_ktensor() is not C-contiguous, so will be copied and reordered')
+            Mf[i] = numpy.ascontiguousarray(Mf[i])
     return gt.Ktensor(M.weights, M.factor_matrices, copy=copy)

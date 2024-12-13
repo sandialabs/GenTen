@@ -3,6 +3,7 @@
 #include "Genten_DistContext.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_Driver.hpp"
+#include "Genten_Online_GCP.hpp"
 #include "Kokkos_Core.hpp"
 
 #include <pybind11/iostream.h>
@@ -141,6 +142,115 @@ driver_host(const Genten::DTC& dtc,
 #ifdef HAVE_SERIAL
   else if (algParams.exec_space == Genten::Execution_Space::Serial)
     ret = driver_impl<Kokkos::Serial>(dtc, x, u0, algParams, history, out);
+#endif
+  else
+    Genten::error("Invalid execution space: " + std::string(Genten::Execution_Space::names[algParams.exec_space]));
+
+  return ret;
+}
+
+template <typename ExecSpace, typename TensorType>
+Genten::Ktensor
+online_gcp_impl(const std::vector<TensorType>& X, 
+                const TensorType& X0, 
+                const Genten::Ktensor& u,
+                Genten::AlgParams& algParams,
+                Genten::AlgParams& temporalAlgParams, 
+                Genten::AlgParams& spatialAlgParams,
+                std::ostream& out,
+                Genten::Array& fest,
+                Genten::Array& ften)
+{
+  auto X0d = create_mirror_view(ExecSpace(), X0);
+  deep_copy(X0d, X0);
+  ttb_indx n = X.size();
+  std::vector<decltype(X0d)> Xd(n);
+  for (ttb_indx i=0; i<n; ++i) {
+    Xd[i] = create_mirror_view(ExecSpace(), X[i]);
+    deep_copy(Xd[i], X[i]);
+  }
+  Genten::KtensorT<ExecSpace> ud;
+  const ttb_indx nc = u.ncomponents();
+  const ttb_indx nd = u.ndims();
+  if (nd > 0 && nc > 0) {
+    // We do not create a mirror-view of u because we always want a copy,
+    // since online_gcp overwrites it and we don't want that in python.
+    ud = Genten::KtensorT<ExecSpace>(nc, nd);
+    deep_copy(ud.weights(), u.weights());
+    for (ttb_indx i=0; i<nd; ++i) {
+      Genten::FacMatrixT<ExecSpace> A(u[i].nRows(), nc);
+      deep_copy(A, u[i]);
+      ud.set_factor(i, A);
+    }
+  }
+
+  // Fixup algParams
+  const bool sparse = std::is_same_v<TensorType,Genten::SptensorT<ExecSpace> > ||
+    algParams.streaming_solver == Genten::GCP_Streaming_Solver::SGD;
+  algParams.method = Genten::Solver_Method::Online_GCP;
+  algParams.sparse = sparse;
+  algParams.fixup<ExecSpace>(out);
+
+  // Fixup temporalAlgParams
+  temporalAlgParams.sparse = sparse;
+  temporalAlgParams.loss_function_type = algParams.loss_function_type;
+  temporalAlgParams.fixup<ExecSpace>(out);
+
+  // Fixup spatialAlgParams
+  spatialAlgParams.sparse = sparse;
+  spatialAlgParams.loss_function_type = algParams.loss_function_type;
+  spatialAlgParams.fixup<ExecSpace>(out);
+
+  Genten::Array fest_d, ften_d;
+  Genten::online_gcp(Xd, X0d, ud, algParams, temporalAlgParams, spatialAlgParams, std::cout, fest_d, ften_d);
+  Genten::Ktensor ret = create_mirror_view(ud);
+  fest = create_mirror_view(fest_d);
+  ften = create_mirror_view(ften_d);
+  deep_copy(ret, ud);
+  deep_copy(fest, fest_d);
+  deep_copy(ften, ften_d);
+
+  return ret;
+}
+
+template <typename TensorType>
+Genten::Ktensor
+online_gcp_host(const std::vector<TensorType>& X, 
+                const TensorType& X0, 
+                const Genten::Ktensor& u0,
+                Genten::AlgParams& algParams,
+                Genten::AlgParams& temporalAlgParams, 
+                Genten::AlgParams& spatialAlgParams,
+                std::ostream& out,
+                Genten::Array& fest,
+                Genten::Array& ften)
+{
+  Genten::Ktensor ret;
+  if (algParams.exec_space == Genten::Execution_Space::Default)
+    ret = online_gcp_impl<Genten::DefaultExecutionSpace>(X, X0, u0, algParams, temporalAlgParams, spatialAlgParams, out, fest, ften);
+#ifdef HAVE_CUDA
+  else if (algParams.exec_space == Genten::Execution_Space::Cuda)
+    ret = online_gcp_impl<Kokkos::Cuda>(X, X0, u0, algParams, temporalAlgParams, spatialAlgParams, out, fest, ften);
+#endif
+#ifdef HAVE_HIP
+  else if (algParams.exec_space == Genten::Execution_Space::HIP)
+    ret = online_gcp_impl<Kokkos::Experimental::HIP>(X, X0, u0, algParams, temporalAlgParams, spatialAlgParams, out, fest, ften);
+#endif
+#ifdef HAVE_SYCL
+  else if (algParams.exec_space == Genten::Execution_Space::SYCL)
+    ret = online_gcp_impl<Kokkos::Experimental::SYCL>(X, X0, u0, algParams, temporalAlgParams, spatialAlgParams, out, fest, ften);
+#endif
+#ifdef HAVE_OPENMP
+  else if (algParams.exec_space == Genten::Execution_Space::OpenMP)
+    ret = online_gcp_impl<Kokkos::OpenMP>(X, X0, u0, algParams, temporalAlgParams, spatialAlgParams, out, fest, ften);
+#endif
+#ifdef HAVE_THREADS
+  else if (algParams.exec_space == Genten::Execution_Space::Threads)
+    ret = online_gcp_impl<Kokkos::Threads>(X, X0, u0, algParams, temporalAlgParams, spatialAlgParams, out, fest, ften);
+#endif
+#ifdef HAVE_SERIAL
+  else if (algParams.exec_space == Genten::Execution_Space::Serial)
+    ret = online_gcp_impl<Kokkos::Serial>(X, X0, u0, algParams, temporalAlgParams, spatialAlgParams, out, fest, ften);
 #endif
   else
     Genten::error("Invalid execution space: " + std::string(Genten::Execution_Space::names[algParams.exec_space]));
@@ -307,6 +417,74 @@ PYBIND11_MODULE(_pygenten, m) {
     Returns a tuple of the Ktensor solution and PerfHistory containing
     information on the performance of the algorithm.)", pybind11::arg("dtc"), pybind11::arg("X"), pybind11::arg("u0"), pybind11::arg("algParams"));
 
+    m.def("online_gcp_driver", [](const std::vector<Genten::Sptensor>& X, const Genten::Sptensor& X0, const Genten::Ktensor& u0,
+                                  Genten::AlgParams& algParams, Genten::AlgParams& temporalAlgParams, Genten::AlgParams& spatialAlgParams)
+                                  -> std::tuple< Genten::Ktensor, std::vector<ttb_real>, std::vector<ttb_real> > {
+        py::scoped_ostream_redirect stream(
+          std::cout,                                // std::ostream&
+          py::module_::import("sys").attr("stdout") // Python output
+          );
+        py::scoped_ostream_redirect err_stream(
+          std::cerr,                                // std::ostream&
+          py::module_::import("sys").attr("stderr") // Python output
+          );
+        Genten::Array fest, ften;
+        Genten::Ktensor u = 
+          online_gcp_host(X, X0, u0, algParams, temporalAlgParams, spatialAlgParams, std::cout, fest, ften);
+        std::vector<ttb_real> fest_vec(fest.ptr(),fest.ptr()+fest.size());
+        std::vector<ttb_real> ften_vec(ften.ptr(),ften.ptr()+ften.size());
+        return std::make_tuple(u, fest_vec, ften_vec);
+      }, R"(
+    Low-level driver for calling GenTen's streaming GCP method on sparse tensors.
+
+    Users should usually not call this directly, but rather the provided wrapper.
+
+    Parameters:
+      * X: list of tensors to compute the CP decomposition from.
+      * X0: tensor for computing warm start
+      * u0: the initial guess, which may be empty, in which case GenTen will
+        compute a random initial guess.
+      * algParams: algorithmic parameters controlling the overall streaming method.
+      * temporalAlgParams:  algorithmic parameters for temporal GCP solve.
+      * spatialAlgParams: algorithmic parameters for the spatial GCP solve.
+
+    Returns a tuple of the Ktensor solution, estimated objective function at each time step, and tensor contribution to the objective.)", 
+      pybind11::arg("X"), pybind11::arg("X0"), pybind11::arg("u0"), pybind11::arg("algParams"), pybind11::arg("temporalAlgParams"), pybind11::arg("spatialAlgParams"));
+
+    m.def("online_gcp_driver", [](const std::vector<Genten::Tensor>& X, const Genten::Tensor& X0, const Genten::Ktensor& u0,
+                                  Genten::AlgParams& algParams, Genten::AlgParams& temporalAlgParams, Genten::AlgParams& spatialAlgParams)
+                                  -> std::tuple< Genten::Ktensor, std::vector<ttb_real>, std::vector<ttb_real> > {
+        py::scoped_ostream_redirect stream(
+          std::cout,                                // std::ostream&
+          py::module_::import("sys").attr("stdout") // Python output
+          );
+        py::scoped_ostream_redirect err_stream(
+          std::cerr,                                // std::ostream&
+          py::module_::import("sys").attr("stderr") // Python output
+          );
+        Genten::Array fest, ften;
+        Genten::Ktensor u = 
+          online_gcp_host(X, X0, u0, algParams, temporalAlgParams, spatialAlgParams, std::cout, fest, ften);
+        std::vector<ttb_real> fest_vec(fest.ptr(),fest.ptr()+fest.size());
+        std::vector<ttb_real> ften_vec(ften.ptr(),ften.ptr()+ften.size());
+        return std::make_tuple(u, fest_vec, ften_vec);
+      }, R"(
+    Low-level driver for calling GenTen's streaming GCP method on dense tensors.
+
+    Users should usually not call this directly, but rather the provided wrapper.
+
+    Parameters:
+      * X: list of tensors to compute the CP decomposition from.
+      * X0: tensor for computing warm start
+      * u0: the initial guess, which may be empty, in which case GenTen will
+        compute a random initial guess.
+      * algParams: algorithmic parameters controlling the overall streaming method.
+      * temporalAlgParams:  algorithmic parameters for temporal GCP solve.
+      * spatialAlgParams: algorithmic parameters for the spatial GCP solve.
+
+    Returns a tuple of the Ktensor solution, estimated objective function at each time step, and tensor contribution to the objective.)", 
+      pybind11::arg("X"), pybind11::arg("X0"), pybind11::arg("u0"), pybind11::arg("algParams"), pybind11::arg("temporalAlgParams"), pybind11::arg("spatialAlgParams"));
+
     m.def("import_ktensor", [](const std::string& fName) -> Genten::Ktensor {
         Genten::Ktensor u;
         Genten::import_ktensor(fName, u);
@@ -319,12 +497,13 @@ PYBIND11_MODULE(_pygenten, m) {
         return X;
     }, R"(
     Read and return a dense tensor from a given file.)", pybind11::arg("file"));
-    m.def("import_sptensor", [](const std::string& fName) -> Genten::Sptensor {
+    m.def("import_sptensor", [](const std::string& fName, const ttb_indx index_base = 0,
+                                const bool compressed = false) -> Genten::Sptensor {
         Genten::Sptensor X;
-        Genten::import_sptensor(fName, X);
+        Genten::import_sptensor(fName, X, index_base, compressed);
         return X;
     }, R"(
-    Read and return a sparse tensor from a given file.)", pybind11::arg("file"));
+    Read and return a sparse tensor from a given file.)", pybind11::arg("file"), pybind11::arg("index_base") = 0, pybind11::arg("compressed") = false);
 
     m.def("export_ktensor", [](const std::string& fName, const Genten::Ktensor& u) -> void {
         Genten::export_ktensor(fName, u);
