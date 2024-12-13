@@ -1304,7 +1304,7 @@ endif()
 # GCP-SGD tests with two-sided/tpetra on the GPU can be very slow, so only run all-reduce there
 set(dist_methods_gcpsgd "")
 list(APPEND dist_methods_gcpsgd "all-reduce")
-if (not HAVE_CUDA and not HAVE_HIP and not HAVE_SYCL)
+if (NOT (HAVE_CUDA OR HAVE_HIP OR HAVE_SYCL))
   list(APPEND dist_methods_gcpsgd "two-sided")
   if (HAVE_TPETRA)
     list(APPEND dist_methods_gcpsgd "tpetra")
