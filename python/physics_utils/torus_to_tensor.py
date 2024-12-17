@@ -25,9 +25,64 @@ import sys
 import exodus3 as ex
 import numpy as np
 import pygenten as gt
+import pyttb
 import pygenten._phys_utils as pu
 
-def torus_to_tensor(base_filename, axis, num_procs_per_poloidal_plane,tol=1.0e-10):
+def tensor_to_exodus(tensor, tensor_node_gids, mesh_base_filename, output_base_filename):
+
+    # copy the mesh into output files
+    num_procs = gt.num_procs()
+    rank = gt.proc_rank()
+    mesh_filename = mesh_base_filename+"."+str(num_procs)+"."+str(rank)
+    mesh_file = ex.exodus(mesh_filename, mode="r", array_type='numpy')
+    output_filename = output_base_filename+"."+str(num_procs)+"."+str(rank)
+    if os.path.exists(output_filename):
+      os.remove(output_filename)
+    output_file = ex.copy_mesh(mesh_filename,
+                               output_filename,
+                               exoFromObj=mesh_file,
+                               additionalElementAttributes=[],
+                               array_type='numpy')      
+    var_names = mesh_file.get_node_variable_names()
+    num_vars = len(var_names)
+    times = mesh_file.get_times()
+    num_times =len(times)
+    for t in range(len(times)):
+      output_file.put_time(t+1, times[t])
+    output_file.set_node_variable_number(num_vars)
+    for v in range(num_vars):
+      output_file.put_node_variable_name(var_names[v],v+1)
+    mesh_file.close()
+
+    # store the tensor data in something like a multivector
+    tensor_data = tensor.data
+    num_theta = tensor_data.shape[0]
+    num_poloidal = tensor_data.shape[1]
+    num_src_nodes = num_poloidal*num_theta
+    src_node_data = np.zeros((num_src_nodes,num_times*num_vars), dtype=np.double)
+    src_node_gids = np.zeros(num_src_nodes, dtype=np.longlong)
+    for th in range(num_theta):
+      for p in range(num_poloidal):
+        src_node_gids[num_poloidal*th+p] = tensor_node_gids[th,p]
+        for t in range(num_times):
+          for v in range(num_vars):
+            src_node_data[num_poloidal*th+p,t*num_vars+v] = tensor_data[th,p,v,t]
+    
+    # map the distributed tensor data to the appropriate rank for the exo file
+    dest_node_gids = output_file.get_node_id_map()
+    num_dest_nodes = len(dest_node_gids)
+    dest_node_data = pu.redistribute_data_across_procs(src_node_gids,src_node_data,dest_node_gids)
+    
+    # write the tensor data into the exo file
+    for t in range(num_times):
+      for v in range(num_vars):
+        values = np.zeros(num_dest_nodes, dtype=np.double)
+        for n in range(num_dest_nodes):
+          values[n] = dest_node_data[n,t*num_vars+v]
+        output_file.put_node_variable_values(var_names[v],t+1,values)
+    output_file.close() 
+
+def torus_to_tensor(base_filename, axis, num_procs_per_poloidal_plane, tol=1.0e-10, rescale_variables=True):
     # error check the processor decomposition
     num_procs = gt.num_procs()
     if num_procs_per_poloidal_plane > 0:
@@ -142,6 +197,10 @@ def torus_to_tensor(base_filename, axis, num_procs_per_poloidal_plane,tol=1.0e-1
     if len(redistributed_node_data) == 0:
       return tensor
 
+    # communicate the original exodus GIDs to their redistributed locations
+    # we'll use this in mapping tensor data back to the exodus mesh
+    redistributed_node_gids = pu.redistribute_ids_across_procs(cids,gids,redistributed_cids)
+
     # back out tids and rids from redistributed cids
     redistributed_tids = -1*np.ones(redistributed_num_nodes, dtype=np.longlong)
     redistributed_rids = -1*np.ones(redistributed_num_nodes, dtype=np.longlong)
@@ -157,7 +216,9 @@ def torus_to_tensor(base_filename, axis, num_procs_per_poloidal_plane,tol=1.0e-1
 
     # build the tensor
     tensor = np.zeros((num_local_tids,num_local_rids,num_vars,num_times), dtype=np.double)
+    tensor_node_gids = np.zeros((num_local_tids,num_local_rids), dtype=np.longlong)
     for i in range(redistributed_num_nodes):
+      tensor_node_gids[redistributed_tids[i]-start_tid, redistributed_rids[i]-start_rid] = redistributed_node_gids[i]
       for v in range(num_vars):
         for t in range(num_times):
           tensor[redistributed_tids[i]-start_tid, redistributed_rids[i]-start_rid, v, t] = redistributed_node_data[i,t*num_vars+v]
@@ -172,7 +233,46 @@ def torus_to_tensor(base_filename, axis, num_procs_per_poloidal_plane,tol=1.0e-1
       parallel_map[0] = num_theta_procs
       parallel_map[1] = num_procs_per_poloidal_plane
 
-    return tensor, global_blocking, parallel_map 
+    # convert to genten tensor, distribute and return
+    X = pyttb.tensor.from_data(tensor)
+
+    # compute mu and stdv for rescaling variables
+    mu = np.zeros(num_vars, dtype=np.double)
+    stdv = np.ones(num_vars, dtype=np.double)
+    mode = 2
+    if rescale_variables: 
+
+      print("rescaling")
+      # list of modes not including mode
+      axis = list(range(X.ndims)) 
+      axis.pop(mode)
+      axis = tuple(axis)
+    
+      # compute mean and standard deviation
+      mu = np.mean(X.data, axis=axis)
+      var = np.var(X.data, axis=axis)
+      local_N = X.data.size/mu.size
+      N = pu.global_go_sum(int(local_N))
+      for i in range(len(mu)):
+        mu[i] = pu.global_scalar_sum(mu[i]*local_N)/N
+        stdv[i]  = np.sqrt(pu.global_scalar_sum(var[i]*local_N)/N)
+      smin = 1.0e-12
+      stdv[stdv<smin] = 1
+
+    # compatible shape for mu,stdv for arithmetic with X
+    shp = [1 for i in range(X.ndims)]
+    shp[mode] = X.shape[mode]
+    shp = tuple(shp)
+    mt =np.reshape(mu,shp)
+    st =np.reshape(stdv,shp)
+
+    Xs = (X.data - mt) / st
+    X = pyttb.tensor.from_data(Xs)
+
+    gt_tensor = gt.make_gt_tensor(X)
+    gt_dist_tensor, gt_dtc = gt.distribute_tensor(gt_tensor, global_blocking, parallel_map)
+    del(gt_tensor)
+    return gt_dist_tensor, gt_dtc, tensor_node_gids, mt, st
 
 def get_cylindrical_coordinates(x, y, z, axis, tol):
    """
@@ -206,7 +306,7 @@ def get_cylindrical_coordinates(x, y, z, axis, tol):
    for i in range(num_nodes):
       r[i] = np.sqrt(b[i]*b[i] + c[i]*c[i])
       theta[i] = np.arccos(b[i]/r[i])
-      if a[i] < 0.0:
+      if c[i] < 0.0:
         theta[i] *= -1.0
         theta[i] += 2.0*np.arccos(-1.0)
       if abs(theta[i]-2.0*np.arccos(-1.0)) < tol:
@@ -389,7 +489,7 @@ if __name__ == "__main__":
    tol = 1.0e-10
    if len(sys.argv) >= 5:
      tol = np.double(sys.argv[4])
-   tensor, global_blocking = torus_to_tensor(base_filename, axis, num_procs_per_poloidal_plane, tol)
+   tensor, global_blocking, parallel_map, node_gids = torus_to_tensor(base_filename, axis, num_procs_per_poloidal_plane, tol)
    gt.finalizeGenten()
 
 
