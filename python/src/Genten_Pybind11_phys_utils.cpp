@@ -12,6 +12,7 @@ namespace Genten {
   using DTC = DistTensorContext<Genten::DefaultHostExecutionSpace>;
   using TMap = Genten::tpetra_map_type<Genten::DefaultHostExecutionSpace>;
   using TMV = Genten::tpetra_multivector_type<Genten::DefaultHostExecutionSpace>;
+  using IDMV = Tpetra::MultiVector<tpetra_go_type, tpetra_lo_type, tpetra_go_type, tpetra_node_type<Genten::DefaultHostExecutionSpace>>;
   using Import = Genten::tpetra_import_type<Genten::DefaultHostExecutionSpace>;
 }
 
@@ -23,6 +24,13 @@ PYBIND11_MODULE(_phys_utils, m) {
         double min = 0.0;
         MPI_Allreduce(&value, &min, 1, MPI_DOUBLE, MPI_MIN, Genten::DistContext::commWorld());
 	return min;
+    }, R"(
+    Return minimum scalar over all MPI ranks.)", pybind11::arg("value"));
+    m.def("global_scalar_sum", [](const double& value) -> double {
+        gt_assert(Genten::DistContext::initialized());
+        double sum = 0.0;
+        MPI_Allreduce(&value, &sum, 1, MPI_DOUBLE, MPI_SUM, Genten::DistContext::commWorld());
+	return sum;
     }, R"(
     Return minimum scalar over all MPI ranks.)", pybind11::arg("value"));
     m.def("global_go_sum", [](const long long& value) -> long long {
@@ -103,6 +111,25 @@ PYBIND11_MODULE(_phys_utils, m) {
 	  for(std::size_t j=0; j<num_vecs; j++)
             dest_access(i,j) = dest_view(i,j);
 	}
+	return dest_data;
+    }, R"(
+    Take an array of data with unique ids on each proc and redistribute the data given a new id distribution)", pybind11::arg("src_ids"), pybind11::arg("src_data"), pybind11::arg("dest_ids"));
+    m.def("redistribute_ids_across_procs", [](py::array_t<Genten::tpetra_go_type> &src_ids, py::array_t<Genten::tpetra_go_type> &src_data, py::array_t<Genten::tpetra_go_type> &dest_ids) -> py::array_t<Genten::tpetra_go_type> {
+        gt_assert(Genten::DistContext::initialized());
+	Teuchos::RCP<const Teuchos::Comm<int>> comm = Teuchos::rcp(new Teuchos::MpiComm<int>(Genten::DistContext::commWorld()));
+	auto src_map = Teuchos::rcp(new const Genten::TMap(Teuchos::OrdinalTraits<Genten::tpetra_go_type>::invalid(),src_ids.data(),src_ids.size(),0,comm));
+	auto dest_map = Teuchos::rcp(new const Genten::TMap(Teuchos::OrdinalTraits<Genten::tpetra_go_type>::invalid(),dest_ids.data(),dest_ids.size(),0,comm));
+        auto import = Teuchos::rcp(new const Genten::Import(src_map,dest_map));
+        auto src_mv = Teuchos::rcp(new Genten::IDMV(src_map,1));
+	for(std::size_t i=0; i<src_mv->getLocalLength(); i++)
+          src_mv->replaceLocalValue(i,0,src_data.at(i));
+        auto dest_mv = Teuchos::rcp(new Genten::IDMV(dest_map,1));
+        dest_mv->doImport(*src_mv,*import,Tpetra::REPLACE);
+        auto dest_view = dest_mv->getLocalViewHost (Tpetra::Access::ReadOnlyStruct());
+        py::array_t<Genten::tpetra_go_type> dest_data(dest_mv->getLocalLength());
+        auto dest_access = dest_data.mutable_unchecked<1>();
+	for(std::size_t i=0; i<dest_mv->getLocalLength(); i++)
+          dest_access(i) = dest_view(i,0);
 	return dest_data;
     }, R"(
     Take an array of data with unique ids on each proc and redistribute the data given a new id distribution)", pybind11::arg("src_ids"), pybind11::arg("src_data"), pybind11::arg("dest_ids"));
