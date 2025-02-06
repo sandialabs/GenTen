@@ -221,15 +221,6 @@ namespace Genten {
     Impl::gcp_gradient(X, Y, M_overlap, 1.0, f, G_overlap, algParams);
     dku->doExport(G, G_overlap);
 
-    // struct ShiftFunc {
-    //   FacMatrixT<exec_space> A;
-    //   ArrayT<exec_space> s;
-    //   KOKKOS_INLINE_FUNCTION
-    //   void operator()(const ttb_indx j, const ttb_indx i) const {
-    //     A(i,j) += s[j];
-    //   }
-    // };
-
     // Now add in the 1's for all entries
     const ttb_indx nd = M.ndims();
     const ttb_indx nc = M.ncomponents();
@@ -240,11 +231,8 @@ namespace Genten {
         if (i != j)
           s.times(col_sums[j]);
       }
-      // ShiftFunc f;
-      // f.A = G[i];
-      // f.s = s;
-      // G[i].apply_func(f);
-      G[i].apply_func(KOKKOS_LAMBDA(const ttb_indx col, const ttb_indx row) { G[i].entry(row,col) += s[col]; });
+      auto Gi = G[i];
+      Gi.apply_func(KOKKOS_LAMBDA(const ttb_indx col, const ttb_indx row) { Gi.entry(row,col) += s[col]; });
     }
   }
 
