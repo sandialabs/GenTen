@@ -634,7 +634,7 @@ distributeTensorImpl(const Tensor& X, const AlgParams& algParams, const std::vec
 #endif
 
   std::vector<ttb_real> Tvec;
-  ttb_indx nnz;
+  ttb_indx nnz = 0;
   ttb_indx offset = 0;
 
   // Check if we have already distributed a tensor, in which case this one
