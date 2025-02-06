@@ -68,7 +68,6 @@ namespace Genten {
         typedef typename tensor_type::exec_space exec_space;
         typedef Kokkos::TeamPolicy<exec_space> Policy;
         typedef typename Policy::member_type TeamMember;
-        typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
 
         const auto X = XX.impl();
         const auto M = MM.impl();
@@ -83,7 +82,6 @@ namespace Genten {
         static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
 
         /*const*/ ttb_indx nnz = X.nnz();
-        /*const*/ unsigned nd = M.ndims();
         const ttb_indx N = (nnz+RowBlockSize-1)/RowBlockSize;
 
         Policy policy(N, TeamSize, VectorSize);
