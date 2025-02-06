@@ -321,6 +321,9 @@ public:
        The optional "minval" argument sets the minimum value of each column norm. */
     void colNorms(NormType norm_type, ArrayT<ExecSpace> & norms, ttb_real minval) const;
 
+    // Compute the sums of all the columns.
+    void colSums(ArrayT<ExecSpace> & sums) const;
+
     // Scale each column by the corresponding scalar entry in s.
     /* If "inverse" is set to true, then scale by the reciprocal of the entries
      * in s. */
@@ -510,7 +513,7 @@ void FacMatrixT<ExecSpace>::apply_func(const Func& f) const
   policy_type policy({0,0}, {static_cast<long>(nc),static_cast<long>(nr)},
                      {16,16});
 
-  Kokkos::parallel_for(policy, f, "Genten::FacMatrix::apply_func");
+  Kokkos::parallel_for("Genten::FacMatrix::apply_func", policy, f);
 }
 
 template <typename ExecSpace>
@@ -554,7 +557,8 @@ void FacMatrixT<ExecSpace>::apply_func(const Func& f) const
   const ttb_indx N = (nr+block_size-1)/block_size;
   TeamPolicy policy(N,team_size,vector_size);
 
-  Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const team_member& team)
+  Kokkos::parallel_for("Genten::FacMatrix::apply_func",
+                       policy, KOKKOS_LAMBDA(const team_member& team)
   {
     for (unsigned ii=team.team_rank(); ii<block_size; ii+=team.team_size()){
       const ttb_indx i = team.league_rank()*block_size+ii;
@@ -566,7 +570,7 @@ void FacMatrixT<ExecSpace>::apply_func(const Func& f) const
         });
       }
     }
-  }, "Genten::FacMatrix::apply_func");
+  });
 }
 
 template <typename ExecSpace>

@@ -87,6 +87,10 @@ namespace Genten {
     Genten::SystemTimer timer(1, pmap);
     timer.start(0);
 
+    const bool poisson = algParams.loss_function_type == "poisson";
+    ttb_real lb = poisson ? 0.0 : algParams.lower;
+    ttb_real ub = algParams.upper;
+
     // Distribute the initial guess to have weights of one since the objective
     // does not include gradients w.r.t. weights
     u.distribute(0);
@@ -96,19 +100,20 @@ namespace Genten {
       stream << std::endl
              << "CP-OPT (ROL):" << std::endl;
       stream << "  CP Rank: " << nc << std::endl
+             << "  Function type: " << algParams.loss_function_type << std::endl
              << "  Lower bound: ";
-      if (algParams.lower == -DBL_MAX)
+      if (lb == -DBL_MAX)
         stream << "-infinity";
       else
         stream << std::setprecision(2) << std::scientific
-               << algParams.lower;
+               << lb;
       stream << std::endl
              << "  Upper bound: ";
-      if (algParams.upper == DBL_MAX)
+      if (ub == DBL_MAX)
         stream << "infinity";
       else
         stream << std::setprecision(2) << std::scientific
-               << algParams.upper;
+               << ub;
       stream  << std::endl
               << "  Gradient method: "
              << MTTKRP_All_Method::names[algParams.mttkrp_all_method];
@@ -138,11 +143,11 @@ namespace Genten {
       ROL::makePtr< ROL::Problem<ttb_real> >(objective, z, g);
 
     // Create bound constraints
-    if (algParams.lower != -DOUBLE_MAX || algParams.upper != DOUBLE_MAX) {
+    if (lb != -DOUBLE_MAX || ub != DOUBLE_MAX) {
       ROL::Ptr<vector_type> lower = objective->createDesignVector();
       ROL::Ptr<vector_type> upper = objective->createDesignVector();
-      lower->setScalar(algParams.lower);
-      upper->setScalar(algParams.upper);
+      lower->setScalar(lb);
+      upper->setScalar(ub);
       ROL::Ptr<ROL::BoundConstraint<ttb_real> > bounds =
         ROL::makePtr<RolBoundConstraint<vector_type> >(lower, upper);
       problem->addBoundConstraint(bounds);
@@ -183,7 +188,9 @@ namespace Genten {
     const ttb_real nrm = x.global_norm();
     const ttb_real fit = ttb_real(1.0) - res ;
     if (algParams.printitn > 0) {
-      stream << "Final fit = " << fit << std::endl;
+      stream << "Final loss = " << res << std::endl;
+      if (!poisson)
+        stream << "Final fit = " << fit << std::endl;
       stream << "Total time = " << timer.getTotalTime(0) << std::endl
              << std::endl;
     }

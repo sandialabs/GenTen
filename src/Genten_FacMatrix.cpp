@@ -1242,6 +1242,165 @@ colNorms(Genten::NormType normtype, Genten::ArrayT<ExecSpace> & norms, ttb_real 
 namespace Genten {
 namespace Impl {
 
+template <typename ExecSpace, typename View, typename Sums,
+          unsigned RowBlockSize, unsigned ColBlockSize,
+          unsigned TeamSize, unsigned VectorSize>
+struct ColSumsKernel
+{
+  typedef Kokkos::TeamPolicy <ExecSpace> Policy;
+  typedef typename Policy::member_type TeamMember;
+  typedef Kokkos::View< ttb_real**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+
+  const View& data;
+  const Sums& sums;
+  const TeamMember team;
+  const unsigned team_index;
+  const unsigned team_size;
+  TmpScratchSpace tmp;
+  const unsigned i_block;
+  const unsigned m;
+
+  static inline Policy policy(const ttb_indx m) {
+    const ttb_indx M = (m+RowBlockSize-1)/RowBlockSize;
+    Policy policy(M,TeamSize,VectorSize);
+    const size_t bytes = TmpScratchSpace::shmem_size(TeamSize,ColBlockSize);
+    return policy.set_scratch_size(0,Kokkos::PerTeam(bytes));
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  ColSumsKernel(const View& data_,
+                const Sums& sums_,
+                const TeamMember& team_) :
+    data(data_),
+    sums(sums_),
+    team(team_), team_index(team.team_rank()), team_size(team.team_size()),
+    tmp(team.team_scratch(0), TeamSize, ColBlockSize),
+    i_block(team.league_rank()*RowBlockSize),
+    m(data.extent(0))
+  {
+    if (tmp.data() == 0)
+      Kokkos::abort("ColNormsKernel:  Allocation of temp space failed.");
+  }
+
+  template <unsigned Nj>
+  KOKKOS_INLINE_FUNCTION
+  void run(const unsigned j_block, const unsigned nj_)
+  {
+    // nj.value == Nj_ if Nj_ > 0 and nj_ otherwise
+    Kokkos::Impl::integral_nonzero_constant<unsigned, Nj> nj(nj_);
+    ttb_real *sums_j = &(this->sums[j_block]);
+    ttb_real *tmp_i = &(this->tmp(this->team_index,0));
+
+    this->team.team_barrier();
+
+    Kokkos::parallel_for(Kokkos::ThreadVectorRange(this->team,unsigned(nj.value)),
+                         [&] (const unsigned& jj)
+    {
+      tmp_i[jj] = 0.0;
+    });
+
+    for (unsigned ii=this->team_index; ii<RowBlockSize; ii+=TeamSize) {
+      const unsigned i = this->i_block+ii;
+      if (i < this->m) {
+        const ttb_real *data_ij = &(this->data(i,j_block));
+        Kokkos::parallel_for(Kokkos::ThreadVectorRange(this->team,unsigned(nj.value)),
+                             [&] (const unsigned& jj)
+        {
+          tmp_i[jj] += data_ij[jj];
+        });
+      }
+    }
+
+    this->team.team_barrier();
+
+    if (this->team_index == 0) {
+      for (unsigned ii=1; ii<TeamSize; ++ii) {
+        ttb_real *tmp_ii = &(this->tmp(ii,0));
+        Kokkos::parallel_for(Kokkos::ThreadVectorRange(this->team,unsigned(nj.value)),
+                             [&] (const unsigned& jj)
+        {
+          tmp_i[jj] += tmp_ii[jj];
+        });
+      }
+
+      Kokkos::parallel_for(Kokkos::ThreadVectorRange(this->team,unsigned(nj.value)),
+                           [&] (const unsigned& jj)
+      {
+        Kokkos::atomic_add(sums_j+jj, tmp_i[jj]);
+      });
+    }
+
+  }
+
+};
+
+template <typename ExecSpace, unsigned ColBlockSize,
+          typename ViewType, typename SumT>
+void colSums_kernel(
+  const ViewType& data, const SumT& sums, const ProcessorMap::FacMap* pmap = nullptr)
+{
+  // Compute team and vector sizes, depending on the architecture
+  const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+  const unsigned VectorSize =
+    is_gpu ? (ColBlockSize <= 32 ? ColBlockSize : 32) : 1;
+  const unsigned TeamSize = is_gpu ? 256/VectorSize : 1;
+  const unsigned RowBlockSize = 128;
+  const unsigned m = data.extent(0);
+  const unsigned n = data.extent(1);
+
+  // Initialize norms to 0
+  deep_copy(sums, 0.0);
+
+  // Compute sums
+  typedef ColSumsKernel<ExecSpace,ViewType,SumT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> Kernel;
+  typedef typename Kernel::TeamMember TeamMember;
+  Kokkos::parallel_for("Genten::FacMatrix::colSums_kernel",
+                        Kernel::policy(m),
+                        KOKKOS_LAMBDA(TeamMember team)
+  {
+    ColSumsKernel<ExecSpace,ViewType,SumT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> kernel(data, sums, team);
+    for (unsigned j_block=0; j_block<n; j_block+=ColBlockSize) {
+      if (j_block+ColBlockSize <= n)
+        kernel.template run<ColBlockSize>(j_block, ColBlockSize);
+      else
+        kernel.template run<0>(j_block, n-j_block);
+    }
+  });
+  if (pmap != nullptr) {
+    Kokkos::fence();
+    pmap->allReduce(sums.data(), sums.size());
+  }
+}
+
+}
+}
+
+template <typename ExecSpace>
+void Genten::FacMatrixT<ExecSpace>::
+colSums(Genten::ArrayT<ExecSpace> & sums) const
+{
+#ifdef HAVE_CALIPER
+  cali::Function cali_func("Genten::FacMatrix::colSums");
+#endif
+
+  const ttb_indx nc = data.extent(1);
+  if (nc < 2)
+    Impl::colSums_kernel<ExecSpace,1>(data, sums.values(), pmap);
+  else if (nc < 4)
+    Impl::colSums_kernel<ExecSpace,2>(data, sums.values(), pmap);
+  else if (nc < 8)
+    Impl::colSums_kernel<ExecSpace,4>(data, sums.values(), pmap);
+  else if (nc < 16)
+    Impl::colSums_kernel<ExecSpace,8>(data, sums.values(), pmap);
+  else if (nc < 32)
+    Impl::colSums_kernel<ExecSpace,16>(data, sums.values(), pmap);
+  else
+    Impl::colSums_kernel<ExecSpace,32>(data, sums.values(), pmap);
+}
+
+namespace Genten {
+namespace Impl {
+
 template <typename ExecSpace, typename View,
           unsigned ColBlockSize, unsigned RowBlockSize,
           unsigned TeamSize, unsigned VectorSize>

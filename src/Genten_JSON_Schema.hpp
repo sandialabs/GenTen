@@ -369,6 +369,18 @@ static nlohmann::json json_schema = R"(
           "description": "CP-OPT decomposition algorithm",
           "additionalProperties": false,
           "properties": {
+              "type": {
+                  "description": "Loss function type for CP-OPT",
+                  "type": "string",
+                  "default": "gaussian"
+              },
+              "eps": {
+                  "description": "Perturbation of loss functions for entries near 0",
+                  "type": "number",
+                  "minimum": 0.0,
+                  "maximum": 1.0,
+                  "default": 1e-10
+              },
               "maxiters": {
                   "description": "maximum iterations to perform",
                   "type": "integer",

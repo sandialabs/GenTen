@@ -842,6 +842,7 @@ SET (Genten_SOURCE_LIST
   ${Genten_SOURCE_DIR}/src/Genten_CublasHandle.cpp
   ${Genten_SOURCE_DIR}/src/Genten_CusolverHandle.cpp
   ${Genten_SOURCE_DIR}/src/Genten_RocblasHandle.cpp
+  ${Genten_SOURCE_DIR}/src/Genten_PCP_Model.cpp
   )
 
 IF (HAVE_MPI)
