@@ -44,6 +44,7 @@
 #include "Genten_RolKokkosVector.hpp"
 #include "Genten_RolKtensorVector.hpp"
 #include "Genten_CP_Model.hpp"
+#include "Genten_PCP_Model.hpp"
 #include "Genten_PerfHistory.hpp"
 #include "Genten_SystemTimer.hpp"
 
@@ -77,7 +78,7 @@ namespace Genten {
     CP_RolObjective(const tensor_type& x, const ktensor_type& m,
                     const AlgParams& algParms, PerfHistory& history);
 
-    virtual ~CP_RolObjective() {}
+    virtual ~CP_RolObjective();
 
     virtual void update(const ROL::Vector<ttb_real>& xx, ROL::UpdateType type,
                         int iter) override;
@@ -103,13 +104,17 @@ namespace Genten {
 
     ROL::Ptr<vector_type> createDesignVector() const
     {
-      return ROL::makePtr<vector_type>(M, false, cp_model.getDistKtensorUpdate());
+      if (cp_model != nullptr)
+        return ROL::makePtr<vector_type>(M, false, cp_model->getDistKtensorUpdate());
+      else
+        return ROL::makePtr<vector_type>(M, false, pcp_model->getDistKtensorUpdate());
     }
 
   protected:
 
     ktensor_type M, V, G;
-    CP_Model<tensor_type> cp_model;
+    CP_Model<tensor_type> *cp_model;
+    PCP_Model<tensor_type> *pcp_model;
     PerfHistory& history;
     SystemTimer timer;
     ttb_real nrm_X_sq;
@@ -122,12 +127,8 @@ namespace Genten {
                   const ktensor_type& m,
                   const AlgParams& algParams,
                   PerfHistory& h) :
-    M(m),
-    // create and pass a ktensor to cp_model through the KokkosVector so to
-    // ensure the same padding as vectors that will be used in the algorithm
-    cp_model(x, vector_type(m).getKtensor(), algParams), history(h),
-    timer(1)
-    {
+    M(m), cp_model(nullptr), pcp_model(nullptr), history(h), timer(1)
+  {
 #if COPY_KTENSOR
       const ttb_indx nc = M.ncomponents();
       const ttb_indx nd = M.ndims();
@@ -135,13 +136,32 @@ namespace Genten {
       G = ktensor_type(nc, nd, x.size(), M.getProcessorMap());
 #endif
 
+    // create and pass a ktensor to cp_model/pcp_model through the KokkosVector to
+    // ensure the same padding as vectors that will be used in the algorithm
+    if (algParams.loss_function_type == "gaussian")
+      cp_model = new CP_Model<tensor_type>(x,  vector_type(m).getKtensor(), algParams);
+    else if (algParams.loss_function_type == "poisson")
+      pcp_model = new PCP_Model<tensor_type>(x,  vector_type(m).getKtensor(), algParams);
+    else
+      Genten::error("cp-opt only supports Gaussian and Poisson loss types");
+
       timer.start(0);
       nrm_X_sq = x.global_norm();
       nrm_X_sq = nrm_X_sq*nrm_X_sq;
 
       history.addEmpty();
       history.lastEntry().iteration = 0;
-    }
+  }
+
+  template <typename Tensor>
+  CP_RolObjective<Tensor>::
+  ~CP_RolObjective()
+  {
+    if (cp_model != nullptr)
+      delete cp_model;
+    if (pcp_model != nullptr)
+      delete pcp_model;
+  }
 
   // Compute information that is common to both value() and gradient()
   // when a new design vector is computed
@@ -173,7 +193,10 @@ namespace Genten {
     //   std::cout << "temp";
     // std::cout << std::endl;
 
-    cp_model.update(M);
+    if (cp_model != nullptr)
+      cp_model->update(M);
+    else
+      pcp_model->update(M);
 
     // If the step was accepted, record the time and add a new working entry
     if (type == ROL::UpdateType::Accept) {
@@ -209,7 +232,11 @@ namespace Genten {
     x.copyToKtensor(M);
 #endif
 
-    ttb_real res = cp_model.value(M);
+    ttb_real res;
+    if (cp_model != nullptr)
+      res = cp_model->value(M);
+    else
+      res = pcp_model->value(M);
 
     history.lastEntry().residual = res;
     history.lastEntry().fit = ttb_real(1.0) - res;
@@ -237,7 +264,10 @@ namespace Genten {
     x.copyToKtensor(M);
 #endif
 
-    cp_model.gradient(G, M);
+    if (cp_model != nullptr)
+      cp_model->gradient(G, M);
+    else
+      pcp_model->gradient(G,M);
 
     // Convert Ktensor to vector
 #if COPY_KTENSOR
@@ -268,7 +298,10 @@ namespace Genten {
     v.copyToKtensor(V);
 #endif
 
-    cp_model.hess_vec(G, M, V);
+    if (cp_model != nullptr)
+      cp_model->hess_vec(G, M, V);
+    else
+      pcp_model->hess_vec(G, M, V);
 
     // Convert Ktensor to vector
 #if COPY_KTENSOR
@@ -297,7 +330,10 @@ namespace Genten {
     v.copyToKtensor(V);
 #endif
 
-    cp_model.prec_vec(G, M, V);
+    if (cp_model != nullptr)
+      cp_model->prec_vec(G, M, V);
+    else
+      pcp_model->prec_vec(G, M, V);
 
     // Convert Ktensor to vector
 #if COPY_KTENSOR

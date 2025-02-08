@@ -53,6 +53,7 @@
 #include "Genten_Tensor.hpp"
 #include "Genten_KokkosVector.hpp"
 #include "Genten_CP_Model.hpp"
+#include "Genten_PCP_Model.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_SystemTimer.hpp"
 
@@ -180,32 +181,6 @@ namespace Genten {
     // does not include gradients w.r.t. weights
     u.distribute(0);
 
-    if (algParams.printitn > 0) {
-      const ttb_indx nc = u.ncomponents();
-      std::cout << std::endl
-                << "CP-OPT (L-BFGS-B):" << std::endl;
-      std::cout << "  CP Rank: " << nc << std::endl
-                << "  Lower bound: ";
-      if (algParams.lower == -DBL_MAX)
-        std::cout << "-infinity";
-      else
-        std::cout << std::setprecision(2) << std::scientific
-                  << algParams.lower;
-      std::cout << std::endl
-                << "  Upper bound: ";
-      if (algParams.upper == DBL_MAX)
-        std::cout << "infinity";
-      else
-        std::cout << std::setprecision(2) << std::scientific
-                  << algParams.upper;
-      std::cout  << std::endl
-                 << "  Gradient method: "
-                 << MTTKRP_All_Method::names[algParams.mttkrp_all_method];
-      if (algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated)
-        std::cout << " (" << MTTKRP_Method::names[algParams.mttkrp_method] << ")";
-      std::cout << " MTTKRP" << std::endl << std::endl;
-    }
-
     // Solution vector
     kokkos_vector z(u); // this is doesn't copy the values
     z.copyFromKtensor(u);
@@ -213,25 +188,66 @@ namespace Genten {
     Kokkos::deep_copy(z_host, z.getView());
     integer n = z.dimension();
 
-    // Bounds
-    std::vector<double> lower(n, algParams.lower);
-    std::vector<double> upper(n, algParams.upper);
+    // function and gradient values
+    double f = 0.0;
+    kokkos_vector g = z.clone();
+    auto g_host = Kokkos::create_mirror_view(g.getView());
+
+    // CP model
+    CP_Model<TensorT> *cp_model = nullptr;
+    PCP_Model<TensorT> *pcp_model = nullptr;
+    if (algParams.loss_function_type == "gaussian")
+      cp_model = new CP_Model<TensorT>(X, u, algParams);
+    else if (algParams.loss_function_type == "poisson")
+      pcp_model = new PCP_Model<TensorT>(X, u, algParams);
+    else
+      Genten::error("cp-opt only supports Gaussian and Poisson loss types");
+
+    // Bounds -- require lower == 0 for Poisson
+    ttb_real lb = algParams.lower;
+    ttb_real ub = algParams.upper;
+    if (pcp_model != nullptr)
+      lb = 0.0;
+    std::vector<double> lower(n, lb);
+    std::vector<double> upper(n, ub);
     std::vector<integer> nbd(n);
     for (integer i=0; i<n; ++i) {
-      if (algParams.lower == -DBL_MAX && algParams.upper == DBL_MAX)
+      if (lb == -DBL_MAX && ub == DBL_MAX)
         nbd[i] = 0;
-      else if (algParams.upper == DBL_MAX)
+      else if (ub == DBL_MAX)
         nbd[i] = 1;
-      else if (algParams.lower == -DBL_MAX)
+      else if (lb == -DBL_MAX)
         nbd[i] = 3;
       else
         nbd[i] = 2;
     };
 
-    // function and gradient values
-    double f = 0.0;
-    kokkos_vector g = z.clone();
-    auto g_host = Kokkos::create_mirror_view(g.getView());
+    if (algParams.printitn > 0) {
+      const ttb_indx nc = u.ncomponents();
+      std::cout << std::endl
+                << "CP-OPT (L-BFGS-B):" << std::endl;
+      std::cout << "  CP Rank: " << nc << std::endl
+                << "  Function type: " << algParams.loss_function_type << std::endl
+                << "  Lower bound: ";
+      if (lb == -DBL_MAX)
+        std::cout << "-infinity";
+      else
+        std::cout << std::setprecision(2) << std::scientific
+                  << lb;
+      std::cout << std::endl
+                << "  Upper bound: ";
+      if (ub == DBL_MAX)
+        std::cout << "infinity";
+      else
+        std::cout << std::setprecision(2) << std::scientific
+                  << ub;
+      std::cout  << std::endl
+                 << "  Gradient method: "
+                 << MTTKRP_All_Method::names[algParams.mttkrp_all_method];
+      if (algParams.mttkrp_all_method == MTTKRP_All_Method::Iterated)
+        std::cout << " (" << MTTKRP_Method::names[algParams.mttkrp_method] << ")";
+      std::cout << " MTTKRP" << std::endl << std::endl;
+    }
 
     // L-BFGS-B data
     integer m = algParams.memory;
@@ -252,7 +268,6 @@ namespace Genten {
     double  dsave[LENGTH_DSAVE];
 
     history.addEmpty();
-    CP_Model<TensorT> cp_model(X, u, algParams);
 
     // Run CP-OPT
     ttb_indx iters = 0;
@@ -269,8 +284,14 @@ namespace Genten {
         Kokkos::deep_copy(z.getView(), z_host);
         KtensorT<ExecSpace> M = z.getKtensor();
         KtensorT<ExecSpace> G = g.getKtensor();
-        cp_model.update(M);
-        f = cp_model.value_and_gradient(G, M);
+        if (cp_model != nullptr) {
+          cp_model->update(M);
+          f = cp_model->value_and_gradient(G, M);
+        }
+        else {
+          pcp_model->update(M);
+          f = pcp_model->value_and_gradient(G, M);
+        }
         deep_copy(g_host, g.getView());
 
         const ttb_real nrmg = g.normInf();
@@ -291,10 +312,11 @@ namespace Genten {
             const auto& h = history[print_iter];
             std::cout << "Iter " << std::setw(5) << print_iter+1
                       << ", f(x) = "
-                      << std::setprecision(6) << std::scientific << h.residual
-                      << ", fit = "
-                      << std::setprecision(3) << std::scientific << h.fit
-                      << ", ||grad||_infty = "
+                      << std::setprecision(6) << std::scientific << h.residual;
+            if (cp_model != nullptr)
+              std::cout << ", fit = "
+                        << std::setprecision(3) << std::scientific << h.fit;
+            std::cout << ", ||grad||_infty = "
                       << std::setprecision(2) << std::scientific << h.grad_norm
                       << ", t = "
                       << std::setprecision(2) << std::scientific << h.cum_time
@@ -318,10 +340,11 @@ namespace Genten {
       const auto& h = history.lastEntry();
       std::cout << "Iter " << std::setw(5) << print_iter+1
                 << ", f(x) = "
-                << std::setprecision(6) << std::scientific << h.residual
-                << ", fit = "
-                << std::setprecision(3) << std::scientific << h.fit
-                << ", ||grad||_infty = "
+                << std::setprecision(6) << std::scientific << h.residual;
+      if (cp_model != nullptr)
+        std::cout << ", fit = "
+                  << std::setprecision(3) << std::scientific << h.fit;
+      std::cout << ", ||grad||_infty = "
                 << std::setprecision(2) << std::scientific << h.grad_norm
                 << ", t = "
                 << std::setprecision(2) << std::scientific << h.cum_time
@@ -343,13 +366,22 @@ namespace Genten {
         std::cout << "Reached maximum number of total iterations." << std::endl;
       else
         std::cout << Impl::findTaskString(task) << std::endl;
-      const ttb_real fit = ttb_real(1.0) - f;
-      std::cout << "Final fit = " << std::setprecision(3) << std::scientific
-                << fit << std::endl;
+      std::cout << "Final loss = " << std::setprecision(3) << std::scientific
+                  << f << std::endl;
+      if (cp_model != nullptr) {
+        const ttb_real fit = ttb_real(1.0) - f;
+        std::cout << "Final fit = " << std::setprecision(3) << std::scientific
+                  << fit << std::endl;
+      }
       std::cout << "Total time = " << std::setprecision(2) << std::scientific
                 << timer.getTotalTime(0) << std::endl
                 << std::endl;
     }
+
+    if (cp_model != nullptr)
+      delete cp_model;
+    if (pcp_model != nullptr)
+      delete pcp_model;
   }
 
 }
