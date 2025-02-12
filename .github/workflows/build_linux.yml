@@ -1,6 +1,7 @@
 name: Build and test on Linux
 
 on:
+  #workflow_dispatch
   push:
     branches: [ "master" ]
   pull_request:
@@ -49,14 +50,9 @@ jobs:
         PYTHONPATH: ${{ steps.strings.outputs.build-output-dir }}/python
       run: |
         python -m pip install --upgrade pip
-        pip install pytest
-        # Released version of pyttb is too old, so we need to build from the github repo
-        #pip install pyttb
-        mkdir pyttb
-        cd pyttb
-        git clone https://github.com/sandialabs/pyttb.git
-        cd pyttb
-        pip install .
+        pip install pytest pyttb
+        sudo apt-get update --yes
+        sudo apt-get install --yes libblas-dev liblapack-dev
         
 
     - name: Configure CMake
