@@ -145,8 +145,10 @@ void gcp_opt_rol(const TensorT<ExecSpace>& x, KtensorT<ExecSpace>& u,
 
   // Check interface consistency
   const bool do_checks = params.get("Check ROL Interface", false);
-  if (do_checks)
-    problem->check(true, stream);
+  if (do_checks) {
+    const ttb_real scale = params.get("ROL Interface Check F.D. Direction Scale", 0.1);
+    problem->check(true, stream, z, scale);
+  }
 
   // Create ROL optimization solver
   Teuchos::ParameterList& rol_params = params.sublist("ROL");
