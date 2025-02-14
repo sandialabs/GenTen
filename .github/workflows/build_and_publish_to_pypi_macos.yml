@@ -58,6 +58,10 @@ jobs:
 
       - name: Check Trilinos install
         run: |
+          ls ${{ steps.strings.outputs.build-output-dir }}
+          ls ${{ steps.strings.outputs.build-output-dir }}/trilinos-install
+          ls ${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib64
+          ls ${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib64/cmake
           ls ${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib64/cmake/Trilinos
       
       - name: Build wheels
