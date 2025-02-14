@@ -44,8 +44,8 @@ jobs:
            -D BUILD_SHARED_LIBS:BOOL=ON \
            -D DART_TESTING_TIMEOUT:STRING=600 \
            -D CMAKE_VERBOSE_MAKEFILE:BOOL=OFF \
-           -D CMAKE_CXX_COMPILER:FILEPATH=mpicxx \
-           -D CMAKE_C_COMPILER:FILEPATH=clang++ \
+           -D CMAKE_CXX_COMPILER:FILEPATH=clang++ \
+           -D CMAKE_C_COMPILER:FILEPATH=clang \
            -D F77_BLAS_MANGLE="(name,NAME) name ## _" \
            -D TPL_ENABLE_BinUtils=OFF \
            -D TPL_ENABLE_Pthread=OFF \
