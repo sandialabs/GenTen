@@ -55,14 +55,6 @@ jobs:
            -D Kokkos_ENABLE_AGGRESSIVE_VECTORIZATION=ON \
            ../Trilinos
           ninja install
-
-      - name: Check Trilinos install
-        run: |
-          ls ${{ steps.strings.outputs.build-output-dir }}
-          ls ${{ steps.strings.outputs.build-output-dir }}/trilinos-install
-          ls ${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib
-          ls ${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib/cmake
-          ls ${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib/cmake/Trilinos
       
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.20.0
