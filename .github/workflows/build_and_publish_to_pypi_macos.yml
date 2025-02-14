@@ -60,9 +60,9 @@ jobs:
         run: |
           ls ${{ steps.strings.outputs.build-output-dir }}
           ls ${{ steps.strings.outputs.build-output-dir }}/trilinos-install
-          ls ${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib64
-          ls ${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib64/cmake
-          ls ${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib64/cmake/Trilinos
+          ls ${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib
+          ls ${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib/cmake
+          ls ${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib/cmake/Trilinos
       
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.20.0
@@ -78,7 +78,7 @@ jobs:
           CIBW_BEFORE_ALL_LINUX: "yum install -y openblas-devel"
           CIBW_BEFORE_ALL_MACOS: "brew install libomp"
           CIBW_CONFIG_SETTINGS_LINUX: "cmake.define.ENABLE_PYTHON_EMBED=OFF"
-          CIBW_CONFIG_SETTINGS_MACOS: "cmake.define.F77_BLAS_MANGLE='(name,NAME) name ## _' cmake.define.PYGENTEN_OPENMP=OFF cmake.define.PYGENTEN_SERIAL=ON cmake.define.ENABLE_PYTHON_EMBED=OFF cmake.define.ENABLE_TRILINOS=ON cmake.define.Trilinos_Dir=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib64/cmake/Trilinos"
+          CIBW_CONFIG_SETTINGS_MACOS: "cmake.define.F77_BLAS_MANGLE='(name,NAME) name ## _' cmake.define.PYGENTEN_OPENMP=OFF cmake.define.PYGENTEN_SERIAL=ON cmake.define.ENABLE_PYTHON_EMBED=OFF cmake.define.ENABLE_TRILINOS=ON cmake.define.Trilinos_Dir=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib/cmake/Trilinos"
           #CIBW_CONFIG_SETTINGS_MACOS: "cmake.define.F77_BLAS_MANGLE='(name,NAME) name ## _' cmake.define.ENABLE_PYTHON_EMBED=OFF"
           CIBW_ENVIRONMENT_MACOS: OpenMP_ROOT="$(brew --prefix)/opt/libomp" MACOSX_DEPLOYMENT_TARGET=13
           CIBW_TEST_REQUIRES: pytest pyttb
