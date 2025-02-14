@@ -61,6 +61,7 @@ jobs:
         with:
           output-dir: dist
         env:
+          Trilinos_Install_Dir: ${{ steps.strings.outputs.build-output-dir }}/trilinos-install
           #CIBW_BUILD: cp312-macosx_x86_64
           #CIBW_BUILD: cp39-macosx_arm64
           CIBW_BUILD: cp313-macosx_arm64
