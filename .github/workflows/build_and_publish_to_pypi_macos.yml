@@ -26,6 +26,7 @@ jobs:
         env:
           Trilinos_Install_Dir: ${{ steps.strings.outputs.build-output-dir }}/trilinos-install
         run: |
+          brew install cmake
           git clone https://github.com/trilinos/Trilinos.git
           mkdir trilinos-build
           cd trilinos-build
