@@ -14,6 +14,45 @@ jobs:
         os: [macos-14]
     steps:
       - uses: actions/checkout@v2
+
+      - name: Set reusable strings
+        # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
+        id: strings
+        shell: bash
+        run: |
+          echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+
+      - name: Install Trilinos
+        env:
+          Trilinos_Install_Dir: ${{ steps.strings.outputs.build-output-dir }}/trilinos-install
+        run: |
+          git clone https://github.com/trilinos/Trilinos.git
+          mkdir trilinos-build
+          cd trilinos-build
+          cmake \
+           -G Ninja \
+           -D CMAKE_INSTALL_PREFIX:PATH=${Trilinos_Install_Dir} \
+           -D CMAKE_OSX_DEPLOYMENT_TARGET=13 \
+           -D CMAKE_BUILD_TYPE:STRING=RELEASE \
+           -D Trilinos_ENABLE_DEBUG:BOOL=OFF \
+           -D Trilinos_ENABLE_CHECKED_STL:BOOL=OFF \
+           -D Trilinos_ENABLE_EXPLICIT_INSTANTIATION:BOOL=ON \
+           -D Trilinos_WARNINGS_AS_ERRORS_FLAGS:STRING="" \
+           -D Trilinos_ENABLE_ALL_PACKAGES:BOOL=OFF \
+           -D Trilinos_ENABLE_ALL_OPTIONAL_PACKAGES:BOOL=OFF \
+           -D BUILD_SHARED_LIBS:BOOL=ON \
+           -D DART_TESTING_TIMEOUT:STRING=600 \
+           -D CMAKE_VERBOSE_MAKEFILE:BOOL=OFF \
+           -D CMAKE_CXX_COMPILER:FILEPATH=mpicxx \
+           -D CMAKE_C_COMPILER:FILEPATH=clang++ \
+           -D F77_BLAS_MANGLE="(name,NAME) name ## _" \
+           -D TPL_ENABLE_BinUtils=OFF \
+           -D TPL_ENABLE_Pthread=OFF \
+           -D Trilinos_ENABLE_ROL=ON \
+           -D Kokkos_ENABLE_SERIAL=ON \
+           -D Kokkos_ENABLE_AGGRESSIVE_VECTORIZATION=ON \
+           ../Trilinos
+          ninja install
       
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.20.0
@@ -28,9 +67,9 @@ jobs:
           CIBW_BEFORE_ALL_LINUX: "yum install -y openblas-devel"
           CIBW_BEFORE_ALL_MACOS: "brew install libomp"
           CIBW_CONFIG_SETTINGS_LINUX: "cmake.define.ENABLE_PYTHON_EMBED=OFF"
-          #CIBW_CONFIG_SETTINGS_MACOS: "cmake.define.F77_BLAS_MANGLE='(name,NAME) name ## _' cmake.define.PYGENTEN_OPENMP=OFF cmake.define.PYGENTEN_SERIAL=ON cmake.define.ENABLE_PYTHON_EMBED=OFF"
-          CIBW_CONFIG_SETTINGS_MACOS: "cmake.define.F77_BLAS_MANGLE='(name,NAME) name ## _' cmake.define.ENABLE_PYTHON_EMBED=OFF"
-          CIBW_ENVIRONMENT_MACOS: OpenMP_ROOT="$(brew --prefix)/opt/libomp" MACOSX_DEPLOYMENT_TARGET=14
+          CIBW_CONFIG_SETTINGS_MACOS: "cmake.define.F77_BLAS_MANGLE='(name,NAME) name ## _' cmake.define.PYGENTEN_OPENMP=OFF cmake.define.PYGENTEN_SERIAL=ON cmake.define.ENABLE_PYTHON_EMBED=OFF cmake.define.ENABLE_TRILINOS=ON cmake.define.Trilinos_Dir=${Trilinos_Install_Dir}/lib64/cmake/Trilinos"
+          #CIBW_CONFIG_SETTINGS_MACOS: "cmake.define.F77_BLAS_MANGLE='(name,NAME) name ## _' cmake.define.ENABLE_PYTHON_EMBED=OFF"
+          CIBW_ENVIRONMENT_MACOS: OpenMP_ROOT="$(brew --prefix)/opt/libomp" MACOSX_DEPLOYMENT_TARGET=13
           CIBW_TEST_REQUIRES: pytest pyttb
           CIBW_TEST_COMMAND: >
             cd {package} &&
