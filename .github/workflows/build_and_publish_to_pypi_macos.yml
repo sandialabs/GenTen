@@ -73,8 +73,7 @@ jobs:
           CIBW_CONFIG_SETTINGS_LINUX: "cmake.define.ENABLE_PYTHON_EMBED=OFF"
           CIBW_CONFIG_SETTINGS_MACOS: "cmake.define.F77_BLAS_MANGLE='(name,NAME) name ## _' cmake.define.PYGENTEN_OPENMP=OFF cmake.define.PYGENTEN_SERIAL=ON cmake.define.ENABLE_PYTHON_EMBED=OFF cmake.define.ENABLE_TRILINOS=ON"
           #CIBW_CONFIG_SETTINGS_MACOS: "cmake.define.F77_BLAS_MANGLE='(name,NAME) name ## _' cmake.define.ENABLE_PYTHON_EMBED=OFF"
-          CIBW_ENVIRONMENT: Trilinos_DIR=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib/cmake/Trilinos 
-          CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=13 OpenMP_ROOT="$(brew --prefix)/opt/libomp" DYLD_LIBRARY_PATH=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib
+          CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=13 OpenMP_ROOT="$(brew --prefix)/opt/libomp" Trilinos_DIR=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib/cmake/Trilinos DYLD_LIBRARY_PATH=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib
           CIBW_TEST_REQUIRES: pytest pyttb
           CIBW_TEST_COMMAND: >
             cd {package} &&
