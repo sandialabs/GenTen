@@ -39,6 +39,7 @@ jobs:
            -G Ninja \
            -D CMAKE_INSTALL_PREFIX:PATH=${Trilinos_Install_Dir} \
            -D CMAKE_BUILD_TYPE:STRING=RELEASE \
+           -D CMAKE_OSX_DEPLOYMENT_TARGET=14 \
            -D Trilinos_ENABLE_DEBUG:BOOL=OFF \
            -D Trilinos_ENABLE_CHECKED_STL:BOOL=OFF \
            -D Trilinos_ENABLE_EXPLICIT_INSTANTIATION:BOOL=ON \
@@ -69,7 +70,7 @@ jobs:
           CIBW_BUILD_VERBOSITY: 1
           CIBW_BEFORE_ALL_MACOS: "brew install libomp"
           CIBW_CONFIG_SETTINGS_MACOS: "cmake.define.F77_BLAS_MANGLE='(name,NAME) name ## _' cmake.define.ENABLE_PYTHON_EMBED=OFF cmake.define.ENABLE_TRILINOS=ON"
-          CIBW_ENVIRONMENT_MACOS: OpenMP_ROOT="$(brew --prefix)/opt/libomp" Trilinos_DIR=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib/cmake/Trilinos DYLD_LIBRARY_PATH=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib
+          CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=14 OpenMP_ROOT="$(brew --prefix)/opt/libomp" Trilinos_DIR=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib/cmake/Trilinos DYLD_LIBRARY_PATH=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib
           CIBW_TEST_REQUIRES: pytest pyttb
           CIBW_TEST_COMMAND: >
             cd {package} &&
