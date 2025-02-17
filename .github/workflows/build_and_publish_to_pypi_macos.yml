@@ -1,9 +1,7 @@
 # Workflow to build binary wheels for macos.
 # Note:  to build for a different deployment target than the host OS, e.g., 13.x (Ventura), add:
-#   * -D CMAKE_OSX_DEPLOYMENT_TARGET=13 \ to Trilinos CMake configure script
-#   * MACOSX_DEPLOYMENT_TARGET=13 to CIBW_ENVIRONMENT_MACOS
 #   * cmake.define.PYGENTEN_OPENMP=OFF cmake.define.PYGENTEN_SERIAL=ON to CIBW_CONFIG_SETTINGS_MACOS
-# This last step is necessary because otherwise the OpenMP libraries will be for the wrong OS version.
+# This is necessary because otherwise the OpenMP libraries will be for the wrong OS version.
 # An alternative approach would be to build libomp here instead of using homebrew to install it.
 
 name: Build python wheels - macos
@@ -17,6 +15,9 @@ jobs:
     strategy:
       matrix:
         os: [macos-15]
+        include:
+          - os: macos-15
+            target: 15
     steps:
       - uses: actions/checkout@v2
 
@@ -39,7 +40,7 @@ jobs:
            -G Ninja \
            -D CMAKE_INSTALL_PREFIX:PATH=${Trilinos_Install_Dir} \
            -D CMAKE_BUILD_TYPE:STRING=RELEASE \
-           -D CMAKE_OSX_DEPLOYMENT_TARGET=15 \
+           -D CMAKE_OSX_DEPLOYMENT_TARGET=${{ matrix.target }} \
            -D Trilinos_ENABLE_DEBUG:BOOL=OFF \
            -D Trilinos_ENABLE_CHECKED_STL:BOOL=OFF \
            -D Trilinos_ENABLE_EXPLICIT_INSTANTIATION:BOOL=ON \
@@ -70,7 +71,7 @@ jobs:
           CIBW_BUILD_VERBOSITY: 1
           CIBW_BEFORE_ALL_MACOS: "brew install libomp"
           CIBW_CONFIG_SETTINGS_MACOS: "cmake.define.F77_BLAS_MANGLE='(name,NAME) name ## _' cmake.define.ENABLE_PYTHON_EMBED=OFF cmake.define.ENABLE_TRILINOS=ON"
-          CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=15 OpenMP_ROOT="$(brew --prefix)/opt/libomp" Trilinos_DIR=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib/cmake/Trilinos DYLD_LIBRARY_PATH=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib
+          CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=${{ matrix.target }} OpenMP_ROOT="$(brew --prefix)/opt/libomp" Trilinos_DIR=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib/cmake/Trilinos DYLD_LIBRARY_PATH=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib
           CIBW_TEST_REQUIRES: pytest pyttb
           CIBW_TEST_COMMAND: >
             cd {package} &&
