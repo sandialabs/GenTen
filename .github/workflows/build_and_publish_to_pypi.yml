@@ -40,7 +40,7 @@ jobs:
         env:
           Trilinos_Install_Dir: ${{ steps.strings.outputs.build-output-dir }}/trilinos-install
         run: |
-          apt-get install -y ninja-build
+          sudo apt-get install -y ninja-build
           git clone --single-branch --branch trilinos-release-16-0-branch https://github.com/trilinos/Trilinos.git
           mkdir trilinos-build
           cd trilinos-build
