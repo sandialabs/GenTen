@@ -27,7 +27,7 @@ jobs:
           Trilinos_Install_Dir: ${{ steps.strings.outputs.build-output-dir }}/trilinos-install
         run: |
           brew install ninja
-          git clone -single-branch --branch trilinos-release-16-0-branch https://github.com/trilinos/Trilinos.git
+          git clone --single-branch --branch trilinos-release-16-0-branch https://github.com/trilinos/Trilinos.git
           mkdir trilinos-build
           cd trilinos-build
           cmake \
