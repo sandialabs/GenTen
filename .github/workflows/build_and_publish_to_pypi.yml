@@ -45,7 +45,7 @@ jobs:
           CIBW_SKIP: "*win32 *i686 *musllinux*"
           CIBW_BUILD_VERBOSITY: 1
           CIBW_BEFORE_ALL_LINUX: >
-            yum install -y openblas-devel &&
+            yum install -y openblas-devel ninja-build &&
             git clone --single-branch --branch trilinos-release-16-0-branch https://github.com/trilinos/Trilinos.git &&
             mkdir trilinos-build &&
             cd trilinos-build &&
