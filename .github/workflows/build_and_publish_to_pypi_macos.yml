@@ -50,7 +50,6 @@ jobs:
            -D Trilinos_ENABLE_ALL_PACKAGES:BOOL=OFF \
            -D Trilinos_ENABLE_ALL_OPTIONAL_PACKAGES:BOOL=OFF \
            -D BUILD_SHARED_LIBS:BOOL=ON \
-           -D DART_TESTING_TIMEOUT:STRING=600 \
            -D CMAKE_VERBOSE_MAKEFILE:BOOL=OFF \
            -D CMAKE_CXX_COMPILER:FILEPATH=clang++ \
            -D CMAKE_C_COMPILER:FILEPATH=clang \
@@ -59,8 +58,6 @@ jobs:
            -D TPL_ENABLE_BinUtils=OFF \
            -D TPL_ENABLE_Pthread=OFF \
            -D Trilinos_ENABLE_ROL=ON \
-           -D Kokkos_ENABLE_SERIAL=ON \
-           -D Kokkos_ENABLE_AGGRESSIVE_VECTORIZATION=ON \
            ../Trilinos
           ninja install
       
