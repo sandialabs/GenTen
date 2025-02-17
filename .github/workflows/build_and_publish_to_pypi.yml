@@ -28,6 +28,41 @@ jobs:
         os: [ubuntu-latest]
     steps:
       - uses: actions/checkout@v2
+
+      - name: Set reusable strings
+        # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
+        id: strings
+        shell: bash
+        run: |
+          echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+
+      - name: Install Trilinos
+        env:
+          Trilinos_Install_Dir: ${{ steps.strings.outputs.build-output-dir }}/trilinos-install
+        run: |
+          yum install -y ninja-build
+          git clone --single-branch --branch trilinos-release-16-0-branch https://github.com/trilinos/Trilinos.git
+          mkdir trilinos-build
+          cd trilinos-build
+          cmake \
+           -G Ninja \
+           -D CMAKE_INSTALL_PREFIX:PATH=${Trilinos_Install_Dir} \
+           -D CMAKE_BUILD_TYPE:STRING=RELEASE \
+           -D Trilinos_ENABLE_DEBUG:BOOL=OFF \
+           -D Trilinos_ENABLE_CHECKED_STL:BOOL=OFF \
+           -D Trilinos_ENABLE_EXPLICIT_INSTANTIATION:BOOL=ON \
+           -D Trilinos_WARNINGS_AS_ERRORS_FLAGS:STRING="" \
+           -D Trilinos_ENABLE_ALL_PACKAGES:BOOL=OFF \
+           -D Trilinos_ENABLE_ALL_OPTIONAL_PACKAGES:BOOL=OFF \
+           -D BUILD_SHARED_LIBS:BOOL=ON \
+           -D CMAKE_CXX_COMPILER:FILEPATH=g++ \
+           -D CMAKE_C_COMPILER:FILEPATH=gcc \
+           -D CMAKE_Fortran_COMPIIER:FILEPATH=gfortran \
+           -D TPL_ENABLE_BinUtils=OFF \
+           -D TPL_ENABLE_Pthread=OFF \
+           -D Trilinos_ENABLE_ROL=ON \
+           ../Trilinos
+          ninja install
       
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.20.0
@@ -38,8 +73,9 @@ jobs:
           CIBW_SKIP: "*win32 *i686 *musllinux*"
           CIBW_BUILD_VERBOSITY: 1
           CIBW_BEFORE_ALL_LINUX: "yum install -y openblas-devel"
-          CIBW_CONFIG_SETTINGS: "cmake.define.ENABLE_PYTHON_EMBED=OFF"
-          CIBW_TEST_REQUIRES: pytest
+          CIBW_CONFIG_SETTINGS_LINUX: "cmake.define.ENABLE_PYTHON_EMBED=OFF cmake.define.ENABLE_TRILINOS=ON"
+          CIBW_ENVIRONMENT_LINUX: Trilinos_DIR=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib/cmake/Trilinos LD_LIBRARY_PATH=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib
+          CIBW_TEST_REQUIRES: pytest pyttb
           CIBW_TEST_COMMAND: >
             cd {package} &&
             pytest python/test
@@ -47,39 +83,39 @@ jobs:
       - name: Upload distributions
         uses: actions/upload-artifact@v4
         with:
-          name: release-dists
+          name: release-dists-${{ matrix.os }}
           path: dist/
           
-  pypi-publish:
-    runs-on: ubuntu-latest
+  # pypi-publish:
+  #   runs-on: ubuntu-latest
 
-    needs:
-      - build-sdist
-      - build-wheels
+  #   needs:
+  #     - build-sdist
+  #     - build-wheels
 
-    permissions:
-      id-token: write
+  #   permissions:
+  #     id-token: write
 
-    # Dedicated environments with protections for publishing are strongly recommended.
-    environment:
-      name: pypi
-      url: https://pypi.org/project/pygenten/
+  #   # Dedicated environments with protections for publishing are strongly recommended.
+  #   environment:
+  #     name: pypi
+  #     url: https://pypi.org/project/pygenten/
 
-    steps:
-      - name: Retrieve source distribution
-        uses: actions/download-artifact@v4
-        with:
-          name: release-sdist
-          path: dist/
+  #   steps:
+  #     - name: Retrieve source distribution
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: release-sdist
+  #         path: dist/
           
-      - name: Retrieve release distributions
-        uses: actions/download-artifact@v4
-        with:
-          name: release-dists
-          path: dist/
+  #     - name: Retrieve release distributions
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: release-dists
+  #         path: dist/
 
-      - name: Publish release distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-         skip-existing: true
+  #     - name: Publish release distributions to PyPI
+  #       uses: pypa/gh-action-pypi-publish@release/v1
+  #       with:
+  #        skip-existing: true
 
