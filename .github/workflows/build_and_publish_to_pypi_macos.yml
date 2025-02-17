@@ -14,8 +14,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-15]
+        os: [macos-14, macos-15]
         include:
+          - os: macos-14
+            target: 14
           - os: macos-15
             target: 15
     steps:
