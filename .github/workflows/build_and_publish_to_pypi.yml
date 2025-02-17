@@ -65,6 +65,8 @@ jobs:
              -D CMAKE_Fortran_COMPIIER:FILEPATH=gfortran \
              -D TPL_ENABLE_BinUtils=OFF \
              -D TPL_ENABLE_Pthread=OFF \
+             -D TPL_BLAS_LIBRARIES=libopenblas.so \
+             -D TPL_LAPACK_LIBRARIES=libopenblas.so \
              -D Trilinos_ENABLE_ROL=ON \
              ../Trilinos &&
             ninja install
