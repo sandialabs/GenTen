@@ -49,23 +49,23 @@ jobs:
             git clone --single-branch --branch trilinos-release-16-0-branch https://github.com/trilinos/Trilinos.git &&
             mkdir trilinos-build &&
             cd trilinos-build &&
-            cmake >
-             -G Ninja >
-             -D CMAKE_INSTALL_PREFIX:PATH=${{ steps.strings.outputs.build-output-dir }}/trilinos-install >
-             -D CMAKE_BUILD_TYPE:STRING=RELEASE >
-             -D Trilinos_ENABLE_DEBUG:BOOL=OFF >
-             -D Trilinos_ENABLE_CHECKED_STL:BOOL=OFF >
-             -D Trilinos_ENABLE_EXPLICIT_INSTANTIATION:BOOL=ON >
-             -D Trilinos_WARNINGS_AS_ERRORS_FLAGS:STRING="" >
-             -D Trilinos_ENABLE_ALL_PACKAGES:BOOL=OFF >
-             -D Trilinos_ENABLE_ALL_OPTIONAL_PACKAGES:BOOL=OFF >
-             -D BUILD_SHARED_LIBS:BOOL=ON >
-             -D CMAKE_CXX_COMPILER:FILEPATH=g++ >
-             -D CMAKE_C_COMPILER:FILEPATH=gcc >
-             -D CMAKE_Fortran_COMPIIER:FILEPATH=gfortran >
-             -D TPL_ENABLE_BinUtils=OFF >
-             -D TPL_ENABLE_Pthread=OFF >
-             -D Trilinos_ENABLE_ROL=ON >
+            cmake \
+             -G Ninja \
+             -D CMAKE_INSTALL_PREFIX:PATH=${{ steps.strings.outputs.build-output-dir }}/trilinos-install \
+             -D CMAKE_BUILD_TYPE:STRING=RELEASE \
+             -D Trilinos_ENABLE_DEBUG:BOOL=OFF \
+             -D Trilinos_ENABLE_CHECKED_STL:BOOL=OFF \
+             -D Trilinos_ENABLE_EXPLICIT_INSTANTIATION:BOOL=ON \
+             -D Trilinos_WARNINGS_AS_ERRORS_FLAGS:STRING="" \
+             -D Trilinos_ENABLE_ALL_PACKAGES:BOOL=OFF \
+             -D Trilinos_ENABLE_ALL_OPTIONAL_PACKAGES:BOOL=OFF \
+             -D BUILD_SHARED_LIBS:BOOL=ON \
+             -D CMAKE_CXX_COMPILER:FILEPATH=g++ \
+             -D CMAKE_C_COMPILER:FILEPATH=gcc \
+             -D CMAKE_Fortran_COMPIIER:FILEPATH=gfortran \
+             -D TPL_ENABLE_BinUtils=OFF \
+             -D TPL_ENABLE_Pthread=OFF \
+             -D Trilinos_ENABLE_ROL=ON \
              ../Trilinos &&
             ninja install
           CIBW_CONFIG_SETTINGS_LINUX: "cmake.define.ENABLE_PYTHON_EMBED=OFF cmake.define.ENABLE_TRILINOS=ON"
