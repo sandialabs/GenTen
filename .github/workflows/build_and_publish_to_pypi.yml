@@ -71,12 +71,8 @@ jobs:
              -D Trilinos_ENABLE_ROL=ON \
              ../Trilinos &&
             ninja install &&
-            ls ${{ steps.strings.outputs.build-output-dir }}/trilinos-install &&
-            ls ${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib64 &&
-            ls ${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib64/cmake &&
-            ls ${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib64/cmake/Trilinos
           CIBW_CONFIG_SETTINGS_LINUX: "cmake.define.ENABLE_PYTHON_EMBED=OFF cmake.define.ENABLE_TRILINOS=ON"
-          CIBW_ENVIRONMENT_LINUX: Trilinos_DIR=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib64/cmake/Trilinos
+          CIBW_ENVIRONMENT_LINUX: Trilinos_ROOT=${{ steps.strings.outputs.build-output-dir }}/trilinos-install LD_LIBRARY_PATH=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib64
           CIBW_TEST_REQUIRES: pytest pyttb
           CIBW_TEST_COMMAND: >
             cd {package} &&
