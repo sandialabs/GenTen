@@ -10,7 +10,7 @@ readme = "python/README.md"
 authors = [
   { name = "Eric Phipps" },
 ]
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 dependencies = ["numpy"]
 classifiers = [
   "Development Status :: 4 - Beta",
