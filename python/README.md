@@ -33,8 +33,6 @@ pip install pygenten
 ```
 This will install the binary wheel if it is available, and if it isn't, build GenTen and pygenten for a CPU architecture using OpenMP parallelism using a default compiler from the user's path.  During the build of pygenten, CMake will attempt to locate valid BLAS and LAPACK libraries in the user environment.  If these cannot be found, the user can customize the build by specifying `LAPACK_LIBS` as described below.
 
-**Note that when installing pygenten from a binary wheel, the `repairwheel` step that makes the wheel usable on a wide variety of architectures seems to make the included `genten` and related executables unusable.  If you want to use GenTen outside of python, you should install it from source as described below.**
-
 ### Customized installation
 
 To customize the GenTen/pygenten build, you must first instruct pip to compile from source by adding the `--no-binary pygenten` command-line argument.  The can then be customized by passing CMake defines to specify compilers, BLAS/LAPACK libraries, host/device architectures, and enabled programming models.  This is done by adding command-line arguments to pip of the form
