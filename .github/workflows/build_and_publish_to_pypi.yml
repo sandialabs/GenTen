@@ -4,22 +4,22 @@ on:
   workflow_dispatch
 
 jobs:
-  build-sdist:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
-      - name: Setup pip
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install build
-      - name: Build sdist
-        run: python -m build --sdist
-      - name: Upload distributions
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-sdist
-          path: dist/
+  # build-sdist:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - uses: actions/setup-python@v2
+  #     - name: Setup pip
+  #       run: |
+  #         python -m pip install --upgrade pip
+  #         python -m pip install build
+  #     - name: Build sdist
+  #       run: python -m build --sdist
+  #     - name: Upload distributions
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: release-sdist
+  #         path: dist/
     
   build-wheels:
     runs-on: ${{ matrix.os }}
@@ -49,6 +49,8 @@ jobs:
             git clone --single-branch --branch trilinos-release-16-0-branch https://github.com/trilinos/Trilinos.git &&
             mkdir trilinos-build &&
             cd trilinos-build &&
+            ls /usr/lib/*openblas* &&
+            ls /usr/lib64/*openblas* &&
             cmake \
              -G Ninja \
              -D CMAKE_INSTALL_PREFIX:PATH=${{ steps.strings.outputs.build-output-dir }}/trilinos-install \
@@ -65,8 +67,8 @@ jobs:
              -D CMAKE_Fortran_COMPIIER:FILEPATH=gfortran \
              -D TPL_ENABLE_BinUtils=OFF \
              -D TPL_ENABLE_Pthread=OFF \
-             -D TPL_BLAS_LIBRARIES=libopenblas.so \
-             -D TPL_LAPACK_LIBRARIES=libopenblas.so \
+             -D TPL_BLAS_LIBRARIES=libopenblas.so.0 \
+             -D TPL_LAPACK_LIBRARIES=libopenblas.so.0 \
              -D Trilinos_ENABLE_ROL=ON \
              ../Trilinos &&
             ninja install
