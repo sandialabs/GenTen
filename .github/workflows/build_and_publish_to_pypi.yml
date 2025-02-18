@@ -49,7 +49,6 @@ jobs:
             git clone --single-branch --branch trilinos-release-16-0-branch https://github.com/trilinos/Trilinos.git &&
             mkdir trilinos-build &&
             cd trilinos-build &&
-            ls /usr/lib/*openblas* &&
             ls /usr/lib64/*openblas* &&
             cmake \
              -G Ninja \
