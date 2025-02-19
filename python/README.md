@@ -23,7 +23,14 @@ There are two general approaches for building pygenten:
 
 ## Installing with pip
 
-pygenten has experimental support for installation using pip from the source distribution on [pypi](https://pypi.org/project/pygenten/).  Furthermore, binary wheels are provided in limited circumstances (currently just linux and mac with OpenMP support only, but more may be provided in the future), enabling immediate installation.  The pip installation leverages [scikit-build-core](https://github.com/scikit-build/scikit-build-core) to provide a CMake build backend for pip, which allows the user to provide CMake defines that control the pygenten build process and determine which architectures/parallel programming models are enabled.  We thus recommend becoming familiar with the CMake build process for GenTen in general as described [here](https://github.com/sandialabs/GenTen#installing-genten) before continuing.  In particular, the user must have BLAS and LAPACK libraries available in their build environment that can either be automatically discovered by CMake or manually specified through `LAPACK_LIBS`.
+pygenten has experimental support for installation using pip from the source distribution on [pypi](https://pypi.org/project/pygenten/).  Furthermore, binary wheels are provided in the following limited circumstances, enabling immediate installation:
+| OS                 | Arch   | Kokkos Backend | BLAS/LAPACK |
+| ------------------ | ------ | -------------- | ----------- |
+| Linux              | x86_64 | OpenMP         | OpenBLAS    |
+| Macos-14 (Sonoma)  | arm64  | OpenMP         | Accelerate  |
+| Macos-15 (Sequoia) | arm64  | OpenMP         | Accelerate  |
+
+(in the future, Windows binaries as well as GPU backends are expected to be provided).  The pip installation leverages [scikit-build-core](https://github.com/scikit-build/scikit-build-core) to provide a CMake build backend for pip, which allows the user to provide CMake defines that control the pygenten build process and determine which architectures/parallel programming models are enabled.  We thus recommend becoming familiar with the CMake build process for GenTen in general as described [here](https://github.com/sandialabs/GenTen#installing-genten) before continuing.  In particular, the user must have BLAS and LAPACK libraries available in their build environment that can either be automatically discovered by CMake or manually specified through `LAPACK_LIBS`.
 
 ### Basic installation
 
