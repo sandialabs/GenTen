@@ -210,28 +210,34 @@ operator() (const Loss& loss) {
     Kfac_.normalize(NormTwo);
   Kfac_.distribute();
 
-  // This is a lot of copies :/ but accept it for now
+  // TODO reduce number of copies?
   using VectorType = KokkosVector<ExecSpace>;
   auto u = VectorType(Kfac_);
   u.copyFromKtensor(Kfac_);
   KtensorT<ExecSpace> ut = u.getKtensor();
   dtc_.allReduce(ut, true);
 
+  // Copy Ktensor for restoring previous solution
   VectorType u_best = u.clone();
   u_best.set(u);
 
-  VectorType g = u.clone(); // Gradient Ktensor
+  // Gradient Ktensor
+  VectorType g = u.clone(); 
   g.zero();
   decltype(Kfac_) GFac = g.getKtensor();
 
+  // Copy Ktensor for federated steps
   VectorType meta_u = u.clone();
   meta_u.set(u);
   KtensorT<ExecSpace> MUFac = meta_u.getKtensor();
 
+  // Copy local ktensor for intermediary fed-opt axpbys
   VectorType diff = meta_u.clone();
   diff.zero();
   KtensorT<ExecSpace> Dfac = diff.getKtensor();
 
+  // Create sampler -- must use u from iterator to get the right padding
+  // Only semi-stratified sampling supported for now.
   auto sampler = SemiStratifiedSampler<ExecSpace, Loss>(
     spTensor_, ut, algParams_, false);
   sampler.prepareGradient(GFac);
@@ -242,17 +248,21 @@ operator() (const Loss& loss) {
   Impl::GCP_SGD_Step<ExecSpace,Loss> *meta_stepper =
     Impl::createStepper<ExecSpace,Loss>(algParams_, meta_u, algParams_.meta_step_type);
 
+  // Constants for the algorithm
   const auto maxEpochs = algParams_.maxiters;
   const auto epochIters = algParams_.epoch_iters;
   const auto max_fails = algParams_.max_fails;
   const auto tol = algParams_.gcp_tol;
   const auto dp_iters = algParams_.downpour_iters;
 
+  // Create annealer
   auto annealer_ptr = getAnnealer(algParams_);
   auto &annealer = *annealer_ptr;
 
-  bool fedavg = algParams_.fed_method == GCP_FedMethod::FedAvg;
+  // Gradient step size
   auto meta_lr = algParams_.meta_rate;
+
+  bool fedavg = algParams_.fed_method == GCP_FedMethod::FedAvg;
 
   if (fedavg)
     out << "\nGCP-FedAvg:\n";
@@ -323,9 +333,10 @@ operator() (const Loss& loss) {
   sampler.sampleTensorF(ut, loss);
   timer.stop(timer_sample_f);
 
-  // Fit stuff
+  // Objective estimates
   timer.start(timer_fest);
-  ttb_real fest, ften;
+  ttb_real fest;
+  ttb_real ften;
   StreamingHistory<ExecSpace> hist;
   ttb_real penalty = 0.0;
   sampler.value(ut, hist, penalty, loss, fest, ften);
@@ -346,11 +357,14 @@ operator() (const Loss& loss) {
     p.cum_time = MPI_Wtime()-start_time;
   }
 
+  /*** Federated epoch loop ***/ 
   //double t0 = 0;
   double t1 = 0;
   ttb_indx nfails = 0;
-  for (ttb_indx e = 0; e < maxEpochs; ++e) { // Epochs
+  for (ttb_indx e = 0; e < maxEpochs; ++e) {
     //t0 = MPI_Wtime();
+
+    // Gradient step size
     auto epoch_lr = annealer(e);
     stepper->setStep(epoch_lr);
 
@@ -393,7 +407,9 @@ operator() (const Loss& loss) {
           timer.stop(timer_allreduce);
         } else {
           timer.start(timer_meta_step);
-          diff.axpby(1.0, meta_u, -1.0, u); // Subtract u from meta_u to get Meta grad
+          
+          // Subtract u from meta_u to get Meta grad
+          diff.axpby(1.0, meta_u, -1.0, u); 
           Kokkos::fence();
           timer.stop(timer_meta_step);
 
@@ -405,7 +421,9 @@ operator() (const Loss& loss) {
           meta_stepper->update();
           meta_stepper->setStep(meta_lr);
           meta_stepper->eval(diff, meta_u);
-          u.set(meta_u); // Everyone agrees that meta_u is the new factors
+          
+          // Everyone agrees that meta_u is the new factors
+          u.set(meta_u);
           timer.stop(timer_meta_step);
         }
         ++allreduceCounter;
@@ -419,9 +437,13 @@ operator() (const Loss& loss) {
     timer.stop(timer_fest);
     t1 = MPI_Wtime();
 
-    const auto fest_diff = fest_prev - fest;
-    bool passed_epoch = fest_diff > -0.001 * fest_best && !std::isnan(fest);
+    // check convergence - this follows the GCP-SGD criterion
+    bool failed_epoch = fest > fest_prev || std::isnan(fest);
 
+    if (failed_epoch)
+      ++nfails;
+
+    // Print progress of the current iteration.
     out << "Epoch " << std::setw(3) << e + 1 << ": f-est = "
         << std::setw(13) << std::setprecision(6) << std::scientific
         << fest;
@@ -434,8 +456,9 @@ operator() (const Loss& loss) {
     out << ", time = "
         << std::setw(8) << std::setprecision(2) << std::scientific
         << timer.getTotalTime(timer_sgd) << " sec";
-    if (!passed_epoch)
-      out << ", nfails = " << nfails+1;
+    if (failed_epoch)
+      out << ", nfails = " << nfails
+          << " (resetting to solution from last epoch)";
     out << std::endl;
 
     /*
@@ -497,23 +520,22 @@ operator() (const Loss& loss) {
     }
     */
 
-    if (passed_epoch) {
-      stepper->setPassed();
-      meta_stepper->setPassed();
-      fest_prev = fest;
-      annealer.success();
-      if (fest < fest_best) { // Only set best if really best
-        fest_best = fest;
-        u_best.set(u);
-      }
-    } else {
+    if (failed_epoch) {
+      // restart from last epoch
       u.set(u_best);
       meta_u.set(u_best);
-      annealer.failed();
+      fest = fest_prev;
       stepper->setFailed();
       meta_stepper->setFailed();
-      fest = fest_best;
-      ++nfails;
+      annealer.failed();
+    } else {
+      // update previous data
+      u_best.set(u);
+      fest_prev = fest;
+      fest_best = fest;
+      stepper->setPassed();
+      meta_stepper->setPassed();
+      annealer.success();
     }
 
     {
@@ -524,7 +546,7 @@ operator() (const Loss& loss) {
       p.cum_time = t1 - start_time;
     }
 
-    if (nfails > max_fails || fest < tol*fest_init)
+    if (nfails > max_fails || fest < tol)
       break;
   }
   u.set(u_best);
