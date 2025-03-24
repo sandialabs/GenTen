@@ -231,6 +231,7 @@ void pygenten_algparams(py::module &m){
     cl.def_readwrite("printitn", &Genten::AlgParams::printitn);
     cl.def_readwrite("debug", &Genten::AlgParams::debug);
     cl.def_readwrite("timings", &Genten::AlgParams::timings);
+    cl.def_readwrite("timings_xml", &Genten::AlgParams::timings_xml);
     cl.def_readwrite("full_gram", &Genten::AlgParams::full_gram);
     cl.def_readwrite("rank_def_solver", &Genten::AlgParams::rank_def_solver);
     cl.def_readwrite("rcond", &Genten::AlgParams::rcond);
