@@ -265,6 +265,7 @@ void pygenten_algparams(py::module &m){
 
     cl.def_readwrite("loss_function_type", &Genten::AlgParams::loss_function_type);
     cl.def_readwrite("loss_eps", &Genten::AlgParams::loss_eps);
+    cl.def_readwrite("loss_param", &Genten::AlgParams::loss_param);
     cl.def_readwrite("gcp_tol", &Genten::AlgParams::gcp_tol);
     cl.def_readwrite("gcp_goal_method", &Genten::AlgParams::goal_method);
     cl.def_readwrite("gcp_goal_python_module_name", &Genten::AlgParams::python_module_name);
