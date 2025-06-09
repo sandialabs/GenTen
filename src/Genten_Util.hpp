@@ -122,8 +122,8 @@ namespace Genten {                              \
 typedef bool ttb_bool;
 
 constexpr ttb_real MACHINE_EPSILON = std::numeric_limits<ttb_real>::epsilon();
-constexpr ttb_real DOUBLE_MAX = std::numeric_limits<ttb_real>::max();
-constexpr ttb_real DOUBLE_MIN = std::numeric_limits<ttb_real>::min();
+constexpr ttb_real DOUBLE_MAX = (std::numeric_limits<ttb_real>::max)();
+constexpr ttb_real DOUBLE_MIN = (std::numeric_limits<ttb_real>::min)();
 
 /* ----- Enums ----- */
 namespace Genten {
@@ -563,4 +563,10 @@ namespace Genten {
 #define GENTEN_TIME_MONITOR_DIFF(FUNCNAME, DIFF)
 #define GENTEN_START_TIMER(FUNCNAME)
 #define GENTEN_STOP_TIMER(FUNCNAME)
+#endif
+
+#ifdef _WIN32
+#define GENTEN_DLL_EXPORT __declspec(dllexport)
+#else
+#define GENTEN_DLL_EXPORT __attribute__((visibility("default")))
 #endif
