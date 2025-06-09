@@ -79,7 +79,7 @@ namespace Genten {
 #ifdef HAVE_PYTHON_EMBED
   // A goal function implemented as a python object
   template <typename ExecSpace>
-  class __attribute__((visibility("default"))) GCP_PythonObjectGoal :
+  class GENTEN_DLL_EXPORT GCP_PythonObjectGoal :
     public GCP_Goal<ExecSpace> {
   public:
 
