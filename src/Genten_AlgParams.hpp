@@ -55,7 +55,7 @@
 namespace Genten {
 
   // Struct for passing various algorithmic parameters
-  struct __attribute__((visibility("default"))) AlgParams {
+  struct GENTEN_DLL_EXPORT AlgParams {
 
     // Generic options
     Execution_Space::type exec_space; // Chosen execution space
