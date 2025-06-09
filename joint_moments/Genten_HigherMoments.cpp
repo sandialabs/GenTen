@@ -348,7 +348,7 @@ TensorT<Kokkos::DefaultHostExecutionSpace> cokurtosis_impl(
 		gt_assert(kIdx<XnCol);
 		gt_assert(lIdx<XnCol);
 
-        std::vector<long unsigned int> indices{iIdx, jIdx, kIdx, lIdx};
+        std::vector<std::size_t> indices{iIdx, jIdx, kIdx, lIdx};
         std::sort(indices.begin(), indices.end());
 		//This works because moment is a symmetric tensor
         const auto m = blockView(ii, ji);
