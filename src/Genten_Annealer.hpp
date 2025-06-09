@@ -95,8 +95,9 @@ public:
       Tcur(Ti) {}
 
   ttb_real operator()(int) override {
+    const ttb_real pi = 4.0 * std::atan(1.0);
     return min_lr +
-           0.5 * (max_lr - min_lr) * (1 + std::cos(ttb_real(Tcur) / Ti * M_PI));
+           0.5 * (max_lr - min_lr) * (1 + std::cos(ttb_real(Tcur) / Ti * pi));
   }
 
   void failed() override {
