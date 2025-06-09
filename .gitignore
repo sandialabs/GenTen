@@ -2,4 +2,3 @@ build
 dist
 .vscode
 .vs
-CMakeSettings.json
