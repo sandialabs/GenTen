@@ -39,24 +39,24 @@ jobs:
       run: |
         echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: 3.11
+  # - name: Set up Python
+      #uses: actions/setup-python@v5
+     # with:
+        #python-version: 3.11
 
-    - name: Install dependencies
-      env:
-        PYTHONPATH: ${{ steps.strings.outputs.build-output-dir }}/python
-      run: |
-        python -m pip install --upgrade pip
-        pip install pytest
+  # - name: Install dependencies
+      #env:
+        #PYTHONPATH: ${{ steps.strings.outputs.build-output-dir }}/python
+      #run: |
+        #python -m pip install --upgrade pip
+        #pip install pytest
         # Released version of pyttb is too old, so we need to build from the github repo
         #pip install pyttb
-        mkdir pyttb
-        cd pyttb
-        git clone https://github.com/sandialabs/pyttb.git
-        cd pyttb
-        pip install .
+        #mkdir pyttb
+       # cd pyttb
+       # git clone https://github.com/sandialabs/pyttb.git
+        #cd pyttb
+        #pip install .
 
     - name: Install mkl
       shell: cmd
@@ -81,12 +81,14 @@ jobs:
         MKLROOT: c:\Program Files (x86)\Intel\oneAPI\mkl\latest
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
-        -DBUILD_SHARED_LIBS=ON
+        -DCMAKE_CXX_COMPILER=clang-cl.exe
+        -DCMAKE_C_COMPILER=clang-cl.exe
+        -DBUILD_SHARED_LIBS=OFF
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         -DKokkos_ENABLE_OPENMP=${{ matrix.openmp }}
         -DKokkos_ENABLE_SERIAL=${{ matrix.serial }}
-        -DENABLE_PYTHON=ON
-        -DF77_BLAS_MANGLE='(name,NAME) name ## _'
+        -DENABLE_PYTHON=OFF
+        -DF77_BLAS_MANGLE='(name,NAME) name'
         -S ${{ github.workspace }}
 
     - name: Build
