@@ -81,8 +81,8 @@ jobs:
         MKLROOT: c:\Program Files (x86)\Intel\oneAPI\mkl\latest
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
-        -DCMAKE_CXX_COMPILER='clang-cl.exe'
-        -DCMAKE_C_COMPILER='clang-cl.exe'
+        -DCMAKE_CXX_COMPILER=clang-cl
+        -DCMAKE_C_COMPILER=clang-cl
         -DBUILD_SHARED_LIBS=OFF
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         -DKokkos_ENABLE_OPENMP=${{ matrix.openmp }}
