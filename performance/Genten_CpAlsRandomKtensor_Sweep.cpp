@@ -48,7 +48,7 @@
 #include <stdio.h>
 
 #include "Genten_CpAls.hpp"
-//#include "Genten_FacTestSetGenerator.hpp"
+#include "Genten_FacTestSetGenerator.hpp"
 #include "Genten_IndxArray.hpp"
 #include "Genten_IOtext.hpp"
 #include "Genten_Ktensor.hpp"
