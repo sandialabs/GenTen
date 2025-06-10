@@ -120,6 +120,7 @@ jobs:
         PYTHONPATH: ${{ steps.strings.outputs.build-output-dir }}/python
       # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
+      shell: cmd
       run: | 
         "c:\Program Files (x86)\Intel\oneAPI\setvars.bat"
         ctest --build-config ${{ matrix.build_type }} --output-on-failure
