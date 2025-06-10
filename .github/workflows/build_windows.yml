@@ -122,5 +122,5 @@ jobs:
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       shell: cmd
       run: | 
-        "c:\Program Files (x86)\Intel\oneAPI\setvars.bat"
-        ctest --build-config ${{ matrix.build_type }} --output-on-failure
+          "c:\Program Files (x86)\Intel\oneAPI\setvars.bat"
+          ctest --build-config ${{ matrix.build_type }} --output-on-failure
