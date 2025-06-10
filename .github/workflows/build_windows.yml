@@ -57,23 +57,23 @@ jobs:
        # git clone https://github.com/sandialabs/pyttb.git
         #cd pyttb
         #pip install .
-    - name: Download Dependency walker
-      run: |
+   # - name: Download Dependency walker
+   #   run: |
         # Create a directory for dependency walker
-        mkdir DependencyWalker
+  #      mkdir DependencyWalker
         # Download dependency walker zip file
-        Invoke-WebRequest -Uri "https://www.dependencywalker.com/depends22_x64.zip" -OutFile "depends22_x64.zip"
+   #     Invoke-WebRequest -Uri "https://www.dependencywalker.com/depends22_x64.zip" -OutFile "depends22_x64.zip"
         # Extract the zip file
-        Expand-Archive -Path "depends22_x64.zip" -DestinationPath "DependencyWalker"
+     #   Expand-Archive -Path "depends22_x64.zip" -DestinationPath "DependencyWalker"
         # Clean the zip file
-        Remove-Item "depends22_x64.zip"
+     #   Remove-Item "depends22_x64.zip"
 
-    - name: Run dependency walker
-      run: |
+   # - name: Run dependency walker
+     # run: |
         # Navigate to dependency walker directory
-        cd DependencyWalker
+    #    cd DependencyWalker
         # Run the denpendency walker on target executable
-        .\depends.exe "C:\Users\jtmozeb\source\repos\genten\GenTen\out\build\x64-Clang-Debug\bin\genten.exe"
+     #   .\depends.exe "C:\Users\jtmozeb\source\repos\genten\GenTen\out\build\x64-Clang-Debug\bin\genten.exe"
         
 
     - name: Install mkl
@@ -120,4 +120,6 @@ jobs:
         PYTHONPATH: ${{ steps.strings.outputs.build-output-dir }}/python
       # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: ctest --build-config ${{ matrix.build_type }} --output-on-failure
+      run: | 
+        "c:\Program Files (x86)\Intel\oneAPI\setvars.bat"
+        ctest --build-config ${{ matrix.build_type }} --output-on-failure
