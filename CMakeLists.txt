@@ -1041,32 +1041,32 @@ TARGET_LINK_LIBRARIES (perf_CpAlsAminoAcid ${GENTEN_LINK_LIBS})
 ADD_EXECUTABLE (
   perf_CpAlsRandomKtensor
   ${Genten_SOURCE_DIR}/performance/Genten_CpAlsRandomKtensor.cpp
-  #{Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
-  #{Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
+  #${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
+  #${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   )
 TARGET_LINK_LIBRARIES (perf_CpAlsRandomKtensor ${GENTEN_LINK_LIBS})
 
 ADD_EXECUTABLE (
   perf_CpAlsRandomKtensor_Sweep
   ${Genten_SOURCE_DIR}/performance/Genten_CpAlsRandomKtensor_Sweep.cpp
-  #{Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
-  #{Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
+  #${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
+  #${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   )
 TARGET_LINK_LIBRARIES (perf_CpAlsRandomKtensor_Sweep ${GENTEN_LINK_LIBS})
 
 ADD_EXECUTABLE (
   perf_MTTKRP
   ${Genten_SOURCE_DIR}/performance/Genten_MTTKRP.cpp
-  #{Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
-  #{Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
+  #${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
+  #${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   )
 TARGET_LINK_LIBRARIES (perf_MTTKRP ${GENTEN_LINK_LIBS})
 
 ADD_EXECUTABLE (
   perf_MTTKRP_Sweep
   ${Genten_SOURCE_DIR}/performance/Genten_MTTKRP_Sweep.cpp
-  #{Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
-  #{Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
+  #${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
+  #${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   )
 TARGET_LINK_LIBRARIES (perf_MTTKRP_Sweep ${GENTEN_LINK_LIBS})
 
