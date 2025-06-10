@@ -92,11 +92,17 @@ jobs:
         rd /s/q "webimage_extracted"
         exit /b %installer_exit_code%
         
+    - name: Setup environment
+      shell: cmd
+      run: |
+         "c:\Program Files (x86)\Intel\oneAPI\setvars.bat"
+         set > $GITHUB_ENV
+        
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-      env:
-        MKLROOT: c:\Program Files (x86)\Intel\oneAPI\mkl\latest
+      #env:
+      #  MKLROOT: c:\Program Files (x86)\Intel\oneAPI\mkl\latest
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
         -T ClangCL
@@ -121,6 +127,4 @@ jobs:
       # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       shell: cmd
-      run: | 
-          "c:\Program Files (x86)\Intel\oneAPI\setvars.bat"
-          ctest --build-config ${{ matrix.build_type }} --output-on-failure
+      run: ctest --build-config ${{ matrix.build_type }} --output-on-failure
