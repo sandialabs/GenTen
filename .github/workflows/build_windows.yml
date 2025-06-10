@@ -57,6 +57,24 @@ jobs:
        # git clone https://github.com/sandialabs/pyttb.git
         #cd pyttb
         #pip install .
+    - name: Download Dependency walker
+      run: |
+        # Create a directory for dependency walker
+        mkdir DependencyWalker
+        # Download dependency walker zip file
+        Invoke-WebRequest -Uri "https://www.dependencywalker.com/depends22_x64.zip" -OutFile "depends22_x64.zip"
+        # Extract the zip file
+        Expand-Archive -Path "depends22_x64.zip" -DestinationPath "DependencyWalker"
+        # Clean the zip file
+        Remove-Item "depends22_x64.zip"
+
+    - name: Run dependency walker
+      run: |
+        # Navigate to dependency walker directory
+        cd DependencyWalker
+        # Run the denpendency walker on target executable
+        .\depends.exe "C:\Users\jtmozeb\source\repos\genten\GenTen\out\build\x64-Clang-Debug\bin\genten.exe"
+        
 
     - name: Install mkl
       shell: cmd
