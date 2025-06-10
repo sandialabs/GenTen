@@ -76,27 +76,36 @@ jobs:
      #   .\depends.exe "C:\Users\jtmozeb\source\repos\genten\GenTen\out\build\x64-Clang-Debug\bin\genten.exe"
         
 
-    - name: Install mkl
-      shell: cmd
-      run: |
-        REM SPDX-FileCopyrightText: 2022 Intel Corporation
-        REM
-        REM SPDX-License-Identifier: MIT
-        set URL=https://registrationcenter-download.intel.com/akdlm/IRC_NAS/d91caaa0-7306-46ea-a519-79a0423e1903/w_BaseKit_p_2024.2.1.101_offline.exe
-        set COMPONENTS=intel.oneapi.win.mkl.devel
-        curl.exe --output %TEMP%\webimage.exe --url %URL% --retry 5 --retry-delay 5
-        start /b /wait %TEMP%\webimage.exe -s -x -f webimage_extracted --log extract.log
-        del %TEMP%\webimage.exe
-        webimage_extracted\bootstrapper.exe -s --action install --components=%COMPONENTS% --eula=accept -p=NEED_VS2017_INTEGRATION=0 -p=NEED_VS2019_INTEGRATION=0 -p=NEED_VS2022_INTEGRATION=0 --log-dir=.
-        set installer_exit_code=%ERRORLEVEL%
-        rd /s/q "webimage_extracted"
-        exit /b %installer_exit_code%
+    # - name: Install mkl
+    #   shell: cmd
+    #   run: |
+    #     REM SPDX-FileCopyrightText: 2022 Intel Corporation
+    #     REM
+    #     REM SPDX-License-Identifier: MIT
+    #     set URL=https://registrationcenter-download.intel.com/akdlm/IRC_NAS/d91caaa0-7306-46ea-a519-79a0423e1903/w_BaseKit_p_2024.2.1.101_offline.exe
+    #     set COMPONENTS=intel.oneapi.win.mkl.devel
+    #     curl.exe --output %TEMP%\webimage.exe --url %URL% --retry 5 --retry-delay 5
+    #     start /b /wait %TEMP%\webimage.exe -s -x -f webimage_extracted --log extract.log
+    #     del %TEMP%\webimage.exe
+    #     webimage_extracted\bootstrapper.exe -s --action install --components=%COMPONENTS% --eula=accept -p=NEED_VS2017_INTEGRATION=0 -p=NEED_VS2019_INTEGRATION=0 -p=NEED_VS2022_INTEGRATION=0 --log-dir=.
+    #     set installer_exit_code=%ERRORLEVEL%
+    #     rd /s/q "webimage_extracted"
+    #     exit /b %installer_exit_code%
         
-    - name: Setup environment
+    # - name: Setup environment
+    #   shell: cmd
+    #   run: |
+    #      "c:\Program Files (x86)\Intel\oneAPI\setvars.bat"
+    #      set > $GITHUB_ENV
+
+    - name: Install OpenBLAS
       shell: cmd
+      working-directory: ${{ steps.strings.outputs.build-output-dir }}
       run: |
-         "c:\Program Files (x86)\Intel\oneAPI\setvars.bat"
-         set > $GITHUB_ENV
+        mkdir openblas
+        cd openblas
+        curl.exe -o openblas.zip https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.29/OpenBLAS-0.3.29_x64.zip
+        unzip openblas.zip
         
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
@@ -114,6 +123,7 @@ jobs:
         -DKokkos_ENABLE_SERIAL=${{ matrix.serial }}
         -DENABLE_PYTHON=OFF
         -DF77_BLAS_MANGLE='(name,NAME) name'
+        -DLAPACK_LIBS=${{ steps.strings.outputs.build-output-dir }}/openblas/lib/libopenblas.lib
         -S ${{ github.workspace }}
 
     - name: Build
@@ -124,6 +134,7 @@ jobs:
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
       env:
         PYTHONPATH: ${{ steps.strings.outputs.build-output-dir }}/python
+        PATH: ${{ steps.strings.outputs.build-output-dir }}/openblas/bin
       # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       shell: cmd
