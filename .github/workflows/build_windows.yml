@@ -38,6 +38,7 @@ jobs:
       shell: bash
       run: |
         echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+        mkdir ${{ github.workspace }}/build
 
   # - name: Set up Python
       #uses: actions/setup-python@v5
@@ -99,7 +100,7 @@ jobs:
     #      set > $GITHUB_ENV
 
     - name: Install OpenBLAS
-      shell: cmd
+      shell: bash
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
       run: |
         mkdir openblas
