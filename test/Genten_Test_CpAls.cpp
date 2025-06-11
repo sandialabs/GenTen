@@ -322,7 +322,7 @@ void RunCpAlsTestSparse(MTTKRP_Method::type mttkrp_method,
           ASSERT_GE(perfInfo[i].fit, 0.99);
           ASSERT_LE(perfInfo[i].fit, 1.00);
           ASSERT_LE(perfInfo[i].residual, 0.03);
-          ASSERT_GE(perfInfo[i].cum_time, 0.0);
+          // ASSERT_GE(perfInfo[i].cum_time, 0.0); // May not work if timers are disabled
         }
       }
 
@@ -488,7 +488,7 @@ void RunCpAlsTestDense(const TensorLayout& layout, const std::string &label) {
           ASSERT_GE(perfInfo[i].fit, 0.99);
           ASSERT_LE(perfInfo[i].fit, 1.00);
           ASSERT_LE(perfInfo[i].residual, 0.03);
-          ASSERT_GE(perfInfo[i].cum_time, 0.0);
+          // ASSERT_GE(perfInfo[i].cum_time, 0.0); // May not work if timers are disabled
         }
       }
 
