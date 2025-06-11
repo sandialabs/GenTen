@@ -136,5 +136,6 @@ jobs:
         PATH: ${{ github.workspace }}/openblas/bin
       # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      shell: cmd
-      run: ctest --build-config ${{ matrix.build_type }} --output-on-failure
+      #shell: cmd
+      run: |
+        ctest --build-config ${{ matrix.build_type }} --output-on-failure
