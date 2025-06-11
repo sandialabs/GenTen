@@ -103,7 +103,7 @@ jobs:
       run: |
         mkdir openblas
         cd openblas
-        curl.exe -o openblas.zip https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.29/OpenBLAS-0.3.29_x64.zip
+        curl -o openblas.zip -L --ssl-no-revoke --url https://sourceforge.net/projects/openblas/files/v0.3.29/OpenBLAS-0.3.29_x64.zip
         unzip openblas.zip
         
     - name: Configure CMake
