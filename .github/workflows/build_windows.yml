@@ -38,7 +38,6 @@ jobs:
       shell: bash
       run: |
         echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
-        mkdir ${{ github.workspace }}/build
 
   # - name: Set up Python
       #uses: actions/setup-python@v5
@@ -100,8 +99,7 @@ jobs:
     #      set > $GITHUB_ENV
 
     - name: Install OpenBLAS
-      shell: bash
-      working-directory: ${{ steps.strings.outputs.build-output-dir }}
+      shell: cmd
       run: |
         mkdir openblas
         cd openblas
@@ -124,7 +122,7 @@ jobs:
         -DKokkos_ENABLE_SERIAL=${{ matrix.serial }}
         -DENABLE_PYTHON=OFF
         -DF77_BLAS_MANGLE='(name,NAME) name'
-        -DLAPACK_LIBS=${{ steps.strings.outputs.build-output-dir }}/openblas/lib/libopenblas.lib
+        -DLAPACK_LIBS=${{ github.workspace }}/openblas/lib/libopenblas.lib
         -S ${{ github.workspace }}
 
     - name: Build
@@ -135,7 +133,7 @@ jobs:
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
       env:
         PYTHONPATH: ${{ steps.strings.outputs.build-output-dir }}/python
-        PATH: ${{ steps.strings.outputs.build-output-dir }}/openblas/bin
+        PATH: ${{ github.workspace }}/openblas/bin
       # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       shell: cmd
