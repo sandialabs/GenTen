@@ -107,8 +107,8 @@ jobs:
       shell: bash
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
       env:
-        PYTHONPATH: ${{ steps.strings.outputs.build-output-dir }}/python;${{ steps.strings.outputs.build-output-dir }}/python/pygenten/Release
-        GENTEN_DLL_PATH: ${{ github.workspace }}/openblas/bin
+        PYTHONPATH: ${{ steps.strings.outputs.build-output-dir }}/python
+        GENTEN_DLL_PATH: ${{ github.workspace }}/openblas/bin;${{ steps.strings.outputs.build-output-dir }}/python/pygenten/Release
       # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: |
