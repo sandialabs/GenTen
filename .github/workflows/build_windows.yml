@@ -114,6 +114,6 @@ jobs:
       run: |
         #echo "$GENTEN_DLL_PATH"
         #ls $GENTEN_DLL_PATH
-        #ls $PYTHONPATH
-        ls $PYTHONPATH/pygenten
+        ls -R $PYTHONPATH
+        #ls $PYTHONPATH/pygenten
         ctest --build-config ${{ matrix.build_type }} --output-on-failure
