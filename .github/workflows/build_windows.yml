@@ -87,6 +87,7 @@ jobs:
       #  MKLROOT: c:\Program Files (x86)\Intel\oneAPI\mkl\latest
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
+        -G Ninja
         -T ClangCL
         -DCMAKE_CXX_COMPILER=clang-cl
         -DCMAKE_C_COMPILER=clang-cl
@@ -97,7 +98,7 @@ jobs:
         -DENABLE_PYTHON=ON
         -DF77_BLAS_MANGLE='(name,NAME) name'
         -DLAPACK_LIBS=${{ github.workspace }}/openblas/lib/libopenblas.lib
-        -S ${{ github.workspace }}
+        #-S ${{ github.workspace }}
 
     - name: Build
       # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
@@ -112,8 +113,5 @@ jobs:
       # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: |
-        #echo "$GENTEN_DLL_PATH"
-        #ls $GENTEN_DLL_PATH
         ls -R $PYTHONPATH
-        #ls $PYTHONPATH/pygenten
         ctest --build-config ${{ matrix.build_type }} --output-on-failure
