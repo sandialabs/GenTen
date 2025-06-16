@@ -39,19 +39,12 @@ jobs:
       with:
         python-version: 3.11
 
-  # - name: Install dependencies
+    - name: Install dependencies
       #env:
         #PYTHONPATH: ${{ steps.strings.outputs.build-output-dir }}/python
-      #run: |
-        #python -m pip install --upgrade pip
-        #pip install pytest
-        # Released version of pyttb is too old, so we need to build from the github repo
-        #pip install pyttb
-        #mkdir pyttb
-       # cd pyttb
-       # git clone https://github.com/sandialabs/pyttb.git
-        #cd pyttb
-        #pip install .
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pyttb
    
     # - name: Install mkl
     #   shell: cmd
