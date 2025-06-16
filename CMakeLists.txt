@@ -110,7 +110,9 @@ SET_PROPERTY(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
 # we try to set things up for the user based on a single meta-cmake option
 IF(PYGENTEN_PIP)
   SET(ENABLE_PYTHON ON)
-  SET(BUILD_SHARED_LIBS ON)
+  IF(UNIX)
+    SET(BUILD_SHARED_LIBS ON)
+  ENDIF()
 
   # If no device parallelism enabled, use Serial for MPI and OpenMP otherwise
   IF(NOT PYGENTEN_SERIAL AND NOT PYGENTEN_OPENMP AND NOT PYGENTEN_CUDA AND NOT PYGENTEN_HIP AND NOT PYGENTEN_SYCL)
@@ -534,8 +536,10 @@ IF(ENABLE_MATLAB)
 ENDIF()
 
 IF(ENABLE_PYTHON)
-  IF(NOT BUILD_SHARED_LIBS)
-    MESSAGE(FATAL_ERROR "Must build shared libraries when enabling Python!")
+  IF(UNIX)
+    IF(NOT BUILD_SHARED_LIBS)
+      MESSAGE(FATAL_ERROR "Must build shared libraries when enabling Python!")
+    ENDIF()
   ENDIF()
   MESSAGE("-- PYTHON_EXECUTABLE:")
   IF(NOT DEFINED PYTHON_EXECUTABLE)
