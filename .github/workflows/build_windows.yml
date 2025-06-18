@@ -1,11 +1,10 @@
 # Experimental workflow to build on windows. The workflow is working properly:
-# OpenBlas was used in place of BLAS/LAPACK, and installed using this link: https://sourceforge.net/projects/openblas/files/v0.3.29/OpenBLAS-0.3.29_x64.zip
-# It was then added to the path to allow Windows to find its dll.
-# MKL was initially used in place of OpenBlas, but could not work because of its inability to locate dll dependencies.
-# -DF77_BLAS_MANGLE='(name,NAME) name' command is used in the cmake configuration file to ensure that the linker can correctly find and link Fortran BLAS functions.
+# OpenBlas is used for BLAS/LAPACK, and installed using this link: https://sourceforge.net/projects/openblas/files/v0.3.29/OpenBLAS-0.3.29_x64.zip
+# It is then added to the path to allow Windows to find its dll.
+# MKL was initially used in place of OpenBlas, but could not work because of its complicated dll dependencies.
+# -DF77_BLAS_MANGLE='(name,NAME) name' is used in the cmake configuration to ensure that the linker can correctly link Fortran BLAS functions without a Fortran compiler.
 
-name: CMake on multiple platforms - windows
-
+name: Build and test on Windows
 on:
   workflow_dispatch
 
@@ -40,8 +39,6 @@ jobs:
         python-version: 3.11
 
     - name: Install dependencies
-      #env:
-        #PYTHONPATH: ${{ steps.strings.outputs.build-output-dir }}/python
       run: |
         python -m pip install --upgrade pip
         pip install pytest pyttb
@@ -69,7 +66,7 @@ jobs:
     #      set > $GITHUB_ENV
 
     - name: Install OpenBLAS
-      shell: cmd
+      #shell: cmd
       run: |
         mkdir openblas
         cd openblas
@@ -81,16 +78,12 @@ jobs:
       run: echo "${{ github.workspace }}/openblas/bin" >> "$GITHUB_PATH"
         
     - name: Configure CMake
-      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
-      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-      #env:
-      #  MKLROOT: c:\Program Files (x86)\Intel\oneAPI\mkl\latest
+      # Build using the Clang toolchain
+      # env:
+      #   MKLROOT: c:\Program Files (x86)\Intel\oneAPI\mkl\latest
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
         -T ClangCL
-        -DCMAKE_CXX_COMPILER=clang-cl
-        -DCMAKE_C_COMPILER=clang-cl
-        -DBUILD_SHARED_LIBS=OFF
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         -DKokkos_ENABLE_OPENMP=${{ matrix.openmp }}
         -DKokkos_ENABLE_SERIAL=${{ matrix.serial }}
@@ -100,19 +93,20 @@ jobs:
         -S ${{ github.workspace }}
 
     - name: Build
-      # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
+      # Note that --config is needed because the Visual Studio generator is a multi-config generator.
+      # Copy generated _pygenten.pyd file to pygenten directory so it can be loaded properly by pygenten.
       run: |
         cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
-        cp ${{ steps.strings.outputs.build-output-dir }}/python/pygenten/Release/*.pyd ${{ steps.strings.outputs.build-output-dir }}/python/pygenten
+        cp ${{ steps.strings.outputs.build-output-dir }}/python/pygenten/${{ matrix.build_type }}/*.pyd ${{ steps.strings.outputs.build-output-dir }}/python/pygenten
 
     - name: Test
-      shell: bash
+      #shell: bash
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
+      # Set PYTHONPATH so python can find the pygenten module
+      # Set GENTEN_DLL_PATH so OpenBLAS dlls can be found
       env:
         PYTHONPATH: ${{ steps.strings.outputs.build-output-dir }}/python
         GENTEN_DLL_PATH: ${{ github.workspace }}/openblas/bin
-      # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
-      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
+      # Note that --build-config is needed because the Visual Studio generator is a multi-config generator.
       run: |
-        #ls -R $PYTHONPATH
         ctest --build-config ${{ matrix.build_type }} --output-on-failure
