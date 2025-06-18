@@ -17,7 +17,7 @@
             "configurationType": "Debug",
             "buildRoot": "${projectDir}\\out\\build\\${name}",
             "installRoot": "${projectDir}\\out\\install\\${name}",
-            "cmakeCommandArgs": "-D F77_BLAS_MANGLE='(name,NAME)name'",
+            "cmakeCommandArgs": "",
             "buildCommandArgs": "",
             "ctestCommandArgs": "",
             "inheritEnvironments": [ "clang_cl_x64_x64" ],
