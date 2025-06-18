@@ -57,7 +57,9 @@
 #   -DLAPACK_LIBS="~/tools/liblapack.a;~/tools/libblas.a"    (Unix)
 #   -DLAPACK_LIBS="c:\Temp\lapack.a;c:\Temp\blas.a"          (Windows)
 #---------------------------------------------------------------------------
-
+IF(WIN32 AND NOT F77_BLAS_MANGLE)
+  SET (F77_BLAS_MANGLE='(name,NAME)name')
+ENDIF()
 # Let CMake search in the usual system default locations.
 # If LAPACK_LIBS is already defined from the command line,
 # then FIND_LIBRARY accepts it without modification (or validating).
