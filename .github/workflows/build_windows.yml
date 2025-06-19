@@ -2,7 +2,7 @@
 # OpenBlas is used for BLAS/LAPACK, and installed using this link: https://sourceforge.net/projects/openblas/files/v0.3.29/OpenBLAS-0.3.29_x64.zip
 # It is then added to the path to allow Windows to find its dll.
 # MKL was initially used in place of OpenBlas, but could not work because of its complicated dll dependencies.
-# -DF77_BLAS_MANGLE='(name,NAME) name' is used in the cmake configuration to ensure that the linker can correctly link Fortran BLAS functions without a Fortran compiler.
+# Still have not gotten OpenMP to work.
 
 name: Build and test on Windows
 on:
