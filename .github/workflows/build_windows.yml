@@ -83,11 +83,9 @@ jobs:
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
         -T ClangCL
-        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         -DKokkos_ENABLE_OPENMP=${{ matrix.openmp }}
         -DKokkos_ENABLE_SERIAL=${{ matrix.serial }}
         -DENABLE_PYTHON=ON
-        -DF77_BLAS_MANGLE='(name,NAME) name'
         -DLAPACK_LIBS=${{ github.workspace }}/openblas/lib/libopenblas.lib
         -S ${{ github.workspace }}
 
