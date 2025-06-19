@@ -2,7 +2,7 @@
 # OpenBlas is used for BLAS/LAPACK, and installed using this link: https://sourceforge.net/projects/openblas/files/v0.3.29/OpenBLAS-0.3.29_x64.zip
 # It is then added to the path to allow Windows to find its dll.
 # MKL was initially used in place of OpenBlas, but could not work because of its complicated dll dependencies.
-# Still have not gotten OpenMP to work.
+# Still have not gotten OpenMP to work in python (seems to work for genten.exe though).
 
 name: Build and test on Windows
 on:
