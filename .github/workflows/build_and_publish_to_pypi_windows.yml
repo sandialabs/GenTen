@@ -1,0 +1,81 @@
+# Workflow to build binary wheels for Windows
+
+name: Build python wheels - Windows
+
+on:
+  workflow_dispatch
+
+jobs:
+  build-wheels:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest]
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set reusable strings
+        id: strings
+        shell: bash
+        run: |
+          echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+
+      - name: Install OpenBLAS
+        run: |
+          mkdir openblas
+          cd openblas
+          curl -o openblas.zip -L --ssl-no-revoke --url https://sourceforge.net/projects/openblas/files/v0.3.29/OpenBLAS-0.3.29_x64.zip
+          unzip openblas.zip
+
+      - name: Add OpenBLAS to path so Windows can find its DLLs
+        shell: bash
+        run: echo "${{ github.workspace }}/openblas/bin" >> "$GITHUB_PATH"
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v3.0.0
+        with:
+          output-dir: dist
+        env:
+          CIBW_BUILD: cp3*-win32_amd64
+          CIBW_BUILD_VERBOSITY: 1
+          CIBW_CONFIG_SETTINGS_WINDOWS: "cmake.args=-DCMAKE_GENERATOR_TOOLSET=ClangCL;-DLAPACK_LIBS=${{ github.workspace }}/openblas/lib/libopenblas.lib;-DPYGENTEN_SERIAL=ON"
+          CIBW_ENVIRONMENT_WINDOWS: GENTEN_DLL_PATH=${{ github.workspace }}/openblas/bin
+          CIBW_TEST_REQUIRES: pytest pyttb
+          CIBW_TEST_COMMAND: >
+            cd {package} &&
+            pytest python/test
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dists-${{ matrix.os }}
+          path: dist/
+
+  #pypi-publish:
+    #runs-on: windows-latest
+
+    #needs: 
+      #- build-wheels
+
+    #permissions:
+      #id-token: write
+
+    #environment:
+      #name: pypi
+      #url: https://pypi.org/project/pygenten/
+
+    #steps:
+      #- name: Retrieve release distributions 
+       # uses: actions/download-artifact@v4
+        #with:
+          #name: release-dists-windows-latest
+          #path: dist/
+
+      #- name: Publish release distributions to PyPI
+        #uses: pypa/gh-action-pypi-publish@release/v1
+        #with:
+          #skip-existing: true
+         
+       
+
+  
