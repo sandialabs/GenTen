@@ -39,7 +39,7 @@ jobs:
         with:
           output-dir: dist
         env:
-          CIBW_BUILD: cp312-win32_amd64
+          CIBW_BUILD: cp312-win_amd64
           CIBW_BUILD_VERBOSITY: 1
           CIBW_CONFIG_SETTINGS_WINDOWS: "cmake.args=-DCMAKE_GENERATOR_TOOLSET=ClangCL;-DLAPACK_LIBS=${{ github.workspace }}/openblas/lib/libopenblas.lib;-DPYGENTEN_SERIAL=ON"
           CIBW_ENVIRONMENT_WINDOWS: GENTEN_DLL_PATH=${{ github.workspace }}/openblas/bin
