@@ -40,18 +40,14 @@ jobs:
             curl -o openblas.zip -L --ssl-no-revoke --url https://sourceforge.net/projects/openblas/files/v0.3.29/OpenBLAS-0.3.29_x64.zip &&
             unzip openblas.zip &&
             set PATH=${{ github.workspace }}/openblas/bin:${PATH}
-          CIBW_CONFIG_SETTINGS_WINDOWS: "cmake.args=-DLAPACK_LIBS=${{ steps.strings.outputs.openblas_lib }};-DPYGENTEN_SERIAL=ON;-DENABLE_PYTHON_EMBED=OFF;-DENABLE_REAL_TIME_CLOCK=OFF"
-          CIBW_ENVIRONMENT_WINDOWS: GENTEN_DLL_PATH=${{ github.workspace }}/openblas/bin
+          CIBW_CONFIG_SETTINGS_WINDOWS: "cmake.args=-DLAPACK_LIBS=${{ steps.strings.outputs.openblas_lib }};-DPYGENTEN_SERIAL=ON;-DENABLE_PYTHON_EMBED=OFF"
+          #CIBW_ENVIRONMENT_WINDOWS: GENTEN_DLL_PATH=${{ github.workspace }}/openblas/bin
           CIBW_BEFORE_BUILD_WINDOWS: "pip install delvewheel"
           CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: "delvewheel repair --add-path ${{ github.workspace }}/openblas/bin -w {dest_dir} {wheel}"
           CIBW_TEST_REQUIRES: pytest pyttb
           CIBW_TEST_SOURCES: python/test data
           CIBW_TEST_COMMAND: >
-            ls &&
             pytest python/test
-          # CIBW_TEST_COMMAND: >
-          #   cd {package} && ls &&
-          #   pytest python/test
 
       - name: Upload distributions
         uses: actions/upload-artifact@v4
