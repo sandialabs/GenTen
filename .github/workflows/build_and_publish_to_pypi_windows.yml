@@ -45,9 +45,13 @@ jobs:
           CIBW_BEFORE_BUILD_WINDOWS: "pip install delvewheel"
           CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: "delvewheel repair --add-path ${{ github.workspace }}/openblas/bin -w {dest_dir} {wheel}"
           CIBW_TEST_REQUIRES: pytest pyttb
+          CIBW_TEST_SOURCES: python/test data
           CIBW_TEST_COMMAND: >
-            cd {package} && ls &&
-            pytest python/test
+            ls &&
+            pytest test
+          # CIBW_TEST_COMMAND: >
+          #   cd {package} && ls &&
+          #   pytest python/test
 
       - name: Upload distributions
         uses: actions/upload-artifact@v4
