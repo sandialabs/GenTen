@@ -20,22 +20,12 @@ jobs:
       - name: Set reusable strings
         id: strings
         shell: bash
+        # We need the path to the openblas library without \'s for cibuildwheel to work correctly
         run: |
           echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
           openblas_lib="${{ github.workspace }}/openblas/lib/libopenblas.lib"
           openblas_lib_unix=$(echo "$openblas_lib" | sed 's/\\/\//g')
           echo "openblas_lib=$openblas_lib_unix" >> "$GITHUB_OUTPUT"
-
-      #- name: Install OpenBLAS
-        #run: |
-          #mkdir openblas
-          #cd openblas
-          #curl -o openblas.zip -L --ssl-no-revoke --url https://sourceforge.net/projects/openblas/files/v0.3.29/OpenBLAS-0.3.29_x64.zip
-          #unzip openblas.zip
-
-      #- name: Add OpenBLAS to path so Windows can find its DLLs
-        #shell: bash
-        #run: echo "${{ github.workspace }}/openblas/bin" >> "$GITHUB_PATH"
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v3.0.0
@@ -54,10 +44,10 @@ jobs:
           CIBW_ENVIRONMENT_WINDOWS: GENTEN_DLL_PATH=${{ github.workspace }}/openblas/bin
           CIBW_BEFORE_BUILD_WINDOWS: "pip install delvewheel"
           CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: "delvewheel repair --add-path ${{ github.workspace }}/openblas/bin -w {dest_dir} {wheel}"
-          # CIBW_TEST_REQUIRES: pytest pyttb
-          # CIBW_TEST_COMMAND: >
-          #   cd {package} &&
-          #   pytest python/test
+          CIBW_TEST_REQUIRES: pytest pyttb
+          CIBW_TEST_COMMAND: >
+            cd {package} && ls &&
+            pytest python/test
 
       - name: Upload distributions
         uses: actions/upload-artifact@v4
