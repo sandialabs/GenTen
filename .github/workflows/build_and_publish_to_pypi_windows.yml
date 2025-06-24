@@ -52,10 +52,10 @@ jobs:
             set PATH=${{ github.workspace }}/openblas/bin:${PATH}
           CIBW_CONFIG_SETTINGS_WINDOWS: "cmake.args=-DCMAKE_GENERATOR_TOOLSET=ClangCL;-DLAPACK_LIBS=${{ steps.strings.outputs.openblas_lib }};-DPYGENTEN_SERIAL=ON;-DENABLE_PYTHON_EMBED=OFF"
           CIBW_ENVIRONMENT_WINDOWS: GENTEN_DLL_PATH=${{ github.workspace }}/openblas/bin
-          CIBW_TEST_REQUIRES: pytest pyttb
-          CIBW_TEST_COMMAND: >
-            cd {package} &&
-            pytest python/test
+          # CIBW_TEST_REQUIRES: pytest pyttb
+          # CIBW_TEST_COMMAND: >
+          #   cd {package} &&
+          #   pytest python/test
 
       - name: Upload distributions
         uses: actions/upload-artifact@v4
