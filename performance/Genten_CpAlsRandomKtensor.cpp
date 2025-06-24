@@ -167,7 +167,7 @@ int run_cpals(const Genten::IndxArray& cFacDims_host,
   for (ttb_indx i = 0; i < perfInfo.size(); i++)
   {
     printf (" %2lu: fit = %.6e, resnorm = %.2e, time = %.3f secs\n",
-            perfInfo[i].iteration, perfInfo[i].fit,
+            unsigned long(perfInfo[i].iteration), perfInfo[i].fit,
             perfInfo[i].residual, perfInfo[i].cum_time);
   }
 

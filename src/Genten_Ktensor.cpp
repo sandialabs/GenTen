@@ -173,7 +173,6 @@ setRandomUniform (const bool bUseMatlabRNG,
 
 
 // Only called by Ben Allan's parallel test code.
-#if !defined(_WIN32)
 template <typename ExecSpace>
 void Genten::KtensorImpl<ExecSpace>::
 scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise) const
@@ -182,7 +181,6 @@ scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise) const
     data[i].scaleRandomElements(fraction, scale, columnwise);
   }
 }
-#endif
 
 template <typename ExecSpace>
 void Genten::KtensorImpl<ExecSpace>::

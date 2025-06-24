@@ -291,7 +291,7 @@ void  Genten::FacTestSetGenerator::genDnFromRndKtensor(
 //  Public method
 //-----------------------------------------------------------------------------
 
-typedef std::pair<double,int> SortablePair;
+typedef std::pair<ttb_real,ttb_indx> SortablePair;
 bool SortablePairComparator (const SortablePair &  a,
                              const SortablePair &  b)
 {

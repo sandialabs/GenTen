@@ -689,7 +689,7 @@ void orig_kokkos_mttkrp_kernel(const SptensorImpl<ExecSpace>& X,
     if (i >= nnz)
       return;
 
-    MTTKRP_OrigKokkosKernelBlock<ExecSpace, FacBlockSize, TeamSize, VectorSize> kernel(X, u, n, v, i, team);
+    Kernel kernel(X, u, n, v, i, team);
 
     for (unsigned j=0; j<nc; j+=FacBlockSize) {
       if (j+FacBlockSize <= nc)
