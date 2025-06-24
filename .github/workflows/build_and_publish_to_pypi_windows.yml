@@ -24,7 +24,7 @@ jobs:
           echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
           openblas_lib="${{ github.workspace }}/openblas/lib/libopenblas.lib"
           openblas_lib_unix=$(echo "$openblas_lib" | sed 's/\\/\//g')
-          echo "openblas-lib=${openblas_lib_unix}" >> "$GITHUB_OUTPUT"
+          echo "openblas_lib=${openblas_lib_unix}" >> "$GITHUB_OUTPUT"
 
       #- name: Install OpenBLAS
         #run: |
