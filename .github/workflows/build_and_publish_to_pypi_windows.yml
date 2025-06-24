@@ -50,7 +50,7 @@ jobs:
             curl -o openblas.zip -L --ssl-no-revoke --url https://sourceforge.net/projects/openblas/files/v0.3.29/OpenBLAS-0.3.29_x64.zip &&
             unzip openblas.zip &&
             set PATH=${{ github.workspace }}/openblas/bin:${PATH}
-          CIBW_CONFIG_SETTINGS_WINDOWS: "cmake.args=-DCMAKE_GENERATOR_TOOLSET=ClangCL;-DLAPACK_LIBS=${{ openblas-lib }};-DPYGENTEN_SERIAL=ON;-DENABLE_PYTHON_EMBED=OFF"
+          CIBW_CONFIG_SETTINGS_WINDOWS: "cmake.args=-DCMAKE_GENERATOR_TOOLSET=ClangCL;-DLAPACK_LIBS=${{ openblas_lib }};-DPYGENTEN_SERIAL=ON;-DENABLE_PYTHON_EMBED=OFF"
           CIBW_ENVIRONMENT_WINDOWS: GENTEN_DLL_PATH=${{ github.workspace }}/openblas/bin
           CIBW_TEST_REQUIRES: pytest pyttb
           CIBW_TEST_COMMAND: >
