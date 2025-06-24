@@ -48,7 +48,7 @@ jobs:
           CIBW_TEST_SOURCES: python/test data
           CIBW_TEST_COMMAND: >
             ls &&
-            pytest test
+            pytest python/test
           # CIBW_TEST_COMMAND: >
           #   cd {package} && ls &&
           #   pytest python/test
