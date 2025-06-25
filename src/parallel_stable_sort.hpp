@@ -30,6 +30,13 @@
   POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <sys/types.h>
+#ifdef WIN32
+#ifndef ssize_t
+#define ssize_t SSIZE_T
+#endif
+#endif
+
 #include "pss_common.hpp"
 
 namespace pss {

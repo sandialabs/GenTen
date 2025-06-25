@@ -60,13 +60,14 @@ OPTION(ENABLE_PYTHON_EMBED "Enable embedded PYTHON interpreter when ENABLE_PYTHO
 OPTION(ENABLE_PHYSICS_UTILS "Enable PYTHON physics specific tools" OFF)
 OPTION(FLOAT_TYPE "C++ data type used for floating-point values" OFF)
 OPTION(INDEX_TYPE "C++ data type used for tensor indices" OFF)
-OPTION(ENABLE_GCP "Enable experimental GCP code" ON)
+OPTION(ENABLE_GCP "Enable GCP code" ON)
 OPTION(ENABLE_LAPACK "Enable BLAS/LAPACK.  Only required for CPU (cuBLAS/cuSolver are used on Cuda and rocBLAS/rocSolver on HIP)." ON)
 OPTION(ENABLE_TRILINOS "Enable use of Trilinos packages" OFF)
 OPTION(ENABLE_TEUCHOS "Enable Teuchos utilities" ON)
 OPTION(ENABLE_TPETRA "Enable Tpetra distributed parallelism" ON)
 OPTION(ENABLE_ROL "Enable ROL optimization package" ON)
 OPTION(ENABLE_SEACAS "Enable SEACAS tools" ON)
+OPTION(ENABLE_REAL_TIME_CLOCK "Enable real-time clock for timing (disable if you get linking errors related to WinMM.lib on windows)" ON)
 OPTION(ENABLE_CMAKE_TIMERS "Enable timers for each compile/link step" OFF)
 OPTION(PYGENTEN_PIP "Indicate pyGenTen is being built through pip" OFF)
 OPTION(PYGENTEN_MPI "Enable MPI in pyGenTen when being built through pip" OFF)
@@ -110,7 +111,9 @@ SET_PROPERTY(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
 # we try to set things up for the user based on a single meta-cmake option
 IF(PYGENTEN_PIP)
   SET(ENABLE_PYTHON ON)
-  SET(BUILD_SHARED_LIBS ON)
+  IF(UNIX)
+    SET(BUILD_SHARED_LIBS ON)
+  ENDIF()
 
   # If no device parallelism enabled, use Serial for MPI and OpenMP otherwise
   IF(NOT PYGENTEN_SERIAL AND NOT PYGENTEN_OPENMP AND NOT PYGENTEN_CUDA AND NOT PYGENTEN_HIP AND NOT PYGENTEN_SYCL)
@@ -534,8 +537,10 @@ IF(ENABLE_MATLAB)
 ENDIF()
 
 IF(ENABLE_PYTHON)
-  IF(NOT BUILD_SHARED_LIBS)
-    MESSAGE(FATAL_ERROR "Must build shared libraries when enabling Python!")
+  IF(UNIX)
+    IF(NOT BUILD_SHARED_LIBS)
+      MESSAGE(FATAL_ERROR "Must build shared libraries when enabling Python!")
+    ENDIF()
   ENDIF()
   MESSAGE("-- PYTHON_EXECUTABLE:")
   IF(NOT DEFINED PYTHON_EXECUTABLE)
@@ -1041,32 +1046,32 @@ TARGET_LINK_LIBRARIES (perf_CpAlsAminoAcid ${GENTEN_LINK_LIBS})
 ADD_EXECUTABLE (
   perf_CpAlsRandomKtensor
   ${Genten_SOURCE_DIR}/performance/Genten_CpAlsRandomKtensor.cpp
-  ${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
-  ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
+  #${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
+  #${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   )
 TARGET_LINK_LIBRARIES (perf_CpAlsRandomKtensor ${GENTEN_LINK_LIBS})
 
 ADD_EXECUTABLE (
   perf_CpAlsRandomKtensor_Sweep
   ${Genten_SOURCE_DIR}/performance/Genten_CpAlsRandomKtensor_Sweep.cpp
-  ${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
-  ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
+  #${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
+  #${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   )
 TARGET_LINK_LIBRARIES (perf_CpAlsRandomKtensor_Sweep ${GENTEN_LINK_LIBS})
 
 ADD_EXECUTABLE (
   perf_MTTKRP
   ${Genten_SOURCE_DIR}/performance/Genten_MTTKRP.cpp
-  ${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
-  ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
+  #${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
+  #${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   )
 TARGET_LINK_LIBRARIES (perf_MTTKRP ${GENTEN_LINK_LIBS})
 
 ADD_EXECUTABLE (
   perf_MTTKRP_Sweep
   ${Genten_SOURCE_DIR}/performance/Genten_MTTKRP_Sweep.cpp
-  ${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
-  ${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
+  #${Genten_SOURCE_DIR}/src/mathlib/Genten_DiscreteCDF.cpp
+  #${Genten_SOURCE_DIR}/src/mathlib/Genten_FacTestSetGenerator.cpp
   )
 TARGET_LINK_LIBRARIES (perf_MTTKRP_Sweep ${GENTEN_LINK_LIBS})
 

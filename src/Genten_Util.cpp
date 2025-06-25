@@ -43,8 +43,16 @@
 // For vtune
 #include <sstream>
 #include <sys/types.h>
+#ifdef _WIN32   //unistd.h is a Unix specific file which is not available on Windows OS
+#include <io.h>
+#define access _access
+#include <Windows.h>
+#define pid_t DWORD
+#else
 #include <unistd.h>
+#endif
 #include <exception>
+
 
 
 void Genten::error(std::string s)
@@ -61,7 +69,11 @@ char *  Genten::getGentenVersion(void)
 // Connect executable to vtune for profiling
 void Genten::connect_vtune(const int p_rank) {
   std::stringstream cmd;
-  pid_t my_os_pid=getpid();
+  #ifdef _WIN32
+    pid_t my_os_pid=GetCurrentProcessId();
+  #else
+    pid_t my_os_pid=getpid();
+  #endif
   const std::string vtune_loc =
     "amplxe-cl";
   const std::string output_dir = "./vtune/vtune.";

@@ -342,7 +342,7 @@ namespace Genten {
     // Loop over slices, processing one at a time
     fest = Array(num_slices);
     ften = Array(num_slices);
-    ttb_real row = 0;
+    ttb_indx row = 0;
     for (ttb_indx i=0; i<num_slices; ++i) {
       const bool print =
         (algParams.printitn > 0) &&((i+1) % algParams.printitn == 0);

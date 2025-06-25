@@ -14,6 +14,15 @@ with the pyttb package, which provides a much larger set of tools for
 analyzing and manipulating tensor data.
 """
 
+# Import DLLs on Windows since python 3.8+ doesn't do it automatically anymore
+import os
+if hasattr(os, 'add_dll_directory'):
+  if 'GENTEN_DLL_PATH' in os.environ:
+    gt_dlls = os.environ['GENTEN_DLL_PATH']
+    for dll in gt_dlls.split(';'):
+      if os.path.isdir(dll):
+        os.add_dll_directory(dll)
+
 from pygenten._pygenten import *
 from pygenten.solvers import cp_als, cp_opt, gcp_opt, gcp_sgd, gcp_fed, online_gcp
 from pygenten.utils import read_and_distribute_tensor, distribute_tensor

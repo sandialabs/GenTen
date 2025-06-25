@@ -58,6 +58,15 @@
 #   -DLAPACK_LIBS="c:\Temp\lapack.a;c:\Temp\blas.a"          (Windows)
 #---------------------------------------------------------------------------
 
+# Specify the Fortran mangling scheme on architectures that we know what it is
+IF(NOT F77_BLAS_MANGLE)
+  IF(WIN32)
+    SET(F77_BLAS_MANGLE "(name,NAME) name")
+  ELSEIF(APPLE)
+    SET(F77_BLAS_MANGLE "(name,NAME) name ## _")
+  ENDIF()
+ENDIF()
+
 # Let CMake search in the usual system default locations.
 # If LAPACK_LIBS is already defined from the command line,
 # then FIND_LIBRARY accepts it without modification (or validating).

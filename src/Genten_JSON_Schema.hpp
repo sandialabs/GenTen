@@ -462,8 +462,8 @@ static nlohmann::json json_schema = R"(
                   "default": 0.0
               }
           }
-      },
-      "gcp-opt": {
+      },)"
+     R"("gcp-opt": {
           "type": "object",
           "description": "GCP-OPT decomposition algorithm",
           "additionalProperties": false,
@@ -778,8 +778,8 @@ static nlohmann::json json_schema = R"(
                 "$ref": "#/definitions/goal"
               }
           }
-      },
-      "gcp-fed": {
+      },)"
+    R"("gcp-fed": {
           "type": "object",
           "description": "GCP decomposition algorithm based on federated learning",
           "additionalProperties": false,
