@@ -29,8 +29,9 @@ pygenten has experimental support for installation using pip from the source dis
 | Linux              | x86_64 | OpenMP         | OpenBLAS    |
 | Macos-14 (Sonoma)  | arm64  | OpenMP         | Accelerate  |
 | Macos-15 (Sequoia) | arm64  | OpenMP         | Accelerate  |
+| Windows            | amd64  | OpenMP         | OpenBLAS    |
 
-(in the future, Windows binaries as well as GPU backends are expected to be provided).  The pip installation leverages [scikit-build-core](https://github.com/scikit-build/scikit-build-core) to provide a CMake build backend for pip, which allows the user to provide CMake defines that control the pygenten build process and determine which architectures/parallel programming models are enabled.  We thus recommend becoming familiar with the CMake build process for GenTen in general as described [here](https://github.com/sandialabs/GenTen#installing-genten) before continuing.  In particular, the user must have BLAS and LAPACK libraries available in their build environment that can either be automatically discovered by CMake or manually specified through `LAPACK_LIBS`.
+The pip installation leverages [scikit-build-core](https://github.com/scikit-build/scikit-build-core) to provide a CMake build backend for pip, which allows the user to provide CMake defines that control the pygenten build process and determine which architectures/parallel programming models are enabled.  We thus recommend becoming familiar with the CMake build process for GenTen in general as described [here](https://github.com/sandialabs/GenTen#installing-genten) before continuing.  In particular, the user must have BLAS and LAPACK libraries available in their build environment that can either be automatically discovered by CMake or manually specified through `LAPACK_LIBS`.
 
 ### Basic installation
 
