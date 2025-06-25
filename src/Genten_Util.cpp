@@ -72,7 +72,7 @@ void Genten::connect_vtune(const int p_rank) {
   #ifdef _WIN32
     pid_t my_os_pid=GetCurrentProcessId();
   #else
-    pid_t my_os_pid=getpid()
+    pid_t my_os_pid=getpid();
   #endif
   const std::string vtune_loc =
     "amplxe-cl";
