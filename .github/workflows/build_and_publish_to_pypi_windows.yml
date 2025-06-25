@@ -3,10 +3,7 @@
 name: Build python wheels - Windows
 
 on:
-  #workflow_dispatch
-  push:
-    branches:
-      - 'GenTen-Windows'
+  workflow_dispatch
 
 jobs:
   build-wheels:
@@ -54,31 +51,27 @@ jobs:
           name: release-dists-${{ matrix.os }}
           path: dist/
 
-  #pypi-publish:
-    #runs-on: windows-latest
+  pypi-publish:
+    runs-on: windows-latest
 
-    #needs: 
-      #- build-wheels
+    needs: 
+      - build-wheels
 
-    #permissions:
-      #id-token: write
+    permissions:
+      id-token: write
 
-    #environment:
-      #name: pypi
-      #url: https://pypi.org/project/pygenten/
+    environment:
+      name: pypi
+      url: https://pypi.org/project/pygenten/
 
-    #steps:
-      #- name: Retrieve release distributions 
-       # uses: actions/download-artifact@v4
-        #with:
-          #name: release-dists-windows-latest
-          #path: dist/
+    steps:
+      - name: Retrieve release distributions 
+        uses: actions/download-artifact@v4
+        with:
+          name: release-dists-windows-latest
+          path: dist/
 
-      #- name: Publish release distributions to PyPI
-        #uses: pypa/gh-action-pypi-publish@release/v1
-        #with:
-          #skip-existing: true
-         
-       
-
-  
+      - name: Publish release distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
