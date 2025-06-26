@@ -65,7 +65,7 @@ When enabling GPU architectures, one also needs to specify the corresponding arc
 
 For example, an MPI+CUDA build for a Volta V100 GPU architecture can be obtained with
 ```
-pip install -v --no-binary pygenten -C cmake.args=-DPYGENTEN_CUDA=ON;Kokkos_ARCH_VOLTA70=ON;PYGENTEN_MPI=ON pygenten
+pip install -v --no-binary pygenten -C cmake.args=-DPYGENTEN_CUDA=ON;-DKokkos_ARCH_VOLTA70=ON;-DPYGENTEN_MPI=ON pygenten
 ```
 For MPI builds, pygenten assumes the MPI compiler wrappers `mpicxx` and `mpicc` are available in the user's path.  If this is not correct, the user can specify the appropriate compiler by setting the appropriate CMake define, e.g., `CMAKE_CXX_COMPILER`.  Furthermore, for CUDA builds, pygenten will build with the `nvcc_wrapper` script as the compiler as required by Kokkos, which calls `g++` as the host compiler by default.  This can be changed by setting the `NVCC_WRAPPER_DEFAULT_COMPILER` environment variable.  Moreover, for MPI+CUDA, pygenten will set environment variables to override the compiler wrapped by `mpicxx` to use `nvcc_wrapper`, which currently works only with OpenMPI and MPICH.  Finally, for MPI+HIP or MPI+SYCL builds, pygenten assumes the compiler wrappers call the appropriate device-enabled compiler, e.g., `hipcc` for AMD and `icpx` for Intel.
 
