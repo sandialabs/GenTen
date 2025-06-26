@@ -6,7 +6,11 @@
 
 name: Build and test on Windows
 on:
-  workflow_dispatch
+  #workflow_dispatch
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
 
 jobs:
   build:
@@ -80,9 +84,9 @@ jobs:
       # Build using the Clang toolchain
       # env:
       #   MKLROOT: c:\Program Files (x86)\Intel\oneAPI\mkl\latest
+      # Add this to cmake args to use Clang instead of MSVC:  -T ClangCL (but it produces copious warnings)
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
-        -T ClangCL
         -DKokkos_ENABLE_OPENMP=${{ matrix.openmp }}
         -DKokkos_ENABLE_SERIAL=${{ matrix.serial }}
         -DENABLE_PYTHON=ON
