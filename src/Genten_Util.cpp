@@ -82,8 +82,8 @@ void Genten::connect_vtune(const int p_rank) {
       << " -target-pid " << my_os_pid << " &";
   if (p_rank == 0)
     std::cout << cmd.str() << std::endl;
-  system(cmd.str().c_str());
-  system("sleep 10");
+  static_cast<void>(system(cmd.str().c_str()));
+  static_cast<void>(system("sleep 10"));
 }
 
 constexpr const Genten::Execution_Space::type Genten::Execution_Space::types[];
