@@ -1069,9 +1069,12 @@ queryFile()
       std::string t;
       while (std::getline(ss,t,' '))
         tokens.push_back(t);
-      for (unsigned i=0; i<tokens.size()-1; ++i)
+      for (unsigned i=0; i<tokens.size()-1; ++i) {
         long l = std::stol(tokens[i]);
+        (void) l;
+      }
       double d = std::stod(tokens[tokens.size()-1]);
+      (void) d;
       is_sparse = true;
       is_dense  = false;
       is_binary = false;
