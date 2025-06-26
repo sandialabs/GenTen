@@ -29,7 +29,7 @@ pygenten has experimental support for installation using pip from the source dis
 | Linux              | x86_64 | OpenMP         | OpenBLAS    |
 | Macos-14 (Sonoma)  | arm64  | OpenMP         | Accelerate  |
 | Macos-15 (Sequoia) | arm64  | OpenMP         | Accelerate  |
-| Windows            | amd64  | OpenMP         | OpenBLAS    |
+| Windows            | amd64  | Serial         | OpenBLAS    |
 
 The pip installation leverages [scikit-build-core](https://github.com/scikit-build/scikit-build-core) to provide a CMake build backend for pip, which allows the user to provide CMake defines that control the pygenten build process and determine which architectures/parallel programming models are enabled.  We thus recommend becoming familiar with the CMake build process for GenTen in general as described [here](https://github.com/sandialabs/GenTen#installing-genten) before continuing.  In particular, the user must have BLAS and LAPACK libraries available in their build environment that can either be automatically discovered by CMake or manually specified through `LAPACK_LIBS`.
 
@@ -47,6 +47,10 @@ To customize the GenTen/pygenten build, you must first instruct pip to compile f
 ```
 --config-settings=cmake.define.SOME_DEFINE=value
 ```
+or
+```
+-C cmake.args=-DSOME_DEFINE=value
+```
 Any CMake define accepted by GenTen/Kokkos/KokkosKernels can be passed this way.  Since this is fairly verbose and GenTen can require several defines, several meta-options are provided to enable supported parallel programming models:
 | CMake Define    | What it enables |
 | --------------- | --------------- |
@@ -61,7 +65,7 @@ When enabling GPU architectures, one also needs to specify the corresponding arc
 
 For example, an MPI+CUDA build for a Volta V100 GPU architecture can be obtained with
 ```
-pip install -v --no-binary pygenten --config-settings=cmake.define.PYGENTEN_CUDA=ON --config-settings=cmake.define.Kokkos_ARCH_VOLTA70=ON --config-settings=cmake.define.PYGENTEN_MPI=ON pygenten
+pip install -v --no-binary pygenten -C cmake.args=-DPYGENTEN_CUDA=ON;Kokkos_ARCH_VOLTA70=ON;PYGENTEN_MPI=ON pygenten
 ```
 For MPI builds, pygenten assumes the MPI compiler wrappers `mpicxx` and `mpicc` are available in the user's path.  If this is not correct, the user can specify the appropriate compiler by setting the appropriate CMake define, e.g., `CMAKE_CXX_COMPILER`.  Furthermore, for CUDA builds, pygenten will build with the `nvcc_wrapper` script as the compiler as required by Kokkos, which calls `g++` as the host compiler by default.  This can be changed by setting the `NVCC_WRAPPER_DEFAULT_COMPILER` environment variable.  Moreover, for MPI+CUDA, pygenten will set environment variables to override the compiler wrapped by `mpicxx` to use `nvcc_wrapper`, which currently works only with OpenMPI and MPICH.  Finally, for MPI+HIP or MPI+SYCL builds, pygenten assumes the compiler wrappers call the appropriate device-enabled compiler, e.g., `hipcc` for AMD and `icpx` for Intel.
 
