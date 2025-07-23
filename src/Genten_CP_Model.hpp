@@ -45,6 +45,7 @@
 #include "Genten_HessVec.hpp"
 #include "Genten_Pmap.hpp"
 #include "Genten_DistKtensorUpdate.hpp"
+#include "Genten_GCP_Goal.hpp"
 
 namespace Genten {
 
@@ -104,10 +105,15 @@ namespace Genten {
     std::vector< FacMatrixT<exec_space> > gram;
     std::vector< FacMatrixT<exec_space> > hada;
     ArrayT<exec_space> ones;
+    ttb_real w;
 
     DistKtensorUpdate<exec_space> *dku;
     mutable ktensor_type M_overlap, G_overlap, V_overlap, U_overlap;
 
+    GCP_Goal<exec_space> *goal;
+    ktensor_type G_goal;
+    mutable ktensor_type G_goal_overlap;
+    ttb_real s;
   };
 
   template <typename Tensor>
@@ -121,6 +127,7 @@ namespace Genten {
     const ttb_indx nd = M.ndims();
     const ttb_real nrm_X = X.global_norm();
     nrm_X_sq = nrm_X*nrm_X;
+    w = ttb_real(1.0)/nrm_X_sq;
 
     // Note gram and hada are not distributed, so we don't set the pmap
     gram.resize(nd);
@@ -140,6 +147,31 @@ namespace Genten {
     {
       if (x.size(i) != M_overlap[i].nRows())
         Genten::error("Genten::CP_Model - M and x have different size");
+    }
+
+    goal = goalFactory(X, M_overlap, algParams);
+    if (goal != nullptr) {
+      // Scale statistical and goal terms so each so each contribute
+      // equally to the objective function at the initial guess
+      this->update(M);
+      const ttb_real nrm_M_sq = gram[nd-1].innerprod(hada[nd-1], ones);
+      const ttb_real ip = innerprod(X,M_overlap); 
+      const ttb_real f = nrm_X_sq + nrm_M_sq - ttb_real(2.0)*ip;
+
+      const ttb_real t = goal->value(M_overlap);
+      const ttb_indx q = goal->numGoals();
+
+      if (t == 0.0) {
+        w = ttb_real(1.0)/nrm_X_sq;
+        s = 1.0;
+      }
+      else {
+        w = ttb_real(1.0)/(f*(q+1));
+        s = ttb_real(q)/(t*(q+1));
+      }
+
+      G_goal = clone(M);
+      G_goal_overlap = dku->createOverlapKtensor(G_goal);
     }
   }
 
@@ -172,6 +204,8 @@ namespace Genten {
     if (dku->overlapAliasesArg())
       M_overlap = dku->createOverlapKtensor(M);
     dku->doImport(M_overlap, M);
+    if (goal != nullptr)
+      goal->update(M_overlap);
   }
 
   template <typename Tensor>
@@ -187,12 +221,15 @@ namespace Genten {
     // compute MTTKRP in update()
     const ttb_real ip = innerprod(X,M_overlap);
 
-    ttb_real f = (nrm_X_sq + nrm_M_sq - ttb_real(2.0)*ip) / nrm_X_sq;
+    ttb_real f = w * (nrm_X_sq + nrm_M_sq - ttb_real(2.0)*ip);
 
     if (algParams.penalty != ttb_real(0.0)) {
       for (ttb_indx n=0; n<nd; ++n)
-        f += algParams.penalty * M[n].normFsq() / nrm_X_sq;
+        f += w * algParams.penalty * M[n].normFsq();
     }
+
+    if (goal != nullptr)
+      f += goal->value(M_overlap)*s;
 
     return f;
   }
@@ -202,18 +239,27 @@ namespace Genten {
   CP_Model<Tensor>::
   gradient(ktensor_type& G, const ktensor_type& M) const
   {
+    const ttb_indx nd = M.ndims();
+
     if (dku->overlapAliasesArg())
       G_overlap = dku->createOverlapKtensor(G);
     mttkrp_all(X, M_overlap, G_overlap, algParams);
     dku->doExport(G, G_overlap);
 
-    const ttb_indx nd = M.ndims();
     for (ttb_indx n=0; n<nd; ++n) {
-      G[n].gemm(false, false, ttb_real(2.0)/nrm_X_sq, M[n], hada[n],
-                -ttb_real(2.0)/nrm_X_sq);
+      G[n].gemm(false, false, ttb_real(2.0)*w, M[n], hada[n],
+                -ttb_real(2.0)*w);
 
       if (algParams.penalty != ttb_real(0.0))
-        G[n].plus(M[n], algParams.penalty*ttb_real(2.0)/nrm_X_sq);
+        G[n].plus(M[n], algParams.penalty*ttb_real(2.0)*w);
+    }
+
+    // Add goal contribution
+    if (goal != nullptr) {
+      goal->gradient(G_goal_overlap, M_overlap);
+      dku->doExport(G_goal, G_goal_overlap);
+      for (ttb_indx n=0; n<nd; ++n)
+        G[n].plus(G_goal[n],s);
     }
   }
 
@@ -222,6 +268,8 @@ namespace Genten {
   CP_Model<Tensor>::
   value_and_gradient(ktensor_type& G, const ktensor_type& M) const
   {
+    const ttb_indx nd = M.ndims();
+
     // MTTKRP
     if (dku->overlapAliasesArg())
       G_overlap = dku->createOverlapKtensor(G);
@@ -229,24 +277,33 @@ namespace Genten {
     dku->doExport(G, G_overlap);
 
     // <X,M> using 'MTTKRP' trick
-    const ttb_indx nd = M.ndims();
     const ttb_real ip = M[nd-1].innerprod(G[nd-1], M.weights());
 
     // ||M||^2 = <M,M>
     const ttb_real nrm_M_sq = gram[nd-1].innerprod(hada[nd-1], ones);
 
     // Compute objective
-    ttb_real f = (nrm_X_sq + nrm_M_sq - ttb_real(2.0)*ip) / nrm_X_sq;
+    ttb_real f = w * (nrm_X_sq + nrm_M_sq - ttb_real(2.0)*ip);
 
     // Compute gradient
     for (ttb_indx n=0; n<nd; ++n) {
-      G[n].gemm(false, false, ttb_real(2.0)/nrm_X_sq, M[n], hada[n],
-                -ttb_real(2.0)/nrm_X_sq);
+      G[n].gemm(false, false, ttb_real(2.0)*w, M[n], hada[n],
+                -ttb_real(2.0)*w);
 
       if (algParams.penalty != ttb_real(0.0)) {
-        f += algParams.penalty * M[n].normFsq() / nrm_X_sq;
-        G[n].plus(M[n], algParams.penalty*ttb_real(2.0)/nrm_X_sq);
+        f += w * algParams.penalty * M[n].normFsq();
+        G[n].plus(M[n], algParams.penalty*ttb_real(2.0)*w);
       }
+    }
+
+    // Add goal contribution
+    if (goal != nullptr) {
+      f += goal->value(M_overlap)*s;
+
+      goal->gradient(G_goal_overlap, M_overlap);
+      dku->doExport(G_goal, G_goal_overlap);
+      for (ttb_indx n=0; n<nd; ++n)
+        G[n].plus(G_goal[n],s);
     }
 
     return f;
@@ -267,12 +324,12 @@ namespace Genten {
       Genten::hess_vec(X, M, V, U, M_overlap, V_overlap, U_overlap, *dku,
                        algParams);
       for (ttb_indx n=0; n<nd; ++n)
-        U[n].times(ttb_real(2.0)/nrm_X_sq);
+        U[n].times(ttb_real(2.0)*w);
     }
     else if (algParams.hess_vec_method == Hess_Vec_Method::GaussNewton) {
       gauss_newton_hess_vec(X, M, V, U, algParams);
       for (ttb_indx n=0; n<nd; ++n)
-        U[n].times(ttb_real(2.0)/nrm_X_sq);
+        U[n].times(ttb_real(2.0)*w);
     }
     else if (algParams.hess_vec_method == Hess_Vec_Method::FiniteDifference)
     {
@@ -298,6 +355,17 @@ namespace Genten {
     }
     else
       Genten::error("Unknown Hessian method");
+
+    // Add goal contribution
+    if (goal != nullptr) {
+      if (dku->overlapAliasesArg())
+        V_overlap = dku->createOverlapKtensor(V);
+      dku->doImport(V_overlap, V);
+      goal->hessvec(G_goal_overlap, M_overlap, V_overlap);
+      dku->doExport(G_goal, G_goal_overlap);
+      for (ttb_indx n=0; n<nd; ++n)
+        U[n].plus(G_goal[n],s);
+    }
   }
 
     template <typename Tensor>

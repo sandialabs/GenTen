@@ -64,6 +64,9 @@ namespace Genten {
 
     virtual ~GCP_Goal() {}
 
+    // Return the number of goal functions in this goal
+    virtual ttb_indx numGoals() const = 0;
+
     // Compute information that is common to both value() and gradient()
     // when a new design vector is computed
     virtual void update(const ktensor_type& M) = 0;
@@ -72,8 +75,11 @@ namespace Genten {
     virtual ttb_real value(const ktensor_type& M) const = 0;
 
     // Compute gradient of objective function:
-    virtual void gradient(ktensor_type& G, const ktensor_type& M,
-                          const ttb_real s) const = 0;
+    virtual void gradient(ktensor_type& G, const ktensor_type& M) const = 0;
+
+    // Compute hessian-vector product of objective function:
+    virtual void hessvec(ktensor_type& H, const ktensor_type& M,
+                         const ktensor_type& V) const = 0;
   };
 
 #ifdef HAVE_PYTHON_EMBED
@@ -90,9 +96,23 @@ namespace Genten {
 
     GCP_PythonObjectGoal(const tensor_type& X,
                          const ktensor_type& M,
-                         const pybind11::object& po) : python_object(po) {}
+                         const AlgParams& algParms,
+                         const pybind11::object& po) : algParams(algParms), python_object(po) {}
 
     virtual ~GCP_PythonObjectGoal() {}
+
+    // Return the number of goal functions in this goal
+    virtual ttb_indx numGoals() const override
+    {
+      ttb_indx res = 0;
+      try {
+        res = python_object.attr("numGoals")().template cast<ttb_indx>();
+      }
+      catch (pybind11::error_already_set& e) {
+        Genten::error(e.what());
+      }
+      return res;
+    }
 
     // Compute information that is common to both value() and gradient()
     // when a new design vector is computed
@@ -115,7 +135,7 @@ namespace Genten {
       deep_copy(Mh, M);
       ttb_real res = 0.0;
       try {
-        res = python_object.attr("value")(Mh).template cast<ttb_real>();
+        res = python_object.attr("value")(Mh, algParams).template cast<ttb_real>();
       }
       catch (pybind11::error_already_set& e) {
         Genten::error(e.what());
@@ -124,19 +144,32 @@ namespace Genten {
     }
 
     // Compute gradient of objective function:
-    virtual void gradient(ktensor_type& G, const ktensor_type& M,
-                          const ttb_real s) const override
+    virtual void gradient(ktensor_type& G, const ktensor_type& M) const override
     {
       Ktensor Mh = create_mirror_view(M);
       deep_copy(Mh, M);
       try {
+        Ktensor Gh =
+          python_object.attr("gradient")(Mh, algParams).template cast<Ktensor>();
+        deep_copy(G, Gh);
+      }
+      catch (pybind11::error_already_set& e) {
+        Genten::error(e.what());
+      }
+    }
+
+    // Compute hessian-vector product of objective function:
+    virtual void hessvec(ktensor_type& H, const ktensor_type& M,
+                        const ktensor_type& V) const override
+    {
+      Ktensor Mh = create_mirror_view(M);
+      Ktensor Vh = create_mirror_view(V);
+      deep_copy(Mh, M);
+      deep_copy(Vh, V);
+      try {
         Ktensor Hh =
-          python_object.attr("gradient")(Mh).template cast<Ktensor>();
-        ktensor_type H = create_mirror_view(exec_space(), Hh);
+          python_object.attr("hessvec")(Mh, Vh, algParams).template cast<Ktensor>();
         deep_copy(H, Hh);
-        const ttb_indx nd = G.ndims();
-        for (ttb_indx n=0; n<nd; ++n)
-          G[n].plus(H[n],s);
       }
       catch (pybind11::error_already_set& e) {
         Genten::error(e.what());
@@ -144,6 +177,7 @@ namespace Genten {
     }
 
   protected:
+    AlgParams algParams;
     pybind11::object python_object;
   };
 #endif
@@ -159,7 +193,7 @@ namespace Genten {
       goal = nullptr;
     else if (algParams.goal_method == GCP_Goal_Method::PythonObject) {
 #ifdef HAVE_PYTHON_EMBED
-      goal = new GCP_PythonObjectGoal<ExecSpace>(X, M, algParams.python_object);
+      goal = new GCP_PythonObjectGoal<ExecSpace>(X, M, algParams, algParams.python_object);
 #else
       Genten::error("Python object goal requires embedded python (configure with ENABLE_PYTHON_EMBED=ON)!");
 #endif
@@ -178,7 +212,7 @@ namespace Genten {
           deep_copy(Mh, M);
           python_object.attr("init")(Xh, Mh);
         }
-        goal = new GCP_PythonObjectGoal<ExecSpace>(X, M, python_object);
+        goal = new GCP_PythonObjectGoal<ExecSpace>(X, M, algParams, python_object);
       }
       catch (pybind11::error_already_set& e) {
         Genten::error(e.what());
@@ -192,4 +226,17 @@ namespace Genten {
     return goal;
   }
 
+  template <typename ExecSpace>
+  GCP_Goal<ExecSpace>*
+  goalFactory(const SptensorT<ExecSpace>& X,
+              const KtensorT<ExecSpace>& M,
+              const AlgParams& algParams)
+  {
+    GCP_Goal<ExecSpace>* goal = nullptr;
+    if (algParams.goal_method == GCP_Goal_Method::None)
+      goal = nullptr;
+    else
+      Genten::error("GCP_Goal factory for Sptensor not implemented!");
+    return goal;
+  }
 }

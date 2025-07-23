@@ -138,10 +138,12 @@ namespace Genten {
 
     // create and pass a ktensor to cp_model/pcp_model through the KokkosVector to
     // ensure the same padding as vectors that will be used in the algorithm
+    vector_type mv(M); // this doesn't copy the values
+    mv.copyFromKtensor(M);
     if (algParams.loss_function_type == "gaussian")
-      cp_model = new CP_Model<tensor_type>(x,  vector_type(m).getKtensor(), algParams);
+      cp_model = new CP_Model<tensor_type>(x,  mv.getKtensor(), algParams);
     else if (algParams.loss_function_type == "poisson")
-      pcp_model = new PCP_Model<tensor_type>(x,  vector_type(m).getKtensor(), algParams);
+      pcp_model = new PCP_Model<tensor_type>(x,  mv.getKtensor(), algParams);
     else
       Genten::error("cp-opt only supports Gaussian and Poisson loss types");
 

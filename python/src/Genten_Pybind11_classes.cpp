@@ -8,6 +8,7 @@
 #include "Genten_IOtext.hpp"
 #include "Genten_Pmap.hpp"
 #include "Genten_DistTensorContext.hpp"
+#include "Genten_MixedFormatOps.hpp"
 
 #include <pybind11/iostream.h>
 
@@ -494,6 +495,12 @@ void pygenten_ktensor(py::module &m){
 
     The returned numpy.ndarray aliases the internal factor matrices and thus may
     be used to change their values.)", py::arg("n"));
+    cl.def("copy", [](const Genten::Ktensor& u){ 
+      Genten::Ktensor v = Genten::clone(u); 
+      deep_copy(v,u);
+      return v;
+    },R"(
+     Constructor a new Ktensor with values copied from this Ktensor.)");
     cl.def("full", [](const Genten::Ktensor& u){ return new Genten::Tensor(u); },R"(
      Constructor a dense tensor from this Ktensor u.
 
@@ -588,7 +595,7 @@ void pygenten_tensor(py::module &m){
      Constructor that returns an empty tensor.)");
     cl.def(py::init([](const py::buffer& b, const bool copy=true) {
         // Initialize a Genten::Tensor from a numpy array
-	py::buffer_info info = b.request();
+	      py::buffer_info info = b.request();
 
         if (info.format != py::format_descriptor<ttb_real>::format())
           throw std::runtime_error("Incompatible format: expected a ttb_real array!");
@@ -694,6 +701,20 @@ void pygenten_tensor(py::module &m){
         return ss.str();
       }, R"(
     Returns a string representation of the tensor.)");
+    cl.def("mttkrps", [](const Genten::Tensor& X, const Genten::Ktensor& u) {
+        Genten::Ktensor v = clone(u);
+        Genten::AlgParams algParams;
+        algParams.fixup<Genten::DefaultHostExecutionSpace>(std::cout);
+        Genten::mttkrp_all(X,u,v,algParams);
+        return v;
+      }, R"(
+    Compute MTTKRP with the supplied Ktensor.)");
+    cl.def("mttkrps", [](const Genten::Tensor& X, const Genten::Ktensor& u, const Genten::AlgParams& algParams) {
+        Genten::Ktensor v = clone(u);
+        Genten::mttkrp_all(X,u,v,algParams);
+        return v;
+      }, R"(
+    Compute MTTKRP with the supplied Ktensor.)");
   }
 }
 
