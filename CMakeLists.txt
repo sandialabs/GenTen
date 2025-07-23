@@ -106,6 +106,11 @@ ENDIF()
 # Advertise that we support shared libs
 SET_PROPERTY(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
 
+#---- Declaring the project name will define ${Genten_SOURCE_DIR} to be
+#---- the path to this source file, and ${Genten_BINARY_DIR} to be the path
+#---- to the directory where cmake has been invoked.
+project(Genten VERSION "0.0.0")
+
 # Setup architectures when building pyGenTen through pip.  We do this
 # because pip/scikit-build doesn't have a way to specify meta-options, so
 # we try to set things up for the user based on a single meta-cmake option
@@ -393,11 +398,6 @@ MESSAGE(STATUS "Inline Kokkos-Kernels build is ${KOKKOSKERNELS_INLINE_BUILD}")
 #     MESSAGE(FATAL_ERROR "Both Kokkos and KokkosKernels must use the Trilinos build if either does!")
 #   ENDIF()
 # ENDIF()
-
-#---- Declaring the project name will define ${Genten_SOURCE_DIR} to be
-#---- the path to this source file, and ${Genten_BINARY_DIR} to be the path
-#---- to the directory where cmake has been invoked.
-project(Genten VERSION "0.0.0")
 
 # Check minimum compiler version
 INCLUDE (cmake/CheckCompilerVersion.cmake)
