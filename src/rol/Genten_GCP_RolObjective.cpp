@@ -64,7 +64,7 @@ namespace Genten {
                      const AlgParams& algParams,
                      PerfHistory& h);
 
-    virtual ~GCP_RolObjective() {}
+    virtual ~GCP_RolObjective();
 
     virtual void update(const ROL::Vector<ttb_real>& xx, ROL::UpdateType type,
                           int iter) override;
@@ -78,27 +78,27 @@ namespace Genten {
 
     ROL::Ptr<vector_type> createDesignVector() const override {
       return ROL::makePtr<vector_type>(
-        M, false, gcp_model.getDistKtensorUpdate());
+        M, false, gcp_model->getDistKtensorUpdate());
     }
 
     std::string lossFunctionName() const override {
-      return gcp_model.lossFunction().name();
+      return gcp_model->lossFunction().name();
     }
 
     bool lossFunctionHasLowerBound() const override {
-      return gcp_model.lossFunction().has_lower_bound();
+      return gcp_model->lossFunction().has_lower_bound();
     }
 
     bool lossFunctionHasUpperBound() const override {
-      return gcp_model.lossFunction().has_upper_bound();
+      return gcp_model->lossFunction().has_upper_bound();
     }
 
     ttb_real lossFunctionLowerBound() const override {
-      return gcp_model.lossFunction().lower_bound();
+      return gcp_model->lossFunction().lower_bound();
     }
 
     ttb_real lossFunctionUpperBound() const override {
-      return gcp_model.lossFunction().upper_bound();
+      return gcp_model->lossFunction().upper_bound();
     }
 
     ttb_real computeFit(const ktensor_type& u) override;
@@ -106,7 +106,7 @@ namespace Genten {
   protected:
 
     ktensor_type M, G;
-    GCP_Model<exec_space, loss_function_type> gcp_model;
+    GCP_Model<exec_space, loss_function_type> *gcp_model;
     PerfHistory& history;
     SystemTimer timer;
     bool compute_fit;
@@ -120,12 +120,15 @@ namespace Genten {
                    const AlgParams& algParams,
                    PerfHistory& h) :
     M(m),
-    // create and pass a ktensor to gcp_model through the KokkosVector so to
-    // ensure the same padding as vectors that will be used in the algorithm
-    gcp_model(x, vector_type(m).getKtensor(), func, algParams),
+    gcp_model(nullptr),
     history(h), timer(1),
     compute_fit(algParams.compute_fit)
   {
+    // create and pass a ktensor to gcp_model through the KokkosVector so to
+    // ensure the same padding as vectors that will be used in the algorithm
+    vector_type mv(M); // this doesn't copy the values
+    mv.copyFromKtensor(M);
+    gcp_model = new GCP_Model<exec_space, loss_function_type>(x, mv.getKtensor(), func, algParams);
 #if COPY_KTENSOR
     const ttb_indx nc = M.ncomponents();
     const ttb_indx nd = M.ndims();
@@ -135,6 +138,14 @@ namespace Genten {
 
     history.addEmpty();
     history.lastEntry().iteration = 0;
+  }
+
+  template <typename ExecSpace, typename LossFunction>
+  GCP_RolObjective<ExecSpace,LossFunction>::
+  ~GCP_RolObjective()
+  {
+    if (gcp_model != nullptr)
+      delete gcp_model;
   }
 
   // Compute information that is common to both value() and gradient()
@@ -151,7 +162,7 @@ namespace Genten {
     // Convert input vector to a Ktensor
     M = x.getKtensor();
 
-    gcp_model.update(M);
+    gcp_model->update(M);
 
     // If the step was accepted, record the time and add a new working entry
     if (type == ROL::UpdateType::Accept) {
@@ -185,10 +196,10 @@ namespace Genten {
     x.copyToKtensor(M);
 #endif
 
-    ttb_real res = gcp_model.value(M);
+    ttb_real res = gcp_model->value(M);
     history.lastEntry().residual = res;
     if (compute_fit)
-      history.lastEntry().fit = gcp_model.computeFit(M);
+      history.lastEntry().fit = gcp_model->computeFit(M);
 
     return res;
   }
@@ -211,7 +222,7 @@ namespace Genten {
     x.copyToKtensor(M);
 #endif
 
-    gcp_model.gradient(G, M);
+    gcp_model->gradient(G, M);
 
     // Convert Ktensor to vector
 #if COPY_KTENSOR
@@ -226,8 +237,8 @@ namespace Genten {
   GCP_RolObjective<ExecSpace,LossFunction>::
   computeFit(const ktensor_type& u)
   {
-    gcp_model.update(u);
-    return gcp_model.computeFit(u);
+    gcp_model->update(u);
+    return gcp_model->computeFit(u);
   }
 
   template <typename ExecSpace>

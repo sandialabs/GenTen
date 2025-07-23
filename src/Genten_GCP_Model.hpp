@@ -83,14 +83,14 @@ namespace Genten {
       return dku;
     }
 
-    loss_function_type lossFunction() const { return f; }
+    loss_function_type lossFunction() const { return func; }
 
     ttb_real computeFit(const ktensor_type& M) const;
 
   protected:
 
     tensor_type X;
-    loss_function_type f;
+    loss_function_type func;
     AlgParams algParams;
     ttb_real w;
     mutable tensor_type Y;
@@ -101,6 +101,8 @@ namespace Genten {
     ttb_real nrm_X_sq;
 
     GCP_Goal<ExecSpace> *goal;
+    ktensor_type G_goal;
+    mutable ktensor_type G_goal_overlap;
     ttb_real s;
 
   };
@@ -109,9 +111,9 @@ namespace Genten {
   GCP_Model<ExecSpace,LossFunction>::
   GCP_Model(const tensor_type& x,
             const ktensor_type& M,
-            const loss_function_type& func,
+            const loss_function_type& loss_func,
             const AlgParams& algParms) :
-    X(x), f(func), algParams(algParms)
+    X(x), func(loss_func), algParams(algParms)
   {
     dku = createKtensorUpdate(x, M, algParams);
     G_overlap = dku->createOverlapKtensor(M);
@@ -128,23 +130,28 @@ namespace Genten {
 
     goal = goalFactory(X, M_overlap, algParams);
     if (goal != nullptr) {
-      // Scale statistical and goal terms so each is 0.5 at the initial guess
-      ttb_real t = Impl::gcp_value(X, M_overlap, 1.0, f);
-      if (t == 0.0)
-        w = 1.0;
-      else
-        w = 0.5/t;
-
-      goal->update(M_overlap);
-      t = goal->value(M_overlap);
-      if (t == 0.0)
+      // Scale statistical and goal terms so each so each contribute
+      // equally to the objective function at the initial guess
+      this->update(M);
+      const ttb_real f = Impl::gcp_value(X, M_overlap, 1.0, func);
+      const ttb_real t = goal->value(M_overlap);
+      const ttb_indx q = goal->numGoals();
+      if (t == 0.0) {
+        w = ttb_real(1.0)/nrm_X_sq;
         s = 1.0;
-      else
-        s = 0.5/t;
+      }
+      else {
+        w = ttb_real(1.0)/(f*(q+1));
+        s = ttb_real(q)/(t*(q+1));
+      }
     }
-    else
+    else {
       // Scale statistical term by inverse of ||X||^2
       w = ttb_real(1.0)/nrm_X_sq;
+    }
+
+    G_goal = clone(M);
+    G_goal_overlap = dku->createOverlapKtensor(G_goal);
   }
 
   template <typename ExecSpace, typename LossFunction>
@@ -173,7 +180,7 @@ namespace Genten {
   GCP_Model<ExecSpace,LossFunction>::
   value(const ktensor_type& M) const
   {
-    ttb_real F = Impl::gcp_value(X, M_overlap, w, f);
+    ttb_real F = Impl::gcp_value(X, M_overlap, w, func);
     if (goal != nullptr)
       F += goal->value(M_overlap)*s;
     return F;
@@ -187,10 +194,16 @@ namespace Genten {
     if (dku->overlapAliasesArg())
       G_overlap = dku->createOverlapKtensor(G);
 
-    Impl::gcp_gradient(X, Y, M_overlap, w, f, G_overlap, algParams);
-    if (goal != nullptr)
-      goal->gradient(G_overlap, M_overlap, s);
+    Impl::gcp_gradient(X, Y, M_overlap, w, func, G_overlap, algParams);
     dku->doExport(G, G_overlap);
+
+    if (goal != nullptr) {
+      goal->gradient(G_goal_overlap, M_overlap);
+      dku->doExport(G_goal, G_goal_overlap);
+      const ttb_indx nd = M.ndims();
+      for (ttb_indx n=0; n<nd; ++n)
+        G[n].plus(G_goal[n],s);
+    }
   }
 
   template <typename ExecSpace, typename LossFunction>

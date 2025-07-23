@@ -244,8 +244,8 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   python_module_name = parse_string(args, "--gcp-goal-python-module-name", python_module_name.c_str());
   python_object_name = parse_string(args, "--gcp-goal-python-object-name", python_object_name.c_str());
   // Do not parse python_object as it is just for embedded python
-  if (goal_method == GCP_Goal_Method::PythonObject)
-    Genten::error("PythonObject goal method cannot be chosen from command line!");
+  // if (goal_method == GCP_Goal_Method::PythonObject)
+  //   Genten::error("PythonObject goal method cannot be chosen from command line!");
 
   // GCP-SGD options
   sampling_type = parse_ttb_enum(args, "--sampling",
