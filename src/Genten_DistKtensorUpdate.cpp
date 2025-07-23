@@ -1108,7 +1108,7 @@ updateTensor(const DistTensor<ExecSpace>& X)
     // the overlapped ktensor.
 
     // Get rows we receive from each proc
-    if (is_gpu_space<ExecSpace>::value && algParams.build_maps_on_device)
+    if (/*is_gpu_space<ExecSpace>::value &&*/ algParams.build_maps_on_device)
       extractRowRecvsDevice();
     else
       extractRowRecvsHost();

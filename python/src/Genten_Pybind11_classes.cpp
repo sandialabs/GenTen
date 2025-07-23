@@ -232,6 +232,7 @@ void pygenten_algparams(py::module &m){
     cl.def_readwrite("printitn", &Genten::AlgParams::printitn);
     cl.def_readwrite("debug", &Genten::AlgParams::debug);
     cl.def_readwrite("timings", &Genten::AlgParams::timings);
+    cl.def_readwrite("timings_xml", &Genten::AlgParams::timings_xml);
     cl.def_readwrite("full_gram", &Genten::AlgParams::full_gram);
     cl.def_readwrite("rank_def_solver", &Genten::AlgParams::rank_def_solver);
     cl.def_readwrite("rcond", &Genten::AlgParams::rcond);
@@ -265,6 +266,7 @@ void pygenten_algparams(py::module &m){
 
     cl.def_readwrite("loss_function_type", &Genten::AlgParams::loss_function_type);
     cl.def_readwrite("loss_eps", &Genten::AlgParams::loss_eps);
+    cl.def_readwrite("loss_param", &Genten::AlgParams::loss_param);
     cl.def_readwrite("gcp_tol", &Genten::AlgParams::gcp_tol);
     cl.def_readwrite("gcp_goal_method", &Genten::AlgParams::goal_method);
     cl.def_readwrite("gcp_goal_python_module_name", &Genten::AlgParams::python_module_name);
