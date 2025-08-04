@@ -69,7 +69,11 @@ char *  Genten::getGentenVersion(void)
 // Connect executable to vtune for profiling
 void Genten::connect_vtune(const int p_rank) {
   std::stringstream cmd;
-  pid_t my_os_pid =GetCurrentProcessId(); 
+  #ifdef _WIN32
+    pid_t my_os_pid=GetCurrentProcessId();
+  #else
+    pid_t my_os_pid=getpid();
+  #endif
   const std::string vtune_loc =
     "amplxe-cl";
   const std::string output_dir = "./vtune/vtune.";

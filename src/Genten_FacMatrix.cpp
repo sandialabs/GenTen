@@ -1122,7 +1122,7 @@ void colNorms_kernel(
                          Kernel::policy(m),
                          KOKKOS_LAMBDA(TeamMember team)
     {
-      ColNormsKernel_Inf<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> kernel(data, norms, team);
+      Kernel kernel(data, norms, team);
       for (unsigned j_block=0; j_block<n; j_block+=ColBlockSize) {
         if (j_block+ColBlockSize <= n)
           kernel.template run<ColBlockSize>(j_block, ColBlockSize);
@@ -1146,7 +1146,7 @@ void colNorms_kernel(
                          Kernel::policy(m),
                          KOKKOS_LAMBDA(TeamMember team)
     {
-      ColNormsKernel_1<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> kernel(data, norms, team);
+      Kernel kernel(data, norms, team);
       for (unsigned j_block=0; j_block<n; j_block+=ColBlockSize) {
         if (j_block+ColBlockSize <= n)
           kernel.template run<ColBlockSize>(j_block, ColBlockSize);
@@ -1169,7 +1169,7 @@ void colNorms_kernel(
                          Kernel::policy(m),
                          KOKKOS_LAMBDA(TeamMember team)
     {
-      ColNormsKernel_2<ExecSpace,ViewType,NormT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> kernel(data, norms, team);
+      Kernel kernel(data, norms, team);
       for (unsigned j_block=0; j_block<n; j_block+=ColBlockSize) {
         if (j_block+ColBlockSize <= n)
           kernel.template run<ColBlockSize>(j_block, ColBlockSize);
@@ -1358,7 +1358,7 @@ void colSums_kernel(
                         Kernel::policy(m),
                         KOKKOS_LAMBDA(TeamMember team)
   {
-    ColSumsKernel<ExecSpace,ViewType,SumT,RowBlockSize,ColBlockSize,TeamSize,VectorSize> kernel(data, sums, team);
+    Kernel kernel(data, sums, team);
     for (unsigned j_block=0; j_block<n; j_block+=ColBlockSize) {
       if (j_block+ColBlockSize <= n)
         kernel.template run<ColBlockSize>(j_block, ColBlockSize);
@@ -1474,7 +1474,7 @@ void colScale_kernel(const ViewType& data, const Genten::ArrayT<ExecSpace>& v)
   Kokkos::parallel_for("Genten::FacMatrix::colScale_kernel",
                        Kernel::policy(m), KOKKOS_LAMBDA(TeamMember team)
   {
-    ColScaleKernel<ExecSpace,ViewType,ColBlockSize,RowBlockSize,TeamSize,VectorSize> kernel(data, v, team);
+    Kernel kernel(data, v, team);
     for (unsigned j_block=0; j_block<n; j_block+=ColBlockSize) {
       if (j_block+ColBlockSize <= n)
         kernel.template run<ColBlockSize>(j_block, ColBlockSize);
@@ -1568,11 +1568,13 @@ rowScale(const Genten::ArrayT<ExecSpace> & v, bool inverse) const
 
 // Only called by Ben Allan's parallel test code.  It appears he uses the Linux
 // random number generator in a special way.
-#if !defined(_WIN32)
 template <typename ExecSpace>
 void Genten::FacMatrixT<ExecSpace>::
 scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise) const
 {
+#if defined(_WIN32)
+  Genten::error("Genten::FacMatrix::scaleRandomElements - not implemented on Windows");
+#else
   const ttb_indx nrows = data.extent(0);
   const ttb_indx ncols = data.extent(1);
   auto data_1d = make_data_1d();
@@ -1614,8 +1616,8 @@ scaleRandomElements(ttb_real fraction, ttb_real scale, bool columnwise) const
       }
     }
   }
+  #endif
 }
-#endif
 
 // TODO: This function really should be removed and replaced with a ktensor norm function, because that's kind of how it's used.
 template <typename ExecSpace>
@@ -3143,7 +3145,7 @@ ttb_real mat_innerprod_kernel(const MatViewType& x, const MatViewType& y,
                           Kernel::policy(m),
                           KOKKOS_LAMBDA(TeamMember team, ttb_real& d)
   {
-    MatInnerProdKernel<ExecSpace,MatViewType,WeightViewType,RowBlockSize,ColBlockSize,TeamSize,VectorSize> kernel(x, y, w, team);
+    Kernel kernel(x, y, w, team);
     for (unsigned j_block=0; j_block<n; j_block+=ColBlockSize) {
       if (j_block+ColBlockSize <= n)
         kernel.template run<ColBlockSize>(j_block, ColBlockSize, d);

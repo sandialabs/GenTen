@@ -260,9 +260,7 @@ ttb_real innerprod_kernel(const Genten::SptensorImpl<ExecSpace>& s,
                           Kernel::policy(s.nnz()),
                           KOKKOS_LAMBDA(TeamMember team, ttb_real& d)
   {
-    // For some reason using the above typedef causes a really strange
-    // compiler error with NVCC 8.0 + GCC 4.9.2
-    InnerProductKernel<ExecSpace,RowBlockSize,FacBlockSize,TeamSize,VectorSize> kernel(s,u,lambda,team);
+    Kernel kernel(s,u,lambda,team);
 
     const unsigned nc = u.ncomponents();
     for (unsigned j=0; j<nc; j+=FacBlockSize) {

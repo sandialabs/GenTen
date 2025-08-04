@@ -119,12 +119,12 @@ SptnFileHeader::SptnFileHeader(const ptree& tree)
 
 std::uint64_t
 SptnFileHeader::bytesInDataLine() const {
-  return std::accumulate(dim_bits.begin(), dim_bits.end(), float_bits) / 8;
+  return std::accumulate(dim_bits.begin(), dim_bits.end(), sub_size_type(float_bits)) / 8;
 }
 
 std::uint64_t
 SptnFileHeader::dataByteOffset() const {
-  return std::accumulate(dim_bits.begin(), dim_bits.end(), 0) / 8;
+  return std::accumulate(dim_bits.begin(), dim_bits.end(), sub_size_type(0)) / 8;
 }
 
 std::uint64_t
@@ -135,7 +135,7 @@ SptnFileHeader::indByteOffset(ttb_indx ind) const {
   }
   auto it = dim_bits.begin();
   std::advance(it, ind);
-  return std::accumulate(dim_bits.begin(), it, 0) / 8;
+  return std::accumulate(dim_bits.begin(), it, sub_size_type(0)) / 8;
 }
 
 std::uint64_t
@@ -240,7 +240,7 @@ DntnFileHeader::DntnFileHeader(const ptree& tree)
   std::copy(dims.begin(), dims.end(), dim_lengths.begin());
 
   // Compute number of tensor entries
-  nnz = std::accumulate(dims.begin(), dims.end(), 1,
+  nnz = std::accumulate(dims.begin(), dims.end(), ttb_indx(1),
                         std::multiplies<ttb_indx>());
 
   // Parse bits to hold each value (optional, defaults to 64)
@@ -1070,8 +1070,8 @@ queryFile()
       while (std::getline(ss,t,' '))
         tokens.push_back(t);
       for (unsigned i=0; i<tokens.size()-1; ++i)
-        std::stol(tokens[i]);
-      std::stod(tokens[tokens.size()-1]);
+        long l = std::stol(tokens[i]);
+      double d = std::stod(tokens[tokens.size()-1]);
       is_sparse = true;
       is_dense  = false;
       is_binary = false;

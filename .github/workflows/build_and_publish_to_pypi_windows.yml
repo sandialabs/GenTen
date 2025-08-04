@@ -1,0 +1,77 @@
+# Workflow to build binary wheels for Windows
+
+name: Build python wheels - Windows
+
+on:
+  workflow_dispatch
+
+jobs:
+  build-wheels:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest]
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set reusable strings
+        id: strings
+        shell: bash
+        # We need the path to the openblas library without \'s for cibuildwheel to work correctly
+        run: |
+          echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+          openblas_lib="${{ github.workspace }}/openblas/lib/libopenblas.lib"
+          openblas_lib_unix=$(echo "$openblas_lib" | sed 's/\\/\//g')
+          echo "openblas_lib=$openblas_lib_unix" >> "$GITHUB_OUTPUT"
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v3.0.0
+        with:
+          output-dir: dist
+        env:
+          CIBW_BUILD: cp3*-win_amd64
+          CIBW_BUILD_VERBOSITY: 1
+          CIBW_BEFORE_ALL_WINDOWS: >
+            mkdir openblas &&
+            cd openblas &&
+            curl -o openblas.zip -L --ssl-no-revoke --url https://sourceforge.net/projects/openblas/files/v0.3.29/OpenBLAS-0.3.29_x64.zip &&
+            unzip openblas.zip &&
+            set PATH=${{ github.workspace }}/openblas/bin:${PATH}
+          CIBW_CONFIG_SETTINGS_WINDOWS: "cmake.args=-DLAPACK_LIBS=${{ steps.strings.outputs.openblas_lib }};-DPYGENTEN_SERIAL=ON;-DENABLE_PYTHON_EMBED=OFF"
+          CIBW_BEFORE_BUILD_WINDOWS: "pip install delvewheel"
+          CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: "delvewheel repair --add-path ${{ github.workspace }}/openblas/bin -w {dest_dir} {wheel}"
+          CIBW_TEST_REQUIRES: pytest pyttb
+          CIBW_TEST_SOURCES: python/test data
+          CIBW_TEST_COMMAND: >
+            pytest python/test
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dists-${{ matrix.os }}
+          path: dist/
+
+  pypi-publish:
+    runs-on: windows-latest
+
+    needs: 
+      - build-wheels
+
+    permissions:
+      id-token: write
+
+    environment:
+      name: pypi
+      url: https://pypi.org/project/pygenten/
+
+    steps:
+      - name: Retrieve release distributions 
+        uses: actions/download-artifact@v4
+        with:
+          name: release-dists-windows-latest
+          path: dist/
+
+      - name: Publish release distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true

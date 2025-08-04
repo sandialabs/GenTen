@@ -177,7 +177,7 @@ namespace Genten {
       rand_pool = rand_pool_;
 
       // Sort/hash tensor if necessary for faster sampling
-      if (printitn > 0) {
+      if (printitn) {
         if (algParams.hash)
           out << "Hashing tensor for faster sampling...";
         else
@@ -190,7 +190,7 @@ namespace Genten {
       else if (!X.isSorted())
         X.sort();
       timer.stop(0);
-      if (printitn > 0)
+      if (printitn)
         out << timer.getTotalTime(0) << " seconds" << std::endl;
     }
 
