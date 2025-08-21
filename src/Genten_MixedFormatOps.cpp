@@ -712,8 +712,78 @@ void mttkrp_phan(const Genten::TensorImpl<ExecSpace,Impl::TensorLayoutRight>& X,
   }
 }
 
-}
-}
+template <typename ExecSpace, typename Layout>
+struct MTTKRP_Dense_Perm_Kernel {
+  const TensorImpl<ExecSpace,Layout> XX;
+  const KtensorImpl<ExecSpace> uu;
+  const ttb_indx nn;
+  const FacMatrixT<ExecSpace> vv;
+  const AlgParams algParams;
+
+  MTTKRP_Dense_Perm_Kernel(const TensorImpl<ExecSpace,Layout>& X_,
+                          const KtensorImpl<ExecSpace>& u_,
+                          const ttb_indx n_,
+                          const FacMatrixT<ExecSpace>& v_,
+                          const AlgParams& algParams_) :
+    XX(X_), uu(u_), nn(n_), vv(v_), algParams(algParams_) {}
+
+  template <unsigned FBS, unsigned VS>
+  void run() const
+  {
+    const TensorImpl<ExecSpace,Layout> X = XX;
+    const KtensorImpl<ExecSpace> u = uu;
+    const ttb_indx n = nn;
+    const FacMatrixT<ExecSpace> v = vv;
+
+    static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+		/*
+    static const unsigned FacBlockSize = FBS;
+		*/
+    static const unsigned VectorSize = is_gpu ? VS : 1;
+    static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
+
+    /*const*/ unsigned nd = u.ndims();
+    /*const*/ unsigned nc = u.ncomponents();
+    /*const*/ ttb_indx ne = X.numel();
+    //const ttb_indx N = (ne+TeamSize-1)/TeamSize;
+		const size_t MAX_DIM = 8;
+
+		/*
+    typedef Kokkos::TeamPolicy<ExecSpace> Policy;
+    typedef typename Policy::member_type TeamMember;
+    Policy policy(N, TeamSize, VectorSize);
+		*/
+		typedef Kokkos::RangePolicy<ExecSpace> Policy;
+		Policy policy(0, ne);
+
+		Kokkos::parallel_for("mttkrp_kernel", policy, KOKKOS_LAMBDA(const size_t i)
+		{
+			if (i >= ne)
+				return;
+
+			size_t sub[MAX_DIM]; // TODO: confirm this
+			X.ind2sub(sub,i);
+
+			const size_t k = sub[n];
+			const double x_val = X[i];
+
+			for (int j = 0; j < nc; ++j) {
+				double tmp = x_val * u.weights(j);
+
+				for (int m = 0; m < nd; ++m) {
+					if (m != n)
+						tmp *= u[m].entry(sub[m], j);
+				} // dimension loop
+
+				Kokkos::atomic_add(&v.entry(k,j), tmp);
+			} // component loop
+		}); //range policy (over tensor elements)
+  }
+
+};
+
+} // namespace Genten
+} // namespace Impl
 
 template <typename ExecSpace>
 void Genten::mttkrp(const Genten::TensorT<ExecSpace>& X,
@@ -779,6 +849,22 @@ void Genten::mttkrp(const Genten::TensorT<ExecSpace>& X,
       // Impl::mttkrp_phan(Xl, ul, nd-n-1, v, algParams, zero_v);
     }
   }
+  else if (algParams.mttkrp_method == MTTKRP_Method::Perm) {
+    if (zero_v)
+      v = ttb_real(0.0);
+
+    if (X.has_left_impl()) {
+      Genten::Impl::MTTKRP_Dense_Perm_Kernel<ExecSpace,Impl::TensorLayoutLeft> kernel(
+        X.left_impl(),u.impl(),n,v,algParams);
+      Genten::Impl::run_row_simd_kernel(kernel, nc);
+    }
+    else {
+      Genten::Impl::MTTKRP_Dense_Perm_Kernel<ExecSpace,Impl::TensorLayoutRight> kernel(
+        X.right_impl(),u.impl(),n,v,algParams);
+      Genten::Impl::run_row_simd_kernel(kernel, nc);
+    }
+
+  } 
   else
     Genten::error(std::string("Unknown MTTKRP method:  ") +
                   std::string(MTTKRP_Method::names[algParams.mttkrp_method]));
