@@ -745,19 +745,23 @@ struct MTTKRP_Dense_Perm_Kernel {
     /*const*/ unsigned nd = u.ndims();
     /*const*/ unsigned nc = u.ncomponents();
     /*const*/ ttb_indx ne = X.numel();
-    //const ttb_indx N = (ne+TeamSize-1)/TeamSize;
+    const ttb_indx N = (ne+TeamSize-1)/TeamSize;
 		const size_t MAX_DIM = 8;
 
-		/*
+		
     typedef Kokkos::TeamPolicy<ExecSpace> Policy;
     typedef typename Policy::member_type TeamMember;
     Policy policy(N, TeamSize, VectorSize);
-		*/
+		/*
 		typedef Kokkos::RangePolicy<ExecSpace> Policy;
 		Policy policy(0, ne);
-
-		Kokkos::parallel_for("mttkrp_kernel", policy, KOKKOS_LAMBDA(const size_t i)
+		*/
+		Kokkos::parallel_for("mttkrp_kernel", policy, KOKKOS_LAMBDA(const TeamMember & team)
 		{
+			
+			ttb_indx offset = team.league_rank() * TeamSize;
+			ttb_indx i = offset + team.team_rank();
+
 			if (i >= ne)
 				return;
 
@@ -767,7 +771,7 @@ struct MTTKRP_Dense_Perm_Kernel {
 			const size_t k = sub[n];
 			const double x_val = X[i];
 
-			for (int j = 0; j < nc; ++j) {
+			Kokkos::parallel_for(Kokkos::ThreadVectorRange(team, nc), [&] (unsigned & j) {
 				double tmp = x_val * u.weights(j);
 
 				for (int m = 0; m < nd; ++m) {
@@ -776,7 +780,7 @@ struct MTTKRP_Dense_Perm_Kernel {
 				} // dimension loop
 
 				Kokkos::atomic_add(&v.entry(k,j), tmp);
-			} // component loop
+			}); // component loop
 		}); //range policy (over tensor elements)
   }
 
