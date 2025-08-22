@@ -736,9 +736,7 @@ struct MTTKRP_Dense_Perm_Kernel {
     const FacMatrixT<ExecSpace> v = vv;
 
     static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
-		/*
     static const unsigned FacBlockSize = FBS;
-		*/
     static const unsigned VectorSize = is_gpu ? VS : 1;
     static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
 
@@ -746,42 +744,50 @@ struct MTTKRP_Dense_Perm_Kernel {
     /*const*/ unsigned nc = u.ncomponents();
     /*const*/ ttb_indx ne = X.numel();
     const ttb_indx N = (ne+TeamSize-1)/TeamSize;
+
+		// Kernel Constants
 		const size_t MAX_DIM = 8;
+		assert (nd <= MAX_DIM && "The maximum dimensions for this kernel is 8, i.e., X must be at most 8-way.");
 
 		
     typedef Kokkos::TeamPolicy<ExecSpace> Policy;
     typedef typename Policy::member_type TeamMember;
     Policy policy(N, TeamSize, VectorSize);
-		/*
-		typedef Kokkos::RangePolicy<ExecSpace> Policy;
-		Policy policy(0, ne);
-		*/
 		Kokkos::parallel_for("mttkrp_kernel", policy, KOKKOS_LAMBDA(const TeamMember & team)
 		{
 			
-			ttb_indx offset = team.league_rank() * TeamSize;
-			ttb_indx i = offset + team.team_rank();
+			ttb_indx offset_i = team.league_rank() * TeamSize;
+			ttb_indx i = offset_i + team.team_rank();
 
 			if (i >= ne)
 				return;
 
-			size_t sub[MAX_DIM]; // TODO: confirm this
-			X.ind2sub(sub,i);
+			size_t sub[MAX_DIM]; // TODO: move to shared memory
 
+			// TODO the following lines should be done once per thread
+			X.ind2sub(sub,i);
 			const size_t k = sub[n];
 			const double x_val = X[i];
 
-			Kokkos::parallel_for(Kokkos::ThreadVectorRange(team, nc), [&] (unsigned & j) {
-				double tmp = x_val * u.weights(j);
+			for (unsigned offset_j = 0; offset_j < nc; offset_j += FacBlockSize) {
+				unsigned nj;
+				if (offset_j + FacBlockSize <= nc)
+					nj = FacBlockSize;
+				else
+					nj = nc - offset_j;
+				Kokkos::parallel_for(Kokkos::ThreadVectorRange(team, nj), [&] (unsigned & jj) {
+					unsigned j = offset_j + jj;
+					double tmp = x_val * u.weights(j);
 
-				for (int m = 0; m < nd; ++m) {
-					if (m != n)
-						tmp *= u[m].entry(sub[m], j);
-				} // dimension loop
+					for (int m = 0; m < nd; ++m) {
+						if (m != n)
+							tmp *= u[m].entry(sub[m], j);
+					} // dimension loop
 
-				Kokkos::atomic_add(&v.entry(k,j), tmp);
-			}); // component loop
-		}); //range policy (over tensor elements)
+					Kokkos::atomic_add(&v.entry(k,j), tmp);
+				}); // vector range (over components)
+			} // component chunk loop
+		}); // thread range (over tensor elements)
   }
 
 };
