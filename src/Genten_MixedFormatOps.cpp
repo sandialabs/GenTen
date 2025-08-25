@@ -739,11 +739,13 @@ struct MTTKRP_Dense_Perm_Kernel {
     static const unsigned FacBlockSize = FBS;
     static const unsigned VectorSize = is_gpu ? VS : 1;
     static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
+		/*const*/ unsigned RowsPerTeammate = 128; // TODO: argParam; Same as RowBlockSize in sparse case
+		const unsigned RowsPerTeam = TeamSize * RowsPerTeammate;
 
     /*const*/ unsigned nd = u.ndims();
     /*const*/ unsigned nc = u.ncomponents();
     /*const*/ ttb_indx ne = X.numel();
-    const ttb_indx N = (ne+TeamSize-1)/TeamSize;
+    const ttb_indx N = (ne+RowsPerTeam-1)/RowsPerTeam;
 
 		// Kernel Constants
 		const size_t MAX_DIM = 8;
@@ -756,39 +758,39 @@ struct MTTKRP_Dense_Perm_Kernel {
 		Kokkos::parallel_for("mttkrp_kernel", policy, KOKKOS_LAMBDA(const TeamMember & team)
 		{
 			
-			ttb_indx offset_i = team.league_rank() * TeamSize;
-			ttb_indx i = offset_i + team.team_rank();
 
-			if (i >= ne)
-				return;
+			ttb_indx offset_i = (team.league_rank() * TeamSize + team.team_rank()) * RowsPerTeammate;
 
-			size_t sub[MAX_DIM]; // TODO: move to shared memory
+			for (unsigned ii=0; ii<RowsPerTeammate; ++ii) {
+				ttb_indx i = offset_i + ii;
 
-			// TODO the following lines should be done once per thread
-			X.ind2sub(sub,i);
-			const size_t k = sub[n];
-			const double x_val = X[i];
+				if (i >= ne)
+					return;
 
-			for (unsigned offset_j = 0; offset_j < nc; offset_j += FacBlockSize) {
-				unsigned nj;
-				if (offset_j + FacBlockSize <= nc)
-					nj = FacBlockSize;
-				else
-					nj = nc - offset_j;
-				Kokkos::parallel_for(Kokkos::ThreadVectorRange(team, nj), [&] (unsigned & jj) {
-					unsigned j = offset_j + jj;
-					double tmp = x_val * u.weights(j);
+				size_t sub[MAX_DIM];
 
-					for (int m = 0; m < nd; ++m) {
-						if (m != n)
-							tmp *= u[m].entry(sub[m], j);
-					} // dimension loop
+				X.ind2sub(sub,i); // TODO: only call `ind2sub` once, then increment
+				const size_t k = sub[n]; // TODO: this should be the same per teammate/team
+				const double x_val = X[i];
 
-					Kokkos::atomic_add(&v.entry(k,j), tmp);
-				}); // vector range (over components)
-			} // component chunk loop
+				for (unsigned offset_j = 0; offset_j < nc; offset_j += FacBlockSize) {
+					unsigned nj = offset_j + FacBlockSize <= nc ? FacBlockSize : nc - offset_j;
+
+					Kokkos::parallel_for(Kokkos::ThreadVectorRange(team, nj), [&] (unsigned & jj) {
+						unsigned j = offset_j + jj;
+						double tmp = x_val * u.weights(j); // TODO: once per team -> shmem
+
+						for (int m = 0; m < nd; ++m) {
+							if (m != n)
+								tmp *= u[m].entry(sub[m], j);
+						} // dimension loop
+
+						Kokkos::atomic_add(&v.entry(k,j), tmp);
+					}); // vector range (over components)
+				} // component chunk loop
+			} // row chunk loop
 		}); // thread range (over tensor elements)
-  }
+  } // void run ()
 
 };
 
