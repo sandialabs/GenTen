@@ -57,6 +57,10 @@
 #include "Genten_AlgParams.hpp"
 #include "Genten_MixedFormatOps.hpp"
 
+#ifdef HAVE_CUDA
+#include "nvToolsExt.h"
+#endif
+
 template <typename Space>
 int run_sparse_mttkrp(const std::string& inputfilename,
                       const ttb_indx index_base,
@@ -194,6 +198,14 @@ int run_sparse_mttkrp(const std::string& inputfilename,
       timer.stop(1+n);
     }
   }
+	// Perform a single NVTX run for CUDA Nsight profiling
+	#ifdef HAVE_CUDA
+	nvtxRangePushA("MTTKRP");
+	for (ttb_indx n=0; n<nDims; ++n) {
+		Genten::mttkrp(cData, cInput, n, cResult[n], algParams);
+	}
+	nvtxRangePop();
+	#endif
   const double atomic = 1.0; // cost of atomic measured in flops
   const double mttkrp_flops = cData.nnz()*nNumComponents*(nDims+atomic);
   double mttkrp_total_time = 0.0;
