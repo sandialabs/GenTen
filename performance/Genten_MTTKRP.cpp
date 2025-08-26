@@ -556,7 +556,7 @@ void usage(char **argv)
       std::cout << ", ";
   }
   std::cout << std::endl;
-  std::cout << "  --mttkrp-tile-size <int> tile size for mttkrp algorithm" << std::endl;
+  std::cout << "  --mttkrp-tile-size <int> tile size for mttkrp algorithm. If dense, sets `algParams.mttkrp_dense_tile_width`." << std::endl;
   std::cout << "  --vtune              connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
 }
 
@@ -641,6 +641,7 @@ int main(int argc, char* argv[])
     Genten::AlgParams algParams;
     algParams.mttkrp_method = mttkrp_method;
     algParams.mttkrp_duplicated_factor_matrix_tile_size = mttkrp_tile_size;
+		algParams.mttkrp_dense_tile_width = mttkrp_tile_size == 0 ? 2 : mttkrp_tile_size;
 
     if (exec_space == Genten::Execution_Space::Default) {
       if (sparse)

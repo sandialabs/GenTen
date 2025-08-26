@@ -83,6 +83,7 @@ namespace Genten {
     MTTKRP_Method::type mttkrp_method; // MTTKRP algorithm
     MTTKRP_All_Method::type mttkrp_all_method; // MTTKRP algorithm for all dims
     unsigned mttkrp_nnz_tile_size; // Nonzero tile size (i.e., RowBlockSize)
+    unsigned mttkrp_dense_tile_width; // Dense tile width (i.e., pow(RowBlockSize, 1.0/(nd-1)))
     unsigned mttkrp_duplicated_factor_matrix_tile_size; // Tile size for MTTKRP
     ttb_real mttkrp_duplicated_threshold;  // Theshold for when dup is used
     Dist_Update_Method::type dist_update_method;
