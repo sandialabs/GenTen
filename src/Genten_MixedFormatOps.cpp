@@ -735,17 +735,39 @@ struct MTTKRP_Dense_Perm_Kernel {
     const ttb_indx n = nn;
     const FacMatrixT<ExecSpace> v = vv;
 
+    /*const*/ unsigned nd = u.ndims();
+    /*const*/ unsigned nc = u.ncomponents();
+    /*const*/ ttb_indx ne = X.numel();
+
     static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
     static const unsigned FacBlockSize = FBS;
     static const unsigned VectorSize = is_gpu ? VS : 1;
     static const unsigned TeamSize = is_gpu ? 128/VectorSize : 1;
-		/*const*/ unsigned RowsPerTeammate = 128; // TODO: argParam; Same as RowBlockSize in sparse case
-		const unsigned RowsPerTeam = TeamSize * RowsPerTeammate;
+		/*const*/ unsigned TileWidth = algParams.mttkrp_dense_tile_width ? algParams.mttkrp_dense_tile_width : 1;
+		/*const*/ unsigned TileVol = 1;
+		for (unsigned i = 0; i < nd - 1; ++i)
+			TileVol *= TileWidth;
+		const unsigned ElemPerTeam = TeamSize * TileVol;
 
-    /*const*/ unsigned nd = u.ndims();
-    /*const*/ unsigned nc = u.ncomponents();
-    /*const*/ ttb_indx ne = X.numel();
-    const ttb_indx N = (ne+RowsPerTeam-1)/RowsPerTeam;
+		// pad the size array (m!=n)
+		IndxArray padded_size_host(nd);
+		/*const*/ ttb_indx nePadded = 1;
+		/*const*/ ttb_indx SliceVol = 1;
+		for (ttb_indx m=0; m<nd; ++m) {
+			padded_size_host[m] = X.size(m);
+			if (m != n) {
+				padded_size_host[m] = ((padded_size_host[m] + TileWidth - 1)/TileWidth)*TileWidth;
+				SliceVol *= padded_size_host[m];
+			}
+			nePadded *= padded_size_host[m];
+		}
+		const ttb_indx TilesPerSlice = SliceVol / TileVol;
+
+		// send to device
+		IndxArrayT<ExecSpace> padded_size = create_mirror_view(ExecSpace(), padded_size_host);
+		deep_copy(padded_size, padded_size_host);
+
+    const ttb_indx N = (nePadded+ElemPerTeam-1)/ElemPerTeam;
 
 		// Kernel Constants
 		const size_t MAX_DIM = 8;
@@ -757,24 +779,66 @@ struct MTTKRP_Dense_Perm_Kernel {
     Policy policy(N, TeamSize, VectorSize);
 		Kokkos::parallel_for("mttkrp_kernel", policy, KOKKOS_LAMBDA(const TeamMember & team)
 		{
-			
 
-			ttb_indx offset_i = (team.league_rank() * TeamSize + team.team_rank()) * RowsPerTeammate;
+			ttb_indx anchorIndx = team.league_rank() * TeamSize + team.team_rank();
+			ttb_indx offset_i = anchorIndx * TileVol;
 
-			for (unsigned ii=0; ii<RowsPerTeammate; ++ii) {
-				ttb_indx i = offset_i + ii;
+			// Get the anchor subscript
+			size_t anchor[MAX_DIM];
 
-				if (i >= ne)
-					return;
+			// TODO: change for layoutLeft, layoutRight
+			const ttb_indx slice = anchorIndx / TilesPerSlice;
+			const ttb_indx tile  = anchorIndx % TilesPerSlice; // TODO: can I do this without mod?
+			ttb_indx cumprod = SliceVol / TileVol;
+			ttb_indx ind = tile;
+			ttb_indx sbs;
+			for (ttb_indx m=0; m < nd; ++m) {
+				if (m != n) {
+					cumprod = cumprod / (padded_size[m] / TileWidth);
+					sbs = ind / cumprod;
+					anchor[m] = sbs * TileWidth;
+					ind = ind - (sbs * cumprod);
+				} else {
+					anchor[m] = slice;
+				}
+			}
 
-				size_t sub[MAX_DIM];
+			size_t sub[MAX_DIM];
+			for (unsigned offset_j = 0; offset_j < nc; offset_j += FacBlockSize) {
+				unsigned nj = offset_j + FacBlockSize <= nc ? FacBlockSize : nc - offset_j;
 
-				X.ind2sub(sub,i); // TODO: only call `ind2sub` once, then increment
-				const size_t k = sub[n]; // TODO: this should be the same per teammate/team
-				const double x_val = X[i];
+				for (ttb_indx ii=0; ii<TileVol; ++ii) {
+					ttb_indx i = offset_i + ii;
 
-				for (unsigned offset_j = 0; offset_j < nc; offset_j += FacBlockSize) {
-					unsigned nj = offset_j + FacBlockSize <= nc ? FacBlockSize : nc - offset_j;
+					// TODO: replace with offset increments
+					// TODO: change for layoutLeft, layoutRight
+					ttb_indx cumprod = TileVol;
+					ttb_indx ind = ii;
+					ttb_indx sbs;
+					for (ttb_indx m=0; m<nd; ++m) {
+						sub[m] = anchor[m];
+						if (m != n) {
+							cumprod = cumprod / (TileWidth);
+							sbs = ind / cumprod;
+							sub[m] += sbs;
+							ind = ind - (sbs * cumprod);
+						}
+					}
+					
+					bool out_of_bounds = false;
+					for (ttb_indx m = 0; m < nd; ++m) {
+						if (sub[m] >= X.size(m)) {
+							out_of_bounds = true;
+							break;
+						}
+					}
+					if (out_of_bounds)
+						continue;
+
+					i = X.sub2ind(sub);
+
+					const size_t k = sub[n]; // TODO: this should be the same per teammate/team
+					const double x_val = X[i]; // TODO: do NOT repeat for each j
 
 					Kokkos::parallel_for(Kokkos::ThreadVectorRange(team, nj), [&] (unsigned & jj) {
 						unsigned j = offset_j + jj;
@@ -787,8 +851,8 @@ struct MTTKRP_Dense_Perm_Kernel {
 
 						Kokkos::atomic_add(&v.entry(k,j), tmp);
 					}); // vector range (over components)
-				} // component chunk loop
-			} // row chunk loop
+				} // row chunk loop
+			} // component chunk loop
 		}); // thread range (over tensor elements)
   } // void run ()
 
