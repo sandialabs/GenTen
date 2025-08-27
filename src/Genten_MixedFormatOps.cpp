@@ -819,14 +819,16 @@ struct MTTKRP_Dense_Perm_Kernel {
 			}
 			
 			const ttb_indx k = anchor[n];
-
+			
 			ttb_indx sub[MAX_DIM];
+
 			for (ttb_indx offset_j = 0; offset_j < nc; offset_j += FacBlockSize) {
 				const ttb_indx nj = offset_j + FacBlockSize <= nc ? FacBlockSize : nc - offset_j;
 
 				Kokkos::parallel_for(Kokkos::ThreadVectorRange(team, nj), [&] (ttb_indx & jj) {
 					ttb_real v_kj = 0;
 					const ttb_indx j = offset_j + jj;
+					const ttb_real lambda_j = u.weights(j);
 					for (ttb_indx ii=0; ii<TileVol; ++ii) {
 
 						// get subscript offsets
@@ -851,18 +853,18 @@ struct MTTKRP_Dense_Perm_Kernel {
 
 						const ttb_real x_val = X[i]; // TODO: do NOT repeat for each j
 
-						ttb_real tmp = x_val * u.weights(j); // TODO: weights in shared memory?
+						ttb_real tmp = x_val * lambda_j;
 
 						for (int m = 0; m < nd; ++m) {
 							if (m != n)
 								tmp *= u[m].entry(sub[m], j);
-						} // dimension loop
+						} 
 						v_kj += tmp;
-					} // row chunk loop
+					} // tile loop
 					Kokkos::atomic_add(&v.entry(k,j), v_kj);
 				}); // vector range (over components)
 			} // component chunk loop
-		}); // thread range (over tensor elements)
+		}); // thread range (over tensor tiles)
   } // void run ()
 
 };
