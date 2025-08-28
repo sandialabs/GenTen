@@ -820,8 +820,11 @@ struct MTTKRP_Dense_Perm_Kernel {
 			
 			ttb_indx sub[MAX_DIM];
 
-			for (ttb_indx offset_j = 0; offset_j < nc; offset_j += FacBlockSize) {
-				const ttb_indx nj = (offset_j + FacBlockSize) <= nc ? FacBlockSize : nc - offset_j;
+			auto col_chunk = [&](auto j, auto nj, auto Nj) {
+				typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
+				auto val = TVM::make(team, nj, 0.0);
+				auto tmp = TVM::make(team, nj, 0.0);
+
 				for (ttb_indx ii=0; ii<TileVol; ++ii) {
 					// get subscript offsets
 					bool inBounds = true;
@@ -838,25 +841,31 @@ struct MTTKRP_Dense_Perm_Kernel {
 					}
 					
 					ttb_indx i = X.sub2ind(sub);
-					const ttb_real x_val = X[i]; // TODO: do NOT repeat for each j
+					const ttb_real x_val = X[i]; // TODO: move outside col_chunk?
 
-					Kokkos::parallel_for(Kokkos::ThreadVectorRange(team, nj), [&] (ttb_indx & jj) {
-						const ttb_indx j = offset_j + jj;
-						ttb_real tmp = 0;
-						const ttb_real lambda_j = u.weights(j);
-
-						if (inBounds) {
-							tmp = x_val * lambda_j;
-							for (int m = 0; m < nd; ++m) {
-								if (m != n)
-									tmp *= u[m].entry(sub[m], j);
-							} 
+					if (inBounds) {
+						tmp.load(&(u.weights(j))); // TODO: move outside ii loop
+						tmp *= x_val;
+						for (int m = 0; m < nd; ++m) {
+							if (m != n)
+								tmp *= &(u[m].entry(sub[m], j));
 						}
-						Kokkos::atomic_add(&v.entry(k,j), tmp);
-					}); // vector range (over components)
-				} // tile loop
-			} // component chunk loop
-		}); // thread range (over tensor tiles)
+						val += tmp;
+					}
+				} // element in tile loop
+				Kokkos::atomic_add(&v.entry(k,j), val);
+			}; // column chunk function
+      for (unsigned j=0; j<nc; j+=FacBlockSize) {
+        if (j+FacBlockSize <= nc) {
+          const unsigned nj = FacBlockSize;
+          col_chunk(j, nj, std::integral_constant<unsigned,nj>());
+        }
+        else {
+          const unsigned nj = nc-j;
+          col_chunk(j, nj, std::integral_constant<unsigned,0>());
+        }
+      } // column chunk loop
+		}); // league & team parallelism over tensor tiles
   } // void run ()
 
 };
