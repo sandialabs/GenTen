@@ -784,20 +784,23 @@ struct MTTKRP_Dense_Perm_Kernel {
 		IndxArrayT<ExecSpace> tile_offsets = create_mirror_view(ExecSpace(), tile_offsets_host);
 		deep_copy(tile_offsets, tile_offsets_host);
 
-		// Kernel Constants
-		const ttb_indx MAX_DIM = 8;
-		assert (nd <= MAX_DIM && "The maximum dimensions for this kernel is 8, i.e., X must be at most 8-way.");
-
     typedef Kokkos::TeamPolicy<ExecSpace> Policy;
     typedef typename Policy::member_type TeamMember;
+		typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+		size_t bytes = TmpScratchSpace::shmem_size(TeamSize, 2 * nd);
 
     Policy policy(N, TeamSize, VectorSize);
 		Kokkos::parallel_for(
-				"mttkrp_kernel", policy, KOKKOS_LAMBDA(const TeamMember & team)
+				"mttkrp_kernel", policy.set_scratch_size(0, Kokkos::PerTeam(bytes)), KOKKOS_LAMBDA(const TeamMember & team)
 		{
-			ttb_indx anchorIndx = team.league_rank() * TeamSize + team.team_rank();
+			const unsigned team_rank = team.team_rank();
+			const unsigned team_size = team.team_size();
+			const ttb_indx anchorIndx = team.league_rank() * team_size + team_rank;
 			// Get the anchor subscript
-			ttb_indx anchor[MAX_DIM];
+			TmpScratchSpace scratchAnchor(team.team_scratch(0), team_size, nd);
+			TmpScratchSpace scratchSub(team.team_scratch(0), team_size, nd);
+			ttb_indx* anchor = &scratchAnchor(team_rank, 0);
+			ttb_indx* sub = &scratchSub(team_rank, 0);
 
 			// TODO: change for layoutLeft, layoutRight
 			const ttb_indx slice = anchorIndx / TilesPerSlice;
@@ -818,8 +821,6 @@ struct MTTKRP_Dense_Perm_Kernel {
 			
 			const ttb_indx k = anchor[n];
 			
-			ttb_indx sub[MAX_DIM];
-
 			auto col_chunk = [&](auto j, auto nj, auto Nj) {
 				typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
 				auto val = TVM::make(team, nj, 0.0);
