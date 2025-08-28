@@ -738,7 +738,6 @@ struct MTTKRP_Dense_Perm_Kernel {
     /*const*/ ttb_indx nd = u.ndims();
     /*const*/ ttb_indx nc = u.ncomponents();
     /*const*/ ttb_indx ne = X.numel();
-
     static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
     static const ttb_indx FacBlockSize = FBS;
     static const ttb_indx VectorSize = is_gpu ? VS : 1;
@@ -789,15 +788,14 @@ struct MTTKRP_Dense_Perm_Kernel {
 		const ttb_indx MAX_DIM = 8;
 		assert (nd <= MAX_DIM && "The maximum dimensions for this kernel is 8, i.e., X must be at most 8-way.");
 
-		
     typedef Kokkos::TeamPolicy<ExecSpace> Policy;
     typedef typename Policy::member_type TeamMember;
+
     Policy policy(N, TeamSize, VectorSize);
-		Kokkos::parallel_for("mttkrp_kernel", policy, KOKKOS_LAMBDA(const TeamMember & team)
+		Kokkos::parallel_for(
+				"mttkrp_kernel", policy, KOKKOS_LAMBDA(const TeamMember & team)
 		{
-
 			ttb_indx anchorIndx = team.league_rank() * TeamSize + team.team_rank();
-
 			// Get the anchor subscript
 			ttb_indx anchor[MAX_DIM];
 
@@ -823,46 +821,40 @@ struct MTTKRP_Dense_Perm_Kernel {
 			ttb_indx sub[MAX_DIM];
 
 			for (ttb_indx offset_j = 0; offset_j < nc; offset_j += FacBlockSize) {
-				const ttb_indx nj = offset_j + FacBlockSize <= nc ? FacBlockSize : nc - offset_j;
-
-				Kokkos::parallel_for(Kokkos::ThreadVectorRange(team, nj), [&] (ttb_indx & jj) {
-					ttb_real v_kj = 0;
-					const ttb_indx j = offset_j + jj;
-					const ttb_real lambda_j = u.weights(j);
-					for (ttb_indx ii=0; ii<TileVol; ++ii) {
-
-						// get subscript offsets
-						ttb_indx dim_inc = ii*(nd-1);
-						for (ttb_indx m=0; m<nd;++m) {
-							sub[m] = anchor[m];
-							if (m != n) 
-								sub[m] += tile_offsets[dim_inc++];
+				const ttb_indx nj = (offset_j + FacBlockSize) <= nc ? FacBlockSize : nc - offset_j;
+				for (ttb_indx ii=0; ii<TileVol; ++ii) {
+					// get subscript offsets
+					bool inBounds = true;
+					ttb_indx dim_inc = ii*(nd-1);
+					for (ttb_indx m=0; m<nd;++m) {
+						sub[m] = anchor[m];
+						if (m != n) {
+							ttb_indx sbs = sub[m] + tile_offsets[dim_inc++];
+							if (sbs < X.size(m))
+								sub[m] = sbs;
+							else
+								inBounds = false;
 						}
-						
-						bool out_of_bounds = false;
-						for (ttb_indx m = 0; m < nd; ++m) {
-							if (sub[m] >= X.size(m)) {
-								out_of_bounds = true;
-								break;
-							}
+					}
+					
+					ttb_indx i = X.sub2ind(sub);
+					const ttb_real x_val = X[i]; // TODO: do NOT repeat for each j
+
+					Kokkos::parallel_for(Kokkos::ThreadVectorRange(team, nj), [&] (ttb_indx & jj) {
+						const ttb_indx j = offset_j + jj;
+						ttb_real tmp = 0;
+						const ttb_real lambda_j = u.weights(j);
+
+						if (inBounds) {
+							tmp = x_val * lambda_j;
+							for (int m = 0; m < nd; ++m) {
+								if (m != n)
+									tmp *= u[m].entry(sub[m], j);
+							} 
 						}
-						if (out_of_bounds)
-							continue;
-
-						ttb_indx i = X.sub2ind(sub);
-
-						const ttb_real x_val = X[i]; // TODO: do NOT repeat for each j
-
-						ttb_real tmp = x_val * lambda_j;
-
-						for (int m = 0; m < nd; ++m) {
-							if (m != n)
-								tmp *= u[m].entry(sub[m], j);
-						} 
-						v_kj += tmp;
-					} // tile loop
-					Kokkos::atomic_add(&v.entry(k,j), v_kj);
-				}); // vector range (over components)
+						Kokkos::atomic_add(&v.entry(k,j), tmp);
+					}); // vector range (over components)
+				} // tile loop
 			} // component chunk loop
 		}); // thread range (over tensor tiles)
   } // void run ()
