@@ -827,32 +827,32 @@ struct MTTKRP_Dense_Perm_Kernel {
 				auto tmp = TVM::make(team, nj, 0.0);
 
 				for (ttb_indx ii=0; ii<TileVol; ++ii) {
-					// get subscript offsets
+					// get location from offsets
+					ttb_indx i = 0;
+					ttb_indx cumprod = 1;
 					bool inBounds = true;
 					ttb_indx dim_inc = ii*(nd-1);
 					for (ttb_indx m=0; m<nd;++m) {
 						sub[m] = anchor[m];
 						if (m != n) {
-							ttb_indx sbs = sub[m] + tile_offsets[dim_inc++];
-							if (sbs < X.size(m))
-								sub[m] = sbs;
-							else
-								inBounds = false;
+							sub[m] += tile_offsets[dim_inc++];
+							inBounds = (inBounds && (sub[m] < X.size(m)));
 						}
+						i += sub[m] * cumprod;
+						cumprod *= X.size(m);
 					}
+					if (!inBounds)
+						continue;
 					
-					ttb_indx i = X.sub2ind(sub);
 					const ttb_real x_val = X[i]; // TODO: move outside col_chunk?
 
-					if (inBounds) {
-						tmp.load(&(u.weights(j))); // TODO: move outside ii loop
-						tmp *= x_val;
-						for (int m = 0; m < nd; ++m) {
-							if (m != n)
-								tmp *= &(u[m].entry(sub[m], j));
-						}
-						val += tmp;
+					tmp.load(&(u.weights(j))); // TODO: move outside ii loop
+					tmp *= x_val;
+					for (int m = 0; m < nd; ++m) {
+						if (m != n)
+							tmp *= &(u[m].entry(sub[m], j));
 					}
+					val += tmp;
 				} // element in tile loop
 				Kokkos::atomic_add(&v.entry(k,j), val);
 			}; // column chunk function
