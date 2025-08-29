@@ -766,6 +766,18 @@ struct MTTKRP_Dense_Perm_Kernel {
 		IndxArrayT<ExecSpace> padded_size = create_mirror_view(ExecSpace(), padded_size_host);
 		deep_copy(padded_size, padded_size_host);
 
+		// TODO: layoutleft, right
+		// dimensional cumprod
+		IndxArray size_cumprod_host(nd);
+		ttb_indx cumprod = 1;
+		for (ttb_indx m = 0; m < nd; ++m) {
+			size_cumprod_host[m] = cumprod;
+			cumprod *= X.size(m);
+		}
+		// send to device
+		IndxArrayT<ExecSpace> size_cumprod = create_mirror_view(ExecSpace(), size_cumprod_host);
+		deep_copy(size_cumprod, size_cumprod_host);
+
     const ttb_indx N = (nePadded+ElemPerTeam-1)/ElemPerTeam;
 
 		// get tile offsets TODO: layoutLeft vs layoutRight
@@ -820,16 +832,16 @@ struct MTTKRP_Dense_Perm_Kernel {
 			}
 			
 			const ttb_indx k = anchor[n];
-			
+
 			auto col_chunk = [&](auto j, auto nj, auto Nj) {
 				typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
 				auto val = TVM::make(team, nj, 0.0);
 				auto tmp = TVM::make(team, nj, 0.0);
 
 				for (ttb_indx ii=0; ii<TileVol; ++ii) {
+
 					// get location from offsets
 					ttb_indx i = 0;
-					ttb_indx cumprod = 1;
 					bool inBounds = true;
 					ttb_indx dim_inc = ii*(nd-1);
 					for (ttb_indx m=0; m<nd;++m) {
@@ -838,8 +850,7 @@ struct MTTKRP_Dense_Perm_Kernel {
 							sub[m] += tile_offsets[dim_inc++];
 							inBounds = (inBounds && (sub[m] < X.size(m)));
 						}
-						i += sub[m] * cumprod;
-						cumprod *= X.size(m);
+						i += sub[m] * size_cumprod[m];
 					}
 					if (!inBounds)
 						continue;
