@@ -756,6 +756,7 @@ struct MTTKRP_Dense_Perm_Kernel {
 			padded_size_host[m] = X.size(m);
 			if (m != n) {
 				padded_size_host[m] = ((padded_size_host[m] + TileWidth - 1)/TileWidth)*TileWidth;
+				assert(padded_size_host[m] == X.size(m)); // assert that size is already padded
 				SliceVol *= padded_size_host[m];
 			}
 			nePadded *= padded_size_host[m];
