@@ -202,7 +202,7 @@ GenTen provides Python bindings through a Python module called pygenten generate
  -D ENABLE_PYTHON=ON \
  -D BUILD_SHARED_LIBS=ON \
 ```
-which will compile GenTen to link against the version of python found in your environment.  If the tests are going to be run, one must also have `pytest` installed.  Furthermore, GenTen provides support for interoperability with pyttb.  Several examples of using pygenten with and without pyttb can be found in [python/example](python/example).
+which will compile GenTen to link against the version of python found in your environment.  If the tests are going to be run, one must also have `pytest` installed.  Furthermore, GenTen provides support for interoperability with pyttb.  Several examples of using pygenten with and without pyttb can be found in [python/example](python/example). To `import pygenten` after a CMake build, add `/<PATH_TO_GENTEN_BUILD>/python` to your `$PYTHONPATH` environment variable. 
 
 Alternatively, pygenten can be directly installed using pip.  See [python/README.md](python/README.md) for more details.
 
