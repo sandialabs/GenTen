@@ -817,6 +817,9 @@ struct MTTKRP_Dense_Perm_Kernel {
 
 			// TODO: change for layoutLeft, layoutRight
 			const ttb_indx slice = anchorIndx / TilesPerSlice;
+			if (slice >= X.size(n))
+				return;
+
 			const ttb_indx tile  = anchorIndx % TilesPerSlice; // TODO: can I do this without mod?
 			ttb_indx cumprod = SliceVol / TileVol;
 			ttb_indx ind = tile;
