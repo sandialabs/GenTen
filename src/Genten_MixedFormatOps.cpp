@@ -866,7 +866,7 @@ struct MTTKRP_Dense_Perm_Kernel {
 					}
 					val += tmp;
 				} // element in tile loop
-				Kokkos::atomic_add(&v.entry(k,j), val);
+				val.atomic_store_plus(&v.entry(k,j));
 			}; // column chunk function
       for (unsigned j=0; j<nc; j+=FacBlockSize) {
         if (j+FacBlockSize <= nc) {
