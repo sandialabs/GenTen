@@ -100,18 +100,19 @@ public:
   // Convert linear index to subscript
   template <typename SubType, typename ExecSpace>
   KOKKOS_INLINE_FUNCTION
-  static void ind2sub(SubType& sub, const IndxArrayT<ExecSpace>& siz,
-                      ttb_indx cumprod, ttb_indx ind)
+  static void ind2sub(SubType& sub, 
+											const IndxArrayT<ExecSpace>& siz,
+											const IndxArrayT<ExecSpace>& cumprd,
+											ttb_indx ind)
   {
     const ttb_indx nd = siz.size();
     assert(ind < cumprod);
 
     ttb_indx sbs;
     for (ttb_indx i=nd; i>0; --i) {
-      cumprod = cumprod / siz[i-1];
-      sbs = ind / cumprod;
+      sbs = ind / cumprd[i - 1];
       sub[i-1] = sbs;
-      ind = ind - (sbs * cumprod);
+      ind = ind - (sbs * cumprd[i - 1]);
     }
   }
 
@@ -191,18 +192,19 @@ public:
   // Convert linear index to subscript
   template <typename SubType, typename ExecSpace>
   KOKKOS_INLINE_FUNCTION
-  static void ind2sub(SubType& sub, const IndxArrayT<ExecSpace>& siz,
-                      ttb_indx cumprod, ttb_indx ind)
+  static void ind2sub(SubType& sub, 
+											const IndxArrayT<ExecSpace>& siz,
+											const IndxArrayT<ExecSpace>& cumprd,
+                      ttb_indx ind)
   {
     const ttb_indx nd = siz.size();
     assert(ind < cumprod);
 
     ttb_indx sbs;
     for (ttb_indx i=0; i<nd; ++i) {
-      cumprod = cumprod / siz[i];
-      sbs = ind / cumprod;
+      sbs = ind / cumprd[(nd -i) - 1];
       sub[i] = sbs;
-      ind = ind - (sbs * cumprod);
+      ind = ind - (sbs * cumprd[(nd-i)-1]);
     }
   }
 
@@ -365,8 +367,7 @@ public:
   template <typename SubType>
   KOKKOS_INLINE_FUNCTION
   void ind2sub(SubType& sub, ttb_indx ind) const {
-    ttb_indx cumprod = values.size();
-    return layout_type::ind2sub(sub, siz, cumprod, ind);
+    return layout_type::ind2sub(sub, siz, cumprd, ind);
   }
 
   // Return the i-th linearly indexed element.
