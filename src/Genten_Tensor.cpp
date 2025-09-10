@@ -105,6 +105,7 @@ TensorImpl(const SptensorT<ExecSpace>& src) :
   deep_copy(siz_host, siz);
   values = ArrayT<ExecSpace>(siz_host.prod(), ttb_real(0.0));
   Impl::copyFromSptensor(*this, src.impl());
+	cumprd = setCumprod();
 }
 
 template <typename ExecSpace, typename Layout>
@@ -121,6 +122,7 @@ TensorImpl(const KtensorT<ExecSpace>& src) :
   values = ArrayT<ExecSpace>(siz_host.prod());
   Impl::copyFromKtensor(*this, src.impl());
   upper_bound = siz.clone();
+	cumprd = setCumprod();
 }
 
 namespace Impl {

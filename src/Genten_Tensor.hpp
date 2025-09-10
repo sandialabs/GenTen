@@ -276,6 +276,7 @@ public:
     siz_host = create_mirror_view(siz);
     deep_copy(siz_host, siz);
     values = ArrayT<ExecSpace>(siz_host.prod(), val);
+		cumprd = setCumprod();
   }
 
   // Construct tensor with given size and values
@@ -286,6 +287,7 @@ public:
     upper_bound(siz.clone()) {
     siz_host = create_mirror_view(siz);
     deep_copy(siz_host, siz);
+		cumprd = setCumprod();
   }
 
   // Construct tensor with given size and values
@@ -298,6 +300,7 @@ public:
     upper_bound(u) {
     siz_host = create_mirror_view(siz);
     deep_copy(siz_host, siz);
+		cumprd = setCumprod();
   }
 
   // Construct tensor for Sptensor
@@ -331,12 +334,22 @@ public:
   // Return the entire size array.
   const IndxArrayT<host_mirror_space>& size_host() const { return siz_host; }
 
+	// Return the cumprod of dimension i.
+	KOKKOS_INLINE_FUNCTION
+	ttb_indx cumprod(ttb_indx i) const {
+		return cumprd[i];
+	}
+
+	// Return the entire cumprod array.
+	KOKKOS_INLINE_FUNCTION
+	const IndxArrayT<ExecSpace>& cumprod() const { return cumprd; }
+
   // Return the total number of elements in the tensor.
   KOKKOS_INLINE_FUNCTION
   ttb_indx numel() const { return values.size(); }
 
-   KOKKOS_INLINE_FUNCTION
-   ttb_real numel_float() const { return ttb_real(numel()); }
+  KOKKOS_INLINE_FUNCTION
+  ttb_real numel_float() const { return ttb_real(numel()); }
 
   // Convert subscript to linear index
   template <typename SubType>
@@ -426,6 +439,28 @@ protected:
   // Lower and upper bounds of tensor global indices
   IndxArrayT<ExecSpace> lower_bound;
   IndxArrayT<ExecSpace> upper_bound;
+	
+	IndxArrayT<ExecSpace> setCumprod() const {
+		IndxArray cumprd_host(siz_host.size());
+		ttb_indx cumprod = 1;
+		if constexpr (std::is_same_v<Layout, Impl::TensorLayoutLeft>) {
+			for (ttb_indx m = 0; m < siz_host.size(); ++m) {
+				cumprd_host[m] = cumprod;
+				cumprod *= siz_host[m];
+			}
+		} else {
+			for (ttb_indx m = siz_host.size(); m > 0; --m) {
+				cumprd_host[m-1] = cumprod;
+				cumprod *= siz_host[m-1];
+			}
+		}
+		// send to device
+		IndxArrayT<ExecSpace> cumprd = create_mirror_view(ExecSpace(), cumprd_host);
+		return cumprd;
+	}
+	
+	// Cumprod (device) array
+	IndxArrayT<ExecSpace> cumprd = setCumprod();
 };
 
 enum class TensorLayout {
@@ -531,6 +566,14 @@ public:
   }
   const IndxArrayT<host_mirror_space>& size_host() const {
     return layout_ == TensorLayout::Left ? left_impl_.size_host() : right_impl_.size_host();
+  }
+
+	ttb_indx cumprod(ttb_indx i) const {
+    return layout_ == TensorLayout::Left ? left_impl_.cumprod(i) : right_impl_.cumprod(i);
+	}
+
+  const IndxArrayT<ExecSpace>& cumprod() const {
+    return layout_ == TensorLayout::Left ? left_impl_.cumprod() : right_impl_.cumprod();
   }
 
   ttb_indx numel() const {
@@ -699,6 +742,7 @@ void deep_copy(TensorT<E1>& dst, const TensorT<E2>& src)
 {
   deep_copy( dst.size(), src.size() );
   deep_copy( dst.size_host(), src.size_host() );
+	deep_copy( dst.cumprod(), src.cumprod() );
   deep_copy( dst.getValues(), src.getValues() );
   deep_copy( dst.getLowerBounds(), src.getLowerBounds() );
   deep_copy( dst.getUpperBounds(), src.getUpperBounds() );

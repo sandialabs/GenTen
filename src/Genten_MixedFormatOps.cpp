@@ -767,6 +767,7 @@ struct MTTKRP_Dense_Perm_Kernel {
 		IndxArrayT<ExecSpace> padded_size = create_mirror_view(ExecSpace(), padded_size_host);
 		deep_copy(padded_size, padded_size_host);
 
+		/*
 		// TODO: layoutleft, right
 		// dimensional cumprod
 		IndxArray size_cumprod_host(nd);
@@ -778,6 +779,7 @@ struct MTTKRP_Dense_Perm_Kernel {
 		// send to device
 		IndxArrayT<ExecSpace> size_cumprod = create_mirror_view(ExecSpace(), size_cumprod_host);
 		deep_copy(size_cumprod, size_cumprod_host);
+		*/
 
     const ttb_indx N = (nePadded+ElemPerTeam-1)/ElemPerTeam;
 
@@ -854,7 +856,7 @@ struct MTTKRP_Dense_Perm_Kernel {
 							sub[m] += tile_offsets[dim_inc++];
 							inBounds = (inBounds && (sub[m] < X.size(m)));
 						}
-						i += sub[m] * size_cumprod[m];
+						i += sub[m] * X.cumprod(m);
 					}
 					if (!inBounds)
 						continue;
