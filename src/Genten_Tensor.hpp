@@ -61,17 +61,16 @@ public:
   template <typename SubType, typename ExecSpace>
   KOKKOS_INLINE_FUNCTION
   static ttb_indx sub2ind(const SubType& sub,
-                          const IndxArrayT<ExecSpace>& siz)
+                          const IndxArrayT<ExecSpace>& siz,
+                          const IndxArrayT<ExecSpace>& cumprd)
   {
     const ttb_indx nd = siz.size();
     for (ttb_indx i=0; i<nd; ++i)
       assert(sub[i] < siz[i]);
 
     ttb_indx idx = 0;
-    ttb_indx cumprod = 1;
     for (ttb_indx i=0; i<nd; ++i) {
-      idx += sub[i] * cumprod;
-      cumprod *= siz[i];
+      idx += sub[i] * cumprd[i];
     }
     return idx;
   }
@@ -81,6 +80,7 @@ public:
   KOKKOS_INLINE_FUNCTION
   static ttb_indx global_sub2ind(const SubType& sub,
                                  const IndxArrayT<ExecSpace>& siz,
+                                 const IndxArrayT<ExecSpace>& cumprd,
                                  const IndxArrayT<ExecSpace>& lower)
   {
     const ttb_indx nd = siz.size();
@@ -91,10 +91,8 @@ public:
     }
 
     ttb_indx idx = 0;
-    ttb_indx cumprod = 1;
     for (ttb_indx i=0; i<nd; ++i) {
-      idx += (sub[i]-lower[i]) * cumprod;
-      cumprod *= siz[i];
+      idx += (sub[i]-lower[i]) * cumprd[i];
     }
     return idx;
   }
@@ -154,17 +152,16 @@ public:
   template <typename SubType, typename ExecSpace>
   KOKKOS_INLINE_FUNCTION
   static ttb_indx sub2ind(const SubType& sub,
-                          const IndxArrayT<ExecSpace>& siz)
+                          const IndxArrayT<ExecSpace>& siz,
+                          const IndxArrayT<ExecSpace>& cumprd)
   {
     const ttb_indx nd = siz.size();
     for (ttb_indx i=0; i<nd; ++i)
       assert(sub[i] < siz[i]);
 
     ttb_indx idx = 0;
-    ttb_indx cumprod = 1;
     for (ttb_indx i=nd; i>0; --i) {
-      idx += sub[i-1] * cumprod;
-      cumprod *= siz[i-1];
+      idx += sub[i-1] * cumprd[i-1];
     }
     return idx;
   }
@@ -174,6 +171,7 @@ public:
   KOKKOS_INLINE_FUNCTION
   static ttb_indx global_sub2ind(const SubType& sub,
                                  const IndxArrayT<ExecSpace>& siz,
+                                 const IndxArrayT<ExecSpace>& cumprd,
                                  const IndxArrayT<ExecSpace>& lower)
   {
     const ttb_indx nd = siz.size();
@@ -184,10 +182,8 @@ public:
     }
 
     ttb_indx idx = 0;
-    ttb_indx cumprod = 1;
     for (ttb_indx i=nd; i>0; --i) {
-      idx += (sub[i-1]-lower[i-1]) * cumprod;
-      cumprod *= siz[i-1];
+      idx += (sub[i-1]-lower[i-1]) * cumprd[i-1];
     }
     return idx;
   }
@@ -355,14 +351,14 @@ public:
   template <typename SubType>
   KOKKOS_INLINE_FUNCTION
   ttb_indx sub2ind(const SubType& sub) const {
-    return layout_type::sub2ind(sub, siz);
+    return layout_type::sub2ind(sub, siz, cumprd);
   }
 
   // Convert global subscript to linear index
   template <typename SubType>
   KOKKOS_INLINE_FUNCTION
   ttb_indx global_sub2ind(const SubType& sub) const {
-    return layout_type::global_sub2ind(sub, siz, lower_bound);
+    return layout_type::global_sub2ind(sub, siz, cumprd, lower_bound);
   }
 
    // Convert linear index to subscript
