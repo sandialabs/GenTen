@@ -103,8 +103,7 @@ TensorImpl(const SptensorT<ExecSpace>& src) :
 {
   siz_host = create_mirror_view(siz);
   deep_copy(siz_host, siz);
-	cumprod = IndxArrayT<ExecSpace>(siz_host.size());
-	deep_copy(cumprod, src.cumprod())
+	cumprd = setCumprod();
   values = ArrayT<ExecSpace>(siz_host.prod(), ttb_real(0.0));
   Impl::copyFromSptensor(*this, src.impl());
 }
@@ -120,8 +119,7 @@ TensorImpl(const KtensorT<ExecSpace>& src) :
   for (ttb_indx i=0; i<nd; ++i)
     siz_host[i] = src[i].nRows();
   deep_copy(siz, siz_host);
-	cumprod = IndxArrayT<ExecSpace>(nd);
-	deep_copy(cumprod, src.cumprod())
+	cumprd = setCumprod();
   values = ArrayT<ExecSpace>(siz_host.prod());
   Impl::copyFromKtensor(*this, src.impl());
   upper_bound = siz.clone();

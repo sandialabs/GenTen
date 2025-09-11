@@ -106,13 +106,12 @@ public:
 											ttb_indx ind)
   {
     const ttb_indx nd = siz.size();
-    assert(ind < cumprod);
 
     ttb_indx sbs;
     for (ttb_indx i=nd; i>0; --i) {
-      sbs = ind / cumprd[i - 1];
+      sbs = ind / cumprd[i-1];
       sub[i-1] = sbs;
-      ind = ind - (sbs * cumprd[i - 1]);
+      ind = ind - (sbs * cumprd[i-1]);
     }
   }
 
@@ -198,13 +197,12 @@ public:
                       ttb_indx ind)
   {
     const ttb_indx nd = siz.size();
-    assert(ind < cumprod);
 
     ttb_indx sbs;
     for (ttb_indx i=0; i<nd; ++i) {
-      sbs = ind / cumprd[(nd -i) - 1];
+      sbs = ind / cumprd[i];
       sub[i] = sbs;
-      ind = ind - (sbs * cumprd[(nd-i)-1]);
+      ind = ind - (sbs * cumprd[i]);
     }
   }
 
@@ -453,6 +451,7 @@ protected:
 		}
 		// send to device
 		IndxArrayT<ExecSpace> cumprd = create_mirror_view(ExecSpace(), cumprd_host);
+		deep_copy(cumprd, cumprd_host);
 		return cumprd;
 	}
 	
