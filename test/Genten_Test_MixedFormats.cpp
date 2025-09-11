@@ -413,6 +413,7 @@ TYPED_TEST(TestMixedFormatsT, TensorPermAminoAcid) {
   auto vrh = create_mirror_view(vr);
   auto vph = create_mirror_view(vp);
   AlgParams algParams;
+	algParams.mttkrp_dense_tile_width = 3;
   INFO_MSG("mttkrp result correct for Perm algorihtm with LayoutLeft tensor");
   for (ttb_indx n=0; n<nd; ++n) {
     algParams.mttkrp_method = MTTKRP_Method::RowBased;
@@ -445,6 +446,7 @@ TYPED_TEST(TestMixedFormatsT, TensorPermAminoAcid) {
         ASSERT_FLOAT_EQ(vrh[n](i,j), vph[n](i,j));
   }
 }
+
 TYPED_TEST(TestMixedFormatsT, TensorPhanAminoAcid) {
    using exec_space = typename TestFixture::exec_space;
    DistContext::Barrier();
