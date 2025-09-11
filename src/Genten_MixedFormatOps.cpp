@@ -767,23 +767,8 @@ struct MTTKRP_Dense_Perm_Kernel {
 		IndxArrayT<ExecSpace> padded_size = create_mirror_view(ExecSpace(), padded_size_host);
 		deep_copy(padded_size, padded_size_host);
 
-		/*
-		// TODO: layoutleft, right
-		// dimensional cumprod
-		IndxArray size_cumprod_host(nd);
-		ttb_indx cumprod = 1;
-		for (ttb_indx m = 0; m < nd; ++m) {
-			size_cumprod_host[m] = cumprod;
-			cumprod *= X.size(m);
-		}
-		// send to device
-		IndxArrayT<ExecSpace> size_cumprod = create_mirror_view(ExecSpace(), size_cumprod_host);
-		deep_copy(size_cumprod, size_cumprod_host);
-		*/
-
     const ttb_indx N = (nePadded+ElemPerTeam-1)/ElemPerTeam;
 
-		// get tile offsets TODO: layoutLeft vs layoutRight
 		IndxArray tile_offsets_host(TileVol * (nd-1));
 		for (ttb_indx ii=0; ii<TileVol; ++ii) {
 			ttb_indx cumprod = TileVol;
@@ -817,12 +802,11 @@ struct MTTKRP_Dense_Perm_Kernel {
 			ttb_indx* anchor = &scratchAnchor(team_rank, 0);
 			ttb_indx* sub = &scratchSub(team_rank, 0);
 
-			// TODO: change for layoutLeft, layoutRight
 			const ttb_indx slice = anchorIndx / TilesPerSlice;
 			if (slice >= X.size(n))
 				return;
 
-			const ttb_indx tile  = anchorIndx % TilesPerSlice; // TODO: can I do this without mod?
+			const ttb_indx tile  = anchorIndx % TilesPerSlice;
 			ttb_indx cumprod = SliceVol / TileVol;
 			ttb_indx ind = tile;
 			ttb_indx sbs;
@@ -861,9 +845,9 @@ struct MTTKRP_Dense_Perm_Kernel {
 					if (!inBounds)
 						continue;
 					
-					const ttb_real x_val = X[i]; // TODO: move outside col_chunk?
+					const ttb_real x_val = X[i]; // NB: repeated read
 
-					tmp.load(&(u.weights(j))); // TODO: move outside ii loop
+					tmp.load(&(u.weights(j))); // NB: repeated read
 					tmp *= x_val;
 					for (int m = 0; m < nd; ++m) {
 						if (m != n)
