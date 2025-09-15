@@ -1,5 +1,7 @@
 [![Kokkos](https://avatars2.githubusercontent.com/u/10199860?s=200&v=4)](https://kokkos.org)
 
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/9344/badge)](https://www.bestpractices.dev/projects/9344)
+
 # Kokkos: Core Libraries
 
 Kokkos Core implements a programming model in C++ for writing performance portable
@@ -10,7 +12,7 @@ hierarchies and multiple types of execution resources. It currently can use
 CUDA, HIP, SYCL, HPX, OpenMP and C++ threads as backend programming models with several other
 backends in development.
 
-**Kokkos Core is part of the [Kokkos C++ Performance Portability Programming Ecosystem](https://kokkos.org/about/abstract/).**
+**Kokkos Core is part of the [Kokkos C++ Performance Portability Programming Ecosystem](https://kokkos.org).**
 
 Kokkos is a [Linux Foundation](https://linuxfoundation.org) project.
 
@@ -18,24 +20,24 @@ Kokkos is a [Linux Foundation](https://linuxfoundation.org) project.
 
 To start learning about Kokkos:
 
-- [Kokkos Lectures](https://kokkos.org/kokkos-core-wiki/videolectures.html): they contain a mix of lecture videos and hands-on exercises covering all the important capabilities.
+- [Kokkos Lectures](https://kokkos.org/kokkos-core-wiki/tutorials-and-examples/video-lectures.html): they contain a mix of lecture videos and hands-on exercises covering all the important capabilities.
 
 - [Programming guide](https://kokkos.org/kokkos-core-wiki/programmingguide.html): contains in "narrative" form a technical description of the programming model, machine model, and the main building blocks like the Views and parallel dispatch.
 
 - [API reference](https://kokkos.org/kokkos-core-wiki/): organized by category, i.e., [core](https://kokkos.org/kokkos-core-wiki/API/core-index.html), [algorithms](https://kokkos.org/kokkos-core-wiki/API/algorithms-index.html) and [containers](https://kokkos.org/kokkos-core-wiki/API/containers-index.html) or, if you prefer, in [alphabetical order](https://kokkos.org/kokkos-core-wiki/API/alphabetical.html).
 
-- [Use cases and Examples](https://kokkos.org/kokkos-core-wiki/usecases.html): a serie of examples ranging from how to use Kokkos with MPI to Fortran interoperability.
+- [Use cases and Examples](https://kokkos.org/kokkos-core-wiki/tutorials-and-examples/use-cases-and-examples.html): a serie of examples ranging from how to use Kokkos with MPI to Fortran interoperability.
 
 ## Obtaining Kokkos
 
 The latest release of Kokkos can be obtained from the [GitHub releases page](https://github.com/kokkos/kokkos/releases/latest).
 
-The current release is [4.3.01](https://github.com/kokkos/kokkos/releases/tag/4.3.01).
+The current release is [4.7.00](https://github.com/kokkos/kokkos/releases/tag/4.7.00).
 
 ```bash
-curl -OJ -L https://github.com/kokkos/kokkos/archive/refs/tags/4.3.01.tar.gz
+curl -OJ -L https://github.com/kokkos/kokkos/releases/download/4.7.00/kokkos-4.7.00.tar.gz
 # Or with wget
-wget https://github.com/kokkos/kokkos/archive/refs/tags/4.3.01.tar.gz
+wget https://github.com/kokkos/kokkos/releases/download/4.7.00/kokkos-4.7.00.tar.gz
 ```
 
 To clone the latest development version of Kokkos from GitHub:
@@ -47,9 +49,9 @@ git clone -b develop  https://github.com/kokkos/kokkos.git
 ### Building Kokkos
 
 To build Kokkos, you will need to have a C++ compiler that supports C++17 or later.
-All requirements including minimum and primary tested compiler versions can be found [here](https://kokkos.org/kokkos-core-wiki/requirements.html).
+All requirements including minimum and primary tested compiler versions can be found [here](https://kokkos.org/kokkos-core-wiki/get-started/requirements.html).
 
-Building and installation instructions are described [here](https://kokkos.org/kokkos-core-wiki/building.html).
+Building and installation instructions are described [here](https://kokkos.org/kokkos-core-wiki/get-started/building-from-source.html#configuring-and-building-kokkos).
 
 You can also install Kokkos using [Spack](https://spack.io/): `spack install kokkos`. [Available configuration options](https://packages.spack.io/package.html?name=kokkos) can be displayed using `spack info kokkos`.
 
