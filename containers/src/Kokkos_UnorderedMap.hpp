@@ -34,9 +34,31 @@
 
 #include <impl/Kokkos_Traits.hpp>
 #include <impl/Kokkos_UnorderedMap_impl.hpp>
-#include <impl/Kokkos_ViewCtor.hpp>
+#include <View/Kokkos_ViewCtor.hpp>
 
 #include <cstdint>
+
+#ifndef KOKKOS_ENABLE_DEPRECATED_CODE_4
+#if defined(KOKKOS_COMPILER_GNU) && !defined(__PGIC__) && \
+    !defined(__CUDA_ARCH__)
+
+#define KOKKOS_IMPL_NONTEMPORAL_PREFETCH_LOAD(addr) \
+  __builtin_prefetch(addr, 0, 0)
+#define KOKKOS_IMPL_NONTEMPORAL_PREFETCH_STORE(addr) \
+  __builtin_prefetch(addr, 1, 0)
+
+#else
+
+#define KOKKOS_IMPL_NONTEMPORAL_PREFETCH_LOAD(addr) ((void)0)
+#define KOKKOS_IMPL_NONTEMPORAL_PREFETCH_STORE(addr) ((void)0)
+
+#endif
+#else
+#define KOKKOS_IMPL_NONTEMPORAL_PREFETCH_LOAD(addr) \
+  KOKKOS_NONTEMPORAL_PREFETCH_LOAD(addr)
+#define KOKKOS_IMPL_NONTEMPORAL_PREFETCH_STORE(addr) \
+  KOKKOS_NONTEMPORAL_PREFETCH_STORE(addr)
+#endif
 
 namespace Kokkos {
 
@@ -582,7 +604,7 @@ class UnorderedMap {
       size_type curr = volatile_load(curr_ptr);
 #endif
 
-      KOKKOS_NONTEMPORAL_PREFETCH_LOAD(
+      KOKKOS_IMPL_NONTEMPORAL_PREFETCH_LOAD(
           &m_keys[curr != invalid_index ? curr : 0]);
 #if defined(__MIC__)
 #pragma noprefetch
@@ -603,7 +625,7 @@ class UnorderedMap {
 #else
         curr = volatile_load(curr_ptr);
 #endif
-        KOKKOS_NONTEMPORAL_PREFETCH_LOAD(
+        KOKKOS_IMPL_NONTEMPORAL_PREFETCH_LOAD(
             &m_keys[curr != invalid_index ? curr : 0]);
       }
 
@@ -644,7 +666,7 @@ class UnorderedMap {
           } else if (m_available_indexes.set(index_hint)) {
             new_index = index_hint;
             // Set key and value
-            KOKKOS_NONTEMPORAL_PREFETCH_STORE(&m_keys[new_index]);
+            KOKKOS_IMPL_NONTEMPORAL_PREFETCH_STORE(&m_keys[new_index]);
 // FIXME_SYCL replacement for memory_fence
 #ifdef KOKKOS_ENABLE_SYCL
             Kokkos::atomic_store(&m_keys[new_index], k);
@@ -653,7 +675,7 @@ class UnorderedMap {
 #endif
 
             if (!is_set) {
-              KOKKOS_NONTEMPORAL_PREFETCH_STORE(&m_values[new_index]);
+              KOKKOS_IMPL_NONTEMPORAL_PREFETCH_STORE(&m_values[new_index]);
 #ifdef KOKKOS_ENABLE_SYCL
               Kokkos::atomic_store(&m_values[new_index], v);
 #else
@@ -719,9 +741,10 @@ class UnorderedMap {
                          ? m_hash_lists(m_hasher(k) % m_hash_lists.extent(0))
                          : invalid_index;
 
-    KOKKOS_NONTEMPORAL_PREFETCH_LOAD(&m_keys[curr != invalid_index ? curr : 0]);
+    KOKKOS_IMPL_NONTEMPORAL_PREFETCH_LOAD(
+        &m_keys[curr != invalid_index ? curr : 0]);
     while (curr != invalid_index && !m_equal_to(m_keys[curr], k)) {
-      KOKKOS_NONTEMPORAL_PREFETCH_LOAD(
+      KOKKOS_IMPL_NONTEMPORAL_PREFETCH_LOAD(
           &m_keys[curr != invalid_index ? curr : 0]);
       curr = m_next_index[curr];
     }
@@ -746,7 +769,7 @@ class UnorderedMap {
   /// 'const value_type' via Cuda texture fetch must return by value.
   template <typename Dummy = value_type>
   KOKKOS_FORCEINLINE_FUNCTION std::enable_if_t<
-      !std::is_void<Dummy>::value,  // !is_set
+      !std::is_void_v<Dummy>,  // !is_set
       std::conditional_t<has_const_value, impl_value_type, impl_value_type &>>
   value_at(size_type i) const {
     KOKKOS_EXPECTS(i < capacity());
@@ -808,8 +831,8 @@ class UnorderedMap {
   // Re-allocate the views of the calling UnorderedMap according to src
   // capacity, and deep copy the src data.
   template <typename SKey, typename SValue, typename SDevice>
-  std::enable_if_t<std::is_same<std::remove_const_t<SKey>, key_type>::value &&
-                   std::is_same<std::remove_const_t<SValue>, value_type>::value>
+  std::enable_if_t<std::is_same_v<std::remove_const_t<SKey>, key_type> &&
+                   std::is_same_v<std::remove_const_t<SValue>, value_type>>
   create_copy_view(
       UnorderedMap<SKey, SValue, SDevice, Hasher, EqualTo> const &src) {
     if (m_hash_lists.data() != src.m_hash_lists.data()) {
@@ -821,8 +844,8 @@ class UnorderedMap {
   // Allocate views of the calling UnorderedMap with the same capacity as the
   // src.
   template <typename SKey, typename SValue, typename SDevice>
-  std::enable_if_t<std::is_same<std::remove_const_t<SKey>, key_type>::value &&
-                   std::is_same<std::remove_const_t<SValue>, value_type>::value>
+  std::enable_if_t<std::is_same_v<std::remove_const_t<SKey>, key_type> &&
+                   std::is_same_v<std::remove_const_t<SValue>, value_type>>
   allocate_view(
       UnorderedMap<SKey, SValue, SDevice, Hasher, EqualTo> const &src) {
     insertable_map_type tmp;
@@ -852,8 +875,8 @@ class UnorderedMap {
   // Deep copy view data from src. This requires that the src capacity is
   // identical to the capacity of the calling UnorderedMap.
   template <typename SKey, typename SValue, typename SDevice>
-  std::enable_if_t<std::is_same<std::remove_const_t<SKey>, key_type>::value &&
-                   std::is_same<std::remove_const_t<SValue>, value_type>::value>
+  std::enable_if_t<std::is_same_v<std::remove_const_t<SKey>, key_type> &&
+                   std::is_same_v<std::remove_const_t<SValue>, value_type>>
   deep_copy_view(
       UnorderedMap<SKey, SValue, SDevice, Hasher, EqualTo> const &src) {
 #ifndef KOKKOS_ENABLE_DEPRECATED_CODE_4
@@ -874,22 +897,16 @@ class UnorderedMap {
     if (m_hash_lists.data() != src.m_hash_lists.data()) {
       Kokkos::deep_copy(m_available_indexes, src.m_available_indexes);
 
-      using raw_deep_copy =
-          Kokkos::Impl::DeepCopy<typename device_type::memory_space,
-                                 typename SDevice::memory_space>;
+      // do the other deep copies asynchronously if possible
+      typename device_type::execution_space exec_space{};
 
-      raw_deep_copy(m_hash_lists.data(), src.m_hash_lists.data(),
-                    sizeof(size_type) * src.m_hash_lists.extent(0));
-      raw_deep_copy(m_next_index.data(), src.m_next_index.data(),
-                    sizeof(size_type) * src.m_next_index.extent(0));
-      raw_deep_copy(m_keys.data(), src.m_keys.data(),
-                    sizeof(key_type) * src.m_keys.extent(0));
+      Kokkos::deep_copy(exec_space, m_hash_lists, src.m_hash_lists);
+      Kokkos::deep_copy(exec_space, m_next_index, src.m_next_index);
+      Kokkos::deep_copy(exec_space, m_keys, src.m_keys);
       if (!is_set) {
-        raw_deep_copy(m_values.data(), src.m_values.data(),
-                      sizeof(impl_value_type) * src.m_values.extent(0));
+        Kokkos::deep_copy(exec_space, m_values, src.m_values);
       }
-      raw_deep_copy(m_scalars.data(), src.m_scalars.data(),
-                    sizeof(int) * num_scalars);
+      Kokkos::deep_copy(exec_space, m_scalars, src.m_scalars);
 
       Kokkos::fence(
           "Kokkos::UnorderedMap::deep_copy_view: fence after copy to dst.");
@@ -901,33 +918,27 @@ class UnorderedMap {
   bool modified() const { return get_flag(modified_idx); }
 
   void set_flag(int flag) const {
-    using raw_deep_copy =
-        Kokkos::Impl::DeepCopy<typename device_type::memory_space,
-                               Kokkos::HostSpace>;
-    const int true_ = true;
-    raw_deep_copy(m_scalars.data() + flag, &true_, sizeof(int));
+    auto scalar = Kokkos::subview(m_scalars, flag);
+    Kokkos::deep_copy(typename device_type::execution_space{}, scalar,
+                      static_cast<int>(true));
     Kokkos::fence(
         "Kokkos::UnorderedMap::set_flag: fence after copying flag from "
         "HostSpace");
   }
 
   void reset_flag(int flag) const {
-    using raw_deep_copy =
-        Kokkos::Impl::DeepCopy<typename device_type::memory_space,
-                               Kokkos::HostSpace>;
-    const int false_ = false;
-    raw_deep_copy(m_scalars.data() + flag, &false_, sizeof(int));
+    auto scalar = Kokkos::subview(m_scalars, flag);
+    Kokkos::deep_copy(typename device_type::execution_space{}, scalar,
+                      static_cast<int>(false));
     Kokkos::fence(
         "Kokkos::UnorderedMap::reset_flag: fence after copying flag from "
         "HostSpace");
   }
 
   bool get_flag(int flag) const {
-    using raw_deep_copy =
-        Kokkos::Impl::DeepCopy<Kokkos::HostSpace,
-                               typename device_type::memory_space>;
-    int result = false;
-    raw_deep_copy(&result, m_scalars.data() + flag, sizeof(int));
+    const auto scalar = Kokkos::subview(m_scalars, flag);
+    int result;
+    Kokkos::deep_copy(typename device_type::execution_space{}, result, scalar);
     Kokkos::fence(
         "Kokkos::UnorderedMap::get_flag: fence after copy to return value in "
         "HostSpace");
