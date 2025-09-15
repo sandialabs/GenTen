@@ -272,38 +272,22 @@ struct DuplicatedDataType<T*, Kokkos::LayoutLeft> {
 template <typename Layout, int rank, typename V, typename ... Args>
 struct Slice {
   typedef Slice<Layout, rank - 1, V, Kokkos::ALL_t, Args...> next;
-  typedef typename next::value_type value_type;
 
-  static
-  value_type get(V const& src, const size_t i, Args ... args) {
+  static auto get(V const& src, const size_t i, Args ... args) {
     return next::get(src, i, Kokkos::ALL, args...);
   }
 };
 
 template <typename V, typename ... Args>
 struct Slice<Kokkos::LayoutRight, 1, V, Args...> {
-  typedef typename Kokkos::Impl::ViewMapping
-                          < void
-                          , V
-                          , const size_t
-                          , Args ...
-                          >::type value_type;
-  static
-  value_type get(V const& src, const size_t i, Args ... args) {
+  static auto get(V const& src, const size_t i, Args ... args) {
     return Kokkos::subview(src, i, args...);
   }
 };
 
 template <typename V, typename ... Args>
 struct Slice<Kokkos::LayoutLeft, 1, V, Args...> {
-  typedef typename Kokkos::Impl::ViewMapping
-                          < void
-                          , V
-                          , Args ...
-                          , const size_t
-                          >::type value_type;
-  static
-  value_type get(V const& src, const size_t i, Args ... args) {
+  static auto get(V const& src, const size_t i, Args ... args) {
     return Kokkos::subview(src, args..., i);
   }
 };
@@ -657,8 +641,7 @@ public:
     return ScatterAccess<DataType, Op, ExecSpace, Kokkos::LayoutRight, ScatterDuplicated, contribution, override_contribution>{*this};
   }
 
-  typename Kokkos::Impl::Experimental::Slice<
-    Kokkos::LayoutRight, internal_view_type::rank, internal_view_type>::value_type
+  auto
   subview() const
   {
     return Kokkos::Impl::Experimental::Slice<
