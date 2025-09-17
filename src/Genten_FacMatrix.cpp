@@ -66,22 +66,29 @@ FacMatrixT(ttb_indx m, ttb_indx n, const ProcessorMap::FacMap* pmap_,
   // Don't use padding if Cuda, HIP or SYCL is the default execution space, so factor
   // matrices allocated on the host have the same shape.  We really need a
   // better way to do this.
-  if (!pad || Genten::is_gpu_space<DefaultExecutionSpace>::value) {
-    if (zero)
-      data = view_type("Genten::FacMatrix::data",m,n);
-    else
-      data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
-                                          Kokkos::WithoutInitializing),m,n);
-  }
-  else {
-    if (zero)
-      data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
-                                          Kokkos::AllowPadding),m,n);
-    else
-      data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
-                                          Kokkos::WithoutInitializing,
-                                          Kokkos::AllowPadding),m,n);
-  }
+  // if (!pad || Genten::is_gpu_space<DefaultExecutionSpace>::value) {
+  //   if (zero)
+  //     data = view_type("Genten::FacMatrix::data",m,n);
+  //   else
+  //     data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
+  //                                         Kokkos::WithoutInitializing),m,n);
+  // }
+  // else {
+  //   if (zero)
+  //     data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
+  //                                         Kokkos::AllowPadding),m,n);
+  //   else
+  //     data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
+  //                                         Kokkos::WithoutInitializing,
+  //                                         Kokkos::AllowPadding),m,n);
+  // }
+
+  // Turn off padding as it doesn't seem to work with Kokkos anymore (starting with v4.7)
+  if (zero)
+    data = view_type("Genten::FacMatrix::data",m,n);
+  else
+    data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
+                                        Kokkos::WithoutInitializing),m,n);
 }
 
 template <typename ExecSpace>
@@ -92,13 +99,17 @@ FacMatrixT(ttb_indx m, ttb_indx n, const ttb_real * cvec,
   // Don't use padding if Cuda, HIP or SYCL is the default execution space, so factor
   // matrices allocated on the host have the same shape.  We really need a
   // better way to do this.
-  if (!pad || Genten::is_gpu_space<DefaultExecutionSpace>::value)
-    data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
-                                        Kokkos::WithoutInitializing),m,n);
-  else
-    data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
-                                        Kokkos::WithoutInitializing,
-                                        Kokkos::AllowPadding),m,n);
+  // if (!pad || Genten::is_gpu_space<DefaultExecutionSpace>::value)
+  //   data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
+  //                                       Kokkos::WithoutInitializing),m,n);
+  // else
+  //   data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
+  //                                       Kokkos::WithoutInitializing,
+  //                                       Kokkos::AllowPadding),m,n);
+
+  // Turn off padding as it doesn't seem to work with Kokkos anymore (starting with v4.7)
+  data = view_type(Kokkos::view_alloc("Genten::FacMatrix::data",
+                                      Kokkos::WithoutInitializing),m,n);
   this->convertFromCol(m,n,cvec);
 }
 

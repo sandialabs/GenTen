@@ -210,21 +210,23 @@ if have_ttb:
         assert u_gt.factor_matrices[0][0,0] == -1.0
         assert u.factor_matrices[0][0,0] != -1.0
 
-        # Make a pygenten ktensor from it as a view, and verify it is a view
-        u_gt = gt.make_gt_ktensor(u, copy=False)
-        assert u_gt.is_values_view == True
-        for j in range(rank):
-            assert u.weights[j] == u_gt.weights[j]
-        for k in range(len(factor_matrices)):
-            for i in range(factor_matrices[k].shape[0]):
-                for j in range(factor_matrices[k].shape[1]):
-                    assert u.factor_matrices[k][i,j] == u_gt.factor_matrices[k][i,j]
-        u_gt.weights[0] = -1.0;
-        assert u_gt.weights[0] == -1.0
-        assert u.weights[0] == -1.0
-        u_gt.factor_matrices[0][0,0] = -1.0
-        assert u_gt.factor_matrices[0][0,0] == -1.0
-        assert u.factor_matrices[0][0,0] == -1.0
+        # # Make a pygenten ktensor from it as a view, and verify it is a view
+        # # pyttb appears to now enforce that factor matrices are F-contiguous,
+        # # while GenTen enforces C-contiguous, so this test is no longer valid
+        # u_gt = gt.make_gt_ktensor(u, copy=False)
+        # assert u_gt.is_values_view == True
+        # for j in range(rank):
+        #     assert u.weights[j] == u_gt.weights[j]
+        # for k in range(len(factor_matrices)):
+        #     for i in range(factor_matrices[k].shape[0]):
+        #         for j in range(factor_matrices[k].shape[1]):
+        #             assert u.factor_matrices[k][i,j] == u_gt.factor_matrices[k][i,j]
+        # u_gt.weights[0] = -1.0;
+        # assert u_gt.weights[0] == -1.0
+        # assert u.weights[0] == -1.0
+        # u_gt.factor_matrices[0][0,0] = -1.0
+        # assert u_gt.factor_matrices[0][0,0] == -1.0
+        # assert u.factor_matrices[0][0,0] == -1.0
 
     def test_gt_to_ttb_ktensor():
 

@@ -67,8 +67,8 @@ struct TestFunctorA {
     switch (m_apiPick) {
       case 0: {
         auto it    = KE::exclusive_scan(member, KE::cbegin(rowViewSrc),
-                                     KE::cend(rowViewSrc),
-                                     KE::begin(rowViewDest), initVal);
+                                        KE::cend(rowViewSrc),
+                                        KE::begin(rowViewDest), initVal);
         resultDist = KE::distance(KE::begin(rowViewDest), it);
         Kokkos::single(Kokkos::PerTeam(member),
                        [=, *this] { m_distancesView(rowIndex) = resultDist; });
@@ -224,6 +224,7 @@ void test_A(std::size_t numTeams, std::size_t numCols, int apiId) {
         break;
       }
 #endif
+      default: Kokkos::abort("unreachable");
     }
 
 #undef exclusive_scan
@@ -254,10 +255,6 @@ void run_all_scenarios() {
 }
 
 TEST(std_algorithms_exclusive_scan_team_test, test) {
-// FIXME_OPENMPTARGET
-#if defined(KOKKOS_ENABLE_OPENMPTARGET) && defined(KOKKOS_ARCH_INTEL_GPU)
-  GTEST_SKIP() << "the test is known to fail with OpenMPTarget on Intel GPUs";
-#endif
   run_all_scenarios<DynamicTag, double>();
   run_all_scenarios<StridedTwoRowsTag, int>();
   run_all_scenarios<StridedThreeRowsTag, unsigned>();
