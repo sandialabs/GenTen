@@ -3225,6 +3225,7 @@ khatrirao(const FacMatrixT& B) const
   auto P_data = P.data;
   using PolicyType = Kokkos::TeamPolicy<ExecSpace>;
   Kokkos::parallel_for(
+		"FacMartix::khatrirao",
     PolicyType(P_nrows, 1, Kokkos::AUTO),
     KOKKOS_LAMBDA(const typename PolicyType::member_type& team)
   {
