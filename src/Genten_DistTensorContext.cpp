@@ -226,7 +226,10 @@ std::vector<ttb_real>
 distributeTensorToVectorsDense(const Tensor& dn_tensor_host, ttb_indx nnz,
                                MPI_Comm comm, ttb_indx rank, ttb_indx nprocs,
                                ttb_indx& offset) {
-  constexpr ttb_indx dt_size = sizeof(ttb_real);
+  // Send tensor as ttb_real instead of bytes to allow for (somewhat)
+  // larger tensors that can fit within the 32-bit MPI limit
+  const auto mpi_dtype = DistContext::toMpiType<ttb_real>();
+  constexpr ttb_indx dt_size = 1;
   std::vector<ttb_real> Tvec;
   small_vector<ttb_indx> who_gets_what =
       detail::singleDimUniformBlocking(nnz, nprocs);
@@ -248,7 +251,7 @@ distributeTensorToVectorsDense(const Tensor& dn_tensor_host, ttb_indx nnz,
       total_sent += nelements;
 
       const ttb_indx index_of_first_element = who_gets_what[i];
-      MPI_Isend(Tvec.data() + index_of_first_element, nbytes, MPI_BYTE, i, i,
+      MPI_Isend(Tvec.data() + index_of_first_element, nbytes, mpi_dtype, i, i,
                 comm, &requests[i - 1]);
     }
     MPI_Waitall(requests.size(), requests.data(), statuses.data());
@@ -271,7 +274,13 @@ distributeTensorToVectorsDense(const Tensor& dn_tensor_host, ttb_indx nnz,
     const ttb_indx nelements = who_gets_what[rank + 1] - who_gets_what[rank];
     Tvec.resize(nelements);
     const ttb_indx nbytes = nelements * dt_size;
-    MPI_Recv(Tvec.data(), nbytes, MPI_BYTE, 0, rank, comm, MPI_STATUS_IGNORE);
+    if (nbytes > std::numeric_limits<int>::max()) {
+      std::cout << "Warning on MPI processor " << rank << ":" << std::endl
+                << "  The number of receives exceeds the maximum size of a 32-bit integer." << std::endl
+                << "  This will likely fail with most MPI implementations!" << std::endl
+                << "  Try distributing your tensor across more MPI processors." << std::endl;
+    }
+    MPI_Recv(Tvec.data(), nbytes, mpi_dtype, 0, rank, comm, MPI_STATUS_IGNORE);
   }
 
   return Tvec;
