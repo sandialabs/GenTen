@@ -17,8 +17,8 @@
 #ifndef KOKKOS_STD_ALGORITHMS_CONSTRAINTS_HPP_
 #define KOKKOS_STD_ALGORITHMS_CONSTRAINTS_HPP_
 
+#include <Kokkos_Core.hpp>
 #include <Kokkos_DetectionIdiom.hpp>
-#include <Kokkos_View.hpp>
 
 namespace Kokkos {
 namespace Experimental {
@@ -33,12 +33,12 @@ struct is_admissible_to_kokkos_std_algorithms : std::false_type {};
 template <typename T>
 struct is_admissible_to_kokkos_std_algorithms<
     T, std::enable_if_t<::Kokkos::is_view<T>::value && T::rank() == 1 &&
-                        (std::is_same<typename T::traits::array_layout,
-                                      Kokkos::LayoutLeft>::value ||
-                         std::is_same<typename T::traits::array_layout,
-                                      Kokkos::LayoutRight>::value ||
-                         std::is_same<typename T::traits::array_layout,
-                                      Kokkos::LayoutStride>::value)>>
+                        (std::is_same_v<typename T::traits::array_layout,
+                                        Kokkos::LayoutLeft> ||
+                         std::is_same_v<typename T::traits::array_layout,
+                                        Kokkos::LayoutRight> ||
+                         std::is_same_v<typename T::traits::array_layout,
+                                        Kokkos::LayoutStride>)>>
     : std::true_type {};
 
 template <class ViewType>
@@ -102,8 +102,8 @@ struct are_random_access_iterators;
 template <class T>
 struct are_random_access_iterators<T> {
   static constexpr bool value =
-      is_iterator_v<T> && std::is_base_of<std::random_access_iterator_tag,
-                                          typename T::iterator_category>::value;
+      is_iterator_v<T> && std::is_base_of_v<std::random_access_iterator_tag,
+                                            typename T::iterator_category>;
 };
 
 template <class Head, class... Tail>
@@ -165,9 +165,8 @@ struct iterators_have_matching_difference_type<T> {
 
 template <class T1, class T2>
 struct iterators_have_matching_difference_type<T1, T2> {
-  static constexpr bool value =
-      std::is_same<typename T1::difference_type,
-                   typename T2::difference_type>::value;
+  static constexpr bool value = std::is_same_v<typename T1::difference_type,
+                                               typename T2::difference_type>;
 };
 
 template <class T1, class T2, class... Tail>
@@ -239,12 +238,9 @@ KOKKOS_INLINE_FUNCTION void expect_no_overlap(
     [[maybe_unused]] IteratorType2 s_first) {
   if constexpr (is_kokkos_iterator_v<IteratorType1> &&
                 is_kokkos_iterator_v<IteratorType2>) {
-    auto const view1 = first.view();
-    auto const view2 = s_first.view();
-
-    std::size_t stride1  = view1.stride(0);
-    std::size_t stride2  = view2.stride(0);
-    ptrdiff_t first_diff = view1.data() - view2.data();
+    std::size_t stride1  = first.stride();
+    std::size_t stride2  = s_first.stride();
+    ptrdiff_t first_diff = first.data() - s_first.data();
 
     // FIXME If strides are not identical, checks may not be made
     // with the cost of O(1)
@@ -252,8 +248,8 @@ KOKKOS_INLINE_FUNCTION void expect_no_overlap(
     // If first_diff == 0, there is already an overlap
     if (stride1 == stride2 || first_diff == 0) {
       [[maybe_unused]] bool is_no_overlap  = (first_diff % stride1);
-      auto* first_pointer1                 = view1.data();
-      auto* first_pointer2                 = view2.data();
+      auto* first_pointer1                 = first.data();
+      auto* first_pointer2                 = s_first.data();
       [[maybe_unused]] auto* last_pointer1 = first_pointer1 + (last - first);
       [[maybe_unused]] auto* last_pointer2 = first_pointer2 + (last - first);
       KOKKOS_EXPECTS(first_pointer1 >= last_pointer2 ||
