@@ -1277,7 +1277,7 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
 
     // Build dense tensor
     Tensor tensor_host(IndxArray(ndims, indices.data()),
-                       Array(local_nnz, values_ptr->data(), false),
+                       Array(local_nnz, values_ptr->data()),
                        layout);
     IndxArray lower = tensor_host.getLowerBounds();
     IndxArray upper = tensor_host.getUpperBounds();
