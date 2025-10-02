@@ -715,7 +715,7 @@ distributeTensorImpl(const Tensor& X, const AlgParams& algParams, const std::vec
     DistContext::Barrier();
   }
 
-  const bool redistribute_needed = global_blocking.size() == 0;
+  const bool redistribute_needed = pmap_->gridSize() > 1;
   return distributeTensorData(Tvec, nnz, offset, global_dims_, global_blocking_,
                               layout, *pmap_, algParams, redistribute_needed);
 }
@@ -1188,7 +1188,7 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
                      const std::vector<small_vector<ttb_indx>>& blocking,
                      const TensorLayout layout,
                      const ProcessorMap& pmap, const AlgParams& algParams,
-		     bool redistribute_needed)
+		                 const bool redistribute_needed)
 {
   const bool use_tpetra =
     algParams.dist_update_method == Genten::Dist_Update_Method::Tpetra;
@@ -1199,12 +1199,15 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
   // Now redistribute to final format
   // exodus reads already follow a uniform nodal distribution
   std::vector<ttb_real> values;
-  if(redistribute_needed)
+  const std::vector<ttb_real>* values_ptr;
+  if (redistribute_needed) {
     values =
       detail::redistributeTensor(Tvec, global_nnz, global_offset,
                                  global_dims_, global_blocking_, layout, *pmap_);
+    values_ptr = &values;
+  }
   else
-    values = Tvec;
+    values_ptr = &Tvec; // avoid an unnecessary copy
 
   DistContext::Barrier();
   auto t5 = MPI_Wtime();
@@ -1229,12 +1232,12 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
     local_dims_[i] = indices[i];
   }
 
-  const ttb_indx local_nnz = values.size();
+  const ttb_indx local_nnz = values_ptr->size();
 
   TensorT<ExecSpace> tensor;
   if (!use_tpetra) {
     Tensor tensor_host(IndxArray(ndims, indices.data()),
-                       Array(local_nnz, values.data(), false),
+                       Array(local_nnz, values_ptr->data()),
                        layout);
     tensor = create_mirror_view(ExecSpace(), tensor_host);
     deep_copy(tensor, tensor_host);
@@ -1274,7 +1277,7 @@ distributeTensorData(const std::vector<ttb_real>& Tvec,
 
     // Build dense tensor
     Tensor tensor_host(IndxArray(ndims, indices.data()),
-                       Array(local_nnz, values.data(), false),
+                       Array(local_nnz, values_ptr->data(), false),
                        layout);
     IndxArray lower = tensor_host.getLowerBounds();
     IndxArray upper = tensor_host.getUpperBounds();

@@ -115,6 +115,11 @@ namespace Genten {
 
     //! @brief Copy constructor.
     //!
+    //! Creates an array of length n copied from d
+    ArrayT(ttb_indx n, const ttb_real * d);
+
+    //! @brief Copy constructor.
+    //!
     //! Does a (deep) copy of the data in src. The reserved size (rsz)
     //! is set to be equal to the length and may not be the same as for src.
     KOKKOS_DEFAULTED_FUNCTION
