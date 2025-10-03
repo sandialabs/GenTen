@@ -90,6 +90,17 @@ ArrayT(ttb_indx n, ttb_real * d, ttb_bool shdw):
 }
 
 template <typename ExecSpace>
+Genten::ArrayT<ExecSpace>::
+ArrayT(ttb_indx n, const ttb_real * d):
+  data()
+{
+  data = view_type(Kokkos::view_alloc("Genten::ArrayT::data",
+                                      Kokkos::WithoutInitializing), n);
+  unmanaged_const_view_type d_view(d,n);
+  deep_copy(data, d_view);
+}
+
+template <typename ExecSpace>
 void Genten::ArrayT<ExecSpace>::
 copyFrom(ttb_indx n, const ttb_real * src) const
 {
