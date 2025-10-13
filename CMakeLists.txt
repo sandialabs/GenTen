@@ -537,7 +537,7 @@ IF(ENABLE_MATLAB)
 ENDIF()
 
 IF(ENABLE_PYTHON)
-  IF(UNIX)
+  IF(UNIX AND NOT APPLE)
     IF(NOT BUILD_SHARED_LIBS)
       MESSAGE(FATAL_ERROR "Must build shared libraries when enabling Python!")
     ENDIF()
