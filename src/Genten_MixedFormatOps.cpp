@@ -741,7 +741,6 @@ struct MTTKRP_Dense_Perm_Kernel {
 
     /*const*/ ttb_indx nd = u.ndims();
     /*const*/ ttb_indx nc = u.ncomponents();
-    /*const*/ ttb_indx ne = X.numel();
     static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
     static const ttb_indx FacBlockSize = FBS;
     static const ttb_indx VectorSize = is_gpu ? VS : 1;
@@ -853,7 +852,7 @@ struct MTTKRP_Dense_Perm_Kernel {
 
 					tmp.load(&(u.weights(j))); // NB: repeated read
 					tmp *= x_val;
-					for (int m = 0; m < nd; ++m) {
+					for (ttb_indx m = 0; m < nd; ++m) {
 						if (m != n)
 							tmp *= &(u[m].entry(sub[m], j));
 					}
