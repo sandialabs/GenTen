@@ -60,11 +60,14 @@ namespace Genten {
       ttb_real residual;           // Residual of tensor approximation
       ttb_real fit;                // Tensor fit
       ttb_real grad_norm;          // Norm of gradient
+      ttb_real cum_comm_time;      // Cumulative time for communication including this iteration
+      ttb_real cum_mttkrp_time;    // Cumulative time for MTTKRP including this iteration
       ttb_real cum_time;           // Cumulative time including this iteration
       ttb_real mttkrp_throughput;  // Floating-point throughput of MTTKRP
 
       Entry() : iteration(0), residual(0.0), fit(0.0), grad_norm(0.0),
-                cum_time(0.0), mttkrp_throughput(0.0) {}
+                cum_comm_time(0.0), cum_mttkrp_time(0.0), cum_time(0.0), 
+								mttkrp_throughput(0.0) {}
     };
 
     PerfHistory() = default;
@@ -97,6 +100,8 @@ namespace Genten {
          << std::setw(13) << "residual" << "\t"
          << std::setw(13) << "fit" << "\t"
          << std::setw(13) << "||grad||" << "\t"
+         << std::setw(9) << "comm-time" << "\t"
+         << std::setw(9) << "mmtkrp-time" << "\t"
          << std::setw(9) << "time" << "\t"
          << std::setw(9) << "mttkrp" << std::endl;
       for (const auto& entry : entries)
@@ -107,6 +112,10 @@ namespace Genten {
            << entry.fit << "\t"
            << std::setw(13) << std::setprecision(6) << std::scientific
            << entry.grad_norm << "\t"
+           << std::setw(9) << std::setprecision(2) << std::scientific
+           << entry.cum_comm_time << "\t"
+           << std::setw(9) << std::setprecision(2) << std::scientific
+           << entry.cum_mttkrp_time << "\t"
            << std::setw(9) << std::setprecision(2) << std::scientific
            << entry.cum_time << "\t"
            << std::setw(9) << std::setprecision(2) << std::scientific

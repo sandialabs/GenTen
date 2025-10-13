@@ -605,9 +605,11 @@ void mttkrp_phan(const Genten::TensorImpl<ExecSpace,Impl::TensorLayoutLeft>& X,
     }
     {
       GENTEN_TIME_MONITOR("Multiply");
+      const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+      static const ttb_indx VectorSize = is_gpu ? 32 : 1;
       using PolicyType = Kokkos::TeamPolicy<ExecSpace>;
       Kokkos::parallel_for(
-        PolicyType(szn, 1, Kokkos::AUTO),
+        PolicyType(szn, 1, VectorSize),
         KOKKOS_LAMBDA(const typename PolicyType::member_type& team)
       {
         const ttb_indx row = team.league_rank();
@@ -695,8 +697,10 @@ void mttkrp_phan(const Genten::TensorImpl<ExecSpace,Impl::TensorLayoutRight>& X,
     {
       GENTEN_TIME_MONITOR("Multiply");
       using PolicyType = Kokkos::TeamPolicy<ExecSpace>;
+      const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+      static const ttb_indx VectorSize = is_gpu ? 32 : 1;
       Kokkos::parallel_for(
-        PolicyType(szn, 1, Kokkos::AUTO),
+        PolicyType(szn, 1, VectorSize),
         KOKKOS_LAMBDA(const typename PolicyType::member_type& team)
       {
         const ttb_indx row = team.league_rank();
@@ -712,8 +716,168 @@ void mttkrp_phan(const Genten::TensorImpl<ExecSpace,Impl::TensorLayoutRight>& X,
   }
 }
 
-}
-}
+template <typename ExecSpace, typename Layout>
+struct MTTKRP_Dense_Perm_Kernel {
+  const TensorImpl<ExecSpace,Layout> XX;
+  const KtensorImpl<ExecSpace> uu;
+  const ttb_indx nn;
+  const FacMatrixT<ExecSpace> vv;
+  const AlgParams algParams;
+
+  MTTKRP_Dense_Perm_Kernel(const TensorImpl<ExecSpace,Layout>& X_,
+                          const KtensorImpl<ExecSpace>& u_,
+                          const ttb_indx n_,
+                          const FacMatrixT<ExecSpace>& v_,
+                          const AlgParams& algParams_) :
+    XX(X_), uu(u_), nn(n_), vv(v_), algParams(algParams_) {}
+
+  template <unsigned FBS, unsigned VS>
+  void run() const
+  {
+    const TensorImpl<ExecSpace,Layout> X = XX;
+    const KtensorImpl<ExecSpace> u = uu;
+    const ttb_indx n = nn;
+    const FacMatrixT<ExecSpace> v = vv;
+
+    /*const*/ ttb_indx nd = u.ndims();
+    /*const*/ ttb_indx nc = u.ncomponents();
+    /*const*/ ttb_indx ne = X.numel();
+    static const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+    static const ttb_indx FacBlockSize = FBS;
+    static const ttb_indx VectorSize = is_gpu ? VS : 1;
+    static const ttb_indx TeamSize = is_gpu ? 128/VectorSize : 1;
+		/*const*/  ttb_indx TileWidth = algParams.mttkrp_dense_tile_width ? algParams.mttkrp_dense_tile_width : 1;
+		/*const*/ ttb_indx TileVol = 1;
+		for (ttb_indx i = 0; i < nd - 1; ++i)
+			TileVol *= TileWidth;
+		const ttb_indx ElemPerTeam = TeamSize * TileVol;
+
+		// pad the size array (m!=n)
+		IndxArray padded_size_host(nd);
+		/*const*/ ttb_indx nePadded = 1;
+		/*const*/ ttb_indx SliceVol = 1;
+		for (ttb_indx m=0; m<nd; ++m) {
+			padded_size_host[m] = X.size(m);
+			if (m != n) {
+				padded_size_host[m] = ((padded_size_host[m] + TileWidth - 1)/TileWidth)*TileWidth;
+				assert(padded_size_host[m] == X.size(m)); // assert that size is already padded
+				SliceVol *= padded_size_host[m];
+			}
+			nePadded *= padded_size_host[m];
+		}
+		const ttb_indx TilesPerSlice = SliceVol / TileVol;
+
+		// send to device
+		IndxArrayT<ExecSpace> padded_size = create_mirror_view(ExecSpace(), padded_size_host);
+		deep_copy(padded_size, padded_size_host);
+
+    const ttb_indx N = (nePadded+ElemPerTeam-1)/ElemPerTeam;
+
+		IndxArray tile_offsets_host(TileVol * (nd-1));
+		for (ttb_indx ii=0; ii<TileVol; ++ii) {
+			ttb_indx cumprod = TileVol;
+			ttb_indx ind = ii;
+			ttb_indx sbs;
+			for (ttb_indx m=0; m < (nd-1); ++m) {
+				cumprod = cumprod / TileWidth;
+				sbs = ind / cumprod;
+				tile_offsets_host[ii*(nd-1)+m] = sbs;
+				ind = ind - (sbs * cumprod);
+			}
+		}
+		IndxArrayT<ExecSpace> tile_offsets = create_mirror_view(ExecSpace(), tile_offsets_host);
+		deep_copy(tile_offsets, tile_offsets_host);
+
+    typedef Kokkos::TeamPolicy<ExecSpace> Policy;
+    typedef typename Policy::member_type TeamMember;
+		typedef Kokkos::View< ttb_indx**, Kokkos::LayoutRight, typename ExecSpace::scratch_memory_space , Kokkos::MemoryUnmanaged > TmpScratchSpace;
+		size_t bytes = TmpScratchSpace::shmem_size(TeamSize, 2 * nd);
+
+    Policy policy(N, TeamSize, VectorSize);
+		Kokkos::parallel_for(
+				"mttkrp_kernel", policy.set_scratch_size(0, Kokkos::PerTeam(bytes)), KOKKOS_LAMBDA(const TeamMember & team)
+		{
+			const unsigned team_rank = team.team_rank();
+			const unsigned team_size = team.team_size();
+			const ttb_indx anchorIndx = team.league_rank() * team_size + team_rank;
+			// Get the anchor subscript
+			TmpScratchSpace scratchAnchor(team.team_scratch(0), team_size, nd);
+			TmpScratchSpace scratchSub(team.team_scratch(0), team_size, nd);
+			ttb_indx* anchor = &scratchAnchor(team_rank, 0);
+			ttb_indx* sub = &scratchSub(team_rank, 0);
+
+			const ttb_indx slice = anchorIndx / TilesPerSlice;
+			if (slice >= X.size(n))
+				return;
+
+			const ttb_indx tile  = anchorIndx % TilesPerSlice;
+			ttb_indx cumprod = SliceVol / TileVol;
+			ttb_indx ind = tile;
+			ttb_indx sbs;
+			for (ttb_indx m=0; m < nd; ++m) {
+				if (m != n) {
+					cumprod = cumprod / (padded_size[m] / TileWidth);
+					sbs = ind / cumprod;
+					anchor[m] = sbs * TileWidth;
+					ind = ind - (sbs * cumprod);
+				} else {
+					anchor[m] = slice;
+				}
+			}
+			
+			const ttb_indx k = anchor[n];
+
+			auto col_chunk = [&](auto j, auto nj, auto Nj) {
+				typedef TinyVecMaker<ExecSpace, ttb_real, unsigned, FacBlockSize, Nj(), VectorSize> TVM;
+				auto val = TVM::make(team, nj, 0.0);
+				auto tmp = TVM::make(team, nj, 0.0);
+
+				for (ttb_indx ii=0; ii<TileVol; ++ii) {
+
+					// get location from offsets
+					ttb_indx i = 0;
+					bool inBounds = true;
+					ttb_indx dim_inc = ii*(nd-1);
+					for (ttb_indx m=0; m<nd;++m) {
+						sub[m] = anchor[m];
+						if (m != n) {
+							sub[m] += tile_offsets[dim_inc++];
+							inBounds = (inBounds && (sub[m] < X.size(m)));
+						}
+						i += sub[m] * X.cumprod(m);
+					}
+					if (!inBounds)
+						continue;
+					
+					const ttb_real x_val = X[i]; // NB: repeated read
+
+					tmp.load(&(u.weights(j))); // NB: repeated read
+					tmp *= x_val;
+					for (int m = 0; m < nd; ++m) {
+						if (m != n)
+							tmp *= &(u[m].entry(sub[m], j));
+					}
+					val += tmp;
+				} // element in tile loop
+				val.atomic_store_plus(&v.entry(k,j));
+			}; // column chunk function
+      for (unsigned j=0; j<nc; j+=FacBlockSize) {
+        if (j+FacBlockSize <= nc) {
+          const unsigned nj = FacBlockSize;
+          col_chunk(j, nj, std::integral_constant<unsigned,nj>());
+        }
+        else {
+          const unsigned nj = nc-j;
+          col_chunk(j, nj, std::integral_constant<unsigned,0>());
+        }
+      } // column chunk loop
+		}); // league & team parallelism over tensor tiles
+  } // void run ()
+
+};
+
+} // namespace Genten
+} // namespace Impl
 
 template <typename ExecSpace>
 void Genten::mttkrp(const Genten::TensorT<ExecSpace>& X,
@@ -779,6 +943,22 @@ void Genten::mttkrp(const Genten::TensorT<ExecSpace>& X,
       // Impl::mttkrp_phan(Xl, ul, nd-n-1, v, algParams, zero_v);
     }
   }
+  else if (algParams.mttkrp_method == MTTKRP_Method::Perm) {
+    if (zero_v)
+      v = ttb_real(0.0);
+
+    if (X.has_left_impl()) {
+      Genten::Impl::MTTKRP_Dense_Perm_Kernel<ExecSpace,Impl::TensorLayoutLeft> kernel(
+        X.left_impl(),u.impl(),n,v,algParams);
+      Genten::Impl::run_row_simd_kernel(kernel, nc);
+    }
+    else {
+      Genten::Impl::MTTKRP_Dense_Perm_Kernel<ExecSpace,Impl::TensorLayoutRight> kernel(
+        X.right_impl(),u.impl(),n,v,algParams);
+      Genten::Impl::run_row_simd_kernel(kernel, nc);
+    }
+
+  } 
   else
     Genten::error(std::string("Unknown MTTKRP method:  ") +
                   std::string(MTTKRP_Method::names[algParams.mttkrp_method]));

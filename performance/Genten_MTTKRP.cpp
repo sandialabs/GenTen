@@ -57,6 +57,10 @@
 #include "Genten_AlgParams.hpp"
 #include "Genten_MixedFormatOps.hpp"
 
+#ifdef HAVE_CUDA
+#include "nvToolsExt.h"
+#endif
+
 template <typename Space>
 int run_sparse_mttkrp(const std::string& inputfilename,
                       const ttb_indx index_base,
@@ -194,6 +198,14 @@ int run_sparse_mttkrp(const std::string& inputfilename,
       timer.stop(1+n);
     }
   }
+	// Perform a single NVTX run for CUDA Nsight profiling
+	#ifdef HAVE_CUDA
+	nvtxRangePushA("MTTKRP");
+	for (ttb_indx n=0; n<nDims; ++n) {
+		Genten::mttkrp(cData, cInput, n, cResult[n], algParams);
+	}
+	nvtxRangePop();
+	#endif
   const double atomic = 1.0; // cost of atomic measured in flops
   const double mttkrp_flops = cData.nnz()*nNumComponents*(nDims+atomic);
   double mttkrp_total_time = 0.0;
@@ -407,6 +419,13 @@ int run_dense_mttkrp(const std::string& inputfilename,
       timer.stop(1+n);
     }
   }
+	#ifdef HAVE_CUDA
+	nvtxRangePushA("MTTKRP");
+	for (ttb_indx n=0; n<nDims; ++n) {
+		Genten::mttkrp(cData, cInput, n, cResult[n], algParams);
+	}
+	nvtxRangePop();
+	#endif
   const double atomic = 1.0; // cost of atomic measured in flops
   const double mttkrp_flops = cData.numel()*nNumComponents*(nDims+atomic);
   double mttkrp_total_time = 0.0;
@@ -537,7 +556,7 @@ void usage(char **argv)
       std::cout << ", ";
   }
   std::cout << std::endl;
-  std::cout << "  --mttkrp-tile-size <int> tile size for mttkrp algorithm" << std::endl;
+  std::cout << "  --mttkrp-tile-size <int> tile size for mttkrp algorithm. If dense, sets `algParams.mttkrp_dense_tile_width`." << std::endl;
   std::cout << "  --vtune              connect to vtune for Intel-based profiling (assumes vtune profiling tool, amplxe-cl, is in your path)" << std::endl;
 }
 
@@ -622,6 +641,7 @@ int main(int argc, char* argv[])
     Genten::AlgParams algParams;
     algParams.mttkrp_method = mttkrp_method;
     algParams.mttkrp_duplicated_factor_matrix_tile_size = mttkrp_tile_size;
+    algParams.mttkrp_dense_tile_width = mttkrp_tile_size == 0 ? 2 : mttkrp_tile_size;
 
     if (exec_space == Genten::Execution_Space::Default) {
       if (sparse)

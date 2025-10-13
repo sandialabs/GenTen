@@ -387,6 +387,66 @@ TYPED_TEST(TestMixedFormatsT, TensorKtensorMTTKRP) {
    RunTensorKtensorMTTKRP<exec_space>(TensorLayout::Right, "TensorLayout::Right");
 }
 
+TYPED_TEST(TestMixedFormatsT, TensorPermAminoAcid) {
+   using exec_space = typename TestFixture::exec_space;
+   DistContext::Barrier();
+
+  // Read layout-left amino acid tensor
+  Tensor Xlh;
+  import_tensor("./data/aminoacid_data_dense.txt", Xlh);
+  TensorT<exec_space> Xl = create_mirror_view(exec_space(), Xlh);
+  deep_copy(Xl, Xlh);
+
+  // Create matching ktensor
+  //const ttb_indx nc = 5;
+  const ttb_indx nc = 3;
+  const ttb_indx nd = Xl.ndims();
+  KtensorT<exec_space> u(nc, nd, Xl.size());
+  auto uh = create_mirror_view(u);
+  RandomMT rng(12345);
+  uh.setMatricesScatter(true, false, rng);
+  uh.setWeights(1.0);
+  deep_copy(u, uh);
+
+  // Test Perm MTTKRP algorithm for layout-left matches Row-based algorithm
+  KtensorT<exec_space> vr(nc, nd, Xl.size()), vp(nc, nd, Xl.size());
+  auto vrh = create_mirror_view(vr);
+  auto vph = create_mirror_view(vp);
+  AlgParams algParams;
+	algParams.mttkrp_dense_tile_width = 3;
+  INFO_MSG("mttkrp result correct for Perm algorihtm with LayoutLeft tensor");
+  for (ttb_indx n=0; n<nd; ++n) {
+    algParams.mttkrp_method = MTTKRP_Method::RowBased;
+    mttkrp(Xl, u, n, vr[n], algParams);
+    algParams.mttkrp_method = MTTKRP_Method::Perm;
+    mttkrp(Xl, u, n, vp[n], algParams);
+    deep_copy(vrh[n], vr[n]);
+    deep_copy(vph[n], vp[n]);
+
+    for (ttb_indx i=0; i<Xl.size(n); ++i)
+      for (ttb_indx j=0; j<nc; ++j)
+        ASSERT_FLOAT_EQ(vrh[n](i,j), vph[n](i,j));
+  }
+
+  // Test Perm MTTKRP algorithm for layout-right matches Row-based algorithm
+  TensorT<exec_space> Xr = Xl.switch_layout(TensorLayout::Right);
+  INFO_MSG("mttkrp result correct for Perm algorihtm with LayoutRight tensor");
+  vr.setMatrices(0.0);
+  vp.setMatrices(0.0);
+  for (ttb_indx n=0; n<nd; ++n) {
+    algParams.mttkrp_method = MTTKRP_Method::RowBased;
+    mttkrp(Xr, u, n, vr[n], algParams);
+    algParams.mttkrp_method = MTTKRP_Method::Perm;
+    mttkrp(Xr, u, n, vp[n], algParams);
+    deep_copy(vrh[n], vr[n]);
+    deep_copy(vph[n], vp[n]);
+
+    for (ttb_indx i=0; i<Xl.size(n); ++i)
+      for (ttb_indx j=0; j<nc; ++j)
+        ASSERT_FLOAT_EQ(vrh[n](i,j), vph[n](i,j));
+  }
+}
+
 TYPED_TEST(TestMixedFormatsT, TensorPhanAminoAcid) {
    using exec_space = typename TestFixture::exec_space;
    DistContext::Barrier();

@@ -67,6 +67,7 @@ Genten::AlgParams::AlgParams() :
   mttkrp_method(MTTKRP_Method::default_type),
   mttkrp_all_method(MTTKRP_All_Method::default_type),
   mttkrp_nnz_tile_size(128),
+  mttkrp_dense_tile_width(2),
   mttkrp_duplicated_factor_matrix_tile_size(0),
   mttkrp_duplicated_threshold(-1.0),
   dist_update_method(Dist_Update_Method::default_type),
@@ -183,6 +184,9 @@ void Genten::AlgParams::parse(std::vector<std::string>& args)
   mttkrp_nnz_tile_size =
     parse_ttb_indx(args, "--mttkrp-nnz-tile-size",
                    mttkrp_nnz_tile_size, 1, INT_MAX);
+  mttkrp_dense_tile_width = 
+    parse_ttb_indx(args, "--mttkrp-dense-tile-width",
+                   mttkrp_dense_tile_width, 1, INT_MAX);
   mttkrp_duplicated_factor_matrix_tile_size =
     parse_ttb_indx(args, "--mttkrp-duplicated-tile-size",
                    mttkrp_duplicated_factor_matrix_tile_size, 0, INT_MAX);
@@ -384,6 +388,8 @@ void Genten::AlgParams::parse(const ptree& input)
       parse_ptree_enum<MTTKRP_Method>(mttkrp_input, "method", mttkrp_method);
       parse_ptree_enum<MTTKRP_All_Method>(mttkrp_input, "all-method", mttkrp_all_method);
       parse_ptree_value(mttkrp_input, "nnz-tile-size", mttkrp_nnz_tile_size,
+                        1, INT_MAX);
+      parse_ptree_value(mttkrp_input, "dense-tile-width", mttkrp_dense_tile_width,
                         1, INT_MAX);
       parse_ptree_value(mttkrp_input, "duplicated-tile-size",
                         mttkrp_duplicated_factor_matrix_tile_size, 0, INT_MAX);
@@ -824,6 +830,7 @@ void Genten::AlgParams::print(std::ostream& out) const
   out << "  mttkrp-all-method = " << Genten::MTTKRP_All_Method::names[mttkrp_all_method]
       << std::endl;
   out << "  mttkrp-nnz-tile-size = " << mttkrp_nnz_tile_size << std::endl;
+  out << "  mttkrp-dense-tile-width = " << mttkrp_dense_tile_width << std::endl;
   out << "  mttkrp-duplicated-tile-size = " << mttkrp_duplicated_factor_matrix_tile_size << std::endl;
   out << "  mttkrp-duplicated-threshold = " << mttkrp_duplicated_threshold << std::endl;
   out << "  dist-method = " << Genten::Dist_Update_Method::names[dist_update_method]

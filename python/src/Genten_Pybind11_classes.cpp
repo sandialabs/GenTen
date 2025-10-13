@@ -61,8 +61,12 @@ void pygenten_perfhistory(py::module &m){
      The L2 fit for this iteration, i.e., 1-||X-M||_F/||X||_F.)");
     cl.def_readwrite("grad_norm", &Genten::PerfHistory::Entry::grad_norm, R"(
      Norm of the objective function gradient for this iteration.)");
+    cl.def_readwrite("cum_comm_time", &Genten::PerfHistory::Entry::cum_comm_time, R"(
+     Cumulative wall-clock mttkrp time up to and including this iteration.)");
+    cl.def_readwrite("cum_mttkrp_time", &Genten::PerfHistory::Entry::cum_mttkrp_time, R"(
+     Cumulative wall-clock mttkrp time up to and including this iteration.)");
     cl.def_readwrite("cum_time", &Genten::PerfHistory::Entry::cum_time, R"(
-     Cummulative wall-clock time up to and including this iteration.)");
+     Cumulative wall-clock time up to and including this iteration.)");
     cl.def_readwrite("mttkrp_throughput", &Genten::PerfHistory::Entry::mttkrp_throughput,R"(
      MTTKRP memory throughput.)");
     cl.def("__str__", [](Genten::PerfHistory::Entry const &o) -> std::string {
@@ -243,6 +247,7 @@ void pygenten_algparams(py::module &m){
     cl.def_readwrite("mttkrp_method", &Genten::AlgParams::mttkrp_method);
     cl.def_readwrite("mttkrp_all_method", &Genten::AlgParams::mttkrp_all_method);
     cl.def_readwrite("mttkrp_nnz_tile_size", &Genten::AlgParams::mttkrp_nnz_tile_size);
+    cl.def_readwrite("mttkrp_dense_tile_width", &Genten::AlgParams::mttkrp_dense_tile_width);
     cl.def_readwrite("mttkrp_duplicated_factor_matrix_tile_size", &Genten::AlgParams::mttkrp_duplicated_factor_matrix_tile_size);
     cl.def_readwrite("mttkrp_duplicated_threshold", &Genten::AlgParams::mttkrp_duplicated_threshold);
     cl.def_readwrite("dist_update_method", &Genten::AlgParams::dist_update_method);

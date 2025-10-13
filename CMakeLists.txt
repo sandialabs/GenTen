@@ -603,6 +603,13 @@ IF(Kokkos_ENABLE_CUDA)
   ENDIF()
   MESSAGE (STATUS "GenTen: Using cuSolver")
 
+  IF(LIBNVTX_PATH)
+    SET(GENTEN_LIBS "${GENTEN_LIBS} -L${LIBNVTX_PATH} -lnvToolsExt")
+  ELSE()
+    SET(GENTEN_LIBS "${GENTEN_LIBS} -lnvToolsExt")
+  ENDIF()
+  MESSAGE(STATUS "GenTen: Using NVTX")
+
   # Add useful CXX flags when building with Cuda
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --expt-relaxed-constexpr")
   IF (KOKKOS_CXX_COMPILER_ID STREQUAL NVIDIA)
