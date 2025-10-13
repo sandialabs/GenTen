@@ -247,7 +247,7 @@ void pygenten_algparams(py::module &m){
     cl.def_readwrite("mttkrp_method", &Genten::AlgParams::mttkrp_method);
     cl.def_readwrite("mttkrp_all_method", &Genten::AlgParams::mttkrp_all_method);
     cl.def_readwrite("mttkrp_nnz_tile_size", &Genten::AlgParams::mttkrp_nnz_tile_size);
-		cl.def_readwrite("mttkrp_dense_tile_width", &Genten::AlgParams::mttkrp_dense_tile_width);
+    cl.def_readwrite("mttkrp_dense_tile_width", &Genten::AlgParams::mttkrp_dense_tile_width);
     cl.def_readwrite("mttkrp_duplicated_factor_matrix_tile_size", &Genten::AlgParams::mttkrp_duplicated_factor_matrix_tile_size);
     cl.def_readwrite("mttkrp_duplicated_threshold", &Genten::AlgParams::mttkrp_duplicated_threshold);
     cl.def_readwrite("dist_update_method", &Genten::AlgParams::dist_update_method);

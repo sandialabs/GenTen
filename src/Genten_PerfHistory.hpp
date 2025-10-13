@@ -60,8 +60,8 @@ namespace Genten {
       ttb_real residual;           // Residual of tensor approximation
       ttb_real fit;                // Tensor fit
       ttb_real grad_norm;          // Norm of gradient
-			ttb_real cum_comm_time;      // Cumulative time for communication including this iteration
-			ttb_real cum_mttkrp_time;    // Cumulative time for MTTKRP including this iteration
+      ttb_real cum_comm_time;      // Cumulative time for communication including this iteration
+      ttb_real cum_mttkrp_time;    // Cumulative time for MTTKRP including this iteration
       ttb_real cum_time;           // Cumulative time including this iteration
       ttb_real mttkrp_throughput;  // Floating-point throughput of MTTKRP
 

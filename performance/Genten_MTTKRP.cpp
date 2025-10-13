@@ -641,7 +641,7 @@ int main(int argc, char* argv[])
     Genten::AlgParams algParams;
     algParams.mttkrp_method = mttkrp_method;
     algParams.mttkrp_duplicated_factor_matrix_tile_size = mttkrp_tile_size;
-		algParams.mttkrp_dense_tile_width = mttkrp_tile_size == 0 ? 2 : mttkrp_tile_size;
+    algParams.mttkrp_dense_tile_width = mttkrp_tile_size == 0 ? 2 : mttkrp_tile_size;
 
     if (exec_space == Genten::Execution_Space::Default) {
       if (sparse)

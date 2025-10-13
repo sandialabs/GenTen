@@ -605,8 +605,8 @@ void mttkrp_phan(const Genten::TensorImpl<ExecSpace,Impl::TensorLayoutLeft>& X,
     }
     {
       GENTEN_TIME_MONITOR("Multiply");
-			const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
-			static const ttb_indx VectorSize = is_gpu ? 32 : 1;
+      const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+      static const ttb_indx VectorSize = is_gpu ? 32 : 1;
       using PolicyType = Kokkos::TeamPolicy<ExecSpace>;
       Kokkos::parallel_for(
         PolicyType(szn, 1, VectorSize),
@@ -697,8 +697,8 @@ void mttkrp_phan(const Genten::TensorImpl<ExecSpace,Impl::TensorLayoutRight>& X,
     {
       GENTEN_TIME_MONITOR("Multiply");
       using PolicyType = Kokkos::TeamPolicy<ExecSpace>;
-			const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
-			static const ttb_indx VectorSize = is_gpu ? 32 : 1;
+      const bool is_gpu = Genten::is_gpu_space<ExecSpace>::value;
+      static const ttb_indx VectorSize = is_gpu ? 32 : 1;
       Kokkos::parallel_for(
         PolicyType(szn, 1, VectorSize),
         KOKKOS_LAMBDA(const typename PolicyType::member_type& team)

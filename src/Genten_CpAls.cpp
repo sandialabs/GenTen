@@ -352,8 +352,8 @@ namespace Genten {
         p.iteration = numIters + 1;
         p.residual = resNorm;
         p.fit = fit;
-				p.cum_comm_time = timer.getTotalTime(timer_comm);
-				p.cum_mttkrp_time = timer.getTotalTime(timer_mttkrp);
+        p.cum_comm_time = timer.getTotalTime(timer_comm);
+        p.cum_mttkrp_time = timer.getTotalTime(timer_mttkrp);
         p.cum_time = timer.getTotalTime(timer_cpals);
       }
 
