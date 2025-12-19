@@ -25,7 +25,7 @@ jobs:
           echo "openblas_lib=$openblas_lib_unix" >> "$GITHUB_OUTPUT"
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v3.0.0
+        uses: pypa/cibuildwheel@v3.3.0
         with:
           output-dir: dist
         env:
