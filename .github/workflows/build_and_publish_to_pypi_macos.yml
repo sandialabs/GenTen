@@ -71,7 +71,10 @@ jobs:
           CIBW_BEFORE_ALL_MACOS: "brew install libomp"
           CIBW_CONFIG_SETTINGS_MACOS: "cmake.define.F77_BLAS_MANGLE='(name,NAME) name ## _' cmake.define.ENABLE_PYTHON_EMBED=OFF cmake.define.ENABLE_TRILINOS=ON"
           CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=${{ matrix.target }} OpenMP_ROOT="$(brew --prefix)/opt/libomp" Trilinos_DIR=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib/cmake/Trilinos DYLD_LIBRARY_PATH=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib
-          CIBW_TEST_REQUIRES: pytest pyttb
+          # Not including pyttb in the tests for now because pyttb requires an older scipy which no longer provides binary wheels for newer python versions
+          # We could tell cibuildwheel to build scipy from scratch, but this requires several packages to be installed
+          #CIBW_TEST_REQUIRES: pytest pyttb
+          CIBW_TEST_REQUIRES: pytest
           CIBW_TEST_COMMAND: >
             cd {package} &&
             pytest python/test
