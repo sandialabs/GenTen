@@ -50,7 +50,6 @@ jobs:
             mkdir trilinos-build &&
             cd trilinos-build &&
             cmake \
-             -G Ninja \
              -D CMAKE_INSTALL_PREFIX:PATH=${{ steps.strings.outputs.build-output-dir }}/trilinos-install \
              -D CMAKE_BUILD_TYPE:STRING=RELEASE \
              -D Trilinos_ENABLE_DEBUG:BOOL=OFF \
@@ -69,7 +68,7 @@ jobs:
              -D TPL_LAPACK_LIBRARIES=/usr/lib64/libopenblas.so \
              -D Trilinos_ENABLE_ROL=ON \
              ../Trilinos &&
-            ninja install
+            make -j install
           CIBW_CONFIG_SETTINGS_LINUX: "cmake.define.ENABLE_PYTHON_EMBED=OFF cmake.define.ENABLE_TRILINOS=ON"
           CIBW_ENVIRONMENT_LINUX: Trilinos_DIR=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib64/cmake/Trilinos LD_LIBRARY_PATH=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib64
           CIBW_TEST_REQUIRES: pytest pyttb
