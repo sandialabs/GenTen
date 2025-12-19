@@ -62,7 +62,7 @@ jobs:
           ninja install
       
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.20.0
+        uses: pypa/cibuildwheel@v3.3.0
         with:
           output-dir: dist
         env:
