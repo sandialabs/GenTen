@@ -40,7 +40,8 @@ jobs:
           CIBW_CONFIG_SETTINGS_WINDOWS: "cmake.args=-DLAPACK_LIBS=${{ steps.strings.outputs.openblas_lib }};-DPYGENTEN_SERIAL=ON;-DENABLE_PYTHON_EMBED=OFF"
           CIBW_BEFORE_BUILD_WINDOWS: "pip install delvewheel"
           CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: "delvewheel repair --add-path ${{ github.workspace }}/openblas/bin -w {dest_dir} {wheel}"
-          CIBW_TEST_REQUIRES: pytest pyttb
+          #CIBW_TEST_REQUIRES: pytest pyttb
+          CIBW_TEST_REQUIRES: pytest
           CIBW_TEST_SOURCES: python/test data
           CIBW_TEST_COMMAND: >
             pytest python/test
