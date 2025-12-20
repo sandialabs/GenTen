@@ -71,7 +71,8 @@ jobs:
             make -j install
           CIBW_CONFIG_SETTINGS_LINUX: "cmake.define.ENABLE_PYTHON_EMBED=OFF cmake.define.ENABLE_TRILINOS=ON"
           CIBW_ENVIRONMENT_LINUX: Trilinos_DIR=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib64/cmake/Trilinos LD_LIBRARY_PATH=${{ steps.strings.outputs.build-output-dir }}/trilinos-install/lib64
-          CIBW_TEST_REQUIRES: pytest pyttb
+          # CIBW_TEST_REQUIRES: pytest pyttb
+          CIBW_TEST_REQUIRES: pytest
           CIBW_TEST_COMMAND: >
             cd {package} &&
             pytest python/test
