@@ -432,7 +432,7 @@ public:
     // Return pointer to the ith row
     KOKKOS_INLINE_FUNCTION
     ttb_real * rowptr(ttb_indx i) const
-    { return(data.data() + i*data.stride_0()); }
+    { return(data.data() + i*data.stride(0)); }
 
     KOKKOS_INLINE_FUNCTION
     view_type view() const { return data; }

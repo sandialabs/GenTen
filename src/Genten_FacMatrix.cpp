@@ -342,8 +342,8 @@ void gramianImpl(const ViewC& C, const ViewA& A, const bool full,
 {
   const ttb_indx m = A.extent(0);
   const ttb_indx n = A.extent(1);
-  const ttb_indx lda = A.stride_0();
-  const ttb_indx ldc = C.stride_0();
+  const ttb_indx lda = A.stride(0);
+  const ttb_indx ldc = C.stride(0);
 
   // We compute C = A'*A.  But since A is LayoutRight, and GEMM/SYRK
   // assumes layout left we compute this as C' = A*A'.  Since SYRK writes
@@ -537,8 +537,8 @@ void gramianImpl(const ViewC& C, const ViewA& A,
   {
     const int m = A.extent(0);
     const int n = A.extent(1);
-    const int lda = A.stride_0();
-    const int ldc = C.stride_0();
+    const int lda = A.stride(0);
+    const int ldc = C.stride(0);
     const double alpha = 1.0;
     const double beta = 0.0;
     cublasStatus_t status;
@@ -580,8 +580,8 @@ void gramianImpl(const ViewC& C, const ViewA& A,
   {
     const int m = A.extent(0);
     const int n = A.extent(1);
-    const int lda = A.stride_0();
-    const int ldc = C.stride_0();
+    const int lda = A.stride(0);
+    const int ldc = C.stride(0);
     const float alpha = 1.0;
     const float beta = 0.0;
     cublasStatus_t status;
@@ -627,8 +627,8 @@ void gramianImpl(const ViewC& C, const ViewA& A,
   {
     const int m = A.extent(0);
     const int n = A.extent(1);
-    const int lda = A.stride_0();
-    const int ldc = C.stride_0();
+    const int lda = A.stride(0);
+    const int ldc = C.stride(0);
     const double alpha = 1.0;
     const double beta = 0.0;
     rocblas_status status;
@@ -671,8 +671,8 @@ void gramianImpl(const ViewC& C, const ViewA& A,
   {
     const int m = A.extent(0);
     const int n = A.extent(1);
-    const int lda = A.stride_0();
-    const int ldc = C.stride_0();
+    const int lda = A.stride(0);
+    const int ldc = C.stride(0);
     const float alpha = 1.0;
     const float beta = 0.0;
     rocblas_status status;
@@ -722,8 +722,8 @@ void gramianImpl(const ViewC& C, const ViewA& A,
       // C', uplo == Upper means we call SYRK with 'L', and vice versa.
       const std::int64_t m = A.extent(0);
       const std::int64_t n = A.extent(1);
-      const std::int64_t lda = A.stride_0();
-      const std::int64_t ldc = C.stride_0();
+      const std::int64_t lda = A.stride(0);
+      const std::int64_t ldc = C.stride(0);
       const ttb_real alpha = 1.0;
       const ttb_real beta = 0.0;
       oneapi::mkl::uplo mkl_uplo =
@@ -1887,7 +1887,7 @@ namespace Genten {
       // Switch Upper/Lower because we store row-wise and lapack assumes column
       char uplo = ul == Upper ? 'L' : 'U';
 
-      return Genten::posv(uplo, ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0());
+      return Genten::posv(uplo, ncols, nrows, A.data(), A.stride(0), B.data(), B.stride(0));
     }
 
     template <typename ViewA, typename ViewB>
@@ -1901,7 +1901,7 @@ namespace Genten {
       // Switch Upper/Lower because we store row-wise and lapack assumes column
       char uplo = ul == Upper ? 'L' : 'U';
 
-      Genten::sysv(uplo, ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0());
+      Genten::sysv(uplo, ncols, nrows, A.data(), A.stride(0), B.data(), B.stride(0));
     }
 
     template <typename ViewA, typename ViewB>
@@ -1917,14 +1917,14 @@ namespace Genten {
       char uplo = ul == Upper ? 'L' : 'U';
 
       if (algParams.rank_def_solver) {
-        /*ttb_indx rank =*/ Genten::gelsy(ncols, ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0(), algParams.rcond);
+        /*ttb_indx rank =*/ Genten::gelsy(ncols, ncols, nrows, A.data(), A.stride(0), B.data(), B.stride(0), algParams.rcond);
         // if (rank < ncols) {
         //   std::cout << "Matrix is not full rank!  Numerical rank = " << rank
         //             << ", matrix order is " << ncols << std::endl;
         // }
       }
       else {
-        Genten::sysv(uplo, ncols, nrows, A.data(), A.stride_0(), B.data(), B.stride_0());
+        Genten::sysv(uplo, ncols, nrows, A.data(), A.stride(0), B.data(), B.stride(0));
       }
     }
 
@@ -1950,8 +1950,8 @@ namespace Genten {
 
       const int m = B.extent(0);
       const int n = B.extent(1);
-      const int lda = A.stride_0();
-      const int ldb = B.stride_0();
+      const int lda = A.stride(0);
+      const int ldb = B.stride(0);
       const cublasFillMode_t uplo = ul == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
       cusolverStatus_t status;
 
@@ -2033,8 +2033,8 @@ namespace Genten {
 
       const int m = B.extent(0);
       const int n = B.extent(1);
-      const int lda = A.stride_0();
-      const int ldb = B.stride_0();
+      const int lda = A.stride(0);
+      const int ldb = B.stride(0);
       const cublasFillMode_t uplo = ul == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
       cusolverStatus_t status;
 
@@ -2126,8 +2126,8 @@ namespace Genten {
 
       const int m = B.extent(0);
       const int n = B.extent(1);
-      const int lda = A.stride_0();
-      const int ldb = B.stride_0();
+      const int lda = A.stride(0);
+      const int ldb = B.stride(0);
       cusolverStatus_t status;
 
       gt_assert(int(A.extent(0)) == n);
@@ -2203,8 +2203,8 @@ namespace Genten {
 
       const int m = B.extent(0);
       const int n = B.extent(1);
-      const int lda = A.stride_0();
-      const int ldb = B.stride_0();
+      const int lda = A.stride(0);
+      const int ldb = B.stride(0);
       const cublasFillMode_t uplo = ul == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
       cusolverStatus_t status;
 
@@ -2284,8 +2284,8 @@ namespace Genten {
 #if 0
       const int m = B.extent(0);
       const int n = B.extent(1);
-      const int lda = A.stride_0();
-      const int ldb = B.stride_0();
+      const int lda = A.stride(0);
+      const int ldb = B.stride(0);
       const cublasFillMode_t uplo = ul == Upper ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
       cusolverStatus_t status;
 
@@ -2377,8 +2377,8 @@ namespace Genten {
 
       const int m = B.extent(0);
       const int n = B.extent(1);
-      const int lda = A.stride_0();
-      const int ldb = B.stride_0();
+      const int lda = A.stride(0);
+      const int ldb = B.stride(0);
       cusolverStatus_t status;
 
       gt_assert(int(A.extent(0)) == n);
@@ -2454,8 +2454,8 @@ namespace Genten {
     {
       const int m = B.extent(0);
       const int n = B.extent(1);
-      const int lda = A.stride_0();
-      const int ldb = B.stride_0();
+      const int lda = A.stride(0);
+      const int ldb = B.stride(0);
       const rocblas_fill uplo = ul == Upper ? rocblas_fill_lower : rocblas_fill_upper;
       rocblas_status status;
 
@@ -2531,8 +2531,8 @@ namespace Genten {
 
       const int m = B.extent(0);
       const int n = B.extent(1);
-      const int lda = A.stride_0();
-      const int ldb = B.stride_0();
+      const int lda = A.stride(0);
+      const int ldb = B.stride(0);
       rocblas_status status;
 
       gt_assert(int(A.extent(0)) == n);
@@ -2585,8 +2585,8 @@ namespace Genten {
     {
       const int m = B.extent(0);
       const int n = B.extent(1);
-      const int lda = A.stride_0();
-      const int ldb = B.stride_0();
+      const int lda = A.stride(0);
+      const int ldb = B.stride(0);
       const rocblas_fill uplo = ul == Upper ? rocblas_fill_lower : rocblas_fill_upper;
       rocblas_status status;
 
@@ -2662,8 +2662,8 @@ namespace Genten {
 
       const int m = B.extent(0);
       const int n = B.extent(1);
-      const int lda = A.stride_0();
-      const int ldb = B.stride_0();
+      const int lda = A.stride(0);
+      const int ldb = B.stride(0);
       rocblas_status status;
 
       gt_assert(int(A.extent(0)) == n);
@@ -2723,8 +2723,8 @@ namespace Genten {
 
       const std::int64_t m = B.extent(0);
       const std::int64_t n = B.extent(1);
-      const std::int64_t lda = A.stride_0();
-      const std::int64_t ldb = B.stride_0();
+      const std::int64_t lda = A.stride(0);
+      const std::int64_t ldb = B.stride(0);
       oneapi::mkl::uplo mkl_uplo =
         ul == Upper ? oneapi::mkl::uplo::lower : oneapi::mkl::uplo::upper;
 
@@ -2805,8 +2805,8 @@ namespace Genten {
 
       const std::int64_t m = B.extent(0);
       const std::int64_t n = B.extent(1);
-      const std::int64_t lda = A.stride_0();
-      const std::int64_t ldb = B.stride_0();
+      const std::int64_t lda = A.stride(0);
+      const std::int64_t ldb = B.stride(0);
       oneapi::mkl::uplo mkl_uplo =
         ul == Upper ? oneapi::mkl::uplo::lower : oneapi::mkl::uplo::upper;
 
@@ -2892,8 +2892,8 @@ namespace Genten {
 
       const std::int64_t m = B.extent(0);
       const std::int64_t n = B.extent(1);
-      const std::int64_t lda = A.stride_0();
-      const std::int64_t ldb = B.stride_0();
+      const std::int64_t lda = A.stride(0);
+      const std::int64_t ldb = B.stride(0);
 
       using ExecSpace = typename view_type_A::execution_space;
       ExecSpace space;
