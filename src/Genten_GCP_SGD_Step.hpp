@@ -339,7 +339,7 @@ namespace Genten {
       {
         const ttb_real sgd_step = step_;
 
-        const ttb_real mom_scale = [=,this]{
+        const ttb_real mom_scale = [=]{
           const auto tmp = 1 - ttb_real(current_iter)/ttb_real(max_iters_);
           const auto denom = (1 - v_scale_) + v_scale_ * tmp;
           return v_scale_ * (tmp/denom);
