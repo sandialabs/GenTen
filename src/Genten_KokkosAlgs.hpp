@@ -328,11 +328,11 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
 
   if (check) {
     // Check scan is correct
-    typename ValViewType::HostMirror vals_host =
+    typename ValViewType::host_mirror_type vals_host =
       Kokkos::create_mirror_view(vals_orig);
-    typename KeyViewType::HostMirror keys_host =
+    typename KeyViewType::host_mirror_type keys_host =
       Kokkos::create_mirror_view(keys);
-    typename ValViewType::HostMirror scans_host =
+    typename ValViewType::host_mirror_type scans_host =
       Kokkos::create_mirror_view(vals);
     Kokkos::deep_copy(vals_host, vals_orig);
     Kokkos::deep_copy(keys_host, keys);
@@ -614,13 +614,13 @@ void key_scan(const ValViewType& vals, const KeyViewType& keys,
 
   if (check) {
     // Check scan is correct
-    typename ValViewType::HostMirror vals_host =
+    typename ValViewType::host_mirror_type vals_host =
       Kokkos::create_mirror_view(vals_orig);
-    typename KeyViewType::HostMirror keys_host =
+    typename KeyViewType::host_mirror_type keys_host =
       Kokkos::create_mirror_view(keys);
-    typename PermViewType::HostMirror perm_host =
+    typename PermViewType::host_mirror_type perm_host =
       Kokkos::create_mirror_view(perm);
-    typename ValViewType::HostMirror scans_host =
+    typename ValViewType::host_mirror_type scans_host =
       Kokkos::create_mirror_view(vals);
     Kokkos::deep_copy(vals_host, vals_orig);
     Kokkos::deep_copy(keys_host, keys);
@@ -882,11 +882,11 @@ void seg_scan(const ValViewType& vals, const FlagViewType& flags,
 
   if (check) {
     // Check scan is correct
-    typename ValViewType::HostMirror vals_host =
+    typename ValViewType::host_mirror_type vals_host =
       Kokkos::create_mirror_view(vals_orig);
-    typename FlagViewType::HostMirror flags_host =
+    typename FlagViewType::host_mirror_type flags_host =
       Kokkos::create_mirror_view(flags);
-    typename ValViewType::HostMirror scans_host =
+    typename ValViewType::host_mirror_type scans_host =
       Kokkos::create_mirror_view(vals);
     Kokkos::deep_copy(vals_host, vals_orig);
     Kokkos::deep_copy(flags_host, flags);

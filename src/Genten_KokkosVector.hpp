@@ -385,7 +385,7 @@ namespace Genten {
 
   protected:
 
-    typedef typename view_type::HostMirror host_view_type;
+    typedef typename view_type::host_mirror_type host_view_type;
     typedef typename host_view_type::execution_space host_exec_space;
 
     void initialize()
