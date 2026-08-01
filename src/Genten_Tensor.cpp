@@ -137,7 +137,7 @@ transpose(const TensorImpl<ExecSpace,Layout>& X)
 
   const ttb_indx nd = X.ndims();
   const ttb_indx ne = X.numel();
-  const Genten::IndxArray sz_host = X.size_host();
+  auto sz_host = X.size_host();
   Genten::IndxArrayT<ExecSpace> szt(nd);
   auto szt_host = create_mirror_view(szt);
   for (ttb_indx i=0; i<nd; ++i)

@@ -1101,7 +1101,7 @@ TensorWriter<ExecSpace>::
 writeBinary(const SptensorT<ExecSpace>& X,
             const bool write_header) const
 {
-  Sptensor X_host = create_mirror_view(X);
+  Sptensor X_host = create_mirror_view(DefaultHostExecutionSpace(), X);
   deep_copy(X_host, X);
   write_binary_sparse_tensor(filename, X_host, write_header);
 }
@@ -1112,7 +1112,7 @@ TensorWriter<ExecSpace>::
 writeBinary(const TensorT<ExecSpace>& X,
             const bool write_header) const
 {
-  Tensor X_host = create_mirror_view(X);
+  Tensor X_host = create_mirror_view(DefaultHostExecutionSpace(), X);
   deep_copy(X_host, X);
   write_binary_dense_tensor(filename, X_host, write_header);
 }
@@ -1122,7 +1122,7 @@ void
 TensorWriter<ExecSpace>::
 writeText(const SptensorT<ExecSpace>& X) const
 {
-  Sptensor X_host = create_mirror_view(X);
+  Sptensor X_host = create_mirror_view(DefaultHostExecutionSpace(), X);
   deep_copy(X_host, X);
   if (index_base != 0 && index_base != 1)
     Genten::error("Writing a sparse tensor requires index base of 0 or 1");
@@ -1134,7 +1134,7 @@ void
 TensorWriter<ExecSpace>::
 writeText(const TensorT<ExecSpace>& X) const
 {
-  Tensor X_host = create_mirror_view(X);
+  Tensor X_host = create_mirror_view(DefaultHostExecutionSpace(), X);
   deep_copy(X_host, X);
   export_tensor(filename, X_host, true, 15, compressed);
 }
