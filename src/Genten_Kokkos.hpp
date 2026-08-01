@@ -46,10 +46,12 @@
 
 // Force Kokkos to always pad views when padding is enabled for that view,
 // regardless of view dimensions
-#ifdef KOKKOS_MEMORY_ALIGNMENT_THRESHOLD
-#undef KOKKOS_MEMORY_ALIGNMENT_THRESHOLD
-#endif
-#define KOKKOS_MEMORY_ALIGNMENT_THRESHOLD 0
+// Note:  Kokkos no longer allows this
+
+// #ifdef KOKKOS_MEMORY_ALIGNMENT_THRESHOLD
+// #undef KOKKOS_MEMORY_ALIGNMENT_THRESHOLD
+// #endif
+// #define KOKKOS_MEMORY_ALIGNMENT_THRESHOLD 0
 
 #include "Kokkos_Core.hpp"
 
