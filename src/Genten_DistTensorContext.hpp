@@ -302,7 +302,7 @@ importToRoot(const SptensorT<ExecSpace>& u) const
   }
 
   // Copy u to host
-  Sptensor uh = create_mirror_view(u);
+  Sptensor uh = create_mirror_view(Genten::DefaultHostExecutionSpace(), u);
   deep_copy(uh,u);
 
   // Copy tensor into send buffer (using GIDs)
