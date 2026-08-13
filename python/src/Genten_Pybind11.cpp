@@ -99,8 +99,8 @@ driver_impl(const Genten::DTC& dtc,
 
   Genten::KtensorT<ExecSpace> ud = Genten::driver(dtc2, xd, u0d, algParams, history, out);
 
-  Genten::Ktensor ret = create_mirror_view(ud);
-  u0 = create_mirror_view(u0d);
+  Genten::Ktensor ret = create_mirror_view(Genten::DefaultHostExecutionSpace(), ud);
+  u0 = create_mirror_view(Genten::DefaultHostExecutionSpace(), u0d);
   deep_copy(ret, ud);
   deep_copy(u0, u0d);
 
@@ -203,7 +203,7 @@ online_gcp_impl(const std::vector<TensorType>& X,
 
   Genten::Array fest_d, ften_d;
   Genten::online_gcp(Xd, X0d, ud, algParams, temporalAlgParams, spatialAlgParams, std::cout, fest_d, ften_d);
-  Genten::Ktensor ret = create_mirror_view(ud);
+  Genten::Ktensor ret = create_mirror_view(Genten::DefaultHostExecutionSpace(), ud);
   fest = create_mirror_view(fest_d);
   ften = create_mirror_view(ften_d);
   deep_copy(ret, ud);

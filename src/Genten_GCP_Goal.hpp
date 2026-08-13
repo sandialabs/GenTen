@@ -118,7 +118,7 @@ namespace Genten {
     // when a new design vector is computed
     virtual void update(const ktensor_type& M) override
     {
-      Ktensor Mh = create_mirror_view(M);
+      Ktensor Mh = create_mirror_view(Genten::DefaultHostExecutionSpace(), M);
       deep_copy(Mh, M);
       try {
         python_object.attr("update")(Mh);
@@ -131,7 +131,7 @@ namespace Genten {
     // Compute value of the objective function:
     virtual ttb_real value(const ktensor_type& M) const override
     {
-      Ktensor Mh = create_mirror_view(M);
+      Ktensor Mh = create_mirror_view(Genten::DefaultHostExecutionSpace(), M);
       deep_copy(Mh, M);
       ttb_real res = 0.0;
       try {
@@ -146,7 +146,7 @@ namespace Genten {
     // Compute gradient of objective function:
     virtual void gradient(ktensor_type& G, const ktensor_type& M) const override
     {
-      Ktensor Mh = create_mirror_view(M);
+      Ktensor Mh = create_mirror_view(Genten::DefaultHostExecutionSpace(), M);
       deep_copy(Mh, M);
       try {
         Ktensor Gh =
@@ -162,8 +162,8 @@ namespace Genten {
     virtual void hessvec(ktensor_type& H, const ktensor_type& M,
                         const ktensor_type& V) const override
     {
-      Ktensor Mh = create_mirror_view(M);
-      Ktensor Vh = create_mirror_view(V);
+      Ktensor Mh = create_mirror_view(Genten::DefaultHostExecutionSpace(), M);
+      Ktensor Vh = create_mirror_view(Genten::DefaultHostExecutionSpace(), V);
       deep_copy(Mh, M);
       deep_copy(Vh, V);
       try {
@@ -206,8 +206,8 @@ namespace Genten {
         auto python_object =
           python_module.attr(algParams.python_object_name.c_str());
         if (pybind11::hasattr(python_object, "init")) {
-          Tensor Xh = create_mirror_view(X);
-          Ktensor Mh = create_mirror_view(M);
+          Tensor Xh = create_mirror_view(Genten::DefaultHostExecutionSpace(), X);
+          Ktensor Mh = create_mirror_view(Genten::DefaultHostExecutionSpace(), M);
           deep_copy(Xh, X);
           deep_copy(Mh, M);
           python_object.attr("init")(Xh, Mh);
